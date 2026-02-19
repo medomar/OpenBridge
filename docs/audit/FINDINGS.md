@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 4 | **Fixed:** 33 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 2 | **Fixed:** 35 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -13,19 +13,19 @@
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
 | 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  5   |   5   |     0     |  10   |
+| 🟢 Low      |  3   |   7   |     0     |  10   |
 
 ## Summary by Category
 
 | Category              | Open | Fixed | Total |
 | --------------------- | :--: | :---: | :---: |
-| Connector Reliability |  1   |   4   |   5   |
+| Connector Reliability |  0   |   5   |   5   |
 | Provider Robustness   |  0   |   5   |   5   |
 | Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  0   |   4   |   4   |
 | Testing               |  1   |   4   |   5   |
-| Documentation         |  2   |   2   |   4   |
+| Documentation         |  1   |   3   |   4   |
 | Developer Experience  |  0   |   3   |   3   |
 
 ---
@@ -74,11 +74,11 @@
 | ID     | Description                                                                    | Category              |  Status  | File                    | Date       |
 | ------ | ------------------------------------------------------------------------------ | --------------------- | :------: | ----------------------- | ---------- |
 | OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | ✅ Fixed | `config.ts`             | 2026-02-19 |
-| OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | 🟢 Open  | `whatsapp-connector.ts` | 2026-02-19 |
+| OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | ✅ Fixed | `whatsapp-formatter.ts` | 2026-02-19 |
 | OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | ✅ Fixed | `registry.ts`           | 2026-02-19 |
 | OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | ✅ Fixed | `src/cli/init.ts`       | 2026-02-19 |
 | OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | ✅ Fixed | `tests/`                | 2026-02-19 |
-| OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
+| OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | ✅ Fixed | `connectors/console/`   | 2026-02-19 |
 | OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
 | OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | ✅ Fixed | `README.md`             | 2026-02-19 |
 | OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | 🟢 Open  | —                       | 2026-02-19 |

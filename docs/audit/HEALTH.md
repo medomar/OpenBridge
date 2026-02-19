@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.61/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.605
+> **Current Score:** 6.62/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.615
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **0 medium** | **5 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **3 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -80,6 +80,8 @@
 | 2026-02-19 | 6.60  | +0.005 | OB-032 fixed — E2E test harness with mock WhatsApp server (13 tests)                   |
 | 2026-02-19 | 6.605 | +0.005 | OB-035 fixed — CI badge with branch filter added to README                             |
 | 2026-02-19 | 6.61  | +0.005 | OB-028 fixed — Multi-workspace support with @workspace command syntax                  |
+| 2026-02-19 | 6.615 | +0.005 | OB-033 fixed — Example console connector plugin as reference implementation            |
+| 2026-02-19 | 6.62  | +0.005 | OB-029 fixed — Markdown-to-WhatsApp formatting converter for AI responses              |
 
 ---
 
