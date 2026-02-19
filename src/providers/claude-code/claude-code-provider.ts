@@ -5,6 +5,7 @@ import { ClaudeCodeConfigSchema } from './claude-code-config.js';
 import type { ClaudeCodeConfig } from './claude-code-config.js';
 import { executeClaudeCode, streamClaudeCode } from './claude-code-executor.js';
 import { SessionManager } from './session-manager.js';
+import { ProviderError, classifyError } from './provider-error.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('claude-code');
@@ -47,13 +48,19 @@ export class ClaudeCodeProvider implements AIProvider {
     const durationMs = Date.now() - startTime;
 
     if (result.exitCode !== 0) {
+      const errorKind = classifyError(result.exitCode, result.stderr);
       logger.warn(
-        { exitCode: result.exitCode, stderr: result.stderr },
+        { exitCode: result.exitCode, stderr: result.stderr, errorKind },
         'Claude Code returned non-zero exit code',
+      );
+      throw new ProviderError(
+        result.stderr.trim() || `Claude Code exited with code ${result.exitCode}`,
+        errorKind,
+        result.exitCode,
       );
     }
 
-    const content = result.stdout.trim() || result.stderr.trim() || 'No output from Claude Code.';
+    const content = result.stdout.trim() || 'No output from Claude Code.';
 
     return {
       content,
@@ -96,10 +103,16 @@ export class ClaudeCodeProvider implements AIProvider {
     const { exitCode, stderr } = streamResult.value;
 
     if (exitCode !== 0) {
-      logger.warn({ exitCode, stderr }, 'Claude Code returned non-zero exit code');
+      const errorKind = classifyError(exitCode, stderr);
+      logger.warn({ exitCode, stderr, errorKind }, 'Claude Code returned non-zero exit code');
+      throw new ProviderError(
+        stderr.trim() || `Claude Code exited with code ${exitCode}`,
+        errorKind,
+        exitCode,
+      );
     }
 
-    const content = fullOutput.trim() || stderr.trim() || 'No output from Claude Code.';
+    const content = fullOutput.trim() || 'No output from Claude Code.';
 
     return {
       content,

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ClaudeCodeProvider } from '../../../src/providers/claude-code/claude-code-provider.js';
+import { ProviderError } from '../../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../../src/types/message.js';
 
 // ---------------------------------------------------------------------------
@@ -98,12 +99,40 @@ describe('ClaudeCodeProvider', () => {
       expect(result.content).toBe('file list here');
     });
 
-    it('falls back to stderr when stdout is empty', async () => {
+    it('throws ProviderError when exit code is non-zero', async () => {
       mockExecute.mockResolvedValue({ stdout: '   ', stderr: 'some error output', exitCode: 1 });
 
-      const result = await provider.processMessage(createMessage());
+      await expect(provider.processMessage(createMessage())).rejects.toThrow(ProviderError);
+    });
 
-      expect(result.content).toBe('some error output');
+    it('ProviderError includes stderr as message', async () => {
+      mockExecute.mockResolvedValue({ stdout: '', stderr: 'some error output', exitCode: 1 });
+
+      await expect(provider.processMessage(createMessage())).rejects.toThrow('some error output');
+    });
+
+    it('classifies timeout errors as transient', async () => {
+      mockExecute.mockResolvedValue({ stdout: '', stderr: 'Request timeout', exitCode: 1 });
+
+      try {
+        await provider.processMessage(createMessage());
+        expect.fail('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ProviderError);
+        expect((error as ProviderError).kind).toBe('transient');
+      }
+    });
+
+    it('classifies auth errors as permanent', async () => {
+      mockExecute.mockResolvedValue({ stdout: '', stderr: 'invalid api key', exitCode: 1 });
+
+      try {
+        await provider.processMessage(createMessage());
+        expect.fail('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ProviderError);
+        expect((error as ProviderError).kind).toBe('permanent');
+      }
     });
 
     it('returns default message when both stdout and stderr are empty', async () => {
@@ -138,11 +167,11 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('includes exitCode in metadata', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: 'fail', exitCode: 1 });
+      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
-      expect(result.metadata?.exitCode).toBe(1);
+      expect(result.metadata?.exitCode).toBe(0);
     });
 
     it('trims whitespace from stdout', async () => {
@@ -244,18 +273,35 @@ describe('ClaudeCodeProvider', () => {
       expect(providerResult.metadata.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('falls back to stderr when stdout is empty', async () => {
+    it('throws ProviderError when stream exits with non-zero code', async () => {
       mockStream.mockReturnValue(createMockStream([], { exitCode: 1, stderr: 'error output' }));
 
       const stream = provider.streamMessage(createMessage());
-      let result: IteratorResult<string, unknown>;
 
-      do {
-        result = await stream.next();
-      } while (!result.done);
+      await expect(async () => {
+        let result: IteratorResult<string, unknown>;
+        do {
+          result = await stream.next();
+        } while (!result.done);
+      }).rejects.toThrow(ProviderError);
+    });
 
-      const providerResult = result.value as { content: string };
-      expect(providerResult.content).toBe('error output');
+    it('classifies stream timeout errors as transient', async () => {
+      mockStream.mockReturnValue(
+        createMockStream([], { exitCode: 1, stderr: 'Connection timed out' }),
+      );
+
+      const stream = provider.streamMessage(createMessage());
+      try {
+        let result: IteratorResult<string, unknown>;
+        do {
+          result = await stream.next();
+        } while (!result.done);
+        expect.fail('should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(ProviderError);
+        expect((error as ProviderError).kind).toBe('transient');
+      }
     });
 
     it('returns default message when both stdout and stderr are empty', async () => {

@@ -1,6 +1,7 @@
 import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
+import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
@@ -60,10 +61,28 @@ export class Router {
     // Process with AI provider — prefer streaming to avoid timeout on long responses
     let result: ProviderResult;
 
-    if (provider.streamMessage) {
-      result = await this.consumeStream(provider.streamMessage(message));
-    } else {
-      result = await provider.processMessage(message);
+    try {
+      if (provider.streamMessage) {
+        result = await this.consumeStream(provider.streamMessage(message));
+      } else {
+        result = await provider.processMessage(message);
+      }
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        const userMessage =
+          error.kind === 'transient'
+            ? 'The AI service is temporarily unavailable. Please try again in a moment.'
+            : `Request failed: ${error.message}`;
+
+        const errorResponse: OutboundMessage = {
+          target: message.source,
+          recipient: message.sender,
+          content: userMessage,
+          replyTo: message.id,
+        };
+        await connector.sendMessage(errorResponse);
+      }
+      throw error;
     }
 
     // Send result back

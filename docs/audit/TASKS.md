@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
 > **Total:** 37 | **Done:** 18 | **In Progress:** 0 | **Pending:** 19
-> **Health Score:** 6.435/10 | **Last Updated:** 2026-02-19
+> **Health Score:** 6.45/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -10,7 +10,7 @@
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
-|   2   | UX + robustness                 |  11   |  5   |   ◻    |
+|   2   | UX + robustness                 |  11   |  6   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
@@ -47,7 +47,7 @@
 | 14  | Add conversation context / session memory per user                        | OB-007  |  🟠 High  |  ✅ Done  |
 | 15  | Split long responses into WhatsApp-safe chunks (≤4096 chars)              | OB-013  | 🟡 Medium |  ✅ Done  |
 | 16  | Send typing indicator while AI processes                                  | OB-014  | 🟡 Medium |  ✅ Done  |
-| 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium | ◻ Pending |
+| 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium |  ✅ Done  |
 | 18  | Implement per-user message queues (parallel processing across users)      | OB-019  | 🟡 Medium |  ✅ Done  |
 | 19  | Add progress updates for long-running tasks                               | OB-020  | 🟡 Medium | ◻ Pending |
 | 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium | ◻ Pending |

@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.435/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.42
+> **Current Score:** 6.45/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.435
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **10 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **9 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -65,6 +65,7 @@
 | 2026-02-19 | 6.405 | +0.015 | OB-014 fixed — Typing indicator sent via WhatsApp chat state while AI processes        |
 | 2026-02-19 | 6.42  | +0.015 | OB-013 fixed — Split long responses into WhatsApp-safe chunks (≤4096 chars)            |
 | 2026-02-19 | 6.435 | +0.015 | OB-019 fixed — Per-user message queues for parallel cross-user processing              |
+| 2026-02-19 | 6.45  | +0.015 | OB-018 fixed — Error classification (transient vs permanent) with retry skip           |
 
 ---
 
