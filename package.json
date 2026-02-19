@@ -45,6 +45,7 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
+    "bench": "vitest bench",
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {

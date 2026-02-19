@@ -18,5 +18,8 @@ export default defineConfig({
       },
     },
     setupFiles: ['tests/setup.ts'],
+    benchmark: {
+      include: ['benchmarks/**/*.bench.ts'],
+    },
   },
 });
