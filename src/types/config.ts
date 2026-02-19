@@ -53,6 +53,12 @@ export const AuditConfigSchema = z.object({
   logPath: z.string().default('audit.log'),
 });
 
+/** Schema for health check endpoint configuration */
+export const HealthConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  port: z.number().int().positive().default(8080),
+});
+
 /** Root configuration schema */
 export const AppConfigSchema = z.object({
   connectors: z.array(ConnectorConfigSchema).min(1),
@@ -62,6 +68,7 @@ export const AppConfigSchema = z.object({
   queue: QueueConfigSchema.default({}),
   router: RouterConfigSchema.default({}),
   audit: AuditConfigSchema.default({}),
+  health: HealthConfigSchema.default({}),
   logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });
 
@@ -73,4 +80,5 @@ export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type QueueConfig = z.infer<typeof QueueConfigSchema>;
 export type RouterConfig = z.infer<typeof RouterConfigSchema>;
 export type AuditConfig = z.infer<typeof AuditConfigSchema>;
+export type HealthConfig = z.infer<typeof HealthConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

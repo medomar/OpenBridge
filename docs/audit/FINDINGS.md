@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 14 | **Fixed:** 23 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 13 | **Fixed:** 24 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  5   |  10   |     0     |  15   |
+| 🟡 Medium   |  4   |  11   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -20,7 +20,7 @@
 | Category              | Open | Fixed | Total |
 | --------------------- | :--: | :---: | :---: |
 | Connector Reliability |  1   |   4   |   5   |
-| Provider Robustness   |  2   |   3   |   5   |
+| Provider Robustness   |  1   |   4   |   5   |
 | Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  2   |   2   |   4   |
@@ -63,7 +63,7 @@
 | OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | ✅ Fixed | `router.ts`               | 2026-02-19 |
 | OB-021 | No audit logging — message history not persisted                                  | Security              | ✅ Fixed | `audit-logger.ts`         | 2026-02-19 |
 | OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
-| OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
+| OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | ✅ Fixed | `health.ts`               | 2026-02-19 |
 | OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
 | OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
 | OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |

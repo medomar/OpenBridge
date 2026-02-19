@@ -4,6 +4,9 @@ import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
+import { ConfigWatcher } from './config-watcher.js';
+import { HealthServer } from './health.js';
+import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -12,21 +15,31 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
 
+export interface BridgeOptions {
+  configPath?: string;
+}
+
 export class Bridge {
   private readonly config: AppConfig;
   private readonly auth: AuthService;
   private readonly auditLogger: AuditLogger;
+  private configWatcher: ConfigWatcher | null = null;
+  private readonly healthServer: HealthServer;
   private readonly rateLimiter: RateLimiter;
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
   private readonly router: Router;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
+  private readonly startedAt: number = Date.now();
+  private readonly configPath?: string;
 
-  constructor(config: AppConfig) {
+  constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
+    this.configPath = options?.configPath;
     this.auth = new AuthService(config.auth);
     this.auditLogger = new AuditLogger(config.audit);
+    this.healthServer = new HealthServer(config.health);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
     this.queue = new MessageQueue(config.queue);
     this.registry = new PluginRegistry();
@@ -85,6 +98,17 @@ export class Bridge {
       await this.router.route(message);
     });
 
+    // Start health check endpoint
+    this.healthServer.setDataProvider(() => this.getHealthStatus());
+    await this.healthServer.start();
+
+    // Start config file watcher for hot-reload
+    if (this.configPath) {
+      this.configWatcher = new ConfigWatcher(this.configPath);
+      this.configWatcher.onChange((newConfig) => this.onConfigChange(newConfig));
+      this.configWatcher.start();
+    }
+
     logger.info('OpenBridge started successfully');
   }
 
@@ -114,7 +138,53 @@ export class Bridge {
       }
     }
 
+    this.configWatcher?.stop();
+
+    await this.healthServer.stop();
+
     logger.info('OpenBridge stopped');
+  }
+
+  private onConfigChange(newConfig: AppConfig): void {
+    logger.info('Applying hot-reloaded configuration');
+
+    this.auth.updateConfig(newConfig.auth);
+    this.rateLimiter.updateConfig(newConfig.auth.rateLimit);
+
+    logger.info('Configuration hot-reload complete');
+  }
+
+  private getHealthStatus(): HealthStatus {
+    const connectorStatuses: ComponentStatus[] = this.connectors.map((c) => ({
+      name: c.name,
+      status: c.isConnected() ? 'healthy' : 'unhealthy',
+    }));
+
+    const providerStatuses: ComponentStatus[] = this.providers.map((p) => ({
+      name: p.name,
+      status: 'healthy' as const,
+    }));
+
+    const allStatuses = [...connectorStatuses, ...providerStatuses];
+    const hasUnhealthy = allStatuses.some((s) => s.status === 'unhealthy');
+    const hasDegraded = allStatuses.some((s) => s.status === 'degraded');
+
+    let overall: HealthStatus['status'] = 'healthy';
+    if (hasUnhealthy) overall = 'unhealthy';
+    else if (hasDegraded) overall = 'degraded';
+
+    return {
+      status: overall,
+      uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+      timestamp: new Date().toISOString(),
+      connectors: connectorStatuses,
+      providers: providerStatuses,
+      queue: {
+        pending: this.queue.size,
+        processing: this.queue.isProcessing,
+        deadLetterSize: this.queue.deadLetterSize,
+      },
+    };
   }
 
   private handleIncomingMessage(message: InboundMessage): void {

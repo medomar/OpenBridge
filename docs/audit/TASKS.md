@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 22 | **In Progress:** 0 | **Pending:** 15
-> **Health Score:** 6.51/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 23 | **In Progress:** 0 | **Pending:** 14
+> **Health Score:** 6.525/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -11,7 +11,7 @@
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
 |   2   | UX + robustness                 |  11   |  10  |   ◻    |
-|   3   | Observability + DX              |   8   |  0   |   ◻    |
+|   3   | Observability + DX              |   8   |  1   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
 ---
@@ -63,7 +63,7 @@
 
 | #   | Task                                                                  | Finding | Priority  |  Status   |
 | --- | --------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 24  | Add health check endpoint (HTTP)                                      | OB-023  | 🟡 Medium | ◻ Pending |
+| 24  | Add health check endpoint (HTTP)                                      | OB-023  | 🟡 Medium |  ✅ Done  |
 | 25  | Add metrics collection (message count, latency, error rate)           | OB-024  | 🟡 Medium | ◻ Pending |
 | 26  | Create deployment guide (Docker, PM2, systemd)                        | OB-025  | 🟡 Medium | ◻ Pending |
 | 27  | Create troubleshooting guide (common errors + solutions)              | OB-026  | 🟡 Medium | ◻ Pending |

@@ -42,5 +42,9 @@
     "enabled": false,
     "logPath": "audit.log"
   },
+  "health": {
+    "enabled": false,
+    "port": 8080
+  },
   "logLevel": "info"
 }
