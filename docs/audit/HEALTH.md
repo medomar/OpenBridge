@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.62/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.615
+> **Current Score:** 6.625/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 6.62
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **0 medium** | **3 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **2 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -82,6 +82,7 @@
 | 2026-02-19 | 6.61  | +0.005 | OB-028 fixed — Multi-workspace support with @workspace command syntax                  |
 | 2026-02-19 | 6.615 | +0.005 | OB-033 fixed — Example console connector plugin as reference implementation            |
 | 2026-02-19 | 6.62  | +0.005 | OB-029 fixed — Markdown-to-WhatsApp formatting converter for AI responses              |
+| 2026-02-20 | 6.625 | +0.005 | OB-034 fixed — API reference documentation covering all interfaces and config schemas  |
 
 ---
 
