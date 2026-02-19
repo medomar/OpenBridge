@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 1 | **Fixed:** 36 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 0 | **Fixed:** 37 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-20
 
@@ -13,7 +13,7 @@
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
 | 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  1   |   9   |     0     |  10   |
+| 🟢 Low      |  0   |  10   |     0     |  10   |
 
 ## Summary by Category
 
@@ -21,7 +21,7 @@
 | --------------------- | :--: | :---: | :---: |
 | Connector Reliability |  0   |   5   |   5   |
 | Provider Robustness   |  0   |   5   |   5   |
-| Security              |  1   |   4   |   5   |
+| Security              |  0   |   5   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  0   |   4   |   4   |
 | Testing               |  0   |   5   |   5   |
@@ -82,7 +82,7 @@
 | OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | ✅ Fixed | `docs/API_REFERENCE.md`    | 2026-02-20 |
 | OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | ✅ Fixed | `README.md`                | 2026-02-19 |
 | OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | ✅ Fixed | `benchmarks/core.bench.ts` | 2026-02-20 |
-| OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | 🟢 Open  | `bridge.ts`                | 2026-02-19 |
+| OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | ✅ Fixed | `config.ts`                | 2026-02-20 |
 
 ---
 

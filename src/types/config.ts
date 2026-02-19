@@ -72,20 +72,28 @@ export const MetricsConfigSchema = z.object({
 });
 
 /** Root configuration schema */
-export const AppConfigSchema = z.object({
-  connectors: z.array(ConnectorConfigSchema).min(1),
-  providers: z.array(ProviderConfigSchema).min(1),
-  defaultProvider: z.string(),
-  workspaces: z.array(WorkspaceConfigSchema).default([]),
-  defaultWorkspace: z.string().optional(),
-  auth: AuthConfigSchema,
-  queue: QueueConfigSchema.default({}),
-  router: RouterConfigSchema.default({}),
-  audit: AuditConfigSchema.default({}),
-  health: HealthConfigSchema.default({}),
-  metrics: MetricsConfigSchema.default({}),
-  logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-});
+export const AppConfigSchema = z
+  .object({
+    connectors: z.array(ConnectorConfigSchema).min(1),
+    providers: z.array(ProviderConfigSchema).min(1),
+    defaultProvider: z.string(),
+    workspaces: z.array(WorkspaceConfigSchema).default([]),
+    defaultWorkspace: z.string().optional(),
+    auth: AuthConfigSchema,
+    queue: QueueConfigSchema.default({}),
+    router: RouterConfigSchema.default({}),
+    audit: AuditConfigSchema.default({}),
+    health: HealthConfigSchema.default({}),
+    metrics: MetricsConfigSchema.default({}),
+    logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+  })
+  .refine(
+    (config) => config.providers.some((p) => p.type === config.defaultProvider),
+    (config) => ({
+      message: `defaultProvider "${config.defaultProvider}" does not match any provider type. Available: ${config.providers.map((p) => p.type).join(', ')}`,
+      path: ['defaultProvider'],
+    }),
+  );
 
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;

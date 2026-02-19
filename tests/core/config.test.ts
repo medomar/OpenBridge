@@ -81,4 +81,27 @@ describe('AppConfigSchema', () => {
 
     expect(() => AppConfigSchema.parse(config)).toThrow();
   });
+
+  it('should reject config when defaultProvider does not match any provider type', () => {
+    const config = {
+      connectors: [{ type: 'whatsapp' }],
+      providers: [{ type: 'claude-code' }],
+      defaultProvider: 'nonexistent-provider',
+      auth: {},
+    };
+
+    expect(() => AppConfigSchema.parse(config)).toThrow(/does not match any provider type/);
+  });
+
+  it('should accept config when defaultProvider matches one of multiple providers', () => {
+    const config = {
+      connectors: [{ type: 'whatsapp' }],
+      providers: [{ type: 'claude-code' }, { type: 'openai' }],
+      defaultProvider: 'openai',
+      auth: {},
+    };
+
+    const result = AppConfigSchema.parse(config);
+    expect(result.defaultProvider).toBe('openai');
+  });
 });

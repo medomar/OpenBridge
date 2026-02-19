@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.63/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 6.625
+> **Current Score:** 6.635/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 6.63
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **0 medium** | **1 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **0 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -84,6 +84,7 @@
 | 2026-02-19 | 6.62  | +0.005 | OB-029 fixed — Markdown-to-WhatsApp formatting converter for AI responses              |
 | 2026-02-20 | 6.625 | +0.005 | OB-034 fixed — API reference documentation covering all interfaces and config schemas  |
 | 2026-02-20 | 6.63  | +0.005 | OB-036 fixed — Performance benchmarks for core modules (auth, queue, router, registry) |
+| 2026-02-20 | 6.635 | +0.005 | OB-037 fixed — Validate defaultProvider matches a configured provider type via Zod     |
 
 ---
 
