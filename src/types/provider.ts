@@ -35,6 +35,9 @@ export interface AIProvider {
   /** Process an inbound message and return the AI response */
   processMessage(message: InboundMessage): Promise<ProviderResult>;
 
+  /** Stream an AI response, yielding chunks as they arrive. Optional — providers that don't support streaming fall back to processMessage. */
+  streamMessage?(message: InboundMessage): AsyncGenerator<string, ProviderResult>;
+
   /** Check if the provider is available and ready */
   isAvailable(): Promise<boolean>;
 

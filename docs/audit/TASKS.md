@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 12 | **In Progress:** 0 | **Pending:** 25
-> **Health Score:** 6.33/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 14 | **In Progress:** 0 | **Pending:** 23
+> **Health Score:** 6.39/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -10,7 +10,7 @@
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
-|   2   | UX + robustness                 |  11   |  0   |   ◻    |
+|   2   | UX + robustness                 |  11   |  2   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
@@ -43,8 +43,8 @@
 
 | #   | Task                                                                      | Finding | Priority  |  Status   |
 | --- | ------------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 13  | Add streaming support for long AI responses                               | OB-006  |  🟠 High  | ◻ Pending |
-| 14  | Add conversation context / session memory per user                        | OB-007  |  🟠 High  | ◻ Pending |
+| 13  | Add streaming support for long AI responses                               | OB-006  |  🟠 High  |  ✅ Done  |
+| 14  | Add conversation context / session memory per user                        | OB-007  |  🟠 High  |  ✅ Done  |
 | 15  | Split long responses into WhatsApp-safe chunks (≤4096 chars)              | OB-013  | 🟡 Medium | ◻ Pending |
 | 16  | Send typing indicator while AI processes                                  | OB-014  | 🟡 Medium | ◻ Pending |
 | 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium | ◻ Pending |

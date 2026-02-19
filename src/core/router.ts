@@ -1,4 +1,4 @@
-import type { AIProvider } from '../types/provider.js';
+import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import { createLogger } from './logger.js';
@@ -52,8 +52,14 @@ export class Router {
     };
     await connector.sendMessage(ack);
 
-    // Process with AI provider
-    const result = await provider.processMessage(message);
+    // Process with AI provider — prefer streaming to avoid timeout on long responses
+    let result: ProviderResult;
+
+    if (provider.streamMessage) {
+      result = await this.consumeStream(provider.streamMessage(message));
+    } else {
+      result = await provider.processMessage(message);
+    }
 
     // Send result back
     const response: OutboundMessage = {
@@ -66,6 +72,20 @@ export class Router {
     await connector.sendMessage(response);
 
     logger.info({ messageId: message.id }, 'Message processed and response sent');
+  }
+
+  /** Drain a streaming provider response, returning the final ProviderResult */
+  private async consumeStream(
+    stream: AsyncGenerator<string, ProviderResult>,
+  ): Promise<ProviderResult> {
+    let iterResult: IteratorResult<string, ProviderResult>;
+
+    do {
+      iterResult = await stream.next();
+    } while (!iterResult.done);
+
+    // When done === true, value is the ProviderResult return value
+    return iterResult.value;
   }
 
   get defaultProvider(): string {

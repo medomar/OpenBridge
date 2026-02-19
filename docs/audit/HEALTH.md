@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.33/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.315
+> **Current Score:** 6.39/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.36
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **2 high** | **13 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **13 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -60,6 +60,8 @@
 | 2026-02-19 | 6.30  | +0.03  | OB-008 fixed — Integration tests for full message flow (8 tests)                       |
 | 2026-02-19 | 6.315 | +0.015 | OB-016 fixed — Validate workspacePath exists on disk at startup                        |
 | 2026-02-19 | 6.33  | +0.015 | OB-015 fixed — Resolve tilde (~) in workspacePath config via Zod transform             |
+| 2026-02-19 | 6.36  | +0.03  | OB-006 fixed — Streaming support for Claude Code CLI via async generator               |
+| 2026-02-19 | 6.39  | +0.03  | OB-007 fixed — Per-user conversation context via SessionManager + Claude CLI --resume  |
 
 ---
 

@@ -209,11 +209,12 @@ describe('Full message flow: connector → bridge → provider → connector', (
     const order: string[] = [];
 
     ctx.provider.setResponse({ content: 'response' });
-    // Override processMessage to capture order
-    vi.spyOn(ctx.provider, 'processMessage').mockImplementation(async (msg) => {
+    // Override streamMessage (preferred by router over processMessage)
+    ctx.provider.streamMessage = async function* (msg) {
       order.push(msg.id);
+      yield 'response';
       return { content: 'response' };
-    });
+    };
 
     await ctx.bridge.start();
 

@@ -17,11 +17,14 @@ vi.mock('node:fs/promises', () => ({
 // ---------------------------------------------------------------------------
 
 const mockExecute = vi.fn();
+const mockStream = vi.fn();
 
 vi.mock('../../../src/providers/claude-code/claude-code-executor.js', () => ({
   executeClaudeCode: (...args: unknown[]): Promise<unknown> =>
     mockExecute(...args) as Promise<unknown>,
   sanitizePrompt: (s: string) => s,
+  streamClaudeCode: (...args: unknown[]) =>
+    mockStream(...args) as AsyncGenerator<string, { exitCode: number; stderr: string }>,
 }));
 
 // ---------------------------------------------------------------------------
@@ -37,6 +40,19 @@ function createMessage(content = 'what files exist?'): InboundMessage {
     content,
     timestamp: new Date(),
   };
+}
+
+function createMockStream(
+  chunks: string[],
+  result: { exitCode: number; stderr: string },
+): AsyncGenerator<string, { exitCode: number; stderr: string }> {
+  async function* gen() {
+    for (const chunk of chunks) {
+      yield chunk;
+    }
+    return result;
+  }
+  return gen();
 }
 
 // ---------------------------------------------------------------------------
@@ -98,15 +114,18 @@ describe('ClaudeCodeProvider', () => {
       expect(result.content).toBe('No output from Claude Code.');
     });
 
-    it('passes message content to executeClaudeCode', async () => {
+    it('passes message content to executeClaudeCode with session options', async () => {
       mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       await provider.processMessage(createMessage('list all files'));
 
       expect(mockExecute).toHaveBeenCalledWith(
-        'list all files',
-        '/tmp/workspace',
-        expect.any(Number),
+        expect.objectContaining({
+          prompt: 'list all files',
+          workspacePath: '/tmp/workspace',
+          timeout: expect.any(Number) as unknown,
+          sessionId: expect.any(String) as unknown,
+        }),
       );
     });
 
@@ -132,6 +151,144 @@ describe('ClaudeCodeProvider', () => {
       const result = await provider.processMessage(createMessage());
 
       expect(result.content).toBe('trimmed output');
+    });
+
+    it('includes sessionId in metadata', async () => {
+      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+
+      const result = await provider.processMessage(createMessage());
+
+      expect(result.metadata?.sessionId).toEqual(expect.any(String));
+    });
+
+    it('uses sessionId for first message from a sender', async () => {
+      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+
+      await provider.processMessage(createMessage());
+
+      const opts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      expect(opts.sessionId).toEqual(expect.any(String));
+      expect(opts.resumeSessionId).toBeUndefined();
+    });
+
+    it('uses resumeSessionId for subsequent messages from the same sender', async () => {
+      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+
+      await provider.processMessage(createMessage('first'));
+      const firstOpts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const firstSessionId = firstOpts.sessionId;
+
+      await provider.processMessage(createMessage('second'));
+      const secondOpts = mockExecute.mock.calls[1][0] as Record<string, unknown>;
+
+      expect(secondOpts.resumeSessionId).toBe(firstSessionId);
+      expect(secondOpts.sessionId).toBeUndefined();
+    });
+
+    it('uses separate sessions for different senders', async () => {
+      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+
+      const aliceMsg = createMessage('hello');
+      aliceMsg.sender = '+1111111111';
+
+      const bobMsg = createMessage('hi');
+      bobMsg.sender = '+2222222222';
+
+      await provider.processMessage(aliceMsg);
+      await provider.processMessage(bobMsg);
+
+      const aliceOpts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const bobOpts = mockExecute.mock.calls[1][0] as Record<string, unknown>;
+
+      expect(aliceOpts.sessionId).not.toBe(bobOpts.sessionId);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // streamMessage()
+  // -----------------------------------------------------------------------
+
+  describe('streamMessage()', () => {
+    it('yields chunks from streamClaudeCode', async () => {
+      mockStream.mockReturnValue(
+        createMockStream(['Hello ', 'world!'], { exitCode: 0, stderr: '' }),
+      );
+
+      const stream = provider.streamMessage(createMessage());
+      const chunks: string[] = [];
+      let result: IteratorResult<string, unknown>;
+
+      do {
+        result = await stream.next();
+        if (!result.done) chunks.push(result.value);
+      } while (!result.done);
+
+      expect(chunks).toEqual(['Hello ', 'world!']);
+    });
+
+    it('returns ProviderResult with assembled content', async () => {
+      mockStream.mockReturnValue(
+        createMockStream(['Hello ', 'world!'], { exitCode: 0, stderr: '' }),
+      );
+
+      const stream = provider.streamMessage(createMessage());
+      let result: IteratorResult<string, unknown>;
+
+      do {
+        result = await stream.next();
+      } while (!result.done);
+
+      const providerResult = result.value as { content: string; metadata: Record<string, unknown> };
+      expect(providerResult.content).toBe('Hello world!');
+      expect(providerResult.metadata.exitCode).toBe(0);
+      expect(providerResult.metadata.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('falls back to stderr when stdout is empty', async () => {
+      mockStream.mockReturnValue(createMockStream([], { exitCode: 1, stderr: 'error output' }));
+
+      const stream = provider.streamMessage(createMessage());
+      let result: IteratorResult<string, unknown>;
+
+      do {
+        result = await stream.next();
+      } while (!result.done);
+
+      const providerResult = result.value as { content: string };
+      expect(providerResult.content).toBe('error output');
+    });
+
+    it('returns default message when both stdout and stderr are empty', async () => {
+      mockStream.mockReturnValue(createMockStream([], { exitCode: 0, stderr: '' }));
+
+      const stream = provider.streamMessage(createMessage());
+      let result: IteratorResult<string, unknown>;
+
+      do {
+        result = await stream.next();
+      } while (!result.done);
+
+      const providerResult = result.value as { content: string };
+      expect(providerResult.content).toBe('No output from Claude Code.');
+    });
+
+    it('passes session options to streamClaudeCode', async () => {
+      mockStream.mockReturnValue(createMockStream(['ok'], { exitCode: 0, stderr: '' }));
+
+      const stream = provider.streamMessage(createMessage('list files'));
+      // Drain the stream
+      let result: IteratorResult<string, unknown>;
+      do {
+        result = await stream.next();
+      } while (!result.done);
+
+      expect(mockStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'list files',
+          workspacePath: '/tmp/workspace',
+          timeout: expect.any(Number) as unknown,
+        }),
+      );
     });
   });
 

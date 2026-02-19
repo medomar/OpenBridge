@@ -3,7 +3,8 @@ import type { AIProvider, ProviderResult } from '../../types/provider.js';
 import type { InboundMessage } from '../../types/message.js';
 import { ClaudeCodeConfigSchema } from './claude-code-config.js';
 import type { ClaudeCodeConfig } from './claude-code-config.js';
-import { executeClaudeCode } from './claude-code-executor.js';
+import { executeClaudeCode, streamClaudeCode } from './claude-code-executor.js';
+import { SessionManager } from './session-manager.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('claude-code');
@@ -11,9 +12,11 @@ const logger = createLogger('claude-code');
 export class ClaudeCodeProvider implements AIProvider {
   readonly name = 'claude-code';
   private config: ClaudeCodeConfig;
+  private sessionManager: SessionManager;
 
   constructor(options: Record<string, unknown>) {
     this.config = ClaudeCodeConfigSchema.parse(options);
+    this.sessionManager = new SessionManager(this.config.sessionTtlMs);
   }
 
   async initialize(): Promise<void> {
@@ -27,14 +30,19 @@ export class ClaudeCodeProvider implements AIProvider {
 
   async processMessage(message: InboundMessage): Promise<ProviderResult> {
     const startTime = Date.now();
+    const { sessionId, isNew } = this.sessionManager.getOrCreate(message.sender);
 
-    logger.info({ messageId: message.id, content: message.content }, 'Processing with Claude Code');
-
-    const result = await executeClaudeCode(
-      message.content,
-      this.config.workspacePath,
-      this.config.timeout,
+    logger.info(
+      { messageId: message.id, content: message.content, sessionId, isNew },
+      'Processing with Claude Code',
     );
+
+    const result = await executeClaudeCode({
+      prompt: message.content,
+      workspacePath: this.config.workspacePath,
+      timeout: this.config.timeout,
+      ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
+    });
 
     const durationMs = Date.now() - startTime;
 
@@ -52,6 +60,53 @@ export class ClaudeCodeProvider implements AIProvider {
       metadata: {
         durationMs,
         exitCode: result.exitCode,
+        sessionId,
+      },
+    };
+  }
+
+  async *streamMessage(message: InboundMessage): AsyncGenerator<string, ProviderResult> {
+    const startTime = Date.now();
+    const { sessionId, isNew } = this.sessionManager.getOrCreate(message.sender);
+
+    logger.info(
+      { messageId: message.id, content: message.content, sessionId, isNew },
+      'Streaming with Claude Code',
+    );
+
+    const stream = streamClaudeCode({
+      prompt: message.content,
+      workspacePath: this.config.workspacePath,
+      timeout: this.config.timeout,
+      ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
+    });
+
+    let fullOutput = '';
+    let streamResult: IteratorResult<string, { exitCode: number; stderr: string }>;
+
+    do {
+      streamResult = await stream.next();
+      if (!streamResult.done && streamResult.value) {
+        fullOutput += streamResult.value;
+        yield streamResult.value;
+      }
+    } while (!streamResult.done);
+
+    const durationMs = Date.now() - startTime;
+    const { exitCode, stderr } = streamResult.value;
+
+    if (exitCode !== 0) {
+      logger.warn({ exitCode, stderr }, 'Claude Code returned non-zero exit code');
+    }
+
+    const content = fullOutput.trim() || stderr.trim() || 'No output from Claude Code.';
+
+    return {
+      content,
+      metadata: {
+        durationMs,
+        exitCode,
+        sessionId,
       },
     };
   }
@@ -67,6 +122,7 @@ export class ClaudeCodeProvider implements AIProvider {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async shutdown(): Promise<void> {
+    this.sessionManager.clearAll();
     logger.info('Claude Code provider shut down');
   }
 }

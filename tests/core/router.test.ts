@@ -36,4 +36,23 @@ describe('Router', () => {
     expect(connector.sentMessages[0]?.content).toBe('Working on it...');
     expect(connector.sentMessages[1]?.content).toBe('AI response');
   });
+
+  it('should use streamMessage when the provider supports it', async () => {
+    const router = new Router('mock');
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+    provider.setStreamChunks(['chunk1', 'chunk2']);
+    provider.setResponse({ content: 'chunk1chunk2' });
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+
+    await connector.initialize();
+    await router.route(createMessage());
+
+    // Should have sent 2 messages: ack + final assembled response
+    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toBe('chunk1chunk2');
+  });
 });

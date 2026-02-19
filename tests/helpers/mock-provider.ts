@@ -6,6 +6,7 @@ export class MockProvider implements AIProvider {
   readonly processedMessages: InboundMessage[] = [];
   private response: ProviderResult = { content: 'Mock response' };
   private available = true;
+  streamMessage?: (message: InboundMessage) => AsyncGenerator<string, ProviderResult>;
 
   async initialize(): Promise<void> {
     // No-op
@@ -27,6 +28,20 @@ export class MockProvider implements AIProvider {
   /** Set the response to return for the next processMessage call */
   setResponse(response: ProviderResult): void {
     this.response = response;
+  }
+
+  /** Enable streaming and set the chunks to yield from streamMessage */
+  setStreamChunks(chunks: string[]): void {
+    const provider = { messages: this.processedMessages, getResponse: () => this.response };
+    this.streamMessage = async function* (
+      message: InboundMessage,
+    ): AsyncGenerator<string, ProviderResult> {
+      provider.messages.push(message);
+      for (const chunk of chunks) {
+        yield chunk;
+      }
+      return provider.getResponse();
+    };
   }
 
   /** Set availability status */
