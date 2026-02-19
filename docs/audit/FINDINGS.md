@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 20 | **Fixed:** 17 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 19 | **Fixed:** 18 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  11  |   4   |     0     |  15   |
+| 🟡 Medium   |  10  |   5   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -22,7 +22,7 @@
 | Connector Reliability |  1   |   4   |   5   |
 | Provider Robustness   |  3   |   2   |   5   |
 | Security              |  3   |   2   |   5   |
-| Core Engine           |  3   |   3   |   6   |
+| Core Engine           |  2   |   4   |   6   |
 | Configuration         |  2   |   2   |   4   |
 | Testing               |  2   |   3   |   5   |
 | Documentation         |  4   |   0   |   4   |
@@ -59,7 +59,7 @@
 | OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
 | OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
 | OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | 🟡 Open  | `claude-code-provider.ts` | 2026-02-19 |
-| OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | 🟡 Open  | `queue.ts`                | 2026-02-19 |
+| OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
 | OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | 🟡 Open  | `router.ts`               | 2026-02-19 |
 | OB-021 | No audit logging — message history not persisted                                  | Security              | 🟡 Open  | `bridge.ts`               | 2026-02-19 |
 | OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | 🟡 Open  | `queue.ts`                | 2026-02-19 |
