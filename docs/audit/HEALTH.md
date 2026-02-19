@@ -1,0 +1,63 @@
+# OpenBridge — Health Score
+
+> **Current Score:** 6.0/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** —
+
+---
+
+## Score Breakdown
+
+| Category      |  Weight  | Score  | Weighted  | Notes                                                                                                                                                          |
+| ------------- | :------: | :----: | :-------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture  |   20%    | 8.5/10 |   1.700   | 3-layer plugin design solid. Connector/Provider interfaces clean. Registry factory pattern works. Missing: plugin hot-reload, multi-instance support.          |
+| Core Engine   |   15%    | 7.0/10 |   1.050   | Router, auth, queue all functional. Sequential queue prevents race conditions. Missing: retry logic, dead letter handling, streaming support.                  |
+| Connectors    |   15%    | 5.5/10 |   0.825   | WhatsApp V0 works (QR auth, message send/receive, truncation). Missing: auto-reconnect, session recovery, media support, message splitting for long responses. |
+| Providers     |   15%    | 5.5/10 |   0.825   | Claude Code V0 works (CLI spawn, timeout, workspace scoping). Missing: streaming, conversation context, multi-model support, error classification.             |
+| Configuration |   10%    | 7.5/10 |   0.750   | Zod validation solid. Example config provided. Missing: tilde path resolution, config hot-reload, per-connector/provider validation.                           |
+| Security      |   10%    | 6.0/10 |   0.600   | Phone whitelist + prefix auth implemented. Missing: rate limiting, input sanitization, command injection hardening, audit logging.                             |
+| Testing       |   10%    | 5.0/10 |   0.500   | 19 unit tests passing (auth, queue, config, registry, router). Missing: integration tests, WhatsApp connector tests, Claude Code provider tests, E2E tests.    |
+| Documentation |    5%    | 5.0/10 |   0.250   | Architecture, config, and plugin guides created. Missing: API reference, troubleshooting guide, deployment guide, examples.                                    |
+| **TOTAL**     | **100%** |   —    | **6.500** | **Rounded: 6.0/10** (conservative — no integration testing yet)                                                                                                |
+
+---
+
+## Open Issues Summary
+
+**0/0 critical** | **12 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+
+---
+
+## Path to 9.0/10
+
+| Milestone                                  | Impact | Target  |
+| ------------------------------------------ | :----: | ------- |
+| WhatsApp auto-reconnect + session recovery |  +0.5  | Phase 1 |
+| Input sanitization + rate limiting         |  +0.5  | Phase 1 |
+| Integration tests for message flow         |  +0.5  | Phase 1 |
+| Streaming responses (long AI output)       |  +0.3  | Phase 2 |
+| Message chunking for WhatsApp 4096 limit   |  +0.3  | Phase 2 |
+| Conversation context / memory              |  +0.3  | Phase 2 |
+| Error retry + dead letter queue            |  +0.3  | Phase 2 |
+| Config hot-reload + tilde resolution       |  +0.2  | Phase 3 |
+| Deployment guide + Docker                  |  +0.1  | Phase 3 |
+
+---
+
+## Score Change History
+
+| Date       | Score | Change | Reason                                                                       |
+| ---------- | :---: | :----: | ---------------------------------------------------------------------------- |
+| 2026-02-19 |  6.0  |   —    | Initial audit — V0 scaffolding complete, 19 tests passing, all tooling green |
+
+---
+
+## Score Impact Rules
+
+| Event                         | Impact |
+| ----------------------------- | :----: |
+| Critical issue fixed          | +0.15  |
+| High issue fixed              | +0.03  |
+| Medium issue fixed            | +0.015 |
+| Low issue fixed               | +0.005 |
+| New critical issue discovered | -0.15  |
+| New high issue discovered     | -0.03  |
