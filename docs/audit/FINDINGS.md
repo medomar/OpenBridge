@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 12 | **Fixed:** 25 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 11 | **Fixed:** 26 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  3   |  12   |     0     |  15   |
+| 🟡 Medium   |  2   |  13   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -25,7 +25,7 @@
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  1   |   3   |   4   |
 | Testing               |  2   |   3   |   5   |
-| Documentation         |  4   |   0   |   4   |
+| Documentation         |  3   |   1   |   4   |
 | Developer Experience  |  3   |   0   |   3   |
 
 ---
@@ -65,7 +65,7 @@
 | OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
 | OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | ✅ Fixed | `health.ts`               | 2026-02-19 |
 | OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
-| OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
+| OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | ✅ Fixed | `docs/`                   | 2026-02-19 |
 | OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
 | OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | ✅ Fixed | `auth.ts`                 | 2026-02-19 |
 
