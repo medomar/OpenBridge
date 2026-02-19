@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 26 | **Fixed:** 11 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 25 | **Fixed:** 12 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  2   |  10   |     0     |  12   |
-| 🟡 Medium   |  15  |   0   |     0     |  15   |
+| 🟡 Medium   |  14  |   1   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -23,7 +23,7 @@
 | Provider Robustness   |  5   |   0   |   5   |
 | Security              |  3   |   2   |   5   |
 | Core Engine           |  3   |   3   |   6   |
-| Configuration         |  4   |   0   |   4   |
+| Configuration         |  3   |   1   |   4   |
 | Testing               |  2   |   3   |   5   |
 | Documentation         |  4   |   0   |   4   |
 | Developer Experience  |  3   |   0   |   3   |
@@ -51,23 +51,23 @@
 
 ### 🟡 Medium
 
-| ID     | Description                                                                       | Category              | Status  | File                      | Date       |
-| ------ | --------------------------------------------------------------------------------- | --------------------- | :-----: | ------------------------- | ---------- |
-| OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | 🟡 Open | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | 🟡 Open | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | 🟡 Open | `config.ts`               | 2026-02-19 |
-| OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | 🟡 Open | `config.ts`               | 2026-02-19 |
-| OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open | `config.ts`               | 2026-02-19 |
-| OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | 🟡 Open | `claude-code-provider.ts` | 2026-02-19 |
-| OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | 🟡 Open | `queue.ts`                | 2026-02-19 |
-| OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | 🟡 Open | `router.ts`               | 2026-02-19 |
-| OB-021 | No audit logging — message history not persisted                                  | Security              | 🟡 Open | `bridge.ts`               | 2026-02-19 |
-| OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | 🟡 Open | `queue.ts`                | 2026-02-19 |
-| OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | 🟡 Open | —                         | 2026-02-19 |
-| OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open | —                         | 2026-02-19 |
-| OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | 🟡 Open | `docs/`                   | 2026-02-19 |
-| OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | 🟡 Open | `docs/`                   | 2026-02-19 |
-| OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | 🟡 Open | `auth.ts`                 | 2026-02-19 |
+| ID     | Description                                                                       | Category              |  Status  | File                      | Date       |
+| ------ | --------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
+| OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
+| OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
+| OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
+| OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | 🟡 Open  | `claude-code-provider.ts` | 2026-02-19 |
+| OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | 🟡 Open  | `queue.ts`                | 2026-02-19 |
+| OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | 🟡 Open  | `router.ts`               | 2026-02-19 |
+| OB-021 | No audit logging — message history not persisted                                  | Security              | 🟡 Open  | `bridge.ts`               | 2026-02-19 |
+| OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | 🟡 Open  | `queue.ts`                | 2026-02-19 |
+| OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
+| OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
+| OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
+| OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
+| OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | 🟡 Open  | `auth.ts`                 | 2026-02-19 |
 
 ### 🟢 Low
 
