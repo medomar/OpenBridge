@@ -4,6 +4,7 @@ import { WhatsAppConnector } from './whatsapp-connector.js';
 export { WhatsAppConnector } from './whatsapp-connector.js';
 export { WhatsAppConfigSchema } from './whatsapp-config.js';
 export type { WhatsAppConfig } from './whatsapp-config.js';
+export { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 
 /** Plugin name for auto-discovery */
 export const pluginName = 'whatsapp';

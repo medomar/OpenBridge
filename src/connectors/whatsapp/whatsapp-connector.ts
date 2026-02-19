@@ -3,6 +3,7 @@ import type { OutboundMessage } from '../../types/message.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
+import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('whatsapp');
@@ -164,7 +165,8 @@ export class WhatsAppConnector implements Connector {
       throw new Error('WhatsApp connector is not connected');
     }
 
-    const chunks = splitForWhatsApp(message.content);
+    const formatted = formatMarkdownForWhatsApp(message.content);
+    const chunks = splitForWhatsApp(formatted);
     for (const chunk of chunks) {
       await this.client.sendMessage(message.recipient, chunk);
     }
