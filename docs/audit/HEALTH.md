@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.60/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.595
+> **Current Score:** 6.605/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.60
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **0 medium** | **7 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **6 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -78,6 +78,7 @@
 | 2026-02-19 | 6.59  | +0.005 | OB-030 fixed — Plugin auto-discovery scans connector/provider directories              |
 | 2026-02-19 | 6.595 | +0.005 | OB-031 fixed — CLI config generation tool (`npx openbridge init`)                      |
 | 2026-02-19 | 6.60  | +0.005 | OB-032 fixed — E2E test harness with mock WhatsApp server (13 tests)                   |
+| 2026-02-19 | 6.605 | +0.005 | OB-035 fixed — CI badge with branch filter added to README                             |
 
 ---
 

@@ -371,8 +371,8 @@ describe('WhatsAppConnector', () => {
       // Disconnect — schedules reconnect with 0ms delay
       mockClientInstance._trigger('disconnected', 'reason');
 
-      // Run all pending timers (0ms reconnect fires immediately)
-      await vi.runAllTimersAsync();
+      // Advance timers to fire the 0ms reconnect setTimeout, then flush promises
+      await vi.advanceTimersByTimeAsync(1);
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
@@ -386,6 +386,7 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
+      vi.useRealTimers();
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
