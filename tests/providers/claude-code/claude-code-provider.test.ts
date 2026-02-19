@@ -3,6 +3,16 @@ import { ClaudeCodeProvider } from '../../../src/providers/claude-code/claude-co
 import type { InboundMessage } from '../../../src/types/message.js';
 
 // ---------------------------------------------------------------------------
+// Mock fs/promises so initialize() doesn't check real filesystem
+// ---------------------------------------------------------------------------
+
+const mockAccess = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+vi.mock('node:fs/promises', () => ({
+  access: (...args: unknown[]) => mockAccess(...args),
+}));
+
+// ---------------------------------------------------------------------------
 // Mock executeClaudeCode so tests never invoke the real CLI
 // ---------------------------------------------------------------------------
 
@@ -45,8 +55,14 @@ describe('ClaudeCodeProvider', () => {
     expect(provider.name).toBe('claude-code');
   });
 
-  it('initialize() resolves without error', async () => {
+  it('initialize() resolves when workspacePath exists', async () => {
+    mockAccess.mockResolvedValue(undefined);
     await expect(provider.initialize()).resolves.toBeUndefined();
+  });
+
+  it('initialize() throws when workspacePath does not exist', async () => {
+    mockAccess.mockRejectedValue(new Error('ENOENT'));
+    await expect(provider.initialize()).rejects.toThrow('workspacePath does not exist');
   });
 
   it('shutdown() resolves without error', async () => {

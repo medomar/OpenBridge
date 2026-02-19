@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import type { AIProvider, ProviderResult } from '../../types/provider.js';
 import type { InboundMessage } from '../../types/message.js';
 import { ClaudeCodeConfigSchema } from './claude-code-config.js';
@@ -15,8 +16,12 @@ export class ClaudeCodeProvider implements AIProvider {
     this.config = ClaudeCodeConfigSchema.parse(options);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async initialize(): Promise<void> {
+    await access(this.config.workspacePath).catch(() => {
+      throw new Error(
+        `workspacePath does not exist or is not accessible: ${this.config.workspacePath}`,
+      );
+    });
     logger.info({ workspace: this.config.workspacePath }, 'Claude Code provider initialized');
   }
 
