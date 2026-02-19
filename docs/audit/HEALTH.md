@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.59/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.585
+> **Current Score:** 6.595/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.59
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **0 medium** | **9 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **8 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -76,6 +76,7 @@
 | 2026-02-19 | 6.57  | +0.015 | OB-024 fixed — Metrics collection with message counts, latency, and error tracking     |
 | 2026-02-19 | 6.585 | +0.015 | OB-026 fixed — Troubleshooting guide with common errors, causes, and solutions         |
 | 2026-02-19 | 6.59  | +0.005 | OB-030 fixed — Plugin auto-discovery scans connector/provider directories              |
+| 2026-02-19 | 6.595 | +0.005 | OB-031 fixed — CLI config generation tool (`npx openbridge init`)                      |
 
 ---
 
