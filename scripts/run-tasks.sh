@@ -190,6 +190,35 @@ else
 fi
 
 CONSECUTIVE_FAILURES=0
+STATE_FILE="$LOG_PATH/.run_state.json"
+
+# ── State Tracking ───────────────────────────────────────────────
+
+write_state() {
+  local status="$1"
+  cat > "$STATE_FILE" <<STATEEOF
+{
+  "status": "$status",
+  "started_at": "$RUN_STARTED_AT",
+  "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "iteration": $ITERATION,
+  "phase": "$PHASE_FILTER",
+  "model": "${MODEL:-default}",
+  "parallel": $PARALLEL,
+  "max_turns": "${MAX_TURNS:-unlimited}",
+  "consecutive_failures": $CONSECUTIVE_FAILURES,
+  "project": "$PROJECT_DIR",
+  "tasks_file": "$TASKS_FILE",
+  "pid": $$
+}
+STATEEOF
+}
+
+RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+write_state "running"
+
+# Clean up state on exit
+trap 'write_state "stopped"; echo ""; echo "Task runner stopped."' EXIT
 
 # ── Run Single Agent ─────────────────────────────────────────────
 
@@ -226,6 +255,7 @@ echo ""
 while true; do
   ITERATION=$((ITERATION + 1))
   echo "$ITERATION" > "$COUNTER_FILE"
+  write_state "running"
   TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
   echo "═══════════════════════════════════════════════════════════"
@@ -236,6 +266,7 @@ while true; do
   if [ -f "$POINTER_PATH" ]; then
     POINTER_CONTENT=$(cat "$POINTER_PATH")
     if echo "$POINTER_CONTENT" | grep -qi "^DONE$"; then
+      write_state "completed"
       echo "All tasks are complete. Exiting loop."
       exit 0
     fi
@@ -287,6 +318,7 @@ while true; do
     echo "WARNING: Iteration failed. Retry $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES."
 
     if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+      write_state "failed"
       echo "ERROR: $MAX_CONSECUTIVE_FAILURES consecutive failures. Stopping."
       echo "Check log files in: $LOG_PATH"
       exit 1

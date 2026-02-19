@@ -7,11 +7,14 @@ Designed to be reusable across any project — just point to your task list.
 
 ## Scripts
 
-| Script                    | Purpose                                                 |
-| ------------------------- | ------------------------------------------------------- |
-| `run-tasks.sh`            | Loop through all pending tasks (sequential or parallel) |
-| `run-single-task.sh`      | Execute one specific task by ID                         |
-| `prompts/execute-task.md` | Agent prompt template (what Claude does each iteration) |
+| Script                    | Purpose                                                      |
+| ------------------------- | ------------------------------------------------------------ |
+| `run-tasks.sh`            | Loop through all pending tasks (sequential or parallel)      |
+| `run-single-task.sh`      | Execute one specific task by ID                              |
+| `status.sh`               | Live dashboard — running agents, task progress, health score |
+| `logs.sh`                 | View, tail, search, and manage agent logs                    |
+| `stop.sh`                 | Gracefully stop running agents                               |
+| `prompts/execute-task.md` | Agent prompt template (what Claude does each iteration)      |
 
 ---
 
@@ -28,17 +31,85 @@ Designed to be reusable across any project — just point to your task list.
 # Run all pending tasks sequentially
 ./scripts/run-tasks.sh
 
-# Run Phase 1 only
-./scripts/run-tasks.sh --phase 1
-
-# Run 3 agents in parallel on Phase 2
-./scripts/run-tasks.sh --parallel 3 --phase 2
-
-# Use a specific model
-./scripts/run-tasks.sh --model sonnet
+# Run Phase 1 with 5 parallel agents using Sonnet
+./scripts/run-tasks.sh --phase 1 --parallel 5 --model sonnet
 
 # Run a single task
 ./scripts/run-single-task.sh OB-003
+
+# Monitor progress (in another terminal)
+./scripts/status.sh --watch
+
+# Tail logs in real-time
+./scripts/logs.sh --tail-all
+
+# Stop all agents
+./scripts/stop.sh
+```
+
+---
+
+## Monitoring & Operations
+
+### Check status
+
+```bash
+# Full dashboard (agents, tasks, logs)
+./scripts/status.sh
+
+# Auto-refresh every 5 seconds
+./scripts/status.sh --watch
+
+# Auto-refresh every 10 seconds
+./scripts/status.sh --watch 10
+
+# Only show running agents
+./scripts/status.sh --agents
+
+# Only show task progress
+./scripts/status.sh --tasks
+```
+
+### View logs
+
+```bash
+# List all log files
+./scripts/logs.sh
+
+# Follow the latest log in real-time
+./scripts/logs.sh --tail
+
+# Follow the 3 most recent logs
+./scripts/logs.sh --tail 3
+
+# Follow all logs from the current iteration
+./scripts/logs.sh --tail-all
+
+# View a specific log (partial name match)
+./scripts/logs.sh --view agent2
+
+# Search all logs for a pattern
+./scripts/logs.sh --grep "OB-003"
+./scripts/logs.sh --grep "error"
+
+# One-line summary per log
+./scripts/logs.sh --summary
+
+# Delete all logs and reset counter
+./scripts/logs.sh --clean
+```
+
+### Stop agents
+
+```bash
+# Graceful shutdown (SIGTERM)
+./scripts/stop.sh
+
+# Force kill (SIGKILL)
+./scripts/stop.sh --force
+
+# Stop a specific agent by PID
+./scripts/stop.sh --pid 12345
 ```
 
 ---
@@ -79,6 +150,33 @@ Same path and model options as `run-tasks.sh`, plus:
 | --------- | ---------------------------------------------- |
 | `TASK_ID` | Required. The task to execute (e.g., `OB-003`) |
 
+### `status.sh`
+
+| Option        | Description                               |
+| ------------- | ----------------------------------------- |
+| `--watch [N]` | Auto-refresh every N seconds (default: 5) |
+| `--agents`    | Only show running agents                  |
+| `--tasks`     | Only show task progress                   |
+| `--logs`      | Only show recent log activity             |
+
+### `logs.sh`
+
+| Option           | Description                            |
+| ---------------- | -------------------------------------- |
+| `--tail [N]`     | Follow N most recent logs (default: 1) |
+| `--tail-all`     | Follow all logs from current iteration |
+| `--view FILE`    | View specific log (partial name match) |
+| `--grep PATTERN` | Search all logs                        |
+| `--summary`      | One-line summary per log               |
+| `--clean`        | Delete all logs (asks confirmation)    |
+
+### `stop.sh`
+
+| Option      | Description             |
+| ----------- | ----------------------- |
+| `--force`   | Force kill with SIGKILL |
+| `--pid PID` | Stop specific agent     |
+
 ---
 
 ## How It Works
@@ -95,9 +193,19 @@ Same path and model options as `run-tasks.sh`, plus:
 
 ### Parallel mode
 
-When `--parallel N` is set (N > 1), the runner launches N Claude Code agents simultaneously. Each agent independently picks and executes the next pending task. This is useful for phases where tasks are independent.
+When `--parallel N` is set (N > 1), the runner launches N Claude Code agents simultaneously. Each agent independently picks and executes the next pending task.
 
 **Note:** Parallel mode works best when tasks don't modify the same files. For tasks that touch shared code, use sequential mode (`--parallel 1`).
+
+### State tracking
+
+The runner writes a JSON state file at `logs/task-runs/.run_state.json` that tracks:
+
+- Current status (`running`, `completed`, `failed`, `stopped`)
+- Start time, iteration count, phase, model, parallel count
+- Process PID for monitoring
+
+This state file is used by `status.sh` and `stop.sh` to show run context and cleanly shut down. It persists across restarts so you always know the last state.
 
 ---
 
@@ -108,16 +216,18 @@ When `--parallel N` is set (N > 1), the runner launches N Claude Code agents sim
 - **Verification required**: Lint, typecheck, test, and build must pass before a task is marked done
 - **Scoped access**: Agent works only within the project directory
 - **Max turns**: Optionally limit agent turns per iteration to prevent runaway sessions
+- **State tracking**: Run state persisted to JSON — resume from last known state after crashes
 
 ---
 
-## Logs
+## Logs & State Files
 
-All runs are logged to `logs/task-runs/` (gitignored):
+All runtime files are in `logs/task-runs/` (gitignored):
 
 ```
 logs/task-runs/
 ├── .iteration_counter                    # Persistent counter (survives restarts)
+├── .run_state.json                       # Current run state (used by status/stop)
 ├── run_1_20260219_143012.log             # Sequential iteration logs
 ├── run_2_agent1_20260219_143512.log      # Parallel agent logs
 ├── run_2_agent2_20260219_143512.log
