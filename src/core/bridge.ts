@@ -21,7 +21,7 @@ export class Bridge {
     this.config = config;
     this.auth = new AuthService(config.auth);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
-    this.queue = new MessageQueue();
+    this.queue = new MessageQueue(config.queue);
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider);
   }

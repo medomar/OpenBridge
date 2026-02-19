@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 4 | **In Progress:** 0 | **Pending:** 33
-> **Health Score:** 6.12/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 5 | **In Progress:** 0 | **Pending:** 32
+> **Health Score:** 6.15/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
-|   1   | Critical reliability + security |  12   |  4   |   ◻    |
+|   1   | Critical reliability + security |  12   |  5   |   ◻    |
 |   2   | UX + robustness                 |  11   |  0   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
@@ -26,7 +26,7 @@
 | 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  |  ✅ Done  |
 | 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  |  ✅ Done  |
 | 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  |  ✅ Done  |
-| 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  | ◻ Pending |
+| 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  |  ✅ Done  |
 | 6   | Implement Bridge.stop() — shut down connectors and providers properly   | OB-012  |  🟠 High  | ◻ Pending |
 | 7   | Drain message queue on shutdown — wait for in-flight messages           | OB-011  |  🟠 High  | ◻ Pending |
 | 8   | Write WhatsApp connector unit tests (mock whatsapp-web.js)              | OB-009  |  🟠 High  | ◻ Pending |

@@ -29,5 +29,9 @@
       "windowMs": 60000
     }
   },
+  "queue": {
+    "maxRetries": 3,
+    "retryDelayMs": 1000
+  },
   "logLevel": "info"
 }
