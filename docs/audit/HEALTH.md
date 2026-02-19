@@ -1,6 +1,6 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.06/10 | **Target:** 9.0/10
+> **Current Score:** 6.09/10 | **Target:** 9.0/10
 > **Last Audit:** 2026-02-19 | **Previous Score:** 6.03
 
 ---
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **10 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **9 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -50,6 +50,7 @@
 | 2026-02-19 |  6.0  |   —    | Initial audit — V0 scaffolding complete, 19 tests passing, all tooling green |
 | 2026-02-19 | 6.03  | +0.03  | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff              |
 | 2026-02-19 | 6.06  | +0.03  | OB-002 fixed — WhatsApp session persistence with configurable sessionPath    |
+| 2026-02-19 | 6.09  | +0.03  | OB-003 fixed — Input sanitization for Claude Code CLI prompt                 |
 
 ---
 

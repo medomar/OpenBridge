@@ -1,6 +1,6 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 2 | **In Progress:** 0 | **Pending:** 35
+> **Total:** 37 | **Done:** 3 | **In Progress:** 0 | **Pending:** 34
 > **Health Score:** 6.06/10 | **Last Updated:** 2026-02-19
 
 ---
@@ -9,7 +9,7 @@
 
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
-|   1   | Critical reliability + security |  12   |  2   |   ◻    |
+|   1   | Critical reliability + security |  12   |  3   |   ◻    |
 |   2   | UX + robustness                 |  11   |  0   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
@@ -24,7 +24,7 @@
 | --- | ----------------------------------------------------------------------- | ------- | :-------: | :-------: |
 | 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  |  ✅ Done  |
 | 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  |  ✅ Done  |
-| 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  | ◻ Pending |
+| 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  |  ✅ Done  |
 | 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  | ◻ Pending |
 | 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  | ◻ Pending |
 | 6   | Implement Bridge.stop() — shut down connectors and providers properly   | OB-012  |  🟠 High  | ◻ Pending |
