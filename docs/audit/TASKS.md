@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 11 | **In Progress:** 0 | **Pending:** 26
-> **Health Score:** 6.315/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 12 | **In Progress:** 0 | **Pending:** 25
+> **Health Score:** 6.33/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
-|   1   | Critical reliability + security |  12   |  11  |   ◻    |
+|   1   | Critical reliability + security |  12   |  12  |   ✅   |
 |   2   | UX + robustness                 |  11   |  0   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
@@ -20,20 +20,20 @@
 
 > **Focus:** Make the bridge production-survivable. Fix crashes, security gaps, and test gaps.
 
-| #   | Task                                                                    | Finding | Priority  |  Status   |
-| --- | ----------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  |  ✅ Done  |
-| 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  |  ✅ Done  |
-| 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  |  ✅ Done  |
-| 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  |  ✅ Done  |
-| 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  |  ✅ Done  |
-| 6   | Implement Bridge.stop() — shut down connectors and providers properly   | OB-012  |  🟠 High  |  ✅ Done  |
-| 7   | Drain message queue on shutdown — wait for in-flight messages           | OB-011  |  🟠 High  |  ✅ Done  |
-| 8   | Write WhatsApp connector unit tests (mock whatsapp-web.js)              | OB-009  |  🟠 High  |  ✅ Done  |
-| 9   | Write Claude Code provider + executor unit tests                        | OB-010  |  🟠 High  |  ✅ Done  |
-| 10  | Write integration tests for full message flow                           | OB-008  |  🟠 High  |  ✅ Done  |
-| 11  | Validate workspacePath exists on disk at startup                        | OB-016  | 🟡 Medium |  ✅ Done  |
-| 12  | Resolve tilde (`~`) in workspacePath config                             | OB-015  | 🟡 Medium | ◻ Pending |
+| #   | Task                                                                    | Finding | Priority  | Status  |
+| --- | ----------------------------------------------------------------------- | ------- | :-------: | :-----: |
+| 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  | ✅ Done |
+| 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  | ✅ Done |
+| 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  | ✅ Done |
+| 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  | ✅ Done |
+| 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  | ✅ Done |
+| 6   | Implement Bridge.stop() — shut down connectors and providers properly   | OB-012  |  🟠 High  | ✅ Done |
+| 7   | Drain message queue on shutdown — wait for in-flight messages           | OB-011  |  🟠 High  | ✅ Done |
+| 8   | Write WhatsApp connector unit tests (mock whatsapp-web.js)              | OB-009  |  🟠 High  | ✅ Done |
+| 9   | Write Claude Code provider + executor unit tests                        | OB-010  |  🟠 High  | ✅ Done |
+| 10  | Write integration tests for full message flow                           | OB-008  |  🟠 High  | ✅ Done |
+| 11  | Validate workspacePath exists on disk at startup                        | OB-016  | 🟡 Medium | ✅ Done |
+| 12  | Resolve tilde (`~`) in workspacePath config                             | OB-015  | 🟡 Medium | ✅ Done |
 
 ---
 

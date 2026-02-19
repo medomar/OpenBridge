@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 25 | **Fixed:** 12 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 24 | **Fixed:** 13 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  2   |  10   |     0     |  12   |
-| 🟡 Medium   |  14  |   1   |     0     |  15   |
+| 🟡 Medium   |  13  |   2   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -23,7 +23,7 @@
 | Provider Robustness   |  5   |   0   |   5   |
 | Security              |  3   |   2   |   5   |
 | Core Engine           |  3   |   3   |   6   |
-| Configuration         |  3   |   1   |   4   |
+| Configuration         |  2   |   2   |   4   |
 | Testing               |  2   |   3   |   5   |
 | Documentation         |  4   |   0   |   4   |
 | Developer Experience  |  3   |   0   |   3   |
@@ -55,7 +55,7 @@
 | ------ | --------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
 | OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
+| OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | ✅ Fixed | `claude-code-config.ts`   | 2026-02-19 |
 | OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
 | OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
 | OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | 🟡 Open  | `claude-code-provider.ts` | 2026-02-19 |
