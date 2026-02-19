@@ -52,6 +52,11 @@ export class Router {
     };
     await connector.sendMessage(ack);
 
+    // Send typing indicator while AI processes (best-effort)
+    if (connector.sendTypingIndicator) {
+      await connector.sendTypingIndicator(message.sender);
+    }
+
     // Process with AI provider — prefer streaming to avoid timeout on long responses
     let result: ProviderResult;
 

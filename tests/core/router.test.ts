@@ -37,6 +37,22 @@ describe('Router', () => {
     expect(connector.sentMessages[1]?.content).toBe('AI response');
   });
 
+  it('should send typing indicator before processing', async () => {
+    const router = new Router('mock');
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+    provider.setResponse({ content: 'AI response' });
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+
+    await connector.initialize();
+    await router.route(createMessage());
+
+    expect(connector.typingIndicators).toHaveLength(1);
+    expect(connector.typingIndicators[0]).toBe('+1234567890');
+  });
+
   it('should use streamMessage when the provider supports it', async () => {
     const router = new Router('mock');
     const connector = new MockConnector();

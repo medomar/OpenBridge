@@ -4,6 +4,7 @@ import type { OutboundMessage } from '../../src/types/message.js';
 export class MockConnector implements Connector {
   readonly name = 'mock';
   readonly sentMessages: OutboundMessage[] = [];
+  readonly typingIndicators: string[] = [];
   private connected = false;
   private readonly listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
 
@@ -14,6 +15,10 @@ export class MockConnector implements Connector {
 
   async sendMessage(message: OutboundMessage): Promise<void> {
     this.sentMessages.push(message);
+  }
+
+  async sendTypingIndicator(chatId: string): Promise<void> {
+    this.typingIndicators.push(chatId);
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {

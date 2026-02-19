@@ -34,6 +34,9 @@ export interface Connector {
   /** Send a response back through the messaging platform */
   sendMessage(message: OutboundMessage): Promise<void>;
 
+  /** Send a typing indicator to the given chat (best-effort, not all connectors support this) */
+  sendTypingIndicator?(chatId: string): Promise<void>;
+
   /** Register event listeners */
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void;
 

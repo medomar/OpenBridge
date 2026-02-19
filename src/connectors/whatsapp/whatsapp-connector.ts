@@ -2,7 +2,7 @@ import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { OutboundMessage } from '../../types/message.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
-import { parseWhatsAppMessage, truncateForWhatsApp } from './whatsapp-message.js';
+import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('whatsapp');
@@ -11,10 +11,15 @@ type EventListeners = {
   [E in keyof ConnectorEvents]: ConnectorEvents[E][];
 };
 
+interface WAChat {
+  sendStateTyping: () => Promise<void>;
+}
+
 interface WAClient {
   on: (event: string, handler: (...args: never[]) => void) => void;
   initialize: () => Promise<void>;
   sendMessage: (to: string, content: string) => Promise<void>;
+  getChatById: (chatId: string) => Promise<WAChat>;
   destroy: () => Promise<void>;
 }
 
@@ -159,10 +164,26 @@ export class WhatsAppConnector implements Connector {
       throw new Error('WhatsApp connector is not connected');
     }
 
-    const content = truncateForWhatsApp(message.content);
-    await this.client.sendMessage(message.recipient, content);
+    const chunks = splitForWhatsApp(message.content);
+    for (const chunk of chunks) {
+      await this.client.sendMessage(message.recipient, chunk);
+    }
 
-    logger.debug({ recipient: message.recipient }, 'Message sent');
+    logger.debug({ recipient: message.recipient, chunks: chunks.length }, 'Message sent');
+  }
+
+  async sendTypingIndicator(chatId: string): Promise<void> {
+    if (!this.client || !this.connected) {
+      return; // Best-effort — silently skip if not connected
+    }
+
+    try {
+      const chat = await this.client.getChatById(chatId);
+      await chat.sendStateTyping();
+      logger.debug({ chatId }, 'Typing indicator sent');
+    } catch (err) {
+      logger.warn({ chatId, err }, 'Failed to send typing indicator');
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {

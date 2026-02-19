@@ -6,10 +6,15 @@ import type { Mock } from 'vitest';
 // The connector uses a dynamic import, so we mock the module here.
 // --------------------------------------------------------------------------
 
+interface MockChat {
+  sendStateTyping: Mock;
+}
+
 interface MockClientInstance {
   on: Mock;
   initialize: Mock;
   sendMessage: Mock;
+  getChatById: Mock;
   destroy: Mock;
   // Internal helper to trigger registered event handlers in tests
   _trigger: (event: string, ...args: unknown[]) => void;
@@ -34,6 +39,7 @@ vi.mock('whatsapp-web.js', () => {
 
     initialize = vi.fn(async () => {});
     sendMessage = vi.fn(async () => {});
+    getChatById = vi.fn(async () => ({ sendStateTyping: vi.fn(async () => {}) }));
     destroy = vi.fn(async () => {});
 
     _trigger(event: string, ...args: unknown[]): void {
@@ -213,7 +219,7 @@ describe('WhatsAppConnector', () => {
       expect(mockClientInstance.sendMessage).toHaveBeenCalledWith('+1234567890', 'hello');
     });
 
-    it('truncates messages over 4096 characters', async () => {
+    it('splits long messages into multiple chunks sent sequentially', async () => {
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
@@ -225,9 +231,14 @@ describe('WhatsAppConnector', () => {
         content: longContent,
       });
 
-      const sentContent = mockClientInstance.sendMessage.mock.calls[0]?.[1] as string;
-      expect(sentContent.length).toBeLessThanOrEqual(4096);
-      expect(sentContent).toContain('[truncated]');
+      // Should have sent more than one message
+      expect(mockClientInstance.sendMessage.mock.calls.length).toBeGreaterThan(1);
+
+      // Every chunk must be ≤ 4096 chars
+      for (const call of mockClientInstance.sendMessage.mock.calls) {
+        const sent = call[1] as string;
+        expect(sent.length).toBeLessThanOrEqual(4096);
+      }
     });
   });
 
@@ -366,6 +377,45 @@ describe('WhatsAppConnector', () => {
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendTypingIndicator()
+  // -----------------------------------------------------------------------
+
+  describe('sendTypingIndicator()', () => {
+    it('calls getChatById and sendStateTyping when connected', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      const mockChat: MockChat = { sendStateTyping: vi.fn(async () => {}) };
+      mockClientInstance.getChatById.mockResolvedValue(mockChat);
+
+      await connector.sendTypingIndicator('+1234567890');
+
+      expect(mockClientInstance.getChatById).toHaveBeenCalledWith('+1234567890');
+      expect(mockChat.sendStateTyping).toHaveBeenCalledOnce();
+    });
+
+    it('silently skips when not connected', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      // NOT triggering 'ready' — connector is not connected
+
+      await expect(connector.sendTypingIndicator('+1234567890')).resolves.toBeUndefined();
+      expect(mockClientInstance.getChatById).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when getChatById fails', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      mockClientInstance.getChatById.mockRejectedValue(new Error('chat not found'));
+
+      await expect(connector.sendTypingIndicator('+1234567890')).resolves.toBeUndefined();
     });
   });
 

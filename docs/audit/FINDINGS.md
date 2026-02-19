@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 22 | **Fixed:** 15 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 20 | **Fixed:** 17 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,14 +12,14 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  13  |   2   |     0     |  15   |
+| 🟡 Medium   |  11  |   4   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
 
 | Category              | Open | Fixed | Total |
 | --------------------- | :--: | :---: | :---: |
-| Connector Reliability |  3   |   2   |   5   |
+| Connector Reliability |  1   |   4   |   5   |
 | Provider Robustness   |  3   |   2   |   5   |
 | Security              |  3   |   2   |   5   |
 | Core Engine           |  3   |   3   |   6   |
@@ -53,8 +53,8 @@
 
 | ID     | Description                                                                       | Category              |  Status  | File                      | Date       |
 | ------ | --------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
-| OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | 🟡 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | ✅ Fixed | `claude-code-config.ts`   | 2026-02-19 |
 | OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
 | OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
