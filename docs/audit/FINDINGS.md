@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 9 | **Fixed:** 28 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 8 | **Fixed:** 29 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -13,7 +13,7 @@
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
 | 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  10  |   0   |     0     |  10   |
+| 🟢 Low      |  9   |   1   |     0     |  10   |
 
 ## Summary by Category
 
@@ -26,7 +26,7 @@
 | Configuration         |  1   |   3   |   4   |
 | Testing               |  2   |   3   |   5   |
 | Documentation         |  2   |   2   |   4   |
-| Developer Experience  |  3   |   0   |   3   |
+| Developer Experience  |  2   |   1   |   3   |
 
 ---
 
@@ -71,18 +71,18 @@
 
 ### 🟢 Low
 
-| ID     | Description                                                                    | Category              | Status  | File                    | Date       |
-| ------ | ------------------------------------------------------------------------------ | --------------------- | :-----: | ----------------------- | ---------- |
-| OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | 🟢 Open | `config.ts`             | 2026-02-19 |
-| OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | 🟢 Open | `whatsapp-connector.ts` | 2026-02-19 |
-| OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | 🟢 Open | `registry.ts`           | 2026-02-19 |
-| OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | 🟢 Open | —                       | 2026-02-19 |
-| OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | 🟢 Open | `tests/`                | 2026-02-19 |
-| OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | 🟢 Open | `docs/`                 | 2026-02-19 |
-| OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | 🟢 Open | `docs/`                 | 2026-02-19 |
-| OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | 🟢 Open | `README.md`             | 2026-02-19 |
-| OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | 🟢 Open | —                       | 2026-02-19 |
-| OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | 🟢 Open | `bridge.ts`             | 2026-02-19 |
+| ID     | Description                                                                    | Category              |  Status  | File                    | Date       |
+| ------ | ------------------------------------------------------------------------------ | --------------------- | :------: | ----------------------- | ---------- |
+| OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | 🟢 Open  | `config.ts`             | 2026-02-19 |
+| OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | 🟢 Open  | `whatsapp-connector.ts` | 2026-02-19 |
+| OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | ✅ Fixed | `registry.ts`           | 2026-02-19 |
+| OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | 🟢 Open  | —                       | 2026-02-19 |
+| OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | 🟢 Open  | `tests/`                | 2026-02-19 |
+| OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
+| OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
+| OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | 🟢 Open  | `README.md`             | 2026-02-19 |
+| OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | 🟢 Open  | —                       | 2026-02-19 |
+| OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | 🟢 Open  | `bridge.ts`             | 2026-02-19 |
 
 ---
 

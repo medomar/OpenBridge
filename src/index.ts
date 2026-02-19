@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Bridge, loadConfig, resolveConfigPath, createLogger } from './core/index.js';
 import { registerBuiltInConnectors } from './connectors/index.js';
 import { registerBuiltInProviders } from './providers/index.js';
@@ -12,10 +14,14 @@ async function main(): Promise<void> {
     const config = await loadConfig();
     const bridge = new Bridge(config, { configPath });
 
-    // Register built-in plugins
+    // Register built-in plugins (manual fallback)
     const registry = bridge.getRegistry();
     registerBuiltInConnectors(registry);
     registerBuiltInProviders(registry);
+
+    // Auto-discover additional plugins from connector/provider directories
+    const srcDir = path.dirname(fileURLToPath(import.meta.url));
+    await registry.discoverPlugins(srcDir);
 
     await bridge.start();
 
