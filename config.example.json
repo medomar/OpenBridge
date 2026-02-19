@@ -1,0 +1,27 @@
+{
+  "connectors": [
+    {
+      "type": "whatsapp",
+      "enabled": true,
+      "options": {
+        "sessionName": "openbridge-default"
+      }
+    }
+  ],
+  "providers": [
+    {
+      "type": "claude-code",
+      "enabled": true,
+      "options": {
+        "workspacePath": "~/projects/my-project",
+        "maxTokens": 4096
+      }
+    }
+  ],
+  "defaultProvider": "claude-code",
+  "auth": {
+    "whitelist": ["+1234567890"],
+    "prefix": "/ai"
+  },
+  "logLevel": "info"
+}
