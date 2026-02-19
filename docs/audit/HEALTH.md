@@ -48,7 +48,7 @@
 | Date       | Score | Change | Reason                                                                       |
 | ---------- | :---: | :----: | ---------------------------------------------------------------------------- |
 | 2026-02-19 |  6.0  |   —    | Initial audit — V0 scaffolding complete, 19 tests passing, all tooling green |
-| 2026-02-19 | 6.03  | +0.03  | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff               |
+| 2026-02-19 | 6.03  | +0.03  | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff              |
 
 ---
 

@@ -22,7 +22,7 @@
 
 | #   | Task                                                                    | Finding | Priority  |  Status   |
 | --- | ----------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  | ✅ Done   |
+| 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  |  ✅ Done  |
 | 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  | ◻ Pending |
 | 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  | ◻ Pending |
 | 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  | ◻ Pending |
