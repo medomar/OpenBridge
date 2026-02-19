@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 32 | **Fixed:** 5 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 31 | **Fixed:** 6 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  7   |   5   |     0     |  12   |
+| 🟠 High     |  6   |   6   |     0     |  12   |
 | 🟡 Medium   |  15  |   0   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
@@ -22,7 +22,7 @@
 | Connector Reliability |  3   |   2   |   5   |
 | Provider Robustness   |  5   |   0   |   5   |
 | Security              |  3   |   2   |   5   |
-| Core Engine           |  5   |   1   |   6   |
+| Core Engine           |  4   |   2   |   6   |
 | Configuration         |  4   |   0   |   4   |
 | Testing               |  5   |   0   |   5   |
 | Documentation         |  4   |   0   |   4   |
@@ -47,7 +47,7 @@
 | OB-009 | WhatsApp connector tests missing — only mock interface exists                          | Testing               | 🟠 Open  | `tests/connectors/`       | 2026-02-19 |
 | OB-010 | Claude Code provider tests missing — executor not tested                               | Testing               | 🟠 Open  | `tests/providers/`        | 2026-02-19 |
 | OB-011 | No graceful message handling during shutdown — in-flight messages may be lost          | Core Engine           | 🟠 Open  | `bridge.ts`, `queue.ts`   | 2026-02-19 |
-| OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | 🟠 Open  | `bridge.ts`               | 2026-02-19 |
+| OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | ✅ Fixed | `bridge.ts`               | 2026-02-19 |
 
 ### 🟡 Medium
 

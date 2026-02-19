@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.15/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.12
+> **Current Score:** 6.18/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.15
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **7 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **6 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -53,6 +53,7 @@
 | 2026-02-19 | 6.09  | +0.03  | OB-003 fixed — Input sanitization (sanitizePrompt) in Claude Code executor             |
 | 2026-02-19 | 6.12  | +0.03  | OB-004 fixed — Per-user rate limiting with configurable window and max count           |
 | 2026-02-19 | 6.15  | +0.03  | OB-005 fixed — Message queue retry logic with configurable maxRetries and retryDelayMs |
+| 2026-02-19 | 6.18  | +0.03  | OB-012 fixed — Bridge.stop() shuts down all connectors and providers gracefully        |
 
 ---
 

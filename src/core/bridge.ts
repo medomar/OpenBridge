@@ -1,5 +1,7 @@
 import type { AppConfig } from '../types/config.js';
 import type { InboundMessage } from '../types/message.js';
+import type { Connector } from '../types/connector.js';
+import type { AIProvider } from '../types/provider.js';
 import { AuthService } from './auth.js';
 import { MessageQueue } from './queue.js';
 import { PluginRegistry } from './registry.js';
@@ -16,6 +18,8 @@ export class Bridge {
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
   private readonly router: Router;
+  private readonly connectors: Connector[] = [];
+  private readonly providers: AIProvider[] = [];
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -42,6 +46,7 @@ export class Bridge {
       const provider = this.registry.createProvider(providerConfig.type, providerConfig.options);
       await provider.initialize();
       this.router.addProvider(provider);
+      this.providers.push(provider);
       logger.info({ provider: provider.name }, 'Provider initialized');
     }
 
@@ -68,6 +73,7 @@ export class Bridge {
 
       await connector.initialize();
       this.router.addConnector(connector);
+      this.connectors.push(connector);
       logger.info({ connector: connector.name }, 'Connector initialized');
     }
 
@@ -79,11 +85,32 @@ export class Bridge {
     logger.info('OpenBridge started successfully');
   }
 
-  /** Stop the bridge gracefully */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  /** Stop the bridge gracefully — drains in-flight messages, then shuts down connectors and providers */
   async stop(): Promise<void> {
     logger.info('Stopping OpenBridge...');
-    // Shutdown logic will be added when connectors/providers are tracked
+
+    logger.info('Draining message queue...');
+    await this.queue.drain();
+    logger.info('Message queue drained');
+
+    for (const connector of this.connectors) {
+      try {
+        await connector.shutdown();
+        logger.info({ connector: connector.name }, 'Connector shut down');
+      } catch (error) {
+        logger.error({ connector: connector.name, error }, 'Error shutting down connector');
+      }
+    }
+
+    for (const provider of this.providers) {
+      try {
+        await provider.shutdown();
+        logger.info({ provider: provider.name }, 'Provider shut down');
+      } catch (error) {
+        logger.error({ provider: provider.name, error }, 'Error shutting down provider');
+      }
+    }
+
     logger.info('OpenBridge stopped');
   }
 
