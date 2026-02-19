@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 7 | **Fixed:** 30 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 6 | **Fixed:** 31 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -13,7 +13,7 @@
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
 | 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  8   |   2   |     0     |  10   |
+| 🟢 Low      |  7   |   3   |     0     |  10   |
 
 ## Summary by Category
 
@@ -24,7 +24,7 @@
 | Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  1   |   3   |   4   |
-| Testing               |  2   |   3   |   5   |
+| Testing               |  1   |   4   |   5   |
 | Documentation         |  2   |   2   |   4   |
 | Developer Experience  |  1   |   2   |   3   |
 
@@ -77,7 +77,7 @@
 | OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | 🟢 Open  | `whatsapp-connector.ts` | 2026-02-19 |
 | OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | ✅ Fixed | `registry.ts`           | 2026-02-19 |
 | OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | ✅ Fixed | `src/cli/init.ts`       | 2026-02-19 |
-| OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | 🟢 Open  | `tests/`                | 2026-02-19 |
+| OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | ✅ Fixed | `tests/`                | 2026-02-19 |
 | OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
 | OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | 🟢 Open  | `docs/`                 | 2026-02-19 |
 | OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | 🟢 Open  | `README.md`             | 2026-02-19 |
