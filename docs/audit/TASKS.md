@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 1 | **In Progress:** 0 | **Pending:** 36
-> **Health Score:** 6.03/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 2 | **In Progress:** 0 | **Pending:** 35
+> **Health Score:** 6.06/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
-|   1   | Critical reliability + security |  12   |  1   |   ◻    |
+|   1   | Critical reliability + security |  12   |  2   |   ◻    |
 |   2   | UX + robustness                 |  11   |  0   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
@@ -23,7 +23,7 @@
 | #   | Task                                                                    | Finding | Priority  |  Status   |
 | --- | ----------------------------------------------------------------------- | ------- | :-------: | :-------: |
 | 1   | Implement WhatsApp auto-reconnect with exponential backoff              | OB-001  |  🟠 High  |  ✅ Done  |
-| 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  | ◻ Pending |
+| 2   | Add session persistence — survive restarts without re-scanning QR       | OB-002  |  🟠 High  |  ✅ Done  |
 | 3   | Sanitize user input before passing to CLI (escape shell metacharacters) | OB-003  |  🟠 High  | ◻ Pending |
 | 4   | Add per-user rate limiting (configurable messages/minute)               | OB-004  |  🟠 High  | ◻ Pending |
 | 5   | Add retry logic to message queue with configurable max retries          | OB-005  |  🟠 High  | ◻ Pending |

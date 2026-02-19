@@ -1,29 +1,29 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.03/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.0
+> **Current Score:** 6.06/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.03
 
 ---
 
 ## Score Breakdown
 
-| Category      |  Weight  | Score  | Weighted  | Notes                                                                                                                                                          |
-| ------------- | :------: | :----: | :-------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Architecture  |   20%    | 8.5/10 |   1.700   | 3-layer plugin design solid. Connector/Provider interfaces clean. Registry factory pattern works. Missing: plugin hot-reload, multi-instance support.          |
-| Core Engine   |   15%    | 7.0/10 |   1.050   | Router, auth, queue all functional. Sequential queue prevents race conditions. Missing: retry logic, dead letter handling, streaming support.                  |
-| Connectors    |   15%    | 5.5/10 |   0.825   | WhatsApp V0 works (QR auth, message send/receive, truncation). Missing: auto-reconnect, session recovery, media support, message splitting for long responses. |
-| Providers     |   15%    | 5.5/10 |   0.825   | Claude Code V0 works (CLI spawn, timeout, workspace scoping). Missing: streaming, conversation context, multi-model support, error classification.             |
-| Configuration |   10%    | 7.5/10 |   0.750   | Zod validation solid. Example config provided. Missing: tilde path resolution, config hot-reload, per-connector/provider validation.                           |
-| Security      |   10%    | 6.0/10 |   0.600   | Phone whitelist + prefix auth implemented. Missing: rate limiting, input sanitization, command injection hardening, audit logging.                             |
-| Testing       |   10%    | 5.0/10 |   0.500   | 19 unit tests passing (auth, queue, config, registry, router). Missing: integration tests, WhatsApp connector tests, Claude Code provider tests, E2E tests.    |
-| Documentation |    5%    | 5.0/10 |   0.250   | Architecture, config, and plugin guides created. Missing: API reference, troubleshooting guide, deployment guide, examples.                                    |
-| **TOTAL**     | **100%** |   —    | **6.500** | **Rounded: 6.0/10** (conservative — no integration testing yet)                                                                                                |
+| Category      |  Weight  | Score  | Weighted  | Notes                                                                                                                                                       |
+| ------------- | :------: | :----: | :-------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture  |   20%    | 8.5/10 |   1.700   | 3-layer plugin design solid. Connector/Provider interfaces clean. Registry factory pattern works. Missing: plugin hot-reload, multi-instance support.       |
+| Core Engine   |   15%    | 7.0/10 |   1.050   | Router, auth, queue all functional. Sequential queue prevents race conditions. Missing: retry logic, dead letter handling, streaming support.               |
+| Connectors    |   15%    | 5.5/10 |   0.825   | WhatsApp V0 works (QR auth, message send/receive, truncation, session persistence). Missing: media support, message splitting for long responses.           |
+| Providers     |   15%    | 5.5/10 |   0.825   | Claude Code V0 works (CLI spawn, timeout, workspace scoping). Missing: streaming, conversation context, multi-model support, error classification.          |
+| Configuration |   10%    | 7.5/10 |   0.750   | Zod validation solid. Example config provided. Missing: tilde path resolution, config hot-reload, per-connector/provider validation.                        |
+| Security      |   10%    | 6.0/10 |   0.600   | Phone whitelist + prefix auth implemented. Missing: rate limiting, input sanitization, command injection hardening, audit logging.                          |
+| Testing       |   10%    | 5.0/10 |   0.500   | 19 unit tests passing (auth, queue, config, registry, router). Missing: integration tests, WhatsApp connector tests, Claude Code provider tests, E2E tests. |
+| Documentation |    5%    | 5.0/10 |   0.250   | Architecture, config, and plugin guides created. Missing: API reference, troubleshooting guide, deployment guide, examples.                                 |
+| **TOTAL**     | **100%** |   —    | **6.500** | **Rounded: 6.0/10** (conservative — no integration testing yet)                                                                                             |
 
 ---
 
 ## Open Issues Summary
 
-**0/0 critical** | **11 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **10 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -49,6 +49,7 @@
 | ---------- | :---: | :----: | ---------------------------------------------------------------------------- |
 | 2026-02-19 |  6.0  |   —    | Initial audit — V0 scaffolding complete, 19 tests passing, all tooling green |
 | 2026-02-19 | 6.03  | +0.03  | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff              |
+| 2026-02-19 | 6.06  | +0.03  | OB-002 fixed — WhatsApp session persistence with configurable sessionPath    |
 
 ---
 

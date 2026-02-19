@@ -4,7 +4,8 @@
       "type": "whatsapp",
       "enabled": true,
       "options": {
-        "sessionName": "openbridge-default"
+        "sessionName": "openbridge-default",
+        "sessionPath": ".wwebjs_auth"
       }
     }
   ],

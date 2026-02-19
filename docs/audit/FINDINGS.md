@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 36 | **Fixed:** 1 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 35 | **Fixed:** 2 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  11  |   1   |     0     |  12   |
+| 🟠 High     |  10  |   2   |     0     |  12   |
 | 🟡 Medium   |  15  |   0   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
@@ -19,7 +19,7 @@
 
 | Category              | Open | Fixed | Total |
 | --------------------- | :--: | :---: | :---: |
-| Connector Reliability |  4   |   1   |   5   |
+| Connector Reliability |  3   |   2   |   5   |
 | Provider Robustness   |  5   |   0   |   5   |
 | Security              |  5   |   0   |   5   |
 | Core Engine           |  6   |   0   |   6   |
@@ -37,7 +37,7 @@
 | ID     | Description                                                                            | Category              |  Status  | File                      | Date       |
 | ------ | -------------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
 | OB-001 | No auto-reconnect on WhatsApp disconnect — session drops require manual restart        | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | 🟠 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-003 | No input sanitization — raw user messages forwarded to CLI without escaping            | Security              | 🟠 Open  | `claude-code-executor.ts` | 2026-02-19 |
 | OB-004 | No rate limiting — single user can flood the message queue                             | Security              | 🟠 Open  | `queue.ts`, `auth.ts`     | 2026-02-19 |
 | OB-005 | No error retry in message queue — transient failures permanently drop messages         | Core Engine           | 🟠 Open  | `queue.ts`                | 2026-02-19 |

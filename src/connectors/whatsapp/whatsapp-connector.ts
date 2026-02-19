@@ -39,7 +39,13 @@ export class WhatsAppConnector implements Connector {
   }
 
   async initialize(): Promise<void> {
-    logger.info({ sessionName: this.config.sessionName }, 'Initializing WhatsApp connector');
+    logger.info(
+      {
+        sessionName: this.config.sessionName,
+        sessionPath: this.config.sessionPath ?? '.wwebjs_auth',
+      },
+      'Initializing WhatsApp connector — session will persist across restarts',
+    );
     this.shuttingDown = false;
     await this.createAndStartClient();
   }
@@ -49,13 +55,32 @@ export class WhatsAppConnector implements Connector {
     const WAWebJS = await import('whatsapp-web.js');
     const { Client, LocalAuth } = WAWebJS;
 
+    const localAuthOptions: { clientId: string; dataPath?: string } = {
+      clientId: this.config.sessionName,
+    };
+    if (this.config.sessionPath) {
+      localAuthOptions.dataPath = this.config.sessionPath;
+    }
+
     this.client = new Client({
-      authStrategy: new LocalAuth({ clientId: this.config.sessionName }),
+      authStrategy: new LocalAuth(localAuthOptions),
     }) as unknown as WAClient;
 
     this.client.on('qr', (qr: string) => {
       logger.info('QR code received — scan with WhatsApp');
       this.emit('auth', qr);
+    });
+
+    this.client.on('authenticated', () => {
+      logger.info('WhatsApp session authenticated — restoring saved session');
+    });
+
+    this.client.on('auth_failure', (message: string) => {
+      logger.error(
+        { message },
+        'WhatsApp authentication failed — saved session invalid, re-scan QR required',
+      );
+      this.emit('error', new Error(`WhatsApp auth failure: ${message}`));
     });
 
     this.client.on('ready', () => {
