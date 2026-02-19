@@ -3,6 +3,7 @@ import type { InboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import { AuthService } from './auth.js';
+import { AuditLogger } from './audit-logger.js';
 import { MessageQueue } from './queue.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -14,6 +15,7 @@ const logger = createLogger('bridge');
 export class Bridge {
   private readonly config: AppConfig;
   private readonly auth: AuthService;
+  private readonly auditLogger: AuditLogger;
   private readonly rateLimiter: RateLimiter;
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
@@ -24,10 +26,11 @@ export class Bridge {
   constructor(config: AppConfig) {
     this.config = config;
     this.auth = new AuthService(config.auth);
+    this.auditLogger = new AuditLogger(config.audit);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
     this.queue = new MessageQueue(config.queue);
     this.registry = new PluginRegistry();
-    this.router = new Router(config.defaultProvider, config.router);
+    this.router = new Router(config.defaultProvider, config.router, this.auditLogger);
   }
 
   /** Register built-in and external plugins before starting */
@@ -117,6 +120,7 @@ export class Bridge {
   private handleIncomingMessage(message: InboundMessage): void {
     if (!this.auth.isAuthorized(message.sender)) {
       logger.warn({ sender: message.sender }, 'Unauthorized sender');
+      void this.auditLogger.logAuthDenied(message.sender);
       return;
     }
 
@@ -126,14 +130,24 @@ export class Bridge {
 
     if (!this.rateLimiter.isAllowed(message.sender)) {
       logger.warn({ sender: message.sender }, 'Message dropped — rate limit exceeded');
+      void this.auditLogger.logRateLimited(message.sender);
+      return;
+    }
+
+    const strippedContent = this.auth.stripPrefix(message.rawContent);
+
+    const filterResult = this.auth.filterCommand(strippedContent);
+    if (!filterResult.allowed) {
+      logger.warn({ sender: message.sender }, 'Message blocked by command filter');
       return;
     }
 
     const cleaned: InboundMessage = {
       ...message,
-      content: this.auth.stripPrefix(message.rawContent),
+      content: strippedContent,
     };
 
+    void this.auditLogger.logInbound(cleaned);
     void this.queue.enqueue(cleaned);
   }
 }

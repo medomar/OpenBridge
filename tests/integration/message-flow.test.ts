@@ -26,6 +26,7 @@ function baseConfig(): AppConfig {
       rateLimit: { enabled: false, windowMs: 60000, maxMessages: 5 },
     },
     queue: { maxRetries: 0, retryDelayMs: 1 },
+    audit: { enabled: false, logPath: 'audit.log' },
     logLevel: 'info',
   };
 }

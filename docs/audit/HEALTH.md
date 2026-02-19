@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.48/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.465
+> **Current Score:** 6.495/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.48
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **7 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **6 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -68,6 +68,7 @@
 | 2026-02-19 | 6.45  | +0.015 | OB-018 fixed — Error classification (transient vs permanent) with retry skip           |
 | 2026-02-19 | 6.465 | +0.015 | OB-022 fixed — Dead letter queue captures permanently failed messages                  |
 | 2026-02-19 | 6.48  | +0.015 | OB-020 fixed — Periodic progress updates for long-running AI tasks                     |
+| 2026-02-19 | 6.495 | +0.015 | OB-027 fixed — Command allow/deny list with configurable regex patterns in auth        |
 
 ---
 

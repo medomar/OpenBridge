@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 16 | **Fixed:** 21 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 15 | **Fixed:** 22 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  7   |   8   |     0     |  15   |
+| 🟡 Medium   |  6   |   9   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -21,7 +21,7 @@
 | --------------------- | :--: | :---: | :---: |
 | Connector Reliability |  1   |   4   |   5   |
 | Provider Robustness   |  2   |   3   |   5   |
-| Security              |  3   |   2   |   5   |
+| Security              |  2   |   3   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  2   |   2   |   4   |
 | Testing               |  2   |   3   |   5   |
@@ -67,7 +67,7 @@
 | OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
 | OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
 | OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | 🟡 Open  | `docs/`                   | 2026-02-19 |
-| OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | 🟡 Open  | `auth.ts`                 | 2026-02-19 |
+| OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | ✅ Fixed | `auth.ts`                 | 2026-02-19 |
 
 ### 🟢 Low
 

@@ -27,11 +27,20 @@
       "enabled": true,
       "maxMessages": 10,
       "windowMs": 60000
+    },
+    "commandFilter": {
+      "denyPatterns": ["rm\\s+-rf", "drop\\s+table", "format\\s+disk"],
+      "allowPatterns": [],
+      "denyMessage": "That command is not allowed."
     }
   },
   "queue": {
     "maxRetries": 3,
     "retryDelayMs": 1000
+  },
+  "audit": {
+    "enabled": false,
+    "logPath": "audit.log"
   },
   "logLevel": "info"
 }

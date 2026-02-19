@@ -21,11 +21,19 @@ export const RateLimitConfigSchema = z.object({
   windowMs: z.number().int().positive().default(60_000),
 });
 
+/** Schema for command filter configuration */
+export const CommandFilterConfigSchema = z.object({
+  allowPatterns: z.array(z.string()).default([]),
+  denyPatterns: z.array(z.string()).default([]),
+  denyMessage: z.string().default('That command is not allowed.'),
+});
+
 /** Schema for auth configuration */
 export const AuthConfigSchema = z.object({
   whitelist: z.array(z.string()).default([]),
   prefix: z.string().default('/ai'),
   rateLimit: RateLimitConfigSchema.default({}),
+  commandFilter: CommandFilterConfigSchema.default({}),
 });
 
 /** Schema for queue retry configuration */
@@ -39,6 +47,12 @@ export const RouterConfigSchema = z.object({
   progressIntervalMs: z.number().int().positive().default(15_000),
 });
 
+/** Schema for audit log configuration */
+export const AuditConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  logPath: z.string().default('audit.log'),
+});
+
 /** Root configuration schema */
 export const AppConfigSchema = z.object({
   connectors: z.array(ConnectorConfigSchema).min(1),
@@ -47,13 +61,16 @@ export const AppConfigSchema = z.object({
   auth: AuthConfigSchema,
   queue: QueueConfigSchema.default({}),
   router: RouterConfigSchema.default({}),
+  audit: AuditConfigSchema.default({}),
   logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });
 
 export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RateLimitConfig = z.infer<typeof RateLimitConfigSchema>;
+export type CommandFilterConfig = z.infer<typeof CommandFilterConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type QueueConfig = z.infer<typeof QueueConfigSchema>;
 export type RouterConfig = z.infer<typeof RouterConfigSchema>;
+export type AuditConfig = z.infer<typeof AuditConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
