@@ -20,6 +20,11 @@
     }
   ],
   "defaultProvider": "claude-code",
+  "workspaces": [
+    { "name": "my-project", "path": "~/projects/my-project" },
+    { "name": "backend", "path": "~/projects/backend" }
+  ],
+  "defaultWorkspace": "my-project",
   "auth": {
     "whitelist": ["+1234567890"],
     "prefix": "/ai",

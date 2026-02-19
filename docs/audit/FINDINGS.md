@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 5 | **Fixed:** 32 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 4 | **Fixed:** 33 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -13,7 +13,7 @@
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
 | 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  6   |   4   |     0     |  10   |
+| 🟢 Low      |  5   |   5   |     0     |  10   |
 
 ## Summary by Category
 
@@ -23,7 +23,7 @@
 | Provider Robustness   |  0   |   5   |   5   |
 | Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
-| Configuration         |  1   |   3   |   4   |
+| Configuration         |  0   |   4   |   4   |
 | Testing               |  1   |   4   |   5   |
 | Documentation         |  2   |   2   |   4   |
 | Developer Experience  |  0   |   3   |   3   |
@@ -73,7 +73,7 @@
 
 | ID     | Description                                                                    | Category              |  Status  | File                    | Date       |
 | ------ | ------------------------------------------------------------------------------ | --------------------- | :------: | ----------------------- | ---------- |
-| OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | 🟢 Open  | `config.ts`             | 2026-02-19 |
+| OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | ✅ Fixed | `config.ts`             | 2026-02-19 |
 | OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | 🟢 Open  | `whatsapp-connector.ts` | 2026-02-19 |
 | OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | ✅ Fixed | `registry.ts`           | 2026-02-19 |
 | OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | ✅ Fixed | `src/cli/init.ts`       | 2026-02-19 |

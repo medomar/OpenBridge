@@ -1,5 +1,5 @@
 import type { AppConfig } from '../types/config.js';
-import type { InboundMessage } from '../types/message.js';
+import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import { AuthService } from './auth.js';
@@ -12,6 +12,7 @@ import { MetricsCollector, MetricsServer } from './metrics.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router } from './router.js';
+import { WorkspaceManager } from './workspace-manager.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -32,6 +33,7 @@ export class Bridge {
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
   private readonly router: Router;
+  private readonly workspaceManager: WorkspaceManager;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -49,6 +51,7 @@ export class Bridge {
     this.queue = new MessageQueue(config.queue, this.metrics);
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
+    this.workspaceManager = new WorkspaceManager(config.workspaces ?? [], config.defaultWorkspace);
   }
 
   /** Register built-in and external plugins before starting */
@@ -59,6 +62,15 @@ export class Bridge {
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
+
+    // Validate workspace paths if configured
+    if (this.workspaceManager.enabled) {
+      await this.workspaceManager.validatePaths();
+      logger.info(
+        { workspaces: this.workspaceManager.listWorkspaces().map((w) => w.name) },
+        'Workspaces validated',
+      );
+    }
 
     // Initialize providers
     for (const providerConfig of this.config.providers) {
@@ -81,7 +93,7 @@ export class Bridge {
       );
 
       connector.on('message', (message: InboundMessage) => {
-        this.handleIncomingMessage(message);
+        this.handleIncomingMessage(message, connector);
       });
 
       connector.on('ready', () => {
@@ -197,7 +209,7 @@ export class Bridge {
     };
   }
 
-  private handleIncomingMessage(message: InboundMessage): void {
+  private handleIncomingMessage(message: InboundMessage, connector?: Connector): void {
     this.metrics.recordReceived();
 
     if (!this.auth.isAuthorized(message.sender)) {
@@ -219,7 +231,49 @@ export class Bridge {
       return;
     }
 
-    const strippedContent = this.auth.stripPrefix(message.rawContent);
+    let strippedContent = this.auth.stripPrefix(message.rawContent);
+    let metadata: Record<string, unknown> = { ...message.metadata };
+
+    // Handle workspace commands and selection
+    if (this.workspaceManager.enabled) {
+      // Handle "workspaces" list command
+      if (strippedContent.trim() === 'workspaces') {
+        if (connector) {
+          const listResponse: OutboundMessage = {
+            target: message.source,
+            recipient: message.sender,
+            content: this.workspaceManager.formatList(),
+            replyTo: message.id,
+          };
+          void connector.sendMessage(listResponse);
+        }
+        return;
+      }
+
+      // Parse @workspace-name prefix
+      const { workspace, content: remaining } =
+        this.workspaceManager.parseWorkspace(strippedContent);
+      const resolvedPath = this.workspaceManager.resolve(workspace);
+
+      if (workspace && !resolvedPath) {
+        // User specified a workspace that doesn't exist
+        if (connector) {
+          const errorResponse: OutboundMessage = {
+            target: message.source,
+            recipient: message.sender,
+            content: `Unknown workspace "${workspace}". ${this.workspaceManager.formatList()}`,
+            replyTo: message.id,
+          };
+          void connector.sendMessage(errorResponse);
+        }
+        return;
+      }
+
+      if (resolvedPath) {
+        metadata = { ...metadata, workspacePath: resolvedPath, workspace };
+        strippedContent = remaining;
+      }
+    }
 
     const filterResult = this.auth.filterCommand(strippedContent);
     if (!filterResult.allowed) {
@@ -231,6 +285,7 @@ export class Bridge {
     const cleaned: InboundMessage = {
       ...message,
       content: strippedContent,
+      metadata,
     };
 
     void this.auditLogger.logInbound(cleaned);

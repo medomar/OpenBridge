@@ -31,16 +31,18 @@ export class ClaudeCodeProvider implements AIProvider {
 
   async processMessage(message: InboundMessage): Promise<ProviderResult> {
     const startTime = Date.now();
-    const { sessionId, isNew } = this.sessionManager.getOrCreate(message.sender);
+    const workspacePath = this.resolveWorkspace(message);
+    const sessionKey = this.sessionKey(message.sender, workspacePath);
+    const { sessionId, isNew } = this.sessionManager.getOrCreate(sessionKey);
 
     logger.info(
-      { messageId: message.id, content: message.content, sessionId, isNew },
+      { messageId: message.id, content: message.content, sessionId, isNew, workspacePath },
       'Processing with Claude Code',
     );
 
     const result = await executeClaudeCode({
       prompt: message.content,
-      workspacePath: this.config.workspacePath,
+      workspacePath,
       timeout: this.config.timeout,
       ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
     });
@@ -74,16 +76,18 @@ export class ClaudeCodeProvider implements AIProvider {
 
   async *streamMessage(message: InboundMessage): AsyncGenerator<string, ProviderResult> {
     const startTime = Date.now();
-    const { sessionId, isNew } = this.sessionManager.getOrCreate(message.sender);
+    const workspacePath = this.resolveWorkspace(message);
+    const sessionKey = this.sessionKey(message.sender, workspacePath);
+    const { sessionId, isNew } = this.sessionManager.getOrCreate(sessionKey);
 
     logger.info(
-      { messageId: message.id, content: message.content, sessionId, isNew },
+      { messageId: message.id, content: message.content, sessionId, isNew, workspacePath },
       'Streaming with Claude Code',
     );
 
     const stream = streamClaudeCode({
       prompt: message.content,
-      workspacePath: this.config.workspacePath,
+      workspacePath,
       timeout: this.config.timeout,
       ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
     });
@@ -137,5 +141,19 @@ export class ClaudeCodeProvider implements AIProvider {
   async shutdown(): Promise<void> {
     this.sessionManager.clearAll();
     logger.info('Claude Code provider shut down');
+  }
+
+  /** Resolve the workspace path from message metadata or fall back to config default */
+  private resolveWorkspace(message: InboundMessage): string {
+    const override = message.metadata?.['workspacePath'];
+    if (typeof override === 'string' && override.length > 0) {
+      return override;
+    }
+    return this.config.workspacePath;
+  }
+
+  /** Build a session key scoped to sender + workspace to isolate sessions per project */
+  private sessionKey(sender: string, workspacePath: string): string {
+    return `${sender}:${workspacePath}`;
   }
 }

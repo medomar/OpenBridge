@@ -1,6 +1,6 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 31 | **In Progress:** 0 | **Pending:** 6
+> **Total:** 37 | **Done:** 32 | **In Progress:** 0 | **Pending:** 5
 > **Health Score:** 6.605/10 | **Last Updated:** 2026-02-19
 
 ---
@@ -12,7 +12,7 @@
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
 |   2   | UX + robustness                 |  11   |  11  |   ✅   |
 |   3   | Observability + DX              |   8   |  8   |   ✅   |
-|   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
+|   4   | Polish + ecosystem              |   6   |  1   |   ◻    |
 
 ---
 
@@ -80,7 +80,7 @@
 
 | #   | Task                                                       | Finding | Priority |  Status   |
 | --- | ---------------------------------------------------------- | ------- | :------: | :-------: |
-| 32  | Add multi-workspace support (switch projects via command)  | OB-028  |  🟢 Low  | ◻ Pending |
+| 32  | Add multi-workspace support (switch projects via command)  | OB-028  |  🟢 Low  |  ✅ Done  |
 | 33  | Convert AI markdown to WhatsApp formatting                 | OB-029  |  🟢 Low  | ◻ Pending |
 | 34  | Create example connector plugin (reference implementation) | OB-033  |  🟢 Low  | ◻ Pending |
 | 35  | Create API reference documentation                         | OB-034  |  🟢 Low  | ◻ Pending |

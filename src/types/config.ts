@@ -7,6 +7,12 @@ export const ConnectorConfigSchema = z.object({
   options: z.record(z.unknown()).default({}),
 });
 
+/** Schema for a workspace configuration entry */
+export const WorkspaceConfigSchema = z.object({
+  name: z.string().min(1),
+  path: z.string().min(1),
+});
+
 /** Schema for a provider configuration */
 export const ProviderConfigSchema = z.object({
   type: z.string(),
@@ -70,6 +76,8 @@ export const AppConfigSchema = z.object({
   connectors: z.array(ConnectorConfigSchema).min(1),
   providers: z.array(ProviderConfigSchema).min(1),
   defaultProvider: z.string(),
+  workspaces: z.array(WorkspaceConfigSchema).default([]),
+  defaultWorkspace: z.string().optional(),
   auth: AuthConfigSchema,
   queue: QueueConfigSchema.default({}),
   router: RouterConfigSchema.default({}),
@@ -79,6 +87,7 @@ export const AppConfigSchema = z.object({
   logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });
 
+export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RateLimitConfig = z.infer<typeof RateLimitConfigSchema>;
