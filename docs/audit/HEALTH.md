@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.405/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.39
+> **Current Score:** 6.42/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.405
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **12 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **11 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -63,6 +63,7 @@
 | 2026-02-19 | 6.36  | +0.03  | OB-006 fixed — Streaming support for Claude Code CLI via async generator               |
 | 2026-02-19 | 6.39  | +0.03  | OB-007 fixed — Per-user conversation context via SessionManager + Claude CLI --resume  |
 | 2026-02-19 | 6.405 | +0.015 | OB-014 fixed — Typing indicator sent via WhatsApp chat state while AI processes        |
+| 2026-02-19 | 6.42  | +0.015 | OB-013 fixed — Split long responses into WhatsApp-safe chunks (≤4096 chars)            |
 
 ---
 
