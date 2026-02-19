@@ -3,6 +3,7 @@ import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { RouterConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
+import type { MetricsCollector } from './metrics.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -21,11 +22,18 @@ export class Router {
   private defaultProviderName: string;
   private readonly progressIntervalMs: number;
   private readonly auditLogger?: AuditLogger;
+  private readonly metrics?: MetricsCollector;
 
-  constructor(defaultProvider: string, config?: RouterConfig, auditLogger?: AuditLogger) {
+  constructor(
+    defaultProvider: string,
+    config?: RouterConfig,
+    auditLogger?: AuditLogger,
+    metrics?: MetricsCollector,
+  ) {
     this.defaultProviderName = defaultProvider;
     this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
     this.auditLogger = auditLogger;
+    this.metrics = metrics;
   }
 
   /** Register an active connector */
@@ -76,6 +84,7 @@ export class Router {
 
     // Process with AI provider — prefer streaming to avoid timeout on long responses
     let result: ProviderResult;
+    const startTime = Date.now();
 
     try {
       if (provider.streamMessage) {
@@ -85,6 +94,8 @@ export class Router {
       }
     } catch (error) {
       stopProgress();
+      const errorKind = error instanceof ProviderError ? error.kind : ('unknown' as const);
+      this.metrics?.recordFailed(errorKind);
       if (error instanceof ProviderError) {
         const userMessage =
           error.kind === 'transient'
@@ -107,6 +118,7 @@ export class Router {
     }
 
     stopProgress();
+    this.metrics?.recordProcessed(Date.now() - startTime);
 
     // Send result back
     const response: OutboundMessage = {

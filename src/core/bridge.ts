@@ -8,6 +8,7 @@ import { ConfigWatcher } from './config-watcher.js';
 import { HealthServer } from './health.js';
 import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
+import { MetricsCollector, MetricsServer } from './metrics.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router } from './router.js';
@@ -25,6 +26,8 @@ export class Bridge {
   private readonly auditLogger: AuditLogger;
   private configWatcher: ConfigWatcher | null = null;
   private readonly healthServer: HealthServer;
+  private readonly metrics: MetricsCollector;
+  private readonly metricsServer: MetricsServer;
   private readonly rateLimiter: RateLimiter;
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
@@ -40,10 +43,12 @@ export class Bridge {
     this.auth = new AuthService(config.auth);
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
+    this.metrics = new MetricsCollector();
+    this.metricsServer = new MetricsServer(config.metrics);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
-    this.queue = new MessageQueue(config.queue);
+    this.queue = new MessageQueue(config.queue, this.metrics);
     this.registry = new PluginRegistry();
-    this.router = new Router(config.defaultProvider, config.router, this.auditLogger);
+    this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
   }
 
   /** Register built-in and external plugins before starting */
@@ -102,6 +107,10 @@ export class Bridge {
     this.healthServer.setDataProvider(() => this.getHealthStatus());
     await this.healthServer.start();
 
+    // Start metrics endpoint
+    this.metricsServer.setDataProvider(() => this.metrics.snapshot());
+    await this.metricsServer.start();
+
     // Start config file watcher for hot-reload
     if (this.configPath) {
       this.configWatcher = new ConfigWatcher(this.configPath);
@@ -141,6 +150,7 @@ export class Bridge {
     this.configWatcher?.stop();
 
     await this.healthServer.stop();
+    await this.metricsServer.stop();
 
     logger.info('OpenBridge stopped');
   }
@@ -188,6 +198,8 @@ export class Bridge {
   }
 
   private handleIncomingMessage(message: InboundMessage): void {
+    this.metrics.recordReceived();
+
     if (!this.auth.isAuthorized(message.sender)) {
       logger.warn({ sender: message.sender }, 'Unauthorized sender');
       void this.auditLogger.logAuthDenied(message.sender);
@@ -198,9 +210,12 @@ export class Bridge {
       return; // Not a command, ignore silently
     }
 
+    this.metrics.recordAuthorized();
+
     if (!this.rateLimiter.isAllowed(message.sender)) {
       logger.warn({ sender: message.sender }, 'Message dropped — rate limit exceeded');
       void this.auditLogger.logRateLimited(message.sender);
+      this.metrics.recordRateLimited();
       return;
     }
 
@@ -209,6 +224,7 @@ export class Bridge {
     const filterResult = this.auth.filterCommand(strippedContent);
     if (!filterResult.allowed) {
       logger.warn({ sender: message.sender }, 'Message blocked by command filter');
+      this.metrics.recordCommandBlocked();
       return;
     }
 

@@ -9,3 +9,4 @@ export { createLogger } from './logger.js';
 export { loadConfig, resolveConfigPath } from './config.js';
 export { AuditLogger } from './audit-logger.js';
 export { HealthServer } from './health.js';
+export { MetricsCollector, MetricsServer } from './metrics.js';

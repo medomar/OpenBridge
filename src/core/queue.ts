@@ -1,5 +1,6 @@
 import type { InboundMessage } from '../types/message.js';
 import type { QueueConfig } from '../types/config.js';
+import type { MetricsCollector } from './metrics.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -37,9 +38,11 @@ export class MessageQueue {
   private readonly config: QueueConfig;
   private drainResolvers: (() => void)[] = [];
   private readonly dlq: DeadLetterItem[] = [];
+  private readonly metrics?: MetricsCollector;
 
-  constructor(config: Partial<QueueConfig> = {}) {
+  constructor(config: Partial<QueueConfig> = {}, metrics?: MetricsCollector) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.metrics = metrics;
   }
 
   /** Register the message handler */
@@ -57,6 +60,7 @@ export class MessageQueue {
       this.userQueues.set(sender, queue);
     }
     queue.push({ message, addedAt: new Date(), attempts: 0 });
+    this.metrics?.recordEnqueued();
 
     logger.debug({ messageId: message.id, sender, queueSize: queue.length }, 'Message enqueued');
 
@@ -95,6 +99,7 @@ export class MessageQueue {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
       if (attempt > 0) {
+        this.metrics?.recordRetry();
         const delay = this.config.retryDelayMs * attempt;
         logger.warn({ messageId: item.message.id, attempt, delay }, 'Retrying message after delay');
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -137,6 +142,7 @@ export class MessageQueue {
         failedAt: new Date(),
       };
       this.dlq.push(deadLetterItem);
+      this.metrics?.recordDeadLettered();
 
       logger.error(
         { messageId: item.message.id, attempts: item.attempts, dlqSize: this.dlq.length },

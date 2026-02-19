@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 25 | **In Progress:** 0 | **Pending:** 12
-> **Health Score:** 6.555/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 26 | **In Progress:** 0 | **Pending:** 11
+> **Health Score:** 6.57/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -11,7 +11,7 @@
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
 |   2   | UX + robustness                 |  11   |  11  |   ✅   |
-|   3   | Observability + DX              |   8   |  2   |   ◻    |
+|   3   | Observability + DX              |   8   |  3   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
 ---
@@ -64,7 +64,7 @@
 | #   | Task                                                                  | Finding | Priority  |  Status   |
 | --- | --------------------------------------------------------------------- | ------- | :-------: | :-------: |
 | 24  | Add health check endpoint (HTTP)                                      | OB-023  | 🟡 Medium |  ✅ Done  |
-| 25  | Add metrics collection (message count, latency, error rate)           | OB-024  | 🟡 Medium | ◻ Pending |
+| 25  | Add metrics collection (message count, latency, error rate)           | OB-024  | 🟡 Medium |  ✅ Done  |
 | 26  | Create deployment guide (Docker, PM2, systemd)                        | OB-025  | 🟡 Medium |  ✅ Done  |
 | 27  | Create troubleshooting guide (common errors + solutions)              | OB-026  | 🟡 Medium | ◻ Pending |
 | 28  | Add plugin auto-discovery (scan directories for connectors/providers) | OB-030  |  🟢 Low   | ◻ Pending |
