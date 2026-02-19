@@ -9,11 +9,11 @@ export interface CommandFilterResult {
 }
 
 export class AuthService {
-  private readonly whitelist: Set<string>;
-  private readonly prefix: string;
-  private readonly allowPatterns: RegExp[];
-  private readonly denyPatterns: RegExp[];
-  private readonly denyMessage: string;
+  private whitelist: Set<string>;
+  private prefix: string;
+  private allowPatterns: RegExp[];
+  private denyPatterns: RegExp[];
+  private denyMessage: string;
 
   constructor(config: AuthConfig) {
     this.whitelist = new Set(config.whitelist);
@@ -82,6 +82,32 @@ export class AuthService {
     }
 
     return { allowed: true };
+  }
+
+  /** Hot-reload auth config without restarting */
+  updateConfig(config: AuthConfig): void {
+    this.whitelist = new Set(config.whitelist);
+    this.prefix = config.prefix;
+
+    const filter: CommandFilterConfig = config.commandFilter ?? {
+      allowPatterns: [],
+      denyPatterns: [],
+      denyMessage: 'That command is not allowed.',
+    };
+
+    this.allowPatterns = filter.allowPatterns.map((p) => new RegExp(p, 'i'));
+    this.denyPatterns = filter.denyPatterns.map((p) => new RegExp(p, 'i'));
+    this.denyMessage = filter.denyMessage;
+
+    logger.info(
+      {
+        whitelistedNumbers: this.whitelist.size,
+        prefix: this.prefix,
+        allowPatterns: filter.allowPatterns.length,
+        denyPatterns: filter.denyPatterns.length,
+      },
+      'Auth service config reloaded',
+    );
   }
 
   get commandPrefix(): string {

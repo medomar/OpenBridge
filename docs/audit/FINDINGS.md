@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 13 | **Fixed:** 24 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 12 | **Fixed:** 25 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  4   |  11   |     0     |  15   |
+| 🟡 Medium   |  3   |  12   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -23,7 +23,7 @@
 | Provider Robustness   |  1   |   4   |   5   |
 | Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
-| Configuration         |  2   |   2   |   4   |
+| Configuration         |  1   |   3   |   4   |
 | Testing               |  2   |   3   |   5   |
 | Documentation         |  4   |   0   |   4   |
 | Developer Experience  |  3   |   0   |   3   |
@@ -57,7 +57,7 @@
 | OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | ✅ Fixed | `claude-code-config.ts`   | 2026-02-19 |
 | OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
-| OB-017 | No config hot-reload — changes require full restart                               | Configuration         | 🟡 Open  | `config.ts`               | 2026-02-19 |
+| OB-017 | No config hot-reload — changes require full restart                               | Configuration         | ✅ Fixed | `config-watcher.ts`       | 2026-02-19 |
 | OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | ✅ Fixed | `claude-code-provider.ts` | 2026-02-19 |
 | OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
 | OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | ✅ Fixed | `router.ts`               | 2026-02-19 |

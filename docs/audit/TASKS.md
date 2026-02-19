@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 23 | **In Progress:** 0 | **Pending:** 14
-> **Health Score:** 6.525/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 24 | **In Progress:** 0 | **Pending:** 13
+> **Health Score:** 6.54/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -10,7 +10,7 @@
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
-|   2   | UX + robustness                 |  11   |  10  |   ◻    |
+|   2   | UX + robustness                 |  11   |  11  |   ✅   |
 |   3   | Observability + DX              |   8   |  1   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
@@ -41,19 +41,19 @@
 
 > **Focus:** Better user experience and resilient message handling.
 
-| #   | Task                                                                      | Finding | Priority  |  Status   |
-| --- | ------------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 13  | Add streaming support for long AI responses                               | OB-006  |  🟠 High  |  ✅ Done  |
-| 14  | Add conversation context / session memory per user                        | OB-007  |  🟠 High  |  ✅ Done  |
-| 15  | Split long responses into WhatsApp-safe chunks (≤4096 chars)              | OB-013  | 🟡 Medium |  ✅ Done  |
-| 16  | Send typing indicator while AI processes                                  | OB-014  | 🟡 Medium |  ✅ Done  |
-| 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium |  ✅ Done  |
-| 18  | Implement per-user message queues (parallel processing across users)      | OB-019  | 🟡 Medium |  ✅ Done  |
-| 19  | Add progress updates for long-running tasks                               | OB-020  | 🟡 Medium |  ✅ Done  |
-| 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium |  ✅ Done  |
-| 21  | Add audit logging — persist message history                               | OB-021  | 🟡 Medium |  ✅ Done  |
-| 22  | Add command allow/deny list for AI operations                             | OB-027  | 🟡 Medium |  ✅ Done  |
-| 23  | Add config hot-reload without restart                                     | OB-017  | 🟡 Medium | ◻ Pending |
+| #   | Task                                                                      | Finding | Priority  | Status  |
+| --- | ------------------------------------------------------------------------- | ------- | :-------: | :-----: |
+| 13  | Add streaming support for long AI responses                               | OB-006  |  🟠 High  | ✅ Done |
+| 14  | Add conversation context / session memory per user                        | OB-007  |  🟠 High  | ✅ Done |
+| 15  | Split long responses into WhatsApp-safe chunks (≤4096 chars)              | OB-013  | 🟡 Medium | ✅ Done |
+| 16  | Send typing indicator while AI processes                                  | OB-014  | 🟡 Medium | ✅ Done |
+| 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium | ✅ Done |
+| 18  | Implement per-user message queues (parallel processing across users)      | OB-019  | 🟡 Medium | ✅ Done |
+| 19  | Add progress updates for long-running tasks                               | OB-020  | 🟡 Medium | ✅ Done |
+| 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium | ✅ Done |
+| 21  | Add audit logging — persist message history                               | OB-021  | 🟡 Medium | ✅ Done |
+| 22  | Add command allow/deny list for AI operations                             | OB-027  | 🟡 Medium | ✅ Done |
+| 23  | Add config hot-reload without restart                                     | OB-017  | 🟡 Medium | ✅ Done |
 
 ---
 

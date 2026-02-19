@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.525/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.51
+> **Current Score:** 6.54/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.525
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **4 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **3 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -71,6 +71,7 @@
 | 2026-02-19 | 6.495 | +0.015 | OB-027 fixed — Command allow/deny list with configurable regex patterns in auth        |
 | 2026-02-19 | 6.51  | +0.015 | OB-021 fixed — Audit logging with JSONL persistence for message history                |
 | 2026-02-19 | 6.525 | +0.015 | OB-023 fixed — Health check HTTP endpoint with connector/provider/queue status         |
+| 2026-02-19 | 6.54  | +0.015 | OB-017 fixed — Config hot-reload via file watcher with debounced auth/rate-limit apply |
 
 ---
 

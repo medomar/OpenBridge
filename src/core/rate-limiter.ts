@@ -4,9 +4,9 @@ import { createLogger } from './logger.js';
 const logger = createLogger('rate-limiter');
 
 export class RateLimiter {
-  private readonly windowMs: number;
-  private readonly maxMessages: number;
-  private readonly enabled: boolean;
+  private windowMs: number;
+  private maxMessages: number;
+  private enabled: boolean;
   /** sender → timestamps of recent messages */
   private readonly windows = new Map<string, number[]>();
 
@@ -51,5 +51,17 @@ export class RateLimiter {
     }
 
     return true;
+  }
+
+  /** Hot-reload rate limiter config without restarting */
+  updateConfig(config: RateLimitConfig): void {
+    this.enabled = config.enabled;
+    this.maxMessages = config.maxMessages;
+    this.windowMs = config.windowMs;
+
+    logger.info(
+      { enabled: this.enabled, maxMessages: this.maxMessages, windowMs: this.windowMs },
+      'Rate limiter config reloaded',
+    );
   }
 }

@@ -1,4 +1,4 @@
-import { Bridge, loadConfig, createLogger } from './core/index.js';
+import { Bridge, loadConfig, resolveConfigPath, createLogger } from './core/index.js';
 import { registerBuiltInConnectors } from './connectors/index.js';
 import { registerBuiltInProviders } from './providers/index.js';
 
@@ -8,8 +8,9 @@ async function main(): Promise<void> {
   logger.info('OpenBridge starting...');
 
   try {
+    const configPath = resolveConfigPath();
     const config = await loadConfig();
-    const bridge = new Bridge(config);
+    const bridge = new Bridge(config, { configPath });
 
     // Register built-in plugins
     const registry = bridge.getRegistry();

@@ -6,9 +6,13 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('config');
 
-export async function loadConfig(configPath?: string): Promise<AppConfig> {
+export function resolveConfigPath(configPath?: string): string {
   const path = configPath ?? process.env['CONFIG_PATH'] ?? './config.json';
-  const absolutePath = resolve(path);
+  return resolve(path);
+}
+
+export async function loadConfig(configPath?: string): Promise<AppConfig> {
+  const absolutePath = resolveConfigPath(configPath);
 
   logger.info({ path: absolutePath }, 'Loading configuration');
 
