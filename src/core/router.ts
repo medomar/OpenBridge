@@ -1,18 +1,28 @@
 import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
+import type { RouterConfig } from '../types/config.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
 
+const PROGRESS_MESSAGES = [
+  'Still working on it...',
+  'This is taking a moment — hang tight...',
+  'Still processing your request...',
+  'Almost there — still working...',
+];
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
   private defaultProviderName: string;
+  private readonly progressIntervalMs: number;
 
-  constructor(defaultProvider: string) {
+  constructor(defaultProvider: string, config?: RouterConfig) {
     this.defaultProviderName = defaultProvider;
+    this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
   }
 
   /** Register an active connector */
@@ -58,6 +68,9 @@ export class Router {
       await connector.sendTypingIndicator(message.sender);
     }
 
+    // Start progress updates
+    const stopProgress = this.startProgressUpdates(connector, message);
+
     // Process with AI provider — prefer streaming to avoid timeout on long responses
     let result: ProviderResult;
 
@@ -68,6 +81,7 @@ export class Router {
         result = await provider.processMessage(message);
       }
     } catch (error) {
+      stopProgress();
       if (error instanceof ProviderError) {
         const userMessage =
           error.kind === 'transient'
@@ -85,6 +99,8 @@ export class Router {
       throw error;
     }
 
+    stopProgress();
+
     // Send result back
     const response: OutboundMessage = {
       target: message.source,
@@ -96,6 +112,35 @@ export class Router {
     await connector.sendMessage(response);
 
     logger.info({ messageId: message.id }, 'Message processed and response sent');
+  }
+
+  /** Start sending periodic progress updates, returns a stop function */
+  private startProgressUpdates(connector: Connector, message: InboundMessage): () => void {
+    let tickCount = 0;
+    const timer = setInterval(() => {
+      const progressMsg = PROGRESS_MESSAGES[tickCount % PROGRESS_MESSAGES.length]!;
+      tickCount++;
+
+      const update: OutboundMessage = {
+        target: message.source,
+        recipient: message.sender,
+        content: progressMsg,
+        replyTo: message.id,
+      };
+
+      connector.sendMessage(update).catch((err: unknown) => {
+        logger.warn({ err, messageId: message.id }, 'Failed to send progress update');
+      });
+
+      // Refresh typing indicator (best-effort)
+      if (connector.sendTypingIndicator) {
+        connector.sendTypingIndicator(message.sender).catch(() => {
+          // best-effort
+        });
+      }
+    }, this.progressIntervalMs);
+
+    return () => clearInterval(timer);
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */

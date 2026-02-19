@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Router } from '../../src/core/router.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
@@ -16,6 +16,14 @@ function createMessage(): InboundMessage {
 }
 
 describe('Router', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('should route a message to the default provider and send response back', async () => {
     const router = new Router('mock');
     const connector = new MockConnector();
@@ -70,5 +78,133 @@ describe('Router', () => {
     expect(connector.sentMessages).toHaveLength(2);
     expect(connector.sentMessages[0]?.content).toBe('Working on it...');
     expect(connector.sentMessages[1]?.content).toBe('chunk1chunk2');
+  });
+
+  it('should send progress updates for long-running tasks', async () => {
+    const router = new Router('mock', { progressIntervalMs: 10_000 });
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+
+    // Create a provider that takes a long time (controlled by promise)
+    let resolveProcess!: (result: { content: string }) => void;
+    provider.processMessage = (_message: InboundMessage) => {
+      return new Promise((resolve) => {
+        resolveProcess = resolve;
+      });
+    };
+    // Disable streaming to force processMessage path
+    provider.streamMessage = undefined;
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+    await connector.initialize();
+
+    const routePromise = router.route(createMessage());
+
+    // After initial ack, advance time past the progress interval
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Should have sent ack + 1 progress update
+    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toBe('Still working on it...');
+
+    // Advance again — second progress update with different message
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(connector.sentMessages).toHaveLength(3);
+    expect(connector.sentMessages[2]?.content).toBe('This is taking a moment \u2014 hang tight...');
+
+    // Resolve the provider and complete routing
+    resolveProcess({ content: 'Done!' });
+    await routePromise;
+
+    // Final response sent
+    expect(connector.sentMessages).toHaveLength(4);
+    expect(connector.sentMessages[3]?.content).toBe('Done!');
+  });
+
+  it('should stop progress updates after provider completes', async () => {
+    const router = new Router('mock', { progressIntervalMs: 5_000 });
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+    provider.setResponse({ content: 'Quick response' });
+    // Disable streaming
+    provider.streamMessage = undefined;
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+    await connector.initialize();
+
+    await router.route(createMessage());
+
+    // ack + response only (no progress because it was fast)
+    expect(connector.sentMessages).toHaveLength(2);
+
+    // Advance time — no more progress updates should be sent
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(connector.sentMessages).toHaveLength(2);
+  });
+
+  it('should stop progress updates on provider error', async () => {
+    const router = new Router('mock', { progressIntervalMs: 5_000 });
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+
+    let rejectProcess!: (error: Error) => void;
+    provider.processMessage = (_message: InboundMessage) => {
+      return new Promise((_resolve, reject) => {
+        rejectProcess = reject;
+      });
+    };
+    provider.streamMessage = undefined;
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+    await connector.initialize();
+
+    const routePromise = router.route(createMessage());
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    // ack + 1 progress update
+    expect(connector.sentMessages).toHaveLength(2);
+
+    rejectProcess(new Error('Provider failed'));
+    await expect(routePromise).rejects.toThrow('Provider failed');
+
+    // Advance more — no further progress updates
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(connector.sentMessages).toHaveLength(2);
+  });
+
+  it('should refresh typing indicator on each progress tick', async () => {
+    const router = new Router('mock', { progressIntervalMs: 10_000 });
+    const connector = new MockConnector();
+    const provider = new MockProvider();
+
+    let resolveProcess!: (result: { content: string }) => void;
+    provider.processMessage = (_message: InboundMessage) => {
+      return new Promise((resolve) => {
+        resolveProcess = resolve;
+      });
+    };
+    provider.streamMessage = undefined;
+
+    router.addConnector(connector);
+    router.addProvider(provider);
+    await connector.initialize();
+
+    const routePromise = router.route(createMessage());
+    // Flush microtask queue so route() proceeds past the awaited ack + typing indicator
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Initial typing indicator
+    expect(connector.typingIndicators).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    // Progress tick refreshes typing indicator
+    expect(connector.typingIndicators).toHaveLength(2);
+
+    resolveProcess({ content: 'Done' });
+    await routePromise;
   });
 });

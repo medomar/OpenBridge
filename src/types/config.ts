@@ -34,6 +34,11 @@ export const QueueConfigSchema = z.object({
   retryDelayMs: z.number().int().positive().default(1_000),
 });
 
+/** Schema for router configuration */
+export const RouterConfigSchema = z.object({
+  progressIntervalMs: z.number().int().positive().default(15_000),
+});
+
 /** Root configuration schema */
 export const AppConfigSchema = z.object({
   connectors: z.array(ConnectorConfigSchema).min(1),
@@ -41,6 +46,7 @@ export const AppConfigSchema = z.object({
   defaultProvider: z.string(),
   auth: AuthConfigSchema,
   queue: QueueConfigSchema.default({}),
+  router: RouterConfigSchema.default({}),
   logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 });
 
@@ -49,4 +55,5 @@ export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type RateLimitConfig = z.infer<typeof RateLimitConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type QueueConfig = z.infer<typeof QueueConfigSchema>;
+export type RouterConfig = z.infer<typeof RouterConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
