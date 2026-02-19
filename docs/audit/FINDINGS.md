@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 15 | **Fixed:** 22 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 14 | **Fixed:** 23 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  6   |   9   |     0     |  15   |
+| 🟡 Medium   |  5   |  10   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
 ## Summary by Category
@@ -21,7 +21,7 @@
 | --------------------- | :--: | :---: | :---: |
 | Connector Reliability |  1   |   4   |   5   |
 | Provider Robustness   |  2   |   3   |   5   |
-| Security              |  2   |   3   |   5   |
+| Security              |  1   |   4   |   5   |
 | Core Engine           |  0   |   6   |   6   |
 | Configuration         |  2   |   2   |   4   |
 | Testing               |  2   |   3   |   5   |
@@ -61,7 +61,7 @@
 | OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | ✅ Fixed | `claude-code-provider.ts` | 2026-02-19 |
 | OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
 | OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | ✅ Fixed | `router.ts`               | 2026-02-19 |
-| OB-021 | No audit logging — message history not persisted                                  | Security              | 🟡 Open  | `bridge.ts`               | 2026-02-19 |
+| OB-021 | No audit logging — message history not persisted                                  | Security              | ✅ Fixed | `audit-logger.ts`         | 2026-02-19 |
 | OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
 | OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |
 | OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | 🟡 Open  | —                         | 2026-02-19 |

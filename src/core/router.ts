@@ -2,6 +2,7 @@ import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { RouterConfig } from '../types/config.js';
+import type { AuditLogger } from './audit-logger.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -19,10 +20,12 @@ export class Router {
   private readonly providers = new Map<string, AIProvider>();
   private defaultProviderName: string;
   private readonly progressIntervalMs: number;
+  private readonly auditLogger?: AuditLogger;
 
-  constructor(defaultProvider: string, config?: RouterConfig) {
+  constructor(defaultProvider: string, config?: RouterConfig, auditLogger?: AuditLogger) {
     this.defaultProviderName = defaultProvider;
     this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
+    this.auditLogger = auditLogger;
   }
 
   /** Register an active connector */
@@ -96,6 +99,10 @@ export class Router {
         };
         await connector.sendMessage(errorResponse);
       }
+      void this.auditLogger?.logError(
+        message.id,
+        error instanceof Error ? error.message : 'Unknown error',
+      );
       throw error;
     }
 
@@ -110,6 +117,7 @@ export class Router {
       metadata: result.metadata,
     };
     await connector.sendMessage(response);
+    void this.auditLogger?.logOutbound(response);
 
     logger.info({ messageId: message.id }, 'Message processed and response sent');
   }

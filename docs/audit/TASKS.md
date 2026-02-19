@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 21 | **In Progress:** 0 | **Pending:** 16
-> **Health Score:** 6.495/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 22 | **In Progress:** 0 | **Pending:** 15
+> **Health Score:** 6.51/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -10,7 +10,7 @@
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
-|   2   | UX + robustness                 |  11   |  9   |   ◻    |
+|   2   | UX + robustness                 |  11   |  10  |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
@@ -51,7 +51,7 @@
 | 18  | Implement per-user message queues (parallel processing across users)      | OB-019  | 🟡 Medium |  ✅ Done  |
 | 19  | Add progress updates for long-running tasks                               | OB-020  | 🟡 Medium |  ✅ Done  |
 | 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium |  ✅ Done  |
-| 21  | Add audit logging — persist message history                               | OB-021  | 🟡 Medium | ◻ Pending |
+| 21  | Add audit logging — persist message history                               | OB-021  | 🟡 Medium |  ✅ Done  |
 | 22  | Add command allow/deny list for AI operations                             | OB-027  | 🟡 Medium |  ✅ Done  |
 | 23  | Add config hot-reload without restart                                     | OB-017  | 🟡 Medium | ◻ Pending |
 
