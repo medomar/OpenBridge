@@ -55,3 +55,6 @@ pids/
 # Config files with secrets
 config.local.json
 config.production.json
+
+# Script runtime state
+docs/audit/.current_task
