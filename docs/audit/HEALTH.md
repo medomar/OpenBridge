@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.57/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.555
+> **Current Score:** 6.585/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.57
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **0 high** | **1 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **0 high** | **0 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -74,6 +74,7 @@
 | 2026-02-19 | 6.54  | +0.015 | OB-017 fixed — Config hot-reload via file watcher with debounced auth/rate-limit apply |
 | 2026-02-19 | 6.555 | +0.015 | OB-025 fixed — Deployment guide with Docker, PM2, and systemd instructions             |
 | 2026-02-19 | 6.57  | +0.015 | OB-024 fixed — Metrics collection with message counts, latency, and error tracking     |
+| 2026-02-19 | 6.585 | +0.015 | OB-026 fixed — Troubleshooting guide with common errors, causes, and solutions         |
 
 ---
 
