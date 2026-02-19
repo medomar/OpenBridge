@@ -160,15 +160,14 @@ fi
 mkdir -p "$LOG_PATH"
 
 # Extract prompt content between ```` fences
-PROMPT_TEMPLATE=$(sed -n '/^````$/,/^````$/{ /^````$/d; p; }' "$PROMPT_FILE")
+PROMPT_TEMPLATE_RAW=$(sed -n '/^````$/,/^````$/{ /^````$/d; p; }' "$PROMPT_FILE")
 
-# Inject configuration into prompt
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{PHASE\}\}/$PHASE_FILTER}"
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{TASK_ID\}\}/none}"
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{TASKS_FILE\}\}/$TASKS_FILE}"
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{FINDINGS_FILE\}\}/$FINDINGS_FILE}"
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{HEALTH_FILE\}\}/$HEALTH_FILE}"
-PROMPT_TEMPLATE="${PROMPT_TEMPLATE//\{\{POINTER_FILE\}\}/$POINTER_FILE}"
+# Inject static configuration into prompt (TASK_ID is injected per-agent)
+PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{PHASE\}\}/$PHASE_FILTER}"
+PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{TASKS_FILE\}\}/$TASKS_FILE}"
+PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{FINDINGS_FILE\}\}/$FINDINGS_FILE}"
+PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{HEALTH_FILE\}\}/$HEALTH_FILE}"
+PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{POINTER_FILE\}\}/$POINTER_FILE}"
 
 # Build claude command flags
 CLAUDE_FLAGS=(--print)
@@ -181,6 +180,36 @@ fi
 for tool in "${ALLOWED_TOOLS[@]}"; do
   CLAUDE_FLAGS+=(--allowedTools "$tool")
 done
+
+# ── Get Pending Tasks ───────────────────────────────────────────
+# Parses TASKS.md to find pending task IDs, respecting phase filter.
+# Returns one task ID per line.
+
+get_pending_tasks() {
+  local tasks_file="$1"
+  local phase="$2"
+  local max_count="${3:-0}"  # 0 = unlimited
+
+  if [[ "$phase" != "none" ]]; then
+    # Extract only the section for the specified phase
+    # Match from "## Phase N" until the next "## Phase" or "## Status" or end of file
+    sed -n "/^## Phase $phase/,/^## Phase \|^## Status/p" "$tasks_file" \
+      | grep '◻ Pending' \
+      | grep -oE 'OB-[0-9]+' \
+      | head -${max_count:-999}
+  else
+    # All phases
+    grep '◻ Pending' "$tasks_file" \
+      | grep -oE 'OB-[0-9]+' \
+      | head -${max_count:-999}
+  fi
+}
+
+# Build prompt for a specific task ID
+build_prompt() {
+  local task_id="$1"
+  echo "${PROMPT_TEMPLATE_RAW//\{\{TASK_ID\}\}/$task_id}"
+}
 
 # Persistent iteration counter
 if [ -f "$COUNTER_FILE" ]; then
@@ -225,16 +254,22 @@ trap 'write_state "stopped"; echo ""; echo "Task runner stopped."' EXIT
 run_agent() {
   local agent_id="$1"
   local log_file="$2"
+  local prompt="$3"
 
   cd "$PROJECT_DIR" && \
   claude "${CLAUDE_FLAGS[@]}" \
-    -p "$PROMPT_TEMPLATE" \
+    -p "$prompt" \
     2>&1 | tee "$log_file"
 
   return ${PIPESTATUS[0]}
 }
 
 # ── Banner ───────────────────────────────────────────────────────
+
+PARALLEL_MODE="sequential"
+if [ "$PARALLEL" -gt 1 ]; then
+  PARALLEL_MODE="distributed ($PARALLEL agents on $PARALLEL tasks)"
+fi
 
 echo ""
 echo "╔═════════════════════════════════════════════════════════════╗"
@@ -244,7 +279,7 @@ echo "║  Project:   $PROJECT_DIR"
 echo "║  Tasks:     $TASKS_FILE"
 echo "║  Phase:     ${PHASE_FILTER}"
 echo "║  Model:     ${MODEL:-default}"
-echo "║  Parallel:  $PARALLEL agent(s)"
+echo "║  Mode:      $PARALLEL_MODE"
 echo "║  Max turns: ${MAX_TURNS:-unlimited}"
 echo "║  Retries:   $MAX_CONSECUTIVE_FAILURES max consecutive"
 echo "╚═════════════════════════════════════════════════════════════╝"
@@ -262,7 +297,7 @@ while true; do
   echo "  Iteration #$ITERATION — $(date)"
   echo "═══════════════════════════════════════════════════════════"
 
-  # Check pointer file before launching
+  # Check pointer file for DONE signal
   if [ -f "$POINTER_PATH" ]; then
     POINTER_CONTENT=$(cat "$POINTER_PATH")
     if echo "$POINTER_CONTENT" | grep -qi "^DONE$"; then
@@ -270,41 +305,70 @@ while true; do
       echo "All tasks are complete. Exiting loop."
       exit 0
     fi
-    echo "Next task: $POINTER_CONTENT"
-  else
-    echo "No pointer file — agent will scan $TASKS_FILE."
+  fi
+
+  # Scan TASKS.md for pending tasks
+  PENDING_TASKS=$(get_pending_tasks "$TASKS_PATH" "$PHASE_FILTER" "$PARALLEL")
+  PENDING_COUNT=$(echo "$PENDING_TASKS" | grep -c 'OB-' || echo "0")
+
+  if [ "$PENDING_COUNT" -eq 0 ]; then
+    write_state "completed"
+    echo "DONE" > "$POINTER_PATH"
+    echo "No pending tasks found. All done!"
+    exit 0
   fi
 
   if [ "$PARALLEL" -eq 1 ]; then
     # ── Sequential mode ──────────────────────────────────────────
-    LOG_FILE="$LOG_PATH/run_${ITERATION}_${TIMESTAMP}.log"
-    echo "Log: $LOG_FILE"
+    TASK_ID=$(echo "$PENDING_TASKS" | head -1)
+    LOG_FILE="$LOG_PATH/run_${ITERATION}_${TASK_ID}_${TIMESTAMP}.log"
+    AGENT_PROMPT=$(build_prompt "$TASK_ID")
+
+    echo "Task:   $TASK_ID"
+    echo "Log:    $LOG_FILE"
     echo "───────────────────────────────────────────────────────────"
 
-    run_agent 1 "$LOG_FILE"
+    run_agent 1 "$LOG_FILE" "$AGENT_PROMPT"
     EXIT_CODE=$?
 
   else
-    # ── Parallel mode ────────────────────────────────────────────
-    echo "Launching $PARALLEL agents in parallel..."
-    echo "───────────────────────────────────────────────────────────"
+    # ── Distributed parallel mode ─────────────────────────────────
+    # Each agent gets a UNIQUE task from the pending list
+    AGENT_COUNT=$((PENDING_COUNT < PARALLEL ? PENDING_COUNT : PARALLEL))
+    echo "Distributing $AGENT_COUNT task(s) across $AGENT_COUNT agent(s)..."
+    echo ""
 
     PIDS=()
     LOG_FILES=()
-    for i in $(seq 1 "$PARALLEL"); do
-      LOG_FILE="$LOG_PATH/run_${ITERATION}_agent${i}_${TIMESTAMP}.log"
-      LOG_FILES+=("$LOG_FILE")
-      echo "  Agent #$i → $LOG_FILE"
+    AGENT_TASKS=()
+    AGENT_IDX=1
 
-      run_agent "$i" "$LOG_FILE" &
+    while IFS= read -r TASK_ID; do
+      if [ "$AGENT_IDX" -gt "$PARALLEL" ]; then
+        break
+      fi
+
+      LOG_FILE="$LOG_PATH/run_${ITERATION}_agent${AGENT_IDX}_${TASK_ID}_${TIMESTAMP}.log"
+      LOG_FILES+=("$LOG_FILE")
+      AGENT_TASKS+=("$TASK_ID")
+      AGENT_PROMPT=$(build_prompt "$TASK_ID")
+
+      echo "  Agent #$AGENT_IDX → $TASK_ID  ($LOG_FILE)"
+
+      run_agent "$AGENT_IDX" "$LOG_FILE" "$AGENT_PROMPT" &
       PIDS+=($!)
-    done
+
+      AGENT_IDX=$((AGENT_IDX + 1))
+    done <<< "$PENDING_TASKS"
+
+    echo ""
+    echo "───────────────────────────────────────────────────────────"
 
     # Wait for all agents and collect exit codes
     EXIT_CODE=0
     for i in "${!PIDS[@]}"; do
       wait "${PIDS[$i]}" || EXIT_CODE=1
-      echo "  Agent #$((i + 1)) finished (PID ${PIDS[$i]})"
+      echo "  Agent #$((i + 1)) finished — ${AGENT_TASKS[$i]} (PID ${PIDS[$i]})"
     done
   fi
 
@@ -331,14 +395,14 @@ while true; do
     CONSECUTIVE_FAILURES=0
   fi
 
-  # Check pointer after the run
-  if [ -f "$POINTER_PATH" ]; then
-    POINTER_CONTENT=$(cat "$POINTER_PATH")
-    if echo "$POINTER_CONTENT" | grep -qi "^DONE$"; then
-      echo ""
-      echo "All tasks complete after iteration #$ITERATION."
-      exit 0
-    fi
+  # Check if all tasks are now complete
+  REMAINING=$(get_pending_tasks "$TASKS_PATH" "$PHASE_FILTER" 1)
+  if [ -z "$REMAINING" ]; then
+    write_state "completed"
+    echo "DONE" > "$POINTER_PATH"
+    echo ""
+    echo "All tasks complete after iteration #$ITERATION."
+    exit 0
   fi
 
   echo "Next iteration in ${SLEEP_BETWEEN}s... (Ctrl+C to stop)"

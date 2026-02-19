@@ -87,9 +87,11 @@ Create a single conventional commit for all changes:
 ## Step 7: Update Pointer
 
 Write the NEXT pending task ID to `{{POINTER_FILE}}`.
+- Look at `{{TASKS_FILE}}` to find the next task that is still `◻ Pending` (after your current task).
 - If there are more pending tasks in the current phase, write the next one.
 - If the current phase is complete but more phases have pending tasks, write the first pending task of the next phase.
 - If ALL tasks are complete, write `DONE`.
+- Note: When running in distributed parallel mode, multiple agents may update this file. The runner script handles task distribution — this pointer is a best-effort hint.
 
 ## Rules
 

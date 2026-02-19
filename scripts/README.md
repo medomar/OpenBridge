@@ -191,9 +191,31 @@ Same path and model options as `run-tasks.sh`, plus:
 8. Writes the next task ID to the pointer file
 9. Loop continues until all tasks are done or failures exceed retry limit
 
-### Parallel mode
+### Parallel mode (distributed)
 
-When `--parallel N` is set (N > 1), the runner launches N Claude Code agents simultaneously. Each agent independently picks and executes the next pending task.
+When `--parallel N` is set (N > 1), the runner uses **true distributed parallelism**:
+
+1. Scans `TASKS.md` for pending tasks (respecting `--phase` filter)
+2. Picks the next N pending tasks (e.g., OB-006, OB-007, OB-008, OB-009, OB-010)
+3. Assigns **each agent a unique task** via the `{{TASK_ID}}` template variable
+4. Launches all N agents simultaneously, each working on its own task
+5. Waits for all agents to finish, then starts the next batch
+
+```
+Iteration #1:
+  Agent #1 → OB-006
+  Agent #2 → OB-007
+  Agent #3 → OB-008
+  Agent #4 → OB-009
+  Agent #5 → OB-010
+
+Iteration #2:
+  Agent #1 → OB-011
+  Agent #2 → OB-012
+  ...
+```
+
+If fewer pending tasks remain than the parallel count, only that many agents are launched (e.g., 2 tasks left with `--parallel 5` → only 2 agents).
 
 **Note:** Parallel mode works best when tasks don't modify the same files. For tasks that touch shared code, use sequential mode (`--parallel 1`).
 
@@ -226,12 +248,12 @@ All runtime files are in `logs/task-runs/` (gitignored):
 
 ```
 logs/task-runs/
-├── .iteration_counter                    # Persistent counter (survives restarts)
-├── .run_state.json                       # Current run state (used by status/stop)
-├── run_1_20260219_143012.log             # Sequential iteration logs
-├── run_2_agent1_20260219_143512.log      # Parallel agent logs
-├── run_2_agent2_20260219_143512.log
-└── single_OB-003_20260219_150000.log     # Single task logs
+├── .iteration_counter                              # Persistent counter (survives restarts)
+├── .run_state.json                                 # Current run state (used by status/stop)
+├── run_1_OB-006_20260219_143012.log                # Sequential: iteration_taskID_timestamp
+├── run_2_agent1_OB-007_20260219_143512.log         # Parallel: iteration_agent_taskID_timestamp
+├── run_2_agent2_OB-008_20260219_143512.log
+└── single_OB-003_20260219_150000.log               # Single task runner logs
 ```
 
 ---
