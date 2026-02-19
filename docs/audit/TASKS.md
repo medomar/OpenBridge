@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 7 | **In Progress:** 0 | **Pending:** 30
-> **Health Score:** 6.21/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 8 | **In Progress:** 0 | **Pending:** 29
+> **Health Score:** 6.24/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
-|   1   | Critical reliability + security |  12   |  7   |   ◻    |
+|   1   | Critical reliability + security |  12   |  8   |   ◻    |
 |   2   | UX + robustness                 |  11   |  0   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |

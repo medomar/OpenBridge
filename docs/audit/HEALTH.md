@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.18/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** 6.15
+> **Current Score:** 6.21/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.18
 
 ---
 
@@ -15,7 +15,7 @@
 | Providers     |   15%    | 5.5/10 |   0.825   | Claude Code V0 works (CLI spawn, timeout, workspace scoping). Missing: streaming, conversation context, multi-model support, error classification.      |
 | Configuration |   10%    | 7.5/10 |   0.750   | Zod validation solid. Example config provided. Missing: tilde path resolution, config hot-reload, per-connector/provider validation.                    |
 | Security      |   10%    | 6.6/10 |   0.660   | Phone whitelist + prefix auth + input sanitization + per-user rate limiting implemented. Missing: command injection hardening, audit logging.           |
-| Testing       |   10%    | 5.0/10 |   0.500   | 36 unit tests passing (auth, queue, config, registry, router, executor, rate-limiter). Missing: integration tests, WhatsApp connector tests, E2E tests. |
+| Testing       |   10%    | 5.0/10 |   0.500   | 38 unit tests passing (auth, queue, config, registry, router, executor, rate-limiter). Missing: integration tests, WhatsApp connector tests, E2E tests. |
 | Documentation |    5%    | 5.0/10 |   0.250   | Architecture, config, and plugin guides created. Missing: API reference, troubleshooting guide, deployment guide, examples.                             |
 | **TOTAL**     | **100%** |   —    | **6.500** | **Rounded: 6.0/10** (conservative — no integration testing yet)                                                                                         |
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **6 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **5 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -54,6 +54,7 @@
 | 2026-02-19 | 6.12  | +0.03  | OB-004 fixed — Per-user rate limiting with configurable window and max count           |
 | 2026-02-19 | 6.15  | +0.03  | OB-005 fixed — Message queue retry logic with configurable maxRetries and retryDelayMs |
 | 2026-02-19 | 6.18  | +0.03  | OB-012 fixed — Bridge.stop() shuts down all connectors and providers gracefully        |
+| 2026-02-19 | 6.21  | +0.03  | OB-011 fixed — Queue drain on shutdown waits for in-flight messages to complete        |
 
 ---
 

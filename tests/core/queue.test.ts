@@ -108,4 +108,41 @@ describe('MessageQueue', () => {
     // Message '1' exhausted retries, message '2' should succeed
     expect(processed).toContain('2');
   });
+
+  it('drain() resolves immediately when queue is empty and not processing', async () => {
+    const queue = new MessageQueue();
+    queue.onMessage(async () => {});
+    await expect(queue.drain()).resolves.toBeUndefined();
+  });
+
+  it('drain() waits for in-flight message to complete', async () => {
+    const queue = new MessageQueue({ maxRetries: 0 });
+    const processed: string[] = [];
+
+    let resolveHandler!: () => void;
+    queue.onMessage(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveHandler = resolve;
+        }),
+    );
+
+    void queue.enqueue(createMessage('1'));
+
+    const drainPromise = queue.drain();
+    let drained = false;
+    void drainPromise.then(() => {
+      drained = true;
+    });
+
+    // Not yet drained — handler is still blocked
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(drained).toBe(false);
+
+    // Unblock the handler
+    resolveHandler();
+    await drainPromise;
+    expect(drained).toBe(true);
+    expect(processed).toHaveLength(0);
+  });
 });

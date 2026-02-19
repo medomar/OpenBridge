@@ -20,6 +20,7 @@ export class MessageQueue {
   private processing = false;
   private handler: ((message: InboundMessage) => Promise<void>) | null = null;
   private readonly config: QueueConfig;
+  private drainResolvers: (() => void)[] = [];
 
   constructor(config: Partial<QueueConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -40,10 +41,24 @@ export class MessageQueue {
     }
   }
 
+  /** Wait until the queue is empty and all in-flight messages have been processed */
+  drain(): Promise<void> {
+    if (!this.processing && this.queue.length === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      this.drainResolvers.push(resolve);
+    });
+  }
+
   /** Process the next message in the queue */
   private async processNext(): Promise<void> {
     if (this.queue.length === 0 || !this.handler) {
       this.processing = false;
+      for (const resolve of this.drainResolvers) {
+        resolve();
+      }
+      this.drainResolvers = [];
       return;
     }
 
