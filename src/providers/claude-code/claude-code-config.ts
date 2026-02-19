@@ -15,6 +15,7 @@ export const ClaudeCodeConfigSchema = z.object({
   workspacePath: z.string().default('.').transform(resolveTilde),
   maxTokens: z.number().positive().default(4096),
   timeout: z.number().positive().default(120_000), // 2 minutes
+  sessionTtlMs: z.number().int().nonnegative().default(1_800_000), // 30 minutes
 });
 
 export type ClaudeCodeConfig = z.infer<typeof ClaudeCodeConfigSchema>;
