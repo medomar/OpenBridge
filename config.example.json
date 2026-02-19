@@ -22,7 +22,12 @@
   "defaultProvider": "claude-code",
   "auth": {
     "whitelist": ["+1234567890"],
-    "prefix": "/ai"
+    "prefix": "/ai",
+    "rateLimit": {
+      "enabled": true,
+      "maxMessages": 10,
+      "windowMs": 60000
+    }
   },
   "logLevel": "info"
 }

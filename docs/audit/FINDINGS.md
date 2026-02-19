@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 34 | **Fixed:** 3 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 33 | **Fixed:** 4 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  9   |   3   |     0     |  12   |
+| 🟠 High     |  8   |   4   |     0     |  12   |
 | 🟡 Medium   |  15  |   0   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
@@ -21,7 +21,7 @@
 | --------------------- | :--: | :---: | :---: |
 | Connector Reliability |  3   |   2   |   5   |
 | Provider Robustness   |  5   |   0   |   5   |
-| Security              |  4   |   1   |   5   |
+| Security              |  3   |   2   |   5   |
 | Core Engine           |  6   |   0   |   6   |
 | Configuration         |  4   |   0   |   4   |
 | Testing               |  5   |   0   |   5   |
@@ -39,7 +39,7 @@
 | OB-001 | No auto-reconnect on WhatsApp disconnect — session drops require manual restart        | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
 | OB-003 | No input sanitization — raw user messages forwarded to CLI without escaping            | Security              | ✅ Fixed | `claude-code-executor.ts` | 2026-02-19 |
-| OB-004 | No rate limiting — single user can flood the message queue                             | Security              | 🟠 Open  | `queue.ts`, `auth.ts`     | 2026-02-19 |
+| OB-004 | No rate limiting — single user can flood the message queue                             | Security              | ✅ Fixed | `rate-limiter.ts`         | 2026-02-19 |
 | OB-005 | No error retry in message queue — transient failures permanently drop messages         | Core Engine           | 🟠 Open  | `queue.ts`                | 2026-02-19 |
 | OB-006 | No streaming support — long AI responses block until complete (timeout risk)           | Provider Robustness   | 🟠 Open  | `claude-code-executor.ts` | 2026-02-19 |
 | OB-007 | Claude Code provider has no conversation context — each message is stateless           | Provider Robustness   | 🟠 Open  | `claude-code-provider.ts` | 2026-02-19 |

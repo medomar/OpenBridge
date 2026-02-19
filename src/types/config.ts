@@ -14,10 +14,18 @@ export const ProviderConfigSchema = z.object({
   options: z.record(z.unknown()).default({}),
 });
 
+/** Schema for rate limit configuration */
+export const RateLimitConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxMessages: z.number().int().positive().default(10),
+  windowMs: z.number().int().positive().default(60_000),
+});
+
 /** Schema for auth configuration */
 export const AuthConfigSchema = z.object({
   whitelist: z.array(z.string()).default([]),
   prefix: z.string().default('/ai'),
+  rateLimit: RateLimitConfigSchema.default({}),
 });
 
 /** Root configuration schema */
@@ -31,5 +39,6 @@ export const AppConfigSchema = z.object({
 
 export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
+export type RateLimitConfig = z.infer<typeof RateLimitConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;

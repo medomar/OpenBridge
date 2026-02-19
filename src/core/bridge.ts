@@ -3,6 +3,7 @@ import type { InboundMessage } from '../types/message.js';
 import { AuthService } from './auth.js';
 import { MessageQueue } from './queue.js';
 import { PluginRegistry } from './registry.js';
+import { RateLimiter } from './rate-limiter.js';
 import { Router } from './router.js';
 import { createLogger } from './logger.js';
 
@@ -11,6 +12,7 @@ const logger = createLogger('bridge');
 export class Bridge {
   private readonly config: AppConfig;
   private readonly auth: AuthService;
+  private readonly rateLimiter: RateLimiter;
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
   private readonly router: Router;
@@ -18,6 +20,7 @@ export class Bridge {
   constructor(config: AppConfig) {
     this.config = config;
     this.auth = new AuthService(config.auth);
+    this.rateLimiter = new RateLimiter(config.auth.rateLimit);
     this.queue = new MessageQueue();
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider);
@@ -92,6 +95,11 @@ export class Bridge {
 
     if (!this.auth.hasPrefix(message.rawContent)) {
       return; // Not a command, ignore silently
+    }
+
+    if (!this.rateLimiter.isAllowed(message.sender)) {
+      logger.warn({ sender: message.sender }, 'Message dropped — rate limit exceeded');
+      return;
     }
 
     const cleaned: InboundMessage = {

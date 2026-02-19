@@ -32,6 +32,34 @@ describe('AppConfigSchema', () => {
     expect(result.connectors[0]?.enabled).toBe(true);
   });
 
+  it('should apply rateLimit defaults when not specified', () => {
+    const config = {
+      connectors: [{ type: 'whatsapp' }],
+      providers: [{ type: 'claude-code' }],
+      defaultProvider: 'claude-code',
+      auth: {},
+    };
+
+    const result = AppConfigSchema.parse(config);
+    expect(result.auth.rateLimit.enabled).toBe(true);
+    expect(result.auth.rateLimit.maxMessages).toBe(10);
+    expect(result.auth.rateLimit.windowMs).toBe(60_000);
+  });
+
+  it('should accept custom rateLimit config', () => {
+    const config = {
+      connectors: [{ type: 'whatsapp' }],
+      providers: [{ type: 'claude-code' }],
+      defaultProvider: 'claude-code',
+      auth: { rateLimit: { enabled: false, maxMessages: 5, windowMs: 30_000 } },
+    };
+
+    const result = AppConfigSchema.parse(config);
+    expect(result.auth.rateLimit.enabled).toBe(false);
+    expect(result.auth.rateLimit.maxMessages).toBe(5);
+    expect(result.auth.rateLimit.windowMs).toBe(30_000);
+  });
+
   it('should reject config with no connectors', () => {
     const config = {
       connectors: [],
