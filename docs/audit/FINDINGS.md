@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 37 | **Fixed:** 0 | **By Design:** 0
+> **Total Issues:** 37 | **Open:** 36 | **Fixed:** 1 | **By Design:** 0
 > **Next Issue ID:** OB-038
 > **Last Updated:** 2026-02-19
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  12  |   0   |     0     |  12   |
+| 🟠 High     |  11  |   1   |     0     |  12   |
 | 🟡 Medium   |  15  |   0   |     0     |  15   |
 | 🟢 Low      |  10  |   0   |     0     |  10   |
 
@@ -19,7 +19,7 @@
 
 | Category              | Open | Fixed | Total |
 | --------------------- | :--: | :---: | :---: |
-| Connector Reliability |  5   |   0   |   5   |
+| Connector Reliability |  4   |   1   |   5   |
 | Provider Robustness   |  5   |   0   |   5   |
 | Security              |  5   |   0   |   5   |
 | Core Engine           |  6   |   0   |   6   |
@@ -34,20 +34,20 @@
 
 ### 🟠 High
 
-| ID     | Description                                                                            | Category              | Status  | File                      | Date       |
-| ------ | -------------------------------------------------------------------------------------- | --------------------- | :-----: | ------------------------- | ---------- |
-| OB-001 | No auto-reconnect on WhatsApp disconnect — session drops require manual restart        | Connector Reliability | 🟠 Open | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | 🟠 Open | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-003 | No input sanitization — raw user messages forwarded to CLI without escaping            | Security              | 🟠 Open | `claude-code-executor.ts` | 2026-02-19 |
-| OB-004 | No rate limiting — single user can flood the message queue                             | Security              | 🟠 Open | `queue.ts`, `auth.ts`     | 2026-02-19 |
-| OB-005 | No error retry in message queue — transient failures permanently drop messages         | Core Engine           | 🟠 Open | `queue.ts`                | 2026-02-19 |
-| OB-006 | No streaming support — long AI responses block until complete (timeout risk)           | Provider Robustness   | 🟠 Open | `claude-code-executor.ts` | 2026-02-19 |
-| OB-007 | Claude Code provider has no conversation context — each message is stateless           | Provider Robustness   | 🟠 Open | `claude-code-provider.ts` | 2026-02-19 |
-| OB-008 | No integration tests for full message flow (connector → bridge → provider → connector) | Testing               | 🟠 Open | `tests/`                  | 2026-02-19 |
-| OB-009 | WhatsApp connector tests missing — only mock interface exists                          | Testing               | 🟠 Open | `tests/connectors/`       | 2026-02-19 |
-| OB-010 | Claude Code provider tests missing — executor not tested                               | Testing               | 🟠 Open | `tests/providers/`        | 2026-02-19 |
-| OB-011 | No graceful message handling during shutdown — in-flight messages may be lost          | Core Engine           | 🟠 Open | `bridge.ts`, `queue.ts`   | 2026-02-19 |
-| OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | 🟠 Open | `bridge.ts`               | 2026-02-19 |
+| ID     | Description                                                                            | Category              |  Status  | File                      | Date       |
+| ------ | -------------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
+| OB-001 | No auto-reconnect on WhatsApp disconnect — session drops require manual restart        | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | 🟠 Open  | `whatsapp-connector.ts`   | 2026-02-19 |
+| OB-003 | No input sanitization — raw user messages forwarded to CLI without escaping            | Security              | 🟠 Open  | `claude-code-executor.ts` | 2026-02-19 |
+| OB-004 | No rate limiting — single user can flood the message queue                             | Security              | 🟠 Open  | `queue.ts`, `auth.ts`     | 2026-02-19 |
+| OB-005 | No error retry in message queue — transient failures permanently drop messages         | Core Engine           | 🟠 Open  | `queue.ts`                | 2026-02-19 |
+| OB-006 | No streaming support — long AI responses block until complete (timeout risk)           | Provider Robustness   | 🟠 Open  | `claude-code-executor.ts` | 2026-02-19 |
+| OB-007 | Claude Code provider has no conversation context — each message is stateless           | Provider Robustness   | 🟠 Open  | `claude-code-provider.ts` | 2026-02-19 |
+| OB-008 | No integration tests for full message flow (connector → bridge → provider → connector) | Testing               | 🟠 Open  | `tests/`                  | 2026-02-19 |
+| OB-009 | WhatsApp connector tests missing — only mock interface exists                          | Testing               | 🟠 Open  | `tests/connectors/`       | 2026-02-19 |
+| OB-010 | Claude Code provider tests missing — executor not tested                               | Testing               | 🟠 Open  | `tests/providers/`        | 2026-02-19 |
+| OB-011 | No graceful message handling during shutdown — in-flight messages may be lost          | Core Engine           | 🟠 Open  | `bridge.ts`, `queue.ts`   | 2026-02-19 |
+| OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | 🟠 Open  | `bridge.ts`               | 2026-02-19 |
 
 ### 🟡 Medium
 

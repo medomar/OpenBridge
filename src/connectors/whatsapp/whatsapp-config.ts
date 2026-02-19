@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 export const WhatsAppConfigSchema = z.object({
   sessionName: z.string().default('openbridge-default'),
+  reconnect: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxAttempts: z.number().int().min(0).default(10),
+      initialDelayMs: z.number().int().min(0).default(2000),
+      maxDelayMs: z.number().int().min(0).default(60000),
+      backoffFactor: z.number().min(1).default(2),
+    })
+    .default({}),
 });
 
 export type WhatsAppConfig = z.infer<typeof WhatsAppConfigSchema>;

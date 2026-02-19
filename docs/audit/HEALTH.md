@@ -1,7 +1,7 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.0/10 | **Target:** 9.0/10
-> **Last Audit:** 2026-02-19 | **Previous Score:** —
+> **Current Score:** 6.03/10 | **Target:** 9.0/10
+> **Last Audit:** 2026-02-19 | **Previous Score:** 6.0
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## Open Issues Summary
 
-**0/0 critical** | **12 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
+**0/0 critical** | **11 high** | **15 medium** | **10 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -48,6 +48,7 @@
 | Date       | Score | Change | Reason                                                                       |
 | ---------- | :---: | :----: | ---------------------------------------------------------------------------- |
 | 2026-02-19 |  6.0  |   —    | Initial audit — V0 scaffolding complete, 19 tests passing, all tooling green |
+| 2026-02-19 | 6.03  | +0.03  | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff               |
 
 ---
 
