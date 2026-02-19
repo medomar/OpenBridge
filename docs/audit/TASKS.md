@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 37 | **Done:** 18 | **In Progress:** 0 | **Pending:** 19
-> **Health Score:** 6.45/10 | **Last Updated:** 2026-02-19
+> **Total:** 37 | **Done:** 19 | **In Progress:** 0 | **Pending:** 18
+> **Health Score:** 6.465/10 | **Last Updated:** 2026-02-19
 
 ---
 
@@ -10,7 +10,7 @@
 | Phase | Focus                           | Tasks | Done | Status |
 | :---: | ------------------------------- | :---: | :--: | :----: |
 |   1   | Critical reliability + security |  12   |  12  |   ✅   |
-|   2   | UX + robustness                 |  11   |  6   |   ◻    |
+|   2   | UX + robustness                 |  11   |  7   |   ◻    |
 |   3   | Observability + DX              |   8   |  0   |   ◻    |
 |   4   | Polish + ecosystem              |   6   |  0   |   ◻    |
 
@@ -50,7 +50,7 @@
 | 17  | Classify provider errors (transient vs permanent) with different handling | OB-018  | 🟡 Medium |  ✅ Done  |
 | 18  | Implement per-user message queues (parallel processing across users)      | OB-019  | 🟡 Medium |  ✅ Done  |
 | 19  | Add progress updates for long-running tasks                               | OB-020  | 🟡 Medium | ◻ Pending |
-| 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium | ◻ Pending |
+| 20  | Implement dead letter queue for permanently failed messages               | OB-022  | 🟡 Medium |  ✅ Done  |
 | 21  | Add audit logging — persist message history                               | OB-021  | 🟡 Medium | ◻ Pending |
 | 22  | Add command allow/deny list for AI operations                             | OB-027  | 🟡 Medium | ◻ Pending |
 | 23  | Add config hot-reload without restart                                     | OB-017  | 🟡 Medium | ◻ Pending |

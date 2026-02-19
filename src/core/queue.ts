@@ -11,6 +11,13 @@ interface QueueItem {
   attempts: number;
 }
 
+export interface DeadLetterItem {
+  message: InboundMessage;
+  error: string;
+  attempts: number;
+  failedAt: Date;
+}
+
 const DEFAULT_CONFIG: QueueConfig = {
   maxRetries: 3,
   retryDelayMs: 1_000,
@@ -29,6 +36,7 @@ export class MessageQueue {
   private handler: ((message: InboundMessage) => Promise<void>) | null = null;
   private readonly config: QueueConfig;
   private drainResolvers: (() => void)[] = [];
+  private readonly dlq: DeadLetterItem[] = [];
 
   constructor(config: Partial<QueueConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -117,9 +125,22 @@ export class MessageQueue {
     }
 
     if (lastError !== undefined) {
+      const deadLetterItem: DeadLetterItem = {
+        message: item.message,
+        error:
+          lastError instanceof Error
+            ? lastError.message
+            : typeof lastError === 'string'
+              ? lastError
+              : 'Unknown error',
+        attempts: item.attempts,
+        failedAt: new Date(),
+      };
+      this.dlq.push(deadLetterItem);
+
       logger.error(
-        { messageId: item.message.id, attempts: item.attempts },
-        'Message permanently failed after all retries — dropping',
+        { messageId: item.message.id, attempts: item.attempts, dlqSize: this.dlq.length },
+        'Message permanently failed — moved to dead letter queue',
       );
     }
 
@@ -150,5 +171,20 @@ export class MessageQueue {
 
   get isProcessing(): boolean {
     return this.activeUsers.size > 0;
+  }
+
+  /** Returns a read-only snapshot of dead letter queue items */
+  get deadLetters(): ReadonlyArray<DeadLetterItem> {
+    return [...this.dlq];
+  }
+
+  /** Number of messages in the dead letter queue */
+  get deadLetterSize(): number {
+    return this.dlq.length;
+  }
+
+  /** Remove and return all items from the dead letter queue */
+  flushDeadLetters(): DeadLetterItem[] {
+    return this.dlq.splice(0);
   }
 }

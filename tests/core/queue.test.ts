@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MessageQueue } from '../../src/core/queue.js';
+import type { DeadLetterItem } from '../../src/core/queue.js';
 import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
@@ -275,5 +276,95 @@ describe('MessageQueue', () => {
 
     // 1 initial attempt + 2 retries = 3
     expect(handler).toHaveBeenCalledTimes(3);
+  });
+
+  // --- Dead Letter Queue tests ---
+
+  it('moves permanently failed messages to the dead letter queue', async () => {
+    const queue = new MessageQueue({ maxRetries: 1, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new Error('always fails'));
+
+    queue.onMessage(handler);
+
+    await queue.enqueue(createMessage('dlq-1'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(queue.deadLetterSize).toBe(1);
+    const items = queue.deadLetters;
+    expect(items[0]!.message.id).toBe('dlq-1');
+    expect(items[0]!.error).toBe('always fails');
+    expect(items[0]!.attempts).toBe(2); // 1 initial + 1 retry
+    expect(items[0]!.failedAt).toBeInstanceOf(Date);
+  });
+
+  it('moves permanent ProviderError messages to the DLQ without retries', async () => {
+    const queue = new MessageQueue({ maxRetries: 3, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new ProviderError('invalid api key', 'permanent', 1));
+
+    queue.onMessage(handler);
+
+    await queue.enqueue(createMessage('dlq-perm'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(queue.deadLetterSize).toBe(1);
+    expect(queue.deadLetters[0]!.error).toBe('invalid api key');
+  });
+
+  it('accumulates multiple failed messages in the DLQ', async () => {
+    const queue = new MessageQueue({ maxRetries: 0, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new Error('fail'));
+
+    queue.onMessage(handler);
+
+    await queue.enqueue(createMessage('f1'));
+    await queue.enqueue(createMessage('f2'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(queue.deadLetterSize).toBe(2);
+    expect(queue.deadLetters.map((d: DeadLetterItem) => d.message.id)).toEqual(['f1', 'f2']);
+  });
+
+  it('flushDeadLetters returns all items and empties the DLQ', async () => {
+    const queue = new MessageQueue({ maxRetries: 0, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new Error('fail'));
+
+    queue.onMessage(handler);
+
+    await queue.enqueue(createMessage('f1'));
+    await queue.enqueue(createMessage('f2'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const flushed = queue.flushDeadLetters();
+    expect(flushed).toHaveLength(2);
+    expect(queue.deadLetterSize).toBe(0);
+    expect(queue.deadLetters).toEqual([]);
+  });
+
+  it('deadLetters returns a snapshot (not a live reference)', async () => {
+    const queue = new MessageQueue({ maxRetries: 0, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new Error('fail'));
+
+    queue.onMessage(handler);
+
+    await queue.enqueue(createMessage('snap-1'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const snapshot = queue.deadLetters;
+    expect(snapshot).toHaveLength(1);
+
+    // Add another failed message
+    await queue.enqueue(createMessage('snap-2'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Original snapshot should be unchanged
+    expect(snapshot).toHaveLength(1);
+    expect(queue.deadLetters).toHaveLength(2);
+  });
+
+  it('DLQ starts empty', () => {
+    const queue = new MessageQueue();
+    expect(queue.deadLetterSize).toBe(0);
+    expect(queue.deadLetters).toEqual([]);
   });
 });
