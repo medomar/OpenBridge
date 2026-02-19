@@ -341,13 +341,14 @@ describe('WhatsAppConnector', () => {
     });
 
     it('resets reconnect attempt counter on successful reconnect', async () => {
+      // Use 0ms delay so the reconnect fires immediately when timers advance
       const connector = buildConnector({
         reconnect: {
           enabled: true,
           maxAttempts: 5,
-          initialDelayMs: 50,
-          maxDelayMs: 60000,
-          backoffFactor: 2,
+          initialDelayMs: 0,
+          maxDelayMs: 0,
+          backoffFactor: 1,
         },
       });
       await connector.initialize();
@@ -356,11 +357,13 @@ describe('WhatsAppConnector', () => {
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
 
-      // Disconnect and let reconnect happen
+      // Disconnect — schedules reconnect with 0ms delay
       mockClientInstance._trigger('disconnected', 'reason');
-      await vi.advanceTimersByTimeAsync(200);
 
-      // The new client fires ready — counter should reset
+      // Run all pending timers (0ms reconnect fires immediately)
+      await vi.runAllTimersAsync();
+
+      // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
     });
