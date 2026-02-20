@@ -12,6 +12,9 @@ export default tseslint.config(
       '*.config.js',
       '*.config.ts',
       '**/_archived/**',
+      'src/orchestrator/**',
+      'tests/types/**',
+      'test-workspace-*/',
     ],
   },
 

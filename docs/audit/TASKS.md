@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 4 tasks across 4 phases | **Next up:** Phase 10
+> **Pending:** 3 tasks across 3 phases | **Next up:** Phase 10
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -30,7 +30,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 |   7   | Master AI + `.openbridge/` folder |   6   |   ✅   |
 |   8   | V2 config + routing + CLI         |   7   |   ✅   |
 |   9   | Archive dead code + clean up      |   3   |   ✅   |
-|  10   | Multi-AI delegation               |   4   |   ◻    |
+|  10   | Multi-AI delegation               |   4   |   ✅   |
 |  11   | Status + interaction              |   3   |   ◻    |
 |  12   | Documentation rewrite             |   6   |   ◻    |
 |  13   | Testing + verification            |   8   |   ◻    |
@@ -128,7 +128,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | #   | Task                                                                                                                                              | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 65  | Add status command handler to Master Manager — intercept "status"/"progress" keywords, return exploration state + active tasks from local state   | OB-095 |  🟡 Med  | ◻ Pending |
+| 65  | Add status command handler to Master Manager — intercept "status"/"progress" keywords, return exploration state + active tasks from local state   | OB-095 |  🟡 Med  |  ✅ Done  |
 | 66  | Add exploration progress tracking — track milestones (started → scanning → analyzing → map generated → git initialized → complete), report on ask | OB-096 |  🟡 Med  | ◻ Pending |
 | 67  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project             | OB-097 | 🟠 High  | ◻ Pending |
 

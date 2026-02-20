@@ -642,6 +642,9 @@ export class MasterManager {
 
     const completedTasks = tasks.filter((t) => t.status === 'completed').length;
     const failedTasks = tasks.filter((t) => t.status === 'failed').length;
+    const processingTasks = tasks.filter(
+      (t) => t.status === 'processing' || t.status === 'delegated',
+    ).length;
 
     let status = `**OpenBridge Master AI Status**\n\n`;
     status += `State: ${this.state}\n`;
@@ -662,7 +665,24 @@ export class MasterManager {
     }
 
     status += `\nTasks: ${completedTasks} completed, ${failedTasks} failed, ${tasks.length} total\n`;
-    status += `Active Sessions: ${this.sessionMap.size}\n`;
+
+    // Show active delegations if any
+    const activeDelegations = this.delegationCoordinator.getActiveDelegations();
+    if (activeDelegations.length > 0) {
+      status += `\nActive Delegations (${activeDelegations.length}):\n`;
+      for (const delegation of activeDelegations) {
+        const elapsed = Date.now() - new Date(delegation.startedAt).getTime();
+        const elapsedSeconds = Math.floor(elapsed / 1000);
+        status += `  - ${delegation.tool.name}: ${delegation.task.description.slice(0, 60)}... (${elapsedSeconds}s)\n`;
+      }
+    }
+
+    // Show processing tasks if any
+    if (processingTasks > 0) {
+      status += `\nProcessing: ${processingTasks} task(s) in progress\n`;
+    }
+
+    status += `\nActive Sessions: ${this.sessionMap.size}\n`;
 
     return status;
   }

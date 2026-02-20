@@ -1,0 +1,18 @@
+{
+  "master": {
+    "name": "claude",
+    "path": "/usr/local/bin/claude",
+    "version": "1.0.0",
+    "role": "master"
+  },
+  "specialists": [
+    {
+      "name": "codex",
+      "path": "/usr/local/bin/codex",
+      "version": "2.0.0",
+      "role": "specialist",
+      "capabilities": ["code-generation"]
+    }
+  ],
+  "updatedAt": "2026-02-20T23:39:00.218Z"
+}
