@@ -16,3 +16,9 @@ export { loadConfig, resolveConfigPath } from './config.js';
 export { AuditLogger } from './audit-logger.js';
 export { HealthServer } from './health.js';
 export { MetricsCollector, MetricsServer } from './metrics.js';
+export { AgentOrchestrator } from './agent-orchestrator.js';
+export type {
+  OrchestratorConfig,
+  OrchestratorResult,
+  CreateTaskAgentOptions,
+} from './agent-orchestrator.js';
