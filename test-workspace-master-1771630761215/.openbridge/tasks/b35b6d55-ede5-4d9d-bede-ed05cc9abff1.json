@@ -1,0 +1,17 @@
+{
+  "id": "b35b6d55-ede5-4d9d-bede-ed05cc9abff1",
+  "userMessage": "/ai first message",
+  "sender": "+1234567890",
+  "description": "first message",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Response",
+  "createdAt": "2026-02-20T23:39:21.216Z",
+  "startedAt": "2026-02-20T23:39:21.216Z",
+  "completedAt": "2026-02-20T23:39:21.216Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
