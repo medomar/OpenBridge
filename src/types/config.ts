@@ -107,3 +107,37 @@ export type AuditConfig = z.infer<typeof AuditConfigSchema>;
 export type HealthConfig = z.infer<typeof HealthConfigSchema>;
 export type MetricsConfig = z.infer<typeof MetricsConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
+
+/** V2 channel schema — simplified connector config */
+export const V2ChannelSchema = z.object({
+  type: z.string(),
+  enabled: z.boolean().default(true),
+  options: z.record(z.unknown()).optional(),
+});
+
+/** V2 auth schema — simplified auth config with optional advanced features */
+export const V2AuthSchema = z.object({
+  whitelist: z.array(z.string()).min(1),
+  prefix: z.string().default('/ai'),
+  rateLimit: RateLimitConfigSchema.optional(),
+  commandFilter: CommandFilterConfigSchema.optional(),
+});
+
+/** V2 config schema — autonomous AI bridge with 3 core fields */
+export const V2ConfigSchema = z
+  .object({
+    workspacePath: z.string().min(1),
+    channels: z.array(V2ChannelSchema).min(1),
+    auth: V2AuthSchema,
+    queue: QueueConfigSchema.optional(),
+    router: RouterConfigSchema.optional(),
+    audit: AuditConfigSchema.optional(),
+    health: HealthConfigSchema.optional(),
+    metrics: MetricsConfigSchema.optional(),
+    logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
+  })
+  .strict();
+
+export type V2Channel = z.infer<typeof V2ChannelSchema>;
+export type V2Auth = z.infer<typeof V2AuthSchema>;
+export type V2Config = z.infer<typeof V2ConfigSchema>;

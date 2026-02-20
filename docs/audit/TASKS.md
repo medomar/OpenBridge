@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 tasks across 9 phases | **Next up:** Phase 7
+> **Pending:** 16 tasks across 9 phases | **Next up:** Phase 7
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -87,7 +87,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | #   | Task                                                                                                                                                              | ID     | Priority |  Status   |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 51  | Add V2 config schema to `src/types/config.ts` — `workspacePath` + `channels` + `auth` only. No providers, no workspaces array. Keep V0 schema for backward compat | OB-081 | 🟠 High  | ◻ Pending |
+| 51  | Add V2 config schema to `src/types/config.ts` — `workspacePath` + `channels` + `auth` only. No providers, no workspaces array. Keep V0 schema for backward compat | OB-081 | 🟠 High  |  ✅ Done  |
 | 52  | Update config loader `src/core/config.ts` — try V2 schema first, fall back to V0. Add `isV2Config()` type guard and `convertV2ToInternal()` helper                | OB-082 | 🟠 High  | ◻ Pending |
 | 53  | Add Master routing to Router `src/core/router.ts` — add `setMaster()` method, route through Master when set (priority over orchestrator/direct provider)          | OB-083 | 🟠 High  | ◻ Pending |
 | 54  | Add Master support to Bridge `src/core/bridge.ts` — add `setMaster()`, wire into router, call `master.shutdown()` on stop. Remove dead workspace-manager imports  | OB-084 | 🟠 High  | ◻ Pending |

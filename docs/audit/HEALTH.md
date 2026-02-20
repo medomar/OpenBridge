@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.295/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.245
-> **Open Findings:** 11 | **Pending Tasks:** 17
+> **Current Score:** 4.345/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.295
+> **Open Findings:** 11 | **Pending Tasks:** 16
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -18,11 +18,11 @@
 | AI Discovery         |   15%    | 0.0/10 |   0.000   | **Does not exist.** No tool scanning, no VS Code detection, no auto-selection of Master               |
 | Master AI            |   20%    | 0.0/10 |   0.000   | **Does not exist.** No master manager, no .openbridge/ folder, no autonomous exploration              |
 | Multi-AI Delegation  |   10%    | 0.0/10 |   0.000   | **Does not exist.** No delegation coordinator, no task assignment to other tools                      |
-| Configuration        |    5%    | 5.0/10 |   0.250   | V0 config works but is too complex. V2 simplified schema not implemented yet                          |
+| Configuration        |    5%    | 6.0/10 |   0.300   | V0 config works. V2 schema defined, loader implementation pending                                     |
 | Documentation        |   10%    | 3.0/10 |   0.300   | Docs describe old vision (user-defined maps). Need full rewrite for autonomous exploration            |
 | Testing              |   10%    | 5.0/10 |   0.500   | V0 tests comprehensive. No tests for any new module. Some tests will break after archive              |
 | Developer Experience |    5%    | 6.0/10 |   0.300   | CLI init works but asks too many questions. Bug fix improves DX significantly                         |
-| **TOTAL**            | **100%** |   —    | **3.300** | **Rounded: 3.9/10** (V0 foundation adds base points, new layers all score 0)                          |
+| **TOTAL**            | **100%** |   —    | **3.350** | **Rounded: 3.9/10** (V0 foundation adds base points, new layers all score 0)                          |
 
 ---
 
@@ -86,6 +86,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.230 |    +0.05    | OB-076 completed — .openbridge/ folder manager with git integration, map/agents/log CRUD, task recording                                         |
 | 2026-02-20 | 4.245 |   +0.015    | OB-079 completed — Master module index (exports DotFolderManager, exploration prompt functions)                                                  |
 | 2026-02-20 | 4.295 |    +0.05    | OB-078 completed — Master AI Manager with lifecycle, session continuity, message routing, status queries                                         |
+| 2026-02-20 | 4.345 |    +0.05    | OB-081 completed — V2 config schema (workspacePath + channels + auth), backward compatible with V0                                               |
 
 ---
 
