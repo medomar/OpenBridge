@@ -1,4 +1,6 @@
 import type { InboundMessage } from './message.js';
+import type { WorkspaceMap } from './workspace-map.js';
+import type { Agent } from './agent.js';
 
 /**
  * Result returned by an AI provider after processing a task.
@@ -18,6 +20,25 @@ export interface ProviderResult {
 }
 
 /**
+ * Workspace context passed to providers so they can be workspace-aware.
+ * Contains the workspace map (API knowledge), available tools, and active agents.
+ */
+export interface ProviderContext {
+  /** The workspace map describing available API endpoints, auth, and schemas */
+  workspaceMap?: WorkspaceMap;
+  /** Workspace name this context belongs to */
+  workspaceId?: string;
+  /** Available tools the provider can request (tool-use protocol identifiers) */
+  availableTools?: string[];
+  /** Currently active agents in the orchestrator */
+  activeAgents?: Array<{ id: string; name: string; role: Agent['role']; status: Agent['status'] }>;
+  /** The agent that is driving this provider call (if orchestrated) */
+  agent?: { id: string; name: string; role: Agent['role'] };
+  /** Additional provider-specific context */
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Interface that every AI provider must implement.
  *
  * To add a new provider (e.g., OpenAI, local LLM):
@@ -32,11 +53,14 @@ export interface AIProvider {
   /** Initialize the provider (validate credentials, warm up, etc.) */
   initialize(): Promise<void>;
 
-  /** Process an inbound message and return the AI response */
-  processMessage(message: InboundMessage): Promise<ProviderResult>;
+  /** Process an inbound message and return the AI response. Context is optional for backward compatibility. */
+  processMessage(message: InboundMessage, context?: ProviderContext): Promise<ProviderResult>;
 
-  /** Stream an AI response, yielding chunks as they arrive. Optional — providers that don't support streaming fall back to processMessage. */
-  streamMessage?(message: InboundMessage): AsyncGenerator<string, ProviderResult>;
+  /** Stream an AI response, yielding chunks as they arrive. Optional — providers that don't support streaming fall back to processMessage. Context is optional for backward compatibility. */
+  streamMessage?(
+    message: InboundMessage,
+    context?: ProviderContext,
+  ): AsyncGenerator<string, ProviderResult>;
 
   /** Check if the provider is available and ready */
   isAvailable(): Promise<boolean>;

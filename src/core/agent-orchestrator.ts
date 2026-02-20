@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { AIProvider, ProviderResult } from '../types/provider.js';
+import type { AIProvider, ProviderResult, ProviderContext } from '../types/provider.js';
 import type { InboundMessage } from '../types/message.js';
+import type { WorkspaceMap } from '../types/workspace-map.js';
 import type {
   Agent,
   TaskAgent,
@@ -63,6 +64,7 @@ export class AgentOrchestrator {
   private readonly providers = new Map<string, AIProvider>();
   private readonly agents = new Map<string, Agent>();
   private readonly taskAgents = new Map<string, TaskAgent>();
+  private readonly workspaceMaps = new Map<string, WorkspaceMap>();
   private readonly listeners: Map<ScriptEventType, ScriptEventListener[]> = new Map();
   private readonly maxConcurrentAgents: number;
   private readonly taskTimeoutMs: number;
@@ -88,6 +90,11 @@ export class AgentOrchestrator {
   /** Register an AI provider */
   addProvider(provider: AIProvider): void {
     this.providers.set(provider.name, provider);
+  }
+
+  /** Register a workspace map for a given workspace ID */
+  setWorkspaceMap(workspaceId: string, map: WorkspaceMap): void {
+    this.workspaceMaps.set(workspaceId, map);
   }
 
   /** Process an inbound message — decides whether to handle directly or delegate to agents */
@@ -130,12 +137,15 @@ export class AgentOrchestrator {
     );
 
     try {
+      // Build workspace context for the provider
+      const context = this.buildContext(workspaceId, mainAgent);
+
       // Process the message through the provider
       let result: ProviderResult;
       if (provider.streamMessage) {
-        result = await this.consumeStream(provider.streamMessage(message));
+        result = await this.consumeStream(provider.streamMessage(message, context));
       } else {
-        result = await provider.processMessage(message);
+        result = await provider.processMessage(message, context);
       }
 
       // Update agent status
@@ -234,6 +244,9 @@ export class AgentOrchestrator {
     this.updateAgentStatus(agentId, 'running');
     const results: ProviderResult[] = [];
 
+    // Build context for the task agent
+    const context = this.buildContext(agent.workspaceId, agent);
+
     for (const task of agent.tasks) {
       if (task.status === 'completed' || task.status === 'skipped') continue;
 
@@ -262,7 +275,7 @@ export class AgentOrchestrator {
           },
         };
 
-        const result = await this.executeWithTimeout(provider, taskMessage);
+        const result = await this.executeWithTimeout(provider, taskMessage, context);
         results.push(result);
 
         this.updateTaskStatus(agentId, task.id, 'completed', result.content);
@@ -433,6 +446,27 @@ export class AgentOrchestrator {
     }
   }
 
+  // ── Context Builder ────────────────────────────────────────────
+
+  /** Build a ProviderContext for a given workspace and agent */
+  private buildContext(workspaceId: string, agent: Agent): ProviderContext {
+    const workspaceMap = this.workspaceMaps.get(workspaceId);
+    const activeAgents = this.getActiveAgents().map((a) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      status: a.status,
+    }));
+
+    return {
+      workspaceMap,
+      workspaceId,
+      availableTools: workspaceMap ? ['api_call'] : [],
+      activeAgents,
+      agent: { id: agent.id, name: agent.name, role: agent.role },
+    };
+  }
+
   // ── Shutdown ───────────────────────────────────────────────────
 
   /** Gracefully shut down — cancel active agents */
@@ -538,6 +572,7 @@ export class AgentOrchestrator {
   private async executeWithTimeout(
     provider: AIProvider,
     message: InboundMessage,
+    context?: ProviderContext,
   ): Promise<ProviderResult> {
     return new Promise<ProviderResult>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -548,9 +583,9 @@ export class AgentOrchestrator {
         try {
           let result: ProviderResult;
           if (provider.streamMessage) {
-            result = await this.consumeStream(provider.streamMessage(message));
+            result = await this.consumeStream(provider.streamMessage(message, context));
           } else {
-            result = await provider.processMessage(message);
+            result = await provider.processMessage(message, context);
           }
           clearTimeout(timer);
           resolve(result);

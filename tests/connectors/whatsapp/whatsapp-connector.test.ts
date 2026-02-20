@@ -375,8 +375,10 @@ describe('WhatsAppConnector', () => {
       // Disconnect — schedules reconnect with 0ms delay
       mockClientInstance._trigger('disconnected', 'reason');
 
-      // Advance timers to fire the 0ms reconnect setTimeout, then flush promises
+      // Advance timers to fire the 0ms reconnect setTimeout
       await vi.advanceTimersByTimeAsync(1);
+      // Flush microtasks so createAndStartClient() (async) fully resolves
+      await vi.advanceTimersByTimeAsync(0);
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
