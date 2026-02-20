@@ -10,7 +10,7 @@ import {
   parseOpenAPISpec,
   parsePostmanCollection,
 } from '../../src/_archived/knowledge/workspace-scanner.js';
-import { resolveMapEnvVars } from '../../src/core/map-loader.js';
+import { resolveMapEnvVars } from '../../../src/_archived/core/map-loader.js';
 import { WorkspaceMapSchema } from '../../src/types/workspace-map.js';
 
 // ── Mock HTTP (hoisted) ─────────────────────────────────────────

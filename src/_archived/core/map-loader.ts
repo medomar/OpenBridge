@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
-import { WorkspaceMapSchema } from '../types/workspace-map.js';
-import type { WorkspaceMap } from '../types/workspace-map.js';
-import { createLogger } from './logger.js';
+import { WorkspaceMapSchema } from '../../types/workspace-map.js';
+import type { WorkspaceMap } from '../../types/workspace-map.js';
+import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('map-loader');
 

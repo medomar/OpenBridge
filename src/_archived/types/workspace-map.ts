@@ -69,7 +69,15 @@ export const ParameterSchema = z.object({
 
 // ── API Endpoint Schema ───────────────────────────────────────────
 
-export const HttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+export const HttpMethodSchema = z.enum([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+]);
 
 /** Schema for a single API endpoint definition */
 export const APIEndpointSchema = z.object({

@@ -5,8 +5,8 @@ import {
   resolveEnvVars,
   resolveMapEnvVars,
   DEFAULT_MAP_FILENAME,
-} from '../../src/core/map-loader.js';
-import type { WorkspaceMap } from '../../src/types/workspace-map.js';
+} from '../../../src/_archived/core/map-loader.js';
+import type { WorkspaceMap } from '../../../src/types/workspace-map.js';
 
 const mockReadFile = vi.fn<(...args: unknown[]) => Promise<string>>();
 

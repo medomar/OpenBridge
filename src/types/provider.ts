@@ -1,5 +1,4 @@
 import type { InboundMessage } from './message.js';
-import type { WorkspaceMap } from './workspace-map.js';
 import type { Agent } from './agent.js';
 
 /**
@@ -21,11 +20,9 @@ export interface ProviderResult {
 
 /**
  * Workspace context passed to providers so they can be workspace-aware.
- * Contains the workspace map (API knowledge), available tools, and active agents.
+ * Contains available tools and active agents.
  */
 export interface ProviderContext {
-  /** The workspace map describing available API endpoints, auth, and schemas */
-  workspaceMap?: WorkspaceMap;
   /** Workspace name this context belongs to */
   workspaceId?: string;
   /** Available tools the provider can request (tool-use protocol identifiers) */

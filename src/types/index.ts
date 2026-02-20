@@ -10,24 +10,6 @@ export {
 } from './config.js';
 export type { AppConfig, ConnectorConfig, ProviderConfig, AuthConfig } from './config.js';
 export {
-  WorkspaceMapSchema,
-  APIEndpointSchema,
-  EndpointAuthSchema,
-  MapSourceSchema,
-  ParameterSchema,
-  FieldSchemaSchema,
-  HttpMethodSchema,
-} from './workspace-map.js';
-export type {
-  WorkspaceMap,
-  APIEndpoint,
-  EndpointAuth,
-  MapSource,
-  Parameter,
-  FieldSchema,
-  HttpMethod,
-} from './workspace-map.js';
-export {
   AgentSchema,
   TaskAgentSchema,
   AgentStatusSchema,
@@ -63,25 +45,3 @@ export type {
   TaskFailedEvent,
   TaskProgressEvent,
 } from './agent.js';
-export {
-  ToolCallSchema,
-  ToolResultSchema,
-  ToolDefinitionSchema,
-  ToolActionSchema,
-  ApiCallSchema,
-  ListEndpointsCallSchema,
-  DescribeEndpointCallSchema,
-  ToolSuccessSchema,
-  ToolErrorSchema,
-} from './tool.js';
-export type {
-  ToolCall,
-  ToolResult,
-  ToolDefinition,
-  ToolAction,
-  ApiCall,
-  ListEndpointsCall,
-  DescribeEndpointCall,
-  ToolSuccess,
-  ToolError,
-} from './tool.js';

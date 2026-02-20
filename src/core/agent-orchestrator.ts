@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AIProvider, ProviderResult, ProviderContext } from '../types/provider.js';
 import type { InboundMessage } from '../types/message.js';
-import type { WorkspaceMap } from '../types/workspace-map.js';
+import type { WorkspaceMap } from '../_archived/types/workspace-map.js';
 import type {
   Agent,
   TaskAgent,
@@ -450,7 +450,7 @@ export class AgentOrchestrator {
 
   /** Build a ProviderContext for a given workspace and agent */
   private buildContext(workspaceId: string, agent: Agent): ProviderContext {
-    const workspaceMap = this.workspaceMaps.get(workspaceId);
+    const _workspaceMap = this.workspaceMaps.get(workspaceId);
     const activeAgents = this.getActiveAgents().map((a) => ({
       id: a.id,
       name: a.name,
@@ -459,9 +459,8 @@ export class AgentOrchestrator {
     }));
 
     return {
-      workspaceMap,
       workspaceId,
-      availableTools: workspaceMap ? ['api_call'] : [],
+      availableTools: [],
       activeAgents,
       agent: { id: agent.id, name: agent.name, role: agent.role },
     };
