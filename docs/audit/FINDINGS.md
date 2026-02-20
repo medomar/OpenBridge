@@ -1,7 +1,7 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 37 | **Open:** 0 | **Fixed:** 37 | **By Design:** 0
-> **Next Issue ID:** OB-038
+> **Total Issues:** 67 | **Open:** 30 | **Fixed:** 37 | **By Design:** 0
+> **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
 ---
@@ -11,28 +11,100 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  0   |  12   |     0     |  12   |
-| 🟡 Medium   |  0   |  15   |     0     |  15   |
-| 🟢 Low      |  0   |  10   |     0     |  10   |
+| 🟠 High     |  14  |  12   |     0     |  26   |
+| 🟡 Medium   |  12  |  15   |     0     |  27   |
+| 🟢 Low      |  4   |  10   |     0     |  14   |
 
 ## Summary by Category
 
-| Category              | Open | Fixed | Total |
-| --------------------- | :--: | :---: | :---: |
-| Connector Reliability |  0   |   5   |   5   |
-| Provider Robustness   |  0   |   5   |   5   |
-| Security              |  0   |   5   |   5   |
-| Core Engine           |  0   |   6   |   6   |
-| Configuration         |  0   |   4   |   4   |
-| Testing               |  0   |   5   |   5   |
-| Documentation         |  0   |   4   |   4   |
-| Developer Experience  |  0   |   3   |   3   |
+| Category                | Open | Fixed | Total |
+| ----------------------- | :--: | :---: | :---: |
+| Connector Reliability   |  0   |   5   |   5   |
+| Provider Robustness     |  0   |   5   |   5   |
+| Security                |  0   |   5   |   5   |
+| Core Engine             |  0   |   6   |   6   |
+| Configuration           |  0   |   4   |   4   |
+| Testing                 |  0   |   5   |   5   |
+| Documentation           |  5   |   4   |   9   |
+| Developer Experience    |  0   |   3   |   3   |
+| Workspace Knowledge     |  6   |   0   |   6   |
+| Agent Orchestration     |  7   |   0   |   7   |
+| Provider Enhancement    |  4   |   0   |   4   |
+| Interactive AI          |  4   |   0   |   4   |
+| Channels + Integrations |  4   |   0   |   4   |
 
 ---
 
-## All Issues
+## Open Issues
 
-### 🟠 High
+### Phase 5 — Vision Rewrite + Documentation
+
+| ID     | Description                                                                                            | Category      | Severity  | Status  | Date       |
+| ------ | ------------------------------------------------------------------------------------------------------ | ------------- | :-------: | :-----: | ---------- |
+| OB-038 | OVERVIEW.md describes a "dev remote control" — must rewrite for AI workforce platform vision           | Documentation |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-039 | README.md positioning is wrong — needs real-world business use cases, not just "text AI from phone"    | Documentation |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-040 | ARCHITECTURE.md missing 3 new layers — Agent Orchestrator, Workspace Knowledge, View/Interaction layer | Documentation |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-041 | Both CLAUDE.md files reference old architecture — need updated module list and dev workflows           | Documentation | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-042 | CONFIGURATION.md missing schemas for workspace maps, agents, integrations, views                       | Documentation | 🟡 Medium | 🟡 Open | 2026-02-20 |
+
+### Phase 6 — Workspace Mapping Engine
+
+| ID     | Description                                                                                         | Category            | Severity  | Status  | Date       |
+| ------ | --------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :-----: | ---------- |
+| OB-043 | No workspace map types — AI has no structured knowledge of project APIs, endpoints, or data schemas | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-048 | No tests for workspace mapping, scanning, or API execution                                          | Workspace Knowledge | 🟡 Medium | 🟡 Open | 2026-02-20 |
+
+### Phase 7 — Multi-Agent Orchestrator
+
+| ID     | Description                                                                                           | Category            | Severity  | Status  | Date       |
+| ------ | ----------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :-----: | ---------- |
+| OB-049 | No agent type definitions — no concept of main agent, task agents, or agent lifecycle                 | Agent Orchestration |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-050 | No Agent Orchestrator — cannot create, manage, or coordinate multiple agents                          | Agent Orchestration |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-051 | No Task Agent runtime — no way for an agent to receive a task list, execute, and report back          | Agent Orchestration |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-052 | No Script Coordinator — no event bus between agents, no dependency management, no completion triggers | Agent Orchestration |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-053 | Router sends directly to single provider — needs to route through Agent Orchestrator                  | Agent Orchestration | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-054 | Bridge does not manage agent lifecycle (init, health, shutdown of active agents)                      | Agent Orchestration | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-055 | No tests for agent orchestration, task execution, or script coordination                              | Agent Orchestration | 🟡 Medium | 🟡 Open | 2026-02-20 |
+
+### Phase 8 — AI Provider Enhancement
+
+| ID     | Description                                                                                                  | Category             | Severity  | Status  | Date       |
+| ------ | ------------------------------------------------------------------------------------------------------------ | -------------------- | :-------: | :-----: | ---------- |
+| OB-056 | AIProvider interface has no workspace context — providers are blind to project APIs and available tools      | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-057 | No tool-use protocol — AI cannot request structured actions (API calls, file ops) in a provider-agnostic way | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-058 | Claude Code provider does not inject workspace map into prompt or parse tool-use responses                   | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
+| OB-059 | No tests for tool-use protocol, provider context injection, or API call routing                              | Provider Enhancement | 🟡 Medium | 🟡 Open | 2026-02-20 |
+
+### Phase 9 — Interactive AI
+
+| ID     | Description                                                                                  | Category       | Severity  | Status  | Date       |
+| ------ | -------------------------------------------------------------------------------------------- | -------------- | :-------: | :-----: | ---------- |
+| OB-060 | No view types — AI cannot generate temporary/permanent visual outputs for users              | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-061 | No view generator or server — no way to serve AI-created reports, dashboards, or data views  | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-062 | No interactive flow engine — AI cannot run multi-step Q&A, onboarding, or confirmation flows | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-063 | No tests for view generation or interactive flows                                            | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
+
+### Phase 10 — Channels + Integrations
+
+| ID     | Description                                                                                                | Category                | Severity  | Status  | Date       |
+| ------ | ---------------------------------------------------------------------------------------------------------- | ----------------------- | :-------: | :-----: | ---------- |
+| OB-064 | No Telegram connector — second most requested channel after WhatsApp                                       | Channels + Integrations | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| OB-065 | No Discord connector — needed for dev/team communities                                                     | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
+| OB-066 | No web chat connector — needed for embedding in dashboards and admin panels                                | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
+| OB-067 | No integration framework for external platforms (Shopify, Amazon) — no API map format, auth, or sync rules | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
+
+---
+
+## Fixed Issues (V0)
+
+<details>
+<summary>Click to expand all 37 fixed V0 issues</summary>
+
+### 🟠 High (Fixed)
 
 | ID     | Description                                                                            | Category              |  Status  | File                      | Date       |
 | ------ | -------------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
@@ -49,7 +121,7 @@
 | OB-011 | No graceful message handling during shutdown — in-flight messages may be lost          | Core Engine           | ✅ Fixed | `bridge.ts`, `queue.ts`   | 2026-02-19 |
 | OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | ✅ Fixed | `bridge.ts`               | 2026-02-19 |
 
-### 🟡 Medium
+### 🟡 Medium (Fixed)
 
 | ID     | Description                                                                       | Category              |  Status  | File                      | Date       |
 | ------ | --------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
@@ -69,7 +141,7 @@
 | OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | ✅ Fixed | `docs/`                   | 2026-02-19 |
 | OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | ✅ Fixed | `auth.ts`                 | 2026-02-19 |
 
-### 🟢 Low
+### 🟢 Low (Fixed)
 
 | ID     | Description                                                                    | Category              |  Status  | File                       | Date       |
 | ------ | ------------------------------------------------------------------------------ | --------------------- | :------: | -------------------------- | ---------- |
@@ -83,6 +155,8 @@
 | OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | ✅ Fixed | `README.md`                | 2026-02-19 |
 | OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | ✅ Fixed | `benchmarks/core.bench.ts` | 2026-02-20 |
 | OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | ✅ Fixed | `config.ts`                | 2026-02-20 |
+
+</details>
 
 ---
 
