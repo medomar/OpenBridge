@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 22 | **Fixed:** 45 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 21 | **Fixed:** 46 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -12,7 +12,7 @@
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
 | 🟠 High     |  8   |  18   |     0     |  26   |
-| 🟡 Medium   |  10  |  17   |     0     |  27   |
+| 🟡 Medium   |  9   |  18   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
 ## Summary by Category
@@ -27,7 +27,7 @@
 | Testing                 |  0   |   5   |   5   |
 | Documentation           |  0   |   9   |   9   |
 | Developer Experience    |  0   |   3   |   3   |
-| Workspace Knowledge     |  3   |   3   |   6   |
+| Workspace Knowledge     |  2   |   4   |   6   |
 | Agent Orchestration     |  7   |   0   |   7   |
 | Provider Enhancement    |  4   |   0   |   4   |
 | Interactive AI          |  4   |   0   |   4   |
@@ -55,7 +55,7 @@
 | OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
-| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | 🟡 Open  | 2026-02-20 |
+| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | ✅ Fixed | 2026-02-20 |
 | OB-048 | No tests for workspace mapping, scanning, or API execution                                          | Workspace Knowledge | 🟡 Medium | 🟡 Open  | 2026-02-20 |
 
 ### Phase 7 — Multi-Agent Orchestrator

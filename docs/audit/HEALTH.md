@@ -1,6 +1,6 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.16/10 | **Target:** 9.5/10
+> **Current Score:** 4.19/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-20 | **Previous Score:** 6.635 (V0 scope)
 > **Reason for drop:** Score re-baselined against new vision (AI workforce platform). V0 foundation is solid but the new layers don't exist yet.
 
@@ -40,7 +40,7 @@
 
 ## Open Issues Summary
 
-**0 critical** | **8 high** | **10 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
+**0 critical** | **8 high** | **9 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -122,6 +122,7 @@ Completing **Phases 5–8** (docs + workspace mapping + orchestrator + provider 
 | 2026-02-20 | 4.06  |    +0.03    | OB-042 fixed — CONFIGURATION.md updated with workspace maps, agents, views schemas  |
 | 2026-02-20 | 4.11  |    +0.05    | OB-044 fixed — openbridge.map.json spec designed, map loader + tests + example      |
 | 2026-02-20 | 4.16  |    +0.05    | OB-045 fixed — Workspace scanner: reads openbridge.map.json, parses OpenAPI/Postman |
+| 2026-02-20 | 4.19  |    +0.03    | OB-047 fixed — Workspace manager loads maps on startup, passes to agents as context |
 
 ---
 

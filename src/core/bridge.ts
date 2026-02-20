@@ -63,12 +63,13 @@ export class Bridge {
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
 
-    // Validate workspace paths if configured
+    // Validate workspace paths and load workspace maps if configured
     if (this.workspaceManager.enabled) {
       await this.workspaceManager.validatePaths();
+      await this.workspaceManager.loadMaps();
       logger.info(
         { workspaces: this.workspaceManager.listWorkspaces().map((w) => w.name) },
-        'Workspaces validated',
+        'Workspaces validated and maps loaded',
       );
     }
 
@@ -270,7 +271,8 @@ export class Bridge {
       }
 
       if (resolvedPath) {
-        metadata = { ...metadata, workspacePath: resolvedPath, workspace };
+        const workspaceMap = this.workspaceManager.resolveMap(workspace);
+        metadata = { ...metadata, workspacePath: resolvedPath, workspace, workspaceMap };
         strippedContent = remaining;
       }
     }
