@@ -4,6 +4,7 @@ import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { MasterManager } from '../../src/master/master-manager.js';
 
 function createMessage(): InboundMessage {
   return {
@@ -291,6 +292,142 @@ describe('Router', () => {
 
       expect(connector.sentMessages).toHaveLength(2);
       expect(connector.sentMessages[1]?.content).toBe('via orchestrator');
+    });
+  });
+
+  describe('with Master AI', () => {
+    function createMockMaster() {
+      const mockProcessMessage = vi.fn(async (message: InboundMessage) => {
+        return `Master AI response to: ${message.content}`;
+      });
+      const mockGetState = vi.fn(() => 'ready' as const);
+
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: mockGetState,
+      } as unknown as MasterManager;
+
+      return { master, mockProcessMessage, mockGetState };
+    }
+
+    it('should route through Master when set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master processMessage was called
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(mockProcessMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'hello' }),
+      );
+
+      // ack + response
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should prioritize Master over orchestrator', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Provider response' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master was called, not orchestrator/provider
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(provider.processedMessages).toHaveLength(0);
+
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should prioritize Master over direct provider', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Provider response' });
+
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master was called, not provider
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(provider.processedMessages).toHaveLength(0);
+
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should send typing indicator when using Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.typingIndicators).toHaveLength(1);
+      expect(connector.typingIndicators[0]).toBe('+1234567890');
+    });
+
+    it('should not require provider when Master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMaster();
+
+      // Only register connector and master — no provider
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should handle Master errors gracefully', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Create master with error-throwing processMessage
+      const mockProcessMessage = vi.fn().mockRejectedValueOnce(new Error('Master AI failed'));
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: vi.fn(() => 'ready' as const),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await expect(router.route(createMessage())).rejects.toThrow('Master AI failed');
     });
   });
 });

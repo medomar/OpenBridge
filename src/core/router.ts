@@ -5,6 +5,7 @@ import type { RouterConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
 import type { MetricsCollector } from './metrics.js';
 import type { AgentOrchestrator } from './agent-orchestrator.js';
+import type { MasterManager } from '../master/master-manager.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -25,6 +26,7 @@ export class Router {
   private readonly auditLogger?: AuditLogger;
   private readonly metrics?: MetricsCollector;
   private orchestrator?: AgentOrchestrator;
+  private master?: MasterManager;
 
   constructor(
     defaultProvider: string,
@@ -44,6 +46,12 @@ export class Router {
     logger.info('Router configured to use Agent Orchestrator');
   }
 
+  /** Set the Master AI — when set, all messages route through it (priority over orchestrator/provider) */
+  setMaster(master: MasterManager): void {
+    this.master = master;
+    logger.info('Router configured to use Master AI');
+  }
+
   /** Register an active connector */
   addConnector(connector: Connector): void {
     this.connectors.set(connector.name, connector);
@@ -56,8 +64,9 @@ export class Router {
 
   /** Route an inbound message to the appropriate provider and send the response back */
   async route(message: InboundMessage): Promise<void> {
-    // When orchestrator is available, validate it has providers; otherwise check direct providers
-    if (!this.orchestrator) {
+    // Validate routing target exists
+    // Priority: Master → Orchestrator → Direct Provider
+    if (!this.master && !this.orchestrator) {
       const provider = this.providers.get(this.defaultProviderName);
       if (!provider) {
         logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
@@ -71,13 +80,14 @@ export class Router {
       return;
     }
 
-    const useOrchestrator = !!this.orchestrator;
+    const useMaster = !!this.master;
+    const useOrchestrator = !useMaster && !!this.orchestrator;
     logger.info(
       {
         messageId: message.id,
         provider: this.defaultProviderName,
         source: message.source,
-        orchestrated: useOrchestrator,
+        routedVia: useMaster ? 'master' : useOrchestrator ? 'orchestrator' : 'direct',
       },
       'Routing message',
     );
@@ -99,12 +109,16 @@ export class Router {
     // Start progress updates
     const stopProgress = this.startProgressUpdates(connector, message);
 
-    // Process message — through orchestrator or directly via provider
+    // Process message — through Master, orchestrator, or directly via provider
     let result: ProviderResult;
     const startTime = Date.now();
 
     try {
-      if (this.orchestrator) {
+      if (this.master) {
+        // Route through Master AI
+        const response = await this.master.processMessage(message);
+        result = { content: response };
+      } else if (this.orchestrator) {
         const orchestratorResult = await this.orchestrator.process(message);
         result = orchestratorResult.result;
       } else {

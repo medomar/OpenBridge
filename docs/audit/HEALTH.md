@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.345/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.295
-> **Open Findings:** 11 | **Pending Tasks:** 16
+> **Current Score:** 4.425/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.395
+> **Open Findings:** 10 | **Pending Tasks:** 15
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -87,6 +87,8 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.245 |   +0.015    | OB-079 completed — Master module index (exports DotFolderManager, exploration prompt functions)                                                  |
 | 2026-02-20 | 4.295 |    +0.05    | OB-078 completed — Master AI Manager with lifecycle, session continuity, message routing, status queries                                         |
 | 2026-02-20 | 4.345 |    +0.05    | OB-081 completed — V2 config schema (workspacePath + channels + auth), backward compatible with V0                                               |
+| 2026-02-20 | 4.395 |    +0.05    | OB-082 completed — V2 config loader with auto-detection, V0 fallback, type guard, and conversion helper                                          |
+| 2026-02-20 | 4.425 |    +0.03    | F-003 fixed — V2 config schema + loader complete, users now need only 3 fields (workspacePath, channels, auth)                                   |
 
 ---
 

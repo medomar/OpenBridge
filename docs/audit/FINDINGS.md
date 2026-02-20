@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 11 | **Last Audit:** 2026-02-20
+> **Open:** 10 | **Last Audit:** 2026-02-20
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -41,19 +41,20 @@
 
 ---
 
-### F-003 — Config requires unnecessary fields
+### F-003 — Config requires unnecessary fields ✅ Fixed
 
 | Field    | Value         |
 | -------- | ------------- |
 | Severity | 🟡 Medium     |
 | Category | Configuration |
 | Found    | 2026-02-20    |
+| Fixed    | 2026-02-20    |
 
 **What:** Current config requires `providers` array, `defaultProvider`, and `workspaces` — all of which should be auto-discovered in the new vision. Users should only need 3 fields: `workspacePath`, `channels`, `auth`.
 
 **Impact:** Unnecessarily complex setup. Users must manually specify things the system should figure out on its own.
 
-**Resolution:** V2 config schema (Phase 8, OB-081/082).
+**Resolution:** V2 config schema (OB-081) + config loader (OB-082) — **COMPLETED**. V2 config now accepts only 3 required fields, with auto-detection and backward compatibility for V0 format.
 
 ---
 
