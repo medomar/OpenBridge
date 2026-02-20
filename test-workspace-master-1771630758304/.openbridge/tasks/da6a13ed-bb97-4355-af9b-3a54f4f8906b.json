@@ -1,0 +1,17 @@
+{
+  "id": "da6a13ed-bb97-4355-af9b-3a54f4f8906b",
+  "userMessage": "/ai hello",
+  "sender": "+1234567890",
+  "description": "hello",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Hello, I processed your message!",
+  "createdAt": "2026-02-20T23:39:18.305Z",
+  "startedAt": "2026-02-20T23:39:18.305Z",
+  "completedAt": "2026-02-20T23:39:18.305Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
