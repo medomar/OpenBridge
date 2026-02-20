@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 15 | **Fixed:** 52 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 14 | **Fixed:** 53 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  4   |  22   |     0     |  26   |
+| 🟠 High     |  3   |  23   |     0     |  26   |
 | 🟡 Medium   |  7   |  20   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
@@ -28,7 +28,7 @@
 | Documentation           |  0   |   9   |   9   |
 | Developer Experience    |  0   |   3   |   3   |
 | Workspace Knowledge     |  0   |   6   |   6   |
-| Agent Orchestration     |  3   |   4   |   7   |
+| Agent Orchestration     |  2   |   5   |   7   |
 | Provider Enhancement    |  4   |   0   |   4   |
 | Interactive AI          |  4   |   0   |   4   |
 | Channels + Integrations |  4   |   0   |   4   |
@@ -65,7 +65,7 @@
 | OB-049 | No agent type definitions — no concept of main agent, task agents, or agent lifecycle                 | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-050 | No Agent Orchestrator — cannot create, manage, or coordinate multiple agents                          | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-051 | No Task Agent runtime — no way for an agent to receive a task list, execute, and report back          | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-052 | No Script Coordinator — no event bus between agents, no dependency management, no completion triggers | Agent Orchestration |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-052 | No Script Coordinator — no event bus between agents, no dependency management, no completion triggers | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-053 | Router sends directly to single provider — needs to route through Agent Orchestrator                  | Agent Orchestration | 🟡 Medium | ✅ Fixed | 2026-02-20 |
 | OB-054 | Bridge does not manage agent lifecycle (init, health, shutdown of active agents)                      | Agent Orchestration | 🟡 Medium | 🟡 Open  | 2026-02-20 |
 | OB-055 | No tests for agent orchestration, task execution, or script coordination                              | Agent Orchestration | 🟡 Medium | 🟡 Open  | 2026-02-20 |
