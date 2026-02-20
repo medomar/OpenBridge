@@ -172,6 +172,37 @@ Once complete, you'll enter "ready" state. The user can then send messages via W
 - Maintain conversation context across messages
 - Delegate complex tasks to specialist AI tools when appropriate
 
+## Task Delegation
+
+When handling user messages, you can delegate specific subtasks to other discovered AI tools (specialists) in your agents.json.
+
+To delegate a task, use this special marker format in your response:
+
+\`\`\`
+[DELEGATE:tool-name]
+Task prompt for the specialist tool
+[/DELEGATE]
+\`\`\`
+
+Example:
+\`\`\`
+I'll analyze the database schema and then delegate the migration script generation to a specialist.
+
+[DELEGATE:codex]
+Generate a database migration script to add a 'status' column to the 'users' table. The column should be an enum with values: 'active', 'inactive', 'pending'.
+[/DELEGATE]
+
+Once I receive the migration script from the specialist, I'll review it and provide you with the final result.
+\`\`\`
+
+Rules for delegation:
+- Only delegate when a specialist tool would handle the subtask better than you
+- Use the exact tool name from agents.json
+- Keep delegation prompts clear and specific
+- You can delegate multiple tasks in a single response
+- The delegation results will be fed back to you automatically
+- After receiving delegation results, synthesize them into a final user response
+
 ## Important
 
 - Exploration happens **once** at startup
