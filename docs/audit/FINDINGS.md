@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 29 | **Fixed:** 38 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 28 | **Fixed:** 39 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  13  |  13   |     0     |  26   |
+| 🟠 High     |  12  |  14   |     0     |  26   |
 | 🟡 Medium   |  12  |  15   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
@@ -25,7 +25,7 @@
 | Core Engine             |  0   |   6   |   6   |
 | Configuration           |  0   |   4   |   4   |
 | Testing                 |  0   |   5   |   5   |
-| Documentation           |  4   |   5   |   9   |
+| Documentation           |  3   |   6   |   9   |
 | Developer Experience    |  0   |   3   |   3   |
 | Workspace Knowledge     |  6   |   0   |   6   |
 | Agent Orchestration     |  7   |   0   |   7   |
@@ -41,7 +41,7 @@
 
 | ID     | Description                                                                                            | Category      | Severity  |  Status  | Date       |
 | ------ | ------------------------------------------------------------------------------------------------------ | ------------- | :-------: | :------: | ---------- |
-| OB-038 | OVERVIEW.md describes a "dev remote control" — must rewrite for AI workforce platform vision           | Documentation |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-038 | OVERVIEW.md describes a "dev remote control" — must rewrite for AI workforce platform vision           | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-039 | README.md positioning is wrong — needs real-world business use cases, not just "text AI from phone"    | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-040 | ARCHITECTURE.md missing 3 new layers — Agent Orchestrator, Workspace Knowledge, View/Interaction layer | Documentation |  🟠 High  | 🟠 Open  | 2026-02-20 |
 | OB-041 | Both CLAUDE.md files reference old architecture — need updated module list and dev workflows           | Documentation | 🟡 Medium | 🟡 Open  | 2026-02-20 |
