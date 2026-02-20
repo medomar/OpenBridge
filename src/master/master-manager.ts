@@ -717,9 +717,11 @@ export class MasterManager {
 
     let match;
     while ((match = delegationPattern.exec(response)) !== null) {
-      const toolName = match[1].trim();
-      const prompt = match[2].trim();
-      delegations.push({ toolName, prompt });
+      const toolName = match[1]?.trim();
+      const prompt = match[2]?.trim();
+      if (toolName && prompt) {
+        delegations.push({ toolName, prompt });
+      }
     }
 
     return delegations.length > 0 ? delegations : null;

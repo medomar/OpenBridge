@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 tasks across 6 phases | **Next up:** Phase 10
+> **Pending:** 4 tasks across 4 phases | **Next up:** Phase 10
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -116,8 +116,8 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 | #   | Task                                                                                                                                                      | ID     | Priority |  Status   |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 61  | Create delegation coordinator (`src/master/delegation.ts`) — manage task delegation to non-master AI tools, track active delegations, handle timeouts     | OB-091 | 🟠 High  |  ✅ Done  |
-| 62  | Integrate delegation into Master Manager — parse delegation markers from Master output, delegate to appropriate tool, feed results back to Master session | OB-092 | 🟠 High  | ◻ Pending |
-| 63  | Add task tracking to dotfolder-manager — record each task with id, description, delegatedTo, status, result, timestamps. Commit to `.openbridge/.git`     | OB-093 |  🟡 Med  | ◻ Pending |
+| 62  | Integrate delegation into Master Manager — parse delegation markers from Master output, delegate to appropriate tool, feed results back to Master session | OB-092 | 🟠 High  |  ✅ Done  |
+| 63  | Add task tracking to dotfolder-manager — record each task with id, description, delegatedTo, status, result, timestamps. Commit to `.openbridge/.git`     | OB-093 |  🟡 Med  |  ✅ Done  |
 | 64  | Write delegation tests — delegation flow, timeout handling, multi-tool coordination                                                                       | OB-094 |  🟡 Med  | ◻ Pending |
 
 ---

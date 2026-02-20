@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.585/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.535
-> **Open Findings:** 9 | **Pending Tasks:** 6
+> **Current Score:** 4.650/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.600
+> **Open Findings:** 9 | **Pending Tasks:** 4
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -95,6 +95,8 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.520 |   +0.015    | OB-090 completed — workspace-manager.ts + map-loader.ts archived to src/\_archived/core/, all imports cleaned, tests archived                     |
 | 2026-02-20 | 4.535 |   +0.015    | OB-089 completed — Old orchestrator (script-coordinator.ts, task-agent-runtime.ts) and old types (workspace-map.ts, tool.ts) archived             |
 | 2026-02-20 | 4.585 |    +0.05    | OB-091 completed — Delegation coordinator created (src/master/delegation.ts) with task delegation, timeout handling, concurrent delegation limits |
+| 2026-02-20 | 4.600 |   +0.015    | OB-093 completed — Task tracking with git commits added to dotfolder-manager (recordTask now commits to .openbridge/.git)                         |
+| 2026-02-20 | 4.650 |    +0.05    | OB-092 completed — Delegation integration in Master Manager (parse markers, delegate tasks, feed results back, updated exploration prompt)        |
 
 ---
 
