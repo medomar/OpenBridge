@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 19 tasks across 9 phases | **Next up:** Phase 7
+> **Pending:** 18 tasks across 9 phases | **Next up:** Phase 7
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -63,7 +63,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 | 46  | Create `.openbridge/` folder manager (`src/master/dotfolder-manager.ts`) — create folder, init git repo, commit changes, read/write map, write agents.json, append log, record tasks                                                                                                                    | OB-076 | 🟠 High  |  ✅ Done  |
 | 47  | Create exploration prompt (`src/master/exploration-prompt.ts`) — system prompt instructing Master to explore workspace, create `.openbridge/workspace-map.json`, init git, work silently. Include adaptive response style: concise + non-technical for business workspaces, technical for code projects | OB-077 | 🟠 High  |  ✅ Done  |
 | 48  | Create Master AI Manager (`src/master/master-manager.ts`) — lifecycle management (idle → exploring → ready), background exploration, message routing, status queries                                                                                                                                    | OB-078 | 🟠 High  | ◻ Pending |
-| 49  | Create Master module index (`src/master/index.ts`) — export MasterManager, DotFolderManager                                                                                                                                                                                                             | OB-079 |  🟡 Med  | ◻ Pending |
+| 49  | Create Master module index (`src/master/index.ts`) — export MasterManager, DotFolderManager                                                                                                                                                                                                             | OB-079 |  🟡 Med  |  ✅ Done  |
 | 50  | Write Master AI tests (`tests/master/`) — dotfolder-manager, master-manager, exploration prompt                                                                                                                                                                                                         | OB-080 |  🟡 Med  | ◻ Pending |
 
 **Key design:** The Master AI IS the explorer. We send it a prompt ("explore this workspace silently") and let it do the work. We don't write framework detectors — the AI figures it out.

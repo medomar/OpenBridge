@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.230/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.180
-> **Open Findings:** 11 | **Pending Tasks:** 19
+> **Current Score:** 4.245/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.230
+> **Open Findings:** 11 | **Pending Tasks:** 18
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -84,6 +84,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.130 |    +0.05    | OB-075 completed — Master AI types (MasterState, ExplorationSummary, TaskRecord schemas)                                                         |
 | 2026-02-20 | 4.180 |    +0.05    | OB-077 completed — Exploration prompt with adaptive response style for code vs business workspaces                                               |
 | 2026-02-20 | 4.230 |    +0.05    | OB-076 completed — .openbridge/ folder manager with git integration, map/agents/log CRUD, task recording                                         |
+| 2026-02-20 | 4.245 |   +0.015    | OB-079 completed — Master module index (exports DotFolderManager, exploration prompt functions)                                                  |
 
 ---
 
