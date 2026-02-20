@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Router } from '../../src/core/router.js';
+import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
 import type { InboundMessage } from '../../src/types/message.js';
@@ -206,5 +207,90 @@ describe('Router', () => {
 
     resolveProcess({ content: 'Done' });
     await routePromise;
+  });
+
+  describe('with Agent Orchestrator', () => {
+    it('should route through orchestrator when set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Orchestrated response' });
+      // Disable streaming so orchestrator uses processMessage
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Provider was called through the orchestrator
+      expect(provider.processedMessages).toHaveLength(1);
+      expect(provider.processedMessages[0]?.content).toBe('hello');
+
+      // ack + response
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toBe('Orchestrated response');
+    });
+
+    it('should still send typing indicator when using orchestrator', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.typingIndicators).toHaveLength(1);
+    });
+
+    it('should propagate orchestrator errors', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Create orchestrator without registering the provider — this will cause an error
+      const orchestrator = new AgentOrchestrator('nonexistent');
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await expect(router.route(createMessage())).rejects.toThrow(
+        'Provider "nonexistent" not registered with orchestrator',
+      );
+    });
+
+    it('should not require direct providers when orchestrator is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'via orchestrator' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      // Only register connector and orchestrator — no direct addProvider call
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('via orchestrator');
+    });
   });
 });

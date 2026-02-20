@@ -12,6 +12,7 @@ import { MetricsCollector, MetricsServer } from './metrics.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router } from './router.js';
+import { AgentOrchestrator } from './agent-orchestrator.js';
 import { WorkspaceManager } from './workspace-manager.js';
 import { createLogger } from './logger.js';
 
@@ -33,6 +34,7 @@ export class Bridge {
   private readonly queue: MessageQueue;
   private readonly registry: PluginRegistry;
   private readonly router: Router;
+  private readonly orchestrator: AgentOrchestrator;
   private readonly workspaceManager: WorkspaceManager;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
@@ -51,6 +53,7 @@ export class Bridge {
     this.queue = new MessageQueue(config.queue, this.metrics);
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
+    this.orchestrator = new AgentOrchestrator(config.defaultProvider);
     this.workspaceManager = new WorkspaceManager(config.workspaces ?? [], config.defaultWorkspace);
   }
 
@@ -80,9 +83,13 @@ export class Bridge {
       const provider = this.registry.createProvider(providerConfig.type, providerConfig.options);
       await provider.initialize();
       this.router.addProvider(provider);
+      this.orchestrator.addProvider(provider);
       this.providers.push(provider);
       logger.info({ provider: provider.name }, 'Provider initialized');
     }
+
+    // Wire orchestrator into the router so messages route through it
+    this.router.setOrchestrator(this.orchestrator);
 
     // Initialize connectors
     for (const connectorConfig of this.config.connectors) {
@@ -159,6 +166,8 @@ export class Bridge {
         logger.error({ provider: provider.name, error }, 'Error shutting down provider');
       }
     }
+
+    this.orchestrator.shutdown();
 
     this.configWatcher?.stop();
 

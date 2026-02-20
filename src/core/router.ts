@@ -4,6 +4,7 @@ import type { Connector } from '../types/connector.js';
 import type { RouterConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
 import type { MetricsCollector } from './metrics.js';
+import type { AgentOrchestrator } from './agent-orchestrator.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -23,6 +24,7 @@ export class Router {
   private readonly progressIntervalMs: number;
   private readonly auditLogger?: AuditLogger;
   private readonly metrics?: MetricsCollector;
+  private orchestrator?: AgentOrchestrator;
 
   constructor(
     defaultProvider: string,
@@ -34,6 +36,12 @@ export class Router {
     this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
     this.auditLogger = auditLogger;
     this.metrics = metrics;
+  }
+
+  /** Set the agent orchestrator — when set, messages route through it instead of directly to a provider */
+  setOrchestrator(orchestrator: AgentOrchestrator): void {
+    this.orchestrator = orchestrator;
+    logger.info('Router configured to use Agent Orchestrator');
   }
 
   /** Register an active connector */
@@ -48,10 +56,13 @@ export class Router {
 
   /** Route an inbound message to the appropriate provider and send the response back */
   async route(message: InboundMessage): Promise<void> {
-    const provider = this.providers.get(this.defaultProviderName);
-    if (!provider) {
-      logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
-      return;
+    // When orchestrator is available, validate it has providers; otherwise check direct providers
+    if (!this.orchestrator) {
+      const provider = this.providers.get(this.defaultProviderName);
+      if (!provider) {
+        logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
+        return;
+      }
     }
 
     const connector = this.connectors.get(message.source);
@@ -60,8 +71,14 @@ export class Router {
       return;
     }
 
+    const useOrchestrator = !!this.orchestrator;
     logger.info(
-      { messageId: message.id, provider: provider.name, source: message.source },
+      {
+        messageId: message.id,
+        provider: this.defaultProviderName,
+        source: message.source,
+        orchestrated: useOrchestrator,
+      },
       'Routing message',
     );
 
@@ -82,15 +99,21 @@ export class Router {
     // Start progress updates
     const stopProgress = this.startProgressUpdates(connector, message);
 
-    // Process with AI provider — prefer streaming to avoid timeout on long responses
+    // Process message — through orchestrator or directly via provider
     let result: ProviderResult;
     const startTime = Date.now();
 
     try {
-      if (provider.streamMessage) {
-        result = await this.consumeStream(provider.streamMessage(message));
+      if (this.orchestrator) {
+        const orchestratorResult = await this.orchestrator.process(message);
+        result = orchestratorResult.result;
       } else {
-        result = await provider.processMessage(message);
+        const provider = this.providers.get(this.defaultProviderName)!;
+        if (provider.streamMessage) {
+          result = await this.consumeStream(provider.streamMessage(message));
+        } else {
+          result = await provider.processMessage(message);
+        }
       }
     } catch (error) {
       stopProgress();
