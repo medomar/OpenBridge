@@ -1,0 +1,17 @@
+{
+  "id": "a7f37583-ad47-4bf5-be73-7d6990871ca8",
+  "userMessage": "/ai hello",
+  "sender": "+1234567890",
+  "description": "hello",
+  "status": "failed",
+  "handledBy": "master",
+  "error": "Message processing failed: Processing error",
+  "createdAt": "2026-02-20T22:24:02.990Z",
+  "startedAt": "2026-02-20T22:24:02.990Z",
+  "completedAt": "2026-02-20T22:24:02.990Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
