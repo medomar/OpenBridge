@@ -20,6 +20,12 @@ export interface HealthStatus {
     processing: boolean;
     deadLetterSize: number;
   };
+  orchestrator?: {
+    totalAgents: number;
+    activeAgents: number;
+    taskAgents: number;
+    byStatus: Record<string, number>;
+  };
 }
 
 export type HealthDataProvider = () => HealthStatus;

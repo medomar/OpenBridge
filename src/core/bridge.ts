@@ -90,6 +90,7 @@ export class Bridge {
 
     // Wire orchestrator into the router so messages route through it
     this.router.setOrchestrator(this.orchestrator);
+    logger.info('Agent orchestrator wired into router');
 
     // Initialize connectors
     for (const connectorConfig of this.config.connectors) {
@@ -149,6 +150,14 @@ export class Bridge {
     await this.queue.drain();
     logger.info('Message queue drained');
 
+    // Shut down orchestrator first — cancels active agents before providers are torn down
+    const activeAgents = this.orchestrator.getActiveAgents().length;
+    if (activeAgents > 0) {
+      logger.info({ activeAgents }, 'Cancelling active agents before shutdown');
+    }
+    this.orchestrator.shutdown();
+    logger.info('Agent orchestrator shut down');
+
     for (const connector of this.connectors) {
       try {
         await connector.shutdown();
@@ -166,8 +175,6 @@ export class Bridge {
         logger.error({ provider: provider.name, error }, 'Error shutting down provider');
       }
     }
-
-    this.orchestrator.shutdown();
 
     this.configWatcher?.stop();
 
@@ -197,13 +204,19 @@ export class Bridge {
       status: 'healthy' as const,
     }));
 
+    const orchestratorSnapshot = this.orchestrator.getHealthSnapshot();
+
     const allStatuses = [...connectorStatuses, ...providerStatuses];
     const hasUnhealthy = allStatuses.some((s) => s.status === 'unhealthy');
     const hasDegraded = allStatuses.some((s) => s.status === 'degraded');
 
+    // Check for failed agents — degrade health if any agents have failed
+    const failedAgents = orchestratorSnapshot.byStatus['failed'] ?? 0;
+    const hasFailedAgents = failedAgents > 0;
+
     let overall: HealthStatus['status'] = 'healthy';
     if (hasUnhealthy) overall = 'unhealthy';
-    else if (hasDegraded) overall = 'degraded';
+    else if (hasDegraded || hasFailedAgents) overall = 'degraded';
 
     return {
       status: overall,
@@ -216,6 +229,7 @@ export class Bridge {
         processing: this.queue.isProcessing,
         deadLetterSize: this.queue.deadLetterSize,
       },
+      orchestrator: orchestratorSnapshot,
     };
   }
 
