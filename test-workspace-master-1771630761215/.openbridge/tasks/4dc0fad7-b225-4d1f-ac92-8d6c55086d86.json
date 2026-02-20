@@ -1,0 +1,17 @@
+{
+  "id": "4dc0fad7-b225-4d1f-ac92-8d6c55086d86",
+  "userMessage": "/ai second message",
+  "sender": "+1234567890",
+  "description": "second message",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Response",
+  "createdAt": "2026-02-20T23:39:21.937Z",
+  "startedAt": "2026-02-20T23:39:21.937Z",
+  "completedAt": "2026-02-20T23:39:21.937Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-2",
+    "source": "test"
+  }
+}
