@@ -1,0 +1,17 @@
+{
+  "id": "a052460d-5b53-48dc-8589-6207f8f2524f",
+  "userMessage": "/ai message",
+  "sender": "+1111111111",
+  "description": "message",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Response",
+  "createdAt": "2026-02-20T23:39:22.645Z",
+  "startedAt": "2026-02-20T23:39:22.645Z",
+  "completedAt": "2026-02-20T23:39:22.645Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
