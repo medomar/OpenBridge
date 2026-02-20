@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.520/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.505
-> **Open Findings:** 9 | **Pending Tasks:** 8
+> **Current Score:** 4.535/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.520
+> **Open Findings:** 9 | **Pending Tasks:** 7
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -93,6 +93,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.490 |   +0.015    | OB-088 completed — Knowledge layer archived to src/\_archived/knowledge/ (workspace-scanner, api-executor, tool-catalog, tool-executor)          |
 | 2026-02-20 | 4.505 |   +0.015    | OB-087 completed + F-008 fixed — config.example.json updated to V2 format (workspacePath, channels, auth only)                                   |
 | 2026-02-20 | 4.520 |   +0.015    | OB-090 completed — workspace-manager.ts + map-loader.ts archived to src/\_archived/core/, all imports cleaned, tests archived                    |
+| 2026-02-20 | 4.535 |   +0.015    | OB-089 completed — Old orchestrator (script-coordinator.ts, task-agent-runtime.ts) and old types (workspace-map.ts, tool.ts) archived            |
 
 ---
 

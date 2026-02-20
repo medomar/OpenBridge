@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 tasks across 8 phases | **Next up:** Phase 9
+> **Pending:** 6 tasks across 6 phases | **Next up:** Phase 10
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -29,7 +29,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 |   6   | AI tool discovery                 |   4   |   ✅   |
 |   7   | Master AI + `.openbridge/` folder |   6   |   ✅   |
 |   8   | V2 config + routing + CLI         |   7   |   ✅   |
-|   9   | Archive dead code + clean up      |   3   |   ◻    |
+|   9   | Archive dead code + clean up      |   3   |   ✅   |
 |  10   | Multi-AI delegation               |   4   |   ◻    |
 |  11   | Status + interaction              |   3   |   ◻    |
 |  12   | Documentation rewrite             |   6   |   ◻    |
@@ -101,11 +101,11 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 > **Focus:** Move code from the old vision (user-defined maps, manual orchestrator) to `src/_archived/`. Don't delete — preserve git history.
 
-| #   | Task                                                                                                                                             | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 58  | Move old knowledge layer to `src/_archived/knowledge/` — workspace-scanner.ts, api-executor.ts, tool-catalog.ts, tool-executor.ts                | OB-088 |  🟡 Med  |  ✅ Done  |
-| 59  | Move old orchestrator to `src/_archived/orchestrator/` — script-coordinator.ts, task-agent-runtime.ts. Move old types: workspace-map.ts, tool.ts | OB-089 |  🟡 Med  | ◻ Pending |
-| 60  | Move workspace-manager.ts + map-loader.ts to `src/_archived/core/`. Clean all imports. Archive corresponding tests                               | OB-090 |  🟡 Med  |  ✅ Done  |
+| #   | Task                                                                                                                                             | ID     | Priority | Status  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-----: |
+| 58  | Move old knowledge layer to `src/_archived/knowledge/` — workspace-scanner.ts, api-executor.ts, tool-catalog.ts, tool-executor.ts                | OB-088 |  🟡 Med  | ✅ Done |
+| 59  | Move old orchestrator to `src/_archived/orchestrator/` — script-coordinator.ts, task-agent-runtime.ts. Move old types: workspace-map.ts, tool.ts | OB-089 |  🟡 Med  | ✅ Done |
+| 60  | Move workspace-manager.ts + map-loader.ts to `src/_archived/core/`. Clean all imports. Archive corresponding tests                               | OB-090 |  🟡 Med  | ✅ Done |
 
 ---
 
