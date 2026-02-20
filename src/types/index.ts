@@ -9,3 +9,21 @@ export {
   AuthConfigSchema,
 } from './config.js';
 export type { AppConfig, ConnectorConfig, ProviderConfig, AuthConfig } from './config.js';
+export {
+  WorkspaceMapSchema,
+  APIEndpointSchema,
+  EndpointAuthSchema,
+  MapSourceSchema,
+  ParameterSchema,
+  FieldSchemaSchema,
+  HttpMethodSchema,
+} from './workspace-map.js';
+export type {
+  WorkspaceMap,
+  APIEndpoint,
+  EndpointAuth,
+  MapSource,
+  Parameter,
+  FieldSchema,
+  HttpMethod,
+} from './workspace-map.js';

@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 67 | **Done:** 41 | **In Progress:** 0 | **Pending:** 26
-> **Health Score:** 3.98/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
+> **Total:** 67 | **Done:** 43 | **In Progress:** 0 | **Pending:** 24
+> **Health Score:** 4.06/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
 
 ---
 
@@ -19,8 +19,8 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 |   2   | UX + robustness (V0)                       |  11   |  11  |   ✅   |
 |   3   | Observability + DX (V0)                    |   8   |  8   |   ✅   |
 |   4   | Polish + ecosystem (V0)                    |   6   |  6   |   ✅   |
-|   5   | Vision rewrite + documentation             |   5   |  4   |   ◻    |
-|   6   | Workspace mapping engine                   |   6   |  0   |   ◻    |
+|   5   | Vision rewrite + documentation             |   5   |  5   |   ✅   |
+|   6   | Workspace mapping engine                   |   6   |  1   |   ◻    |
 |   7   | Multi-agent orchestrator (script strategy) |   7   |  0   |   ◻    |
 |   8   | AI provider enhancement (user's own plan)  |   4   |  0   |   ◻    |
 |   9   | Interactive AI (views + questions)         |   4   |  0   |   ◻    |
@@ -101,13 +101,13 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 
 > **Focus:** Rewrite all project documentation to reflect the new vision: AI workforce platform, not a dev remote control.
 
-| #   | Task                                                                                                                                                                                                   | Finding | Priority  |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | :-------: | :-------: |
-| 38  | Rewrite OVERVIEW.md — new vision (AI workforce), use cases (marketplace admin, supplier onboarding, multi-store sync), updated architecture (5 layers: channels, core, orchestrator, knowledge, views) | OB-038  |  🟠 High  |  ✅ Done  |
-| 39  | Rewrite README.md — new positioning, real-world example flows, updated feature list, new quick start                                                                                                   | OB-039  |  🟠 High  |  ✅ Done  |
-| 40  | Update ARCHITECTURE.md — add Agent Orchestrator layer, Workspace Knowledge layer, View/Interaction layer, multi-agent flow diagrams, script strategy explanation                                       | OB-040  |  🟠 High  |  ✅ Done  |
-| 41  | Update both CLAUDE.md files — reflect new architecture, new module list, new dev workflows                                                                                                             | OB-041  | 🟡 Medium |  ✅ Done  |
-| 42  | Update CONFIGURATION.md — add schemas for workspace maps, agent orchestration, integrations, views                                                                                                     | OB-042  | 🟡 Medium | ◻ Pending |
+| #   | Task                                                                                                                                                                                                   | Finding | Priority  | Status  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | :-------: | :-----: |
+| 38  | Rewrite OVERVIEW.md — new vision (AI workforce), use cases (marketplace admin, supplier onboarding, multi-store sync), updated architecture (5 layers: channels, core, orchestrator, knowledge, views) | OB-038  |  🟠 High  | ✅ Done |
+| 39  | Rewrite README.md — new positioning, real-world example flows, updated feature list, new quick start                                                                                                   | OB-039  |  🟠 High  | ✅ Done |
+| 40  | Update ARCHITECTURE.md — add Agent Orchestrator layer, Workspace Knowledge layer, View/Interaction layer, multi-agent flow diagrams, script strategy explanation                                       | OB-040  |  🟠 High  | ✅ Done |
+| 41  | Update both CLAUDE.md files — reflect new architecture, new module list, new dev workflows                                                                                                             | OB-041  | 🟡 Medium | ✅ Done |
+| 42  | Update CONFIGURATION.md — add schemas for workspace maps, agent orchestration, integrations, views                                                                                                     | OB-042  | 🟡 Medium | ✅ Done |
 
 ---
 
@@ -117,7 +117,7 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 
 | #   | Task                                                                                                                                                                                             | Finding | Priority  |  Status   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | :-------: | :-------: |
-| 43  | Define workspace map types — `APIEndpoint` (route, method, headers, auth, request/response schemas), `WorkspaceMap` (collection of endpoints + metadata), `MapSource` (openapi, postman, manual) | OB-043  |  🟠 High  | ◻ Pending |
+| 43  | Define workspace map types — `APIEndpoint` (route, method, headers, auth, request/response schemas), `WorkspaceMap` (collection of endpoints + metadata), `MapSource` (openapi, postman, manual) | OB-043  |  🟠 High  |  ✅ Done  |
 | 44  | Design and document the `openbridge.map.json` spec — the file format where users declare their APIs, CURLs, auth tokens, data schemas. This is the AI's knowledge base per workspace             | OB-044  |  🟠 High  | ◻ Pending |
 | 45  | Build workspace scanner — reads `openbridge.map.json`, can also parse OpenAPI/Swagger specs and Postman collections to auto-generate the map                                                     | OB-045  |  🟠 High  | ◻ Pending |
 | 46  | Build API executor — executes HTTP requests on behalf of the AI (handles auth headers, tokens, request bodies, response parsing, error handling, retries)                                        | OB-046  |  🟠 High  | ◻ Pending |

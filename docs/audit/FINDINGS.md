@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 26 | **Fixed:** 41 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 24 | **Fixed:** 43 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -11,8 +11,8 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  11  |  15   |     0     |  26   |
-| 🟡 Medium   |  11  |  16   |     0     |  27   |
+| 🟠 High     |  10  |  16   |     0     |  26   |
+| 🟡 Medium   |  10  |  17   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
 ## Summary by Category
@@ -25,9 +25,9 @@
 | Core Engine             |  0   |   6   |   6   |
 | Configuration           |  0   |   4   |   4   |
 | Testing                 |  0   |   5   |   5   |
-| Documentation           |  1   |   8   |   9   |
+| Documentation           |  0   |   9   |   9   |
 | Developer Experience    |  0   |   3   |   3   |
-| Workspace Knowledge     |  6   |   0   |   6   |
+| Workspace Knowledge     |  5   |   1   |   6   |
 | Agent Orchestration     |  7   |   0   |   7   |
 | Provider Enhancement    |  4   |   0   |   4   |
 | Interactive AI          |  4   |   0   |   4   |
@@ -45,18 +45,18 @@
 | OB-039 | README.md positioning is wrong — needs real-world business use cases, not just "text AI from phone"    | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-040 | ARCHITECTURE.md missing 3 new layers — Agent Orchestrator, Workspace Knowledge, View/Interaction layer | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-041 | Both CLAUDE.md files reference old architecture — need updated module list and dev workflows           | Documentation | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-| OB-042 | CONFIGURATION.md missing schemas for workspace maps, agents, integrations, views                       | Documentation | 🟡 Medium | 🟡 Open  | 2026-02-20 |
+| OB-042 | CONFIGURATION.md missing schemas for workspace maps, agents, integrations, views                       | Documentation | 🟡 Medium | ✅ Fixed | 2026-02-20 |
 
 ### Phase 6 — Workspace Mapping Engine
 
-| ID     | Description                                                                                         | Category            | Severity  | Status  | Date       |
-| ------ | --------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :-----: | ---------- |
-| OB-043 | No workspace map types — AI has no structured knowledge of project APIs, endpoints, or data schemas | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | 🟡 Open | 2026-02-20 |
-| OB-048 | No tests for workspace mapping, scanning, or API execution                                          | Workspace Knowledge | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| ID     | Description                                                                                         | Category            | Severity  |  Status  | Date       |
+| ------ | --------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :------: | ---------- |
+| OB-043 | No workspace map types — AI has no structured knowledge of project APIs, endpoints, or data schemas | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
+| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | 🟡 Open  | 2026-02-20 |
+| OB-048 | No tests for workspace mapping, scanning, or API execution                                          | Workspace Knowledge | 🟡 Medium | 🟡 Open  | 2026-02-20 |
 
 ### Phase 7 — Multi-Agent Orchestrator
 
