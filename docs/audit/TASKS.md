@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 67 | **Done:** 39 | **In Progress:** 0 | **Pending:** 28
-> **Health Score:** 3.90/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
+> **Total:** 67 | **Done:** 41 | **In Progress:** 0 | **Pending:** 26
+> **Health Score:** 3.98/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
 
 ---
 
@@ -19,7 +19,7 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 |   2   | UX + robustness (V0)                       |  11   |  11  |   ✅   |
 |   3   | Observability + DX (V0)                    |   8   |  8   |   ✅   |
 |   4   | Polish + ecosystem (V0)                    |   6   |  6   |   ✅   |
-|   5   | Vision rewrite + documentation             |   5   |  2   |   ◻    |
+|   5   | Vision rewrite + documentation             |   5   |  4   |   ◻    |
 |   6   | Workspace mapping engine                   |   6   |  0   |   ◻    |
 |   7   | Multi-agent orchestrator (script strategy) |   7   |  0   |   ◻    |
 |   8   | AI provider enhancement (user's own plan)  |   4   |  0   |   ◻    |
@@ -105,8 +105,8 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | :-------: | :-------: |
 | 38  | Rewrite OVERVIEW.md — new vision (AI workforce), use cases (marketplace admin, supplier onboarding, multi-store sync), updated architecture (5 layers: channels, core, orchestrator, knowledge, views) | OB-038  |  🟠 High  |  ✅ Done  |
 | 39  | Rewrite README.md — new positioning, real-world example flows, updated feature list, new quick start                                                                                                   | OB-039  |  🟠 High  |  ✅ Done  |
-| 40  | Update ARCHITECTURE.md — add Agent Orchestrator layer, Workspace Knowledge layer, View/Interaction layer, multi-agent flow diagrams, script strategy explanation                                       | OB-040  |  🟠 High  | ◻ Pending |
-| 41  | Update both CLAUDE.md files — reflect new architecture, new module list, new dev workflows                                                                                                             | OB-041  | 🟡 Medium | ◻ Pending |
+| 40  | Update ARCHITECTURE.md — add Agent Orchestrator layer, Workspace Knowledge layer, View/Interaction layer, multi-agent flow diagrams, script strategy explanation                                       | OB-040  |  🟠 High  |  ✅ Done  |
+| 41  | Update both CLAUDE.md files — reflect new architecture, new module list, new dev workflows                                                                                                             | OB-041  | 🟡 Medium |  ✅ Done  |
 | 42  | Update CONFIGURATION.md — add schemas for workspace maps, agent orchestration, integrations, views                                                                                                     | OB-042  | 🟡 Medium | ◻ Pending |
 
 ---
