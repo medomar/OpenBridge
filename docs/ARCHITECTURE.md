@@ -4,504 +4,376 @@
 
 ---
 
-## System Overview
+## Overview
 
-OpenBridge is a **5-layer modular platform** that connects messaging channels to AI agents capable of understanding project APIs, executing real business tasks, and coordinating multi-step workflows.
+OpenBridge is a 4-layer system that connects messaging channels to an autonomous AI Master that explores and operates on your workspace.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        CHANNELS                                  │
-│  WhatsApp · Telegram · Discord · Slack · Web Chat                │
-│  Connectors translate between messaging APIs and OpenBridge      │
-└──────────────────────┬───────────────────────────────────────────┘
+│                        CHANNELS                                   │
+│  WhatsApp · Telegram · Discord · Web Chat                         │
+│  Connectors translate between messaging APIs and OpenBridge       │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      BRIDGE CORE                                 │
-│  Router · Auth · Queue · Config · Registry · Health · Metrics    │
-│  Message routing, authentication, rate limiting, plugin system   │
-└──────────────────────┬───────────────────────────────────────────┘
+│                      BRIDGE CORE                                  │
+│  Router · Auth · Queue · Config · Registry · Health · Metrics     │
+│  Message routing, authentication, rate limiting, plugin system    │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  AGENT ORCHESTRATOR                               │
-│  Main Agent · Task Agents · Script Coordinator · Event Bus       │
-│  Breaks tasks into subtasks, delegates to specialized agents,    │
-│  coordinates execution order, handles dependencies               │
-└──────────────────────┬───────────────────────────────────────────┘
+│                    AI DISCOVERY                                    │
+│  Tool Scanner · VS Code Scanner · Auto-Selection                  │
+│  Discovers AI CLIs on machine, ranks by capability, picks Master  │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                 WORKSPACE KNOWLEDGE                               │
-│  Workspace Maps · API Discovery · API Executor · Data Schemas    │
-│  Structured knowledge of every endpoint, auth method, and        │
-│  data model in the target project (openbridge.map.json)          │
-└──────────────────────┬───────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│               VIEWS + INTERACTION                                 │
-│  Reports · Dashboards · Interactive Flows · Onboarding Wizards   │
-│  AI generates visual outputs and multi-step Q&A flows,           │
-│  served via local HTTP and linked in chat messages                │
+│                     MASTER AI                                      │
+│  Master Manager · .openbridge/ Folder · Delegation Coordinator    │
+│  Autonomous exploration, task execution, multi-AI delegation,     │
+│  git-tracked knowledge base in target workspace                    │
 └──────────────────────────────────────────────────────────────────┘
-
-AI PROVIDERS (pluggable at every layer)
-  Claude Code · OpenAI · Gemini · Local LLMs · Custom Agents
-  Each provider implements the AIProvider interface with
-  optional workspace context and tool-use protocol support
 ```
 
 ---
 
 ## Layer 1: Channels (Connectors)
 
-Messaging platform adapters. Each connector implements the `Connector` interface (`src/types/connector.ts`):
+Messaging platform adapters. Each implements the `Connector` interface from `src/types/connector.ts`.
+
+### Connector Interface
 
 ```typescript
 interface Connector {
   name: string;
   initialize(): Promise<void>;
-  sendMessage(message: OutboundMessage): Promise<void>;
-  on(event, listener): void;
   shutdown(): Promise<void>;
+  sendMessage(message: OutboundMessage): Promise<void>;
+  sendTypingIndicator?(recipient: string): Promise<void>;
   isConnected(): boolean;
+  on(event: 'message', handler: (msg: InboundMessage) => void): void;
+  on(event: 'ready' | 'error' | 'disconnected', handler: Function): void;
 }
 ```
 
-Connectors translate between a messaging platform's native API and OpenBridge's internal `InboundMessage`/`OutboundMessage` types. Adding a new channel means implementing one interface.
+### Implemented Connectors
 
-| Channel  | Status | Library           | Directory                  |
-| -------- | :----: | ----------------- | -------------------------- |
-| WhatsApp |   ✅   | `whatsapp-web.js` | `src/connectors/whatsapp/` |
-| Console  |   ✅   | built-in (stdin)  | `src/connectors/console/`  |
-| Telegram |   ◻    | planned           | —                          |
-| Discord  |   ◻    | planned           | —                          |
-| Slack    |   ◻    | planned           | —                          |
-| Web Chat |   ◻    | planned           | —                          |
+| Connector | Directory                  | Library           | Features                                                                                               |
+| --------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| WhatsApp  | `src/connectors/whatsapp/` | `whatsapp-web.js` | QR auth, session persistence, auto-reconnect, message chunking, typing indicators, markdown formatting |
+| Console   | `src/connectors/console/`  | built-in (stdin)  | Reference implementation for testing                                                                   |
 
-**WhatsApp connector features (V0):**
+### WhatsApp Connector Details
 
-- Auto-reconnect with exponential backoff
-- Session persistence (survives restarts without re-scanning QR)
-- Message chunking for responses > 4096 characters
-- Typing indicator while AI processes
-- Markdown-to-WhatsApp formatting conversion
+- **Auto-reconnect** with exponential backoff (1s → 2s → 4s → ... → 60s max)
+- **Session persistence** via `LocalAuth` strategy — survives restarts without re-scanning QR
+- **Message chunking** — splits responses > 4096 chars into multiple messages
+- **Typing indicator** — shows "typing..." while AI processes
+- **Markdown conversion** — converts AI markdown to WhatsApp formatting (bold, italic, code)
 
 ---
 
 ## Layer 2: Bridge Core
 
-The engine that wires everything together. Located in `src/core/`.
-
-| Component        | File                   | Purpose                                                                              |
-| ---------------- | ---------------------- | ------------------------------------------------------------------------------------ |
-| Bridge           | `bridge.ts`            | Main orchestrator — wires connectors, providers, and services; manages lifecycle     |
-| Router           | `router.ts`            | Routes messages from connector → provider → connector, with streaming and progress   |
-| AuthService      | `auth.ts`              | Phone whitelist, command prefix (`/ai`), per-sender rate limiting, command filtering |
-| MessageQueue     | `queue.ts`             | Per-user sequential processing with retry, exponential backoff, dead-letter queue    |
-| PluginRegistry   | `registry.ts`          | Auto-discovers and registers connector/provider factories via plugin pattern         |
-| Config           | `config.ts`            | Loads and validates `config.json` via Zod schemas                                    |
-| ConfigWatcher    | `config-watcher.ts`    | Hot-reload — watches `config.json` for changes, re-validates, emits update events    |
-| RateLimiter      | `rate-limiter.ts`      | Configurable per-user message rate limiting                                          |
-| Health           | `health.ts`            | HTTP endpoint for monitoring bridge status, uptime, and component health             |
-| Metrics          | `metrics.ts`           | Tracks message counts, latency, error rates, and queue depth                         |
-| AuditLogger      | `audit-logger.ts`      | Structured audit trail of all message events                                         |
-| WorkspaceManager | `workspace-manager.ts` | Multi-workspace routing via `@workspace-name` syntax                                 |
-| Logger           | `logger.ts`            | Pino structured logging                                                              |
-
-**Message types** are defined in `src/types/message.ts` (`InboundMessage`, `OutboundMessage`).
-**Config schemas** are defined in `src/types/config.ts` using Zod.
-
----
-
-## Layer 3: Agent Orchestrator _(planned — Phase 7)_
-
-The intelligence layer that coordinates multi-agent work. Instead of routing every message directly to a single AI provider, the orchestrator decides how to handle each request.
-
-### Architecture
-
-```
-                    User Message
-                         │
-                         ▼
-                  ┌──────────────┐
-                  │  Main Agent  │  Receives request, decides strategy
-                  └──────┬───────┘
-                         │
-              ┌──────────┼──────────┐
-              ▼          ▼          ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Task     │ │ Task     │ │ Task     │  Specialized agents
-        │ Agent A  │ │ Agent B  │ │ Agent C  │  execute subtasks
-        └─────┬────┘ └─────┬────┘ └─────┬────┘
-              │            │            │
-              ▼            ▼            ▼
-        ┌──────────────────────────────────────┐
-        │        Script Coordinator             │  Event bus: tracks
-        │  agent_started · task_complete ·      │  completion, manages
-        │  agent_done · dependency_met          │  dependencies, triggers
-        └──────────────────────────────────────┘  next steps
-```
+The engine that wires everything together. Lives in `src/core/`.
 
 ### Components
 
-- **Main Agent** — receives the user's request, analyzes complexity, and decides whether to handle directly (simple queries) or decompose into subtasks (complex operations)
-- **Task Agents** — lightweight, specialized agents that each execute a single subtask. A task agent receives a task list, has access to the workspace map and API executor, reports progress back, and emits a completion event when done
-- **Script Coordinator** — the event bus between agents. Manages execution order, handles dependencies (Agent B waits for Agent A), enforces timeouts, and triggers failure handling
-- **Script Strategy** — the coordination pattern: when a task agent finishes, a script event notifies the main agent, which evaluates results and triggers the next step. This allows sequential, parallel, or conditional execution flows
+| Component          | File                | Purpose                                                                          |
+| ------------------ | ------------------- | -------------------------------------------------------------------------------- |
+| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI          |
+| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates |
+| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                  |
+| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue            |
+| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                  |
+| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats            |
+| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                     |
+| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                      |
+| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                  |
+| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                     |
+| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                            |
+| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                            |
 
-### Multi-Agent Flow Example
-
-```
-User: "Onboard supplier Acme Corp with their catalog"
-
-Main Agent analyzes → decomposes into 3 subtasks:
-
-  Task Agent 1: Register Acme Corp in vendor system
-       │ completes → emits task_complete
-       ▼
-  Task Agent 2: Fetch + parse product catalog (247 items)
-       │ completes → emits task_complete
-       ▼
-  Task Agent 3: Map products to taxonomy + import
-       │ completes → emits agent_done
-       ▼
-  Main Agent: Collects results → sends summary to user
-```
-
-### Planned Types
-
-```typescript
-interface Agent {
-  id: string;
-  status: 'idle' | 'working' | 'done' | 'failed';
-  workspace: string;
-  taskList: Task[];
-}
-
-interface TaskAgent extends Agent {
-  parentId: string; // main agent that created this task agent
-  completionCallback: string; // script event to emit on completion
-}
-
-type ScriptEvent = 'agent_started' | 'task_complete' | 'agent_done' | 'agent_failed';
-```
-
----
-
-## Layer 4: Workspace Knowledge _(planned — Phase 6)_
-
-Structured knowledge about the target project's APIs, endpoints, authentication, and data schemas. This is the core differentiator — the AI doesn't just answer questions, it knows what actions are available and how to execute them.
-
-### Architecture
+### Message Flow (V2 with Master AI)
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                   Workspace Map                           │
-│  openbridge.map.json                                      │
-│                                                           │
-│  ┌────────────────┐  ┌────────────────┐                   │
-│  │  API Endpoints  │  │  Auth Methods  │                   │
-│  │  route, method, │  │  bearer, api   │                   │
-│  │  headers, body  │  │  key, oauth    │                   │
-│  └────────────────┘  └────────────────┘                   │
-│                                                           │
-│  ┌────────────────┐  ┌────────────────┐                   │
-│  │  Data Schemas   │  │  CURL Examples │                   │
-│  │  request/resp   │  │  per endpoint  │                   │
-│  │  Zod/JSON       │  │               │                   │
-│  └────────────────┘  └────────────────┘                   │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    ┌───────────┐ ┌──────────┐ ┌────────────────┐
-    │  Scanner  │ │ Executor │ │ Context        │
-    │ OpenAPI   │ │ HTTP     │ │ Injection      │
-    │ Postman   │ │ requests │ │ Maps → prompts │
-    │ Manual    │ │ + retries│ │ for AI         │
-    └───────────┘ └──────────┘ └────────────────┘
+1. WhatsApp message arrives
+   │
+2. connector.on('message') → bridge.handleIncomingMessage()
+   │
+3. Auth checks:
+   ├─ Is sender whitelisted?       → reject if not
+   ├─ Does message have /ai prefix? → ignore if not
+   ├─ Is sender rate-limited?       → drop if exceeded
+   └─ Is command allowed?           → block if denied
+   │
+4. queue.enqueue(message)
+   │
+5. Queue processes per-user sequentially:
+   │
+6. router.route(message)
+   ├─ Send "Working on it..." ack to user
+   ├─ Start progress timer (every 15s)
+   ├─ Route to Master AI:
+   │   └─ master.processMessage(message) → ProviderResult
+   ├─ Stop progress timer
+   └─ Send result back to user via connector
+   │
+7. Audit log + metrics recorded
 ```
 
-### Components
+### Message Flow (V0 legacy — direct provider)
 
-- **Workspace Map** (`openbridge.map.json`) — the file where users declare their project's APIs. Contains every endpoint (route, method, headers, auth, request/response schemas) and optional CURL examples. This is the AI's knowledge base per workspace
-- **Scanner** — reads `openbridge.map.json` and can also auto-generate maps by parsing OpenAPI/Swagger specs and Postman collections. Supports manual, openapi, and postman source types
-- **API Executor** — makes HTTP requests on behalf of agents. Handles authentication headers, tokens, request bodies, response parsing, error handling, and retries
-- **Context Injection** — workspace maps are passed to AI providers so agents know what actions are available. The provider receives structured endpoint data alongside the user's message
-
-### Planned Types
-
-```typescript
-interface APIEndpoint {
-  route: string;
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  headers?: Record<string, string>;
-  auth?: AuthConfig;
-  requestSchema?: object; // JSON Schema or Zod-compatible
-  responseSchema?: object;
-  description?: string;
-  curl?: string; // example CURL command
-}
-
-interface WorkspaceMap {
-  name: string;
-  version: string;
-  baseUrl: string;
-  auth: AuthConfig;
-  endpoints: APIEndpoint[];
-  metadata?: Record<string, unknown>;
-}
-
-type MapSource = 'openapi' | 'postman' | 'manual';
 ```
-
-### Example `openbridge.map.json`
-
-```json
-{
-  "name": "my-store-api",
-  "version": "1.0.0",
-  "baseUrl": "https://api.mystore.com/v1",
-  "auth": {
-    "type": "bearer",
-    "token": "${STORE_API_TOKEN}"
-  },
-  "endpoints": [
-    {
-      "route": "/products",
-      "method": "GET",
-      "description": "List all products with pagination",
-      "responseSchema": { "type": "array", "items": { "$ref": "#/schemas/Product" } }
-    },
-    {
-      "route": "/products",
-      "method": "POST",
-      "description": "Create a new product",
-      "requestSchema": { "$ref": "#/schemas/CreateProduct" },
-      "curl": "curl -X POST https://api.mystore.com/v1/products -H 'Authorization: Bearer $TOKEN' -d '{\"name\": \"Widget\", \"price\": 9.99}'"
-    },
-    {
-      "route": "/orders/:id",
-      "method": "GET",
-      "description": "Get order by ID"
-    }
-  ]
-}
+Same as above but step 6 routes directly to an AIProvider instead of Master AI.
+Router checks: master → orchestrator → direct provider (in priority order).
 ```
 
 ---
 
-## Layer 5: Views + Interaction _(planned — Phase 9)_
+## Layer 3: AI Discovery
 
-Rich outputs beyond text messages. The AI can generate visual reports, serve interactive dashboards, and run multi-step Q&A flows.
+Auto-detects AI tools on the machine at startup. Lives in `src/discovery/`.
 
-### Components
+### How Discovery Works
 
-- **Temporary Views** — AI-generated reports, dashboards, and data summaries served on a local HTTP server. Auto-expire after a configurable TTL. Links sent to the user via their messaging channel
-- **Permanent Views** — persisted outputs such as reconciliation reports, audit summaries, and historical data views
-- **Interactive Flows** — multi-step question-and-answer sequences for onboarding, confirmations, and structured data collection. The AI asks questions, tracks conversation state, and handles responses
-- **View Server** — local HTTP server that hosts generated views. Runs alongside the bridge, serves HTML/JSON content, and manages view lifecycle (creation, TTL expiry, cleanup)
+```
+1. CLI Scanner:
+   - For each known AI tool (claude, codex, aider, cursor, cody):
+     - Run `which <command>` to check if installed
+     - If found: capture path, run `<tool> --version`
+     - Record capabilities (code-gen, file-editing, conversation, tool-use)
+   - Rank by priority (claude > codex > aider > cursor > cody)
 
-### Planned Types
+2. VS Code Scanner:
+   - Read ~/.vscode/extensions/ directory
+   - Check for known AI extensions (Copilot, Cody, Continue)
+   - Record as available (informational, not used for CLI delegation)
+
+3. Selection:
+   - Pick highest-priority available CLI tool as Master
+   - Register all others as potential delegates
+   - Return ScanResult { tools, master, scanDurationMs }
+```
+
+### Discovery Types
 
 ```typescript
-interface TemporaryView {
-  id: string;
-  content: string; // HTML or JSON
-  createdAt: Date;
-  expiresAt: Date;
-  url: string; // local HTTP URL
+interface DiscoveredTool {
+  name: string; // 'claude', 'codex', 'aider'
+  path: string; // '/usr/local/bin/claude'
+  version?: string; // '1.2.3'
+  capabilities: string[]; // ['code-generation', 'file-editing', 'conversation']
+  role: 'master' | 'delegate';
+  available: boolean;
 }
 
-interface PermanentView {
-  id: string;
-  content: string;
-  createdAt: Date;
-  path: string; // persisted file path
-  url: string;
-}
-
-interface InteractiveForm {
-  id: string;
-  steps: FormStep[];
-  currentStep: number;
-  state: Record<string, unknown>;
-  onComplete: (data: Record<string, unknown>) => Promise<void>;
+interface ScanResult {
+  tools: DiscoveredTool[];
+  master: DiscoveredTool | null;
+  scanDurationMs: number;
 }
 ```
+
+### Known AI Tools Registry
+
+| Tool   | Command  | Priority | Capabilities                                   |
+| ------ | -------- | :------: | ---------------------------------------------- |
+| Claude | `claude` |    1     | code-gen, file-editing, conversation, tool-use |
+| Codex  | `codex`  |    2     | code-gen, file-editing                         |
+| Aider  | `aider`  |    3     | code-gen, file-editing                         |
+| Cursor | `cursor` |    4     | code-gen, file-editing                         |
+| Cody   | `cody`   |    5     | code-gen, conversation                         |
 
 ---
 
-## AI Providers
+## Layer 4: Master AI
 
-Providers are pluggable backends that process messages. Each implements the `AIProvider` interface (`src/types/provider.ts`):
+The autonomous agent that knows your project. Lives in `src/master/`.
+
+### Master Manager
+
+The central component that manages the Master AI lifecycle:
+
+```
+States:  idle → exploring → ready → error
+                  │
+         startExploration() fires on startup
+                  │
+         Sends exploration prompt to Master AI CLI
+                  │
+         Master AI reads project files, creates .openbridge/
+                  │
+         State transitions to 'ready'
+                  │
+         processMessage(msg) handles user requests
+```
+
+### `.openbridge/` Folder
+
+Created by the Master AI inside the target workspace. This is the AI's persistent knowledge base.
+
+```
+target-project/
+├── src/
+├── package.json
+├── ...
+└── .openbridge/                 ← Created by Master AI
+    ├── .git/                    ← Local git repo (Master's changes only)
+    ├── workspace-map.json       ← Auto-generated project understanding
+    │   {
+    │     "name": "my-project",
+    │     "description": "Node.js REST API",
+    │     "languages": ["typescript", "sql"],
+    │     "frameworks": ["express", "prisma"],
+    │     "structure": { ... },
+    │     "exploredAt": "2026-02-20T13:00:00Z"
+    │   }
+    ├── exploration.log          ← Timestamped scan history
+    ├── agents.json              ← Discovered AI tools + their roles
+    │   {
+    │     "master": { "name": "claude", "path": "/usr/local/bin/claude" },
+    │     "delegates": [ { "name": "codex", "path": "..." } ]
+    │   }
+    └── tasks/                   ← Task history (one JSON per task)
+        ├── task-001.json
+        └── task-002.json
+```
+
+### Exploration Prompt
+
+On startup, the Master Manager sends a carefully crafted prompt to the Master AI CLI:
+
+```
+You are the Master AI for the project at /path/to/workspace.
+
+Your job:
+1. Silently explore the workspace — read key files (package.json, README, src/, etc.)
+2. Create a .openbridge/ folder at the workspace root
+3. Inside .openbridge/, create workspace-map.json with your findings
+4. Initialize a git repo in .openbridge/ and commit your findings
+5. Do NOT send any messages to the user — work silently
+
+IMPORTANT: Only create files inside .openbridge/. Do not modify existing project files.
+```
+
+The AI does the exploring — we don't write framework detectors or file parsers.
+
+### Delegation
+
+When the Master needs help from another AI tool:
+
+```
+1. Master's response contains a delegation marker:
+   [DELEGATE:codex] Refactor the auth module to use JWT
+
+2. Master Manager intercepts the marker
+
+3. DelegationCoordinator spawns the delegate CLI:
+   codex --print "Refactor the auth module to use JWT"
+   (using the generalized executor from claude-code-executor.ts)
+
+4. Delegate's result is fed back to Master's session
+
+5. Task recorded in .openbridge/tasks/ and committed to git
+```
+
+### Generalized CLI Executor
+
+The `claude-code-executor.ts` module supports any CLI tool via the `command` option:
 
 ```typescript
-interface AIProvider {
-  name: string;
-  initialize(): Promise<void>;
-  processMessage(message: InboundMessage): Promise<ProviderResult>;
-  isAvailable(): Promise<boolean>;
-  shutdown(): Promise<void>;
-}
+// Run claude (default)
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000 });
+
+// Run codex
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'codex' });
+
+// Run aider
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'aider' });
 ```
 
-| Provider    | Status | Directory                    | How it works                                               |
-| ----------- | :----: | ---------------------------- | ---------------------------------------------------------- |
-| Claude Code |   ✅   | `src/providers/claude-code/` | Runs `claude` CLI in target workspace with session support |
-| OpenAI      |   ◻    | planned                      | API-based                                                  |
-| Gemini      |   ◻    | planned                      | API-based                                                  |
-| Local LLMs  |   ◻    | planned                      | Ollama, LM Studio                                          |
-
-**Claude Code provider features (V0):**
-
-- **Streaming** — responses stream in real-time via `claude --print --output-format stream-json`
-- **Session continuity** — conversations persist across messages (30 min TTL per user) via `SessionManager`
-- **Error classification** — transient errors retry automatically; permanent errors surface to the user via `ProviderError`
-- **Input sanitization** — user messages escaped before shell execution via `ClaudeCodeExecutor`
-- **Workspace scoping** — the AI has full access to the project's files, git, and terminal, contained to the configured workspace
-
-### Future: Workspace-Aware Providers (Phase 8)
-
-Providers will be enhanced with a **tool-use protocol** that allows AI to request structured actions:
-
-```typescript
-// Extended interface (planned)
-interface WorkspaceAwareProvider extends AIProvider {
-  processMessage(
-    message: InboundMessage,
-    context: WorkspaceContext, // map, available tools, active agents
-  ): Promise<ProviderResult>;
-}
-
-// Tool-use action (planned)
-interface ToolAction {
-  action: 'api_call' | 'file_read' | 'file_write' | 'shell_exec';
-  endpoint?: string;
-  method?: string;
-  body?: unknown;
-  path?: string;
-}
-```
-
-The provider receives workspace context (API map, available tools, active agents) alongside the message, and can respond with structured tool-use actions that the bridge executes on its behalf.
-
----
-
-## Message Flow
-
-### Current Flow (V0)
-
-```
-1. Connector receives raw message from messaging platform
-2. Connector emits 'message' event with InboundMessage
-3. Bridge.handleIncomingMessage():
-   a. AuthService.isAuthorized(sender) → whitelist check
-   b. AuthService.hasPrefix(content) → prefix check (/ai)
-   c. AuthService.stripPrefix(content) → clean message
-   d. RateLimiter.check(sender) → rate limit check
-4. MessageQueue.enqueue(cleanedMessage) → per-user queue
-5. Queue processes sequentially per user:
-   a. Router.route(message)
-   b. Router sends "Working on it..." acknowledgment
-   c. WorkspaceManager resolves target workspace
-   d. Provider.processMessage(message) → AI response (streamed)
-   e. Router sends response back via connector (chunked if needed)
-6. AuditLogger records the event
-7. Metrics updated (latency, counts, errors)
-```
-
-### Planned Flow (with Orchestrator)
-
-```
-1. Connector receives raw message
-2. Auth + rate limiting (same as V0)
-3. MessageQueue.enqueue(cleanedMessage)
-4. Queue processes:
-   a. Router → Agent Orchestrator (instead of direct to provider)
-   b. Main Agent analyzes request complexity
-   c. Simple request → handle directly via provider
-   d. Complex request → decompose into subtasks:
-      i.   Create task agents with assigned subtasks
-      ii.  Each task agent gets workspace map context
-      iii. Task agents execute using API executor + provider
-      iv.  Script Coordinator tracks completion events
-      v.   Dependencies resolved (Agent B waits for Agent A)
-   e. Main Agent collects results from all task agents
-   f. Response formatted and sent back via connector
-   g. Optional: generate a view (report, dashboard) and send link
-```
+Features: streaming via async generator, session support, prompt sanitization, graceful shutdown guard (active child processes tracked and waited for during SIGTERM/SIGINT).
 
 ---
 
 ## Configuration Model
 
-Validated by Zod schemas in `src/types/config.ts`.
-
-### Current Config (`config.json`)
+### V2 Config (new — simplified)
 
 ```json
 {
-  "connectors": [{ "type": "whatsapp", "enabled": true, "options": {} }],
-  "providers": [
-    {
-      "type": "claude-code",
-      "enabled": true,
-      "options": {
-        "workspacePath": "/absolute/path/to/your/project"
-      }
-    }
-  ],
-  "defaultProvider": "claude-code",
+  "workspacePath": "/path/to/your/project",
+  "channels": [{ "type": "whatsapp", "enabled": true }],
   "auth": {
     "whitelist": ["+1234567890"],
     "prefix": "/ai"
-  },
-  "logLevel": "info"
+  }
 }
 ```
 
-The `workspacePath` in provider options points to the **target project**, not OpenBridge. This is the folder where the AI has access.
+Three fields. AI tools are auto-discovered, Master is auto-selected.
 
-### Planned Config Extensions
+### V0 Config (legacy — still supported)
 
 ```json
 {
-  "workspaces": {
-    "my-store": {
-      "path": "/path/to/store-project",
-      "map": "openbridge.map.json"
-    }
-  },
-  "orchestrator": {
-    "maxConcurrentAgents": 5,
-    "taskTimeout": 300000,
-    "scriptStrategy": "sequential"
-  },
-  "views": {
-    "enabled": true,
-    "port": 3001,
-    "defaultTTL": 3600
-  }
+  "connectors": [{ "type": "whatsapp", "enabled": true }],
+  "providers": [{ "type": "claude-code", "enabled": true, "options": { "workspacePath": "..." } }],
+  "defaultProvider": "claude-code",
+  "auth": { "whitelist": [...], "prefix": "/ai" }
 }
+```
+
+The config loader auto-detects the format and runs the appropriate startup flow.
+
+---
+
+## Startup Sequence
+
+### V2 Flow (with discovery + Master)
+
+```
+1. loadConfig()                    → detect V2 format
+2. scanForAITools()                → discover claude, codex, etc.
+3. new Bridge(config)              → create bridge with auth, queue, router
+4. registerBuiltInConnectors()     → register WhatsApp, Console
+5. bridge.start()                  → initialize connectors, health, metrics
+6. new MasterManager(tool, path)   → create Master with discovered tool
+7. bridge.setMaster(master)        → wire Master into router
+8. master.startExploration()       → fire-and-forget background exploration
+9. Ready — waiting for messages
+```
+
+### V0 Flow (legacy — direct provider)
+
+```
+1. loadConfig()                    → detect V0 format
+2. new Bridge(config)              → create bridge
+3. registerBuiltInConnectors()     → register WhatsApp, Console
+4. registerBuiltInProviders()      → register Claude Code provider
+5. bridge.start()                  → initialize connectors + providers
+6. Ready — messages route directly to provider
 ```
 
 ---
 
 ## Key Design Decisions
 
-| Decision            | Choice                                            | Rationale                                                                           |
-| ------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Workspace-scoped AI | AI only has access to the configured workspace    | Security boundary — not full machine access                                         |
-| Plugin architecture | Factory pattern for connectors/providers          | New plugins register without modifying core code                                    |
-| Per-user queues     | Messages processed sequentially per user          | Prevents concurrent AI sessions from conflicting while allowing cross-user parallel |
-| Script strategy     | Event-driven agent coordination                   | Agents stay decoupled; scripts handle dependencies and ordering                     |
-| Workspace maps      | Declarative API knowledge (`openbridge.map.json`) | AI receives structured endpoint data instead of guessing from docs                  |
-| Local-first         | Everything runs on the user's machine             | No cloud dependency, no per-request cost, full data ownership                       |
-| Zod validation      | Runtime config validation                         | Fail fast on bad config, TypeScript type inference                                  |
-| ESM + Node 22       | Modern module system                              | Native ESM, top-level await, better performance                                     |
+1. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI a prompt and let it figure out the project. This is simpler and more powerful.
+
+2. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. It has its own git repo so changes are tracked without polluting the project's git history.
+
+3. **Discovery runs once at startup.** We don't continuously scan for tools. Restart to re-discover.
+
+4. **V0 config stays supported.** Auto-detect config version, run the appropriate flow. No breaking changes.
+
+5. **The executor is generalized, not rewritten.** The existing `claude-code-executor.ts` handles spawning, streaming, sanitization, sessions, and graceful shutdown. Adding `command` option was a one-line change.
+
+6. **Dead code is archived, not deleted.** Old knowledge/ and orchestrator/ modules go to `src/_archived/` — out of the compile path but preserved in git.
 
 ---
 
@@ -509,33 +381,52 @@ The `workspacePath` in provider options points to the **target project**, not Op
 
 ```
 src/
-├── index.ts                       # Entry point — loads config, registers plugins, starts bridge
+├── index.ts                    ← Entry point (V0 + V2 startup flows)
+├── cli/
+│   ├── index.ts                ← CLI dispatcher
+│   └── init.ts                 ← Config generator (3 questions for V2)
 ├── types/
-│   ├── connector.ts               # Connector interface
-│   ├── provider.ts                # AIProvider interface
-│   ├── message.ts                 # InboundMessage / OutboundMessage
-│   ├── config.ts                  # Zod config schemas
-│   └── common.ts                  # Shared utility types
+│   ├── connector.ts            ← Connector interface
+│   ├── provider.ts             ← AIProvider interface + ProviderContext
+│   ├── message.ts              ← InboundMessage / OutboundMessage
+│   ├── config.ts               ← AppConfigSchema (V0) + AppConfigV2Schema
+│   ├── common.ts               ← Shared types
+│   ├── agent.ts                ← Agent / TaskAgent types (reused)
+│   ├── discovery.ts            ← DiscoveredTool, ScanResult schemas
+│   └── master.ts               ← MasterState, ExplorationSummary schemas
 ├── core/
-│   ├── bridge.ts                  # Main orchestrator
-│   ├── router.ts                  # Message routing
-│   ├── auth.ts                    # Whitelist + prefix auth
-│   ├── queue.ts                   # Per-user message queue
-│   ├── registry.ts                # Plugin registry
-│   ├── config.ts                  # Config loader
-│   ├── config-watcher.ts          # Config hot-reload
-│   ├── rate-limiter.ts            # Per-user rate limiting
-│   ├── health.ts                  # Health check HTTP endpoint
-│   ├── metrics.ts                 # Metrics collection
-│   ├── audit-logger.ts            # Audit trail
-│   ├── workspace-manager.ts       # Multi-workspace routing
-│   └── logger.ts                  # Pino logger
+│   ├── bridge.ts               ← Main orchestrator (setMaster + lifecycle)
+│   ├── router.ts               ← Message routing (Master → provider fallback)
+│   ├── auth.ts                 ← Whitelist + prefix + command filters
+│   ├── queue.ts                ← Per-user queues + retry + DLQ
+│   ├── registry.ts             ← Plugin registry (auto-discovery)
+│   ├── config.ts               ← Config loader (V2 detection + V0 fallback)
+│   ├── config-watcher.ts       ← Config hot-reload
+│   ├── health.ts               ← Health check endpoint
+│   ├── metrics.ts              ← Metrics collection
+│   ├── audit-logger.ts         ← Audit trail
+│   ├── rate-limiter.ts         ← Per-user rate limiting
+│   └── logger.ts               ← Pino logger
 ├── connectors/
-│   ├── whatsapp/                  # WhatsApp connector (V0)
-│   └── console/                   # Console connector (reference)
+│   ├── index.ts                ← Connector registry
+│   ├── whatsapp/               ← WhatsApp connector (V0)
+│   └── console/                ← Console connector (reference impl)
 ├── providers/
-│   └── claude-code/               # Claude Code AI provider (V0)
-├── orchestrator/                  # (planned) Agent orchestrator
-├── knowledge/                     # (planned) Workspace knowledge
-└── views/                         # (planned) View generator + server
+│   ├── index.ts                ← Provider registry
+│   └── claude-code/            ← Claude Code CLI provider (V0)
+│       ├── claude-code-provider.ts
+│       ├── claude-code-executor.ts  ← Generalized executor (any CLI)
+│       ├── claude-code-config.ts
+│       ├── session-manager.ts
+│       └── provider-error.ts
+├── discovery/
+│   ├── index.ts                ← scanForAITools() export
+│   ├── tool-scanner.ts         ← CLI tool detection (which)
+│   └── vscode-scanner.ts       ← VS Code extension detection
+└── master/
+    ├── index.ts                ← Module exports
+    ├── master-manager.ts       ← Master AI lifecycle + message routing
+    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + git operations
+    ├── exploration-prompt.ts   ← System prompt for workspace exploration
+    └── delegation.ts           ← Multi-AI task delegation
 ```

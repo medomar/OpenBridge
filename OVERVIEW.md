@@ -2,207 +2,206 @@
 
 ## What is OpenBridge?
 
-OpenBridge is an open-source platform that turns AI into a **workforce** — agents that understand your project's APIs, execute real business tasks, and coordinate multi-step workflows. You interact through the messaging app you already use (WhatsApp, Telegram, Slack). The AI runs on your machine, uses your own AI subscription, and has deep knowledge of your workspace.
+OpenBridge is an open-source platform that turns AI into an **autonomous worker for your project**. Point it at any workspace, connect your messaging app, and the AI explores your project, learns its structure, and executes tasks on your behalf — all using the AI tools already installed on your machine.
 
-This is not a chatbot. OpenBridge agents can read your API documentation, call your endpoints, onboard suppliers, sync inventory across stores, generate reports, and handle complex multi-step operations — all triggered from a text message.
+There are no API keys to configure. No map files to write. No complex setup. OpenBridge auto-discovers the AI tools on your system (Claude Code, Codex, Aider, etc.), picks the most capable one as the "Master", and lets it work.
 
 ## Why OpenBridge?
 
-**The problem:** AI assistants today are generic. They don't know your APIs, can't execute actions on your behalf, and treat every conversation as isolated. You end up copy-pasting API docs, explaining your stack, and manually running the actions the AI suggests.
+**The problem:** AI tools are powerful but isolated. You open Claude Code, type a question, get an answer, then manually relay instructions. You can't trigger AI work from your phone. You can't coordinate multiple AI tools. You can't give an AI persistent knowledge of your project that survives across sessions.
 
-**The solution:** OpenBridge gives AI structured knowledge of your project — every endpoint, every authentication method, every data schema. Agents don't just answer questions; they execute tasks against your real systems using a tool-use protocol. When a task is too complex for one agent, the orchestrator breaks it into subtasks and coordinates multiple agents working in parallel.
+**The solution:** OpenBridge bridges the gap between you and your AI tools:
 
-**Zero extra cost:** OpenBridge runs locally and uses your existing AI subscription (Claude Max, OpenAI API key, etc.). No per-request fees, no cloud dependency, no vendor lock-in.
+- **Message from anywhere** — send a WhatsApp message, the AI handles it in your workspace
+- **Zero setup** — auto-discovers installed AI tools, no API keys, no config files to study
+- **Autonomous exploration** — the Master AI silently learns your project on startup
+- **Persistent knowledge** — everything the AI learns is stored in `.openbridge/` with git tracking
+- **Multi-AI** — the Master can delegate tasks to other AI tools found on your machine
+- **Your subscription** — runs locally, uses your existing AI tools, zero extra cost
+
+## How It Works
+
+### Setup (one time)
+
+```
+openbridge init
+  → Workspace path? /Users/you/my-project
+  → Phone whitelist? +1234567890
+  → Done. Run: openbridge start
+```
+
+### On Startup
+
+```
+1. Load config (workspace path + channel + whitelist)
+2. Connect WhatsApp (restore session or scan QR)
+3. Auto-discover AI tools:
+   - Scan: claude? codex? aider? cursor?
+   - Pick Master (most capable)
+   - Register others as delegates
+4. Launch Master AI silently:
+   - Explore target workspace
+   - Create .openbridge/ folder
+   - Generate workspace understanding
+   - Init local git repo for tracking
+5. Ready. Waiting for messages.
+```
+
+### User Interaction
+
+```
+You (WhatsApp)                    OpenBridge (your machine)
+    |                                     |
+    |  "/ai what's in my project?"       |
+    | ──────────────────────────────────> |
+    |                                     |  Master AI already explored
+    |                                     |  Replies from its knowledge
+    |  "Your project is a Node.js        |
+    |   API with 12 routes, PostgreSQL   |
+    |   database, React frontend..."     |
+    | <────────────────────────────────── |
+    |                                     |
+    |  "/ai add input validation         |
+    |   to the login endpoint"           |
+    | ──────────────────────────────────> |
+    |                                     |  Master AI modifies files
+    |                                     |  Changes tracked in .openbridge/.git
+    |  "Done. Added zod validation       |
+    |   to POST /auth/login. Changes     |
+    |   committed."                      |
+    | <────────────────────────────────── |
+```
 
 ## Real-World Use Cases
 
-### E-Commerce Operations
+### Manage Your Projects from Your Phone
 
-> _"Add the new summer collection to all three stores"_
+> _"/ai what changed since yesterday?"_
 
-The agent reads your workspace map, knows the Shopify and WooCommerce API endpoints, authenticates with each store, creates products with the right categories and pricing, and reports back with links.
+The Master checks `.openbridge/.git` and your project's git log, then summarizes recent changes — files modified, commits made, current branch status.
 
-### Supplier Onboarding
+### Explore Unfamiliar Codebases
 
-> _"Onboard Acme Corp as a supplier — here's their catalog PDF"_
+> _"/ai explain how authentication works in this project"_
 
-The orchestrator creates a task agent to parse the catalog, another to map products to your schema, and a third to create the supplier account and import products. Each agent reports progress; the orchestrator coordinates the sequence.
+The Master already explored the workspace on startup. It knows the file structure, key modules, and how they connect. It replies with a clear explanation.
 
-### Multi-Store Inventory Sync
+### Execute Tasks While Away
 
-> _"Sync inventory between the Casablanca and Marrakech warehouses"_
+> _"/ai run the tests and fix any failures"_
 
-The agent calls both warehouse APIs, compares stock levels, identifies discrepancies, generates a reconciliation report, and optionally pushes adjustments — all with your approval at each step via interactive messages.
+The Master runs your test suite, identifies failures, reads the failing code, applies fixes, and reports back. All changes tracked in `.openbridge/.git`.
 
-### DevOps from Your Phone
+### Multi-AI Collaboration
 
-> _"Deploy the staging branch and run the E2E tests"_
+> _"/ai refactor the database layer to use Prisma"_
 
-The agent executes git and CI commands in your workspace, monitors the deployment, runs tests, and sends you the results — including a link to a generated report if you have views enabled.
+The Master delegates subtasks — one AI tool analyzes the current schema, another generates Prisma models, the Master coordinates and verifies the result.
 
 ## Architecture
 
-OpenBridge is built on 5 layers. Each layer is modular and extensible through interfaces.
+OpenBridge has 4 layers:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        CHANNELS                                  │
-│  WhatsApp · Telegram · Discord · Slack · Web Chat                │
-│  Connectors translate between messaging APIs and OpenBridge      │
-└──────────────────────┬───────────────────────────────────────────┘
+│                        CHANNELS                                   │
+│  WhatsApp · Telegram · Discord · Web Chat                         │
+│  Messaging adapters that translate between platforms and bridge    │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      BRIDGE CORE                                 │
-│  Router · Auth · Queue · Config · Registry · Health · Metrics    │
-│  Message routing, authentication, rate limiting, plugin system   │
-└──────────────────────┬───────────────────────────────────────────┘
+│                      BRIDGE CORE                                  │
+│  Router · Auth · Queue · Config · Registry · Health · Metrics     │
+│  Message routing, authentication, rate limiting, plugin system    │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  AGENT ORCHESTRATOR                               │
-│  Main Agent · Task Agents · Script Coordinator · Event Bus       │
-│  Breaks tasks into subtasks, delegates to specialized agents,    │
-│  coordinates execution order, handles dependencies               │
-└──────────────────────┬───────────────────────────────────────────┘
+│                    AI DISCOVERY                                    │
+│  Tool Scanner · VS Code Scanner · Auto-Selection                  │
+│  Discovers AI tools on the machine, ranks them, picks Master      │
+└──────────────────────┬────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                 WORKSPACE KNOWLEDGE                               │
-│  Workspace Maps · API Discovery · API Executor · Data Schemas    │
-│  Structured knowledge of every endpoint, auth method, and        │
-│  data model in the target project (openbridge.map.json)          │
-└──────────────────────┬───────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│               VIEWS + INTERACTION                                 │
-│  Reports · Dashboards · Interactive Flows · Onboarding Wizards   │
-│  AI generates visual outputs and multi-step Q&A flows,           │
-│  served via local HTTP and linked in chat messages                │
+│                     MASTER AI                                      │
+│  Master Manager · .openbridge/ Folder · Delegation Coordinator    │
+│  Autonomous workspace exploration, task execution, multi-AI        │
+│  delegation, git-tracked knowledge in .openbridge/                 │
 └──────────────────────────────────────────────────────────────────┘
-
-AI PROVIDERS (pluggable at every layer)
-  Claude Code · OpenAI · Gemini · Local LLMs · Custom Agents
-  Each provider implements the AIProvider interface with
-  optional workspace context and tool-use protocol support
 ```
 
 ### Layer 1: Channels (Connectors)
 
-Messaging platform adapters. Each implements the `Connector` interface — initialize, receive messages, send responses, show typing indicators, shut down gracefully.
+Messaging platform adapters. Each implements the `Connector` interface.
 
 | Channel  | Status | Library           |
 | -------- | :----: | ----------------- |
-| WhatsApp |   ✅   | `whatsapp-web.js` |
-| Console  |   ✅   | built-in (stdin)  |
-| Telegram |   ◻    | planned           |
-| Discord  |   ◻    | planned           |
-| Slack    |   ◻    | planned           |
-| Web Chat |   ◻    | planned           |
+| WhatsApp |   V0   | `whatsapp-web.js` |
+| Console  |   V0   | built-in (stdin)  |
+| Telegram |   --   | planned           |
+| Discord  |   --   | planned           |
 
 ### Layer 2: Bridge Core
 
 The engine that wires everything together:
 
-- **Router** — routes messages from connector → provider → connector, with streaming support and progress updates
-- **AuthService** — phone whitelist, command prefix (`/ai`), per-sender rate limiting, command allow/deny filters
-- **MessageQueue** — per-user sequential processing with retry, exponential backoff, and dead-letter queue
-- **PluginRegistry** — auto-discovers connectors and providers via factory pattern
-- **Config** — Zod-validated `config.json` with hot-reload support
-- **Health + Metrics** — optional HTTP endpoints for monitoring uptime, latency, error rates
-- **AuditLogger** — structured audit trail of all message events
-- **WorkspaceManager** — multi-workspace routing via `@workspace-name` syntax
+- **Router** — routes messages from connector → Master AI → connector, with streaming and progress updates
+- **AuthService** — phone whitelist, command prefix (`/ai`), per-sender rate limiting
+- **MessageQueue** — per-user sequential processing with retry and dead-letter queue
+- **PluginRegistry** — auto-discovers connectors via factory pattern
+- **Config** — Zod-validated `config.json` with hot-reload
+- **Health + Metrics** — optional HTTP endpoints for monitoring
 
-### Layer 3: Agent Orchestrator _(planned)_
+### Layer 3: AI Discovery
 
-The intelligence layer that coordinates work:
+Auto-detects AI tools on the machine at startup:
 
-- **Main Agent** — receives the user's request, decides whether to handle directly or delegate
-- **Task Agents** — specialized agents that execute subtasks (API calls, data transforms, file operations)
-- **Script Coordinator** — event bus between agents, manages execution order, dependencies, timeouts
-- **Script Strategy** — when a task agent finishes, a script notifies the main agent, which triggers the next step
+- **CLI Scanner** — runs `which claude`, `which codex`, etc. to find installed tools
+- **VS Code Scanner** — checks `~/.vscode/extensions/` for AI extensions
+- **Auto-Selection** — ranks tools by capability, picks the best as Master
+- **No API keys needed** — uses tools that are already authenticated via your terminal/IDE
 
-### Layer 4: Workspace Knowledge _(planned)_
+### Layer 4: Master AI
 
-Structured knowledge about the target project:
+The autonomous agent that knows your project:
 
-- **Workspace Map** (`openbridge.map.json`) — declares every API endpoint, authentication method, request/response schema, and CURL example
-- **Scanner** — auto-generates maps from OpenAPI/Swagger specs and Postman collections
-- **API Executor** — makes HTTP requests on behalf of agents with proper auth, headers, retries, and error handling
-- **Context Injection** — workspace maps are passed to AI providers so agents know what actions are available
-
-### Layer 5: Views + Interaction _(planned)_
-
-Rich outputs beyond text messages:
-
-- **Temporary Views** — AI-generated reports and dashboards served on local HTTP, auto-expire after TTL
-- **Permanent Views** — persisted outputs (reconciliation reports, audit logs)
-- **Interactive Flows** — multi-step Q&A for onboarding, confirmations, and structured data collection
-- **View Server** — local HTTP server that hosts generated views, links sent to user via chat
-
-## AI Providers
-
-Providers are pluggable backends that process messages. Each implements the `AIProvider` interface.
-
-| Provider    | Status | How it works                                               |
-| ----------- | :----: | ---------------------------------------------------------- |
-| Claude Code |   ✅   | Runs `claude` CLI in target workspace with session support |
-| OpenAI      |   ◻    | planned — API-based                                        |
-| Gemini      |   ◻    | planned — API-based                                        |
-| Local LLMs  |   ◻    | planned — Ollama, LM Studio                                |
-
-The Claude Code provider (V0) runs the `claude` CLI as a child process inside the configured workspace. It supports:
-
-- **Streaming** — responses stream in real-time, no long timeouts
-- **Session continuity** — conversations persist across messages (30 min TTL per user)
-- **Error classification** — transient errors retry automatically; permanent errors surface to the user
-- **Workspace scoping** — the AI has full access to the project's files, git, and terminal, but is contained to that workspace
-
-## How It Works Today (V0)
-
-```
-You (WhatsApp)                    OpenBridge (your machine)
-    │                                     │
-    │  "/ai what endpoints does           │
-    │   the orders API have?"             │
-    │ ──────────────────────────────────▶  │
-    │                                     │  1. WhatsApp connector receives message
-    │                                     │  2. Auth: whitelist ✓, prefix ✓, rate limit ✓
-    │                                     │  3. Queue: enqueue for your user
-    │  "Working on it..."                 │  4. Router: send acknowledgment
-    │ ◀──────────────────────────────────  │
-    │                                     │  5. Provider: claude --print "..." in workspace
-    │                                     │  6. Claude reads project files, analyzes code
-    │  "The orders API has 5              │  7. Response streamed back
-    │   endpoints: GET /orders,           │
-    │   POST /orders, ..."                │
-    │ ◀──────────────────────────────────  │
-```
+- **Master Manager** — launches the Master AI, manages its lifecycle (idle → exploring → ready)
+- **`.openbridge/` Folder** — the AI's brain, stored inside your target project:
+  ```
+  .openbridge/
+  ├── .git/                ← tracks all AI changes
+  ├── workspace-map.json   ← auto-generated project understanding
+  ├── exploration.log      ← scan history
+  ├── agents.json          ← discovered AI tools + roles
+  └── tasks/               ← task history
+  ```
+- **Delegation** — Master can assign subtasks to other discovered AI tools
+- **Silent by default** — only speaks when the user sends a message
 
 ## Business Model
 
 OpenBridge is open source (Apache 2.0). The tool is free; the expertise to configure it is the service.
 
-**For businesses:** Walk into any company, map their APIs into `openbridge.map.json`, configure agents tailored to their workflows, connect their preferred messaging channel, and hand over a system they operate from their phone. The AI uses their own subscription — zero per-request cost.
+**For developers:** Run it on your machine, connect your AI subscription, and operate your projects from anywhere.
 
-**For developers:** Run it on your machine, connect your AI subscription, and operate your projects from anywhere. Add custom connectors and providers as needed.
+**For businesses:** Set up OpenBridge for a team — connect their workspace, configure their channel, and hand them a system they control from their phones.
 
-**For the community:** Extend with new connectors, providers, workspace map importers, agent templates, and industry-specific configurations.
+**For the community:** Extend with new connectors, AI tool integrations, and exploration strategies.
 
 ## Current Status
 
-| Component            | Status                      |
-| -------------------- | --------------------------- |
-| WhatsApp connector   | ✅ Production-ready (V0)    |
-| Console connector    | ✅ Reference implementation |
-| Claude Code provider | ✅ Production-ready (V0)    |
-| Bridge Core          | ✅ Complete (V0)            |
-| Workspace Knowledge  | ◻ In development (Phase 6)  |
-| Agent Orchestrator   | ◻ In development (Phase 7)  |
-| Tool-Use Protocol    | ◻ In development (Phase 8)  |
-| Views + Interaction  | ◻ Planned (Phase 9)         |
-| More channels        | ◻ Planned (Phase 10)        |
+| Component        | Status                                                     |
+| ---------------- | ---------------------------------------------------------- |
+| WhatsApp         | V0 — auto-reconnect, sessions, chunking, typing indicators |
+| Claude Code      | V0 — streaming, sessions, error classification             |
+| Bridge Core      | V0 — router, auth, queue, metrics, health, audit           |
+| AI Discovery     | Planned — Phase 6                                          |
+| Master AI        | Planned — Phase 7                                          |
+| V2 Config        | Planned — Phase 8                                          |
+| Multi-AI         | Planned — Phase 10                                         |
+| Telegram/Discord | Planned — Phase 14                                         |
 
 ## Tech Stack
 

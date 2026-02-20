@@ -1,170 +1,147 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 10 | **Fixed:** 57 | **By Design:** 0
-> **Next Issue ID:** OB-068
-> **Last Updated:** 2026-02-20
+> **Purpose:** Real issues, gaps, and risks discovered during code audits.
+> **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
+> **Open:** 8 | **Last Audit:** 2026-02-20
+> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
 
-## Summary by Severity
+## Open Findings
 
-| Severity    | Open | Fixed | By Design | Total |
-| ----------- | :--: | :---: | :-------: | :---: |
-| 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  1   |  25   |     0     |  26   |
-| 🟡 Medium   |  5   |  22   |     0     |  27   |
-| 🟢 Low      |  4   |  10   |     0     |  14   |
+### F-001 — Dead code in compile path
 
-## Summary by Category
+| Field    | Value        |
+| -------- | ------------ |
+| Severity | 🟠 High      |
+| Category | Code Quality |
+| Found    | 2026-02-20   |
 
-| Category                | Open | Fixed | Total |
-| ----------------------- | :--: | :---: | :---: |
-| Connector Reliability   |  0   |   5   |   5   |
-| Provider Robustness     |  0   |   5   |   5   |
-| Security                |  0   |   5   |   5   |
-| Core Engine             |  0   |   6   |   6   |
-| Configuration           |  0   |   4   |   4   |
-| Testing                 |  0   |   5   |   5   |
-| Documentation           |  0   |   9   |   9   |
-| Developer Experience    |  0   |   3   |   3   |
-| Workspace Knowledge     |  0   |   6   |   6   |
-| Agent Orchestration     |  0   |   7   |   7   |
-| Provider Enhancement    |  2   |   2   |   4   |
-| Interactive AI          |  4   |   0   |   4   |
-| Channels + Integrations |  4   |   0   |   4   |
+**What:** The `src/knowledge/`, `src/orchestrator/`, `src/core/workspace-manager.ts`, and `src/core/map-loader.ts` modules are compiled but never called at runtime. The orchestrator was a pass-through that never decomposed tasks. The knowledge layer assumed user-defined `openbridge.map.json` files which no longer exist in the new vision.
+
+**Impact:** Inflates bundle size, confuses new contributors, TypeScript errors in dead code block builds, and creates false impressions of functionality that doesn't work.
+
+**Resolution:** Move to `src/_archived/` (Phase 9, OB-088/089/090).
 
 ---
 
-## Open Issues
+### F-002 — Documentation describes wrong architecture
 
-### Phase 5 — Vision Rewrite + Documentation
+| Field    | Value         |
+| -------- | ------------- |
+| Severity | 🟠 High       |
+| Category | Documentation |
+| Found    | 2026-02-20    |
 
-| ID     | Description                                                                                            | Category      | Severity  |  Status  | Date       |
-| ------ | ------------------------------------------------------------------------------------------------------ | ------------- | :-------: | :------: | ---------- |
-| OB-038 | OVERVIEW.md describes a "dev remote control" — must rewrite for AI workforce platform vision           | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-039 | README.md positioning is wrong — needs real-world business use cases, not just "text AI from phone"    | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-040 | ARCHITECTURE.md missing 3 new layers — Agent Orchestrator, Workspace Knowledge, View/Interaction layer | Documentation |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-041 | Both CLAUDE.md files reference old architecture — need updated module list and dev workflows           | Documentation | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-| OB-042 | CONFIGURATION.md missing schemas for workspace maps, agents, integrations, views                       | Documentation | 🟡 Medium | ✅ Fixed | 2026-02-20 |
+**What:** OVERVIEW.md, README.md, and ARCHITECTURE.md describe the old "AI workforce platform" vision with user-defined workspace maps, manual `openbridge.map.json` files, and a 5-layer architecture. The actual direction is autonomous AI exploration with zero-config discovery.
 
-### Phase 6 — Workspace Mapping Engine
+**Impact:** New users/contributors get a completely wrong picture of what OpenBridge does and how it works. Onboarding friction.
 
-| ID     | Description                                                                                         | Category            | Severity  |  Status  | Date       |
-| ------ | --------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :------: | ---------- |
-| OB-043 | No workspace map types — AI has no structured knowledge of project APIs, endpoints, or data schemas | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-| OB-048 | No tests for workspace mapping, scanning, or API execution                                          | Workspace Knowledge | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-
-### Phase 7 — Multi-Agent Orchestrator
-
-| ID     | Description                                                                                           | Category            | Severity  |  Status  | Date       |
-| ------ | ----------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :------: | ---------- |
-| OB-049 | No agent type definitions — no concept of main agent, task agents, or agent lifecycle                 | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-050 | No Agent Orchestrator — cannot create, manage, or coordinate multiple agents                          | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-051 | No Task Agent runtime — no way for an agent to receive a task list, execute, and report back          | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-052 | No Script Coordinator — no event bus between agents, no dependency management, no completion triggers | Agent Orchestration |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-053 | Router sends directly to single provider — needs to route through Agent Orchestrator                  | Agent Orchestration | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-| OB-054 | Bridge does not manage agent lifecycle (init, health, shutdown of active agents)                      | Agent Orchestration | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-| OB-055 | No tests for agent orchestration, task execution, or script coordination                              | Agent Orchestration | 🟡 Medium | ✅ Fixed | 2026-02-20 |
-
-### Phase 8 — AI Provider Enhancement
-
-| ID     | Description                                                                                                  | Category             | Severity  |  Status  | Date       |
-| ------ | ------------------------------------------------------------------------------------------------------------ | -------------------- | :-------: | :------: | ---------- |
-| OB-056 | AIProvider interface has no workspace context — providers are blind to project APIs and available tools      | Provider Enhancement |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-057 | No tool-use protocol — AI cannot request structured actions (API calls, file ops) in a provider-agnostic way | Provider Enhancement |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-058 | Claude Code provider does not inject workspace map into prompt or parse tool-use responses                   | Provider Enhancement |  🟠 High  | 🟠 Open  | 2026-02-20 |
-| OB-059 | No tests for tool-use protocol, provider context injection, or API call routing                              | Provider Enhancement | 🟡 Medium | 🟡 Open  | 2026-02-20 |
-
-### Phase 9 — Interactive AI
-
-| ID     | Description                                                                                  | Category       | Severity  | Status  | Date       |
-| ------ | -------------------------------------------------------------------------------------------- | -------------- | :-------: | :-----: | ---------- |
-| OB-060 | No view types — AI cannot generate temporary/permanent visual outputs for users              | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
-| OB-061 | No view generator or server — no way to serve AI-created reports, dashboards, or data views  | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
-| OB-062 | No interactive flow engine — AI cannot run multi-step Q&A, onboarding, or confirmation flows | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
-| OB-063 | No tests for view generation or interactive flows                                            | Interactive AI | 🟡 Medium | 🟡 Open | 2026-02-20 |
-
-### Phase 10 — Channels + Integrations
-
-| ID     | Description                                                                                                | Category                | Severity  | Status  | Date       |
-| ------ | ---------------------------------------------------------------------------------------------------------- | ----------------------- | :-------: | :-----: | ---------- |
-| OB-064 | No Telegram connector — second most requested channel after WhatsApp                                       | Channels + Integrations | 🟡 Medium | 🟡 Open | 2026-02-20 |
-| OB-065 | No Discord connector — needed for dev/team communities                                                     | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
-| OB-066 | No web chat connector — needed for embedding in dashboards and admin panels                                | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
-| OB-067 | No integration framework for external platforms (Shopify, Amazon) — no API map format, auth, or sync rules | Channels + Integrations |  🟢 Low   | 🟢 Open | 2026-02-20 |
+**Resolution:** Full documentation rewrite (Phase 12, OB-098/099/100).
 
 ---
 
-## Fixed Issues (V0)
+### F-003 — Config requires unnecessary fields
 
-<details>
-<summary>Click to expand all 37 fixed V0 issues</summary>
+| Field    | Value         |
+| -------- | ------------- |
+| Severity | 🟡 Medium     |
+| Category | Configuration |
+| Found    | 2026-02-20    |
 
-### 🟠 High (Fixed)
+**What:** Current config requires `providers` array, `defaultProvider`, and `workspaces` — all of which should be auto-discovered in the new vision. Users should only need 3 fields: `workspacePath`, `channels`, `auth`.
 
-| ID     | Description                                                                            | Category              |  Status  | File                      | Date       |
-| ------ | -------------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
-| OB-001 | No auto-reconnect on WhatsApp disconnect — session drops require manual restart        | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-002 | No session recovery after crash — QR code must be re-scanned on every restart          | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-003 | No input sanitization — raw user messages forwarded to CLI without escaping            | Security              | ✅ Fixed | `claude-code-executor.ts` | 2026-02-19 |
-| OB-004 | No rate limiting — single user can flood the message queue                             | Security              | ✅ Fixed | `rate-limiter.ts`         | 2026-02-19 |
-| OB-005 | No error retry in message queue — transient failures permanently drop messages         | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
-| OB-006 | No streaming support — long AI responses block until complete (timeout risk)           | Provider Robustness   | ✅ Fixed | `claude-code-executor.ts` | 2026-02-19 |
-| OB-007 | Claude Code provider has no conversation context — each message is stateless           | Provider Robustness   | ✅ Fixed | `claude-code-provider.ts` | 2026-02-19 |
-| OB-008 | No integration tests for full message flow (connector → bridge → provider → connector) | Testing               | ✅ Fixed | `tests/`                  | 2026-02-19 |
-| OB-009 | WhatsApp connector tests missing — only mock interface exists                          | Testing               | ✅ Fixed | `tests/connectors/`       | 2026-02-19 |
-| OB-010 | Claude Code provider tests missing — executor not tested                               | Testing               | ✅ Fixed | `tests/providers/`        | 2026-02-19 |
-| OB-011 | No graceful message handling during shutdown — in-flight messages may be lost          | Core Engine           | ✅ Fixed | `bridge.ts`, `queue.ts`   | 2026-02-19 |
-| OB-012 | Bridge.stop() is a no-op stub — connectors and providers not shut down                 | Core Engine           | ✅ Fixed | `bridge.ts`               | 2026-02-19 |
+**Impact:** Unnecessarily complex setup. Users must manually specify things the system should figure out on its own.
 
-### 🟡 Medium (Fixed)
-
-| ID     | Description                                                                       | Category              |  Status  | File                      | Date       |
-| ------ | --------------------------------------------------------------------------------- | --------------------- | :------: | ------------------------- | ---------- |
-| OB-013 | No message chunking — WhatsApp truncates at 4096 chars, long AI responses cut off | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-014 | No typing indicator — user sees no feedback while AI processes                    | Connector Reliability | ✅ Fixed | `whatsapp-connector.ts`   | 2026-02-19 |
-| OB-015 | workspacePath does not resolve tilde (`~`) — must use absolute path               | Configuration         | ✅ Fixed | `claude-code-config.ts`   | 2026-02-19 |
-| OB-016 | No config validation that workspacePath exists on disk                            | Configuration         | ✅ Fixed | `config.ts`               | 2026-02-19 |
-| OB-017 | No config hot-reload — changes require full restart                               | Configuration         | ✅ Fixed | `config-watcher.ts`       | 2026-02-19 |
-| OB-018 | No error classification in provider — all failures treated the same               | Provider Robustness   | ✅ Fixed | `claude-code-provider.ts` | 2026-02-19 |
-| OB-019 | No per-user message queue — one slow response blocks everyone                     | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
-| OB-020 | Router sends "Working on it..." but no progress updates for long tasks            | Core Engine           | ✅ Fixed | `router.ts`               | 2026-02-19 |
-| OB-021 | No audit logging — message history not persisted                                  | Security              | ✅ Fixed | `audit-logger.ts`         | 2026-02-19 |
-| OB-022 | No dead letter queue — failed messages lost permanently                           | Core Engine           | ✅ Fixed | `queue.ts`                | 2026-02-19 |
-| OB-023 | No health check endpoint — cannot monitor bridge status externally                | Provider Robustness   | ✅ Fixed | `health.ts`               | 2026-02-19 |
-| OB-024 | No metrics/observability — no way to track message counts, latency, errors        | Provider Robustness   | ✅ Fixed | `metrics.ts`              | 2026-02-19 |
-| OB-025 | No deployment documentation — no Docker, no PM2, no systemd guide                 | Documentation         | ✅ Fixed | `docs/`                   | 2026-02-19 |
-| OB-026 | No troubleshooting guide — common errors not documented                           | Documentation         | ✅ Fixed | `docs/`                   | 2026-02-19 |
-| OB-027 | Command allow/deny list missing — all commands passed to AI without filtering     | Security              | ✅ Fixed | `auth.ts`                 | 2026-02-19 |
-
-### 🟢 Low (Fixed)
-
-| ID     | Description                                                                    | Category              |  Status  | File                       | Date       |
-| ------ | ------------------------------------------------------------------------------ | --------------------- | :------: | -------------------------- | ---------- |
-| OB-028 | No multi-workspace support — single workspacePath per provider instance        | Configuration         | ✅ Fixed | `config.ts`                | 2026-02-19 |
-| OB-029 | No message formatting — AI markdown responses not converted for WhatsApp       | Connector Reliability | ✅ Fixed | `whatsapp-formatter.ts`    | 2026-02-19 |
-| OB-030 | No plugin discovery — connectors/providers must be manually registered in code | Developer Experience  | ✅ Fixed | `registry.ts`              | 2026-02-19 |
-| OB-031 | No CLI tool for config generation — users must manually edit JSON              | Developer Experience  | ✅ Fixed | `src/cli/init.ts`          | 2026-02-19 |
-| OB-032 | No E2E test harness — no way to test full flow without real WhatsApp           | Testing               | ✅ Fixed | `tests/`                   | 2026-02-19 |
-| OB-033 | No example plugins — no reference implementations beyond V0                    | Documentation         | ✅ Fixed | `connectors/console/`      | 2026-02-19 |
-| OB-034 | No API reference documentation — interfaces documented only in code            | Documentation         | ✅ Fixed | `docs/API_REFERENCE.md`    | 2026-02-20 |
-| OB-035 | No CI badge in README — build status not visible                               | Developer Experience  | ✅ Fixed | `README.md`                | 2026-02-19 |
-| OB-036 | No performance benchmarks — message throughput unknown                         | Testing               | ✅ Fixed | `benchmarks/core.bench.ts` | 2026-02-20 |
-| OB-037 | Bridge constructor logs but doesn't validate provider name matches config      | Security              | ✅ Fixed | `config.ts`                | 2026-02-20 |
-
-</details>
+**Resolution:** V2 config schema (Phase 8, OB-081/082).
 
 ---
 
-## Status Legend
+### F-004 — No AI tool discovery capability
 
-|      Status      | Meaning                                         |
-| :--------------: | ----------------------------------------------- |
-| 🔴/🟠/🟡/🟢 Open | Issue identified, not yet fixed                 |
-|     ✅ Fixed     | Issue resolved (include date and commit/PR)     |
-|   ⚪ By Design   | Intentional behavior, documented reason         |
-|   🔵 Deferred    | Acknowledged but deprioritized (include reason) |
+| Field    | Value           |
+| -------- | --------------- |
+| Severity | 🟠 High         |
+| Category | Missing Feature |
+| Found    | 2026-02-20      |
+
+**What:** OpenBridge cannot detect which AI CLI tools (claude, codex, aider, cursor, cody) or VS Code extensions (Copilot, Cody, Continue) are installed on the user's machine. The entire autonomous vision depends on this.
+
+**Impact:** Blocks the core value proposition. Without discovery, the system can't auto-select a Master AI or know what delegation targets exist.
+
+**Resolution:** Phase 6 (OB-071 through OB-074).
+
+---
+
+### F-005 — No autonomous workspace exploration
+
+| Field    | Value           |
+| -------- | --------------- |
+| Severity | 🟠 High         |
+| Category | Missing Feature |
+| Found    | 2026-02-20      |
+
+**What:** No Master AI Manager exists. No `.openbridge/` folder is created. No exploration prompt is defined. The AI cannot autonomously explore a workspace, build understanding, or store knowledge.
+
+**Impact:** The core differentiator of OpenBridge doesn't exist yet. Without this, the system is just a WhatsApp-to-CLI bridge with no intelligence.
+
+**Resolution:** Phase 7 (OB-075 through OB-080).
+
+---
+
+### F-006 — Router has no Master AI path
+
+| Field    | Value        |
+| -------- | ------------ |
+| Severity | 🟡 Medium    |
+| Category | Architecture |
+| Found    | 2026-02-20   |
+
+**What:** The message router sends messages directly to a provider. There's no path for routing through a Master AI that maintains session state, explores autonomously, and delegates to other tools.
+
+**Impact:** Even after building the Master AI module, it can't receive messages until the router is updated.
+
+**Resolution:** Phase 8 (OB-083/084/085).
+
+---
+
+### F-007 — Test coverage gaps for new modules
+
+| Field    | Value      |
+| -------- | ---------- |
+| Severity | 🟡 Medium  |
+| Category | Testing    |
+| Found    | 2026-02-20 |
+
+**What:** V0 tests are comprehensive, but no tests exist for discovery, master AI, delegation, or V2 config modules (because those modules don't exist yet). Some existing tests may also break when dead code is archived.
+
+**Impact:** Risk of regressions during Phase 9 archive. New modules will ship untested if not addressed.
+
+**Resolution:** Phase 13 (OB-104 through OB-107), plus tests in Phases 6-7 (OB-080).
+
+---
+
+### F-008 — `config.example.json` uses V0 format
+
+| Field    | Value         |
+| -------- | ------------- |
+| Severity | 🟢 Low        |
+| Category | Documentation |
+| Found    | 2026-02-20    |
+
+**What:** The example config still shows the V0 format with providers array, defaultProvider, and full connector config. Should show the simplified V2 format.
+
+**Impact:** Minor — confusing for new users trying to set up, but functional with V0 format.
+
+**Resolution:** Phase 8 (OB-087).
+
+---
+
+## Severity Guide
+
+| Severity    | Meaning                                               |
+| ----------- | ----------------------------------------------------- |
+| 🔴 Critical | System broken, data loss risk, security vulnerability |
+| 🟠 High     | Core functionality missing or significantly impaired  |
+| 🟡 Medium   | Friction, technical debt, or non-blocking gaps        |
+| 🟢 Low      | Polish, minor improvements, nice-to-have              |

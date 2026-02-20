@@ -2,7 +2,7 @@
 
 # OpenBridge
 
-**Your AI workforce, one message away.**
+**Your AI, one message away.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -10,11 +10,11 @@
 [![CI](https://github.com/medomar/OpenBridge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/medomar/OpenBridge/actions/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-An open-source platform that connects messaging channels to AI agents that **know your APIs, execute real business tasks, and orchestrate multi-step workflows** — all using your own AI subscription.
+An open-source bridge that connects messaging channels to AI agents that **autonomously explore your workspace and execute tasks** — using the AI tools already on your machine. Zero API keys. Zero extra cost.
 
 [Quick Start](#quick-start) |
 [How It Works](#how-it-works) |
-[Real-World Examples](#real-world-examples) |
+[Examples](#examples) |
 [Documentation](#documentation) |
 [Contributing](#contributing)
 
@@ -24,63 +24,62 @@ An open-source platform that connects messaging channels to AI agents that **kno
 
 ## Why OpenBridge?
 
-Most AI tools are chatbots — you ask questions, they answer. OpenBridge is different. It gives you **AI agents that act on your behalf**: calling your APIs, processing orders, syncing inventory, onboarding suppliers — triggered from a WhatsApp message while you're on the go.
+You have AI tools installed — Claude Code, Codex, Aider. But they're stuck in your terminal. OpenBridge lets you **control them from your phone** through WhatsApp.
 
-- **Workspace-aware** — the AI knows your project's API endpoints, authentication, and data schemas
-- **Action-oriented** — agents don't just answer questions, they execute HTTP calls, modify data, and report results
-- **Multi-agent** — complex tasks get broken into subtasks, each handled by a specialized agent working in parallel
-- **Channel-agnostic** — WhatsApp today, Telegram and Discord tomorrow. Same agents, any channel.
-- **AI-agnostic** — Claude Code today, OpenAI or local LLMs tomorrow. Swap backends without changing anything.
-- **Zero cloud cost** — runs locally on your machine, uses your existing AI subscription
+- **Auto-discovers** AI tools on your machine — no API keys, no manual config
+- **Master AI** explores your workspace silently on startup and learns the project
+- **Execute tasks** from anywhere — code changes, test runs, project analysis
+- **Multi-AI delegation** — the Master assigns subtasks to other discovered tools
+- **`.openbridge/` folder** — the AI's brain, git-tracked inside your project
+- **Silent worker** — only speaks when you ask
 
 ---
 
-## Real-World Examples
+## Examples
 
-### E-commerce Operations
-
-```
-You:    /ai check if any products are out of stock and restock them
-Agent:  Scanning inventory via Shopify API...
-        Found 3 products below threshold:
-        - Blue Widget (2 left, min: 10) → restocking 50 units
-        - Red Gadget (0 left, min: 5) → restocking 25 units
-        - Green Thing (1 left, min: 10) → restocking 50 units
-        ✓ Purchase orders created for all 3 items.
-```
-
-### Supplier Onboarding
+### Explore Your Project
 
 ```
-You:    /ai onboard supplier "Acme Corp" with catalog from their API
-Agent:  Starting supplier onboarding flow...
-        → Agent 1: Registering Acme Corp in vendor system
-        → Agent 2: Fetching product catalog (247 items)
-        → Agent 3: Mapping categories to our taxonomy
-        All 247 products imported. 12 need manual category review.
-        Sending review link to your WhatsApp.
+You:    /ai what's in this project?
+Master: This is a Node.js REST API (Express + TypeScript) with:
+        - 12 routes in src/routes/
+        - PostgreSQL via Prisma ORM
+        - JWT authentication in src/middleware/auth.ts
+        - 47 tests (all passing)
+        - Docker setup with docker-compose.yml
 ```
 
-### Multi-Store Sync
+### Execute Tasks
 
 ```
-You:    /ai sync prices between Shopify and Amazon stores
-Agent:  Comparing 1,204 products across both platforms...
-        Found 87 price mismatches.
-        → Updating Amazon listings to match Shopify prices
-        ✓ 87 prices synced. Full report: [view link]
-```
-
-### Developer Workflow
-
-```
-You:    /ai run the test suite and fix any failures
-Agent:  Running tests in ~/projects/backend...
-        23/25 tests passing. 2 failures in auth module.
+You:    /ai run the tests and fix any failures
+Master: Running tests... 45/47 passing. 2 failures in auth.test.ts.
         → Reading failing tests...
-        → Identified: expired mock token in auth.test.ts
-        → Fixed and re-running...
-        ✓ 25/25 tests passing. Changes committed.
+        → Fixed: expired mock token + missing header check
+        → Re-running... 47/47 passing.
+        Changes committed to .openbridge/.git
+```
+
+### Understand Code
+
+```
+You:    /ai how does the payment flow work?
+Master: Payment flow (src/services/payment.ts):
+        1. POST /checkout → validates cart → creates Stripe session
+        2. Stripe webhook → POST /webhooks/stripe → updates order status
+        3. Order service notifies user via email (src/services/email.ts)
+        Key files: payment.ts, order.ts, stripe-webhook.ts
+```
+
+### Delegate Work
+
+```
+You:    /ai refactor the user model to add role-based access
+Master: Breaking this into subtasks...
+        → Analyzing current user model (Master)
+        → Generating migration script (Codex)
+        → Updating middleware + tests (Master)
+        Done. 4 files modified, migration ready, tests passing.
 ```
 
 ---
@@ -88,26 +87,27 @@ Agent:  Running tests in ~/projects/backend...
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────────────────────────────┐     ┌──────────────┐
-│  CHANNELS   │     │            BRIDGE CORE                │     │  AI PROVIDERS │
-│             │     │                                        │     │              │
-│  WhatsApp ──┼────▶│  Router ─▶ Agent Orchestrator         │────▶│  Claude Code  │
-│  Telegram   │     │                │                      │     │  OpenAI       │
-│  Discord    │     │           Task Agents (parallel)      │     │  Local LLMs   │
-│  Web Chat   │     │                │                      │     │              │
-│             │◀────┼── Auth · Queue · Workspace Knowledge  │◀────│              │
-└─────────────┘     └──────────────────────────────────────┘     └──────────────┘
+┌─────────────┐     ┌──────────────────────────────────┐     ┌──────────────┐
+│  CHANNELS   │     │          BRIDGE CORE              │     │  MASTER AI   │
+│             │     │                                    │     │              │
+│  WhatsApp ──┼────>│  Auth → Queue → Router ───────────┼────>│  Explores    │
+│  Telegram   │     │                                    │     │  workspace   │
+│  Discord    │     │  Discovery: scans for AI tools     │     │  Delegates   │
+│             │<────┼── Health · Metrics · Audit         │<────│  tasks       │
+└─────────────┘     └──────────────────────────────────┘     └──────────────┘
+                                                               .openbridge/
+                                                               ├── .git/
+                                                               ├── workspace-map.json
+                                                               ├── agents.json
+                                                               └── tasks/
 ```
 
-**Five layers work together:**
-
-| Layer                   | What it does                                                      |
-| ----------------------- | ----------------------------------------------------------------- |
-| **Channels**            | Messaging adapters (WhatsApp, Telegram, Discord, web)             |
-| **Core Engine**         | Routing, auth, queuing, config, metrics, health checks            |
-| **Agent Orchestrator**  | Creates task agents, delegates work, coordinates multi-step flows |
-| **Workspace Knowledge** | API maps, endpoint discovery, HTTP executor — the AI's memory     |
-| **AI Providers**        | AI backends (Claude Code, OpenAI, etc.) with tool-use protocol    |
+| Layer            | What it does                                                    |
+| ---------------- | --------------------------------------------------------------- |
+| **Channels**     | Messaging adapters (WhatsApp, Telegram, Discord)                |
+| **Bridge Core**  | Routing, auth, queuing, config, metrics, health                 |
+| **AI Discovery** | Scans machine for AI CLIs + VS Code extensions, picks Master    |
+| **Master AI**    | Explores workspace, executes tasks, delegates to other AI tools |
 
 ---
 
@@ -117,7 +117,7 @@ Agent:  Running tests in ~/projects/backend...
 
 - Node.js >= 22
 - A WhatsApp account
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed
+- At least one AI CLI tool installed (e.g. [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
 
 ### Install
 
@@ -130,22 +130,15 @@ npm install
 ### Configure
 
 ```bash
-cp config.example.json config.json
+npx openbridge init
 ```
 
-Edit `config.json` with your settings:
+Or create `config.json` manually:
 
 ```json
 {
-  "providers": [
-    {
-      "type": "claude-code",
-      "enabled": true,
-      "options": {
-        "workspacePath": "/absolute/path/to/your/project"
-      }
-    }
-  ],
+  "workspacePath": "/absolute/path/to/your/project",
+  "channels": [{ "type": "whatsapp", "enabled": true }],
   "auth": {
     "whitelist": ["+1234567890"],
     "prefix": "/ai"
@@ -153,68 +146,70 @@ Edit `config.json` with your settings:
 }
 ```
 
+That's it. Three fields.
+
 ### Run
 
 ```bash
 npm run dev
 ```
 
-Scan the QR code with WhatsApp when it appears. Then send a message from your phone:
+Scan the QR code with WhatsApp. Then from your phone:
 
 ```
-/ai what files are in this project?
+/ai what's in this project?
 ```
-
-The AI processes your request inside the configured workspace and sends the response back to your WhatsApp.
 
 ---
 
 ## How It Works
 
 ```
-Your Phone                    Your Machine                     Your Project
-─────────────────────────────────────────────────────────────────────────────
+Your Phone                    Your Machine
+──────────────────────────────────────────────
 
-  "/ai check inventory"
+  "/ai what's new?"
         │
         ▼
-  WhatsApp Connector ──▶ Auth (whitelist + prefix)
+  WhatsApp Connector ──> Auth (whitelist + prefix)
                               │
                               ▼
-                         Router ──▶ Agent Orchestrator
-                                         │
-                                    Reads workspace map
-                                    (API endpoints, auth)
-                                         │
-                                    Creates task agent ──▶ AI Provider
-                                                               │
-                                                          Calls your APIs
-                                                          Processes data
-                                                          Returns results
-                                                               │
-                                    Collects results ◀─────────┘
-                                         │
-  WhatsApp ◀──── Response ◀──────────────┘
+                         Queue ──> Router
+                                     │
+                                     ▼
+                              Master AI (already explored your workspace)
+                                     │
+                              Reads .openbridge/workspace-map.json
+                              Checks project git log
+                              Builds response
+                                     │
+  WhatsApp <──── Response <──────────┘
 
-  "3 items restocked ✓"
+  "3 commits today: added user roles,
+   fixed payment bug, updated tests."
 ```
+
+**On startup:**
+
+1. OpenBridge scans your machine for AI tools (`which claude`, `which codex`, etc.)
+2. Picks the best one as Master
+3. Master silently explores the target workspace
+4. Creates `.openbridge/` folder with a git repo to track everything
+5. Waits for your messages
 
 ---
 
 ## Current Status
 
-OpenBridge is under active development. The V0 foundation is complete and working:
-
-| Component            | Status                                                         |
-| -------------------- | -------------------------------------------------------------- |
-| WhatsApp connector   | Stable — auto-reconnect, sessions, chunking, typing indicators |
-| Claude Code provider | Stable — streaming, sessions, error classification             |
-| Bridge core          | Stable — router, auth, queue, metrics, health, audit logging   |
-| Plugin architecture  | Stable — connector + provider interfaces, auto-discovery       |
-| Workspace knowledge  | In progress — API maps, endpoint discovery                     |
-| Agent orchestrator   | In progress — multi-agent task execution                       |
-| Tool-use protocol    | Planned — structured AI actions                                |
-| Telegram / Discord   | Planned                                                        |
+| Component        | Status                                               |
+| ---------------- | ---------------------------------------------------- |
+| WhatsApp         | Stable — auto-reconnect, sessions, chunking, typing  |
+| Claude Code      | Stable — streaming, sessions, error classification   |
+| Bridge Core      | Stable — router, auth, queue, metrics, health, audit |
+| AI Discovery     | In development                                       |
+| Master AI        | In development                                       |
+| Multi-AI         | Planned                                              |
+| Telegram/Discord | Planned                                              |
 
 ---
 
@@ -235,7 +230,7 @@ OpenBridge is under active development. The V0 foundation is complete and workin
 
 ## Contributing
 
-We welcome contributions! Whether it's a new connector, AI provider, bug fix, or documentation improvement — see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! Whether it's a new connector, AI tool integration, bug fix, or documentation improvement — see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Security
 
