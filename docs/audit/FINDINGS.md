@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 24 | **Fixed:** 43 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 23 | **Fixed:** 44 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  10  |  16   |     0     |  26   |
+| 🟠 High     |  9   |  17   |     0     |  26   |
 | 🟡 Medium   |  10  |  17   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
@@ -27,7 +27,7 @@
 | Testing                 |  0   |   5   |   5   |
 | Documentation           |  0   |   9   |   9   |
 | Developer Experience    |  0   |   3   |   3   |
-| Workspace Knowledge     |  5   |   1   |   6   |
+| Workspace Knowledge     |  4   |   2   |   6   |
 | Agent Orchestration     |  7   |   0   |   7   |
 | Provider Enhancement    |  4   |   0   |   4   |
 | Interactive AI          |  4   |   0   |   4   |
@@ -52,7 +52,7 @@
 | ID     | Description                                                                                         | Category            | Severity  |  Status  | Date       |
 | ------ | --------------------------------------------------------------------------------------------------- | ------------------- | :-------: | :------: | ---------- |
 | OB-043 | No workspace map types — AI has no structured knowledge of project APIs, endpoints, or data schemas | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
-| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-044 | No `openbridge.map.json` spec — users have no way to declare their APIs for the AI to consume       | Workspace Knowledge |  🟠 High  | ✅ Fixed | 2026-02-20 |
 | OB-045 | No workspace scanner — cannot auto-discover APIs from OpenAPI/Swagger/Postman specs                 | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
 | OB-046 | No API executor — AI cannot make HTTP calls to project endpoints on behalf of the user              | Workspace Knowledge |  🟠 High  | 🟠 Open  | 2026-02-20 |
 | OB-047 | Workspace manager does not load or provide workspace maps to agents                                 | Workspace Knowledge | 🟡 Medium | 🟡 Open  | 2026-02-20 |

@@ -1,6 +1,6 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.06/10 | **Target:** 9.5/10
+> **Current Score:** 4.11/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-20 | **Previous Score:** 6.635 (V0 scope)
 > **Reason for drop:** Score re-baselined against new vision (AI workforce platform). V0 foundation is solid but the new layers don't exist yet.
 
@@ -40,7 +40,7 @@
 
 ## Open Issues Summary
 
-**0 critical** | **10 high** | **10 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
+**0 critical** | **9 high** | **10 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -120,6 +120,7 @@ Completing **Phases 5–8** (docs + workspace mapping + orchestrator + provider 
 | 2026-02-20 | 3.98  |    +0.03    | OB-041 fixed — Both CLAUDE.md files updated for new architecture and modules       |
 | 2026-02-20 | 4.03  |    +0.05    | OB-043 fixed — Workspace map types defined (APIEndpoint, WorkspaceMap, MapSource)  |
 | 2026-02-20 | 4.06  |    +0.03    | OB-042 fixed — CONFIGURATION.md updated with workspace maps, agents, views schemas |
+| 2026-02-20 | 4.11  |    +0.05    | OB-044 fixed — openbridge.map.json spec designed, map loader + tests + example     |
 
 ---
 
