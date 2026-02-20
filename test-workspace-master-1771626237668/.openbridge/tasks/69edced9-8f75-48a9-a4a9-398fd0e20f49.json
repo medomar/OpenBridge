@@ -1,0 +1,17 @@
+{
+  "id": "69edced9-8f75-48a9-a4a9-398fd0e20f49",
+  "userMessage": "/ai second message",
+  "sender": "+1234567890",
+  "description": "second message",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Response",
+  "createdAt": "2026-02-20T22:23:58.403Z",
+  "startedAt": "2026-02-20T22:23:58.403Z",
+  "completedAt": "2026-02-20T22:23:58.403Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-2",
+    "source": "test"
+  }
+}
