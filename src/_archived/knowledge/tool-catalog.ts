@@ -1,5 +1,5 @@
-import type { WorkspaceMap, APIEndpoint, Parameter } from '../types/workspace-map.js';
-import type { ToolDefinition } from '../types/tool.js';
+import type { WorkspaceMap, APIEndpoint, Parameter } from '../../types/workspace-map.js';
+import type { ToolDefinition } from '../../types/tool.js';
 
 /**
  * Build a tool catalog from a workspace map.

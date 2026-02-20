@@ -1,55 +1,13 @@
 {
-  "connectors": [
+  "workspacePath": "/absolute/path/to/your/project",
+  "channels": [
     {
       "type": "whatsapp",
-      "enabled": true,
-      "options": {
-        "sessionName": "openbridge-default",
-        "sessionPath": ".wwebjs_auth"
-      }
+      "enabled": true
     }
   ],
-  "providers": [
-    {
-      "type": "claude-code",
-      "enabled": true,
-      "options": {
-        "workspacePath": "~/projects/my-project",
-        "maxTokens": 4096
-      }
-    }
-  ],
-  "defaultProvider": "claude-code",
-  "workspaces": [
-    { "name": "my-project", "path": "~/projects/my-project" },
-    { "name": "backend", "path": "~/projects/backend" }
-  ],
-  "defaultWorkspace": "my-project",
   "auth": {
     "whitelist": ["+1234567890"],
-    "prefix": "/ai",
-    "rateLimit": {
-      "enabled": true,
-      "maxMessages": 10,
-      "windowMs": 60000
-    },
-    "commandFilter": {
-      "denyPatterns": ["rm\\s+-rf", "drop\\s+table", "format\\s+disk"],
-      "allowPatterns": [],
-      "denyMessage": "That command is not allowed."
-    }
-  },
-  "queue": {
-    "maxRetries": 3,
-    "retryDelayMs": 1000
-  },
-  "audit": {
-    "enabled": false,
-    "logPath": "audit.log"
-  },
-  "health": {
-    "enabled": false,
-    "port": 8080
-  },
-  "logLevel": "info"
+    "prefix": "/ai"
+  }
 }

@@ -15,5 +15,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/**/*", "tests/**/*", "benchmarks/**/*"]
+  "include": ["src/**/*", "tests/**/*", "benchmarks/**/*"],
+  "exclude": ["**/_archived/**"]
 }

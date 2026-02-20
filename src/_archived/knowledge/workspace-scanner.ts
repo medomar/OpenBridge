@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
-import { WorkspaceMapSchema } from '../types/workspace-map.js';
+import { WorkspaceMapSchema } from '../../types/workspace-map.js';
 import type {
   WorkspaceMap,
   APIEndpoint,
   MapSource,
   EndpointAuth,
   HttpMethod,
-} from '../types/workspace-map.js';
-import { createLogger } from '../core/logger.js';
+} from '../../types/workspace-map.js';
+import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('workspace-scanner');
 

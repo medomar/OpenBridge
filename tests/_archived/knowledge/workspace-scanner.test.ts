@@ -6,7 +6,7 @@ import {
   parseOpenAPISpec,
   parsePostmanCollection,
   detectSource,
-} from '../../src/knowledge/workspace-scanner.js';
+} from '../../src/_archived/knowledge/workspace-scanner.js';
 
 vi.mock('node:fs/promises', () => ({
   readFile: vi.fn(),

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 12 tasks across 9 phases | **Next up:** Phase 8
+> **Pending:** 11 tasks across 9 phases | **Next up:** Phase 8
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -90,9 +90,9 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 | 51  | Add V2 config schema to `src/types/config.ts` — `workspacePath` + `channels` + `auth` only. No providers, no workspaces array. Keep V0 schema for backward compat | OB-081 | 🟠 High  |  ✅ Done  |
 | 52  | Update config loader `src/core/config.ts` — try V2 schema first, fall back to V0. Add `isV2Config()` type guard and `convertV2ToInternal()` helper                | OB-082 | 🟠 High  |  ✅ Done  |
 | 53  | Add Master routing to Router `src/core/router.ts` — add `setMaster()` method, route through Master when set (priority over orchestrator/direct provider)          | OB-083 | 🟠 High  |  ✅ Done  |
-| 54  | Add Master support to Bridge `src/core/bridge.ts` — add `setMaster()`, wire into router, call `master.shutdown()` on stop. Remove dead workspace-manager imports  | OB-084 | 🟠 High  | ◻ Pending |
+| 54  | Add Master support to Bridge `src/core/bridge.ts` — add `setMaster()`, wire into router, call `master.shutdown()` on stop. Remove dead workspace-manager imports  | OB-084 | 🟠 High  |  ✅ Done  |
 | 55  | Update entry point `src/index.ts` — V2 flow: load config → discover tools → create bridge → start → launch Master → explore. Keep V0 flow for old config          | OB-085 | 🟠 High  |  ✅ Done  |
-| 56  | Simplify CLI init `src/cli/init.ts` — reduce to 3 questions (workspace path, phone whitelist, prefix). Generate V2 config format                                  | OB-086 |  🟡 Med  | ◻ Pending |
+| 56  | Simplify CLI init `src/cli/init.ts` — reduce to 3 questions (workspace path, phone whitelist, prefix). Generate V2 config format                                  | OB-086 |  🟡 Med  |  ✅ Done  |
 | 57  | Update `config.example.json` — replace with V2 format                                                                                                             | OB-087 |  🟡 Med  | ◻ Pending |
 
 ---

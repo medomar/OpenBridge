@@ -6,7 +6,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { parseOpenAPISpec, parsePostmanCollection } from '../../src/knowledge/workspace-scanner.js';
+import {
+  parseOpenAPISpec,
+  parsePostmanCollection,
+} from '../../src/_archived/knowledge/workspace-scanner.js';
 import { resolveMapEnvVars } from '../../src/core/map-loader.js';
 import { WorkspaceMapSchema } from '../../src/types/workspace-map.js';
 
@@ -25,7 +28,7 @@ vi.mock('node:https', () => ({
   request: mockHttpsRequest,
 }));
 
-import { APIExecutor } from '../../src/knowledge/api-executor.js';
+import { APIExecutor } from '../../src/_archived/knowledge/api-executor.js';
 
 // ── Mock Helpers ────────────────────────────────────────────────
 

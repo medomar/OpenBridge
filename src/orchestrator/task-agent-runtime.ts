@@ -10,8 +10,8 @@ import type {
 import type { WorkspaceMap } from '../types/workspace-map.js';
 import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage } from '../types/message.js';
-import { APIExecutor } from '../knowledge/api-executor.js';
-import type { ExecuteRequest, ExecuteResult } from '../knowledge/api-executor.js';
+import { APIExecutor } from '../_archived/knowledge/api-executor.js';
+import type { ExecuteRequest, ExecuteResult } from '../_archived/knowledge/api-executor.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('task-agent-runtime');

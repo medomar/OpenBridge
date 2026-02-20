@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import type { WorkspaceConfig } from '../types/config.js';
 import type { WorkspaceMap } from '../types/workspace-map.js';
-import { scanWorkspace } from '../knowledge/workspace-scanner.js';
+import { scanWorkspace } from '../_archived/knowledge/workspace-scanner.js';
 import { resolveTilde } from '../providers/claude-code/claude-code-config.js';
 import { createLogger } from './logger.js';
 

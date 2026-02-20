@@ -5,7 +5,14 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'coverage/', 'node_modules/', '*.config.js', '*.config.ts'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      '*.config.js',
+      '*.config.ts',
+      '**/_archived/**',
+    ],
   },
 
   eslint.configs.recommended,

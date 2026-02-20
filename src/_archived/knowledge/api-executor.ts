@@ -1,9 +1,9 @@
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { IncomingMessage, ClientRequest } from 'node:http';
-import type { WorkspaceMap, APIEndpoint, EndpointAuth } from '../types/workspace-map.js';
-import { createLogger } from '../core/logger.js';
-import { resolveEnvVars } from '../core/map-loader.js';
+import type { WorkspaceMap, APIEndpoint, EndpointAuth } from '../../types/workspace-map.js';
+import { createLogger } from '../../core/logger.js';
+import { resolveEnvVars } from '../../core/map-loader.js';
 
 const logger = createLogger('api-executor');
 

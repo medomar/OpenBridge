@@ -1,14 +1,14 @@
-import type { WorkspaceMap } from '../types/workspace-map.js';
+import type { WorkspaceMap } from '../../types/workspace-map.js';
 import type {
   ToolCall,
   ToolResult,
   ApiCall,
   ListEndpointsCall,
   DescribeEndpointCall,
-} from '../types/tool.js';
-import { ToolCallSchema } from '../types/tool.js';
+} from '../../types/tool.js';
+import { ToolCallSchema } from '../../types/tool.js';
 import { APIExecutor } from './api-executor.js';
-import { createLogger } from '../core/logger.js';
+import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('tool-executor');
 

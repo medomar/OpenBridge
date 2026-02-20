@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkspaceManager } from '../../src/core/workspace-manager.js';
 import type { WorkspaceMap } from '../../src/types/workspace-map.js';
-import type { ScanResult } from '../../src/knowledge/workspace-scanner.js';
+import type { ScanResult } from '../../src/_archived/knowledge/workspace-scanner.js';
 
 const mockAccess = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockScanWorkspace = vi.fn<(path: string) => Promise<ScanResult>>();
@@ -10,7 +10,7 @@ vi.mock('node:fs/promises', () => ({
   access: (...args: unknown[]) => mockAccess(...args),
 }));
 
-vi.mock('../../src/knowledge/workspace-scanner.js', () => ({
+vi.mock('../../src/_archived/knowledge/workspace-scanner.js', () => ({
   scanWorkspace: (...args: unknown[]) => mockScanWorkspace(...(args as [string])),
 }));
 

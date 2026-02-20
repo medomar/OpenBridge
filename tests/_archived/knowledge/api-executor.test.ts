@@ -20,7 +20,7 @@ vi.mock('node:https', () => ({
 
 // ── Import After Mocks ──────────────────────────────────────────
 
-import { APIExecutor } from '../../src/knowledge/api-executor.js';
+import { APIExecutor } from '../../src/_archived/knowledge/api-executor.js';
 
 // ── Mock Helpers ────────────────────────────────────────────────
 
