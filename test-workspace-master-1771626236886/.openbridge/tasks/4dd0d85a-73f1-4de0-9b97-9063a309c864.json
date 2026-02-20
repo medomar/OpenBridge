@@ -1,0 +1,17 @@
+{
+  "id": "4dd0d85a-73f1-4de0-9b97-9063a309c864",
+  "userMessage": "/ai status",
+  "sender": "+1234567890",
+  "description": "status",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "**OpenBridge Master AI Status**\n\nState: processing\n\nTasks: 0 completed, 0 failed, 0 total\nActive Sessions: 0\n",
+  "createdAt": "2026-02-20T22:23:56.886Z",
+  "startedAt": "2026-02-20T22:23:56.886Z",
+  "completedAt": "2026-02-20T22:23:56.886Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-status",
+    "source": "test"
+  }
+}
