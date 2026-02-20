@@ -12,7 +12,7 @@ export type {
   ProviderPluginModule,
 } from './registry.js';
 export { createLogger } from './logger.js';
-export { loadConfig, resolveConfigPath } from './config.js';
+export { loadConfig, resolveConfigPath, isV2Config, convertV2ToInternal } from './config.js';
 export { AuditLogger } from './audit-logger.js';
 export { HealthServer } from './health.js';
 export { MetricsCollector, MetricsServer } from './metrics.js';

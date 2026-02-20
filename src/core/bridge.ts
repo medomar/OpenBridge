@@ -1,7 +1,8 @@
 import type { AppConfig } from '../types/config.js';
-import type { InboundMessage, OutboundMessage } from '../types/message.js';
+import type { InboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
+import type { MasterManager } from '../master/master-manager.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
@@ -13,7 +14,6 @@ import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
-import { WorkspaceManager } from './workspace-manager.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -35,7 +35,7 @@ export class Bridge {
   private readonly registry: PluginRegistry;
   private readonly router: Router;
   private readonly orchestrator: AgentOrchestrator;
-  private readonly workspaceManager: WorkspaceManager;
+  private master: MasterManager | null = null;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -54,7 +54,6 @@ export class Bridge {
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
     this.orchestrator = new AgentOrchestrator(config.defaultProvider);
-    this.workspaceManager = new WorkspaceManager(config.workspaces ?? [], config.defaultWorkspace);
   }
 
   /** Register built-in and external plugins before starting */
@@ -62,19 +61,15 @@ export class Bridge {
     return this.registry;
   }
 
+  /** Set the Master AI — must be called before start() to enable Master routing */
+  setMaster(master: MasterManager): void {
+    this.master = master;
+    logger.info('Master AI set on Bridge');
+  }
+
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
-
-    // Validate workspace paths and load workspace maps if configured
-    if (this.workspaceManager.enabled) {
-      await this.workspaceManager.validatePaths();
-      await this.workspaceManager.loadMaps();
-      logger.info(
-        { workspaces: this.workspaceManager.listWorkspaces().map((w) => w.name) },
-        'Workspaces validated and maps loaded',
-      );
-    }
 
     // Initialize providers
     for (const providerConfig of this.config.providers) {
@@ -88,9 +83,15 @@ export class Bridge {
       logger.info({ provider: provider.name }, 'Provider initialized');
     }
 
-    // Wire orchestrator into the router so messages route through it
-    this.router.setOrchestrator(this.orchestrator);
-    logger.info('Agent orchestrator wired into router');
+    // Wire Master into the router if set (priority routing path)
+    if (this.master) {
+      this.router.setMaster(this.master);
+      logger.info('Master AI wired into router');
+    } else {
+      // Wire orchestrator into the router as fallback
+      this.router.setOrchestrator(this.orchestrator);
+      logger.info('Agent orchestrator wired into router');
+    }
 
     // Initialize connectors
     for (const connectorConfig of this.config.connectors) {
@@ -150,7 +151,13 @@ export class Bridge {
     await this.queue.drain();
     logger.info('Message queue drained');
 
-    // Shut down orchestrator first — cancels active agents before providers are torn down
+    // Shut down Master AI if set
+    if (this.master) {
+      await this.master.shutdown();
+      logger.info('Master AI shut down');
+    }
+
+    // Shut down orchestrator — cancels active agents before providers are torn down
     const activeAgents = this.orchestrator.getActiveAgents().length;
     if (activeAgents > 0) {
       logger.info({ activeAgents }, 'Cancelling active agents before shutdown');
@@ -233,7 +240,7 @@ export class Bridge {
     };
   }
 
-  private handleIncomingMessage(message: InboundMessage, connector?: Connector): void {
+  private handleIncomingMessage(message: InboundMessage, _connector?: Connector): void {
     this.metrics.recordReceived();
 
     if (!this.auth.isAuthorized(message.sender)) {
@@ -255,50 +262,8 @@ export class Bridge {
       return;
     }
 
-    let strippedContent = this.auth.stripPrefix(message.rawContent);
-    let metadata: Record<string, unknown> = { ...message.metadata };
-
-    // Handle workspace commands and selection
-    if (this.workspaceManager.enabled) {
-      // Handle "workspaces" list command
-      if (strippedContent.trim() === 'workspaces') {
-        if (connector) {
-          const listResponse: OutboundMessage = {
-            target: message.source,
-            recipient: message.sender,
-            content: this.workspaceManager.formatList(),
-            replyTo: message.id,
-          };
-          void connector.sendMessage(listResponse);
-        }
-        return;
-      }
-
-      // Parse @workspace-name prefix
-      const { workspace, content: remaining } =
-        this.workspaceManager.parseWorkspace(strippedContent);
-      const resolvedPath = this.workspaceManager.resolve(workspace);
-
-      if (workspace && !resolvedPath) {
-        // User specified a workspace that doesn't exist
-        if (connector) {
-          const errorResponse: OutboundMessage = {
-            target: message.source,
-            recipient: message.sender,
-            content: `Unknown workspace "${workspace}". ${this.workspaceManager.formatList()}`,
-            replyTo: message.id,
-          };
-          void connector.sendMessage(errorResponse);
-        }
-        return;
-      }
-
-      if (resolvedPath) {
-        const workspaceMap = this.workspaceManager.resolveMap(workspace);
-        metadata = { ...metadata, workspacePath: resolvedPath, workspace, workspaceMap };
-        strippedContent = remaining;
-      }
-    }
+    const strippedContent = this.auth.stripPrefix(message.rawContent);
+    const metadata: Record<string, unknown> = { ...message.metadata };
 
     const filterResult = this.auth.filterCommand(strippedContent);
     if (!filterResult.allowed) {

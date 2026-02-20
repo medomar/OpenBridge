@@ -16,4 +16,6 @@ export {
   SAMPLE_WORKSPACE_MAP,
 } from './exploration-prompt.js';
 
-// Note: MasterManager will be added here once OB-078 is complete
+// Export MasterManager for lifecycle management
+export { MasterManager } from './master-manager.js';
+export type { MasterManagerOptions } from './master-manager.js';
