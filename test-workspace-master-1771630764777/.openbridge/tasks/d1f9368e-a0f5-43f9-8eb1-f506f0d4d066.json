@@ -1,0 +1,17 @@
+{
+  "id": "d1f9368e-a0f5-43f9-8eb1-f506f0d4d066",
+  "userMessage": "/ai stream test",
+  "sender": "+1234567890",
+  "description": "stream test",
+  "status": "completed",
+  "handledBy": "master",
+  "result": "Hello from streaming!",
+  "createdAt": "2026-02-20T23:39:24.777Z",
+  "startedAt": "2026-02-20T23:39:24.777Z",
+  "completedAt": "2026-02-20T23:39:24.777Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
