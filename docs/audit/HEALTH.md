@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.490/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.475
-> **Open Findings:** 10 | **Pending Tasks:** 10
+> **Current Score:** 4.505/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.490
+> **Open Findings:** 9 | **Pending Tasks:** 9
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -91,6 +91,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.425 |    +0.03    | F-003 fixed — V2 config schema + loader complete, users now need only 3 fields (workspacePath, channels, auth)                                   |
 | 2026-02-20 | 4.475 |    +0.05    | OB-085 completed — V2 entry point flow (load config → discover tools → create bridge → start → launch Master → explore)                          |
 | 2026-02-20 | 4.490 |   +0.015    | OB-088 completed — Knowledge layer archived to src/\_archived/knowledge/ (workspace-scanner, api-executor, tool-catalog, tool-executor)          |
+| 2026-02-20 | 4.505 |   +0.015    | OB-087 completed + F-008 fixed — config.example.json updated to V2 format (workspacePath, channels, auth only)                                   |
 
 ---
 

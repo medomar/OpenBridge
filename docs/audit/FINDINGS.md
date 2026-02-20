@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 10 | **Last Audit:** 2026-02-20
+> **Open:** 9 | **Last Audit:** 2026-02-20
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -123,19 +123,20 @@
 
 ---
 
-### F-008 — `config.example.json` uses V0 format
+### F-008 — `config.example.json` uses V0 format ✅ Fixed
 
 | Field    | Value         |
 | -------- | ------------- |
 | Severity | 🟢 Low        |
 | Category | Documentation |
 | Found    | 2026-02-20    |
+| Fixed    | 2026-02-20    |
 
 **What:** The example config still shows the V0 format with providers array, defaultProvider, and full connector config. Should show the simplified V2 format.
 
 **Impact:** Minor — confusing for new users trying to set up, but functional with V0 format.
 
-**Resolution:** Phase 8 (OB-087).
+**Resolution:** Phase 8 (OB-087) — **COMPLETED**. config.example.json now shows the minimal V2 format with only 3 required fields: workspacePath, channels, auth.
 
 ---
 
