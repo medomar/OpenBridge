@@ -117,6 +117,7 @@ Completing **Phases 5–8** (docs + workspace mapping + orchestrator + provider 
 | 2026-02-20 | 3.85  |    +0.05    | OB-039 fixed — README.md rewritten for AI workforce platform vision           |
 | 2026-02-20 | 3.90  |    +0.05    | OB-038 fixed — OVERVIEW.md rewritten for AI workforce platform vision         |
 | 2026-02-20 | 3.95  |    +0.05    | OB-040 fixed — ARCHITECTURE.md rewritten for 5-layer AI workforce platform    |
+| 2026-02-20 | 3.98  |    +0.03    | OB-041 fixed — Both CLAUDE.md files updated for new architecture and modules  |
 
 ---
 
