@@ -1,6 +1,6 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 3.8/10 | **Target:** 9.5/10
+> **Current Score:** 3.85/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-20 | **Previous Score:** 6.635 (V0 scope)
 > **Reason for drop:** Score re-baselined against new vision (AI workforce platform). V0 foundation is solid but the new layers don't exist yet.
 
@@ -40,7 +40,7 @@
 
 ## Open Issues Summary
 
-**0 critical** | **14 high** | **12 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
+**0 critical** | **13 high** | **12 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -114,6 +114,7 @@ Completing **Phases 5–8** (docs + workspace mapping + orchestrator + provider 
 | 2026-02-20 | 6.63  |   +0.005    | OB-036 fixed — Performance benchmarks                                         |
 | 2026-02-20 | 6.635 |   +0.005    | OB-037 fixed — Validate defaultProvider in config                             |
 | 2026-02-20 |  3.8  | re-baseline | Vision expanded to AI workforce platform — re-scored against new requirements |
+| 2026-02-20 | 3.85  |    +0.05    | OB-039 fixed — README.md rewritten for AI workforce platform vision           |
 
 ---
 
