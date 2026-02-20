@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 20 tasks across 9 phases | **Next up:** Phase 7
+> **Pending:** 19 tasks across 9 phases | **Next up:** Phase 7
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
