@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 3.9/10 | **Target:** 9.5/10
+> **Current Score:** 4.0/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-20 | **Previous Score:** 3.8 (re-baseline)
-> **Open Findings:** 8 | **Pending Tasks:** 22
+> **Open Findings:** 8 | **Pending Tasks:** 21
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -77,6 +77,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 | 4.66  |    +0.86    | Old phases 5–8 partially built (workspace maps, orchestrator, tool-use types)                                                                    |
 | 2026-02-20 |  3.8  | re-baseline | **Vision shifted again** — autonomous AI exploration replaces user-defined maps. Old phases 6–8 code archived. Score reset to V0 foundation only |
 | 2026-02-20 |  3.9  |    +0.1     | OB-068/069/070 fixed — tsx watch bug, graceful shutdown guard, generalized executor                                                              |
+| 2026-02-20 |  4.0  |    +0.05    | OB-071 completed — discovery types (DiscoveredTool, ScanResult schemas)                                                                          |
 
 ---
 

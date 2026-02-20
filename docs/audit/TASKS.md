@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 26 tasks across 9 phases | **Next up:** Phase 6
+> **Pending:** 25 tasks across 9 phases | **Next up:** Phase 6
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -44,7 +44,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | #   | Task                                                                                                                                                                                         | ID     | Priority |  Status   |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 41  | Create discovery types (`src/types/discovery.ts`) — Zod schemas for `DiscoveredTool` (name, path, version, capabilities, role, available) and `ScanResult`                                   | OB-071 | 🟠 High  | ◻ Pending |
+| 41  | Create discovery types (`src/types/discovery.ts`) — Zod schemas for `DiscoveredTool` (name, path, version, capabilities, role, available) and `ScanResult`                                   | OB-071 | 🟠 High  |  ✅ Done  |
 | 42  | Create CLI tool scanner (`src/discovery/tool-scanner.ts`) — scan with `which` for known AI tools (claude, codex, aider, cursor, cody), capture path + version, rank by priority, pick Master | OB-072 | 🟠 High  | ◻ Pending |
 | 43  | Create VS Code extension scanner (`src/discovery/vscode-scanner.ts`) — scan `~/.vscode/extensions/` for AI extensions (Copilot, Cody, Continue), return metadata                             | OB-073 |  🟡 Med  | ◻ Pending |
 | 44  | Create discovery module index (`src/discovery/index.ts`) — export `scanForAITools()` combining CLI + VS Code scans                                                                           | OB-074 |  🟡 Med  | ◻ Pending |
