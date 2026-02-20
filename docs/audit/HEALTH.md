@@ -1,6 +1,6 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.11/10 | **Target:** 9.5/10
+> **Current Score:** 4.16/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-20 | **Previous Score:** 6.635 (V0 scope)
 > **Reason for drop:** Score re-baselined against new vision (AI workforce platform). V0 foundation is solid but the new layers don't exist yet.
 
@@ -40,7 +40,7 @@
 
 ## Open Issues Summary
 
-**0 critical** | **9 high** | **10 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
+**0 critical** | **8 high** | **10 medium** | **4 low** — See [FINDINGS.md](./FINDINGS.md)
 
 ---
 
@@ -73,54 +73,55 @@ Completing **Phases 5–8** (docs + workspace mapping + orchestrator + provider 
 
 ## Score Change History
 
-| Date       | Score |   Change    | Reason                                                                             |
-| ---------- | :---: | :---------: | ---------------------------------------------------------------------------------- |
-| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                            |
-| 2026-02-19 | 6.03  |    +0.03    | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff                    |
-| 2026-02-19 | 6.06  |    +0.03    | OB-002 fixed — WhatsApp session persistence                                        |
-| 2026-02-19 | 6.09  |    +0.03    | OB-003 fixed — Input sanitization in Claude Code executor                          |
-| 2026-02-19 | 6.12  |    +0.03    | OB-004 fixed — Per-user rate limiting                                              |
-| 2026-02-19 | 6.15  |    +0.03    | OB-005 fixed — Message queue retry logic                                           |
-| 2026-02-19 | 6.18  |    +0.03    | OB-012 fixed — Bridge.stop() graceful shutdown                                     |
-| 2026-02-19 | 6.21  |    +0.03    | OB-011 fixed — Queue drain on shutdown                                             |
-| 2026-02-19 | 6.24  |    +0.03    | OB-009 fixed — WhatsApp connector unit tests                                       |
-| 2026-02-19 | 6.27  |    +0.03    | OB-010 fixed — Claude Code provider tests                                          |
-| 2026-02-19 | 6.30  |    +0.03    | OB-008 fixed — Integration tests for message flow                                  |
-| 2026-02-19 | 6.315 |   +0.015    | OB-016 fixed — Validate workspacePath exists                                       |
-| 2026-02-19 | 6.33  |   +0.015    | OB-015 fixed — Resolve tilde in workspacePath                                      |
-| 2026-02-19 | 6.36  |    +0.03    | OB-006 fixed — Streaming support for Claude Code                                   |
-| 2026-02-19 | 6.39  |    +0.03    | OB-007 fixed — Per-user conversation context                                       |
-| 2026-02-19 | 6.405 |   +0.015    | OB-014 fixed — Typing indicator                                                    |
-| 2026-02-19 | 6.42  |   +0.015    | OB-013 fixed — Message chunking for WhatsApp                                       |
-| 2026-02-19 | 6.435 |   +0.015    | OB-019 fixed — Per-user message queues                                             |
-| 2026-02-19 | 6.45  |   +0.015    | OB-018 fixed — Error classification                                                |
-| 2026-02-19 | 6.465 |   +0.015    | OB-022 fixed — Dead letter queue                                                   |
-| 2026-02-19 | 6.48  |   +0.015    | OB-020 fixed — Progress updates                                                    |
-| 2026-02-19 | 6.495 |   +0.015    | OB-027 fixed — Command allow/deny list                                             |
-| 2026-02-19 | 6.51  |   +0.015    | OB-021 fixed — Audit logging                                                       |
-| 2026-02-19 | 6.525 |   +0.015    | OB-023 fixed — Health check endpoint                                               |
-| 2026-02-19 | 6.54  |   +0.015    | OB-017 fixed — Config hot-reload                                                   |
-| 2026-02-19 | 6.555 |   +0.015    | OB-025 fixed — Deployment guide                                                    |
-| 2026-02-19 | 6.57  |   +0.015    | OB-024 fixed — Metrics collection                                                  |
-| 2026-02-19 | 6.585 |   +0.015    | OB-026 fixed — Troubleshooting guide                                               |
-| 2026-02-19 | 6.59  |   +0.005    | OB-030 fixed — Plugin auto-discovery                                               |
-| 2026-02-19 | 6.595 |   +0.005    | OB-031 fixed — CLI config generation                                               |
-| 2026-02-19 | 6.60  |   +0.005    | OB-032 fixed — E2E test harness                                                    |
-| 2026-02-19 | 6.605 |   +0.005    | OB-035 fixed — CI badge                                                            |
-| 2026-02-19 | 6.61  |   +0.005    | OB-028 fixed — Multi-workspace support                                             |
-| 2026-02-19 | 6.615 |   +0.005    | OB-033 fixed — Console connector plugin                                            |
-| 2026-02-19 | 6.62  |   +0.005    | OB-029 fixed — Markdown-to-WhatsApp formatting                                     |
-| 2026-02-20 | 6.625 |   +0.005    | OB-034 fixed — API reference documentation                                         |
-| 2026-02-20 | 6.63  |   +0.005    | OB-036 fixed — Performance benchmarks                                              |
-| 2026-02-20 | 6.635 |   +0.005    | OB-037 fixed — Validate defaultProvider in config                                  |
-| 2026-02-20 |  3.8  | re-baseline | Vision expanded to AI workforce platform — re-scored against new requirements      |
-| 2026-02-20 | 3.85  |    +0.05    | OB-039 fixed — README.md rewritten for AI workforce platform vision                |
-| 2026-02-20 | 3.90  |    +0.05    | OB-038 fixed — OVERVIEW.md rewritten for AI workforce platform vision              |
-| 2026-02-20 | 3.95  |    +0.05    | OB-040 fixed — ARCHITECTURE.md rewritten for 5-layer AI workforce platform         |
-| 2026-02-20 | 3.98  |    +0.03    | OB-041 fixed — Both CLAUDE.md files updated for new architecture and modules       |
-| 2026-02-20 | 4.03  |    +0.05    | OB-043 fixed — Workspace map types defined (APIEndpoint, WorkspaceMap, MapSource)  |
-| 2026-02-20 | 4.06  |    +0.03    | OB-042 fixed — CONFIGURATION.md updated with workspace maps, agents, views schemas |
-| 2026-02-20 | 4.11  |    +0.05    | OB-044 fixed — openbridge.map.json spec designed, map loader + tests + example     |
+| Date       | Score |   Change    | Reason                                                                              |
+| ---------- | :---: | :---------: | ----------------------------------------------------------------------------------- |
+| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                             |
+| 2026-02-19 | 6.03  |    +0.03    | OB-001 fixed — WhatsApp auto-reconnect with exponential backoff                     |
+| 2026-02-19 | 6.06  |    +0.03    | OB-002 fixed — WhatsApp session persistence                                         |
+| 2026-02-19 | 6.09  |    +0.03    | OB-003 fixed — Input sanitization in Claude Code executor                           |
+| 2026-02-19 | 6.12  |    +0.03    | OB-004 fixed — Per-user rate limiting                                               |
+| 2026-02-19 | 6.15  |    +0.03    | OB-005 fixed — Message queue retry logic                                            |
+| 2026-02-19 | 6.18  |    +0.03    | OB-012 fixed — Bridge.stop() graceful shutdown                                      |
+| 2026-02-19 | 6.21  |    +0.03    | OB-011 fixed — Queue drain on shutdown                                              |
+| 2026-02-19 | 6.24  |    +0.03    | OB-009 fixed — WhatsApp connector unit tests                                        |
+| 2026-02-19 | 6.27  |    +0.03    | OB-010 fixed — Claude Code provider tests                                           |
+| 2026-02-19 | 6.30  |    +0.03    | OB-008 fixed — Integration tests for message flow                                   |
+| 2026-02-19 | 6.315 |   +0.015    | OB-016 fixed — Validate workspacePath exists                                        |
+| 2026-02-19 | 6.33  |   +0.015    | OB-015 fixed — Resolve tilde in workspacePath                                       |
+| 2026-02-19 | 6.36  |    +0.03    | OB-006 fixed — Streaming support for Claude Code                                    |
+| 2026-02-19 | 6.39  |    +0.03    | OB-007 fixed — Per-user conversation context                                        |
+| 2026-02-19 | 6.405 |   +0.015    | OB-014 fixed — Typing indicator                                                     |
+| 2026-02-19 | 6.42  |   +0.015    | OB-013 fixed — Message chunking for WhatsApp                                        |
+| 2026-02-19 | 6.435 |   +0.015    | OB-019 fixed — Per-user message queues                                              |
+| 2026-02-19 | 6.45  |   +0.015    | OB-018 fixed — Error classification                                                 |
+| 2026-02-19 | 6.465 |   +0.015    | OB-022 fixed — Dead letter queue                                                    |
+| 2026-02-19 | 6.48  |   +0.015    | OB-020 fixed — Progress updates                                                     |
+| 2026-02-19 | 6.495 |   +0.015    | OB-027 fixed — Command allow/deny list                                              |
+| 2026-02-19 | 6.51  |   +0.015    | OB-021 fixed — Audit logging                                                        |
+| 2026-02-19 | 6.525 |   +0.015    | OB-023 fixed — Health check endpoint                                                |
+| 2026-02-19 | 6.54  |   +0.015    | OB-017 fixed — Config hot-reload                                                    |
+| 2026-02-19 | 6.555 |   +0.015    | OB-025 fixed — Deployment guide                                                     |
+| 2026-02-19 | 6.57  |   +0.015    | OB-024 fixed — Metrics collection                                                   |
+| 2026-02-19 | 6.585 |   +0.015    | OB-026 fixed — Troubleshooting guide                                                |
+| 2026-02-19 | 6.59  |   +0.005    | OB-030 fixed — Plugin auto-discovery                                                |
+| 2026-02-19 | 6.595 |   +0.005    | OB-031 fixed — CLI config generation                                                |
+| 2026-02-19 | 6.60  |   +0.005    | OB-032 fixed — E2E test harness                                                     |
+| 2026-02-19 | 6.605 |   +0.005    | OB-035 fixed — CI badge                                                             |
+| 2026-02-19 | 6.61  |   +0.005    | OB-028 fixed — Multi-workspace support                                              |
+| 2026-02-19 | 6.615 |   +0.005    | OB-033 fixed — Console connector plugin                                             |
+| 2026-02-19 | 6.62  |   +0.005    | OB-029 fixed — Markdown-to-WhatsApp formatting                                      |
+| 2026-02-20 | 6.625 |   +0.005    | OB-034 fixed — API reference documentation                                          |
+| 2026-02-20 | 6.63  |   +0.005    | OB-036 fixed — Performance benchmarks                                               |
+| 2026-02-20 | 6.635 |   +0.005    | OB-037 fixed — Validate defaultProvider in config                                   |
+| 2026-02-20 |  3.8  | re-baseline | Vision expanded to AI workforce platform — re-scored against new requirements       |
+| 2026-02-20 | 3.85  |    +0.05    | OB-039 fixed — README.md rewritten for AI workforce platform vision                 |
+| 2026-02-20 | 3.90  |    +0.05    | OB-038 fixed — OVERVIEW.md rewritten for AI workforce platform vision               |
+| 2026-02-20 | 3.95  |    +0.05    | OB-040 fixed — ARCHITECTURE.md rewritten for 5-layer AI workforce platform          |
+| 2026-02-20 | 3.98  |    +0.03    | OB-041 fixed — Both CLAUDE.md files updated for new architecture and modules        |
+| 2026-02-20 | 4.03  |    +0.05    | OB-043 fixed — Workspace map types defined (APIEndpoint, WorkspaceMap, MapSource)   |
+| 2026-02-20 | 4.06  |    +0.03    | OB-042 fixed — CONFIGURATION.md updated with workspace maps, agents, views schemas  |
+| 2026-02-20 | 4.11  |    +0.05    | OB-044 fixed — openbridge.map.json spec designed, map loader + tests + example      |
+| 2026-02-20 | 4.16  |    +0.05    | OB-045 fixed — Workspace scanner: reads openbridge.map.json, parses OpenAPI/Postman |
 
 ---
 
