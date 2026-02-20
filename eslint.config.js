@@ -32,9 +32,9 @@ export default tseslint.config(
     },
   },
 
-  // Relax rules for test files
+  // Relax rules for test and benchmark files
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'benchmarks/**/*.ts'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

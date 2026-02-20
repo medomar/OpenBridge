@@ -19,8 +19,12 @@ describe('ProviderError', () => {
 
 describe('classifyError()', () => {
   // Transient cases
-  it('classifies exit code 124 as transient (timeout)', () => {
-    expect(classifyError(124, '')).toBe('transient');
+  it('classifies exit code 124 as permanent (timeout — retrying will timeout again)', () => {
+    expect(classifyError(124, '')).toBe('permanent');
+  });
+
+  it('classifies exit code 143 as permanent (SIGTERM from timeout)', () => {
+    expect(classifyError(143, '')).toBe('permanent');
   });
 
   it('classifies "timeout" in stderr as transient', () => {

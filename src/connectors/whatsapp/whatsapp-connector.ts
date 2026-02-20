@@ -58,8 +58,10 @@ export class WhatsAppConnector implements Connector {
 
   private async createAndStartClient(): Promise<void> {
     // Dynamic import to avoid requiring whatsapp-web.js at module load
+    // whatsapp-web.js is CJS — Client is a named export, but LocalAuth is only on .default
     const WAWebJS = await import('whatsapp-web.js');
-    const { Client, LocalAuth } = WAWebJS;
+    const { Client } = WAWebJS;
+    const { LocalAuth } = WAWebJS.default;
 
     const localAuthOptions: { clientId: string; dataPath?: string } = {
       clientId: this.config.sessionName,
@@ -74,6 +76,16 @@ export class WhatsAppConnector implements Connector {
 
     this.client.on('qr', (qr: string) => {
       logger.info('QR code received — scan with WhatsApp');
+      // Render QR code to terminal so the user can scan it
+      import('qrcode-terminal')
+        .then((qrcodeTerminal) => {
+          const mod = qrcodeTerminal.default ?? qrcodeTerminal;
+          mod.generate(qr, { small: true });
+        })
+        .catch(() => {
+          // Fallback: print raw QR string if qrcode-terminal is not available
+          logger.info({ qr }, 'Install qrcode-terminal to display QR in terminal');
+        });
       this.emit('auth', qr);
     });
 

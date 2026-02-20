@@ -53,6 +53,7 @@ pids/
 *.tsbuildinfo
 
 # Config files with secrets
+config.json
 config.local.json
 config.production.json
 

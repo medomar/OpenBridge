@@ -97,10 +97,14 @@ export class Router {
       const errorKind = error instanceof ProviderError ? error.kind : ('unknown' as const);
       this.metrics?.recordFailed(errorKind);
       if (error instanceof ProviderError) {
-        const userMessage =
-          error.kind === 'transient'
-            ? 'The AI service is temporarily unavailable. Please try again in a moment.'
-            : `Request failed: ${error.message}`;
+        let userMessage: string;
+        if (error.exitCode === 124 || error.exitCode === 143) {
+          userMessage = 'The request timed out. Try a simpler or shorter prompt.';
+        } else if (error.kind === 'transient') {
+          userMessage = 'The AI service is temporarily unavailable. Please try again in a moment.';
+        } else {
+          userMessage = `Request failed: ${error.message}`;
+        }
 
         const errorResponse: OutboundMessage = {
           target: message.source,

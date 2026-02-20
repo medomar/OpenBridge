@@ -15,8 +15,20 @@ export class AuthService {
   private denyPatterns: RegExp[];
   private denyMessage: string;
 
+  /**
+   * Normalize a phone number to digits-only for comparison.
+   * Handles: "+33629539495", "33629539495@c.us", "33629539495"
+   */
+  private static normalizeNumber(input: string): string {
+    return input.replace('@c.us', '').replace(/\D/g, '');
+  }
+
+  private static buildWhitelist(numbers: string[]): Set<string> {
+    return new Set(numbers.map((n) => AuthService.normalizeNumber(n)));
+  }
+
   constructor(config: AuthConfig) {
-    this.whitelist = new Set(config.whitelist);
+    this.whitelist = AuthService.buildWhitelist(config.whitelist);
     this.prefix = config.prefix;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
@@ -45,7 +57,7 @@ export class AuthService {
     if (this.whitelist.size === 0) {
       return true; // No whitelist = open access
     }
-    return this.whitelist.has(sender);
+    return this.whitelist.has(AuthService.normalizeNumber(sender));
   }
 
   /** Check if a message starts with the configured prefix */
@@ -86,7 +98,7 @@ export class AuthService {
 
   /** Hot-reload auth config without restarting */
   updateConfig(config: AuthConfig): void {
-    this.whitelist = new Set(config.whitelist);
+    this.whitelist = AuthService.buildWhitelist(config.whitelist);
     this.prefix = config.prefix;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {

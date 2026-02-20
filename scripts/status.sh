@@ -100,52 +100,125 @@ show_agents() {
   echo ""
   echo "── Running Agents ─────────────────────────────────────────"
 
-  # Find claude --print processes (task runner agents)
-  local agent_pids
-  agent_pids=$(ps aux | grep "[c]laude.*--print" | awk '{print $2}' || true)
+  # ── Helper: extract JSON value (handles spaces, colons in values) ──
+  json_val() {
+    local key="$1" file="$2"
+    # For string values: "key": "value" (value may contain colons, dots, etc.)
+    local result
+    result=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$file" 2>/dev/null | head -1)
+    if [[ -n "$result" ]]; then
+      echo "$result"
+      return
+    fi
+    # For numeric/unquoted values: "key": 123
+    sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\([^,}[:space:]]*\).*/\1/p" "$file" 2>/dev/null | head -1
+  }
 
-  if [[ -z "$agent_pids" ]]; then
-    echo "  No task runner agents currently running."
+  # ── 1. Check if the task runner process is alive via PID ──────
+  local runner_alive=false
+  local runner_pid=""
+  if [[ -f "$STATE_PATH" ]]; then
+    runner_pid=$(json_val "pid" "$STATE_PATH")
+    local state_status
+    state_status=$(json_val "status" "$STATE_PATH")
+    if [[ -n "$runner_pid" && "$state_status" == "running" ]] && kill -0 "$runner_pid" 2>/dev/null; then
+      runner_alive=true
+    fi
+  fi
+
+  # ── 2. Find claude agent processes (multiple detection methods) ─
+  # Method A: Look for claude processes spawned by the runner
+  # Method B: Look for any "claude" CLI processes in terminal sessions
+  # ps aux truncates command names, so we match broadly on "claude"
+  # but exclude: this grep, the VSCode extension host, and other non-agent uses
+  local agent_lines
+  agent_lines=$(ps aux | grep -E '[c]laude\b' \
+    | grep -v 'vscode\|extensions\|grep\|status\.sh\|tee\|/bin/zsh' \
+    | grep -v "$$" \
+    || true)
+
+  # If the runner is alive, also find its child processes directly
+  if [[ "$runner_alive" == "true" && -n "$runner_pid" ]]; then
+    local child_pids
+    child_pids=$(pgrep -P "$runner_pid" 2>/dev/null || true)
+    if [[ -n "$child_pids" ]]; then
+      for cpid in $child_pids; do
+        # Include grandchildren (the actual claude processes)
+        local grandchild_lines
+        grandchild_lines=$(pgrep -P "$cpid" 2>/dev/null | while read -r gpid; do
+          ps aux | awk -v pid="$gpid" '$2 == pid' 2>/dev/null
+        done || true)
+        if [[ -n "$grandchild_lines" ]]; then
+          agent_lines="${agent_lines}
+${grandchild_lines}"
+        fi
+      done
+    fi
+    # Deduplicate by PID, filter helper processes
+    agent_lines=$(echo "$agent_lines" | grep -v 'tee\|/bin/zsh\|/bin/bash\|grep' | awk '!seen[$2]++' | grep -v '^$' || true)
+  fi
+
+  # ── 3. Display runner + agent status ──────────────────────────
+  if [[ "$runner_alive" == "true" ]]; then
+    echo "  Task runner:  ACTIVE (PID $runner_pid)"
+  elif [[ -f "$STATE_PATH" ]]; then
+    local state_status
+    state_status=$(json_val "status" "$STATE_PATH")
+    echo "  Task runner:  $state_status (PID $runner_pid — not running)"
+  else
+    echo "  Task runner:  No state file found."
+  fi
+
+  echo ""
+
+  if [[ -z "$agent_lines" ]]; then
+    if [[ "$runner_alive" == "true" ]]; then
+      echo "  Agent processes: starting up or between iterations..."
+    else
+      echo "  No task runner agents currently running."
+    fi
   else
     local count
-    count=$(echo "$agent_pids" | wc -l | tr -d ' ')
+    count=$(echo "$agent_lines" | grep -c '.' || echo "0")
     echo "  Active agents: $count"
     echo ""
-    echo "  PID      CPU    MEM    STARTED  MODEL"
-    echo "  ───────  ─────  ─────  ───────  ─────"
-    ps aux | grep "[c]laude.*--print" | while read -r line; do
-      local pid cpu mem start model_flag
+    echo "  PID      CPU    MEM    STARTED  COMMAND"
+    echo "  ───────  ─────  ─────  ───────  ───────"
+    echo "$agent_lines" | while read -r line; do
+      [[ -z "$line" ]] && continue
+      local pid cpu mem start cmd
       pid=$(echo "$line" | awk '{print $2}')
       cpu=$(echo "$line" | awk '{print $3}')
       mem=$(echo "$line" | awk '{print $4}')
       start=$(echo "$line" | awk '{print $9}')
-      # Extract model if specified
-      if echo "$line" | grep -q "\-\-model"; then
-        model_flag=$(echo "$line" | grep -o '\-\-model [^ ]*' | awk '{print $2}')
-      else
-        model_flag="default"
+      # Show the command name (trimmed)
+      cmd=$(echo "$line" | awk '{for(i=11;i<=NF;i++) printf "%s ", $i; print ""}' | cut -c1-40)
+      if [[ -z "$cmd" || "$cmd" =~ ^[[:space:]]*$ ]]; then
+        cmd="claude"
       fi
-      printf "  %-7s  %5s%%  %5s%%  %7s  %s\n" "$pid" "$cpu" "$mem" "$start" "$model_flag"
+      printf "  %-7s  %5s%%  %5s%%  %7s  %s\n" "$pid" "$cpu" "$mem" "$start" "$cmd"
     done
   fi
 
-  # Show run state if exists
+  # ── 4. Show run state details ─────────────────────────────────
   if [[ -f "$STATE_PATH" ]]; then
     echo ""
-    echo "  Last run state:"
-    local started_at iteration phase model parallel status
-    started_at=$(grep -o '"started_at":"[^"]*"' "$STATE_PATH" 2>/dev/null | cut -d'"' -f4 || echo "unknown")
-    iteration=$(grep -o '"iteration":[0-9]*' "$STATE_PATH" 2>/dev/null | cut -d: -f2 || echo "?")
-    phase=$(grep -o '"phase":"[^"]*"' "$STATE_PATH" 2>/dev/null | cut -d'"' -f4 || echo "all")
-    model=$(grep -o '"model":"[^"]*"' "$STATE_PATH" 2>/dev/null | cut -d'"' -f4 || echo "default")
-    parallel=$(grep -o '"parallel":[0-9]*' "$STATE_PATH" 2>/dev/null | cut -d: -f2 || echo "1")
-    status=$(grep -o '"status":"[^"]*"' "$STATE_PATH" 2>/dev/null | cut -d'"' -f4 || echo "unknown")
-    echo "    Started:    $started_at"
-    echo "    Iteration:  $iteration"
-    echo "    Phase:      $phase"
-    echo "    Model:      $model"
-    echo "    Parallel:   $parallel"
-    echo "    Status:     $status"
+    echo "  Run state:"
+    local started_at iteration phase model parallel status consecutive_failures
+    started_at=$(json_val "started_at" "$STATE_PATH")
+    iteration=$(json_val "iteration" "$STATE_PATH")
+    phase=$(json_val "phase" "$STATE_PATH")
+    model=$(json_val "model" "$STATE_PATH")
+    parallel=$(json_val "parallel" "$STATE_PATH")
+    status=$(json_val "status" "$STATE_PATH")
+    consecutive_failures=$(json_val "consecutive_failures" "$STATE_PATH")
+    echo "    Status:     ${status:-unknown}"
+    echo "    Started:    ${started_at:-unknown}"
+    echo "    Iteration:  ${iteration:-?}"
+    echo "    Phase:      ${phase:-all}"
+    echo "    Model:      ${model:-default}"
+    echo "    Parallel:   ${parallel:-1}"
+    echo "    Failures:   ${consecutive_failures:-0} consecutive"
   fi
 }
 
@@ -158,25 +231,30 @@ show_tasks() {
     return
   fi
 
-  # Extract summary line from TASKS.md header
+  # Extract summary line from TASKS.md header (strip markdown bold markers)
   local summary
-  summary=$(head -5 "$TASKS_PATH" | grep -o 'Total:.*' || echo "No summary found")
+  summary=$(head -5 "$TASKS_PATH" | grep 'Total:' | sed 's/[>*]//g' | sed 's/^[[:space:]]*//' || echo "No summary found")
   echo "  $summary"
 
-  # Extract health score
+  # Extract health score (strip markdown bold markers)
   if [[ -f "$HEALTH_PATH" ]]; then
     local score
-    score=$(head -5 "$HEALTH_PATH" | grep -o 'Current Score: [0-9.]*/10' || echo "No score")
+    score=$(head -5 "$HEALTH_PATH" | grep 'Current Score:' | sed 's/[>*]//g' | sed 's/^[[:space:]]*//' || echo "No score")
     echo "  $score"
   fi
 
   echo ""
 
-  # Count task statuses
-  local done_count pending_count progress_count
-  done_count=$(grep -c "✅ Done" "$TASKS_PATH" 2>/dev/null || echo "0")
-  pending_count=$(grep -c "◻ Pending" "$TASKS_PATH" 2>/dev/null || echo "0")
-  progress_count=$(grep -c "🔄 In Progress" "$TASKS_PATH" 2>/dev/null || echo "0")
+  # Count task statuses — only count rows with OB-xxx finding IDs (actual task rows)
+  local task_rows done_count pending_count progress_count
+  task_rows=$(grep 'OB-[0-9]' "$TASKS_PATH" 2>/dev/null || true)
+  done_count=$(echo "$task_rows" | grep -c "✅ Done" 2>/dev/null || true)
+  pending_count=$(echo "$task_rows" | grep -c "◻ Pending" 2>/dev/null || true)
+  progress_count=$(echo "$task_rows" | grep -c "🔄 In Progress" 2>/dev/null || true)
+  # Ensure numeric (default to 0)
+  done_count=${done_count:-0}
+  pending_count=${pending_count:-0}
+  progress_count=${progress_count:-0}
 
   # Progress bar
   local total=$((done_count + pending_count + progress_count))
@@ -204,15 +282,23 @@ show_tasks() {
     echo "  Next task: (no pointer file — will scan task list)"
   fi
 
-  # Show phase breakdown
+  # Show phase breakdown using awk to correctly isolate each phase section
   echo ""
   echo "  Phase breakdown:"
   local phase_num=1
   while [[ $phase_num -le 4 ]]; do
-    local phase_done phase_pending phase_total
-    # Count tasks in this phase section
-    phase_done=$(sed -n "/## Phase $phase_num/,/## Phase $((phase_num + 1))\|## Status/p" "$TASKS_PATH" 2>/dev/null | grep -c "✅ Done" || echo "0")
-    phase_pending=$(sed -n "/## Phase $phase_num/,/## Phase $((phase_num + 1))\|## Status/p" "$TASKS_PATH" 2>/dev/null | grep -c "◻ Pending\|🔄 In Progress" || echo "0")
+    local phase_rows phase_done phase_pending phase_total
+    # Use awk: enter section on "## Phase N", exit on next "## " heading
+    phase_rows=$(awk "/^## Phase $phase_num/{found=1; next} /^## /{found=0} found && /OB-[0-9]/" "$TASKS_PATH" 2>/dev/null || true)
+    if [[ -n "$phase_rows" ]]; then
+      phase_done=$(echo "$phase_rows" | grep -c "✅ Done" 2>/dev/null || true)
+      phase_pending=$(echo "$phase_rows" | grep -c -E "◻ Pending|🔄 In Progress" 2>/dev/null || true)
+    else
+      phase_done=0
+      phase_pending=0
+    fi
+    phase_done=${phase_done:-0}
+    phase_pending=${phase_pending:-0}
     phase_total=$((phase_done + phase_pending))
     if [[ "$phase_total" -gt 0 ]]; then
       local phase_status="◻"

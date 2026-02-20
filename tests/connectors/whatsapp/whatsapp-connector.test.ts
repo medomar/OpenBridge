@@ -52,14 +52,18 @@ vi.mock('whatsapp-web.js', () => {
 
   class LocalAuth {}
 
+  const ClientConstructor = vi.fn(function (this: MockClientInstance) {
+    const instance = new MockClient() as unknown as MockClientInstance;
+    createdClients.push(instance);
+    mockClientInstance = instance;
+    return instance;
+  });
+
   return {
-    Client: vi.fn(function (this: MockClientInstance) {
-      const instance = new MockClient() as unknown as MockClientInstance;
-      createdClients.push(instance);
-      mockClientInstance = instance;
-      return instance;
-    }),
+    Client: ClientConstructor,
     LocalAuth,
+    // whatsapp-web.js is CJS — in ESM dynamic import, LocalAuth lives on .default
+    default: { Client: ClientConstructor, LocalAuth },
   };
 });
 

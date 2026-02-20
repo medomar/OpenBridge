@@ -145,10 +145,14 @@ export function getWhatsAppMockModule(server: MockWhatsAppServer) {
 
   class LocalAuth {}
 
+  const ClientConstructor = vi.fn(function () {
+    return createClient();
+  });
+
   return {
-    Client: vi.fn(function () {
-      return createClient();
-    }),
+    Client: ClientConstructor,
     LocalAuth,
+    // whatsapp-web.js is CJS — in ESM dynamic import, LocalAuth lives on .default
+    default: { Client: ClientConstructor, LocalAuth },
   };
 }

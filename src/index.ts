@@ -1,6 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Bridge, loadConfig, resolveConfigPath, createLogger } from './core/index.js';
+
+// whatsapp-web.js / puppeteer registers multiple exit handlers — raise the limit to avoid the warning
+process.setMaxListeners(20);
 import { registerBuiltInConnectors } from './connectors/index.js';
 import { registerBuiltInProviders } from './providers/index.js';
 
@@ -37,7 +40,7 @@ async function main(): Promise<void> {
     process.on('SIGINT', () => void shutdown());
     process.on('SIGTERM', () => void shutdown());
   } catch (error) {
-    logger.fatal({ error }, 'Failed to start OpenBridge');
+    logger.fatal({ err: error }, 'Failed to start OpenBridge');
     process.exit(1);
   }
 }

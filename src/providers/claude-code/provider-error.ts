@@ -58,8 +58,9 @@ const PERMANENT_PATTERNS = [
  * 5. Default for unrecognised non-zero exit → transient (safer to retry)
  */
 export function classifyError(exitCode: number, stderr: string): ErrorKind {
-  // Timeout exit code (common for `timeout` command or Node child_process timeout)
-  if (exitCode === 124) return 'transient';
+  // Timeout exit codes — 124 (timeout command) or 143 (SIGTERM from child_process timeout).
+  // These are permanent: retrying will just timeout again.
+  if (exitCode === 124 || exitCode === 143) return 'permanent';
 
   // Check stderr against known patterns — transient first
   for (const pattern of TRANSIENT_PATTERNS) {
