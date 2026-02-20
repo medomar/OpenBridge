@@ -506,6 +506,282 @@ describe('parsePostmanCollection', () => {
     const map = parsePostmanCollection(varOnly);
     expect(map.baseUrl).toBe('https://api.example.com');
   });
+
+  it('should exclude disabled query parameters', () => {
+    const collectionWithDisabled = {
+      ...postmanCollection,
+      item: [
+        {
+          name: 'Filtered',
+          request: {
+            method: 'GET',
+            url: {
+              raw: 'https://api.example.com/items?active=true&debug=1',
+              protocol: 'https',
+              host: ['api', 'example', 'com'],
+              path: ['items'],
+              query: [
+                { key: 'active', value: 'true' },
+                { key: 'debug', value: '1', disabled: true },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const map = parsePostmanCollection(collectionWithDisabled);
+    const ep = map.endpoints[0];
+    expect(ep?.parameters).toHaveLength(1);
+    expect(ep?.parameters[0]?.name).toBe('active');
+  });
+
+  it('should handle non-JSON raw body as text/plain', () => {
+    const textBody = {
+      ...postmanCollection,
+      item: [
+        {
+          name: 'Text Body',
+          request: {
+            method: 'POST',
+            url: 'https://api.example.com/raw',
+            body: { mode: 'raw', raw: 'plain text content' },
+          },
+        },
+      ],
+    };
+    const map = parsePostmanCollection(textBody);
+    const ep = map.endpoints[0];
+    expect(ep?.requestBody?.contentType).toBe('text/plain');
+    expect(ep?.requestBody?.example).toBe('plain text content');
+  });
+
+  it('should handle deeply nested Postman folders (3 levels)', () => {
+    const deepNested = {
+      ...postmanCollection,
+      item: [
+        {
+          name: 'Level1',
+          item: [
+            {
+              name: 'Level2',
+              item: [
+                {
+                  name: 'Deep Request',
+                  request: {
+                    method: 'GET',
+                    url: 'https://api.example.com/deep',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const map = parsePostmanCollection(deepNested);
+    expect(map.endpoints).toHaveLength(1);
+    expect(map.endpoints[0]?.name).toBe('Deep Request');
+    expect(map.endpoints[0]?.tags).toEqual(['Level1', 'Level2']);
+  });
+
+  it('should fallback baseUrl to localhost when no URLs or variables', () => {
+    const noUrls = {
+      info: { name: 'Empty' },
+      item: [
+        {
+          name: 'Test',
+          request: {
+            method: 'GET',
+            url: { path: ['test'] },
+          },
+        },
+      ],
+    };
+    const map = parsePostmanCollection(
+      noUrls as unknown as Parameters<typeof parsePostmanCollection>[0],
+    );
+    expect(map.baseUrl).toBe('http://localhost');
+  });
+});
+
+// ── detectSource — additional edge cases ────────────────────────
+
+describe('detectSource — edge cases', () => {
+  it('should detect OpenAPI spec in .yaml file by paths key', () => {
+    const yamlLikeObj = { paths: { '/test': {} }, info: { title: 'Test' } };
+    expect(detectSource(yamlLikeObj, 'spec.yaml')).toBe('openapi');
+  });
+
+  it('should detect OpenAPI spec in .yml file by paths key', () => {
+    const yamlLikeObj = { paths: { '/test': {} } };
+    expect(detectSource(yamlLikeObj, 'api.yml')).toBe('openapi');
+  });
+
+  it('should return manual for array input', () => {
+    expect(detectSource([], 'data.json')).toBe('manual');
+  });
+
+  it('should return manual for number input', () => {
+    expect(detectSource(42, 'num.json')).toBe('manual');
+  });
+});
+
+// ── parseOpenAPISpec — additional edge cases ────────────────────
+
+describe('parseOpenAPISpec — edge cases', () => {
+  it('should prefer 201 response when 200 is not present', () => {
+    const spec201 = {
+      openapi: '3.0.3',
+      info: { title: 'Test', version: '1.0.0' },
+      paths: {
+        '/items': {
+          post: {
+            operationId: 'createItem',
+            summary: 'Create item',
+            responses: {
+              '201': {
+                description: 'Created',
+                content: { 'application/json': { schema: { type: 'object' } } },
+              },
+              '400': { description: 'Bad request' },
+            },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(spec201 as Parameters<typeof parseOpenAPISpec>[0], 'openapi');
+    const ep = map.endpoints[0];
+    expect(ep?.response).toBeDefined();
+    expect(ep?.response?.contentType).toBe('application/json');
+  });
+
+  it('should skip non-HTTP-method keys in paths (e.g., parameters)', () => {
+    const specWithParams = {
+      openapi: '3.0.3',
+      info: { title: 'Test', version: '1.0.0' },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'listItems',
+            summary: 'List',
+            responses: { '200': { description: 'OK' } },
+          },
+          parameters: [{ name: 'x', in: 'header' }],
+        },
+      },
+    };
+    const map = parseOpenAPISpec(
+      specWithParams as Parameters<typeof parseOpenAPISpec>[0],
+      'openapi',
+    );
+    expect(map.endpoints).toHaveLength(1);
+    expect(map.endpoints[0]?.id).toBe('listItems');
+  });
+
+  it('should handle Swagger 2.x without schemes (defaults to https)', () => {
+    const noSchemes = {
+      swagger: '2.0',
+      info: { title: 'No Schemes', version: '1.0.0' },
+      host: 'api.example.com',
+      paths: {
+        '/test': {
+          get: {
+            operationId: 'testGet',
+            summary: 'Test',
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(noSchemes as Parameters<typeof parseOpenAPISpec>[0], 'swagger');
+    expect(map.baseUrl).toBe('https://api.example.com');
+  });
+
+  it('should handle Swagger 2.x without basePath', () => {
+    const noBasePath = {
+      swagger: '2.0',
+      info: { title: 'No BasePath', version: '1.0.0' },
+      host: 'api.example.com',
+      schemes: ['http'],
+      paths: {
+        '/test': {
+          get: {
+            operationId: 'testGet',
+            summary: 'Test',
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(noBasePath as Parameters<typeof parseOpenAPISpec>[0], 'swagger');
+    expect(map.baseUrl).toBe('http://api.example.com');
+  });
+
+  it('should map OpenAPI boolean parameter type', () => {
+    const specBool = {
+      openapi: '3.0.3',
+      info: { title: 'Test', version: '1.0.0' },
+      paths: {
+        '/items': {
+          get: {
+            operationId: 'listItems',
+            summary: 'List',
+            parameters: [{ name: 'verbose', in: 'query', schema: { type: 'boolean' } }],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(specBool as Parameters<typeof parseOpenAPISpec>[0], 'openapi');
+    expect(map.endpoints[0]?.parameters[0]?.type).toBe('boolean');
+  });
+
+  it('should fallback to first security scheme when no global security', () => {
+    const specFallback = {
+      openapi: '3.0.3',
+      info: { title: 'Fallback', version: '1.0.0' },
+      components: {
+        securitySchemes: {
+          apiKey: { type: 'apiKey', name: 'X-Key', in: 'header' },
+        },
+      },
+      paths: {
+        '/test': {
+          get: {
+            operationId: 'test',
+            summary: 'Test',
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(specFallback as Parameters<typeof parseOpenAPISpec>[0], 'openapi');
+    expect(map.auth.type).toBe('api-key');
+  });
+
+  it('should handle request body with non-JSON content type', () => {
+    const specXml = {
+      openapi: '3.0.3',
+      info: { title: 'XML', version: '1.0.0' },
+      paths: {
+        '/items': {
+          post: {
+            operationId: 'createItem',
+            summary: 'Create',
+            requestBody: {
+              content: {
+                'application/xml': { schema: { type: 'string' } },
+              },
+            },
+            responses: { '201': { description: 'Created' } },
+          },
+        },
+      },
+    };
+    const map = parseOpenAPISpec(specXml as Parameters<typeof parseOpenAPISpec>[0], 'openapi');
+    const ep = map.endpoints[0];
+    expect(ep?.requestBody?.contentType).toBe('application/xml');
+  });
 });
 
 // ── scanWorkspace (integration) ──────────────────────────────────

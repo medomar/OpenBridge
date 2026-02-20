@@ -691,4 +691,177 @@ describe('APIExecutor', () => {
       await promise;
     });
   });
+
+  describe('execute — body serialization', () => {
+    it('should serialize string body for non-JSON content type', async () => {
+      const textMap: WorkspaceMap = {
+        ...testMap,
+        endpoints: [
+          {
+            id: 'text-body',
+            name: 'Text Body',
+            method: 'POST',
+            path: '/text',
+            parameters: [],
+            headers: {},
+            tags: [],
+            requestBody: { contentType: 'text/plain' },
+          },
+        ],
+      };
+      const executor = new APIExecutor(textMap);
+      const promise = executor.execute({ endpointId: 'text-body', body: 'raw text content' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(lastMockRequest.writtenData).toEqual(['raw text content']);
+
+      simulateResponse(200, 'ok');
+      await promise;
+    });
+
+    it('should not write body when body is undefined', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({ endpointId: 'list-products' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(lastMockRequest.writtenData).toEqual([]);
+
+      simulateResponse(200, []);
+      await promise;
+    });
+
+    it('should not write body when body is null', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({ endpointId: 'list-products', body: null });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(lastMockRequest.writtenData).toEqual([]);
+
+      simulateResponse(200, []);
+      await promise;
+    });
+  });
+
+  describe('execute — default query params', () => {
+    it('should use endpoint default query params when caller omits them', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({ endpointId: 'list-products' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The 'limit' param has example: '20', should appear as default
+      const callUrl = getCallUrl(mockHttpsRequest);
+      expect(callUrl.searchParams.get('limit')).toBe('20');
+
+      simulateResponse(200, []);
+      await promise;
+    });
+
+    it('should override default query params with caller-provided values', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({
+        endpointId: 'list-products',
+        queryParams: { limit: '50' },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const callUrl = getCallUrl(mockHttpsRequest);
+      expect(callUrl.searchParams.get('limit')).toBe('50');
+
+      simulateResponse(200, []);
+      await promise;
+    });
+  });
+
+  describe('execute — response edge cases', () => {
+    it('should handle empty response body with JSON content type', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({ endpointId: 'no-auth-endpoint' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const res = new MockIncomingMessage(204, 'No Content', {
+        'content-type': 'application/json',
+      });
+      mockRequestCallback?.(res);
+      res.emitBody('');
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Empty body with JSON content type should remain as empty string
+        expect(result.body).toBe('');
+      }
+    });
+
+    it('should handle malformed JSON in response gracefully', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({ endpointId: 'no-auth-endpoint' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const res = new MockIncomingMessage(200, 'OK', {
+        'content-type': 'application/json',
+      });
+      mockRequestCallback?.(res);
+      res.emitBody('not valid json {');
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Should keep raw string when JSON parse fails
+        expect(result.body).toBe('not valid json {');
+      }
+    });
+  });
+
+  describe('execute — retry with network errors', () => {
+    it('should retry network errors up to maxRetries', async () => {
+      const executor = new APIExecutor(testMap, { maxRetries: 1, retryBaseDelayMs: 50 });
+      const promise = executor.execute({ endpointId: 'no-auth-endpoint' });
+
+      // First attempt — network error
+      await vi.advanceTimersByTimeAsync(0);
+      lastMockRequest.emit('error', new Error('ECONNRESET'));
+
+      // Retry after delay
+      await vi.advanceTimersByTimeAsync(50);
+      simulateResponse(200, { ok: true });
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      expect(mockHttpsRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('should retry timeout errors', async () => {
+      const executor = new APIExecutor(testMap, { maxRetries: 1, retryBaseDelayMs: 50 });
+      const promise = executor.execute({ endpointId: 'no-auth-endpoint', timeoutMs: 100 });
+
+      // First attempt — timeout
+      await vi.advanceTimersByTimeAsync(0);
+      lastMockRequest.emit('timeout');
+
+      // Retry after delay
+      await vi.advanceTimersByTimeAsync(50);
+      simulateResponse(200, { recovered: true });
+
+      const result = await promise;
+      expect(result.ok).toBe(true);
+      expect(mockHttpsRequest).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('execute — content-type header auto-set', () => {
+    it('should auto-set content-type to application/json when body is present', async () => {
+      const executor = new APIExecutor(testMap);
+      const promise = executor.execute({
+        endpointId: 'create-product',
+        body: { name: 'Test' },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const headers = getCallOpts(mockHttpsRequest)['headers'] as Record<string, string>;
+      expect(headers['content-type']).toBe('application/json');
+
+      simulateResponse(201, {});
+      await promise;
+    });
+  });
 });

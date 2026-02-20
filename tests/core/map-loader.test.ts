@@ -301,4 +301,71 @@ describe('map-loader', () => {
       });
     });
   });
+
+  describe('resolveMapEnvVars() — endpoint headers', () => {
+    afterEach(() => {
+      delete process.env['EP_HEADER_VAR'];
+    });
+
+    it('resolves env vars in endpoint-level headers', () => {
+      process.env['EP_HEADER_VAR'] = 'resolved';
+      const map = makeValidMap({
+        endpoints: [
+          {
+            id: 'ep1',
+            name: 'EP1',
+            method: 'GET',
+            path: '/ep1',
+            parameters: [],
+            headers: { 'X-Trace': '${EP_HEADER_VAR}' },
+            tags: [],
+          },
+        ],
+      });
+      const resolved = resolveMapEnvVars(map);
+      expect(resolved.endpoints[0]!.headers['X-Trace']).toBe('resolved');
+    });
+
+    it('does not mutate the original map', () => {
+      process.env['EP_HEADER_VAR'] = 'new-value';
+      const map = makeValidMap({
+        headers: { 'X-Global': '${EP_HEADER_VAR}' },
+      });
+      const original = JSON.parse(JSON.stringify(map)) as WorkspaceMap;
+      resolveMapEnvVars(map);
+      expect(map.headers['X-Global']).toBe(original.headers['X-Global']);
+    });
+  });
+
+  describe('resolveEnvVars() — edge cases', () => {
+    afterEach(() => {
+      delete process.env['EMPTY_VAR'];
+    });
+
+    it('handles env var with empty string value', () => {
+      process.env['EMPTY_VAR'] = '';
+      expect(resolveEnvVars('prefix-${EMPTY_VAR}-suffix')).toBe('prefix--suffix');
+    });
+
+    it('handles string with no env var references', () => {
+      expect(resolveEnvVars('static-value-123')).toBe('static-value-123');
+    });
+
+    it('handles empty string', () => {
+      expect(resolveEnvVars('')).toBe('');
+    });
+  });
+
+  describe('resolveMapEnvVars() — api-key auth', () => {
+    it('preserves api-key auth fields (envVar is not resolved at map level)', () => {
+      const map = makeValidMap({
+        auth: { type: 'api-key', header: 'X-Key', envVar: 'MY_API_KEY' },
+      });
+      const resolved = resolveMapEnvVars(map);
+      if (resolved.auth.type === 'api-key') {
+        expect(resolved.auth.envVar).toBe('MY_API_KEY');
+        expect(resolved.auth.header).toBe('X-Key');
+      }
+    });
+  });
 });
