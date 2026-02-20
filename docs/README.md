@@ -1,41 +1,47 @@
 # OpenBridge Documentation
 
-> **Version:** 0.1.0 | **Status:** V0 Scaffolding Complete | **Health Score:** 6.0/10
-> **Last Updated:** 2026-02-19
+> **Last Updated:** 2026-02-20
 
-Modular bridge connecting messaging platforms to AI providers. WhatsApp + Claude Code in V0.
+An autonomous AI bridge — connects messaging channels to AI agents that explore your workspace and execute tasks. Zero API keys. Zero extra cost.
 
 ---
 
 ## Quick Links
 
-| Doc                                             | Purpose                                        |
-| ----------------------------------------------- | ---------------------------------------------- |
-| [Architecture](./ARCHITECTURE.md)               | System design, plugin model, data flow         |
-| [Configuration](./CONFIGURATION.md)             | All config options, env vars, examples         |
-| [Writing a Connector](./WRITING_A_CONNECTOR.md) | Step-by-step guide to add a messaging platform |
-| [Writing a Provider](./WRITING_A_PROVIDER.md)   | Step-by-step guide to add an AI backend        |
-| [Audit Health](./audit/HEALTH.md)               | Project health score breakdown                 |
-| [Audit Tasks](./audit/TASKS.md)                 | Prioritized task list by phase                 |
-| [Audit Findings](./audit/FINDINGS.md)           | Known issues and gaps tracker                  |
-| [Changelog](../CHANGELOG.md)                    | Change history                                 |
-| [CLAUDE.md](../CLAUDE.md)                       | Project-specific development guide             |
+| Doc                                             | Purpose                                          |
+| ----------------------------------------------- | ------------------------------------------------ |
+| [Architecture](./ARCHITECTURE.md)               | 4-layer system design, message flow, Master AI   |
+| [Configuration](./CONFIGURATION.md)             | V2 config (3 fields), V0 legacy, all options     |
+| [Use Cases](./USE_CASES.md)                     | Business examples (dev, cafe, law, marketing...) |
+| [Writing a Connector](./WRITING_A_CONNECTOR.md) | Step-by-step guide to add a messaging platform   |
+| [API Reference](./API_REFERENCE.md)             | Interfaces, types, module APIs                   |
+| [Deployment](./DEPLOYMENT.md)                   | Docker, PM2, systemd setup                       |
+| [Troubleshooting](./TROUBLESHOOTING.md)         | Common issues and solutions                      |
+| [Audit Health](./audit/HEALTH.md)               | Project health score breakdown                   |
+| [Audit Tasks](./audit/TASKS.md)                 | Prioritized task list by phase                   |
+| [Audit Findings](./audit/FINDINGS.md)           | Known issues and gaps tracker                    |
+| [Changelog](../CHANGELOG.md)                    | Change history                                   |
+| [CLAUDE.md](../CLAUDE.md)                       | Project-specific development guide               |
 
 ---
 
 ## How It Works
 
 ```
-Phone → WhatsApp → Connector → Bridge Core → Router → AI Provider → Claude CLI
-                                                                        ↓
-Phone ← WhatsApp ← Connector ← Bridge Core ← Router ←────────── Response
+Phone → WhatsApp → Connector → Auth → Queue → Router → Master AI
+                                                            │
+                                                   Explores workspace
+                                                   Executes tasks
+                                                   Delegates to other AI tools
+                                                            │
+Phone ← WhatsApp ← Connector ← Router ←──────────── Response
 ```
 
-1. User sends `/ai fix the login bug` from WhatsApp
+1. User sends `/ai what's in this project?` from WhatsApp
 2. WhatsApp connector receives the message
-3. Bridge core checks whitelist + strips prefix
-4. Router sends `fix the login bug` to Claude Code provider
-5. Claude Code runs `claude --print "fix the login bug"` inside the target workspace
+3. Bridge core checks whitelist, strips prefix, rate-limits
+4. Router sends the message to the Master AI
+5. Master AI (already explored the workspace) processes the request
 6. Response sent back through WhatsApp
 
 ---
@@ -47,9 +53,9 @@ Phone ← WhatsApp ← Connector ← Bridge Core ← Router ←─────�
 git clone https://github.com/medomar/OpenBridge.git
 cd OpenBridge && npm install
 
-# Configure
-cp config.example.json config.json
-# Edit config.json: set workspacePath + whitelist phone number
+# Configure (3 fields)
+npx openbridge init
+# Or: create config.json manually with workspacePath + channels + auth
 
 # Run
 npm run dev
@@ -63,17 +69,21 @@ npm run dev
 ```
 OpenBridge/
 ├── src/
-│   ├── index.ts              # Entry point
-│   ├── types/                # Plugin contracts (Connector, AIProvider, Message)
-│   ├── core/                 # Bridge engine (router, auth, queue, registry, config)
+│   ├── index.ts              # Entry point (V0 + V2 startup flows)
+│   ├── cli/                  # CLI tools (npx openbridge init)
+│   ├── types/                # Interfaces + Zod schemas
+│   ├── core/                 # Bridge engine (router, auth, queue, config, ...)
 │   ├── connectors/
-│   │   └── whatsapp/         # V0 connector
-│   └── providers/
-│       └── claude-code/      # V0 AI provider
-├── tests/                    # Vitest unit tests (19 passing)
+│   │   ├── whatsapp/         # WhatsApp connector (V0)
+│   │   └── console/          # Console connector (reference)
+│   ├── providers/
+│   │   └── claude-code/      # Claude Code CLI provider + generalized executor
+│   ├── discovery/            # AI tool auto-discovery
+│   └── master/               # Master AI management + .openbridge/ folder
+├── tests/                    # Vitest test suite
 ├── docs/                     # This documentation
 │   ├── audit/                # Health, tasks, findings
 │   └── *.md                  # Guides
-├── config.example.json       # Example runtime config
+├── config.example.json       # Example V2 config
 └── CLAUDE.md                 # Development guide
 ```

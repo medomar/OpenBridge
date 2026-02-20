@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Last Audit:** 2026-02-20
+> **Open:** 12 | **Last Audit:** 2026-02-20
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -134,6 +134,70 @@
 **Impact:** Minor — confusing for new users trying to set up, but functional with V0 format.
 
 **Resolution:** Phase 8 (OB-087).
+
+---
+
+### F-009 — No validation for non-code workspace use cases
+
+| Field    | Value                |
+| -------- | -------------------- |
+| Severity | 🟠 High              |
+| Category | Testing / Validation |
+| Found    | 2026-02-20           |
+
+**What:** USE_CASES.md describes non-code scenarios (cafes with inventory spreadsheets, law firms with contracts, accountants with CSVs). No test or verification exists to confirm the system handles non-code workspaces correctly. Claude Code CLI works well with text-based files but behavior with binary formats (`.xlsx`, `.docx`, `.pdf`) is unverified. Response tone for non-technical users is also untested.
+
+**Impact:** The core marketing promise ("beyond code — any business with files") is unvalidated. Could ship with broken or confusing behavior for the primary non-developer audience.
+
+**Resolution:** Phase 13 (OB-108) — non-code workspace E2E test. Phase 7 (OB-077) — exploration prompt should include adaptive response style for business vs code workspaces.
+
+---
+
+### F-010 — Session continuity underprioritzed for multi-turn business conversations
+
+| Field    | Value        |
+| -------- | ------------ |
+| Severity | 🟡 Medium    |
+| Category | Architecture |
+| Found    | 2026-02-20   |
+
+**What:** Task #67 (session continuity via `--resume`) was marked as Medium priority, but nearly every USE_CASES.md scenario implies multi-turn conversations: "which invoices are overdue?" followed by "send reminders to those clients". Without session continuity, each message is isolated and the AI loses context.
+
+**Impact:** Most business use cases become frustrating — users have to repeat context in every message. Breaks the "phone as control panel" promise.
+
+**Resolution:** Priority bumped to High (OB-097). Session continuity is required for preprod validation of use cases.
+
+---
+
+### F-011 — No Console-based preprod test workflow
+
+| Field    | Value      |
+| -------- | ---------- |
+| Severity | 🟡 Medium  |
+| Category | Testing    |
+| Found    | 2026-02-20 |
+
+**What:** The Console connector exists as a reference implementation, but there's no documented or verified workflow for using it as a rapid preprod testing path. WhatsApp QR auth adds friction to every test cycle. Without a Console-based workflow, validating USE_CASES.md scenarios requires a phone + WhatsApp setup each time.
+
+**Impact:** Slow preprod iteration. Risk of skipping use-case validation because the test setup is too cumbersome.
+
+**Resolution:** Phase 13 (OB-109) — document and verify Console connector as primary preprod test path.
+
+---
+
+### F-012 — No graceful handling for missing data queries
+
+| Field    | Value       |
+| -------- | ----------- |
+| Severity | 🟢 Low      |
+| Category | UX / Safety |
+| Found    | 2026-02-20  |
+
+**What:** USE_CASES.md assumes happy paths (data files exist, queries match available data). No verification exists for how the system responds when a user asks about data that doesn't exist in the workspace (e.g. "what's today's revenue?" when there's no sales file). The AI will likely respond reasonably on its own, but edge cases (empty workspace, binary-only files, corrupted data) are untested.
+
+**Impact:** Minor — the AI is generally good at saying "I don't see that data." But untested means unknown failure modes for business users who expect reliability.
+
+**Resolution:** Phase 13 (OB-110) — verify graceful responses for missing/unavailable data scenarios.
 
 ---
 

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 tasks across 9 phases | **Next up:** Phase 6
+> **Pending:** 26 tasks across 9 phases | **Next up:** Phase 6
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -33,7 +33,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 |  10   | Multi-AI delegation               |   4   |   ◻    |
 |  11   | Status + interaction              |   3   |   ◻    |
 |  12   | Documentation rewrite             |   6   |   ◻    |
-|  13   | Testing + verification            |   4   |   ◻    |
+|  13   | Testing + verification            |   8   |   ◻    |
 |  14   | Future: channels + views          |   4   |   ◻    |
 
 ---
@@ -57,14 +57,14 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 > **Focus:** Create the Master AI manager that silently explores the workspace on startup and stores its knowledge in `.openbridge/` inside the target project.
 
-| #   | Task                                                                                                                                                                                     | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 45  | Create Master types (`src/types/master.ts`) — Zod schemas for `MasterState`, `ExplorationSummary`, `TaskRecord`                                                                          | OB-075 | 🟠 High  | ◻ Pending |
-| 46  | Create `.openbridge/` folder manager (`src/master/dotfolder-manager.ts`) — create folder, init git repo, commit changes, read/write map, write agents.json, append log, record tasks     | OB-076 | 🟠 High  | ◻ Pending |
-| 47  | Create exploration prompt (`src/master/exploration-prompt.ts`) — system prompt instructing Master to explore workspace, create `.openbridge/workspace-map.json`, init git, work silently | OB-077 | 🟠 High  | ◻ Pending |
-| 48  | Create Master AI Manager (`src/master/master-manager.ts`) — lifecycle management (idle → exploring → ready), background exploration, message routing, status queries                     | OB-078 | 🟠 High  | ◻ Pending |
-| 49  | Create Master module index (`src/master/index.ts`) — export MasterManager, DotFolderManager                                                                                              | OB-079 |  🟡 Med  | ◻ Pending |
-| 50  | Write Master AI tests (`tests/master/`) — dotfolder-manager, master-manager, exploration prompt                                                                                          | OB-080 |  🟡 Med  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                    | ID     | Priority |  Status   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 45  | Create Master types (`src/types/master.ts`) — Zod schemas for `MasterState`, `ExplorationSummary`, `TaskRecord`                                                                                                                                                                                         | OB-075 | 🟠 High  | ◻ Pending |
+| 46  | Create `.openbridge/` folder manager (`src/master/dotfolder-manager.ts`) — create folder, init git repo, commit changes, read/write map, write agents.json, append log, record tasks                                                                                                                    | OB-076 | 🟠 High  | ◻ Pending |
+| 47  | Create exploration prompt (`src/master/exploration-prompt.ts`) — system prompt instructing Master to explore workspace, create `.openbridge/workspace-map.json`, init git, work silently. Include adaptive response style: concise + non-technical for business workspaces, technical for code projects | OB-077 | 🟠 High  | ◻ Pending |
+| 48  | Create Master AI Manager (`src/master/master-manager.ts`) — lifecycle management (idle → exploring → ready), background exploration, message routing, status queries                                                                                                                                    | OB-078 | 🟠 High  | ◻ Pending |
+| 49  | Create Master module index (`src/master/index.ts`) — export MasterManager, DotFolderManager                                                                                                                                                                                                             | OB-079 |  🟡 Med  | ◻ Pending |
+| 50  | Write Master AI tests (`tests/master/`) — dotfolder-manager, master-manager, exploration prompt                                                                                                                                                                                                         | OB-080 |  🟡 Med  | ◻ Pending |
 
 **Key design:** The Master AI IS the explorer. We send it a prompt ("explore this workspace silently") and let it do the work. We don't write framework detectors — the AI figures it out.
 
@@ -124,13 +124,13 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 ## Phase 11 — Status + Interaction
 
-> **Focus:** User can ask about exploration progress and system status via WhatsApp.
+> **Focus:** User can ask about exploration progress and system status via WhatsApp. Session continuity is critical for multi-turn business conversations (e.g. "which invoices are overdue?" → "send reminders to those clients").
 
 | #   | Task                                                                                                                                              | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 65  | Add status command handler to Master Manager — intercept "status"/"progress" keywords, return exploration state + active tasks from local state   | OB-095 |  🟡 Med  | ◻ Pending |
 | 66  | Add exploration progress tracking — track milestones (started → scanning → analyzing → map generated → git initialized → complete), report on ask | OB-096 |  🟡 Med  | ◻ Pending |
-| 67  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project             | OB-097 |  🟡 Med  | ◻ Pending |
+| 67  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project             | OB-097 | 🟠 High  | ◻ Pending |
 
 ---
 
@@ -151,14 +151,18 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 ## Phase 13 — Testing + Verification
 
-> **Focus:** Ensure everything compiles, passes tests, and works end-to-end.
+> **Focus:** Ensure everything compiles, passes tests, and works end-to-end. Includes use-case validation: non-code workspaces (cafes, law firms, accounting), Console-based rapid testing, graceful error handling, and prefix stripping verification.
 
-| #   | Task                                                                                                                                 | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 74  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                              | OB-104 | 🟠 High  | ◻ Pending |
-| 75  | Run `npm run lint` — fix any ESLint issues                                                                                           | OB-105 | 🟠 High  | ◻ Pending |
-| 76  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                               | OB-106 | 🟠 High  | ◻ Pending |
-| 77  | Full E2E verification — start OpenBridge, discover tools, explore workspace, send WhatsApp message, get response, check .openbridge/ | OB-107 | 🟠 High  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                  | ID     | Priority |  Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 74  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-104 | 🟠 High  | ◻ Pending |
+| 75  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-105 | 🟠 High  | ◻ Pending |
+| 76  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-106 | 🟠 High  | ◻ Pending |
+| 77  | Full E2E verification — start OpenBridge, discover tools, explore workspace, send WhatsApp message, get response, check .openbridge/                                                                  | OB-107 | 🟠 High  | ◻ Pending |
+| 78  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-108 | 🟠 High  | ◻ Pending |
+| 79  | Console-based preprod test workflow — document and verify Console connector as primary rapid testing path (no WhatsApp QR dependency), test all use case categories through Console                   | OB-109 | 🟠 High  | ◻ Pending |
+| 80  | Graceful "unknown" handling — verify AI responds helpfully when workspace lacks data for a query (e.g. "what's today's revenue?" with no sales file), no crashes or empty responses                   | OB-110 |  🟡 Med  | ◻ Pending |
+| 81  | Command prefix stripping in Master flow — verify `/ai` prefix is cleanly stripped before reaching Master AI, Master receives natural language only                                                    | OB-111 |  🟡 Med  | ◻ Pending |
 
 ---
 
@@ -168,10 +172,10 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | #   | Task                                                                                             | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 78  | Telegram connector — Bot API via grammY, supports DM + group                                     | OB-108 |  🟡 Med  | ◻ Pending |
-| 79  | Discord connector — discord.js, supports DM + server channels                                    | OB-109 |  🟢 Low  | ◻ Pending |
-| 80  | Web chat connector — browser-based chat widget                                                   | OB-110 |  🟢 Low  | ◻ Pending |
-| 81  | Interactive AI views — AI generates reports/dashboards served on local HTTP, links sent via chat | OB-111 |  🟢 Low  | ◻ Pending |
+| 82  | Telegram connector — Bot API via grammY, supports DM + group                                     | OB-112 |  🟡 Med  | ◻ Pending |
+| 83  | Discord connector — discord.js, supports DM + server channels                                    | OB-113 |  🟢 Low  | ◻ Pending |
+| 84  | Web chat connector — browser-based chat widget                                                   | OB-114 |  🟢 Low  | ◻ Pending |
+| 85  | Interactive AI views — AI generates reports/dashboards served on local HTTP, links sent via chat | OB-115 |  🟢 Low  | ◻ Pending |
 
 ---
 
@@ -186,7 +190,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 - Master routing through WhatsApp
 - Dead code archived cleanly
 
-**Phases 10–11** = post-MVP. **Phase 12** = docs. **Phase 13** = testing. **Phase 14** = future.
+**Phases 10–11** = post-MVP. **Phase 12** = docs. **Phase 13** = testing (includes use-case validation). **Phase 14** = future.
 
 ---
 
