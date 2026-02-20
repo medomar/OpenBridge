@@ -247,7 +247,7 @@ Thumbs.db
   }
 
   /**
-   * Record a task in tasks/ folder
+   * Record a task in tasks/ folder and commit to git
    */
   public async recordTask(task: TaskRecord): Promise<void> {
     // Validate before recording
@@ -255,6 +255,10 @@ Thumbs.db
 
     const taskPath = path.join(this.tasksPath, `${task.id}.json`);
     await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
+
+    // Commit the task to git with conventional commit format
+    const commitMessage = `chore(master): record task ${task.id} - ${task.status}`;
+    await this.commitChanges(commitMessage);
   }
 
   /**

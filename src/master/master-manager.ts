@@ -4,6 +4,7 @@ import {
   executeClaudeCode,
   streamClaudeCode,
 } from '../providers/claude-code/claude-code-executor.js';
+import { DelegationCoordinator } from './delegation.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -59,6 +60,7 @@ export class MasterManager {
   private readonly messageTimeout: number;
   private readonly skipAutoExploration: boolean;
   private readonly dotFolder: DotFolderManager;
+  private readonly delegationCoordinator: DelegationCoordinator;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -74,6 +76,7 @@ export class MasterManager {
     this.messageTimeout = options.messageTimeout ?? DEFAULT_MESSAGE_TIMEOUT;
     this.skipAutoExploration = options.skipAutoExploration ?? false;
     this.dotFolder = new DotFolderManager(this.workspacePath);
+    this.delegationCoordinator = new DelegationCoordinator();
 
     logger.info(
       {
@@ -413,7 +416,7 @@ export class MasterManager {
       const sessionId = this.getOrCreateSession(message.sender);
 
       // Execute message through Claude Code with session continuity
-      const result = await executeClaudeCode({
+      let result = await executeClaudeCode({
         prompt: message.content,
         workspacePath: this.workspacePath,
         timeout: this.messageTimeout,
@@ -424,7 +427,37 @@ export class MasterManager {
         throw new Error(`Message processing failed: ${result.stderr}`);
       }
 
-      const response = result.stdout.trim() || 'No response from AI';
+      let response = result.stdout.trim() || 'No response from AI';
+
+      // Check for delegation markers in the response
+      const delegations = this.parseDelegationMarkers(response);
+      if (delegations && delegations.length > 0) {
+        logger.info({ delegationCount: delegations.length }, 'Delegation markers detected');
+
+        // Update task status to delegated
+        task.status = 'delegated';
+        await this.dotFolder.recordTask(task);
+
+        // Handle delegations
+        const delegationResults = await this.handleDelegations(delegations, message);
+
+        // Feed delegation results back to Master session
+        const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+
+        this.state = 'processing';
+        result = await executeClaudeCode({
+          prompt: feedbackPrompt,
+          workspacePath: this.workspacePath,
+          timeout: this.messageTimeout,
+          resumeSessionId: sessionId,
+        });
+
+        if (result.exitCode !== 0) {
+          throw new Error(`Delegation feedback processing failed: ${result.stderr}`);
+        }
+
+        response = result.stdout.trim() || delegationResults;
+      }
 
       // Update task record
       task.status = 'completed';
@@ -531,6 +564,41 @@ export class MasterManager {
         yield chunk;
       }
 
+      // Check for delegation markers in the response
+      const delegations = this.parseDelegationMarkers(fullResponse);
+      if (delegations && delegations.length > 0) {
+        logger.info(
+          { delegationCount: delegations.length },
+          'Delegation markers detected in stream',
+        );
+
+        // Update task status to delegated
+        task.status = 'delegated';
+        await this.dotFolder.recordTask(task);
+
+        // Handle delegations
+        const delegationResults = await this.handleDelegations(delegations, message);
+
+        // Feed delegation results back to Master session and stream the final response
+        const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+
+        this.state = 'processing';
+        const feedbackStream = streamClaudeCode({
+          prompt: feedbackPrompt,
+          workspacePath: this.workspacePath,
+          timeout: this.messageTimeout,
+          resumeSessionId: sessionId,
+        });
+
+        let finalResponse = '';
+        for await (const chunk of feedbackStream) {
+          finalResponse += chunk;
+          yield chunk;
+        }
+
+        fullResponse = finalResponse.trim() || delegationResults;
+      }
+
       // Update task record
       task.status = 'completed';
       task.result = fullResponse.trim() || 'No response from AI';
@@ -611,6 +679,9 @@ export class MasterManager {
 
     this.state = 'shutdown';
 
+    // Shutdown delegation coordinator
+    this.delegationCoordinator.shutdown();
+
     // Clear all session timeouts
     for (const timeout of this.sessionTimeouts.values()) {
       clearTimeout(timeout);
@@ -630,6 +701,117 @@ export class MasterManager {
     }
 
     logger.info('MasterManager shutdown complete');
+  }
+
+  /**
+   * Parse delegation markers from Master AI output.
+   * Format: [DELEGATE:tool-name]prompt text[/DELEGATE]
+   *
+   * Returns parsed delegations or null if none found.
+   */
+  private parseDelegationMarkers(
+    response: string,
+  ): Array<{ toolName: string; prompt: string }> | null {
+    const delegationPattern = /\[DELEGATE:([^\]]+)\]([\s\S]*?)\[\/DELEGATE\]/g;
+    const delegations: Array<{ toolName: string; prompt: string }> = [];
+
+    let match;
+    while ((match = delegationPattern.exec(response)) !== null) {
+      const toolName = match[1].trim();
+      const prompt = match[2].trim();
+      delegations.push({ toolName, prompt });
+    }
+
+    return delegations.length > 0 ? delegations : null;
+  }
+
+  /**
+   * Find a specialist tool by name from the agents registry
+   */
+  private async findSpecialistTool(toolName: string): Promise<DiscoveredTool | null> {
+    // First check discovered tools
+    const tool = this.discoveredTools.find(
+      (t) =>
+        t.name.toLowerCase() === toolName.toLowerCase() ||
+        t.name.toLowerCase().includes(toolName.toLowerCase()),
+    );
+
+    if (tool) {
+      return tool;
+    }
+
+    // Check agents.json as fallback
+    const agents = await this.dotFolder.readAgents();
+    if (!agents) {
+      return null;
+    }
+
+    const specialist = agents.specialists.find(
+      (s) =>
+        s.name.toLowerCase() === toolName.toLowerCase() ||
+        s.name.toLowerCase().includes(toolName.toLowerCase()),
+    );
+
+    if (specialist) {
+      // Convert specialist to DiscoveredTool format
+      return {
+        name: specialist.name,
+        path: specialist.path,
+        version: specialist.version,
+        available: true,
+        role: specialist.role,
+        capabilities: specialist.capabilities,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Handle delegations found in Master AI output.
+   * Executes delegations and returns results to feed back to Master.
+   */
+  private async handleDelegations(
+    delegations: Array<{ toolName: string; prompt: string }>,
+    message: InboundMessage,
+  ): Promise<string> {
+    const results: string[] = [];
+
+    for (const delegation of delegations) {
+      logger.info(
+        { toolName: delegation.toolName, prompt: delegation.prompt.slice(0, 100) },
+        'Handling delegation request',
+      );
+
+      // Find the specialist tool
+      const tool = await this.findSpecialistTool(delegation.toolName);
+      if (!tool) {
+        const errorMsg = `Tool "${delegation.toolName}" not found in available specialists`;
+        logger.warn({ toolName: delegation.toolName }, errorMsg);
+        results.push(`[DELEGATION ERROR: ${errorMsg}]`);
+        continue;
+      }
+
+      // Execute delegation
+      this.state = 'delegating';
+      const result = await this.delegationCoordinator.delegate({
+        prompt: delegation.prompt,
+        workspacePath: this.workspacePath,
+        tool,
+        sender: message.sender,
+        userMessage: message.rawContent,
+      });
+
+      if (result.success) {
+        results.push(
+          `[DELEGATION RESULT from ${tool.name}]\n${result.response}\n[/DELEGATION RESULT]`,
+        );
+      } else {
+        results.push(`[DELEGATION ERROR from ${tool.name}]\n${result.error}\n[/DELEGATION ERROR]`);
+      }
+    }
+
+    return results.join('\n\n');
   }
 
   /**

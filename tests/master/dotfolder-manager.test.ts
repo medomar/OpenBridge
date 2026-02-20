@@ -431,6 +431,93 @@ describe('DotFolderManager', () => {
 
       await expect(manager.recordTask(invalidTask)).rejects.toThrow();
     });
+
+    it('should commit task to git after recording', async () => {
+      await manager.initGit();
+
+      const testTask: TaskRecord = {
+        id: 'task-git-test',
+        userMessage: '/ai git commit test',
+        sender: '+1234567890',
+        description: 'Test task for git commit',
+        status: 'completed',
+        handledBy: 'master',
+        createdAt: new Date().toISOString(),
+      };
+
+      await manager.recordTask(testTask);
+
+      // Verify git commit was created
+      const { stdout } = await execAsync('git log --oneline -1', {
+        cwd: manager.getDotFolderPath(),
+      });
+      expect(stdout).toContain('chore(master): record task task-git-test - completed');
+    });
+
+    it('should use consistent commit message format', async () => {
+      await manager.initGit();
+
+      const testTask: TaskRecord = {
+        id: 'task-123',
+        userMessage: '/ai test message',
+        sender: '+1234567890',
+        description: 'Test task description',
+        status: 'processing',
+        handledBy: 'master',
+        createdAt: new Date().toISOString(),
+      };
+
+      await manager.recordTask(testTask);
+
+      // Verify commit message follows conventional commit format
+      const { stdout } = await execAsync('git log --oneline -1', {
+        cwd: manager.getDotFolderPath(),
+      });
+      expect(stdout).toContain('chore(master): record task task-123 - processing');
+    });
+
+    it('should update task file and commit when recording with same ID', async () => {
+      await manager.initGit();
+
+      const initialTask: TaskRecord = {
+        id: 'task-update',
+        userMessage: '/ai update test',
+        sender: '+1234567890',
+        description: 'Initial task state',
+        status: 'pending',
+        handledBy: 'master',
+        createdAt: new Date().toISOString(),
+      };
+
+      await manager.recordTask(initialTask);
+
+      // Get initial commit count
+      const { stdout: beforeCount } = await execAsync('git rev-list --count HEAD', {
+        cwd: manager.getDotFolderPath(),
+      });
+
+      // Update the task
+      const updatedTask: TaskRecord = {
+        ...initialTask,
+        status: 'completed',
+        description: 'Updated task state',
+        completedAt: new Date().toISOString(),
+      };
+
+      await manager.recordTask(updatedTask);
+
+      // Verify a new commit was created
+      const { stdout: afterCount } = await execAsync('git rev-list --count HEAD', {
+        cwd: manager.getDotFolderPath(),
+      });
+      expect(parseInt(afterCount.trim())).toBe(parseInt(beforeCount.trim()) + 1);
+
+      // Verify the latest commit message reflects the update
+      const { stdout } = await execAsync('git log --oneline -1', {
+        cwd: manager.getDotFolderPath(),
+      });
+      expect(stdout).toContain('chore(master): record task task-update - completed');
+    });
   });
 
   describe('Initialize', () => {
