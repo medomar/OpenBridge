@@ -1,6 +1,6 @@
 # OpenBridge — Audit Findings
 
-> **Total Issues:** 67 | **Open:** 12 | **Fixed:** 55 | **By Design:** 0
+> **Total Issues:** 67 | **Open:** 10 | **Fixed:** 57 | **By Design:** 0
 > **Next Issue ID:** OB-068
 > **Last Updated:** 2026-02-20
 
@@ -11,7 +11,7 @@
 | Severity    | Open | Fixed | By Design | Total |
 | ----------- | :--: | :---: | :-------: | :---: |
 | 🔴 Critical |  0   |   0   |     0     |   0   |
-| 🟠 High     |  3   |  23   |     0     |  26   |
+| 🟠 High     |  1   |  25   |     0     |  26   |
 | 🟡 Medium   |  5   |  22   |     0     |  27   |
 | 🟢 Low      |  4   |  10   |     0     |  14   |
 
@@ -29,7 +29,7 @@
 | Developer Experience    |  0   |   3   |   3   |
 | Workspace Knowledge     |  0   |   6   |   6   |
 | Agent Orchestration     |  0   |   7   |   7   |
-| Provider Enhancement    |  4   |   0   |   4   |
+| Provider Enhancement    |  2   |   2   |   4   |
 | Interactive AI          |  4   |   0   |   4   |
 | Channels + Integrations |  4   |   0   |   4   |
 
@@ -72,12 +72,12 @@
 
 ### Phase 8 — AI Provider Enhancement
 
-| ID     | Description                                                                                                  | Category             | Severity  | Status  | Date       |
-| ------ | ------------------------------------------------------------------------------------------------------------ | -------------------- | :-------: | :-----: | ---------- |
-| OB-056 | AIProvider interface has no workspace context — providers are blind to project APIs and available tools      | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-057 | No tool-use protocol — AI cannot request structured actions (API calls, file ops) in a provider-agnostic way | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-058 | Claude Code provider does not inject workspace map into prompt or parse tool-use responses                   | Provider Enhancement |  🟠 High  | 🟠 Open | 2026-02-20 |
-| OB-059 | No tests for tool-use protocol, provider context injection, or API call routing                              | Provider Enhancement | 🟡 Medium | 🟡 Open | 2026-02-20 |
+| ID     | Description                                                                                                  | Category             | Severity  |  Status  | Date       |
+| ------ | ------------------------------------------------------------------------------------------------------------ | -------------------- | :-------: | :------: | ---------- |
+| OB-056 | AIProvider interface has no workspace context — providers are blind to project APIs and available tools      | Provider Enhancement |  🟠 High  | ✅ Fixed | 2026-02-20 |
+| OB-057 | No tool-use protocol — AI cannot request structured actions (API calls, file ops) in a provider-agnostic way | Provider Enhancement |  🟠 High  | ✅ Fixed | 2026-02-20 |
+| OB-058 | Claude Code provider does not inject workspace map into prompt or parse tool-use responses                   | Provider Enhancement |  🟠 High  | 🟠 Open  | 2026-02-20 |
+| OB-059 | No tests for tool-use protocol, provider context injection, or API call routing                              | Provider Enhancement | 🟡 Medium | 🟡 Open  | 2026-02-20 |
 
 ### Phase 9 — Interactive AI
 

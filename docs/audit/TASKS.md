@@ -1,7 +1,7 @@
 # OpenBridge — Audit Task List
 
-> **Total:** 67 | **Done:** 55 | **In Progress:** 0 | **Pending:** 12
-> **Health Score:** 4.56/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
+> **Total:** 67 | **Done:** 57 | **In Progress:** 0 | **Pending:** 10
+> **Health Score:** 4.66/10 | **Target:** 9.5/10 | **Last Updated:** 2026-02-20
 
 ---
 
@@ -22,7 +22,7 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 |   5   | Vision rewrite + documentation             |   5   |  5   |   ✅   |
 |   6   | Workspace mapping engine                   |   6   |  6   |   ✅   |
 |   7   | Multi-agent orchestrator (script strategy) |   7   |  7   |   ✅   |
-|   8   | AI provider enhancement (user's own plan)  |   4   |  0   |   ◻    |
+|   8   | AI provider enhancement (user's own plan)  |   4   |  2   |   ◻    |
 |   9   | Interactive AI (views + questions)         |   4   |  0   |   ◻    |
 |  10   | Channels + integrations                    |   4   |  0   |   ◻    |
 
@@ -148,8 +148,8 @@ OpenBridge is a **professional AI workforce platform**. It connects messaging ch
 
 | #   | Task                                                                                                                                                                                         | Finding | Priority  |  Status   |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | :-------: | :-------: |
-| 56  | Extend AIProvider interface — accept workspace context (map, available tools, active agents) alongside the message, so any provider can be workspace-aware                                   | OB-056  |  🟠 High  | ◻ Pending |
-| 57  | Build tool-use protocol — define how the AI requests actions: `{"action": "api_call", "endpoint": "/products", "method": "POST", "body": {...}}`, provider parses and routes to API executor | OB-057  |  🟠 High  | ◻ Pending |
+| 56  | Extend AIProvider interface — accept workspace context (map, available tools, active agents) alongside the message, so any provider can be workspace-aware                                   | OB-056  |  🟠 High  |  ✅ Done  |
+| 57  | Build tool-use protocol — define how the AI requests actions: `{"action": "api_call", "endpoint": "/products", "method": "POST", "body": {...}}`, provider parses and routes to API executor | OB-057  |  🟠 High  |  ✅ Done  |
 | 58  | Enhance Claude Code provider — inject workspace map into prompt context, parse tool-use responses, route API calls through executor                                                          | OB-058  |  🟠 High  | ◻ Pending |
 | 59  | Write tool protocol tests — parsing, execution, error handling, provider context injection                                                                                                   | OB-059  | 🟡 Medium | ◻ Pending |
 

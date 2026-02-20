@@ -16,3 +16,7 @@ export type {
   ExecuteErrorCode,
   APIExecutorOptions,
 } from './api-executor.js';
+
+export { buildToolCatalog } from './tool-catalog.js';
+
+export { ToolExecutor } from './tool-executor.js';

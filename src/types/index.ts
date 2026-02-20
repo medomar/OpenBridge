@@ -1,7 +1,7 @@
 export type { Result, PluginMeta } from './common.js';
 export type { InboundMessage, OutboundMessage } from './message.js';
 export type { Connector, ConnectorEvents } from './connector.js';
-export type { AIProvider, ProviderResult } from './provider.js';
+export type { AIProvider, ProviderResult, ProviderContext } from './provider.js';
 export {
   AppConfigSchema,
   ConnectorConfigSchema,
@@ -63,3 +63,25 @@ export type {
   TaskFailedEvent,
   TaskProgressEvent,
 } from './agent.js';
+export {
+  ToolCallSchema,
+  ToolResultSchema,
+  ToolDefinitionSchema,
+  ToolActionSchema,
+  ApiCallSchema,
+  ListEndpointsCallSchema,
+  DescribeEndpointCallSchema,
+  ToolSuccessSchema,
+  ToolErrorSchema,
+} from './tool.js';
+export type {
+  ToolCall,
+  ToolResult,
+  ToolDefinition,
+  ToolAction,
+  ApiCall,
+  ListEndpointsCall,
+  DescribeEndpointCall,
+  ToolSuccess,
+  ToolError,
+} from './tool.js';
