@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 12 | **Last Audit:** 2026-02-20
+> **Open:** 11 | **Last Audit:** 2026-02-20
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -57,19 +57,20 @@
 
 ---
 
-### F-004 — No AI tool discovery capability
+### F-004 — No AI tool discovery capability ✅ Fixed
 
 | Field    | Value           |
 | -------- | --------------- |
 | Severity | 🟠 High         |
 | Category | Missing Feature |
 | Found    | 2026-02-20      |
+| Fixed    | 2026-02-20      |
 
 **What:** OpenBridge cannot detect which AI CLI tools (claude, codex, aider, cursor, cody) or VS Code extensions (Copilot, Cody, Continue) are installed on the user's machine. The entire autonomous vision depends on this.
 
 **Impact:** Blocks the core value proposition. Without discovery, the system can't auto-select a Master AI or know what delegation targets exist.
 
-**Resolution:** Phase 6 (OB-071 through OB-074).
+**Resolution:** Phase 6 (OB-071 through OB-074) — **COMPLETED**. Discovery types, CLI scanner, VS Code scanner, and unified module all implemented.
 
 ---
 

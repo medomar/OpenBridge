@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 23 tasks across 9 phases | **Next up:** Phase 6
+> **Pending:** 21 tasks across 9 phases | **Next up:** Phase 7
 > **Last Updated:** 2026-02-20
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
 
@@ -26,7 +26,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | Phase | Focus                             | Tasks | Status |
 | :---: | --------------------------------- | :---: | :----: |
-|   6   | AI tool discovery                 |   4   |   ◻    |
+|   6   | AI tool discovery                 |   4   |   ✅   |
 |   7   | Master AI + `.openbridge/` folder |   6   |   ◻    |
 |   8   | V2 config + routing + CLI         |   7   |   ◻    |
 |   9   | Archive dead code + clean up      |   3   |   ◻    |
@@ -42,12 +42,12 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 > **Focus:** On startup, auto-discover AI CLI tools installed on the machine. No API keys needed — use what's already there.
 
-| #   | Task                                                                                                                                                                                         | ID     | Priority |  Status   |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 41  | Create discovery types (`src/types/discovery.ts`) — Zod schemas for `DiscoveredTool` (name, path, version, capabilities, role, available) and `ScanResult`                                   | OB-071 | 🟠 High  |  ✅ Done  |
-| 42  | Create CLI tool scanner (`src/discovery/tool-scanner.ts`) — scan with `which` for known AI tools (claude, codex, aider, cursor, cody), capture path + version, rank by priority, pick Master | OB-072 | 🟠 High  |  ✅ Done  |
-| 43  | Create VS Code extension scanner (`src/discovery/vscode-scanner.ts`) — scan `~/.vscode/extensions/` for AI extensions (Copilot, Cody, Continue), return metadata                             | OB-073 |  🟡 Med  |  ✅ Done  |
-| 44  | Create discovery module index (`src/discovery/index.ts`) — export `scanForAITools()` combining CLI + VS Code scans                                                                           | OB-074 |  🟡 Med  | ◻ Pending |
+| #   | Task                                                                                                                                                                                         | ID     | Priority | Status  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 41  | Create discovery types (`src/types/discovery.ts`) — Zod schemas for `DiscoveredTool` (name, path, version, capabilities, role, available) and `ScanResult`                                   | OB-071 | 🟠 High  | ✅ Done |
+| 42  | Create CLI tool scanner (`src/discovery/tool-scanner.ts`) — scan with `which` for known AI tools (claude, codex, aider, cursor, cody), capture path + version, rank by priority, pick Master | OB-072 | 🟠 High  | ✅ Done |
+| 43  | Create VS Code extension scanner (`src/discovery/vscode-scanner.ts`) — scan `~/.vscode/extensions/` for AI extensions (Copilot, Cody, Continue), return metadata                             | OB-073 |  🟡 Med  | ✅ Done |
+| 44  | Create discovery module index (`src/discovery/index.ts`) — export `scanForAITools()` combining CLI + VS Code scans                                                                           | OB-074 |  🟡 Med  | ✅ Done |
 
 **New files:** `src/types/discovery.ts`, `src/discovery/tool-scanner.ts`, `src/discovery/vscode-scanner.ts`, `src/discovery/index.ts`
 
@@ -59,7 +59,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | #   | Task                                                                                                                                                                                                                                                                                                    | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 45  | Create Master types (`src/types/master.ts`) — Zod schemas for `MasterState`, `ExplorationSummary`, `TaskRecord`                                                                                                                                                                                         | OB-075 | 🟠 High  | ◻ Pending |
+| 45  | Create Master types (`src/types/master.ts`) — Zod schemas for `MasterState`, `ExplorationSummary`, `TaskRecord`                                                                                                                                                                                         | OB-075 | 🟠 High  |  ✅ Done  |
 | 46  | Create `.openbridge/` folder manager (`src/master/dotfolder-manager.ts`) — create folder, init git repo, commit changes, read/write map, write agents.json, append log, record tasks                                                                                                                    | OB-076 | 🟠 High  | ◻ Pending |
 | 47  | Create exploration prompt (`src/master/exploration-prompt.ts`) — system prompt instructing Master to explore workspace, create `.openbridge/workspace-map.json`, init git, work silently. Include adaptive response style: concise + non-technical for business workspaces, technical for code projects | OB-077 | 🟠 High  | ◻ Pending |
 | 48  | Create Master AI Manager (`src/master/master-manager.ts`) — lifecycle management (idle → exploring → ready), background exploration, message routing, status queries                                                                                                                                    | OB-078 | 🟠 High  | ◻ Pending |

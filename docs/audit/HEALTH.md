@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.065/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-20 | **Previous Score:** 4.015
-> **Open Findings:** 8 | **Pending Tasks:** 23
+> **Current Score:** 4.080/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-20 | **Previous Score:** 4.065
+> **Open Findings:** 11 | **Pending Tasks:** 22
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -80,6 +80,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-20 |  4.0  |    +0.05    | OB-071 completed — discovery types (DiscoveredTool, ScanResult schemas)                                                                          |
 | 2026-02-20 | 4.015 |   +0.015    | OB-073 completed — VS Code extension scanner                                                                                                     |
 | 2026-02-20 | 4.065 |    +0.05    | OB-072 completed — CLI tool scanner with which-based discovery                                                                                   |
+| 2026-02-20 | 4.080 |   +0.015    | OB-074 completed — discovery module index (scanForAITools)                                                                                       |
 
 ---
 
