@@ -9,7 +9,7 @@
  * Ensures:
  * 1. Master AI receives natural language only (no /ai prefix)
  * 2. Task records store both raw content (with prefix) and stripped content
- * 3. executeClaudeCode is called with stripped prompt
+ * 3. AgentRunner.spawn is called with stripped prompt
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -32,27 +32,80 @@ vi.mock('../../src/core/logger.js', () => ({
   }),
 }));
 
-// Mock claude-code executor to capture what gets sent to the AI
+// Mock AgentRunner to capture what gets sent to the AI
 let capturedPrompts: string[] = [];
 let capturedWorkspacePaths: string[] = [];
 
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(async (options: { prompt: string; workspacePath: string }) => {
-    capturedPrompts.push(options.prompt);
-    capturedWorkspacePaths.push(options.workspacePath);
+vi.mock('../../src/core/agent-runner.js', () => {
+  const mockSpawn = vi.fn(async (opts: { prompt: string; workspacePath: string }) => {
+    capturedPrompts.push(opts.prompt);
+    capturedWorkspacePaths.push(opts.workspacePath);
     return {
       stdout: 'AI response to your query',
       stderr: '',
       exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
-  }),
-  streamClaudeCode: vi.fn(async function* (options: { prompt: string; workspacePath: string }) {
-    capturedPrompts.push(options.prompt);
-    capturedWorkspacePaths.push(options.workspacePath);
+  });
+
+  const mockStream = vi.fn(async function* (opts: { prompt: string; workspacePath: string }) {
+    capturedPrompts.push(opts.prompt);
+    capturedWorkspacePaths.push(opts.workspacePath);
     yield 'AI response ';
     yield 'to your query';
-    return { content: 'AI response to your query' };
-  }),
+    return {
+      stdout: 'AI response to your query',
+      stderr: '',
+      exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
+    };
+  });
+
+  return {
+    AgentRunner: vi.fn().mockImplementation(() => ({
+      spawn: mockSpawn,
+      stream: mockStream,
+    })),
+    TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+    TOOLS_CODE_EDIT: [
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+    ],
+    TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+    DEFAULT_MAX_TURNS_EXPLORATION: 15,
+    DEFAULT_MAX_TURNS_TASK: 25,
+    sanitizePrompt: vi.fn((s: string) => s),
+    buildArgs: vi.fn(),
+    isValidModel: vi.fn(() => true),
+    MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+    AgentExhaustedError: class AgentExhaustedError extends Error {},
+  };
+});
+
+// Mock DotFolderManager to avoid git init issues in temp dirs
+vi.mock('../../src/master/dotfolder-manager.js', () => ({
+  DotFolderManager: vi.fn().mockImplementation(() => ({
+    exists: vi.fn().mockResolvedValue(false),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    readMap: vi.fn().mockResolvedValue(null),
+    readAgents: vi.fn().mockResolvedValue(null),
+    recordTask: vi.fn().mockResolvedValue(undefined),
+    commitChanges: vi.fn().mockResolvedValue(undefined),
+    appendLog: vi.fn().mockResolvedValue(undefined),
+    readAllTasks: vi.fn().mockResolvedValue([]),
+    getMapPath: vi.fn().mockReturnValue('/test/.openbridge/workspace-map.json'),
+    readMasterSession: vi.fn().mockResolvedValue(null),
+    writeMasterSession: vi.fn().mockResolvedValue(undefined),
+    readExplorationState: vi.fn().mockResolvedValue(null),
+  })),
 }));
 
 describe('Master AI - Command Prefix Stripping', () => {
@@ -196,7 +249,7 @@ describe('Master AI - Command Prefix Stripping', () => {
     expect(capturedPrompts[0]).not.toContain('/ai');
   });
 
-  it('should pass correct workspace path to Claude Code executor', async () => {
+  it('should pass correct workspace path to AgentRunner', async () => {
     connector.simulateMessage({
       id: 'msg-4',
       source: 'mock',

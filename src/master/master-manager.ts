@@ -1,10 +1,8 @@
 import { DotFolderManager } from './dotfolder-manager.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
-import {
-  executeClaudeCode,
-  streamClaudeCode,
-} from '../providers/claude-code/claude-code-executor.js';
+import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
+import type { SpawnOptions } from '../core/agent-runner.js';
 import { DelegationCoordinator } from './delegation.js';
 import type {
   MasterState,
@@ -12,6 +10,7 @@ import type {
   TaskRecord,
   AgentsRegistry,
   WorkspaceMap,
+  MasterSession,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage } from '../types/message.js';
@@ -22,6 +21,19 @@ const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 600_000; // 10 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
+
+/**
+ * Tools available to the Master AI session.
+ * Master can read, write, and edit files (for .openbridge/ management)
+ * but NOT execute arbitrary commands — it delegates to workers for that.
+ */
+const MASTER_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit'] as const;
+
+/**
+ * Default max turns for the Master session per interaction.
+ * Higher than workers because the Master needs room to reason + coordinate.
+ */
+const MASTER_MAX_TURNS = 50;
 
 /**
  * Options for creating a MasterManager
@@ -44,6 +56,11 @@ export interface MasterManagerOptions {
 /**
  * Manages the Master AI lifecycle and interaction.
  *
+ * The Master AI runs as a persistent Claude session (not single-shot --print).
+ * On startup, a session ID is created or loaded from .openbridge/master-session.json.
+ * The session stays alive across user messages via --resume. This allows the
+ * Master to accumulate context about the workspace and previous interactions.
+ *
  * Lifecycle states:
  * - idle: Created but not yet started
  * - exploring: Autonomously exploring workspace
@@ -62,13 +79,16 @@ export class MasterManager {
   private readonly skipAutoExploration: boolean;
   private readonly dotFolder: DotFolderManager;
   private readonly delegationCoordinator: DelegationCoordinator;
+  private readonly agentRunner: AgentRunner;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
   private explorationCoordinator: ExplorationCoordinator | null = null;
-  private sessionMap: Map<string, { sessionId: string; createdAt: number }> = new Map(); // sender → session info
-  private sessionTimeouts: Map<string, NodeJS.Timeout> = new Map();
-  private readonly sessionTTL = 30 * 60 * 1000; // 30 minutes
+
+  /** Persistent Master session — shared across all user messages */
+  private masterSession: MasterSession | null = null;
+  /** Whether the session has been used (first call uses --session-id, subsequent use --resume) */
+  private sessionInitialized = false;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -79,6 +99,7 @@ export class MasterManager {
     this.skipAutoExploration = options.skipAutoExploration ?? false;
     this.dotFolder = new DotFolderManager(this.workspacePath);
     this.delegationCoordinator = new DelegationCoordinator();
+    this.agentRunner = new AgentRunner();
 
     logger.info(
       {
@@ -112,12 +133,22 @@ export class MasterManager {
   }
 
   /**
+   * Get the persistent Master session info.
+   */
+  public getMasterSession(): MasterSession | null {
+    return this.masterSession;
+  }
+
+  /**
    * Start the Master AI.
    * Resilient startup logic:
    * - If .openbridge/ doesn't exist → trigger fresh exploration
    * - If incomplete exploration detected → resume from checkpoint
    * - If map missing or corrupted → re-explore
    * - If valid map exists → skip exploration, enter ready state
+   *
+   * On ready, loads or creates a persistent Master session ID
+   * stored in .openbridge/master-session.json.
    */
   public async start(): Promise<void> {
     if (this.state !== 'idle') {
@@ -139,6 +170,7 @@ export class MasterManager {
         logger.info('Auto-exploration disabled, entering ready state');
         this.state = 'ready';
       }
+      await this.initMasterSession();
       return;
     }
 
@@ -165,6 +197,7 @@ export class MasterManager {
         );
         this.state = 'ready';
       }
+      await this.initMasterSession();
       return;
     }
 
@@ -181,6 +214,7 @@ export class MasterManager {
         logger.warn('Auto-exploration disabled, entering ready state without valid map');
         this.state = 'ready';
       }
+      await this.initMasterSession();
       return;
     }
 
@@ -204,7 +238,92 @@ export class MasterManager {
     };
 
     this.state = 'ready';
+    await this.initMasterSession();
     logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
+  }
+
+  /**
+   * Initialize or resume the persistent Master session.
+   * Loads existing session from .openbridge/master-session.json or creates a new one.
+   */
+  private async initMasterSession(): Promise<void> {
+    // Try to load existing session
+    const existing = await this.dotFolder.readMasterSession();
+
+    if (existing) {
+      this.masterSession = existing;
+      this.sessionInitialized = true; // Existing session — use --resume from the start
+      logger.info(
+        { sessionId: existing.sessionId, messageCount: existing.messageCount },
+        'Loaded existing Master session',
+      );
+      return;
+    }
+
+    // Create new session
+    const sessionId = `master-${randomUUID()}`;
+    const now = new Date().toISOString();
+
+    this.masterSession = {
+      sessionId,
+      createdAt: now,
+      lastUsedAt: now,
+      messageCount: 0,
+      allowedTools: [...MASTER_TOOLS],
+      maxTurns: MASTER_MAX_TURNS,
+    };
+
+    this.sessionInitialized = false; // New session — first call uses --session-id
+
+    // Persist to disk
+    try {
+      await this.dotFolder.initialize();
+      await this.dotFolder.writeMasterSession(this.masterSession);
+      logger.info({ sessionId }, 'Created new Master session');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to persist Master session to disk');
+    }
+  }
+
+  /**
+   * Build spawn options for a Master session call.
+   * Uses --session-id on first call, --resume on subsequent calls.
+   */
+  private buildMasterSpawnOptions(prompt: string, timeout?: number): SpawnOptions {
+    const session = this.masterSession!;
+    const opts: SpawnOptions = {
+      prompt,
+      workspacePath: this.workspacePath,
+      allowedTools: [...session.allowedTools],
+      maxTurns: session.maxTurns,
+      timeout: timeout ?? this.messageTimeout,
+      retries: 0, // Master session calls don't auto-retry (caller handles)
+    };
+
+    if (this.sessionInitialized) {
+      opts.resumeSessionId = session.sessionId;
+    } else {
+      opts.sessionId = session.sessionId;
+    }
+
+    return opts;
+  }
+
+  /**
+   * Update Master session after a successful call.
+   */
+  private async updateMasterSession(): Promise<void> {
+    if (!this.masterSession) return;
+
+    this.sessionInitialized = true;
+    this.masterSession.lastUsedAt = new Date().toISOString();
+    this.masterSession.messageCount++;
+
+    try {
+      await this.dotFolder.writeMasterSession(this.masterSession);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to persist Master session update');
+    }
   }
 
   /**
@@ -294,7 +413,8 @@ export class MasterManager {
   }
 
   /**
-   * Re-explore the workspace (e.g., after significant changes)
+   * Re-explore the workspace (e.g., after significant changes).
+   * Uses the AgentRunner with read-only tools.
    */
   public async reExplore(): Promise<void> {
     if (this.state !== 'ready') {
@@ -318,12 +438,13 @@ export class MasterManager {
       // Generate re-exploration prompt
       const prompt = generateReExplorationPrompt(this.workspacePath);
 
-      // Execute re-exploration (skip permissions — runs in background)
-      const result = await executeClaudeCode({
+      // Execute re-exploration via AgentRunner with read-only tools
+      const result = await this.agentRunner.spawn({
         prompt,
         workspacePath: this.workspacePath,
         timeout: this.explorationTimeout,
-        skipPermissions: true,
+        allowedTools: [...TOOLS_READ_ONLY],
+        retries: 1,
       });
 
       if (result.exitCode !== 0) {
@@ -364,7 +485,8 @@ export class MasterManager {
 
   /**
    * Process a message from a user.
-   * Maintains session continuity across messages using --resume flag.
+   * Uses the persistent Master session for conversation continuity.
+   * All messages go through the same Master session regardless of sender.
    */
   public async processMessage(message: InboundMessage): Promise<string> {
     if (this.state !== 'ready') {
@@ -412,18 +534,10 @@ export class MasterManager {
         return status;
       }
 
-      // Get or create session ID for this sender
-      const { sessionId, isNew } = this.getOrCreateSession(message.sender);
-
-      // Execute message through Claude Code with session continuity (skip permissions — non-interactive)
-      // Use --session-id for new sessions, --resume for existing sessions
-      let result = await executeClaudeCode({
-        prompt: message.content,
-        workspacePath: this.workspacePath,
-        timeout: this.messageTimeout,
-        ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
-        skipPermissions: true,
-      });
+      // Execute message through the persistent Master session
+      const spawnOpts = this.buildMasterSpawnOptions(message.content);
+      let result = await this.agentRunner.spawn(spawnOpts);
+      await this.updateMasterSession();
 
       if (result.exitCode !== 0) {
         throw new Error(`Message processing failed: ${result.stderr}`);
@@ -443,18 +557,13 @@ export class MasterManager {
         // Handle delegations
         const delegationResults = await this.handleDelegations(delegations, message);
 
-        // Feed delegation results back to Master session
+        // Feed delegation results back to Master session (always resume)
         const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
         this.state = 'processing';
-        // Always use resume here since we already started a session above
-        result = await executeClaudeCode({
-          prompt: feedbackPrompt,
-          workspacePath: this.workspacePath,
-          timeout: this.messageTimeout,
-          resumeSessionId: sessionId,
-          skipPermissions: true,
-        });
+        const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+        result = await this.agentRunner.spawn(feedbackOpts);
+        await this.updateMasterSession();
 
         if (result.exitCode !== 0) {
           throw new Error(`Delegation feedback processing failed: ${result.stderr}`);
@@ -501,7 +610,7 @@ export class MasterManager {
 
   /**
    * Stream a message response, yielding chunks as they arrive.
-   * Maintains session continuity across messages using --resume flag.
+   * Uses the persistent Master session for conversation continuity.
    */
   public async *streamMessage(message: InboundMessage): AsyncGenerator<string, void> {
     if (this.state !== 'ready') {
@@ -551,22 +660,23 @@ export class MasterManager {
         return;
       }
 
-      // Get or create session ID for this sender
-      const { sessionId, isNew } = this.getOrCreateSession(message.sender);
-
-      // Stream message through Claude Code with session continuity
-      // Use --session-id for new sessions, --resume for existing sessions
+      // Stream message through the persistent Master session
+      const spawnOpts = this.buildMasterSpawnOptions(message.content);
       let fullResponse = '';
-      const stream = streamClaudeCode({
-        prompt: message.content,
-        workspacePath: this.workspacePath,
-        timeout: this.messageTimeout,
-        ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
-      });
+      const stream = this.agentRunner.stream(spawnOpts);
 
-      for await (const chunk of stream) {
+      let iterResult = await stream.next();
+      while (!iterResult.done) {
+        const chunk = iterResult.value;
         fullResponse += chunk;
         yield chunk;
+        iterResult = await stream.next();
+      }
+      const streamResult = iterResult.value;
+      await this.updateMasterSession();
+
+      if (streamResult.exitCode !== 0) {
+        throw new Error(`Stream failed: ${streamResult.stderr}`);
       }
 
       // Check for delegation markers in the response
@@ -588,19 +698,18 @@ export class MasterManager {
         const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
         this.state = 'processing';
-        // Always use resume here since we already started a session above
-        const feedbackStream = streamClaudeCode({
-          prompt: feedbackPrompt,
-          workspacePath: this.workspacePath,
-          timeout: this.messageTimeout,
-          resumeSessionId: sessionId,
-        });
+        const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+        const feedbackStream = this.agentRunner.stream(feedbackOpts);
 
         let finalResponse = '';
-        for await (const chunk of feedbackStream) {
+        let feedbackIter = await feedbackStream.next();
+        while (!feedbackIter.done) {
+          const chunk = feedbackIter.value;
           finalResponse += chunk;
           yield chunk;
+          feedbackIter = await feedbackStream.next();
         }
+        await this.updateMasterSession();
 
         fullResponse = finalResponse.trim() || delegationResults;
       }
@@ -654,6 +763,12 @@ export class MasterManager {
 
     let status = `**OpenBridge Master AI Status**\n\n`;
     status += `State: ${this.state}\n`;
+
+    // Show Master session info
+    if (this.masterSession) {
+      status += `Master Session: ${this.masterSession.sessionId}\n`;
+      status += `Session Messages: ${this.masterSession.messageCount}\n`;
+    }
 
     // Show detailed exploration progress if exploration is in progress
     // Try to get progress from coordinator or directly from state file
@@ -750,8 +865,6 @@ export class MasterManager {
       status += `\nProcessing: ${processingTasks} task(s) in progress\n`;
     }
 
-    status += `\nActive Sessions: ${this.sessionMap.size}\n`;
-
     return status;
   }
 
@@ -770,12 +883,14 @@ export class MasterManager {
     // Shutdown delegation coordinator
     this.delegationCoordinator.shutdown();
 
-    // Clear all session timeouts
-    for (const timeout of this.sessionTimeouts.values()) {
-      clearTimeout(timeout);
+    // Persist Master session before shutdown
+    if (this.masterSession) {
+      try {
+        await this.dotFolder.writeMasterSession(this.masterSession);
+      } catch (error) {
+        logger.warn({ error }, 'Failed to persist Master session on shutdown');
+      }
     }
-    this.sessionTimeouts.clear();
-    this.sessionMap.clear();
 
     // Log shutdown
     try {
@@ -902,50 +1017,6 @@ export class MasterManager {
     }
 
     return results.join('\n\n');
-  }
-
-  /**
-   * Get or create a session ID for a sender.
-   * Sessions are used to maintain conversation continuity.
-   * Returns { sessionId, isNew } where isNew indicates if this is a fresh session.
-   */
-  private getOrCreateSession(sender: string): { sessionId: string; isNew: boolean } {
-    // Clear existing timeout for this sender
-    const existingTimeout = this.sessionTimeouts.get(sender);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-    }
-
-    const now = Date.now();
-    const existing = this.sessionMap.get(sender);
-    let sessionId: string;
-    let isNew: boolean;
-
-    // Check if session exists and hasn't expired
-    if (existing && now - existing.createdAt < this.sessionTTL) {
-      sessionId = existing.sessionId;
-      isNew = false;
-      logger.debug({ sender, sessionId }, 'Resuming existing session');
-    } else {
-      if (existing) {
-        logger.debug({ sender, oldSessionId: existing.sessionId }, 'Session expired, creating new');
-      }
-      sessionId = randomUUID();
-      this.sessionMap.set(sender, { sessionId, createdAt: now });
-      isNew = true;
-      logger.debug({ sender, sessionId }, 'Created new session');
-    }
-
-    // Set new timeout to clear session after TTL
-    const timeout = setTimeout(() => {
-      this.sessionMap.delete(sender);
-      this.sessionTimeouts.delete(sender);
-      logger.debug({ sender, sessionId }, 'Session expired');
-    }, this.sessionTTL);
-
-    this.sessionTimeouts.set(sender, timeout);
-
-    return { sessionId, isNew };
   }
 
   /**

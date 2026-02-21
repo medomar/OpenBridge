@@ -3,13 +3,37 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { MasterManagerOptions } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-// Mock claude-code-executor
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-  streamClaudeCode: vi.fn(),
+// Mock AgentRunner
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: mockStream,
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
 }));
 
 // Mock logger
@@ -34,12 +58,16 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     appendLog: vi.fn().mockResolvedValue(undefined),
     readAllTasks: vi.fn().mockResolvedValue([]),
     getMapPath: vi.fn().mockReturnValue('/test/.openbridge/workspace-map.json'),
+    readMasterSession: vi.fn().mockResolvedValue(null),
+    writeMasterSession: vi.fn().mockResolvedValue(undefined),
+    readExplorationState: vi.fn().mockResolvedValue(null),
   })),
 }));
 
-import { executeClaudeCode } from '../../src/providers/claude-code/claude-code-executor.js';
-
-const mockExecuteClaudeCode = vi.mocked(executeClaudeCode);
+/** Helper to extract SpawnOptions from mock call args */
+function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
+  return mockSpawn.mock.calls[callIndex]?.[0] as SpawnOptions | undefined;
+}
 
 describe('Session Continuity', () => {
   let testWorkspace: string;
@@ -72,10 +100,12 @@ describe('Session Continuity', () => {
     // Clear mock call history
     vi.clearAllMocks();
 
-    mockExecuteClaudeCode.mockResolvedValue({
+    mockSpawn.mockResolvedValue({
       exitCode: 0,
       stdout: 'Response',
       stderr: '',
+      retryCount: 0,
+      durationMs: 100,
     });
 
     // Create master manager
@@ -125,25 +155,26 @@ describe('Session Continuity', () => {
     await masterManager.processMessage(message1);
     await masterManager.processMessage(message2);
 
-    expect(mockExecuteClaudeCode).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-    // First call should use sessionId (new session)
-    const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
+    // First call should use sessionId (new Master session)
+    const call1 = getSpawnCallOpts(0);
     expect(call1).toBeDefined();
     expect(call1?.sessionId).toBeDefined();
+    expect(call1?.sessionId).toMatch(/^master-/);
     expect(call1?.resumeSessionId).toBeUndefined();
 
-    // Second call should use resumeSessionId (resume existing session)
-    const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
+    // Second call should use resumeSessionId (resume existing Master session)
+    const call2 = getSpawnCallOpts(1);
     expect(call2).toBeDefined();
     expect(call2?.resumeSessionId).toBeDefined();
     expect(call2?.sessionId).toBeUndefined();
 
-    // Both should use the same session ID value
+    // Both should use the same Master session ID
     expect(call2?.resumeSessionId).toBe(call1?.sessionId);
   });
 
-  it('different senders should get different sessions', async () => {
+  it('different senders should share the same Master session', async () => {
     const message1: InboundMessage = {
       id: 'msg-1',
       source: 'test',
@@ -165,12 +196,12 @@ describe('Session Continuity', () => {
     await masterManager.processMessage(message1);
     await masterManager.processMessage(message2);
 
-    const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
-    const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
+    const call1 = getSpawnCallOpts(0);
+    const call2 = getSpawnCallOpts(1);
 
-    // Both are new sessions, so both use sessionId
+    // First call: new Master session (--session-id)
     expect(call1?.sessionId).toBeDefined();
-    expect(call2?.sessionId).toBeDefined();
-    expect(call1?.sessionId).not.toBe(call2?.sessionId);
+    // Second call: resume same Master session (--resume) — NOT a new session
+    expect(call2?.resumeSessionId).toBe(call1?.sessionId);
   });
 });

@@ -11,6 +11,7 @@ import type {
   StructureScan,
   Classification,
   DirectoryDiveResult,
+  MasterSession,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -21,6 +22,7 @@ import {
   StructureScanSchema,
   ClassificationSchema,
   DirectoryDiveResultSchema,
+  MasterSessionSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -506,6 +508,37 @@ Thumbs.db
     const registry = await this.readProfiles();
     if (!registry) return null;
     return registry.profiles[profileName] ?? null;
+  }
+
+  /**
+   * Get the path to the master-session.json file
+   */
+  public getMasterSessionPath(): string {
+    return path.join(this.dotFolderPath, 'master-session.json');
+  }
+
+  /**
+   * Read the persistent Master session info from master-session.json
+   */
+  public async readMasterSession(): Promise<MasterSession | null> {
+    const sessionPath = this.getMasterSessionPath();
+
+    try {
+      const content = await fs.readFile(sessionPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return MasterSessionSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the persistent Master session info to master-session.json
+   */
+  public async writeMasterSession(session: MasterSession): Promise<void> {
+    const validated = MasterSessionSchema.parse(session);
+    const sessionPath = this.getMasterSessionPath();
+    await fs.writeFile(sessionPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**

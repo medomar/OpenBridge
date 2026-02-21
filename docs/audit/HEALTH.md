@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.20/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.19
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 21 (Phases 18–21)
+> **Current Score:** 6.35/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.20
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 20 (Phases 18–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.20** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. ToolProfile and TaskManifest Zod schemas added. Model selection strategy implemented. AgentRunner accepts TaskManifest as alternative input. Custom profile registry in .openbridge/profiles.json with CRUD in DotFolderManager. Model fallback chain (opus → sonnet → haiku) with rate-limit detection.
+**Current state: 6.35** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 started. Master session lifecycle implemented — persistent session via --session-id/--resume, MasterSession schema, session persisted to .openbridge/master-session.json, all callers migrated from executeClaudeCode to AgentRunner.
 
 ---
 

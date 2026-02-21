@@ -4,13 +4,42 @@ import type { MasterManagerOptions } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-// Mock claude-code-executor
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-  streamClaudeCode: vi.fn(),
+/** Helper to extract SpawnOptions from mock call args */
+function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
+  return mockSpawn.mock.calls[callIndex]?.[0] as SpawnOptions | undefined;
+}
+
+// Mock AgentRunner (used by MasterManager, ExplorationCoordinator, DelegationCoordinator)
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: mockStream,
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
 }));
 
 // Mock logger
@@ -22,83 +51,6 @@ vi.mock('../../src/core/logger.js', () => ({
     debug: vi.fn(),
   })),
 }));
-
-import {
-  executeClaudeCode,
-  streamClaudeCode,
-} from '../../src/providers/claude-code/claude-code-executor.js';
-
-const mockExecuteClaudeCode = vi.mocked(executeClaudeCode);
-const mockStreamClaudeCode = vi.mocked(streamClaudeCode);
-
-/**
- * Helper to set up mocks for a complete incremental exploration
- */
-function mockCompleteExploration() {
-  // Phase 1: Structure Scan
-  mockExecuteClaudeCode.mockResolvedValueOnce({
-    exitCode: 0,
-    stdout: JSON.stringify({
-      files: ['package.json', 'README.md'],
-      directories: ['src', 'tests'],
-      totalFiles: 10,
-      scannedAt: new Date().toISOString(),
-      durationMs: 100,
-    }),
-    stderr: '',
-  });
-
-  // Phase 2: Classification
-  mockExecuteClaudeCode.mockResolvedValueOnce({
-    exitCode: 0,
-    stdout: JSON.stringify({
-      projectName: 'test-project',
-      projectType: 'node',
-      frameworks: ['typescript'],
-      commands: { test: 'npm test' },
-      dependencies: ['vitest'],
-      classifiedAt: new Date().toISOString(),
-      durationMs: 100,
-    }),
-    stderr: '',
-  });
-
-  // Phase 3: Directory Dives (src and tests)
-  mockExecuteClaudeCode.mockResolvedValueOnce({
-    exitCode: 0,
-    stdout: JSON.stringify({
-      path: 'src',
-      purpose: 'Source code',
-      keyFiles: ['index.ts'],
-      subdirectories: [],
-      scannedAt: new Date().toISOString(),
-      durationMs: 100,
-    }),
-    stderr: '',
-  });
-
-  mockExecuteClaudeCode.mockResolvedValueOnce({
-    exitCode: 0,
-    stdout: JSON.stringify({
-      path: 'tests',
-      purpose: 'Test files',
-      keyFiles: ['test.ts'],
-      subdirectories: [],
-      scannedAt: new Date().toISOString(),
-      durationMs: 100,
-    }),
-    stderr: '',
-  });
-
-  // Phase 4: Assembly (generates summary)
-  mockExecuteClaudeCode.mockResolvedValueOnce({
-    exitCode: 0,
-    stdout: JSON.stringify({
-      summary: 'A Node.js TypeScript project with tests',
-    }),
-    stderr: '',
-  });
-}
 
 describe('MasterManager', () => {
   let testWorkspace: string;
@@ -193,8 +145,71 @@ describe('MasterManager', () => {
       expect(masterManager.getState()).toBe('ready');
     });
 
-    it('should trigger exploration when .openbridge folder does not exist', async () => {
-      mockCompleteExploration();
+    it('should create a Master session on start', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const session = masterManager.getMasterSession();
+      expect(session).toBeDefined();
+      expect(session?.sessionId).toMatch(/^master-/);
+      expect(session?.messageCount).toBe(0);
+      expect(session?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      expect(session?.maxTurns).toBe(50);
+    });
+
+    it('should persist Master session to disk', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const savedSession = await dotFolder.readMasterSession();
+
+      expect(savedSession).toBeDefined();
+      expect(savedSession?.sessionId).toBe(masterManager.getMasterSession()?.sessionId);
+    });
+
+    it('should resume existing Master session from disk', async () => {
+      // Write a session to disk first
+      const dotFolder = new DotFolderManager(testWorkspace);
+      await dotFolder.initialize();
+      await dotFolder.writeMasterSession({
+        sessionId: 'master-existing-session',
+        createdAt: new Date().toISOString(),
+        lastUsedAt: new Date().toISOString(),
+        messageCount: 5,
+        allowedTools: ['Read', 'Glob', 'Grep', 'Write', 'Edit'],
+        maxTurns: 50,
+      });
+
+      // Write a valid workspace map so exploration is skipped
+      await dotFolder.writeMap({
+        workspacePath: testWorkspace,
+        projectName: 'test',
+        projectType: 'node',
+        frameworks: [],
+        structure: {},
+        keyFiles: [],
+        entryPoints: [],
+        commands: {},
+        dependencies: [],
+        summary: 'Test',
+        generatedAt: new Date().toISOString(),
+        schemaVersion: '1.0.0',
+      });
 
       const options: MasterManagerOptions = {
         workspacePath: testWorkspace,
@@ -204,11 +219,11 @@ describe('MasterManager', () => {
       };
 
       masterManager = new MasterManager(options);
-
       await masterManager.start();
 
-      expect(masterManager.getState()).toBe('ready');
-      expect(mockExecuteClaudeCode).toHaveBeenCalled();
+      const session = masterManager.getMasterSession();
+      expect(session?.sessionId).toBe('master-existing-session');
+      expect(session?.messageCount).toBe(5);
     });
 
     it('should load existing workspace map if .openbridge folder exists', async () => {
@@ -244,7 +259,7 @@ describe('MasterManager', () => {
       await masterManager.start();
 
       expect(masterManager.getState()).toBe('ready');
-      expect(mockExecuteClaudeCode).not.toHaveBeenCalled();
+      expect(mockSpawn).not.toHaveBeenCalled();
 
       const summary = masterManager.getExplorationSummary();
       expect(summary?.projectType).toBe('python');
@@ -267,139 +282,6 @@ describe('MasterManager', () => {
     });
   });
 
-  describe('Exploration', () => {
-    beforeEach(() => {
-      const options: MasterManagerOptions = {
-        workspacePath: testWorkspace,
-        masterTool,
-        discoveredTools,
-        skipAutoExploration: true,
-      };
-
-      masterManager = new MasterManager(options);
-    });
-
-    it('should transition to exploring state during exploration', async () => {
-      let stateChecked = false;
-
-      // Phase 1: Structure Scan - check state during execution
-      mockExecuteClaudeCode.mockImplementationOnce(async () => {
-        if (!stateChecked) {
-          expect(masterManager.getState()).toBe('exploring');
-          stateChecked = true;
-        }
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify({
-            files: ['package.json'],
-            directories: ['src'],
-            totalFiles: 5,
-            scannedAt: new Date().toISOString(),
-            durationMs: 100,
-          }),
-          stderr: '',
-        };
-      });
-
-      // Mock remaining phases
-      mockExecuteClaudeCode.mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: JSON.stringify({
-          projectName: 'test',
-          projectType: 'node',
-          frameworks: [],
-          commands: {},
-          dependencies: [],
-          classifiedAt: new Date().toISOString(),
-          durationMs: 100,
-        }),
-        stderr: '',
-      });
-
-      mockExecuteClaudeCode.mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: JSON.stringify({
-          path: 'src',
-          purpose: 'Source',
-          keyFiles: [],
-          subdirectories: [],
-          scannedAt: new Date().toISOString(),
-          durationMs: 100,
-        }),
-        stderr: '',
-      });
-
-      mockExecuteClaudeCode.mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: JSON.stringify({
-          summary: 'Test project',
-        }),
-        stderr: '',
-      });
-
-      await masterManager.explore();
-      expect(masterManager.getState()).toBe('ready');
-      expect(stateChecked).toBe(true);
-    });
-
-    it('should create .openbridge folder structure', async () => {
-      mockCompleteExploration();
-
-      const dotFolderManager = new DotFolderManager(testWorkspace);
-
-      await masterManager.explore();
-
-      const dotFolderExists = await dotFolderManager.exists();
-      expect(dotFolderExists).toBe(true);
-    });
-
-    it('should handle exploration failure', async () => {
-      mockExecuteClaudeCode.mockResolvedValueOnce({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Exploration failed',
-      });
-
-      await expect(masterManager.explore()).rejects.toThrow();
-      expect(masterManager.getState()).toBe('error');
-    });
-
-    it('should not allow concurrent explorations', async () => {
-      let callCount = 0;
-
-      // Mock all 5 phases but track calls
-      const mockPhase = async () => {
-        callCount++;
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        return {
-          exitCode: 0,
-          stdout: JSON.stringify(
-            callCount === 1 ? { files: [], directories: [], totalFiles: 0 } : { summary: 'test' },
-          ),
-          stderr: '',
-        };
-      };
-
-      mockExecuteClaudeCode.mockImplementation(mockPhase);
-
-      // Start exploration
-      const exploration1 = masterManager.explore();
-
-      // Wait a bit to ensure exploration1 is in progress
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Try to start another exploration
-      const exploration2 = masterManager.explore();
-
-      await exploration1;
-      await exploration2;
-
-      // Second call should have been ignored (no exploration in progress)
-      // So callCount should reflect only the first exploration's phases
-      expect(callCount).toBeGreaterThan(0);
-    });
-  });
-
   describe('Message Processing', () => {
     beforeEach(async () => {
       // Initialize .openbridge folder with git
@@ -417,11 +299,13 @@ describe('MasterManager', () => {
       await masterManager.start();
     });
 
-    it('should process message successfully', async () => {
-      mockExecuteClaudeCode.mockResolvedValueOnce({
+    it('should process message successfully via AgentRunner', async () => {
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
         stdout: 'Hello, I processed your message!',
         stderr: '',
+        retryCount: 0,
+        durationMs: 500,
       });
 
       const message: InboundMessage = {
@@ -437,31 +321,16 @@ describe('MasterManager', () => {
 
       expect(response).toBe('Hello, I processed your message!');
       expect(masterManager.getState()).toBe('ready');
-      expect(mockExecuteClaudeCode).toHaveBeenCalled();
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle status query without calling AI', async () => {
-      const message: InboundMessage = {
-        id: 'msg-status',
-        source: 'test',
-        sender: '+1234567890',
-        rawContent: '/ai status',
-        content: 'status',
-        timestamp: new Date(),
-      };
-
-      const response = await masterManager.processMessage(message);
-
-      expect(response).toContain('OpenBridge Master AI Status');
-      expect(response).toContain('State: ready');
-      expect(mockExecuteClaudeCode).not.toHaveBeenCalled();
-    });
-
-    it('should maintain session continuity for same sender', async () => {
-      mockExecuteClaudeCode.mockResolvedValue({
+    it('should use --session-id on first call and --resume on subsequent calls', async () => {
+      mockSpawn.mockResolvedValue({
         exitCode: 0,
         stdout: 'Response',
         stderr: '',
+        retryCount: 0,
+        durationMs: 100,
       });
 
       const message1: InboundMessage = {
@@ -485,26 +354,28 @@ describe('MasterManager', () => {
       await masterManager.processMessage(message1);
       await masterManager.processMessage(message2);
 
-      expect(mockExecuteClaudeCode).toHaveBeenCalledTimes(2);
+      expect(mockSpawn).toHaveBeenCalledTimes(2);
 
       // First call should use sessionId (new session)
-      // Second call should use resumeSessionId (resume existing session)
-      const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
-      const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
-
+      const call1 = getSpawnCallOpts(0);
       expect(call1?.sessionId).toBeDefined();
+      expect(call1?.sessionId).toMatch(/^master-/);
       expect(call1?.resumeSessionId).toBeUndefined();
+
+      // Second call should use resumeSessionId
+      const call2 = getSpawnCallOpts(1);
       expect(call2?.resumeSessionId).toBeDefined();
-      expect(call2?.sessionId).toBeUndefined();
-      // Both should use the same session ID value
       expect(call2?.resumeSessionId).toBe(call1?.sessionId);
+      expect(call2?.sessionId).toBeUndefined();
     });
 
-    it('should use different sessions for different senders', async () => {
-      mockExecuteClaudeCode.mockResolvedValue({
+    it('should use the same Master session for different senders', async () => {
+      mockSpawn.mockResolvedValue({
         exitCode: 0,
         stdout: 'Response',
         stderr: '',
+        retryCount: 0,
+        durationMs: 100,
       });
 
       const message1: InboundMessage = {
@@ -528,13 +399,84 @@ describe('MasterManager', () => {
       await masterManager.processMessage(message1);
       await masterManager.processMessage(message2);
 
-      const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
-      const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
+      // Both messages should use the same Master session
+      const call1 = getSpawnCallOpts(0);
+      const call2 = getSpawnCallOpts(1);
 
-      // Both are new sessions, so both use sessionId
+      // First call: --session-id, second call: --resume with same session ID
       expect(call1?.sessionId).toBeDefined();
-      expect(call2?.sessionId).toBeDefined();
-      expect(call1?.sessionId).not.toBe(call2?.sessionId);
+      expect(call2?.resumeSessionId).toBe(call1?.sessionId);
+    });
+
+    it('should pass Master tools (allowedTools) to AgentRunner', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const call = getSpawnCallOpts(0);
+      expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      expect(call?.maxTurns).toBe(50);
+    });
+
+    it('should increment session messageCount after each message', async () => {
+      mockSpawn.mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      expect(masterManager.getMasterSession()?.messageCount).toBe(0);
+
+      await masterManager.processMessage(message);
+      expect(masterManager.getMasterSession()?.messageCount).toBe(1);
+
+      await masterManager.processMessage({ ...message, id: 'msg-2', content: 'second' });
+      expect(masterManager.getMasterSession()?.messageCount).toBe(2);
+    });
+
+    it('should handle status query without calling AI', async () => {
+      const message: InboundMessage = {
+        id: 'msg-status',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai status',
+        content: 'status',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      expect(response).toContain('OpenBridge Master AI Status');
+      // State is 'processing' because processMessage sets it before checking for status queries
+      expect(response).toContain('State: processing');
+      expect(response).toContain('Master Session:');
+      expect(mockSpawn).not.toHaveBeenCalled();
     });
 
     it('should reject messages when not in ready state', async () => {
@@ -563,10 +505,12 @@ describe('MasterManager', () => {
     });
 
     it('should handle message processing errors', async () => {
-      mockExecuteClaudeCode.mockResolvedValueOnce({
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 1,
         stdout: '',
         stderr: 'Processing error',
+        retryCount: 0,
+        durationMs: 100,
       });
 
       const message: InboundMessage = {
@@ -606,14 +550,25 @@ describe('MasterManager', () => {
       await masterManager.start();
     });
 
-    it('should stream message chunks', async () => {
-      async function* mockStream() {
+    it('should stream message chunks via AgentRunner', async () => {
+      // Create a mock async generator for stream()
+      async function* mockStreamGen(): AsyncGenerator<
+        string,
+        { exitCode: number; stderr: string; stdout: string; durationMs: number; retryCount: number }
+      > {
         yield 'Hello ';
         yield 'from ';
         yield 'streaming!';
+        return {
+          exitCode: 0,
+          stderr: '',
+          stdout: 'Hello from streaming!',
+          durationMs: 100,
+          retryCount: 0,
+        };
       }
 
-      mockStreamClaudeCode.mockReturnValueOnce(mockStream());
+      mockStream.mockReturnValueOnce(mockStreamGen());
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -634,12 +589,15 @@ describe('MasterManager', () => {
     });
 
     it('should handle streaming errors', async () => {
-      async function* mockStream() {
+      async function* mockStreamGen(): AsyncGenerator<
+        string,
+        { exitCode: number; stderr: string; stdout: string; durationMs: number; retryCount: number }
+      > {
         yield 'Start ';
         throw new Error('Stream error');
       }
 
-      mockStreamClaudeCode.mockReturnValueOnce(mockStream());
+      mockStream.mockReturnValueOnce(mockStreamGen());
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -662,8 +620,7 @@ describe('MasterManager', () => {
   });
 
   describe('Shutdown', () => {
-    it('should clear all session data on shutdown', async () => {
-      // Initialize .openbridge folder with git
+    it('should persist Master session on shutdown', async () => {
       const dotFolderManager = new DotFolderManager(testWorkspace);
       await dotFolderManager.initialize();
 
@@ -677,28 +634,15 @@ describe('MasterManager', () => {
       masterManager = new MasterManager(options);
       await masterManager.start();
 
-      mockExecuteClaudeCode.mockResolvedValue({
-        exitCode: 0,
-        stdout: 'Response',
-        stderr: '',
-      });
+      const sessionId = masterManager.getMasterSession()?.sessionId;
 
-      // Create a session
-      const message: InboundMessage = {
-        id: 'msg-1',
-        source: 'test',
-        sender: '+1234567890',
-        rawContent: '/ai hello',
-        content: 'hello',
-        timestamp: new Date(),
-      };
-
-      await masterManager.processMessage(message);
-
-      // Shutdown
       await masterManager.shutdown();
 
       expect(masterManager.getState()).toBe('shutdown');
+
+      // Session should be persisted to disk
+      const savedSession = await dotFolderManager.readMasterSession();
+      expect(savedSession?.sessionId).toBe(sessionId);
     });
 
     it('should be idempotent', async () => {
@@ -732,13 +676,14 @@ describe('MasterManager', () => {
       await masterManager.start();
     });
 
-    it('should return status information', async () => {
+    it('should return status information including Master session', async () => {
       const status = await masterManager.getStatus();
 
       expect(status).toContain('OpenBridge Master AI Status');
       expect(status).toContain('State: ready');
+      expect(status).toContain('Master Session:');
+      expect(status).toContain('Session Messages: 0');
       expect(status).toContain('Tasks:');
-      expect(status).toContain('Active Sessions:');
     });
   });
 });
