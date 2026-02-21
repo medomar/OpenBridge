@@ -1,17 +1,17 @@
 # OpenBridge — Architecture
 
-> **Last Updated:** 2026-02-20
+> **Last Updated:** 2026-02-21
 
 ---
 
 ## Overview
 
-OpenBridge is a 4-layer system that connects messaging channels to an autonomous AI Master that explores and operates on your workspace.
+OpenBridge is a 4-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        CHANNELS                                   │
-│  WhatsApp · Telegram · Discord · Web Chat                         │
+│  WhatsApp · Console · Telegram (planned) · Discord (planned)      │
 │  Connectors translate between messaging APIs and OpenBridge       │
 └──────────────────────┬────────────────────────────────────────────┘
                        │
@@ -32,9 +32,9 @@ OpenBridge is a 4-layer system that connects messaging channels to an autonomous
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                     MASTER AI                                      │
-│  Master Manager · .openbridge/ Folder · Delegation Coordinator    │
-│  Autonomous exploration, task execution, multi-AI delegation,     │
-│  git-tracked knowledge base in target workspace                    │
+│  Master Manager · Exploration Coordinator · Delegation            │
+│  Incremental 5-pass exploration, session continuity, multi-AI     │
+│  delegation, git-tracked knowledge in .openbridge/                 │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -64,7 +64,7 @@ interface Connector {
 | Connector | Directory                  | Library           | Features                                                                                               |
 | --------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | WhatsApp  | `src/connectors/whatsapp/` | `whatsapp-web.js` | QR auth, session persistence, auto-reconnect, message chunking, typing indicators, markdown formatting |
-| Console   | `src/connectors/console/`  | built-in (stdin)  | Reference implementation for testing                                                                   |
+| Console   | `src/connectors/console/`  | built-in (stdin)  | Rapid preprod testing without WhatsApp QR dependency                                                   |
 
 ### WhatsApp Connector Details
 
@@ -119,6 +119,9 @@ The engine that wires everything together. Lives in `src/core/`.
    ├─ Start progress timer (every 15s)
    ├─ Route to Master AI:
    │   └─ master.processMessage(message) → ProviderResult
+   │       ├─ Session continuity: --resume <session-id> for existing conversation
+   │       ├─ New session: --session-id <uuid> for first message from sender
+   │       └─ Timeout: 30-minute TTL per session
    ├─ Stop progress timer
    └─ Send result back to user via connector
    │
@@ -196,23 +199,92 @@ The autonomous agent that knows your project. Lives in `src/master/`.
 
 ### Master Manager
 
-The central component that manages the Master AI lifecycle:
+The central component that manages the Master AI lifecycle and session continuity:
 
 ```
 States:  idle → exploring → ready → error
-                  │
-         startExploration() fires on startup
-                  │
-         Sends exploration prompt to Master AI CLI
-                  │
-         Master AI reads project files, creates .openbridge/
-                  │
-         State transitions to 'ready'
-                  │
-         processMessage(msg) handles user requests
+
+Lifecycle:
+  1. startExploration() fires on startup
+  2. Delegates to ExplorationCoordinator.explore()
+  3. State transitions to 'ready' when all 5 passes complete
+  4. processMessage(msg) handles user requests with session continuity
+
+Session Continuity:
+  - Maps sender → sessionId with 30-minute TTL
+  - First message from sender: creates new session with --session-id <uuid>
+  - Subsequent messages: resumes with --resume <session-id>
+  - Preserves context across multi-turn conversations
+  - Cleans up expired sessions automatically
 ```
 
-### `.openbridge/` Folder
+### Incremental Exploration Architecture
+
+The exploration is split into **5 short passes** to avoid timeouts on large projects. Each pass is independently checkpointed and resumable.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  INCREMENTAL 5-PASS EXPLORATION                  │
+└─────────────────────────────────────────────────────────────────┘
+
+Pass 1: Structure Scan (90s timeout)
+  ├─ List top-level files/dirs
+  ├─ Count files per directory
+  ├─ Detect config files (package.json, tsconfig.json, etc.)
+  ├─ Skip: node_modules, .git, dist, build
+  └─ Output: exploration/structure-scan.json
+
+Pass 2: Classification (90s timeout)
+  ├─ Read config files from Pass 1
+  ├─ Detect project type (Node.js, Python, Go, etc.)
+  ├─ Identify frameworks (Express, React, Django, etc.)
+  ├─ Extract dependencies and scripts
+  └─ Output: exploration/classification.json
+
+Pass 3: Directory Dives (90s timeout per directory, batched)
+  ├─ For each significant directory (src, tests, docs, etc.):
+  │   ├─ Explore contents (purpose, key files, subdirs)
+  │   └─ Output: exploration/dirs/<dirname>.json
+  ├─ Process in batches of 3 via Promise.allSettled()
+  ├─ Retry failed dives up to 3 times with backoff
+  └─ Checkpoint after each batch
+
+Pass 4: Assembly (60s timeout)
+  ├─ Merge partial results from Passes 1-3
+  ├─ Generate human-readable summary field
+  └─ Output: workspace-map.json (final assembled map)
+
+Pass 5: Finalization (no AI call, pure code)
+  ├─ Create agents.json (discovered tools + roles)
+  ├─ Git commit all files in .openbridge/
+  └─ Write log entry to exploration.log
+```
+
+**Resumability:** The `exploration-state.json` file tracks which passes are complete. On restart, the coordinator loads this file and skips completed phases.
+
+```json
+{
+  "currentPhase": "directory_dives",
+  "status": "in_progress",
+  "startedAt": "2026-02-21T10:00:00.000Z",
+  "phases": {
+    "structure_scan": "completed",
+    "classification": "completed",
+    "directory_dives": "in_progress",
+    "assembly": "pending",
+    "finalization": "pending"
+  },
+  "directoryDives": [
+    { "path": "src", "status": "completed", "outputFile": "dirs/src.json" },
+    { "path": "tests", "status": "pending" },
+    { "path": "docs", "status": "failed", "attempts": 1 }
+  ],
+  "totalCalls": 5,
+  "totalAITimeMs": 45000
+}
+```
+
+### `.openbridge/` Folder Specification
 
 Created by the Master AI inside the target workspace. This is the AI's persistent knowledge base.
 
@@ -223,44 +295,100 @@ target-project/
 ├── ...
 └── .openbridge/                 ← Created by Master AI
     ├── .git/                    ← Local git repo (Master's changes only)
-    ├── workspace-map.json       ← Auto-generated project understanding
+    │   ├── HEAD
+    │   ├── objects/
+    │   └── refs/
+    ├── exploration/             ← Incremental exploration state (Phase 11)
+    │   ├── exploration-state.json  ← Single source of truth for resumability
+    │   │   {
+    │   │     "currentPhase": "assembly",
+    │   │     "status": "in_progress",
+    │   │     "startedAt": "2026-02-21T10:00:00.000Z",
+    │   │     "phases": {
+    │   │       "structure_scan": "completed",
+    │   │       "classification": "completed",
+    │   │       "directory_dives": "completed",
+    │   │       "assembly": "in_progress",
+    │   │       "finalization": "pending"
+    │   │     },
+    │   │     "directoryDives": [...],
+    │   │     "totalCalls": 12,
+    │   │     "totalAITimeMs": 108000
+    │   │   }
+    │   ├── structure-scan.json     ← Pass 1 output
+    │   │   {
+    │   │     "topLevelFiles": ["package.json", "README.md", ...],
+    │   │     "directories": [
+    │   │       { "path": "src", "fileCount": 42 },
+    │   │       { "path": "tests", "fileCount": 18 }
+    │   │     ],
+    │   │     "configFiles": ["package.json", "tsconfig.json", ...]
+    │   │   }
+    │   ├── classification.json     ← Pass 2 output
+    │   │   {
+    │   │     "projectType": "Node.js",
+    │   │     "languages": ["typescript"],
+    │   │     "frameworks": ["express"],
+    │   │     "dependencies": { "express": "^4.18.0", ... },
+    │   │     "scripts": { "dev": "tsx src/index.ts", ... }
+    │   │   }
+    │   └── dirs/                   ← Pass 3 outputs (one per directory)
+    │       ├── src.json
+    │       │   {
+    │       │     "path": "src",
+    │       │     "purpose": "Main application source code",
+    │       │     "keyFiles": ["index.ts", "server.ts", ...],
+    │       │     "subdirs": ["routes", "middleware", "services"]
+    │       │   }
+    │       ├── tests.json
+    │       └── docs.json
+    ├── workspace-map.json       ← Final assembled map (Pass 4)
     │   {
     │     "name": "my-project",
-    │     "description": "Node.js REST API",
-    │     "languages": ["typescript", "sql"],
+    │     "description": "Node.js REST API with Express and TypeScript",
+    │     "summary": "A production-ready API server with 12 routes...",
+    │     "languages": ["typescript"],
     │     "frameworks": ["express", "prisma"],
-    │     "structure": { ... },
-    │     "exploredAt": "2026-02-20T13:00:00Z"
+    │     "structure": {
+    │       "src": { "purpose": "Main application source", ... },
+    │       "tests": { "purpose": "Vitest test suite", ... }
+    │     },
+    │     "exploredAt": "2026-02-21T10:05:30.000Z"
     │   }
     ├── exploration.log          ← Timestamped scan history
-    ├── agents.json              ← Discovered AI tools + their roles
+    │   2026-02-21T10:00:00Z | Exploration started
+    │   2026-02-21T10:01:30Z | Pass 1 (structure_scan) completed in 90s
+    │   2026-02-21T10:03:00Z | Pass 2 (classification) completed in 90s
+    │   ...
+    ├── agents.json              ← Discovered AI tools + their roles (Pass 5)
     │   {
     │     "master": { "name": "claude", "path": "/usr/local/bin/claude" },
-    │     "delegates": [ { "name": "codex", "path": "..." } ]
+    │     "delegates": [
+    │       { "name": "codex", "path": "/usr/local/bin/codex" }
+    │     ]
     │   }
     └── tasks/                   ← Task history (one JSON per task)
         ├── task-001.json
+        │   {
+        │     "id": "task-001",
+        │     "description": "Run tests and fix failures",
+        │     "status": "completed",
+        │     "startedAt": "...",
+        │     "completedAt": "...",
+        │     "result": "47/47 tests passing"
+        │   }
         └── task-002.json
 ```
 
-### Exploration Prompt
+### Exploration Components
 
-On startup, the Master Manager sends a carefully crafted prompt to the Master AI CLI:
-
-```
-You are the Master AI for the project at /path/to/workspace.
-
-Your job:
-1. Silently explore the workspace — read key files (package.json, README, src/, etc.)
-2. Create a .openbridge/ folder at the workspace root
-3. Inside .openbridge/, create workspace-map.json with your findings
-4. Initialize a git repo in .openbridge/ and commit your findings
-5. Do NOT send any messages to the user — work silently
-
-IMPORTANT: Only create files inside .openbridge/. Do not modify existing project files.
-```
-
-The AI does the exploring — we don't write framework detectors or file parsers.
+| Module                     | File                         | Purpose                                                                                       |
+| -------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
+| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress |
+| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)         |
+| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)         |
+| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD operations, exploration state management, git operations                  |
+| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                               |
 
 ### Delegation
 
@@ -281,6 +409,13 @@ When the Master needs help from another AI tool:
 5. Task recorded in .openbridge/tasks/ and committed to git
 ```
 
+**Delegation features:**
+
+- Concurrent delegation limit (max 3 at once)
+- Timeout handling per delegate (default 120s)
+- Result aggregation and error handling
+- Git commit per completed task
+
 ### Generalized CLI Executor
 
 The `claude-code-executor.ts` module supports any CLI tool via the `command` option:
@@ -296,7 +431,7 @@ await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, 
 await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'aider' });
 ```
 
-Features: streaming via async generator, session support, prompt sanitization, graceful shutdown guard (active child processes tracked and waited for during SIGTERM/SIGINT).
+Features: streaming via async generator, session support (`--session-id`, `--resume`), prompt sanitization, graceful shutdown guard (active child processes tracked and waited for during SIGTERM/SIGINT).
 
 ---
 
@@ -344,8 +479,14 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 5. bridge.start()                  → initialize connectors, health, metrics
 6. new MasterManager(tool, path)   → create Master with discovered tool
 7. bridge.setMaster(master)        → wire Master into router
-8. master.startExploration()       → fire-and-forget background exploration
-9. Ready — waiting for messages
+8. master.startExploration()       → fire-and-forget incremental exploration
+   ├─ ExplorationCoordinator.explore()
+   ├─ Load exploration-state.json (if exists)
+   ├─ Skip completed phases
+   ├─ Execute remaining passes
+   ├─ Checkpoint after each pass
+   └─ State transitions: idle → exploring → ready
+9. Ready — waiting for messages with full project context
 ```
 
 ### V0 Flow (legacy — direct provider)
@@ -361,19 +502,51 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 
 ---
 
+## Resilient Startup
+
+On restart, the Master AI reuses valid state and resumes incomplete exploration:
+
+```
+Scenario 1: Valid .openbridge/ exists
+  → Skip exploration, load workspace-map.json
+  → State: ready immediately
+
+Scenario 2: Incomplete exploration (exploration-state.json exists)
+  → Load exploration-state.json
+  → Resume from last completed phase
+  → Continue with remaining passes
+  → State: exploring → ready
+
+Scenario 3: Corrupted or missing workspace-map.json
+  → Delete exploration/ folder
+  → Start fresh 5-pass exploration
+  → State: exploring → ready
+
+Scenario 4: First run (no .openbridge/)
+  → Create .openbridge/ folder
+  → Start 5-pass exploration
+  → State: exploring → ready
+```
+
+---
+
 ## Key Design Decisions
 
-1. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI a prompt and let it figure out the project. This is simpler and more powerful.
+1. **Incremental exploration, not monolithic.** The old architecture used a single giant AI call that timed out on real projects. The new 5-pass strategy breaks exploration into short, checkpointed phases that never timeout.
 
-2. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. It has its own git repo so changes are tracked without polluting the project's git history.
+2. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI focused prompts and let it figure out the project. This is simpler and more powerful.
 
-3. **Discovery runs once at startup.** We don't continuously scan for tools. Restart to re-discover.
+3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. It has its own git repo so changes are tracked without polluting the project's git history.
 
-4. **V0 config stays supported.** Auto-detect config version, run the appropriate flow. No breaking changes.
+4. **Session continuity enables multi-turn conversations.** The Master tracks sessions per sender with 30-minute TTL. First message creates a session, subsequent messages resume it. This enables natural business conversations: "which invoices are overdue?" → "send reminders to those clients".
 
-5. **The executor is generalized, not rewritten.** The existing `claude-code-executor.ts` handles spawning, streaming, sanitization, sessions, and graceful shutdown. Adding `command` option was a one-line change.
+5. **Discovery runs once at startup.** We don't continuously scan for tools. Restart to re-discover.
 
-6. **Dead code is archived, not deleted.** Old knowledge/ and orchestrator/ modules go to `src/_archived/` — out of the compile path but preserved in git.
+6. **V0 config stays supported.** Auto-detect config version, run the appropriate flow. No breaking changes.
+
+7. **The executor is generalized, not rewritten.** The existing `claude-code-executor.ts` handles spawning, streaming, sanitization, sessions, and graceful shutdown. Adding `command` option was a one-line change.
+
+8. **Dead code is archived, not deleted.** Old knowledge/ and orchestrator/ modules are in `src/_archived/` — out of the compile path but preserved in git.
 
 ---
 
@@ -393,7 +566,7 @@ src/
 │   ├── common.ts               ← Shared types
 │   ├── agent.ts                ← Agent / TaskAgent types (reused)
 │   ├── discovery.ts            ← DiscoveredTool, ScanResult schemas
-│   └── master.ts               ← MasterState, ExplorationSummary schemas
+│   └── master.ts               ← MasterState, ExplorationSummary, exploration schemas
 ├── core/
 │   ├── bridge.ts               ← Main orchestrator (setMaster + lifecycle)
 │   ├── router.ts               ← Message routing (Master → provider fallback)
@@ -425,8 +598,10 @@ src/
 │   └── vscode-scanner.ts       ← VS Code extension detection
 └── master/
     ├── index.ts                ← Module exports
-    ├── master-manager.ts       ← Master AI lifecycle + message routing
+    ├── master-manager.ts       ← Master AI lifecycle + message routing + sessions
     ├── dotfolder-manager.ts    ← .openbridge/ CRUD + git operations
-    ├── exploration-prompt.ts   ← System prompt for workspace exploration
+    ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
+    ├── exploration-prompts.ts  ← Pass-specific prompt generators
+    ├── result-parser.ts        ← Robust JSON extraction with fallbacks
     └── delegation.ts           ← Multi-AI task delegation
 ```
