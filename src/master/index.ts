@@ -28,6 +28,10 @@ export {
 export { MasterManager } from './master-manager.js';
 export type { MasterManagerOptions } from './master-manager.js';
 
+// Export Master system prompt generator
+export { generateMasterSystemPrompt } from './master-system-prompt.js';
+export type { MasterSystemPromptContext } from './master-system-prompt.js';
+
 // Export result parser utilities
 export { parseAIResult, parseAIResultWithRetry } from './result-parser.js';
 export type { ParseResult, ParseError, ParsedAIResult } from './result-parser.js';
