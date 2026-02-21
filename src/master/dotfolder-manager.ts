@@ -44,6 +44,7 @@ export class DotFolderManager {
   private readonly tasksPath: string;
   private readonly explorationPath: string;
   private readonly explorationDirsPath: string;
+  private readonly promptsPath: string;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -51,6 +52,7 @@ export class DotFolderManager {
     this.tasksPath = path.join(this.dotFolderPath, 'tasks');
     this.explorationPath = path.join(this.dotFolderPath, 'exploration');
     this.explorationDirsPath = path.join(this.explorationPath, 'dirs');
+    this.promptsPath = path.join(this.dotFolderPath, 'prompts');
   }
 
   /**
@@ -106,6 +108,7 @@ export class DotFolderManager {
     await fs.mkdir(this.tasksPath, { recursive: true });
     await fs.mkdir(this.explorationPath, { recursive: true });
     await fs.mkdir(this.explorationDirsPath, { recursive: true });
+    await fs.mkdir(this.promptsPath, { recursive: true });
   }
 
   /**
@@ -539,6 +542,40 @@ Thumbs.db
     const validated = MasterSessionSchema.parse(session);
     const sessionPath = this.getMasterSessionPath();
     await fs.writeFile(sessionPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Get the path to the prompts directory
+   */
+  public getPromptsPath(): string {
+    return this.promptsPath;
+  }
+
+  /**
+   * Get the path to the master system prompt file
+   */
+  public getSystemPromptPath(): string {
+    return path.join(this.promptsPath, 'master-system.md');
+  }
+
+  /**
+   * Read the master system prompt from .openbridge/prompts/master-system.md
+   */
+  public async readSystemPrompt(): Promise<string | null> {
+    try {
+      return await fs.readFile(this.getSystemPromptPath(), 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the master system prompt to .openbridge/prompts/master-system.md.
+   * Creates the prompts directory if it doesn't exist.
+   */
+  public async writeSystemPrompt(content: string): Promise<void> {
+    await fs.mkdir(this.promptsPath, { recursive: true });
+    await fs.writeFile(this.getSystemPromptPath(), content, 'utf-8');
   }
 
   /**

@@ -1,5 +1,6 @@
 import { DotFolderManager } from './dotfolder-manager.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
+import { generateMasterSystemPrompt } from './master-system-prompt.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
@@ -89,6 +90,8 @@ export class MasterManager {
   private masterSession: MasterSession | null = null;
   /** Whether the session has been used (first call uses --session-id, subsequent use --resume) */
   private sessionInitialized = false;
+  /** Cached system prompt content (loaded from .openbridge/prompts/master-system.md) */
+  private systemPrompt: string | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -245,8 +248,21 @@ export class MasterManager {
   /**
    * Initialize or resume the persistent Master session.
    * Loads existing session from .openbridge/master-session.json or creates a new one.
+   * Also seeds and loads the Master system prompt.
    */
   private async initMasterSession(): Promise<void> {
+    // Ensure .openbridge folder exists
+    await this.dotFolder.initialize();
+
+    // Seed system prompt if it doesn't exist yet
+    await this.seedSystemPrompt();
+
+    // Load the system prompt
+    this.systemPrompt = await this.dotFolder.readSystemPrompt();
+    if (this.systemPrompt) {
+      logger.info('Loaded Master system prompt');
+    }
+
     // Try to load existing session
     const existing = await this.dotFolder.readMasterSession();
 
@@ -277,7 +293,6 @@ export class MasterManager {
 
     // Persist to disk
     try {
-      await this.dotFolder.initialize();
       await this.dotFolder.writeMasterSession(this.masterSession);
       logger.info({ sessionId }, 'Created new Master session');
     } catch (error) {
@@ -286,8 +301,36 @@ export class MasterManager {
   }
 
   /**
+   * Seed the master system prompt if it doesn't already exist.
+   * Generates the default prompt and writes it to .openbridge/prompts/master-system.md.
+   */
+  private async seedSystemPrompt(): Promise<void> {
+    const existing = await this.dotFolder.readSystemPrompt();
+    if (existing) {
+      return; // Already seeded — don't overwrite (Master may have edited it)
+    }
+
+    const customProfiles = (await this.dotFolder.readProfiles())?.profiles;
+
+    const promptContent = generateMasterSystemPrompt({
+      workspacePath: this.workspacePath,
+      masterToolName: this.masterTool.name,
+      discoveredTools: this.discoveredTools,
+      customProfiles,
+    });
+
+    try {
+      await this.dotFolder.writeSystemPrompt(promptContent);
+      logger.info('Seeded Master system prompt');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to seed Master system prompt');
+    }
+  }
+
+  /**
    * Build spawn options for a Master session call.
    * Uses --session-id on first call, --resume on subsequent calls.
+   * Injects the system prompt via --append-system-prompt.
    */
   private buildMasterSpawnOptions(prompt: string, timeout?: number): SpawnOptions {
     const session = this.masterSession!;
@@ -299,6 +342,11 @@ export class MasterManager {
       timeout: timeout ?? this.messageTimeout,
       retries: 0, // Master session calls don't auto-retry (caller handles)
     };
+
+    // Inject the system prompt if available
+    if (this.systemPrompt) {
+      opts.systemPrompt = this.systemPrompt;
+    }
 
     if (this.sessionInitialized) {
       opts.resumeSessionId = session.sessionId;

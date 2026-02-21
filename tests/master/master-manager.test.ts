@@ -686,4 +686,99 @@ describe('MasterManager', () => {
       expect(status).toContain('Tasks:');
     });
   });
+
+  describe('System Prompt', () => {
+    it('should seed the system prompt on first startup', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const prompt = await dotFolder.readSystemPrompt();
+
+      expect(prompt).not.toBeNull();
+      expect(prompt).toContain('Master AI');
+      expect(prompt).toContain(testWorkspace);
+      expect(prompt).toContain('claude');
+    });
+
+    it('should not overwrite existing system prompt on restart', async () => {
+      // Seed a custom prompt first
+      const dotFolder = new DotFolderManager(testWorkspace);
+      await dotFolder.initialize();
+      const customPrompt = '# Custom Master Prompt\nEdited by the Master itself.';
+      await dotFolder.writeSystemPrompt(customPrompt);
+
+      // Write a valid workspace map so exploration is skipped
+      await dotFolder.writeMap({
+        workspacePath: testWorkspace,
+        projectName: 'test',
+        projectType: 'node',
+        frameworks: [],
+        structure: {},
+        keyFiles: [],
+        entryPoints: [],
+        commands: {},
+        dependencies: [],
+        summary: 'Test',
+        generatedAt: new Date().toISOString(),
+        schemaVersion: '1.0.0',
+      });
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: false,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      // Custom prompt should NOT be overwritten
+      const prompt = await dotFolder.readSystemPrompt();
+      expect(prompt).toBe(customPrompt);
+    });
+
+    it('should inject system prompt into spawn options', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-sys',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const call = getSpawnCallOpts(0);
+      expect(call?.systemPrompt).toBeDefined();
+      expect(call?.systemPrompt).toContain('Master AI');
+    });
+  });
 });
