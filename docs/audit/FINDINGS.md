@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Last Audit:** 2026-02-21
+> **Open:** 1 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -191,19 +191,20 @@
 
 ---
 
-### F-012 — No graceful handling for missing data queries
+### F-012 — No graceful handling for missing data queries ✅ Fixed
 
 | Field    | Value       |
 | -------- | ----------- |
 | Severity | 🟢 Low      |
 | Category | UX / Safety |
 | Found    | 2026-02-20  |
+| Fixed    | 2026-02-21  |
 
 **What:** USE_CASES.md assumes happy paths (data files exist, queries match available data). No verification exists for how the system responds when a user asks about data that doesn't exist in the workspace (e.g. "what's today's revenue?" when there's no sales file). The AI will likely respond reasonably on its own, but edge cases (empty workspace, binary-only files, corrupted data) are untested.
 
 **Impact:** Minor — the AI is generally good at saying "I don't see that data." But untested means unknown failure modes for business users who expect reliability.
 
-**Resolution:** Phase 13 (OB-110) — verify graceful responses for missing/unavailable data scenarios.
+**Resolution:** Phase 14 (OB-119) — **COMPLETED**. Created comprehensive E2E test suite (`tests/e2e/graceful-unknown-handling.test.ts`) with 7 tests covering all edge cases: missing sales data queries in minimal workspaces, completely empty workspaces, binary-only workspaces (Excel/PDF files), wrong context queries (invoices in cafe workspace), partial data workspaces (inventory only, no schedules), future data queries, and .openbridge/ folder creation verification. All tests verify: no crashes, non-empty helpful responses, business-appropriate messaging (no technical error terms like "null" or "undefined"), and suggestions for what IS available or how to proceed. All 7 tests pass.
 
 ---
 
