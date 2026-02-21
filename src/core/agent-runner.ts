@@ -6,6 +6,42 @@ const logger = createLogger('agent-runner');
 const MAX_PROMPT_LENGTH = 32_768;
 
 /**
+ * Default max-turns limits to prevent runaway agents.
+ * Without --max-turns, Claude can make unlimited tool calls until
+ * the process timeout kills it (OB-F14: exit code 143 / SIGTERM).
+ */
+
+/** Max turns for exploration tasks (file listing, classification) — fast, bounded */
+export const DEFAULT_MAX_TURNS_EXPLORATION = 15;
+
+/** Max turns for user-facing tasks (implementation, reasoning) — more room to work */
+export const DEFAULT_MAX_TURNS_TASK = 25;
+
+/**
+ * Tool group constants for --allowedTools.
+ * Used instead of --dangerously-skip-permissions to give agents
+ * only the tools they need for a given task type.
+ */
+
+/** Read-only tools — safe for exploration and information gathering */
+export const TOOLS_READ_ONLY = ['Read', 'Glob', 'Grep'] as const;
+
+/** Code editing tools — for implementation tasks that modify files */
+export const TOOLS_CODE_EDIT = [
+  'Read',
+  'Edit',
+  'Write',
+  'Glob',
+  'Grep',
+  'Bash(git:*)',
+  'Bash(npm:*)',
+  'Bash(npx:*)',
+] as const;
+
+/** Full access tools — unrestricted (use sparingly) */
+export const TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'] as const;
+
+/**
  * Sanitize a user-supplied prompt before passing it to the CLI.
  *
  * Removes null bytes and ASCII control characters (except tab, newline, and
@@ -71,9 +107,8 @@ export function buildArgs(opts: SpawnOptions): string[] {
     args.push('--model', opts.model);
   }
 
-  if (opts.maxTurns != null) {
-    args.push('--max-turns', String(opts.maxTurns));
-  }
+  const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
+  args.push('--max-turns', String(maxTurns));
 
   if (opts.allowedTools && opts.allowedTools.length > 0) {
     for (const tool of opts.allowedTools) {
