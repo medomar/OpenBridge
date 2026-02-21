@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 tasks in 5 phases | **Next up:** Phase 18
+> **Pending:** 16 tasks in 5 phases | **Next up:** Phase 18
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -99,7 +99,7 @@ The Master AI is the brain. It decides:
 | 106 | **Master-driven exploration** — remove hardcoded 5-phase exploration from ExplorationCoordinator. Instead, Master's system prompt instructs it to explore the workspace using worker agents. Master decides how many passes, which directories to dive into, what model to use. Master writes results to `.openbridge/` directly. Keep ExplorationCoordinator as a utility library the Master can reference, not as the driver | OB-152 |   🟠 High   |  ✅ Done  |
 | 107 | **Task decomposition protocol** — define how Master breaks user requests into worker subtasks. Master outputs structured JSON task manifests in its response. OpenBridge parses them, spawns workers via AgentRunner, returns results to Master session. Format: `[SPAWN:profile]{"prompt":"...","model":"haiku","maxTurns":10}[/SPAWN]` — similar to current `[DELEGATE]` markers but richer                                  | OB-153 |   🟠 High   |  ✅ Done  |
 | 108 | **Worker result injection** — when workers complete, their results are fed back into the Master session as a follow-up message: "Worker result (haiku, read-only): {output}". Master synthesizes and responds to user. Mirrors OpenClaw's auto-announcement pattern (no polling)                                                                                                                                               | OB-154 |   🟠 High   |  ✅ Done  |
-| 109 | **Master tool access control** — Master itself gets a `master` profile: Read, Write, Edit, Glob, Grep (for .openbridge/ management) but NOT Bash. Master cannot execute commands directly — it delegates to workers. This keeps the Master safe and forces delegation                                                                                                                                                          | OB-155 |   🟡 Med    | ◻ Pending |
+| 109 | **Master tool access control** — Master itself gets a `master` profile: Read, Write, Edit, Glob, Grep (for .openbridge/ management) but NOT Bash. Master cannot execute commands directly — it delegates to workers. This keeps the Master safe and forces delegation                                                                                                                                                          | OB-155 |   🟡 Med    |  ✅ Done  |
 | 110 | **Graceful Master restart** — if Master session dies (crash, timeout, context overflow), detect it, save state, create new session with context summary. Load `.openbridge/workspace-map.json` + recent task history into new session. User sees no interruption                                                                                                                                                               | OB-156 |   🟡 Med    | ◻ Pending |
 
 ---

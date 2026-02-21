@@ -687,6 +687,85 @@ describe('MasterManager', () => {
     });
   });
 
+  describe('Master Tool Access Control (OB-155)', () => {
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+    });
+
+    it('should enforce Master profile tools (no Bash)', async () => {
+      const session = masterManager.getMasterSession();
+      expect(session?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      // Verify no Bash tools are present
+      expect(session?.allowedTools.some((t) => t.startsWith('Bash'))).toBe(false);
+    });
+
+    it('should pass Master profile tools to AgentRunner on processMessage', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-access',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai do something',
+        content: 'do something',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const call = getSpawnCallOpts(0);
+      expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      // Master must NOT get Bash access
+      expect(call?.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
+    });
+
+    it('should pass Master profile tools to AgentRunner on explore', async () => {
+      // Create a fresh manager that will trigger exploration
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const exploringManager = new MasterManager(options);
+      await exploringManager.start();
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Explored',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      await exploringManager.explore();
+
+      const call = getSpawnCallOpts(0);
+      expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      expect(call?.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
+
+      await exploringManager.shutdown();
+    });
+  });
+
   describe('System Prompt', () => {
     it('should seed the system prompt on first startup', async () => {
       const options: MasterManagerOptions = {
