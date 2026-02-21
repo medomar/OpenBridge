@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { sanitizePrompt, buildArgs, AgentRunner } from '../../src/core/agent-runner.js';
+import {
+  sanitizePrompt,
+  buildArgs,
+  AgentRunner,
+  TOOLS_READ_ONLY,
+  TOOLS_CODE_EDIT,
+  TOOLS_FULL,
+  DEFAULT_MAX_TURNS_EXPLORATION,
+  DEFAULT_MAX_TURNS_TASK,
+} from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 
 // ── Mock child_process.spawn ────────────────────────────────────────
@@ -83,9 +92,9 @@ describe('buildArgs', () => {
     workspacePath: '/tmp/ws',
   };
 
-  it('builds minimal args with --print and the prompt', () => {
+  it('builds minimal args with --print, default --max-turns, and the prompt', () => {
     const args = buildArgs(base);
-    expect(args).toEqual(['--print', 'test prompt']);
+    expect(args).toEqual(['--print', '--max-turns', '25', 'test prompt']);
   });
 
   it('includes --model when specified', () => {
@@ -98,6 +107,20 @@ describe('buildArgs', () => {
     const args = buildArgs({ ...base, maxTurns: 15 });
     expect(args).toContain('--max-turns');
     expect(args).toContain('15');
+  });
+
+  it('defaults --max-turns to DEFAULT_MAX_TURNS_TASK (25) when not specified', () => {
+    const args = buildArgs(base);
+    const idx = args.indexOf('--max-turns');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe(String(DEFAULT_MAX_TURNS_TASK));
+  });
+
+  it('allows explicit maxTurns to override the default', () => {
+    const args = buildArgs({ ...base, maxTurns: 10 });
+    const idx = args.indexOf('--max-turns');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('10');
   });
 
   it('includes --allowedTools for each tool', () => {
@@ -140,6 +163,108 @@ describe('buildArgs', () => {
       allowedTools: ['Read'],
     });
     expect(args).not.toContain('--dangerously-skip-permissions');
+  });
+});
+
+// ── Tool group constants ─────────────────────────────────────────────
+
+describe('Tool group constants', () => {
+  it('TOOLS_READ_ONLY contains only read-safe tools', () => {
+    expect(TOOLS_READ_ONLY).toEqual(['Read', 'Glob', 'Grep']);
+  });
+
+  it('TOOLS_CODE_EDIT contains editing tools plus scoped Bash', () => {
+    expect(TOOLS_CODE_EDIT).toEqual([
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+    ]);
+  });
+
+  it('TOOLS_FULL contains all tools with unrestricted Bash', () => {
+    expect(TOOLS_FULL).toEqual(['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)']);
+  });
+
+  it('TOOLS_READ_ONLY is a subset of TOOLS_CODE_EDIT', () => {
+    for (const tool of TOOLS_READ_ONLY) {
+      expect(TOOLS_CODE_EDIT).toContain(tool);
+    }
+  });
+
+  it('buildArgs passes TOOLS_READ_ONLY as --allowedTools flags', () => {
+    const args = buildArgs({
+      prompt: 'explore',
+      workspacePath: '/tmp',
+      allowedTools: [...TOOLS_READ_ONLY],
+    });
+    const toolFlags = args.filter((a) => a === '--allowedTools');
+    expect(toolFlags).toHaveLength(3);
+    expect(args).toContain('Read');
+    expect(args).toContain('Glob');
+    expect(args).toContain('Grep');
+    expect(args).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('buildArgs passes TOOLS_CODE_EDIT as --allowedTools flags', () => {
+    const args = buildArgs({
+      prompt: 'implement feature',
+      workspacePath: '/tmp',
+      allowedTools: [...TOOLS_CODE_EDIT],
+    });
+    const toolFlags = args.filter((a) => a === '--allowedTools');
+    expect(toolFlags).toHaveLength(8);
+    expect(args).toContain('Bash(git:*)');
+    expect(args).toContain('Bash(npm:*)');
+    expect(args).toContain('Bash(npx:*)');
+    expect(args).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('buildArgs passes TOOLS_FULL as --allowedTools flags', () => {
+    const args = buildArgs({
+      prompt: 'full access task',
+      workspacePath: '/tmp',
+      allowedTools: [...TOOLS_FULL],
+    });
+    const toolFlags = args.filter((a) => a === '--allowedTools');
+    expect(toolFlags).toHaveLength(6);
+    expect(args).toContain('Bash(*)');
+    expect(args).not.toContain('--dangerously-skip-permissions');
+  });
+});
+
+// ── Max-turns defaults ──────────────────────────────────────────────
+
+describe('Max-turns defaults', () => {
+  it('DEFAULT_MAX_TURNS_EXPLORATION is 15', () => {
+    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBe(15);
+  });
+
+  it('DEFAULT_MAX_TURNS_TASK is 25', () => {
+    expect(DEFAULT_MAX_TURNS_TASK).toBe(25);
+  });
+
+  it('exploration default is lower than task default', () => {
+    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBeLessThan(DEFAULT_MAX_TURNS_TASK);
+  });
+
+  it('--max-turns is always present in args even without explicit maxTurns', () => {
+    const args = buildArgs({ prompt: 'test', workspacePath: '/tmp' });
+    expect(args).toContain('--max-turns');
+  });
+
+  it('callers can use DEFAULT_MAX_TURNS_EXPLORATION for exploration tasks', () => {
+    const args = buildArgs({
+      prompt: 'explore workspace',
+      workspacePath: '/tmp',
+      maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
+    });
+    const idx = args.indexOf('--max-turns');
+    expect(args[idx + 1]).toBe('15');
   });
 });
 
