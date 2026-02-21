@@ -1,0 +1,17 @@
+{
+  "id": "6ed2bda4-5d05-4368-90b1-2536b035b503",
+  "userMessage": "/ai stream test",
+  "sender": "+1234567890",
+  "description": "stream test",
+  "status": "failed",
+  "handledBy": "master",
+  "error": "Stream error",
+  "createdAt": "2026-02-21T00:25:48.472Z",
+  "startedAt": "2026-02-21T00:25:48.472Z",
+  "completedAt": "2026-02-21T00:25:48.472Z",
+  "durationMs": 0,
+  "metadata": {
+    "messageId": "msg-1",
+    "source": "test"
+  }
+}
