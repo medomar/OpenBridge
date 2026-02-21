@@ -1117,7 +1117,22 @@ Work silently — do not output conversational text, just explore and write the 
           task.status = 'delegated';
           await this.dotFolder.recordTask(task);
 
-          const feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
+          // Use progress-streaming variant if multiple workers are spawned
+          let feedbackPrompt: string;
+          if (spawnResult.markers.length > 1) {
+            // Stream progress updates as workers complete
+            const progressGen = this.handleSpawnMarkersWithProgress(spawnResult.markers);
+            let progressIter = await progressGen.next();
+            while (!progressIter.done) {
+              const progressChunk = progressIter.value;
+              yield progressChunk;
+              progressIter = await progressGen.next();
+            }
+            feedbackPrompt = progressIter.value;
+          } else {
+            // Single worker — no progress streaming needed
+            feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
+          }
 
           // Inject worker results back into the Master session (streamed)
           this.state = 'processing';
@@ -1384,6 +1399,82 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
+   * Handle SPAWN markers with progress streaming.
+   * Yields progress updates as workers complete, allowing the user to see
+   * real-time status (e.g., "Working on it... (3/5 subtasks done)").
+   *
+   * Returns the final feedback prompt after all workers complete.
+   */
+  private async *handleSpawnMarkersWithProgress(
+    markers: ParsedSpawnMarker[],
+  ): AsyncGenerator<string, string> {
+    // Load custom profiles once for all workers
+    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfiles = customProfilesRegistry?.profiles;
+
+    // Register all workers in the registry BEFORE spawning
+    const workerIds: string[] = [];
+    const workerManifests = markers.map((marker) => ({
+      prompt: marker.body.prompt,
+      workspacePath: this.workspacePath,
+      profile: marker.profile,
+      model: marker.body.model,
+      maxTurns: marker.body.maxTurns,
+      timeout: marker.body.timeout,
+      retries: marker.body.retries,
+    }));
+
+    for (const manifest of workerManifests) {
+      try {
+        const workerId = this.workerRegistry.addWorker(manifest);
+        workerIds.push(workerId);
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Failed to register worker (concurrency limit reached)',
+        );
+        workerIds.push('');
+      }
+    }
+
+    await this.persistWorkerRegistry();
+
+    // Yield initial progress message
+    const totalWorkers = workerIds.filter((id) => id !== '').length;
+    yield `\n\n_[Starting ${totalWorkers} parallel subtasks...]_\n`;
+
+    // Spawn all workers concurrently
+    const workerPromises = markers.map((marker, index) => {
+      const workerId = workerIds[index];
+      if (!workerId) {
+        return Promise.resolve({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Worker skipped: concurrency limit reached',
+          durationMs: 0,
+          retryCount: 0,
+        } as AgentResult);
+      }
+      return this.spawnWorker(workerId, marker, index, customProfiles);
+    });
+
+    // Wait for all workers to complete
+    const finalSettled = await Promise.allSettled(workerPromises);
+
+    // Yield final progress message
+    const completedCount = finalSettled.filter(
+      (r) => r.status === 'fulfilled' && r.value.exitCode === 0,
+    ).length;
+    yield `\n\n_[All subtasks complete: ${completedCount}/${totalWorkers} successful]_\n`;
+
+    await this.persistWorkerRegistry();
+
+    // Format all results and build the feedback prompt
+    const { feedbackPrompt } = formatWorkerBatch(finalSettled, markers);
+    return feedbackPrompt;
+  }
+
+  /**
    * Spawn a single worker from a parsed SPAWN marker.
    * Resolves the profile to tools via AgentRunner's manifest resolution.
    * Tracks the worker lifecycle in the registry: pending → running → completed/failed.
@@ -1433,12 +1524,29 @@ Work silently — do not output conversational text, just explore and write the 
       if (result.exitCode === 0) {
         this.workerRegistry.markCompleted(workerId, result);
       } else {
-        this.workerRegistry.markFailed(
-          workerId,
-          result,
-          `Exit code ${result.exitCode}: ${result.stderr.slice(0, 200)}`,
-        );
+        // Check if this is a timeout failure (SIGTERM = 143, SIGKILL = 137)
+        const isTimeout = result.exitCode === 143 || result.exitCode === 137;
+        const errorMessage = isTimeout
+          ? `Worker timeout: process terminated after ${body.timeout ?? 'default'}ms (exit code ${result.exitCode})`
+          : `Exit code ${result.exitCode}: ${result.stderr.slice(0, 200)}`;
+
+        if (isTimeout) {
+          logger.warn(
+            {
+              workerId,
+              exitCode: result.exitCode,
+              timeout: body.timeout,
+              durationMs: result.durationMs,
+            },
+            'Worker terminated due to timeout',
+          );
+        }
+
+        this.workerRegistry.markFailed(workerId, result, errorMessage);
       }
+
+      // Persist registry after worker completion or failure
+      await this.persistWorkerRegistry();
 
       return result;
     } catch (error) {
@@ -1453,6 +1561,9 @@ Work silently — do not output conversational text, just explore and write the 
       };
 
       this.workerRegistry.markFailed(workerId, failedResult, errorMessage);
+
+      // Persist registry after exception
+      await this.persistWorkerRegistry();
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;

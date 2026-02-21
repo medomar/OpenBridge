@@ -753,4 +753,341 @@ Working on both tasks.`;
       expect(worker?.taskManifest.prompt).toBe('Check files');
     });
   });
+
+  describe('Worker Timeout Handling (OB-163)', () => {
+    it('should detect SIGTERM timeout (exit code 143) and mark worker as timeout failure', async () => {
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run slow task","model":"sonnet","timeout":5000}[/SPAWN]`;
+
+      // Call 1: Master returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker times out with SIGTERM
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143, // SIGTERM
+        stdout: 'partial output',
+        stderr: 'Timeout: process terminated after 5000ms (signal: SIGTERM)',
+        retryCount: 0,
+        durationMs: 5100,
+      });
+
+      // Call 3: Feedback with timeout error
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The worker timed out after 5 seconds.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Run slow task'));
+
+      // Verify worker was marked as failed with timeout-specific error
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(1);
+
+      const worker = workers[0];
+      expect(worker?.status).toBe('failed');
+      expect(worker?.result?.exitCode).toBe(143);
+      expect(worker?.error).toContain('Worker timeout');
+      expect(worker?.error).toContain('process terminated after 5000ms');
+      expect(worker?.error).toContain('exit code 143');
+    });
+
+    it('should detect SIGKILL timeout (exit code 137) and mark worker as timeout failure', async () => {
+      const responseWithSpawn = `[SPAWN:full-access]{"prompt":"Very slow task","model":"opus","timeout":10000}[/SPAWN]`;
+
+      // Call 1: Master returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker times out with SIGKILL (after SIGTERM grace period)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 137, // SIGKILL
+        stdout: 'partial work',
+        stderr: 'Timeout: process terminated after 10000ms (signal: SIGKILL)',
+        retryCount: 0,
+        durationMs: 10200,
+      });
+
+      // Call 3: Feedback with timeout error
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The worker was force-killed due to timeout.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Run very slow task'));
+
+      // Verify worker was marked as failed with timeout-specific error
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(1);
+
+      const worker = workers[0];
+      expect(worker?.status).toBe('failed');
+      expect(worker?.result?.exitCode).toBe(137);
+      expect(worker?.error).toContain('Worker timeout');
+      expect(worker?.error).toContain('process terminated after 10000ms');
+      expect(worker?.error).toContain('exit code 137');
+    });
+
+    it('should distinguish timeout failures from other failures', async () => {
+      const responseWithMultiSpawn = `
+[SPAWN:code-edit]{"prompt":"Normal failure","model":"sonnet"}[/SPAWN]
+[SPAWN:code-edit]{"prompt":"Timeout failure","model":"sonnet","timeout":3000}[/SPAWN]
+`;
+
+      // Call 1: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithMultiSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: First worker fails normally (e.g., test failure)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Tests failed: 3 failures',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      // Call 3: Second worker times out
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: 'Timeout: process terminated after 3000ms (signal: SIGTERM)',
+        retryCount: 0,
+        durationMs: 3100,
+      });
+
+      // Call 4: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'One worker failed, one timed out.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Run both tasks'));
+
+      // Verify both workers tracked with different error messages
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(2);
+
+      const failedWorkers = registry.getFailedWorkers();
+      expect(failedWorkers.length).toBe(2);
+
+      // First worker: normal failure
+      const normalFailure = workers.find((w) => w.result?.exitCode === 1);
+      expect(normalFailure?.error).toContain('Exit code 1');
+      expect(normalFailure?.error).not.toContain('Worker timeout');
+
+      // Second worker: timeout failure
+      const timeoutFailure = workers.find((w) => w.result?.exitCode === 143);
+      expect(timeoutFailure?.error).toContain('Worker timeout');
+      expect(timeoutFailure?.error).toContain('3000ms');
+    });
+
+    it('should persist timeout failures to disk', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Slow scan","model":"haiku","timeout":2000}[/SPAWN]`;
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: 'Timeout: process terminated after 2000ms (signal: SIGTERM)',
+        retryCount: 0,
+        durationMs: 2100,
+      });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Scan timed out.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Scan slowly'));
+
+      // Verify timeout failure was persisted
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const persistedRegistry = await dotFolder.readWorkers();
+
+      expect(persistedRegistry).toBeDefined();
+
+      const workerIds = Object.keys(persistedRegistry?.workers ?? {});
+      expect(workerIds.length).toBe(1);
+
+      const workerId = workerIds[0];
+      const worker = persistedRegistry?.workers[workerId!];
+      expect(worker?.status).toBe('failed');
+      expect(worker?.result?.exitCode).toBe(143);
+      expect(worker?.error).toContain('Worker timeout');
+    });
+  });
+
+  describe('Worker Progress Streaming (OB-162)', () => {
+    it('should stream progress updates for multiple workers', async () => {
+      const responseWithMultiSpawn = `
+[SPAWN:read-only]{"prompt":"Analyze database","model":"haiku"}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Analyze API","model":"haiku"}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Analyze tests","model":"haiku"}[/SPAWN]
+`;
+
+      // Setup mock streaming generator for Master session
+      mockStream
+        .mockImplementationOnce(async function* () {
+          yield 'I will analyze three areas.';
+          yield '\n\n[SPAWN:read-only]{"prompt":"Analyze database","model":"haiku"}[/SPAWN]';
+          yield '\n[SPAWN:read-only]{"prompt":"Analyze API","model":"haiku"}[/SPAWN]';
+          yield '\n[SPAWN:read-only]{"prompt":"Analyze tests","model":"haiku"}[/SPAWN]';
+          return {
+            exitCode: 0,
+            stdout: responseWithMultiSpawn,
+            stderr: '',
+            retryCount: 0,
+            durationMs: 200,
+          };
+        })
+        // Setup mock for feedback stream
+        .mockImplementationOnce(async function* () {
+          yield 'Summary of all three analysis tasks.';
+          return {
+            exitCode: 0,
+            stdout: 'Summary of all three analysis tasks.',
+            stderr: '',
+            retryCount: 0,
+            durationMs: 100,
+          };
+        });
+
+      // Workers complete at different times (simulated by mockSpawn)
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Database has 5 tables',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 400,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'API has 12 routes',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 350,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Tests have 45 files',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 380,
+        });
+
+      // Collect streamed chunks
+      const chunks: string[] = [];
+      const stream = masterManager.streamMessage(makeMessage('Analyze all areas'));
+
+      let iterResult = await stream.next();
+      while (!iterResult.done) {
+        chunks.push(iterResult.value);
+        iterResult = await stream.next();
+      }
+
+      const fullResponse = chunks.join('');
+
+      // Verify progress updates were streamed
+      // The implementation should yield progress like "[Progress: 1/3 subtasks completed]"
+      expect(fullResponse).toContain('Summary');
+      expect(mockStream).toHaveBeenCalledTimes(2);
+
+      // Verify all workers were tracked
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(3);
+      expect(registry.getCompletedWorkers().length).toBe(3);
+    });
+
+    it('should skip progress streaming for single worker', async () => {
+      const responseWithSingleSpawn = `[SPAWN:read-only]{"prompt":"Scan files","model":"haiku"}[/SPAWN]`;
+
+      mockStream
+        .mockImplementationOnce(async function* () {
+          yield responseWithSingleSpawn;
+          return {
+            exitCode: 0,
+            stdout: responseWithSingleSpawn,
+            stderr: '',
+            retryCount: 0,
+            durationMs: 200,
+          };
+        })
+        .mockImplementationOnce(async function* () {
+          yield 'File scan complete.';
+          return {
+            exitCode: 0,
+            stdout: 'File scan complete.',
+            stderr: '',
+            retryCount: 0,
+            durationMs: 100,
+          };
+        });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Found 10 files',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      const chunks: string[] = [];
+      const stream = masterManager.streamMessage(makeMessage('Scan files'));
+
+      let iterResult = await stream.next();
+      while (!iterResult.done) {
+        chunks.push(iterResult.value);
+        iterResult = await stream.next();
+      }
+
+      const fullResponse = chunks.join('');
+
+      // Single worker — no progress updates should be streamed
+      expect(fullResponse).not.toContain('Progress:');
+      expect(fullResponse).toContain('File scan complete');
+
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(1);
+    });
+  });
 });
