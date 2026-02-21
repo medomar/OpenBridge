@@ -52,3 +52,7 @@ export type { WorkerResultMeta } from './worker-result-formatter.js';
 // Export ExplorationCoordinator for incremental exploration
 export { ExplorationCoordinator } from './exploration-coordinator.js';
 export type { ExplorationOptions } from './exploration-coordinator.js';
+
+// Export WorkerRegistry for worker orchestration
+export { WorkerRegistry, DEFAULT_MAX_CONCURRENT_WORKERS } from './worker-registry.js';
+export type { WorkerRecord, WorkerStatus, WorkersRegistry } from './worker-registry.js';
