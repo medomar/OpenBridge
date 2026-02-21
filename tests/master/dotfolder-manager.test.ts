@@ -360,6 +360,7 @@ describe('DotFolderManager', () => {
   describe('Task Operations', () => {
     beforeEach(async () => {
       await manager.createFolder();
+      await manager.initGit();
     });
 
     it('should return null when reading non-existent task', async () => {

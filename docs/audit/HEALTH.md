@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 4.695/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 4.665
-> **Open Findings:** 9 | **Pending Tasks:** 29
+> **Current Score:** 4.745/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 4.695
+> **Open Findings:** 9 | **Pending Tasks:** 28
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -69,36 +69,37 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 
 ## Score Change History
 
-| Date       | Score |   Change    | Reason                                                                                                                                            |
-| ---------- | :---: | :---------: | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                                                                                           |
-| 2026-02-19 | 6.635 |   +0.635    | V0 issues OB-001 through OB-037 all fixed (37 issues)                                                                                             |
-| 2026-02-20 |  3.8  | re-baseline | Vision expanded — re-scored against new requirements                                                                                              |
-| 2026-02-20 | 4.66  |    +0.86    | Old phases 5–8 partially built (workspace maps, orchestrator, tool-use types)                                                                     |
-| 2026-02-20 |  3.8  | re-baseline | **Vision shifted again** — autonomous AI exploration replaces user-defined maps. Old phases 6–8 code archived. Score reset to V0 foundation only  |
-| 2026-02-20 |  3.9  |    +0.1     | OB-068/069/070 fixed — tsx watch bug, graceful shutdown guard, generalized executor                                                               |
-| 2026-02-20 |  4.0  |    +0.05    | OB-071 completed — discovery types (DiscoveredTool, ScanResult schemas)                                                                           |
-| 2026-02-20 | 4.015 |   +0.015    | OB-073 completed — VS Code extension scanner                                                                                                      |
-| 2026-02-20 | 4.065 |    +0.05    | OB-072 completed — CLI tool scanner with which-based discovery                                                                                    |
-| 2026-02-20 | 4.080 |   +0.015    | OB-074 completed — discovery module index (scanForAITools)                                                                                        |
-| 2026-02-20 | 4.130 |    +0.05    | OB-075 completed — Master AI types (MasterState, ExplorationSummary, TaskRecord schemas)                                                          |
-| 2026-02-20 | 4.180 |    +0.05    | OB-077 completed — Exploration prompt with adaptive response style for code vs business workspaces                                                |
-| 2026-02-20 | 4.230 |    +0.05    | OB-076 completed — .openbridge/ folder manager with git integration, map/agents/log CRUD, task recording                                          |
-| 2026-02-20 | 4.245 |   +0.015    | OB-079 completed — Master module index (exports DotFolderManager, exploration prompt functions)                                                   |
-| 2026-02-20 | 4.295 |    +0.05    | OB-078 completed — Master AI Manager with lifecycle, session continuity, message routing, status queries                                          |
-| 2026-02-20 | 4.345 |    +0.05    | OB-081 completed — V2 config schema (workspacePath + channels + auth), backward compatible with V0                                                |
-| 2026-02-20 | 4.395 |    +0.05    | OB-082 completed — V2 config loader with auto-detection, V0 fallback, type guard, and conversion helper                                           |
-| 2026-02-20 | 4.425 |    +0.03    | F-003 fixed — V2 config schema + loader complete, users now need only 3 fields (workspacePath, channels, auth)                                    |
-| 2026-02-20 | 4.475 |    +0.05    | OB-085 completed — V2 entry point flow (load config → discover tools → create bridge → start → launch Master → explore)                           |
-| 2026-02-20 | 4.490 |   +0.015    | OB-088 completed — Knowledge layer archived to src/\_archived/knowledge/ (workspace-scanner, api-executor, tool-catalog, tool-executor)           |
-| 2026-02-20 | 4.505 |   +0.015    | OB-087 completed + F-008 fixed — config.example.json updated to V2 format (workspacePath, channels, auth only)                                    |
-| 2026-02-20 | 4.520 |   +0.015    | OB-090 completed — workspace-manager.ts + map-loader.ts archived to src/\_archived/core/, all imports cleaned, tests archived                     |
-| 2026-02-20 | 4.535 |   +0.015    | OB-089 completed — Old orchestrator (script-coordinator.ts, task-agent-runtime.ts) and old types (workspace-map.ts, tool.ts) archived             |
-| 2026-02-20 | 4.585 |    +0.05    | OB-091 completed — Delegation coordinator created (src/master/delegation.ts) with task delegation, timeout handling, concurrent delegation limits |
-| 2026-02-20 | 4.600 |   +0.015    | OB-093 completed — Task tracking with git commits added to dotfolder-manager (recordTask now commits to .openbridge/.git)                         |
-| 2026-02-20 | 4.650 |    +0.05    | OB-092 completed — Delegation integration in Master Manager (parse markers, delegate tasks, feed results back, updated exploration prompt)        |
-| 2026-02-20 | 4.665 |   +0.015    | OB-094 completed — Status command handler enhanced with active delegations, processing tasks count, and real-time elapsed time tracking           |
-| 2026-02-21 | 4.695 |    +0.03    | OB-095 completed — Incremental exploration Zod schemas added (ExplorationPhaseSchema, ExplorationStateSchema, StructureScanSchema, etc.)          |
+| Date       | Score |   Change    | Reason                                                                                                                                             |
+| ---------- | :---: | :---------: | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                                                                                            |
+| 2026-02-19 | 6.635 |   +0.635    | V0 issues OB-001 through OB-037 all fixed (37 issues)                                                                                              |
+| 2026-02-20 |  3.8  | re-baseline | Vision expanded — re-scored against new requirements                                                                                               |
+| 2026-02-20 | 4.66  |    +0.86    | Old phases 5–8 partially built (workspace maps, orchestrator, tool-use types)                                                                      |
+| 2026-02-20 |  3.8  | re-baseline | **Vision shifted again** — autonomous AI exploration replaces user-defined maps. Old phases 6–8 code archived. Score reset to V0 foundation only   |
+| 2026-02-20 |  3.9  |    +0.1     | OB-068/069/070 fixed — tsx watch bug, graceful shutdown guard, generalized executor                                                                |
+| 2026-02-20 |  4.0  |    +0.05    | OB-071 completed — discovery types (DiscoveredTool, ScanResult schemas)                                                                            |
+| 2026-02-20 | 4.015 |   +0.015    | OB-073 completed — VS Code extension scanner                                                                                                       |
+| 2026-02-20 | 4.065 |    +0.05    | OB-072 completed — CLI tool scanner with which-based discovery                                                                                     |
+| 2026-02-20 | 4.080 |   +0.015    | OB-074 completed — discovery module index (scanForAITools)                                                                                         |
+| 2026-02-20 | 4.130 |    +0.05    | OB-075 completed — Master AI types (MasterState, ExplorationSummary, TaskRecord schemas)                                                           |
+| 2026-02-20 | 4.180 |    +0.05    | OB-077 completed — Exploration prompt with adaptive response style for code vs business workspaces                                                 |
+| 2026-02-20 | 4.230 |    +0.05    | OB-076 completed — .openbridge/ folder manager with git integration, map/agents/log CRUD, task recording                                           |
+| 2026-02-20 | 4.245 |   +0.015    | OB-079 completed — Master module index (exports DotFolderManager, exploration prompt functions)                                                    |
+| 2026-02-20 | 4.295 |    +0.05    | OB-078 completed — Master AI Manager with lifecycle, session continuity, message routing, status queries                                           |
+| 2026-02-20 | 4.345 |    +0.05    | OB-081 completed — V2 config schema (workspacePath + channels + auth), backward compatible with V0                                                 |
+| 2026-02-20 | 4.395 |    +0.05    | OB-082 completed — V2 config loader with auto-detection, V0 fallback, type guard, and conversion helper                                            |
+| 2026-02-20 | 4.425 |    +0.03    | F-003 fixed — V2 config schema + loader complete, users now need only 3 fields (workspacePath, channels, auth)                                     |
+| 2026-02-20 | 4.475 |    +0.05    | OB-085 completed — V2 entry point flow (load config → discover tools → create bridge → start → launch Master → explore)                            |
+| 2026-02-20 | 4.490 |   +0.015    | OB-088 completed — Knowledge layer archived to src/\_archived/knowledge/ (workspace-scanner, api-executor, tool-catalog, tool-executor)            |
+| 2026-02-20 | 4.505 |   +0.015    | OB-087 completed + F-008 fixed — config.example.json updated to V2 format (workspacePath, channels, auth only)                                     |
+| 2026-02-20 | 4.520 |   +0.015    | OB-090 completed — workspace-manager.ts + map-loader.ts archived to src/\_archived/core/, all imports cleaned, tests archived                      |
+| 2026-02-20 | 4.535 |   +0.015    | OB-089 completed — Old orchestrator (script-coordinator.ts, task-agent-runtime.ts) and old types (workspace-map.ts, tool.ts) archived              |
+| 2026-02-20 | 4.585 |    +0.05    | OB-091 completed — Delegation coordinator created (src/master/delegation.ts) with task delegation, timeout handling, concurrent delegation limits  |
+| 2026-02-20 | 4.600 |   +0.015    | OB-093 completed — Task tracking with git commits added to dotfolder-manager (recordTask now commits to .openbridge/.git)                          |
+| 2026-02-20 | 4.650 |    +0.05    | OB-092 completed — Delegation integration in Master Manager (parse markers, delegate tasks, feed results back, updated exploration prompt)         |
+| 2026-02-20 | 4.665 |   +0.015    | OB-094 completed — Status command handler enhanced with active delegations, processing tasks count, and real-time elapsed time tracking            |
+| 2026-02-21 | 4.695 |    +0.03    | OB-095 completed — Incremental exploration Zod schemas added (ExplorationPhaseSchema, ExplorationStateSchema, StructureScanSchema, etc.)           |
+| 2026-02-21 | 4.745 |    +0.05    | OB-096 completed — DotFolderManager extended with exploration state CRUD (readExplorationState, writeStructureScan, etc.) with full Zod validation |
 
 ---
 
