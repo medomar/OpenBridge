@@ -235,6 +235,21 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
   },
 };
 
+// ── Profiles Registry ───────────────────────────────────────────
+
+/**
+ * Registry of custom tool profiles stored in .openbridge/profiles.json.
+ * Master AI can create domain-specific profiles beyond the built-in ones.
+ *
+ * Example: a "test-runner" profile with [Read, Glob, Grep, Bash(npm:test)]
+ */
+export const ProfilesRegistrySchema = z.object({
+  /** Custom profiles keyed by name */
+  profiles: z.record(z.string(), ToolProfileSchema),
+  /** When the registry was last updated */
+  updatedAt: z.string().datetime(),
+});
+
 // ── Task Manifest ───────────────────────────────────────────────
 
 /**
@@ -281,4 +296,5 @@ export type TaskProgressEvent = z.infer<typeof TaskProgressEventSchema>;
 export type ScriptEvent = z.infer<typeof ScriptEventSchema>;
 export type ToolProfile = z.infer<typeof ToolProfileSchema>;
 export type BuiltInProfileName = z.infer<typeof BuiltInProfileNameSchema>;
+export type ProfilesRegistry = z.infer<typeof ProfilesRegistrySchema>;
 export type TaskManifest = z.infer<typeof TaskManifestSchema>;

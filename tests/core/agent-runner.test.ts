@@ -1344,6 +1344,50 @@ describe('resolveProfile', () => {
   it('returns undefined for empty string', () => {
     expect(resolveProfile('')).toBeUndefined();
   });
+
+  it('resolves custom profile when provided', () => {
+    const customProfiles = {
+      'test-runner': {
+        name: 'test-runner',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      },
+    };
+    expect(resolveProfile('test-runner', customProfiles)).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'Bash(npm:test)',
+    ]);
+  });
+
+  it('custom profile takes priority over built-in with same name', () => {
+    const customProfiles = {
+      'read-only': {
+        name: 'read-only',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(ls:*)'],
+      },
+    };
+    expect(resolveProfile('read-only', customProfiles)).toEqual([
+      'Read',
+      'Glob',
+      'Grep',
+      'Bash(ls:*)',
+    ]);
+  });
+
+  it('falls back to built-in when custom profiles do not contain the name', () => {
+    const customProfiles = {
+      'test-runner': {
+        name: 'test-runner',
+        tools: ['Read', 'Glob'],
+      },
+    };
+    expect(resolveProfile('read-only', customProfiles)).toEqual(['Read', 'Glob', 'Grep']);
+  });
+
+  it('returns undefined when custom profiles are empty and name is unknown', () => {
+    expect(resolveProfile('nonexistent', {})).toBeUndefined();
+  });
 });
 
 // ── manifestToSpawnOptions ──────────────────────────────────────────
@@ -1408,6 +1452,39 @@ describe('manifestToSpawnOptions', () => {
   it('leaves allowedTools undefined for unrecognized profile', () => {
     const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'custom-unknown' });
     expect(opts.allowedTools).toBeUndefined();
+  });
+
+  it('resolves custom profile when provided', () => {
+    const customProfiles = {
+      'test-runner': {
+        name: 'test-runner',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      },
+    };
+    const opts = manifestToSpawnOptions(
+      { ...baseManifest, profile: 'test-runner' },
+      customProfiles,
+    );
+    expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Bash(npm:test)']);
+  });
+
+  it('resolves previously unknown profile when custom profiles are provided', () => {
+    const customProfiles = {
+      'doc-writer': {
+        name: 'doc-writer',
+        tools: ['Read', 'Write', 'Glob'],
+      },
+    };
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'doc-writer' }, customProfiles);
+    expect(opts.allowedTools).toEqual(['Read', 'Write', 'Glob']);
+  });
+
+  it('still resolves built-in profiles when custom profiles are provided', () => {
+    const customProfiles = {
+      'test-runner': { name: 'test-runner', tools: ['Read'] },
+    };
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' }, customProfiles);
+    expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
   it('does not include session-related fields', () => {

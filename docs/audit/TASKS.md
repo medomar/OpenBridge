@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 23 tasks in 5 phases | **Next up:** Phase 17
+> **Pending:** 22 tasks in 5 phases | **Next up:** Phase 17
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -81,7 +81,7 @@ The Master AI is the brain. It decides:
 | 99  | **Tool profile schema** — create `src/types/agent.ts` with Zod schemas: `ToolProfile` (name + tools[]), `TaskManifest` (prompt, workspacePath, model, profile, maxTurns, timeout, retries). Define built-in profiles: `read-only` (Read, Glob, Grep), `code-edit` (Read, Edit, Write, Glob, Grep, Bash(git:\*), Bash(npm:\*), Bash(npx:\*)), `full-access` (all tools). Export as `BUILT_IN_PROFILES` | OB-140 | 🟠 High  |  ✅ Done  |
 | 100 | **Model selection strategy** — create `src/core/model-selector.ts`. Given a task description and profile, recommend a model. Rules: read-only tasks → haiku (fast, cheap), code-edit tasks → sonnet (balanced), complex reasoning → opus (best). Allow override via TaskManifest. Master can call this or ignore it                                                                                   | OB-141 |  🟡 Med  |  ✅ Done  |
 | 101 | **AgentRunner integration** — AgentRunner resolves `profile` field from TaskManifest into `--allowedTools` flags. If both `profile` and explicit `allowedTools` are provided, explicit wins. Add `TaskManifest` as an alternative input to `AgentRunner.spawn()`                                                                                                                                      | OB-142 | 🟠 High  |  ✅ Done  |
-| 102 | **Profile registry in .openbridge/** — Master can create custom profiles beyond built-in ones. Stored in `.openbridge/profiles.json`. AgentRunner reads built-in + custom profiles. Master can add profiles like `test-runner` (Read, Glob, Grep, Bash(npm:test))                                                                                                                                     | OB-143 |  🟡 Med  | ◻ Pending |
+| 102 | **Profile registry in .openbridge/** — Master can create custom profiles beyond built-in ones. Stored in `.openbridge/profiles.json`. AgentRunner reads built-in + custom profiles. Master can add profiles like `test-runner` (Read, Glob, Grep, Bash(npm:test))                                                                                                                                     | OB-143 |  🟡 Med  |  ✅ Done  |
 | 103 | **Model fallback chain** — if preferred model is unavailable or rate-limited (exit code indicating rate limit), fall back to next model. Chain: opus → sonnet → haiku. Log fallback decisions. Mirrors OpenClaw's model-fallback.ts pattern                                                                                                                                                           | OB-144 |  🟢 Low  | ◻ Pending |
 
 ---

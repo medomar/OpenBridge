@@ -10,6 +10,7 @@ import type {
   ExplorationLogEntry,
   TaskRecord,
 } from '../../src/types/master.js';
+import type { ToolProfile, ProfilesRegistry } from '../../src/types/agent.js';
 
 const execAsync = promisify(exec);
 
@@ -812,6 +813,172 @@ describe('DotFolderManager', () => {
 
       expect(readDive1).toEqual(dive1);
       expect(readDive2).toEqual(dive2);
+    });
+  });
+
+  describe('Profile Registry Operations', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+    });
+
+    it('should return correct profiles.json path', () => {
+      const expected = path.join(testWorkspace, '.openbridge', 'profiles.json');
+      expect(manager.getProfilesPath()).toBe(expected);
+    });
+
+    it('should return null when reading non-existent profiles', async () => {
+      const registry = await manager.readProfiles();
+      expect(registry).toBeNull();
+    });
+
+    it('should write and read profiles registry', async () => {
+      const testRegistry: ProfilesRegistry = {
+        profiles: {
+          'test-runner': {
+            name: 'test-runner',
+            description: 'Run tests only',
+            tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      };
+
+      await manager.writeProfiles(testRegistry);
+      const readRegistry = await manager.readProfiles();
+
+      expect(readRegistry).toEqual(testRegistry);
+    });
+
+    it('should validate profiles registry schema before writing', async () => {
+      const invalidRegistry = {
+        profiles: 'not-an-object',
+      } as unknown as ProfilesRegistry;
+
+      await expect(manager.writeProfiles(invalidRegistry)).rejects.toThrow();
+    });
+
+    it('should return null for corrupted profiles file', async () => {
+      const profilesPath = manager.getProfilesPath();
+      await fs.writeFile(profilesPath, 'invalid json {{{', 'utf-8');
+
+      const registry = await manager.readProfiles();
+      expect(registry).toBeNull();
+    });
+
+    it('should add a profile to an empty registry', async () => {
+      const profile: ToolProfile = {
+        name: 'test-runner',
+        description: 'Run tests only',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      };
+
+      await manager.addProfile(profile);
+      const registry = await manager.readProfiles();
+
+      expect(registry).not.toBeNull();
+      expect(registry!.profiles['test-runner']).toEqual(profile);
+      expect(registry!.updatedAt).toBeDefined();
+    });
+
+    it('should add multiple profiles', async () => {
+      const profile1: ToolProfile = {
+        name: 'test-runner',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      };
+
+      const profile2: ToolProfile = {
+        name: 'doc-writer',
+        description: 'Write documentation',
+        tools: ['Read', 'Write', 'Glob', 'Grep'],
+      };
+
+      await manager.addProfile(profile1);
+      await manager.addProfile(profile2);
+
+      const registry = await manager.readProfiles();
+      expect(Object.keys(registry!.profiles)).toHaveLength(2);
+      expect(registry!.profiles['test-runner']).toEqual(profile1);
+      expect(registry!.profiles['doc-writer']).toEqual(profile2);
+    });
+
+    it('should overwrite existing profile with same name', async () => {
+      const original: ToolProfile = {
+        name: 'test-runner',
+        tools: ['Read', 'Glob'],
+      };
+
+      const updated: ToolProfile = {
+        name: 'test-runner',
+        description: 'Updated profile',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      };
+
+      await manager.addProfile(original);
+      await manager.addProfile(updated);
+
+      const registry = await manager.readProfiles();
+      expect(Object.keys(registry!.profiles)).toHaveLength(1);
+      expect(registry!.profiles['test-runner']).toEqual(updated);
+    });
+
+    it('should validate profile before adding', async () => {
+      const invalidProfile = {
+        name: '',
+        tools: [],
+      } as unknown as ToolProfile;
+
+      await expect(manager.addProfile(invalidProfile)).rejects.toThrow();
+    });
+
+    it('should remove an existing profile', async () => {
+      await manager.addProfile({
+        name: 'test-runner',
+        tools: ['Read', 'Glob', 'Grep'],
+      });
+
+      const removed = await manager.removeProfile('test-runner');
+      expect(removed).toBe(true);
+
+      const registry = await manager.readProfiles();
+      expect(registry!.profiles['test-runner']).toBeUndefined();
+      expect(Object.keys(registry!.profiles)).toHaveLength(0);
+    });
+
+    it('should return false when removing non-existent profile', async () => {
+      const removed = await manager.removeProfile('nonexistent');
+      expect(removed).toBe(false);
+    });
+
+    it('should return false when removing from empty registry', async () => {
+      await manager.writeProfiles({
+        profiles: {},
+        updatedAt: new Date().toISOString(),
+      });
+
+      const removed = await manager.removeProfile('test-runner');
+      expect(removed).toBe(false);
+    });
+
+    it('should get a single profile by name', async () => {
+      const profile: ToolProfile = {
+        name: 'test-runner',
+        tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
+      };
+
+      await manager.addProfile(profile);
+      const result = await manager.getProfile('test-runner');
+
+      expect(result).toEqual(profile);
+    });
+
+    it('should return null for non-existent profile name', async () => {
+      const result = await manager.getProfile('nonexistent');
+      expect(result).toBeNull();
+    });
+
+    it('should return null for profile lookup when no registry exists', async () => {
+      const result = await manager.getProfile('test-runner');
+      expect(result).toBeNull();
     });
   });
 });
