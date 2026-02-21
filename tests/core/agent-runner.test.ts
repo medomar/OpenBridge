@@ -15,6 +15,16 @@ import {
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 
+// ── Mock node:fs/promises ───────────────────────────────────────────
+
+const mockMkdir = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockWriteFile = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+vi.mock('node:fs/promises', () => ({
+  mkdir: (...args: unknown[]) => mockMkdir(...args),
+  writeFile: (...args: unknown[]) => mockWriteFile(...args),
+}));
+
 // ── Mock child_process.spawn ────────────────────────────────────────
 
 interface MockChild extends EventEmitter {
@@ -59,6 +69,8 @@ function resolveChild(child: MockChild, stdout: string, exitCode: number, stderr
 beforeEach(() => {
   spawnCalls = [];
   mockChildren = [];
+  mockMkdir.mockClear();
+  mockWriteFile.mockClear();
 });
 
 afterEach(() => {
@@ -821,5 +833,177 @@ describe('AgentExhaustedError', () => {
       const error = e as AgentExhaustedError;
       expect(error.name).toBe('AgentExhaustedError');
     }
+  });
+});
+
+// ── Disk logging ─────────────────────────────────────────────────────
+
+describe('Disk logging', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('writes log file when logFile option is provided', async () => {
+    const promise = runner.spawn({
+      prompt: 'explore workspace',
+      workspacePath: '/tmp/project',
+      logFile: '/tmp/project/.openbridge/logs/task-1.log',
+      model: 'haiku',
+      allowedTools: ['Read', 'Glob', 'Grep'],
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'agent output', 0, 'some warning');
+    await promise;
+
+    expect(mockMkdir).toHaveBeenCalledWith('/tmp/project/.openbridge/logs', { recursive: true });
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Agent Run Log');
+    expect(writtenContent).toContain('# Model: haiku');
+    expect(writtenContent).toContain('# Tools: Read, Glob, Grep');
+    expect(writtenContent).toContain('# Prompt Length: 17');
+    expect(writtenContent).toContain('# Exit Code: 0');
+    expect(writtenContent).toContain('--- STDOUT ---');
+    expect(writtenContent).toContain('agent output');
+    expect(writtenContent).toContain('--- STDERR ---');
+    expect(writtenContent).toContain('some warning');
+  });
+
+  it('does not write log file when logFile option is not provided', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    expect(mockMkdir).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('includes timestamp in the log header', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/tmp/logs/task.log',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toMatch(/# Timestamp: \d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('shows default model when no model specified', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/tmp/logs/task.log',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Model: default');
+  });
+
+  it('shows "none specified" when no tools provided', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/tmp/logs/task.log',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Tools: none specified');
+  });
+
+  it('includes retryCount and duration in the log', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/tmp/logs/task.log',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // First attempt fails
+    resolveChild(lastChild(), '', 1, 'error');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt succeeds
+    resolveChild(lastChild(), 'recovered', 0);
+    await promise;
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Retries: 1');
+    expect(writtenContent).toMatch(/# Duration: \d+ms/);
+  });
+
+  it('creates log directory recursively', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/deep/nested/path/logs/task.log',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    expect(mockMkdir).toHaveBeenCalledWith('/deep/nested/path/logs', { recursive: true });
+  });
+
+  it('does not throw if log writing fails', async () => {
+    mockWriteFile.mockRejectedValueOnce(new Error('EACCES: permission denied'));
+
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/readonly/logs/task.log',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    // spawn() should still return the result successfully
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('output');
+  });
+
+  it('includes max turns in the log header', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/tmp/logs/task.log',
+      maxTurns: 15,
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Max Turns: 15');
   });
 });

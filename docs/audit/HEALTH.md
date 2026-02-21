@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 5.93/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 5.88
-> **Open Findings:** 2 (0 critical, 1 high, 1 medium) | **Pending Tasks:** 29 (Phases 16–21)
+> **Current Score:** 5.96/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 5.93
+> **Open Findings:** 1 (0 critical, 1 high, 0 medium) | **Pending Tasks:** 28 (Phases 16–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 5.93** — MVP foundation complete and tested. AgentRunner exists with --allowedTools, --max-turns, --model, and retry-with-backoff support. Removes --dangerously-skip-permissions (OB-F13), prevents runaway agents (OB-F14), enables model selection (OB-F16), and throws AgentExhaustedError with aggregated attempt details after retries exhausted (OB-F15). Once Phase 16 lands fully, the score should jump significantly.
+**Current state: 5.96** — MVP foundation complete and tested. AgentRunner exists with --allowedTools, --max-turns, --model, retry-with-backoff, and disk logging support. Removes --dangerously-skip-permissions (OB-F13), prevents runaway agents (OB-F14), enables model selection (OB-F16), throws AgentExhaustedError with aggregated attempt details after retries exhausted (OB-F15), and writes full stdout/stderr to disk for debugging (OB-F17). Once Phase 16 lands fully, the score should jump significantly.
 
 ---
 
@@ -82,6 +82,7 @@
 | 2026-02-21 | 5.85  |    +0.05    | OB-132: --max-turns support with DEFAULT_MAX_TURNS_EXPLORATION (15) and DEFAULT_MAX_TURNS_TASK (25). Always passes --max-turns to prevent runaway agents (OB-F14 partial fix)          |
 | 2026-02-21 | 5.88  |    +0.03    | OB-133: --model support with MODEL_ALIASES (haiku/sonnet/opus), isValidModel() validation, model in AgentResult. Fixes OB-F16 (no model selection)                                     |
 | 2026-02-21 | 5.93  |    +0.05    | OB-134: Retry with backoff throws AgentExhaustedError with aggregated attempt records after retries exhausted. Fixes OB-F15 (no retry logic)                                           |
+| 2026-02-21 | 5.96  |    +0.03    | OB-135: Disk logging writes full stdout/stderr to logFile with header (timestamp, model, tools, prompt length). Creates log dir if missing. Fixes OB-F17 (no disk logging)             |
 
 ---
 
