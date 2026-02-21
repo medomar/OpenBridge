@@ -1,8 +1,8 @@
 # OpenBridge — Task List
 
-> **Pending:** 3 tasks across 3 phases | **Next up:** Phase 10
-> **Last Updated:** 2026-02-20
-> **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md)
+> **Pending:** 30 tasks across 5 phases | **Next up:** Phase 11
+> **Last Updated:** 2026-02-21
+> **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
 ---
 
@@ -19,6 +19,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 - **Silent worker** — only speaks when spoken to
 - **`.openbridge/` is the AI's brain** — everything it learns lives in the target project
 - **Multi-AI delegation** — Master can assign tasks to other discovered AI tools
+- **Incremental exploration** — workspace is explored in short passes with checkpointing (never timeout)
 
 ---
 
@@ -26,186 +27,192 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 
 | Phase | Focus                             | Tasks | Status |
 | :---: | --------------------------------- | :---: | :----: |
-|   6   | AI tool discovery                 |   4   |   ✅   |
-|   7   | Master AI + `.openbridge/` folder |   6   |   ✅   |
-|   8   | V2 config + routing + CLI         |   7   |   ✅   |
-|   9   | Archive dead code + clean up      |   3   |   ✅   |
-|  10   | Multi-AI delegation               |   4   |   ✅   |
-|  11   | Status + interaction              |   3   |   ◻    |
-|  12   | Documentation rewrite             |   6   |   ◻    |
-|  13   | Testing + verification            |   8   |   ◻    |
-|  14   | Future: channels + views          |   4   |   ◻    |
+| 6–10  | Discovery, Master, V2, Delegation |  24   |   ✅   |
+|  11   | Incremental exploration           |   8   |   ◻    |
+|  12   | Status + interaction              |   4   |   ◻    |
+|  13   | Documentation rewrite             |   6   |   ◻    |
+|  14   | Testing + verification            |   8   |   ◻    |
+|  15   | Future: channels + views          |   4   |   ◻    |
 
 ---
 
-## Phase 6 — AI Tool Discovery
+## Phase 11 — Incremental Multi-Pass Exploration
 
-> **Focus:** On startup, auto-discover AI CLI tools installed on the machine. No API keys needed — use what's already there.
+> **Focus:** Replace the monolithic single-call exploration (which times out on real projects) with a 5-pass incremental strategy. Each pass is short (30-90s), checkpointed to disk, and resumable on restart.
 
-| #   | Task                                                                                                                                                                                         | ID     | Priority | Status  |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 41  | Create discovery types (`src/types/discovery.ts`) — Zod schemas for `DiscoveredTool` (name, path, version, capabilities, role, available) and `ScanResult`                                   | OB-071 | 🟠 High  | ✅ Done |
-| 42  | Create CLI tool scanner (`src/discovery/tool-scanner.ts`) — scan with `which` for known AI tools (claude, codex, aider, cursor, cody), capture path + version, rank by priority, pick Master | OB-072 | 🟠 High  | ✅ Done |
-| 43  | Create VS Code extension scanner (`src/discovery/vscode-scanner.ts`) — scan `~/.vscode/extensions/` for AI extensions (Copilot, Cody, Continue), return metadata                             | OB-073 |  🟡 Med  | ✅ Done |
-| 44  | Create discovery module index (`src/discovery/index.ts`) — export `scanForAITools()` combining CLI + VS Code scans                                                                           | OB-074 |  🟡 Med  | ✅ Done |
+### Problem
 
-**New files:** `src/types/discovery.ts`, `src/discovery/tool-scanner.ts`, `src/discovery/vscode-scanner.ts`, `src/discovery/index.ts`
+The current exploration sends one giant prompt asking Claude to scan the entire workspace, classify it, generate workspace-map.json, init git, and commit — all in a single AI call. Real projects consistently **timeout** (exit code 143) because the AI can't finish everything in 10 minutes. If it gets 80% done then times out, all work is lost.
 
----
+### Solution
 
-## Phase 7 — Master AI + `.openbridge/` Folder
+Split exploration into **5 short passes**, checkpoint after each pass, and assemble the final `workspace-map.json` from partial results. If interrupted at any point, resume from the last checkpoint.
 
-> **Focus:** Create the Master AI manager that silently explores the workspace on startup and stores its knowledge in `.openbridge/` inside the target project.
+### The 5 Passes
 
-| #   | Task                                                                                                                                                                                                                                                                                                    | ID     | Priority | Status  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 45  | Create Master types (`src/types/master.ts`) — Zod schemas for `MasterState`, `ExplorationSummary`, `TaskRecord`                                                                                                                                                                                         | OB-075 | 🟠 High  | ✅ Done |
-| 46  | Create `.openbridge/` folder manager (`src/master/dotfolder-manager.ts`) — create folder, init git repo, commit changes, read/write map, write agents.json, append log, record tasks                                                                                                                    | OB-076 | 🟠 High  | ✅ Done |
-| 47  | Create exploration prompt (`src/master/exploration-prompt.ts`) — system prompt instructing Master to explore workspace, create `.openbridge/workspace-map.json`, init git, work silently. Include adaptive response style: concise + non-technical for business workspaces, technical for code projects | OB-077 | 🟠 High  | ✅ Done |
-| 48  | Create Master AI Manager (`src/master/master-manager.ts`) — lifecycle management (idle → exploring → ready), background exploration, message routing, status queries                                                                                                                                    | OB-078 | 🟠 High  | ✅ Done |
-| 49  | Create Master module index (`src/master/index.ts`) — export MasterManager, DotFolderManager                                                                                                                                                                                                             | OB-079 |  🟡 Med  | ✅ Done |
-| 50  | Write Master AI tests (`tests/master/`) — dotfolder-manager, master-manager, exploration prompt                                                                                                                                                                                                         | OB-080 |  🟡 Med  | ✅ Done |
+| Pass | Name            | Timeout | AI? | Description                                                                                                             |
+| ---- | --------------- | ------- | --- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1    | Structure Scan  | 90s     | Yes | List top-level files/dirs, count files per directory, detect config files. Skip node_modules/.git/dist                  |
+| 2    | Classification  | 90s     | Yes | Read config files from Pass 1 → detect project type, frameworks, commands, dependencies                                 |
+| 3    | Directory Dives | 90s/dir | Yes | For each significant directory, explore contents (purpose, key files, subdirs). Batches of 3 via `Promise.allSettled()` |
+| 4    | Assembly        | 60s     | Yes | Merge partial results into `workspace-map.json`, one AI call for human-readable `summary` field                         |
+| 5    | Finalization    | —       | No  | Create `agents.json`, git commit, write log entry (pure code, no AI call)                                               |
 
-**Key design:** The Master AI IS the explorer. We send it a prompt ("explore this workspace silently") and let it do the work. We don't write framework detectors — the AI figures it out.
-
-**`.openbridge/` folder structure:**
+### New `.openbridge/` Layout
 
 ```
 .openbridge/
-├── .git/                ← local tracking repo (Master's changes)
-├── workspace-map.json   ← auto-generated project understanding
-├── exploration.log      ← timestamped scan history
-├── agents.json          ← discovered AI tools + roles
-└── tasks/               ← task history (one JSON per task)
+  exploration/              ← NEW: intermediate state
+    exploration-state.json  ← tracks which passes are done (single source of truth for resumability)
+    structure-scan.json     ← Pass 1 output
+    classification.json     ← Pass 2 output
+    dirs/                   ← Pass 3 outputs (one per directory)
+      src.json
+      tests.json
+      docs.json
+  workspace-map.json        ← Final assembled map (Pass 4)
+  agents.json               ← Pass 5
+  exploration.log
+  tasks/
+  .git/
 ```
 
+### Tasks
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                   | ID     | Priority |  Status   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 65  | Add Zod schemas to `src/types/master.ts` — `ExplorationPhaseSchema`, `ExplorationStateSchema`, `StructureScanSchema`, `ClassificationSchema`, `DirectoryDiveStatusSchema`, `DirectoryDiveResultSchema`                                                                                                                                                                                 | OB-095 | 🟠 High  | ◻ Pending |
+| 66  | Extend `DotFolderManager` (`src/master/dotfolder-manager.ts`) with exploration state CRUD — `createExplorationDir()`, `readExplorationState()`/`writeExplorationState()`, `readStructureScan()`/`writeStructureScan()`, `readClassification()`/`writeClassification()`, `readDirectoryDive()`/`writeDirectoryDive()`                                                                   | OB-096 | 🟠 High  | ◻ Pending |
+| 67  | Create `src/master/result-parser.ts` — robust JSON extraction from AI output with progressive fallbacks: direct `JSON.parse()` → markdown fence extraction → regex for first `{...}` block → parse error (retry up to 3 times)                                                                                                                                                         | OB-097 | 🟠 High  | ◻ Pending |
+| 68  | Create `src/master/exploration-prompts.ts` — 4 focused prompt generators: `generateStructureScanPrompt(workspacePath)`, `generateClassificationPrompt(workspacePath, structureScan)`, `generateDirectoryDivePrompt(workspacePath, dirPath, context)`, `generateSummaryPrompt(workspacePath, partialMap)`. Each prompt ~25-40 lines, returns JSON matching the corresponding Zod schema | OB-098 | 🟠 High  | ◻ Pending |
+| 69  | Create `src/master/exploration-coordinator.ts` — main orchestrator: sequential 5-phase flow with `explore()` entry point that loads/creates `exploration-state.json`, skips completed phases, runs each pass via `executeClaudeCode()`, parses results with `result-parser.ts`, checkpoints after each pass via `DotFolderManager`                                                     | OB-099 | 🟠 High  | ◻ Pending |
+| 70  | Refactor `MasterManager.explore()` (`src/master/master-manager.ts`) — replace monolithic `executeClaudeCode()` call with delegation to `ExplorationCoordinator.explore()`, remove old exploration prompt import, update state transitions to track incremental progress                                                                                                                | OB-100 | 🟠 High  | ◻ Pending |
+| 71  | Update exports in `src/master/index.ts` — export `ExplorationCoordinator`, `parseAIResult` from result-parser, exploration prompt generators                                                                                                                                                                                                                                           | OB-101 |  🟡 Med  | ◻ Pending |
+| 72  | Write tests — `ExplorationCoordinator` (phase flow, checkpointing, resume from partial state), `result-parser` (clean JSON, markdown fences, malformed output), prompt generators (output structure), `DotFolderManager` exploration CRUD                                                                                                                                              | OB-102 |  🟡 Med  | ◻ Pending |
+
+### Key Design Details
+
+**Resumability:** `exploration-state.json` is the single source of truth. On restart, `ExplorationCoordinator.explore()` loads this file and skips completed phases.
+
+```json
+{
+  "currentPhase": "directory_dives",
+  "status": "in_progress",
+  "startedAt": "2026-02-21T...",
+  "phases": {
+    "structure_scan": "completed",
+    "classification": "completed",
+    "directory_dives": "in_progress",
+    "assembly": "pending",
+    "finalization": "pending"
+  },
+  "directoryDives": [
+    { "path": "src", "status": "completed", "outputFile": "dirs/src.json" },
+    { "path": "tests", "status": "pending" },
+    { "path": "docs", "status": "failed", "attempts": 1 }
+  ],
+  "totalCalls": 5,
+  "totalAITimeMs": 45000
+}
+```
+
+**Result parser:** AI output isn't always clean JSON. Progressive fallbacks:
+
+1. `JSON.parse(stdout)` directly
+2. Extract from markdown code fences (` ```json ... ``` `)
+3. Regex for first `{...}` block
+4. Return parse error → retry up to 3 times
+
+**Parallel directory dives:** Process in batches of 3 using `Promise.allSettled()`. Checkpoint after each batch. Failed dives get retried up to 3 times with exponential backoff.
+
+**Old exploration prompt:** `src/master/exploration-prompt.ts` is kept for backward compatibility but no longer used by the coordinator. May be removed in Phase 13.
+
 ---
 
-## Phase 8 — V2 Config + Routing + CLI
-
-> **Focus:** Simplify config to 3 fields, wire Master into the routing pipeline, update CLI init.
-
-| #   | Task                                                                                                                                                              | ID     | Priority | Status  |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 51  | Add V2 config schema to `src/types/config.ts` — `workspacePath` + `channels` + `auth` only. No providers, no workspaces array. Keep V0 schema for backward compat | OB-081 | 🟠 High  | ✅ Done |
-| 52  | Update config loader `src/core/config.ts` — try V2 schema first, fall back to V0. Add `isV2Config()` type guard and `convertV2ToInternal()` helper                | OB-082 | 🟠 High  | ✅ Done |
-| 53  | Add Master routing to Router `src/core/router.ts` — add `setMaster()` method, route through Master when set (priority over orchestrator/direct provider)          | OB-083 | 🟠 High  | ✅ Done |
-| 54  | Add Master support to Bridge `src/core/bridge.ts` — add `setMaster()`, wire into router, call `master.shutdown()` on stop. Remove dead workspace-manager imports  | OB-084 | 🟠 High  | ✅ Done |
-| 55  | Update entry point `src/index.ts` — V2 flow: load config → discover tools → create bridge → start → launch Master → explore. Keep V0 flow for old config          | OB-085 | 🟠 High  | ✅ Done |
-| 56  | Simplify CLI init `src/cli/init.ts` — reduce to 3 questions (workspace path, phone whitelist, prefix). Generate V2 config format                                  | OB-086 |  🟡 Med  | ✅ Done |
-| 57  | Update `config.example.json` — replace with V2 format                                                                                                             | OB-087 |  🟡 Med  | ✅ Done |
-
----
-
-## Phase 9 — Archive Dead Code
-
-> **Focus:** Move code from the old vision (user-defined maps, manual orchestrator) to `src/_archived/`. Don't delete — preserve git history.
-
-| #   | Task                                                                                                                                             | ID     | Priority | Status  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-----: |
-| 58  | Move old knowledge layer to `src/_archived/knowledge/` — workspace-scanner.ts, api-executor.ts, tool-catalog.ts, tool-executor.ts                | OB-088 |  🟡 Med  | ✅ Done |
-| 59  | Move old orchestrator to `src/_archived/orchestrator/` — script-coordinator.ts, task-agent-runtime.ts. Move old types: workspace-map.ts, tool.ts | OB-089 |  🟡 Med  | ✅ Done |
-| 60  | Move workspace-manager.ts + map-loader.ts to `src/_archived/core/`. Clean all imports. Archive corresponding tests                               | OB-090 |  🟡 Med  | ✅ Done |
-
----
-
-## Phase 10 — Multi-AI Delegation
-
-> **Focus:** Master can delegate tasks to other discovered AI tools. Each delegation spawns a subprocess using the generalized executor.
-
-| #   | Task                                                                                                                                                      | ID     | Priority |  Status   |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 61  | Create delegation coordinator (`src/master/delegation.ts`) — manage task delegation to non-master AI tools, track active delegations, handle timeouts     | OB-091 | 🟠 High  |  ✅ Done  |
-| 62  | Integrate delegation into Master Manager — parse delegation markers from Master output, delegate to appropriate tool, feed results back to Master session | OB-092 | 🟠 High  |  ✅ Done  |
-| 63  | Add task tracking to dotfolder-manager — record each task with id, description, delegatedTo, status, result, timestamps. Commit to `.openbridge/.git`     | OB-093 |  🟡 Med  |  ✅ Done  |
-| 64  | Write delegation tests — delegation flow, timeout handling, multi-tool coordination                                                                       | OB-094 |  🟡 Med  | ◻ Pending |
-
----
-
-## Phase 11 — Status + Interaction
+## Phase 12 — Status + Interaction
 
 > **Focus:** User can ask about exploration progress and system status via WhatsApp. Session continuity is critical for multi-turn business conversations (e.g. "which invoices are overdue?" → "send reminders to those clients").
 
-| #   | Task                                                                                                                                              | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 65  | Add status command handler to Master Manager — intercept "status"/"progress" keywords, return exploration state + active tasks from local state   | OB-095 |  🟡 Med  |  ✅ Done  |
-| 66  | Add exploration progress tracking — track milestones (started → scanning → analyzing → map generated → git initialized → complete), report on ask | OB-096 |  🟡 Med  | ◻ Pending |
-| 67  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project             | OB-097 | 🟠 High  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                           | ID     | Priority |  Status   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 73  | Add exploration progress tracking — track milestones per-phase (structure_scan → classification → directory_dives → assembly → finalization), report current phase + completion % on status query                                                                                                              | OB-103 |  🟡 Med  | ◻ Pending |
+| 74  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project                                                                                                                                                                          | OB-104 | 🟠 High  | ◻ Pending |
+| 75  | Resilient startup — on restart: reuse valid `.openbridge/` state, resume incomplete exploration from `exploration-state.json`, re-explore if workspace-map.json is missing/corrupted, skip when map is valid. Handle: folder exists but map missing, map exists but schema outdated, clean restart after crash | OB-105 | 🟠 High  | ◻ Pending |
+| 76  | Status command enhancement — show per-phase progress, active directory dives, total AI calls/time, estimated completion                                                                                                                                                                                        | OB-106 |  🟡 Med  | ◻ Pending |
+
+**Note:** Task 65 (status command handler) from the old Phase 11 is already done. These tasks build on top of the existing status infrastructure.
 
 ---
 
-## Phase 12 — Documentation Rewrite
+## Phase 13 — Documentation Rewrite
 
 > **Focus:** Rewrite all docs to reflect the new autonomous AI vision. Remove all references to user-defined map files and old architecture.
 
-| #   | Task                                                                                                                                                   | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 68  | Rewrite OVERVIEW.md — new vision (autonomous AI bridge), use cases (project exploration, task execution, multi-AI delegation), new architecture layers | OB-098 | 🟠 High  | ◻ Pending |
-| 69  | Rewrite README.md — new positioning, updated quick start (3-step setup), real examples showing AI discovery + exploration                              | OB-099 | 🟠 High  | ◻ Pending |
-| 70  | Rewrite ARCHITECTURE.md — new layers (channels, core, discovery, master AI, delegation), message flow with Master, `.openbridge/` folder spec          | OB-100 | 🟠 High  | ◻ Pending |
-| 71  | Simplify CONFIGURATION.md — V2 config (3 fields), remove workspace maps section, remove provider config, add discovery overrides                       | OB-101 |  🟡 Med  | ◻ Pending |
-| 72  | Update both CLAUDE.md files — reflect new architecture, new module list, new file structure                                                            | OB-102 |  🟡 Med  | ◻ Pending |
-| 73  | Delete WORKSPACE_MAP_SPEC.md — no longer relevant (AI generates its own maps)                                                                          | OB-103 |  🟢 Low  | ◻ Pending |
+| #   | Task                                                                                                                                                                                | ID     | Priority |  Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 77  | Rewrite OVERVIEW.md — new vision (autonomous AI bridge), use cases (project exploration, task execution, multi-AI delegation), new architecture layers                              | OB-107 | 🟠 High  | ◻ Pending |
+| 78  | Rewrite README.md — new positioning, updated quick start (3-step setup), real examples showing AI discovery + exploration                                                           | OB-108 | 🟠 High  | ◻ Pending |
+| 79  | Rewrite ARCHITECTURE.md — new layers (channels, core, discovery, master AI, delegation), message flow with Master, `.openbridge/` folder spec, incremental exploration architecture | OB-109 | 🟠 High  | ◻ Pending |
+| 80  | Simplify CONFIGURATION.md — V2 config (3 fields), remove workspace maps section, remove provider config, add discovery overrides                                                    | OB-110 |  🟡 Med  | ◻ Pending |
+| 81  | Update both CLAUDE.md files — reflect new architecture, new module list, new file structure                                                                                         | OB-111 |  🟡 Med  | ◻ Pending |
+| 82  | Delete WORKSPACE_MAP_SPEC.md — no longer relevant (AI generates its own maps)                                                                                                       | OB-112 |  🟢 Low  | ◻ Pending |
 
 ---
 
-## Phase 13 — Testing + Verification
+## Phase 14 — Testing + Verification
 
 > **Focus:** Ensure everything compiles, passes tests, and works end-to-end. Includes use-case validation: non-code workspaces (cafes, law firms, accounting), Console-based rapid testing, graceful error handling, and prefix stripping verification.
 
 | #   | Task                                                                                                                                                                                                  | ID     | Priority |  Status   |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 74  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-104 | 🟠 High  | ◻ Pending |
-| 75  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-105 | 🟠 High  | ◻ Pending |
-| 76  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-106 | 🟠 High  | ◻ Pending |
-| 77  | Full E2E verification — start OpenBridge, discover tools, explore workspace, send WhatsApp message, get response, check .openbridge/                                                                  | OB-107 | 🟠 High  | ◻ Pending |
-| 78  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-108 | 🟠 High  | ◻ Pending |
-| 79  | Console-based preprod test workflow — document and verify Console connector as primary rapid testing path (no WhatsApp QR dependency), test all use case categories through Console                   | OB-109 | 🟠 High  | ◻ Pending |
-| 80  | Graceful "unknown" handling — verify AI responds helpfully when workspace lacks data for a query (e.g. "what's today's revenue?" with no sales file), no crashes or empty responses                   | OB-110 |  🟡 Med  | ◻ Pending |
-| 81  | Command prefix stripping in Master flow — verify `/ai` prefix is cleanly stripped before reaching Master AI, Master receives natural language only                                                    | OB-111 |  🟡 Med  | ◻ Pending |
+| 83  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-113 | 🟠 High  | ◻ Pending |
+| 84  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-114 | 🟠 High  | ◻ Pending |
+| 85  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-115 | 🟠 High  | ◻ Pending |
+| 86  | Full E2E verification — start OpenBridge, discover tools, explore workspace (incremental), send WhatsApp message, get response, check .openbridge/ (including exploration/ subfolder)                 | OB-116 | 🟠 High  | ◻ Pending |
+| 87  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-117 | 🟠 High  | ◻ Pending |
+| 88  | Console-based preprod test workflow — document and verify Console connector as primary rapid testing path (no WhatsApp QR dependency), test all use case categories through Console                   | OB-118 | 🟠 High  | ◻ Pending |
+| 89  | Graceful "unknown" handling — verify AI responds helpfully when workspace lacks data for a query (e.g. "what's today's revenue?" with no sales file), no crashes or empty responses                   | OB-119 |  🟡 Med  | ◻ Pending |
+| 90  | Command prefix stripping in Master flow — verify `/ai` prefix is cleanly stripped before reaching Master AI, Master receives natural language only                                                    | OB-120 |  🟡 Med  | ◻ Pending |
 
 ---
 
-## Phase 14 — Future: Channels + Views (Post-MVP)
+## Phase 15 — Future: Channels + Views (Post-MVP)
 
 > **Focus:** More messaging platforms and rich output capabilities. Not blocking MVP.
 
 | #   | Task                                                                                             | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 82  | Telegram connector — Bot API via grammY, supports DM + group                                     | OB-112 |  🟡 Med  | ◻ Pending |
-| 83  | Discord connector — discord.js, supports DM + server channels                                    | OB-113 |  🟢 Low  | ◻ Pending |
-| 84  | Web chat connector — browser-based chat widget                                                   | OB-114 |  🟢 Low  | ◻ Pending |
-| 85  | Interactive AI views — AI generates reports/dashboards served on local HTTP, links sent via chat | OB-115 |  🟢 Low  | ◻ Pending |
+| 91  | Telegram connector — Bot API via grammY, supports DM + group                                     | OB-121 |  🟡 Med  | ◻ Pending |
+| 92  | Discord connector — discord.js, supports DM + server channels                                    | OB-122 |  🟢 Low  | ◻ Pending |
+| 93  | Web chat connector — browser-based chat widget                                                   | OB-123 |  🟢 Low  | ◻ Pending |
+| 94  | Interactive AI views — AI generates reports/dashboards served on local HTTP, links sent via chat | OB-124 |  🟢 Low  | ◻ Pending |
 
 ---
 
 ## MVP Milestone
 
-**Phases 6–9** = shippable MVP:
+**Phases 6–10** (done) = foundation:
 
 - AI tool auto-discovery (zero API keys)
-- Master AI autonomous workspace exploration
+- Master AI autonomous workspace exploration (monolithic)
 - `.openbridge/` folder with git tracking
 - V2 config (3 fields only)
 - Master routing through WhatsApp
 - Dead code archived cleanly
+- Multi-AI delegation
 
-**Phases 10–11** = post-MVP. **Phase 12** = docs. **Phase 13** = testing (includes use-case validation). **Phase 14** = future.
+**Phase 11** = critical fix (incremental exploration that doesn't timeout). **Phase 12** = UX polish. **Phase 13** = docs. **Phase 14** = testing. **Phase 15** = future.
 
 ---
 
 ## Implementation Order
 
 ```
-Phase 6  → Discovery module (foundation for everything)
-Phase 7  → Master AI + .openbridge/ (core new feature)
-Phase 8  → V2 config + routing + CLI (wire it all together)
-Phase 9  → Archive dead code (clean house)
-Phase 10 → Multi-AI delegation (power feature)
-Phase 11 → Status + interaction (UX polish)
-Phase 12 → Documentation rewrite (tell the story)
-Phase 13 → Testing + verification (ship it)
-Phase 14 → Future channels + views (growth)
+Phase 11 → Incremental exploration (fix timeout, enable real-world use)
+Phase 12 → Status + interaction (UX polish, session continuity)
+Phase 13 → Documentation rewrite (tell the story)
+Phase 14 → Testing + verification (ship it)
+Phase 15 → Future channels + views (growth)
 ```
 
 ---

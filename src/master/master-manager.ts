@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 
 const logger = createLogger('master-manager');
 
-const DEFAULT_TIMEOUT = 120_000; // 2 minutes for exploration
+const DEFAULT_TIMEOUT = 600_000; // 10 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
 
 /**
@@ -200,11 +200,12 @@ export class MasterManager {
       // Generate exploration prompt
       const prompt = generateExplorationPrompt(this.workspacePath);
 
-      // Execute exploration
+      // Execute exploration (skip permissions — exploration runs in background without user interaction)
       const result = await executeClaudeCode({
         prompt,
         workspacePath: this.workspacePath,
         timeout: this.explorationTimeout,
+        skipPermissions: true,
       });
 
       if (result.exitCode !== 0) {
@@ -319,11 +320,12 @@ export class MasterManager {
       // Generate re-exploration prompt
       const prompt = generateReExplorationPrompt(this.workspacePath);
 
-      // Execute re-exploration
+      // Execute re-exploration (skip permissions — runs in background)
       const result = await executeClaudeCode({
         prompt,
         workspacePath: this.workspacePath,
         timeout: this.explorationTimeout,
+        skipPermissions: true,
       });
 
       if (result.exitCode !== 0) {
@@ -415,12 +417,13 @@ export class MasterManager {
       // Get or create session ID for this sender
       const sessionId = this.getOrCreateSession(message.sender);
 
-      // Execute message through Claude Code with session continuity
+      // Execute message through Claude Code with session continuity (skip permissions — non-interactive)
       let result = await executeClaudeCode({
         prompt: message.content,
         workspacePath: this.workspacePath,
         timeout: this.messageTimeout,
         resumeSessionId: sessionId,
+        skipPermissions: true,
       });
 
       if (result.exitCode !== 0) {
@@ -450,6 +453,7 @@ export class MasterManager {
           workspacePath: this.workspacePath,
           timeout: this.messageTimeout,
           resumeSessionId: sessionId,
+          skipPermissions: true,
         });
 
         if (result.exitCode !== 0) {

@@ -71,24 +71,23 @@ export class Bridge {
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
 
-    // Initialize providers
-    for (const providerConfig of this.config.providers) {
-      if (!providerConfig.enabled) continue;
-
-      const provider = this.registry.createProvider(providerConfig.type, providerConfig.options);
-      await provider.initialize();
-      this.router.addProvider(provider);
-      this.orchestrator.addProvider(provider);
-      this.providers.push(provider);
-      logger.info({ provider: provider.name }, 'Provider initialized');
-    }
-
-    // Wire Master into the router if set (priority routing path)
     if (this.master) {
+      // V2 flow: Master AI handles all routing — skip provider initialization
       this.router.setMaster(this.master);
-      logger.info('Master AI wired into router');
+      logger.info('Master AI wired into router (V2 mode — providers skipped)');
     } else {
-      // Wire orchestrator into the router as fallback
+      // V0 flow: initialize providers and wire orchestrator
+      for (const providerConfig of this.config.providers) {
+        if (!providerConfig.enabled) continue;
+
+        const provider = this.registry.createProvider(providerConfig.type, providerConfig.options);
+        await provider.initialize();
+        this.router.addProvider(provider);
+        this.orchestrator.addProvider(provider);
+        this.providers.push(provider);
+        logger.info({ provider: provider.name }, 'Provider initialized');
+      }
+
       this.router.setOrchestrator(this.orchestrator);
       logger.info('Agent orchestrator wired into router');
     }

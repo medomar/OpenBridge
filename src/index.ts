@@ -91,10 +91,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   const srcDir = path.dirname(fileURLToPath(import.meta.url));
   await registry.discoverPlugins(srcDir);
 
-  // Step 3: Start bridge (connectors and providers)
-  await bridge.start();
-
-  // Step 4: Create and launch Master AI
+  // Step 3: Create Master AI and wire into bridge BEFORE starting
   logger.info({ workspacePath: v2Config.workspacePath }, 'Launching Master AI...');
 
   const masterManager = new MasterManager({
@@ -103,11 +100,19 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
     discoveredTools: scanResult.cliTools,
   });
 
-  // Wire Master into the bridge router
+  // Wire Master into the bridge router (must happen before start)
   bridge.setMaster(masterManager);
 
-  // Step 5: Start exploration (runs in background)
-  await masterManager.start();
+  // Step 4: Start bridge (connectors only — Master handles AI routing)
+  await bridge.start();
+
+  // Step 5: Start exploration (runs in background — does NOT block the bridge)
+  masterManager.start().catch((error) => {
+    logger.error(
+      { err: error },
+      'Master AI exploration failed — bridge continues running without workspace context',
+    );
+  });
 
   logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
   logger.info('Press Ctrl+C to stop.');
