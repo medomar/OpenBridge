@@ -26,6 +26,8 @@ import {
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
+import type { WorkersRegistry } from './worker-registry.js';
+import { WorkersRegistrySchema } from './worker-registry.js';
 
 const execAsync = promisify(exec);
 
@@ -576,6 +578,37 @@ Thumbs.db
   public async writeSystemPrompt(content: string): Promise<void> {
     await fs.mkdir(this.promptsPath, { recursive: true });
     await fs.writeFile(this.getSystemPromptPath(), content, 'utf-8');
+  }
+
+  /**
+   * Get the path to the workers.json file
+   */
+  public getWorkersPath(): string {
+    return path.join(this.dotFolderPath, 'workers.json');
+  }
+
+  /**
+   * Read workers registry from workers.json
+   */
+  public async readWorkers(): Promise<WorkersRegistry | null> {
+    const workersPath = this.getWorkersPath();
+
+    try {
+      const content = await fs.readFile(workersPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return WorkersRegistrySchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write workers registry to workers.json
+   */
+  public async writeWorkers(registry: WorkersRegistry): Promise<void> {
+    const validated = WorkersRegistrySchema.parse(registry);
+    const workersPath = this.getWorkersPath();
+    await fs.writeFile(workersPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
