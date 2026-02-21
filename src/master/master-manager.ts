@@ -284,7 +284,10 @@ export class MasterManager {
 
       this.state = 'error';
 
-      logger.error({ error, workspacePath: this.workspacePath }, 'Workspace exploration failed');
+      logger.error(
+        { err: error, workspacePath: this.workspacePath },
+        'Workspace exploration failed',
+      );
 
       throw error;
     }
@@ -353,7 +356,7 @@ export class MasterManager {
 
       logger.info('Workspace re-exploration completed');
     } catch (error) {
-      logger.error({ error }, 'Workspace re-exploration failed');
+      logger.error({ err: error }, 'Workspace re-exploration failed');
       this.state = 'ready'; // Return to ready state even on failure
       throw error;
     }
@@ -490,7 +493,7 @@ export class MasterManager {
 
       this.state = 'ready';
 
-      logger.error({ error, taskId, sender: message.sender }, 'Message processing failed');
+      logger.error({ err: error, taskId, sender: message.sender }, 'Message processing failed');
 
       throw error;
     }
@@ -630,7 +633,7 @@ export class MasterManager {
 
       this.state = 'ready';
 
-      logger.error({ error, taskId, sender: message.sender }, 'Message streaming failed');
+      logger.error({ err: error, taskId, sender: message.sender }, 'Message streaming failed');
 
       yield `Error: ${errorMessage}`;
     }
@@ -782,7 +785,7 @@ export class MasterManager {
         message: 'Master AI shutting down',
       });
     } catch (error) {
-      logger.error({ error }, 'Failed to log shutdown');
+      logger.error({ err: error }, 'Failed to log shutdown');
     }
 
     logger.info('MasterManager shutdown complete');

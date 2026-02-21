@@ -36,8 +36,8 @@ import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('exploration-coordinator');
 
-const PHASE_TIMEOUT = 120_000; // 2 minutes per phase (includes retry buffer)
-const DIRECTORY_DIVE_TIMEOUT = 120_000; // 2 minutes per directory dive
+const PHASE_TIMEOUT = 300_000; // 5 minutes per phase (large workspaces need more time)
+const DIRECTORY_DIVE_TIMEOUT = 180_000; // 3 minutes per directory dive
 const MAX_RETRIES = 3;
 const BATCH_SIZE = 3; // Process 3 directories in parallel
 
@@ -131,7 +131,7 @@ export class ExplorationCoordinator {
 
       return this.buildSummary(state);
     } catch (error) {
-      logger.error({ error }, 'Exploration failed');
+      logger.error({ err: error }, 'Exploration failed');
       state.status = 'failed';
       state.error = String(error);
       await this.dotFolder.writeExplorationState(state);

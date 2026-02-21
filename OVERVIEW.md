@@ -2,9 +2,9 @@
 
 ## What is OpenBridge?
 
-OpenBridge is an open-source platform that turns AI into an **autonomous worker for your project**. Point it at any workspace, connect your messaging app, and the AI explores your project, learns its structure, and executes tasks on your behalf — all using the AI tools already installed on your machine.
+OpenBridge is an open-source platform that turns AI into a **self-governing autonomous worker for your project**. Point it at any workspace, connect your messaging app, and a Master AI explores your project, spawns worker agents to execute tasks, and continuously improves its own strategies — all using the AI tools already installed on your machine.
 
-There are no API keys to configure. No map files to write. No complex setup. OpenBridge auto-discovers the AI tools on your system (Claude Code, Codex, Aider, etc.), picks the most capable one as the "Master", and lets it work.
+There are no API keys to configure. No map files to write. No complex setup. OpenBridge auto-discovers the AI tools on your system (Claude Code, Codex, Aider, etc.), picks the most capable one as the Master, and lets it govern itself.
 
 ## Why OpenBridge?
 
@@ -14,9 +14,10 @@ There are no API keys to configure. No map files to write. No complex setup. Ope
 
 - **Message from anywhere** — send a WhatsApp message, the AI handles it in your workspace
 - **Zero setup** — auto-discovers installed AI tools, no API keys, no config files to study
-- **Autonomous exploration** — the Master AI silently learns your project on startup
+- **Self-governing Master** — the Master AI decides which model, tools, and strategy to use for each task
+- **Worker delegation** — Master spawns short-lived worker agents with bounded permissions
 - **Persistent knowledge** — everything the AI learns is stored in `.openbridge/` with git tracking
-- **Multi-AI** — the Master can delegate tasks to other AI tools found on your machine
+- **Self-improvement** — Master tracks what works and refines its own prompts over time
 - **Your subscription** — runs locally, uses your existing AI tools, zero extra cost
 
 ## How It Works
@@ -38,9 +39,9 @@ openbridge init
 3. Auto-discover AI tools:
    - Scan: claude? codex? aider? cursor?
    - Pick Master (most capable)
-   - Register others as delegates
-4. Launch Master AI silently:
-   - Explore target workspace
+   - Register others as worker candidates
+4. Launch Master AI as long-lived session:
+   - Explore workspace via worker agents (read-only, haiku model)
    - Create .openbridge/ folder
    - Generate workspace understanding
    - Init local git repo for tracking
@@ -54,8 +55,8 @@ You (WhatsApp)                    OpenBridge (your machine)
     |                                     |
     |  "/ai what's in my project?"       |
     | ──────────────────────────────────> |
-    |                                     |  Master AI already explored
-    |                                     |  Replies from its knowledge
+    |                                     |  Master AI replies from
+    |                                     |  its workspace knowledge
     |  "Your project is a Node.js        |
     |   API with 12 routes, PostgreSQL   |
     |   database, React frontend..."     |
@@ -64,12 +65,44 @@ You (WhatsApp)                    OpenBridge (your machine)
     |  "/ai add input validation         |
     |   to the login endpoint"           |
     | ──────────────────────────────────> |
-    |                                     |  Master AI modifies files
-    |                                     |  Changes tracked in .openbridge/.git
+    |                                     |  Master spawns workers:
+    |                                     |  → Worker 1 (haiku): read code
+    |                                     |  → Worker 2 (sonnet): add validation
+    |                                     |  → Worker 3 (haiku): run tests
     |  "Done. Added zod validation       |
     |   to POST /auth/login. Changes     |
-    |   committed."                      |
+    |   committed. All tests pass."      |
     | <────────────────────────────────── |
+```
+
+### How the Master Governs Workers
+
+```
+User sends: "/ai refactor auth to use JWT"
+    │
+    ▼
+Master AI (long-lived session, opus)
+    │ thinks: "Complex task. I need to:
+    │   1. Read current auth code
+    │   2. Implement JWT
+    │   3. Run tests"
+    │
+    ├──► Worker 1: { model: "haiku", profile: "read-only", task: "read auth files" }
+    │         └──► returns file contents
+    │
+    ├──► Master analyzes, plans the change
+    │
+    ├──► Worker 2: { model: "sonnet", profile: "code-edit", task: "implement JWT" }
+    │         └──► returns diff + result
+    │
+    ├──► Worker 3: { model: "haiku", profile: "code-edit", task: "run tests" }
+    │         └──► returns test output
+    │
+    ▼
+Master: "Done. Refactored to JWT. 4 files modified, all tests pass."
+    │
+    ▼
+User (WhatsApp) ← response
 ```
 
 ## Real-World Use Cases
@@ -90,13 +123,13 @@ The Master already explored the workspace on startup. It knows the file structur
 
 > _"/ai run the tests and fix any failures"_
 
-The Master runs your test suite, identifies failures, reads the failing code, applies fixes, and reports back. All changes tracked in `.openbridge/.git`.
+The Master spawns a worker to run tests, another to read failing code, another to fix it. All changes tracked in `.openbridge/.git`.
 
 ### Multi-AI Collaboration
 
 > _"/ai refactor the database layer to use Prisma"_
 
-The Master delegates subtasks — one AI tool analyzes the current schema, another generates Prisma models, the Master coordinates and verifies the result.
+The Master delegates subtasks to workers — one analyzes the current schema, another generates Prisma models, the Master coordinates and verifies the result.
 
 ### Multi-Turn Conversations
 
@@ -106,14 +139,20 @@ The Master delegates subtasks — one AI tool analyzes the current schema, anoth
 
 Session continuity preserves context across messages. The AI remembers "those clients" refers to A, B, and C from the previous question.
 
+### Non-Code Workspaces
+
+> _You: "/ai what ingredients are running low this week?"_
+
+Point OpenBridge at a folder of spreadsheets — the Master reads your files and answers business questions. Works for cafes, law firms, real estate, accounting, and any business with files to query. See [USE_CASES.md](docs/USE_CASES.md).
+
 ## Architecture
 
-OpenBridge has 4 layers:
+OpenBridge has 5 layers:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        CHANNELS                                   │
-│  WhatsApp · Telegram · Discord · Web Chat                         │
+│  WhatsApp · Console · (Telegram · Discord — planned)              │
 │  Messaging adapters that translate between platforms and bridge    │
 └──────────────────────┬────────────────────────────────────────────┘
                        │
@@ -133,10 +172,18 @@ OpenBridge has 4 layers:
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                     MASTER AI                                      │
-│  Master Manager · .openbridge/ Folder · Delegation Coordinator    │
-│  Autonomous workspace exploration, task execution, multi-AI        │
-│  delegation, git-tracked knowledge in .openbridge/                 │
+│                   AGENT RUNNER                                     │
+│  Unified executor: --allowedTools · --max-turns · --model          │
+│  Retries · Disk logging · Streaming · Tool profiles                │
+│  Spawns worker processes with bounded permissions                  │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    MASTER AI                                       │
+│  Self-governing: picks model, tools, strategy per task             │
+│  Long-lived session · Worker spawning · Task decomposition         │
+│  .openbridge/ knowledge · Self-improvement · Learnings             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,8 +193,8 @@ Messaging platform adapters. Each implements the `Connector` interface.
 
 | Channel  | Status | Library           |
 | -------- | :----: | ----------------- |
-| WhatsApp |   V0   | `whatsapp-web.js` |
-| Console  |   V0   | built-in (stdin)  |
+| WhatsApp |   ✅   | `whatsapp-web.js` |
+| Console  |   ✅   | built-in (stdin)  |
 | Telegram |   --   | planned           |
 | Discord  |   --   | planned           |
 
@@ -171,28 +218,41 @@ Auto-detects AI tools on the machine at startup:
 - **Auto-Selection** — ranks tools by capability, picks the best as Master
 - **No API keys needed** — uses tools that are already authenticated via your terminal/IDE
 
-### Layer 4: Master AI
+### Layer 4: Agent Runner
 
-The autonomous agent that knows your project:
+Unified executor for all AI CLI calls. Inspired by the project's bash scripts (`scripts/run-tasks.sh`):
 
-- **Master Manager** — launches the Master AI, manages its lifecycle (idle → exploring → ready), session continuity for multi-turn conversations
-- **Incremental Exploration** — 5-pass strategy (structure scan → classification → directory dives → assembly → finalization), checkpointed and resumable, never times out on large projects
+- **`--allowedTools`** — restricts what the AI can do (no `--dangerously-skip-permissions`)
+- **`--max-turns`** — bounds agent execution to prevent runaway processes
+- **`--model`** — selects the model per task (haiku for mechanical work, opus for reasoning)
+- **Retry logic** — configurable retries with backoff (default: 3 attempts, 10s delay)
+- **Disk logging** — full stdout/stderr written to `.openbridge/logs/`
+- **Tool profiles** — `read-only`, `code-edit`, `full-access` — Master picks per task
+
+### Layer 5: Master AI
+
+The self-governing autonomous agent:
+
+- **Long-lived session** — maintains context across messages (not single-turn `--print` calls)
+- **Task decomposition** — breaks complex user requests into worker subtasks
+- **Worker spawning** — creates short-lived worker agents with specific model + tools + turn limits
+- **Auto-announcement** — workers report results back to Master (no polling)
 - **`.openbridge/` Folder** — the AI's brain, stored inside your target project:
   ```
   .openbridge/
   ├── .git/                ← tracks all AI changes
   ├── workspace-map.json   ← auto-generated project understanding
+  ├── master-session.json  ← Master session ID for resume across restarts
+  ├── profiles.json        ← custom tool profiles created by Master
+  ├── prompts/             ← editable prompt templates
+  ├── learnings.json       ← what worked, what didn't, model selection patterns
   ├── exploration/         ← incremental exploration state
-  │   ├── exploration-state.json  ← phase completion tracking
-  │   ├── structure-scan.json     ← top-level scan results
-  │   ├── classification.json     ← project type + frameworks
-  │   └── dirs/                   ← per-directory deep dives
-  ├── exploration.log      ← scan history
+  ├── logs/                ← full worker execution logs
   ├── agents.json          ← discovered AI tools + roles
+  ├── workers.json         ← active worker registry
   └── tasks/               ← task history
   ```
-- **Delegation** — Master can assign subtasks to other discovered AI tools
-- **Session Continuity** — preserves conversation context across messages (30-minute TTL)
+- **Self-improvement** — Master tracks prompt effectiveness, refines strategies, creates custom profiles
 - **Silent by default** — only speaks when the user sends a message
 
 ## Business Model
@@ -207,22 +267,19 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 
 ## Current Status
 
-| Component               | Status                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------------------- |
-| WhatsApp                | ✅ V0 — auto-reconnect, sessions, chunking, typing indicators                                |
-| Console                 | ✅ V0 — reference implementation for rapid testing                                           |
-| Claude Code             | ✅ V0 — streaming, sessions, error classification, generalized CLI executor                  |
-| Bridge Core             | ✅ V0 — router, auth, queue, metrics, health, audit, rate limiting                           |
-| AI Discovery            | ✅ Complete — CLI scanner, VS Code scanner, auto-selection, capability ranking               |
-| Master AI               | ✅ Complete — autonomous exploration, session continuity, status queries, git tracking       |
-| Incremental Exploration | ✅ Complete — 5-pass checkpointed strategy, resumable on restart, never times out            |
-| V2 Config               | ✅ Complete — 3-field setup (workspace + channel + auth), V0 backward compatibility          |
-| Multi-AI Delegation     | ✅ Complete — task delegation, timeout handling, concurrent limits, result aggregation       |
-| Status Commands         | ✅ Complete — exploration progress, estimated completion time, active tasks, session metrics |
-| Resilient Startup       | ✅ Complete — reuses valid state, resumes incomplete exploration, re-explores on corruption  |
-| Documentation           | ✅ Complete — all docs rewritten for autonomous AI vision (Phase 13)                         |
-| Testing + Verification  | ✅ Complete — E2E tests, non-code workspaces, Console workflow, prefix stripping (Phase 14)  |
-| Telegram/Discord        | ⏳ Pending — Phase 15 (future channels)                                                      |
+| Component             | Status                                                                          |
+| --------------------- | ------------------------------------------------------------------------------- |
+| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing indicators               |
+| Console               | ✅ Stable — reference implementation for rapid testing                          |
+| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit, rate limiting          |
+| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection, capability ranking    |
+| V2 Config             | ✅ Stable — 3-field setup, V0 backward compatibility, CLI init                  |
+| Agent Runner          | 🔧 Building — replacing broken executor with production-grade runner (Phase 16) |
+| Tool Profiles         | 🔧 Planned — read-only, code-edit, full-access profiles (Phase 17)              |
+| Self-Governing Master | 🔧 Planned — long-lived session, task decomposition, worker spawning (Phase 18) |
+| Worker Orchestration  | 🔧 Planned — parallel workers, progress tracking, depth limiting (Phase 19)     |
+| Self-Improvement      | 🔧 Planned — learnings, prompt effectiveness, idle self-refinement (Phase 20)   |
+| Telegram/Discord      | ⏳ Backlog — after Master is stable                                             |
 
 ## Tech Stack
 
