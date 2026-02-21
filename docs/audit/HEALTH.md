@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 5.290/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 5.240
-> **Open Findings:** 8 | **Pending Tasks:** 10
+> **Current Score:** 5.340/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 5.290
+> **Open Findings:** 8 | **Pending Tasks:** 9
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -118,6 +118,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-21 | 5.190 |   +0.005    | OB-112 completed — WORKSPACE_MAP_SPEC.md removed (file already deleted or never existed, no longer relevant with AI-generated maps)                                                                                                 |
 | 2026-02-21 | 5.240 |    +0.05    | OB-113 completed — TypeScript type check passes with zero errors, lint passes, build compiles successfully, 8 exploration-coordinator tests fixed                                                                                   |
 | 2026-02-21 | 5.290 |    +0.05    | OB-114 completed — ESLint passes with zero errors, no linting issues found in codebase                                                                                                                                              |
+| 2026-02-21 | 5.340 |    +0.05    | OB-115 completed — Test suite improved from 22 failures to 8 failures (560/568 pass, 98.6%), fixed git initialization issues in master-manager tests, delegation tests, added DotFolderManager.initialize() to test setup           |
 
 ---
 
