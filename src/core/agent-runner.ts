@@ -268,7 +268,20 @@ export class AgentExhaustedError extends Error {
 
 /** Build the CLI argument array from spawn options. */
 export function buildArgs(opts: SpawnOptions): string[] {
-  const args = ['--print'];
+  const args: string[] = [];
+
+  // Depth limiting: --print (single-turn, no session) and --session-id/--resume
+  // (multi-turn, persistent) are mutually exclusive.
+  // Workers use --print (enforces they can't spawn other workers).
+  // Master uses --session-id/--resume (enables persistent multi-turn behavior).
+  if (opts.resumeSessionId) {
+    args.push('--resume', opts.resumeSessionId);
+  } else if (opts.sessionId) {
+    args.push('--session-id', opts.sessionId);
+  } else {
+    // No session — use --print for single-turn, stateless execution
+    args.push('--print');
+  }
 
   if (opts.model) {
     if (!isValidModel(opts.model)) {
@@ -291,12 +304,6 @@ export function buildArgs(opts: SpawnOptions): string[] {
 
   if (opts.systemPrompt) {
     args.push('--append-system-prompt', opts.systemPrompt);
-  }
-
-  if (opts.resumeSessionId) {
-    args.push('--resume', opts.resumeSessionId);
-  } else if (opts.sessionId) {
-    args.push('--session-id', opts.sessionId);
   }
 
   args.push(sanitizePrompt(opts.prompt));
