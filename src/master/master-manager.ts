@@ -1,7 +1,6 @@
 import { DotFolderManager } from './dotfolder-manager.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
-import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
 import { DelegationCoordinator } from './delegation.js';
@@ -84,7 +83,6 @@ export class MasterManager {
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
-  private explorationCoordinator: ExplorationCoordinator | null = null;
 
   /** Persistent Master session — shared across all user messages */
   private masterSession: MasterSession | null = null;
@@ -161,88 +159,65 @@ export class MasterManager {
 
     logger.info('Starting MasterManager (resilient startup)');
 
-    // Check if .openbridge folder exists
-    const folderExists = await this.dotFolder.exists();
+    // Initialize .openbridge folder early so we can create the Master session
+    await this.dotFolder.initialize();
 
-    if (!folderExists) {
-      // Scenario 1: No .openbridge folder — trigger fresh exploration
-      if (!this.skipAutoExploration) {
-        logger.info('.openbridge folder does not exist, starting fresh exploration');
-        await this.explore();
-      } else {
-        logger.info('Auto-exploration disabled, entering ready state');
-        this.state = 'ready';
-      }
-      await this.initMasterSession();
+    // Initialize Master session FIRST — so exploration can use it
+    await this.initMasterSession();
+
+    // Check if .openbridge already has exploration data
+    const folderExistedBefore = await this.dotFolder.exists();
+
+    // Check if workspace map exists and is valid
+    const map = await this.dotFolder.readMap();
+
+    if (map) {
+      // Scenario 1: Valid map exists — skip exploration, enter ready state
+      logger.info(
+        { projectType: map.projectType },
+        'Valid workspace map found, skipping exploration',
+      );
+
+      this.explorationSummary = {
+        startedAt: map.generatedAt,
+        completedAt: map.generatedAt,
+        status: 'completed',
+        filesScanned: 0,
+        directoriesExplored: 0,
+        projectType: map.projectType,
+        frameworks: map.frameworks,
+        insights: [],
+        mapPath: this.dotFolder.getMapPath(),
+        gitInitialized: true,
+      };
+
+      this.state = 'ready';
+      logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
       return;
     }
 
-    // Folder exists — perform resilience checks
-    logger.info('.openbridge folder exists, performing resilience checks');
-
-    // Check for incomplete or failed exploration
+    // Check for incomplete or failed exploration state
     const explorationState = await this.dotFolder.readExplorationState();
     if (
       explorationState &&
       (explorationState.status === 'in_progress' || explorationState.status === 'failed')
     ) {
-      // Scenario 2: Incomplete/failed exploration detected — resume/retry from checkpoint
       const statusLabel = explorationState.status === 'in_progress' ? 'Incomplete' : 'Failed';
       logger.info(
         { currentPhase: explorationState.currentPhase, status: explorationState.status },
         `${statusLabel} exploration detected, ${explorationState.status === 'failed' ? 'retrying' : 'resuming'} from checkpoint`,
       );
-      if (!this.skipAutoExploration) {
-        await this.explore();
-      } else {
-        logger.warn(
-          `Auto-exploration disabled, but ${statusLabel.toLowerCase()} exploration exists. Entering ready state anyway.`,
-        );
-        this.state = 'ready';
-      }
-      await this.initMasterSession();
-      return;
+    } else if (!folderExistedBefore || !map) {
+      logger.info('No workspace map found, exploration needed');
     }
 
-    // Check if workspace map exists and is valid
-    const map = await this.dotFolder.readMap();
-
-    if (!map) {
-      // Scenario 3: Folder exists but map missing or corrupted — re-explore
-      logger.warn('.openbridge folder exists but workspace-map.json is missing or corrupted');
-      if (!this.skipAutoExploration) {
-        logger.info('Re-exploring workspace to regenerate map');
-        await this.explore();
-      } else {
-        logger.warn('Auto-exploration disabled, entering ready state without valid map');
-        this.state = 'ready';
-      }
-      await this.initMasterSession();
-      return;
+    // Trigger exploration (Master-driven or fallback)
+    if (!this.skipAutoExploration) {
+      await this.explore();
+    } else {
+      logger.info('Auto-exploration disabled, entering ready state');
+      this.state = 'ready';
     }
-
-    // Scenario 4: Valid map exists — skip exploration, enter ready state
-    logger.info(
-      { projectType: map.projectType },
-      'Valid workspace map found, skipping exploration',
-    );
-
-    this.explorationSummary = {
-      startedAt: map.generatedAt,
-      completedAt: map.generatedAt,
-      status: 'completed',
-      filesScanned: 0,
-      directoriesExplored: 0,
-      projectType: map.projectType,
-      frameworks: map.frameworks,
-      insights: [],
-      mapPath: this.dotFolder.getMapPath(),
-      gitInitialized: true,
-    };
-
-    this.state = 'ready';
-    await this.initMasterSession();
-    logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
   }
 
   /**
@@ -378,7 +353,14 @@ export class MasterManager {
    * Autonomously explore the workspace and create .openbridge/ folder.
    * This is the Master AI's initialization step.
    *
-   * Uses the incremental multi-pass exploration strategy via ExplorationCoordinator.
+   * The Master AI session drives exploration — it decides how many passes,
+   * which directories to explore, and what to record. The Master uses its
+   * own tools (Read, Glob, Grep, Write, Edit) to explore and write the
+   * workspace map directly to `.openbridge/`.
+   *
+   * The Master session is always initialized before explore() is called
+   * (initMasterSession runs during start()). The Master decides its own
+   * exploration strategy — no hardcoded phases.
    */
   public async explore(): Promise<void> {
     if (this.state === 'exploring') {
@@ -390,7 +372,7 @@ export class MasterManager {
 
     logger.info(
       { workspacePath: this.workspacePath },
-      'Starting incremental workspace exploration',
+      'Starting Master-driven workspace exploration',
     );
 
     try {
@@ -402,29 +384,23 @@ export class MasterManager {
       await this.dotFolder.appendLog({
         timestamp: startedAt,
         level: 'info',
-        message: 'Incremental workspace exploration started',
+        message: 'Master-driven workspace exploration started',
         data: { masterTool: this.masterTool.name, version: this.masterTool.version },
       });
 
-      // Delegate to ExplorationCoordinator for incremental multi-pass exploration
-      this.explorationCoordinator = new ExplorationCoordinator({
-        workspacePath: this.workspacePath,
-        masterTool: this.masterTool,
-        discoveredTools: this.discoveredTools,
-      });
-
-      this.explorationSummary = await this.explorationCoordinator.explore();
+      // Master-driven exploration via the persistent session
+      await this.masterDrivenExplore();
 
       this.state = 'ready';
 
       logger.info(
         {
-          projectType: this.explorationSummary.projectType,
-          frameworks: this.explorationSummary.frameworks,
-          directoriesExplored: this.explorationSummary.directoriesExplored,
-          status: this.explorationSummary.status,
+          projectType: this.explorationSummary?.projectType,
+          frameworks: this.explorationSummary?.frameworks,
+          directoriesExplored: this.explorationSummary?.directoriesExplored,
+          status: this.explorationSummary?.status,
         },
-        'Incremental workspace exploration completed',
+        'Workspace exploration completed',
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -445,7 +421,7 @@ export class MasterManager {
       await this.dotFolder.appendLog({
         timestamp: new Date().toISOString(),
         level: 'error',
-        message: 'Incremental workspace exploration failed',
+        message: 'Workspace exploration failed',
         data: { error: errorMessage },
       });
 
@@ -461,8 +437,103 @@ export class MasterManager {
   }
 
   /**
+   * Master-driven exploration: sends an exploration prompt through the
+   * persistent Master session. The Master uses its own tools to explore
+   * the workspace and write results to `.openbridge/`.
+   */
+  private async masterDrivenExplore(): Promise<void> {
+    logger.info('Executing Master-driven exploration via session');
+
+    const explorationPrompt = this.buildExplorationPrompt();
+    const spawnOpts = this.buildMasterSpawnOptions(explorationPrompt, this.explorationTimeout);
+    const result = await this.agentRunner.spawn(spawnOpts);
+    await this.updateMasterSession();
+
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Master-driven exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
+      );
+    }
+
+    // Write agents.json (Master can't spawn workers, so we do this mechanically)
+    await this.writeAgentsRegistry();
+
+    // Commit exploration results
+    await this.dotFolder.commitChanges('feat(master): Master-driven workspace exploration');
+
+    // Log completion
+    await this.dotFolder.appendLog({
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: 'Master-driven exploration completed',
+      data: { durationMs: result.durationMs },
+    });
+
+    // Build summary from whatever the Master wrote
+    await this.loadExplorationSummary();
+  }
+
+  /**
+   * Build the exploration prompt sent to the Master session.
+   * Instructs the Master to autonomously explore the workspace and write workspace-map.json.
+   * The Master decides its own exploration strategy — no hardcoded phases.
+   */
+  private buildExplorationPrompt(): string {
+    return `Explore the workspace at \`${this.workspacePath}\` and create a comprehensive understanding.
+
+You are in charge of the exploration strategy. Use your tools (Read, Glob, Grep) to understand the project, then write your findings to \`.openbridge/workspace-map.json\` using the Write tool.
+
+Follow the "Workspace Exploration" section in your system prompt for the schema and recommended strategy. Adapt the depth of exploration to the project's size and complexity.
+
+Work silently — do not output conversational text, just explore and write the map file.`;
+  }
+
+  /**
+   * Write the agents.json registry based on discovered tools.
+   */
+  private async writeAgentsRegistry(): Promise<void> {
+    const registry = this.createAgentsRegistry();
+    await this.dotFolder.writeAgents(registry);
+  }
+
+  /**
+   * Load exploration summary from the workspace map written by the Master.
+   */
+  private async loadExplorationSummary(): Promise<void> {
+    const map = await this.dotFolder.readMap();
+
+    if (map) {
+      this.explorationSummary = {
+        startedAt: map.generatedAt,
+        completedAt: new Date().toISOString(),
+        status: 'completed',
+        filesScanned: 0,
+        directoriesExplored: Object.keys(map.structure).length,
+        projectType: map.projectType,
+        frameworks: map.frameworks,
+        insights: [],
+        mapPath: this.dotFolder.getMapPath(),
+        gitInitialized: true,
+      };
+    } else {
+      // Master didn't write a map — still mark as completed with minimal info
+      this.explorationSummary = {
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        status: 'completed',
+        filesScanned: 0,
+        directoriesExplored: 0,
+        frameworks: [],
+        insights: [],
+        gitInitialized: true,
+      };
+    }
+  }
+
+  /**
    * Re-explore the workspace (e.g., after significant changes).
-   * Uses the AgentRunner with read-only tools.
+   * Uses the Master session to drive re-exploration, with a fallback to
+   * a standalone AgentRunner call if no session is available.
    */
   public async reExplore(): Promise<void> {
     if (this.state !== 'ready') {
@@ -483,40 +554,42 @@ export class MasterManager {
         message: 'Workspace re-exploration started',
       });
 
-      // Generate re-exploration prompt
-      const prompt = generateReExplorationPrompt(this.workspacePath);
+      if (this.masterSession) {
+        // Master-driven re-exploration via session
+        const prompt = generateReExplorationPrompt(this.workspacePath);
+        const spawnOpts = this.buildMasterSpawnOptions(prompt, this.explorationTimeout);
+        const result = await this.agentRunner.spawn(spawnOpts);
+        await this.updateMasterSession();
 
-      // Execute re-exploration via AgentRunner with read-only tools
-      const result = await this.agentRunner.spawn({
-        prompt,
-        workspacePath: this.workspacePath,
-        timeout: this.explorationTimeout,
-        allowedTools: [...TOOLS_READ_ONLY],
-        retries: 1,
-      });
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `Re-exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
+          );
+        }
+      } else {
+        // Fallback: standalone re-exploration with read-only tools
+        const prompt = generateReExplorationPrompt(this.workspacePath);
+        const result = await this.agentRunner.spawn({
+          prompt,
+          workspacePath: this.workspacePath,
+          timeout: this.explorationTimeout,
+          allowedTools: [...TOOLS_READ_ONLY],
+          retries: 1,
+        });
 
-      if (result.exitCode !== 0) {
-        throw new Error(
-          `Re-exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
-        );
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `Re-exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
+          );
+        }
       }
 
-      // Update exploration summary
-      const map = await this.dotFolder.readMap();
-      if (map) {
-        this.explorationSummary = {
-          ...this.explorationSummary!,
-          completedAt: new Date().toISOString(),
-          projectType: map.projectType,
-          frameworks: map.frameworks,
-        };
-      }
-
-      const completedAt = new Date().toISOString();
+      // Update exploration summary from the map
+      await this.loadExplorationSummary();
 
       // Log re-exploration completion
       await this.dotFolder.appendLog({
-        timestamp: completedAt,
+        timestamp: new Date().toISOString(),
         level: 'info',
         message: 'Workspace re-exploration completed',
       });
@@ -818,68 +891,9 @@ export class MasterManager {
       status += `Session Messages: ${this.masterSession.messageCount}\n`;
     }
 
-    // Show detailed exploration progress if exploration is in progress
-    // Try to get progress from coordinator or directly from state file
-    let progress = null;
-    if (this.explorationCoordinator) {
-      progress = await this.explorationCoordinator.getProgress();
-    } else if (this.state === 'exploring') {
-      // Exploration in progress but coordinator not available (shouldn't happen but handle gracefully)
-      const tempCoordinator = new ExplorationCoordinator({
-        workspacePath: this.workspacePath,
-        masterTool: this.masterTool,
-        discoveredTools: this.discoveredTools,
-      });
-      progress = await tempCoordinator.getProgress();
-    }
-
-    if (this.state === 'exploring' && progress) {
-      status += `\n**Exploration Progress: ${progress.completionPercent}%**\n`;
-      status += `Current Phase: ${progress.currentPhase}\n\n`;
-
-      // Show phase statuses
-      status += `Phases:\n`;
-      const phaseLabels: Record<string, string> = {
-        structure_scan: 'Structure Scan',
-        classification: 'Classification',
-        directory_dives: 'Directory Dives',
-        assembly: 'Assembly',
-        finalization: 'Finalization',
-      };
-      for (const [phase, label] of Object.entries(phaseLabels)) {
-        const phaseStatus = progress.phases[phase];
-        const icon =
-          phaseStatus === 'completed'
-            ? '✅'
-            : phaseStatus === 'in_progress'
-              ? '🔄'
-              : phaseStatus === 'failed'
-                ? '❌'
-                : '⏳';
-        status += `  ${icon} ${label}: ${phaseStatus}\n`;
-      }
-
-      // Show directory dive details if in that phase
-      if (progress.currentPhase === 'directory_dives' && progress.directoriesTotal > 0) {
-        status += `\nDirectory Dives: ${progress.directoriesCompleted}/${progress.directoriesTotal} completed`;
-        if (progress.directoriesFailed > 0) {
-          status += ` (${progress.directoriesFailed} failed)`;
-        }
-        status += `\n`;
-      }
-
-      // Show performance metrics
-      status += `\nAI Calls: ${progress.totalCalls}\n`;
-      const totalTimeSeconds = Math.floor(progress.totalAITimeMs / 1000);
-      status += `Total AI Time: ${totalTimeSeconds}s\n`;
-
-      // Estimate time to completion
-      if (progress.completionPercent > 0 && progress.completionPercent < 100) {
-        const estimatedTotalTimeMs = (progress.totalAITimeMs / progress.completionPercent) * 100;
-        const remainingTimeMs = estimatedTotalTimeMs - progress.totalAITimeMs;
-        const remainingMinutes = Math.ceil(remainingTimeMs / 60000);
-        status += `Estimated Time Remaining: ~${remainingMinutes} minute(s)\n`;
-      }
+    // Show exploration status
+    if (this.state === 'exploring') {
+      status += `\nExploration: in progress (Master-driven)\n`;
     } else if (this.explorationSummary) {
       status += `Exploration: ${this.explorationSummary.status}\n`;
       if (this.explorationSummary.projectType) {

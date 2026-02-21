@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.50/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.35
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 20 (Phases 18–21)
+> **Current Score:** 6.55/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.50
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 19 (Phases 18–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.50** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 in progress. Master session lifecycle implemented (OB-150). Master system prompt seeded to .openbridge/prompts/master-system.md and injected via --append-system-prompt on every Master session call (OB-151).
+**Current state: 6.55** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 in progress. Master session lifecycle implemented (OB-150). Master system prompt seeded (OB-151). Master-driven exploration: ExplorationCoordinator removed as driver, Master session autonomously explores and writes workspace-map.json (OB-152).
 
 ---
 
@@ -92,6 +92,7 @@
 | 2026-02-21 | 6.20  |    +0.01    | OB-144: Model fallback chain — opus → sonnet → haiku on rate-limit/unavailability. isRateLimitError(), getNextFallbackModel(), MODEL_FALLBACK_CHAIN. Phase 17 complete                    |
 | 2026-02-21 | 6.35  |    +0.15    | OB-150: Master session lifecycle — persistent session via --session-id/--resume, MasterSession schema, session persisted to .openbridge/master-session.json. Phase 18 started             |
 | 2026-02-21 | 6.50  |    +0.15    | OB-151: Master system prompt — generateMasterSystemPrompt(), seeded to .openbridge/prompts/master-system.md, injected via --append-system-prompt. Editable by Master for self-improvement |
+| 2026-02-21 | 6.55  |    +0.05    | OB-152: Master-driven exploration — removed ExplorationCoordinator as driver, Master session autonomously explores workspace via system prompt. Coordinator retained as utility library   |
 
 ---
 

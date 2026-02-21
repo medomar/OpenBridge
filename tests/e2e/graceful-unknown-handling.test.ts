@@ -27,7 +27,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
-// Mock the AgentRunner class used by MasterManager, ExplorationCoordinator, and DelegationCoordinator
+// Mock the AgentRunner class used by MasterManager and DelegationCoordinator
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => ({
@@ -150,7 +150,7 @@ async function cleanupWorkspace(workspacePath: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Setup mock responses for minimal exploration
+ * Setup mock responses for Master-driven exploration per scenario
  */
 function setupMinimalExplorationMocks(
   workspacePath: string,
@@ -158,98 +158,8 @@ function setupMinimalExplorationMocks(
 ) {
   let callCount = 0;
 
-  // Different structure scans based on scenario
-  const structureScanResults: Record<typeof scenario, unknown> = {
-    minimal: {
-      workspacePath,
-      topLevelFiles: ['README.txt'],
-      topLevelDirs: [],
-      directoryCounts: {},
-      configFiles: [],
-      skippedDirs: [],
-      totalFiles: 1,
-      scannedAt: new Date().toISOString(),
-      durationMs: 50,
-    },
-    empty: {
-      workspacePath,
-      topLevelFiles: [],
-      topLevelDirs: [],
-      directoryCounts: {},
-      configFiles: [],
-      skippedDirs: [],
-      totalFiles: 0,
-      scannedAt: new Date().toISOString(),
-      durationMs: 30,
-    },
-    binary: {
-      workspacePath,
-      topLevelFiles: ['data.xlsx', 'report.pdf', 'image.png'],
-      topLevelDirs: [],
-      directoryCounts: {},
-      configFiles: [],
-      skippedDirs: [],
-      totalFiles: 3,
-      scannedAt: new Date().toISOString(),
-      durationMs: 40,
-    },
-    partial: {
-      workspacePath,
-      topLevelFiles: [],
-      topLevelDirs: ['inventory'],
-      directoryCounts: { inventory: 1 },
-      configFiles: [],
-      skippedDirs: [],
-      totalFiles: 1,
-      scannedAt: new Date().toISOString(),
-      durationMs: 60,
-    },
-  };
-
-  const classificationResults: Record<typeof scenario, unknown> = {
-    minimal: {
-      projectType: 'unknown',
-      projectName: 'workspace',
-      frameworks: [],
-      commands: {},
-      dependencies: [],
-      insights: ['Minimal workspace with no data files yet'],
-      classifiedAt: new Date().toISOString(),
-      durationMs: 50,
-    },
-    empty: {
-      projectType: 'unknown',
-      projectName: 'empty-workspace',
-      frameworks: [],
-      commands: {},
-      dependencies: [],
-      insights: ['Empty workspace with no files'],
-      classifiedAt: new Date().toISOString(),
-      durationMs: 40,
-    },
-    binary: {
-      projectType: 'unknown',
-      projectName: 'workspace',
-      frameworks: [],
-      commands: {},
-      dependencies: [],
-      insights: ['Contains only binary files (xlsx, pdf, png) - no readable text data'],
-      classifiedAt: new Date().toISOString(),
-      durationMs: 50,
-    },
-    partial: {
-      projectType: 'business-data',
-      projectName: 'cafe-inventory',
-      frameworks: [],
-      commands: {},
-      dependencies: [],
-      insights: ['Partial business workspace - only inventory data available'],
-      classifiedAt: new Date().toISOString(),
-      durationMs: 60,
-    },
-  };
-
-  const assemblyResults: Record<typeof scenario, unknown> = {
+  // Workspace maps the Master session writes per scenario
+  const workspaceMaps: Record<typeof scenario, unknown> = {
     minimal: {
       workspacePath,
       projectName: 'workspace',
@@ -316,64 +226,24 @@ function setupMinimalExplorationMocks(
     },
   };
 
-  // Mock spawn for exploration phases (ExplorationCoordinator uses AgentRunner.spawn)
-  mockSpawn.mockImplementation(async () => {
+  // Mock spawn for Master-driven exploration
+  mockSpawn.mockImplementation(async (opts: { sessionId?: string; resumeSessionId?: string }) => {
     callCount++;
 
-    // Pass 1: Structure scan
-    if (callCount === 1) {
+    // Master-driven exploration: first call with session writes workspace-map.json
+    if (callCount === 1 && (opts.sessionId || opts.resumeSessionId)) {
+      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
+      await writeFile(mapPath, JSON.stringify(workspaceMaps[scenario], null, 2), 'utf-8');
       return {
-        stdout: JSON.stringify(structureScanResults[scenario]),
+        stdout: 'Exploration complete.',
         stderr: '',
         exitCode: 0,
         retryCount: 0,
-        durationMs: 100,
+        durationMs: 200,
       };
     }
 
-    // Pass 2: Classification
-    if (callCount === 2) {
-      return {
-        stdout: JSON.stringify(classificationResults[scenario]),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    // Pass 3: Directory dive (only for partial scenario)
-    if (callCount === 3 && scenario === 'partial') {
-      return {
-        stdout: JSON.stringify({
-          path: 'inventory',
-          purpose: 'Inventory tracking',
-          keyFiles: [{ path: 'stock.csv', type: 'data', purpose: 'Stock levels' }],
-          subdirectories: [],
-          fileCount: 1,
-          insights: ['Basic inventory CSV'],
-          exploredAt: new Date().toISOString(),
-          durationMs: 40,
-        }),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    // Assembly pass (summary generation)
-    const assemblyCallNumber = scenario === 'partial' ? 4 : 3;
-    if (callCount === assemblyCallNumber) {
-      return {
-        stdout: JSON.stringify(assemblyResults[scenario]),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
+    // Fallback for any other spawn calls
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
