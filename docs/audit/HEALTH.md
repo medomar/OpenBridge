@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.19/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.16
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 22 (Phases 17–21)
+> **Current Score:** 6.20/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.19
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 21 (Phases 18–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.19** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) in progress. ToolProfile and TaskManifest Zod schemas added. Model selection strategy implemented. AgentRunner accepts TaskManifest as alternative input. Custom profile registry in .openbridge/profiles.json with CRUD in DotFolderManager.
+**Current state: 6.20** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. ToolProfile and TaskManifest Zod schemas added. Model selection strategy implemented. AgentRunner accepts TaskManifest as alternative input. Custom profile registry in .openbridge/profiles.json with CRUD in DotFolderManager. Model fallback chain (opus → sonnet → haiku) with rate-limit detection.
 
 ---
 
@@ -89,6 +89,7 @@
 | 2026-02-21 | 6.13  |    +0.03    | OB-141: Model selection strategy — recommendByProfile, recommendByDescription, recommendModel. Profile→model mapping + keyword-based complexity detection. 14 tests passing            |
 | 2026-02-21 | 6.16  |    +0.03    | OB-142: AgentRunner integration — resolveProfile(), manifestToSpawnOptions(), spawnFromManifest(), streamFromManifest(). Profile→tools resolution with explicit override. 20 new tests |
 | 2026-02-21 | 6.19  |    +0.03    | OB-143: Custom profile registry — ProfilesRegistry Zod schema, DotFolderManager CRUD (read/write/add/remove/get profiles), AgentRunner resolves custom profiles. 14 new tests          |
+| 2026-02-21 | 6.20  |    +0.01    | OB-144: Model fallback chain — opus → sonnet → haiku on rate-limit/unavailability. isRateLimitError(), getNextFallbackModel(), MODEL_FALLBACK_CHAIN. Phase 17 complete                 |
 
 ---
 
