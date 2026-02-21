@@ -40,6 +40,15 @@ export type { ParseResult, ParseError, ParsedAIResult } from './result-parser.js
 export { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 export type { ParsedSpawnMarker, SpawnParseResult, SpawnMarkerBody } from './spawn-parser.js';
 
+// Export worker result formatter for structured result injection
+export {
+  formatWorkerResult,
+  formatWorkerError,
+  buildWorkerFeedbackPrompt,
+  formatWorkerBatch,
+} from './worker-result-formatter.js';
+export type { WorkerResultMeta } from './worker-result-formatter.js';
+
 // Export ExplorationCoordinator for incremental exploration
 export { ExplorationCoordinator } from './exploration-coordinator.js';
 export type { ExplorationOptions } from './exploration-coordinator.js';

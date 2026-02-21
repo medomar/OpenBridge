@@ -372,6 +372,139 @@ Working on both tasks.`;
     });
   });
 
+  describe('Structured Worker Result Injection', () => {
+    it('should include model, profile, duration, and worker index in feedback', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Analyze code","model":"haiku","maxTurns":10}[/SPAWN]`;
+
+      // Call 1: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Analysis complete',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 1500,
+      });
+
+      // Call 3: Feedback to Master
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The analysis is complete.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Analyze the code'));
+
+      // Verify the feedback prompt contains structured metadata
+      const feedbackCall = getSpawnCallOpts(2);
+      expect(feedbackCall?.prompt).toContain('haiku');
+      expect(feedbackCall?.prompt).toContain('read-only');
+      expect(feedbackCall?.prompt).toContain('worker 1/1');
+      expect(feedbackCall?.prompt).toContain('1.5s');
+      expect(feedbackCall?.prompt).toContain('WORKER RESULT');
+      expect(feedbackCall?.prompt).toContain('Analysis complete');
+      expect(feedbackCall?.prompt).toContain('1 worker completed');
+    });
+
+    it('should include error metadata with exit code in failure feedback', async () => {
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet"}[/SPAWN]`;
+
+      // Call 1: Master returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker fails with exit code 1
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'npm test failed',
+        retryCount: 0,
+        durationMs: 800,
+      });
+
+      // Call 3: Feedback with structured error
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Tests failed.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Run tests'));
+
+      const feedbackCall = getSpawnCallOpts(2);
+      expect(feedbackCall?.prompt).toContain('WORKER ERROR');
+      expect(feedbackCall?.prompt).toContain('sonnet');
+      expect(feedbackCall?.prompt).toContain('code-edit');
+      expect(feedbackCall?.prompt).toContain('exit 1');
+      expect(feedbackCall?.prompt).toContain('npm test failed');
+    });
+
+    it('should format multiple worker results with individual metadata', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Check DB","model":"haiku"}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Check API","model":"haiku"}[/SPAWN]`;
+
+      // Call 1: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Calls 2-3: Workers complete
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'DB has 5 tables',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 1000,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '12 API routes',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 2000,
+      });
+
+      // Call 4: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Summary of findings.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Check DB and API'));
+
+      const feedbackCall = getSpawnCallOpts(3);
+      expect(feedbackCall?.prompt).toContain('worker 1/2');
+      expect(feedbackCall?.prompt).toContain('worker 2/2');
+      expect(feedbackCall?.prompt).toContain('2 workers completed');
+      expect(feedbackCall?.prompt).toContain('DB has 5 tables');
+      expect(feedbackCall?.prompt).toContain('12 API routes');
+    });
+  });
+
   describe('Session Continuity with SPAWN', () => {
     it('should maintain Master session across spawn-feedback flow', async () => {
       const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Check files","model":"haiku"}[/SPAWN]`;
