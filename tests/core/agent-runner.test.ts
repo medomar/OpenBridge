@@ -12,8 +12,12 @@ import {
   DEFAULT_MAX_TURNS_TASK,
   MODEL_ALIASES,
   isValidModel,
+  resolveProfile,
+  manifestToSpawnOptions,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import { BUILT_IN_PROFILES } from '../../src/types/agent.js';
+import type { TaskManifest } from '../../src/types/agent.js';
 
 // ── Mock node:fs/promises ───────────────────────────────────────────
 
@@ -1315,5 +1319,254 @@ describe('AgentRunner.stream()', () => {
     const { result } = await resultPromise;
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('output');
+  });
+});
+
+// ── resolveProfile ──────────────────────────────────────────────────
+
+describe('resolveProfile', () => {
+  it('resolves "read-only" to Read, Glob, Grep', () => {
+    expect(resolveProfile('read-only')).toEqual(['Read', 'Glob', 'Grep']);
+  });
+
+  it('resolves "code-edit" to code editing tools', () => {
+    expect(resolveProfile('code-edit')).toEqual(BUILT_IN_PROFILES['code-edit'].tools);
+  });
+
+  it('resolves "full-access" to full tool set', () => {
+    expect(resolveProfile('full-access')).toEqual(BUILT_IN_PROFILES['full-access'].tools);
+  });
+
+  it('returns undefined for unknown profile names', () => {
+    expect(resolveProfile('nonexistent')).toBeUndefined();
+  });
+
+  it('returns undefined for empty string', () => {
+    expect(resolveProfile('')).toBeUndefined();
+  });
+});
+
+// ── manifestToSpawnOptions ──────────────────────────────────────────
+
+describe('manifestToSpawnOptions', () => {
+  const baseManifest: TaskManifest = {
+    prompt: 'explore the project',
+    workspacePath: '/tmp/project',
+  };
+
+  it('maps basic manifest fields to SpawnOptions', () => {
+    const opts = manifestToSpawnOptions(baseManifest);
+    expect(opts.prompt).toBe('explore the project');
+    expect(opts.workspacePath).toBe('/tmp/project');
+  });
+
+  it('resolves profile to allowedTools', () => {
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' });
+    expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
+  });
+
+  it('resolves code-edit profile to code editing tools', () => {
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'code-edit' });
+    expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['code-edit'].tools);
+  });
+
+  it('resolves full-access profile to full tool set', () => {
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'full-access' });
+    expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['full-access'].tools);
+  });
+
+  it('explicit allowedTools override profile', () => {
+    const opts = manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'read-only',
+      allowedTools: ['Read', 'Edit', 'Write'],
+    });
+    expect(opts.allowedTools).toEqual(['Read', 'Edit', 'Write']);
+  });
+
+  it('passes through model, maxTurns, timeout, retries, retryDelay', () => {
+    const opts = manifestToSpawnOptions({
+      ...baseManifest,
+      model: 'haiku',
+      maxTurns: 10,
+      timeout: 60000,
+      retries: 2,
+      retryDelay: 5000,
+    });
+    expect(opts.model).toBe('haiku');
+    expect(opts.maxTurns).toBe(10);
+    expect(opts.timeout).toBe(60000);
+    expect(opts.retries).toBe(2);
+    expect(opts.retryDelay).toBe(5000);
+  });
+
+  it('leaves allowedTools undefined when no profile or tools specified', () => {
+    const opts = manifestToSpawnOptions(baseManifest);
+    expect(opts.allowedTools).toBeUndefined();
+  });
+
+  it('leaves allowedTools undefined for unrecognized profile', () => {
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'custom-unknown' });
+    expect(opts.allowedTools).toBeUndefined();
+  });
+
+  it('does not include session-related fields', () => {
+    const opts = manifestToSpawnOptions(baseManifest);
+    expect(opts.resumeSessionId).toBeUndefined();
+    expect(opts.sessionId).toBeUndefined();
+    expect(opts.logFile).toBeUndefined();
+  });
+});
+
+// ── AgentRunner.spawnFromManifest() ──────────────────────────────────
+
+describe('AgentRunner.spawnFromManifest()', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('spawns agent with tools resolved from profile', async () => {
+    const promise = runner.spawnFromManifest({
+      prompt: 'explore workspace',
+      workspacePath: '/tmp/project',
+      profile: 'read-only',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('output');
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('Read');
+    expect(spawnedArgs).toContain('Glob');
+    expect(spawnedArgs).toContain('Grep');
+    expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(3);
+  });
+
+  it('explicit allowedTools override profile in spawned args', async () => {
+    const promise = runner.spawnFromManifest({
+      prompt: 'custom task',
+      workspacePath: '/tmp/project',
+      profile: 'read-only',
+      allowedTools: ['Read', 'Edit'],
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(2);
+    expect(spawnedArgs).toContain('Read');
+    expect(spawnedArgs).toContain('Edit');
+    expect(spawnedArgs).not.toContain('Glob');
+    expect(spawnedArgs).not.toContain('Grep');
+  });
+
+  it('passes model through from manifest', async () => {
+    const promise = runner.spawnFromManifest({
+      prompt: 'task',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    expect(result.model).toBe('opus');
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('--model');
+    expect(spawnedArgs).toContain('opus');
+  });
+
+  it('spawns with code-edit profile tools', async () => {
+    const promise = runner.spawnFromManifest({
+      prompt: 'implement feature',
+      workspacePath: '/tmp/project',
+      profile: 'code-edit',
+      model: 'sonnet',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'done', 0);
+    await promise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('Edit');
+    expect(spawnedArgs).toContain('Write');
+    expect(spawnedArgs).toContain('Bash(git:*)');
+    expect(spawnedArgs).toContain('Bash(npm:*)');
+  });
+});
+
+// ── AgentRunner.streamFromManifest() ─────────────────────────────────
+
+describe('AgentRunner.streamFromManifest()', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('streams agent with tools resolved from profile', async () => {
+    const gen = runner.streamFromManifest({
+      prompt: 'explore',
+      workspacePath: '/tmp/project',
+      profile: 'read-only',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    const child = lastChild();
+    child.stdout.emit('data', Buffer.from('chunk1'));
+    child.stdout.emit('data', Buffer.from('chunk2'));
+    child.emit('close', 0);
+
+    const { chunks, result } = await resultPromise;
+
+    expect(chunks).toEqual(['chunk1', 'chunk2']);
+    expect(result.exitCode).toBe(0);
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('Read');
+    expect(spawnedArgs).toContain('Glob');
+    expect(spawnedArgs).toContain('Grep');
+    expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(3);
+  });
+
+  it('explicit allowedTools override profile in stream', async () => {
+    const gen = runner.streamFromManifest({
+      prompt: 'task',
+      workspacePath: '/tmp',
+      profile: 'full-access',
+      allowedTools: ['Read'],
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+    await resultPromise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(1);
+    expect(spawnedArgs).toContain('Read');
+    expect(spawnedArgs).not.toContain('Bash(*)');
   });
 });

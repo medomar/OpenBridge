@@ -2,6 +2,8 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
+import { BUILT_IN_PROFILES } from '../types/agent.js';
+import type { TaskManifest } from '../types/agent.js';
 
 const logger = createLogger('agent-runner');
 
@@ -62,6 +64,52 @@ export const TOOLS_CODE_EDIT = [
 
 /** Full access tools — unrestricted (use sparingly) */
 export const TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'] as const;
+
+/**
+ * Resolve a profile name to its tool list.
+ * Looks up built-in profiles by name.
+ * Returns undefined if the profile name is not recognized.
+ */
+export function resolveProfile(profileName: string): string[] | undefined {
+  const profile = BUILT_IN_PROFILES[profileName as keyof typeof BUILT_IN_PROFILES];
+  return profile?.tools;
+}
+
+/**
+ * Convert a TaskManifest into SpawnOptions.
+ *
+ * Resolution rules:
+ * - If `allowedTools` is provided explicitly, it takes priority over `profile`
+ * - If only `profile` is provided, resolve it to a tools list via BUILT_IN_PROFILES
+ * - If neither is provided, no tools restriction is applied
+ * - All other fields map directly to SpawnOptions equivalents
+ */
+export function manifestToSpawnOptions(manifest: TaskManifest): SpawnOptions {
+  let allowedTools: string[] | undefined = manifest.allowedTools;
+
+  if (!allowedTools && manifest.profile) {
+    const resolved = resolveProfile(manifest.profile);
+    if (resolved) {
+      allowedTools = resolved;
+    } else {
+      logger.warn(
+        { profile: manifest.profile },
+        'Unknown profile name — no tools restriction applied',
+      );
+    }
+  }
+
+  return {
+    prompt: manifest.prompt,
+    workspacePath: manifest.workspacePath,
+    model: manifest.model,
+    allowedTools,
+    maxTurns: manifest.maxTurns,
+    timeout: manifest.timeout,
+    retries: manifest.retries,
+    retryDelay: manifest.retryDelay,
+  };
+}
 
 /**
  * Sanitize a user-supplied prompt before passing it to the CLI.
@@ -577,5 +625,26 @@ export class AgentRunner {
 
     // All retries exhausted
     throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+  }
+
+  /**
+   * Spawn a Claude CLI agent from a TaskManifest.
+   *
+   * Converts the manifest into SpawnOptions, resolving the `profile` field
+   * into `--allowedTools` flags via BUILT_IN_PROFILES. If both `profile` and
+   * explicit `allowedTools` are provided, explicit wins.
+   */
+  async spawnFromManifest(manifest: TaskManifest): Promise<AgentResult> {
+    return this.spawn(manifestToSpawnOptions(manifest));
+  }
+
+  /**
+   * Stream a Claude CLI agent from a TaskManifest.
+   *
+   * Same as streamFromManifest but yields stdout chunks as they arrive.
+   * Resolves `profile` to tools the same way as spawnFromManifest.
+   */
+  async *streamFromManifest(manifest: TaskManifest): AsyncGenerator<string, AgentResult> {
+    return yield* this.stream(manifestToSpawnOptions(manifest));
   }
 }
