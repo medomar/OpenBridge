@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 24 tasks across 5 phases | **Next up:** Phase 11
+> **Pending:** 23 tasks across 5 phases | **Next up:** Phase 11
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
@@ -87,7 +87,7 @@ Split exploration into **5 short passes**, checkpoint after each pass, and assem
 | 68  | Create `src/master/exploration-prompts.ts` — 4 focused prompt generators: `generateStructureScanPrompt(workspacePath)`, `generateClassificationPrompt(workspacePath, structureScan)`, `generateDirectoryDivePrompt(workspacePath, dirPath, context)`, `generateSummaryPrompt(workspacePath, partialMap)`. Each prompt ~25-40 lines, returns JSON matching the corresponding Zod schema | OB-098 | 🟠 High  |  ✅ Done  |
 | 69  | Create `src/master/exploration-coordinator.ts` — main orchestrator: sequential 5-phase flow with `explore()` entry point that loads/creates `exploration-state.json`, skips completed phases, runs each pass via `executeClaudeCode()`, parses results with `result-parser.ts`, checkpoints after each pass via `DotFolderManager`                                                     | OB-099 | 🟠 High  |  ✅ Done  |
 | 70  | Refactor `MasterManager.explore()` (`src/master/master-manager.ts`) — replace monolithic `executeClaudeCode()` call with delegation to `ExplorationCoordinator.explore()`, remove old exploration prompt import, update state transitions to track incremental progress                                                                                                                | OB-100 | 🟠 High  |  ✅ Done  |
-| 71  | Update exports in `src/master/index.ts` — export `ExplorationCoordinator`, `parseAIResult` from result-parser, exploration prompt generators                                                                                                                                                                                                                                           | OB-101 |  🟡 Med  | ◻ Pending |
+| 71  | Update exports in `src/master/index.ts` — export `ExplorationCoordinator`, `parseAIResult` from result-parser, exploration prompt generators                                                                                                                                                                                                                                           | OB-101 |  🟡 Med  |  ✅ Done  |
 | 72  | Write tests — `ExplorationCoordinator` (phase flow, checkpointing, resume from partial state), `result-parser` (clean JSON, markdown fences, malformed output), prompt generators (output structure), `DotFolderManager` exploration CRUD                                                                                                                                              | OB-102 |  🟡 Med  | ◻ Pending |
 
 ### Key Design Details
