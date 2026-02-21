@@ -123,12 +123,20 @@ export const V2AuthSchema = z.object({
   commandFilter: CommandFilterConfigSchema.optional(),
 });
 
+/** V2 master AI override schema */
+export const V2MasterSchema = z.object({
+  tool: z.string().optional(),
+  explorationPrompt: z.string().optional(),
+  sessionTtlMs: z.number().int().positive().optional(),
+});
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
     workspacePath: z.string().min(1),
     channels: z.array(V2ChannelSchema).min(1),
     auth: V2AuthSchema,
+    master: V2MasterSchema.optional(),
     queue: QueueConfigSchema.optional(),
     router: RouterConfigSchema.optional(),
     audit: AuditConfigSchema.optional(),
@@ -140,4 +148,5 @@ export const V2ConfigSchema = z
 
 export type V2Channel = z.infer<typeof V2ChannelSchema>;
 export type V2Auth = z.infer<typeof V2AuthSchema>;
+export type V2Master = z.infer<typeof V2MasterSchema>;
 export type V2Config = z.infer<typeof V2ConfigSchema>;
