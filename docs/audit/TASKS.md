@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 13 tasks across 5 phases | **Next up:** Phase 13
+> **Pending:** 12 tasks across 4 phases | **Next up:** Phase 14
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
@@ -30,7 +30,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 | 6–10  | Discovery, Master, V2, Delegation |  24  |    0    |   ✅   |
 |  11   | Incremental exploration           |  8   |    0    |   ✅   |
 |  12   | Status + interaction              |  4   |    0    |   ✅   |
-|  13   | Documentation rewrite             |  5   |    1    |   ◻    |
+|  13   | Documentation rewrite             |  6   |    0    |   ✅   |
 |  14   | Testing + verification            |  0   |    8    |   ◻    |
 |  15   | Future: channels + views          |  0   |    4    |   ◻    |
 
@@ -148,14 +148,14 @@ Split exploration into **5 short passes**, checkpoint after each pass, and assem
 
 > **Focus:** Rewrite all docs to reflect the new autonomous AI vision. Remove all references to user-defined map files and old architecture.
 
-| #   | Task                                                                                                                                                                                | ID     | Priority |  Status   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 77  | Rewrite OVERVIEW.md — new vision (autonomous AI bridge), use cases (project exploration, task execution, multi-AI delegation), new architecture layers                              | OB-107 | 🟠 High  |  ✅ Done  |
-| 78  | Rewrite README.md — new positioning, updated quick start (3-step setup), real examples showing AI discovery + exploration                                                           | OB-108 | 🟠 High  |  ✅ Done  |
-| 79  | Rewrite ARCHITECTURE.md — new layers (channels, core, discovery, master AI, delegation), message flow with Master, `.openbridge/` folder spec, incremental exploration architecture | OB-109 | 🟠 High  |  ✅ Done  |
-| 80  | Simplify CONFIGURATION.md — V2 config (3 fields), remove workspace maps section, remove provider config, add discovery overrides                                                    | OB-110 |  🟡 Med  |  ✅ Done  |
-| 81  | Update both CLAUDE.md files — reflect new architecture, new module list, new file structure                                                                                         | OB-111 |  🟡 Med  |  ✅ Done  |
-| 82  | Delete WORKSPACE_MAP_SPEC.md — no longer relevant (AI generates its own maps)                                                                                                       | OB-112 |  🟢 Low  | ◻ Pending |
+| #   | Task                                                                                                                                                                                | ID     | Priority | Status  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 77  | Rewrite OVERVIEW.md — new vision (autonomous AI bridge), use cases (project exploration, task execution, multi-AI delegation), new architecture layers                              | OB-107 | 🟠 High  | ✅ Done |
+| 78  | Rewrite README.md — new positioning, updated quick start (3-step setup), real examples showing AI discovery + exploration                                                           | OB-108 | 🟠 High  | ✅ Done |
+| 79  | Rewrite ARCHITECTURE.md — new layers (channels, core, discovery, master AI, delegation), message flow with Master, `.openbridge/` folder spec, incremental exploration architecture | OB-109 | 🟠 High  | ✅ Done |
+| 80  | Simplify CONFIGURATION.md — V2 config (3 fields), remove workspace maps section, remove provider config, add discovery overrides                                                    | OB-110 |  🟡 Med  | ✅ Done |
+| 81  | Update both CLAUDE.md files — reflect new architecture, new module list, new file structure                                                                                         | OB-111 |  🟡 Med  | ✅ Done |
+| 82  | Delete WORKSPACE_MAP_SPEC.md — no longer relevant (AI generates its own maps)                                                                                                       | OB-112 |  🟢 Low  | ✅ Done |
 
 ---
 
