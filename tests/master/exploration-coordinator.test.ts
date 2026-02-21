@@ -62,8 +62,9 @@ describe('ExplorationCoordinator', () => {
       discoveredTools: mockDiscoveredTools,
     });
 
-    // Reset mocks
+    // Reset mocks (clear call history AND implementations)
     vi.clearAllMocks();
+    mockExecuteClaudeCode.mockReset();
   });
 
   afterEach(async () => {
@@ -273,8 +274,8 @@ describe('ExplorationCoordinator', () => {
         stderr: '',
       });
 
-      // Mock remaining phases with minimal data
-      setupMockRemainingPhases();
+      // Mock remaining phases with minimal data (3 directories from structureScan)
+      setupMockRemainingPhases(0, ['src', 'tests', 'docs']);
 
       await coordinator.explore();
 
@@ -486,9 +487,25 @@ describe('ExplorationCoordinator', () => {
       mockExecuteClaudeCode
         .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
         .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        // Fail twice, then succeed
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
+        // First attempt fails
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
+
+      // First explore() call - should fail with pending dive
+      await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
+
+      // Second attempt - need to re-mock phases 1 and 2 because failed state gets reset
+      mockExecuteClaudeCode
+        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
+
+      // Second explore() call - should still fail with pending dive
+      await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
+
+      // Third attempt succeeds - again need to re-mock phases 1 and 2
+      mockExecuteClaudeCode
+        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
+        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
         .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
         .mockResolvedValueOnce({
           exitCode: 0,
@@ -496,13 +513,14 @@ describe('ExplorationCoordinator', () => {
           stderr: '',
         });
 
+      // Third explore() call - should complete
       await coordinator.explore();
 
       const dotFolder = new DotFolderManager(testWorkspace);
       const state = await dotFolder.readExplorationState();
 
       expect(state?.directoryDives[0]?.status).toBe('completed');
-      expect(state?.directoryDives[0]?.attempts).toBeGreaterThanOrEqual(2);
+      expect(state?.directoryDives[0]?.attempts).toBe(2); // 2 failures before success
     });
 
     it('should mark directory as failed after 3 failed attempts', async () => {
@@ -532,8 +550,10 @@ describe('ExplorationCoordinator', () => {
       mockExecuteClaudeCode
         .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
         .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        // Fail 3 times
-        .mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'Failed' });
+        // Fail 3 times for the directory dive
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
 
       await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
     });
@@ -616,7 +636,7 @@ describe('ExplorationCoordinator', () => {
 
   describe('Error Handling', () => {
     it('should mark exploration as failed on error', async () => {
-      mockExecuteClaudeCode.mockRejectedValueOnce(new Error('AI execution error'));
+      mockExecuteClaudeCode.mockRejectedValue(new Error('AI execution error'));
 
       await expect(coordinator.explore()).rejects.toThrow('AI execution error');
 
@@ -661,7 +681,7 @@ describe('ExplorationCoordinator', () => {
   });
 
   // Helper function to setup mocks for remaining phases
-  function setupMockRemainingPhases(startFrom: number = 0) {
+  function setupMockRemainingPhases(startFrom: number = 0, directories: string[] = ['src']) {
     const classification: Classification = {
       projectType: 'node',
       projectName: 'test',
@@ -673,22 +693,25 @@ describe('ExplorationCoordinator', () => {
       durationMs: 1000,
     };
 
-    const directoryDive: DirectoryDiveResult = {
-      path: 'src',
-      purpose: 'Source',
-      keyFiles: [],
-      subdirectories: [],
-      fileCount: 5,
-      insights: [],
-      exploredAt: new Date().toISOString(),
-      durationMs: 1000,
-    };
+    const mocks = [{ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' }];
 
-    const mocks = [
-      { exitCode: 0, stdout: JSON.stringify(classification), stderr: '' },
-      { exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' },
-      { exitCode: 0, stdout: JSON.stringify({ summary: 'Summary' }), stderr: '' },
-    ];
+    // Add a directory dive mock for each directory
+    directories.forEach((dir) => {
+      const directoryDive: DirectoryDiveResult = {
+        path: dir,
+        purpose: 'Source',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 5,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+      mocks.push({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' });
+    });
+
+    // Add assembly mock
+    mocks.push({ exitCode: 0, stdout: JSON.stringify({ summary: 'Summary' }), stderr: '' });
 
     mocks.slice(startFrom).forEach((mock) => {
       mockExecuteClaudeCode.mockResolvedValueOnce(mock);
