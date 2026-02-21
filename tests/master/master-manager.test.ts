@@ -469,12 +469,17 @@ describe('MasterManager', () => {
 
       expect(mockExecuteClaudeCode).toHaveBeenCalledTimes(2);
 
-      // Both calls should use the same session ID
+      // First call should use sessionId (new session)
+      // Second call should use resumeSessionId (resume existing session)
       const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
       const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
 
-      expect(call1?.resumeSessionId).toBeDefined();
-      expect(call2?.resumeSessionId).toBe(call1?.resumeSessionId);
+      expect(call1?.sessionId).toBeDefined();
+      expect(call1?.resumeSessionId).toBeUndefined();
+      expect(call2?.resumeSessionId).toBeDefined();
+      expect(call2?.sessionId).toBeUndefined();
+      // Both should use the same session ID value
+      expect(call2?.resumeSessionId).toBe(call1?.sessionId);
     });
 
     it('should use different sessions for different senders', async () => {
@@ -508,7 +513,10 @@ describe('MasterManager', () => {
       const call1 = mockExecuteClaudeCode.mock.calls[0]?.[0];
       const call2 = mockExecuteClaudeCode.mock.calls[1]?.[0];
 
-      expect(call1?.resumeSessionId).not.toBe(call2?.resumeSessionId);
+      // Both are new sessions, so both use sessionId
+      expect(call1?.sessionId).toBeDefined();
+      expect(call2?.sessionId).toBeDefined();
+      expect(call1?.sessionId).not.toBe(call2?.sessionId);
     });
 
     it('should reject messages when not in ready state', async () => {
