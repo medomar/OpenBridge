@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 20 tasks across 5 phases | **Next up:** Phase 12
+> **Pending:** 19 tasks across 5 phases | **Next up:** Phase 12
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
@@ -29,7 +29,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 | :---: | --------------------------------- | :--: | :-----: | :----: |
 | 6–10  | Discovery, Master, V2, Delegation |  24  |    0    |   ✅   |
 |  11   | Incremental exploration           |  8   |    0    |   ✅   |
-|  12   | Status + interaction              |  2   |    2    |   🔄   |
+|  12   | Status + interaction              |  3   |    1    |   🔄   |
 |  13   | Documentation rewrite             |  0   |    6    |   ◻    |
 |  14   | Testing + verification            |  0   |    8    |   ◻    |
 |  15   | Future: channels + views          |  0   |    4    |   ◻    |
@@ -137,7 +137,7 @@ Split exploration into **5 short passes**, checkpoint after each pass, and assem
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 73  | Add exploration progress tracking — track milestones per-phase (structure_scan → classification → directory_dives → assembly → finalization), report current phase + completion % on status query                                                                                                              | OB-103 |  🟡 Med  |  ✅ Done  |
 | 74  | Session continuity — Master uses `--resume` flag for conversation context across messages, multi-turn conversations about the project                                                                                                                                                                          | OB-104 | 🟠 High  |  ✅ Done  |
-| 75  | Resilient startup — on restart: reuse valid `.openbridge/` state, resume incomplete exploration from `exploration-state.json`, re-explore if workspace-map.json is missing/corrupted, skip when map is valid. Handle: folder exists but map missing, map exists but schema outdated, clean restart after crash | OB-105 | 🟠 High  | ◻ Pending |
+| 75  | Resilient startup — on restart: reuse valid `.openbridge/` state, resume incomplete exploration from `exploration-state.json`, re-explore if workspace-map.json is missing/corrupted, skip when map is valid. Handle: folder exists but map missing, map exists but schema outdated, clean restart after crash | OB-105 | 🟠 High  |  ✅ Done  |
 | 76  | Status command enhancement — show per-phase progress, active directory dives, total AI calls/time, estimated completion                                                                                                                                                                                        | OB-106 |  🟡 Med  | ◻ Pending |
 
 **Note:** Task 65 (status command handler) from the old Phase 11 is already done. These tasks build on top of the existing status infrastructure.
