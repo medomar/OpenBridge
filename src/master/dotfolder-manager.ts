@@ -22,6 +22,8 @@ import {
   ClassificationSchema,
   DirectoryDiveResultSchema,
 } from '../types/master.js';
+import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
+import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
 
 const execAsync = promisify(exec);
 
@@ -427,6 +429,83 @@ Thumbs.db
 
     const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
     await fs.writeFile(divePath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Get the path to the profiles.json file
+   */
+  public getProfilesPath(): string {
+    return path.join(this.dotFolderPath, 'profiles.json');
+  }
+
+  /**
+   * Read custom profiles registry from profiles.json
+   */
+  public async readProfiles(): Promise<ProfilesRegistry | null> {
+    const profilesPath = this.getProfilesPath();
+
+    try {
+      const content = await fs.readFile(profilesPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return ProfilesRegistrySchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write custom profiles registry to profiles.json
+   */
+  public async writeProfiles(registry: ProfilesRegistry): Promise<void> {
+    const validated = ProfilesRegistrySchema.parse(registry);
+    const profilesPath = this.getProfilesPath();
+    await fs.writeFile(profilesPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Add or update a custom profile in the registry.
+   * Creates profiles.json if it doesn't exist.
+   */
+  public async addProfile(profile: ToolProfile): Promise<void> {
+    ToolProfileSchema.parse(profile);
+
+    const existing = await this.readProfiles();
+    const registry: ProfilesRegistry = existing ?? {
+      profiles: {},
+      updatedAt: new Date().toISOString(),
+    };
+
+    registry.profiles[profile.name] = profile;
+    registry.updatedAt = new Date().toISOString();
+
+    await this.writeProfiles(registry);
+  }
+
+  /**
+   * Remove a custom profile from the registry.
+   * Returns true if the profile was found and removed, false otherwise.
+   */
+  public async removeProfile(profileName: string): Promise<boolean> {
+    const existing = await this.readProfiles();
+    if (!existing || !(profileName in existing.profiles)) {
+      return false;
+    }
+
+    delete existing.profiles[profileName];
+    existing.updatedAt = new Date().toISOString();
+
+    await this.writeProfiles(existing);
+    return true;
+  }
+
+  /**
+   * Get a single custom profile by name.
+   * Returns null if the profile doesn't exist.
+   */
+  public async getProfile(profileName: string): Promise<ToolProfile | null> {
+    const registry = await this.readProfiles();
+    if (!registry) return null;
+    return registry.profiles[profileName] ?? null;
   }
 
   /**
