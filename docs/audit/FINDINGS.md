@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Last Audit:** 2026-02-21
+> **Open:** 2 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -174,19 +174,20 @@
 
 ---
 
-### F-011 — No Console-based preprod test workflow
+### F-011 — No Console-based preprod test workflow ✅ Fixed
 
 | Field    | Value      |
 | -------- | ---------- |
 | Severity | 🟡 Medium  |
 | Category | Testing    |
 | Found    | 2026-02-20 |
+| Fixed    | 2026-02-21 |
 
 **What:** The Console connector exists as a reference implementation, but there's no documented or verified workflow for using it as a rapid preprod testing path. WhatsApp QR auth adds friction to every test cycle. Without a Console-based workflow, validating USE_CASES.md scenarios requires a phone + WhatsApp setup each time.
 
 **Impact:** Slow preprod iteration. Risk of skipping use-case validation because the test setup is too cumbersome.
 
-**Resolution:** Phase 13 (OB-109) — document and verify Console connector as primary preprod test path.
+**Resolution:** Phase 14 (OB-118) — **COMPLETED**. Created comprehensive TESTING_GUIDE.md documentation covering Console-based preprod testing workflow with full use case matrix (software dev, cafe, law firm, accounting). Implemented E2E test suite (`tests/e2e/console-preprod.test.ts`) with 25 tests covering: connector basics, all use case categories, session continuity simulation, graceful missing data handling, command prefix handling, response formatting, error handling, and rapid testing workflow validation. All tests pass.
 
 ---
 
