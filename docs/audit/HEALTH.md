@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.76/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.71
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 14 (Phases 19–21)
+> **Current Score:** 6.81/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.76
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 13 (Phases 19–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -98,6 +98,7 @@
 | 2026-02-21 | 6.68  |    +0.03    | OB-155: Master tool access control — built-in 'master' profile in BUILT_IN_PROFILES (Read, Glob, Grep, Write, Edit — no Bash). MasterManager uses profile as single source of truth. System prompt references master profile. 5 new tests              |
 | 2026-02-21 | 6.71  |    +0.03    | OB-156: Graceful Master restart — detects dead sessions (SIGTERM/SIGKILL/context overflow), saves state, creates new session seeded with workspace-map + task history. Transparent retry so user sees no interruption. Phase 18 complete. 10 new tests |
 | 2026-02-21 | 6.76  |    +0.05    | OB-160: Worker registry — WorkerRegistry class with full lifecycle tracking (pending/running/completed/failed/cancelled), concurrency limits (default: 5), persistence via DotFolderManager (readWorkers/writeWorkers). 48 new tests. Phase 19 started |
+| 2026-02-21 | 6.81  |    +0.05    | OB-161: Parallel worker spawning — integrated WorkerRegistry into handleSpawnMarkers() flow. Workers registered before spawning, lifecycle tracked (pending→running→completed/failed), registry persisted to .openbridge/workers.json. 4 new tests     |
 
 ---
 

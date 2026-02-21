@@ -552,4 +552,205 @@ Working on both tasks.`;
       expect(feedbackCall?.resumeSessionId).toBe(initialCall?.sessionId);
     });
   });
+
+  describe('Worker Registry Integration', () => {
+    it('should register workers before spawning and track lifecycle', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Scan files","model":"haiku"}[/SPAWN]`;
+
+      // Call 1: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Found 10 files',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      // Call 3: Feedback to Master
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The workspace has 10 files.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Scan files'));
+
+      // Verify worker was tracked in registry
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(1);
+
+      const worker = workers[0];
+      expect(worker?.status).toBe('completed');
+      expect(worker?.taskManifest.prompt).toBe('Scan files');
+      expect(worker?.taskManifest.profile).toBe('read-only');
+      expect(worker?.result?.exitCode).toBe(0);
+      expect(worker?.result?.stdout).toBe('Found 10 files');
+    });
+
+    it('should register multiple workers concurrently', async () => {
+      const responseWithMultiSpawn = `
+[SPAWN:read-only]{"prompt":"Scan database","model":"haiku"}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Scan API","model":"haiku"}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Scan tests","model":"haiku"}[/SPAWN]
+`;
+
+      // Call 1: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithMultiSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Calls 2-4: Three workers execute concurrently
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Database has 5 tables',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 400,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'API has 12 routes',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 350,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Tests have 45 files',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 380,
+      });
+
+      // Call 5: Feedback to Master
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Summary: 5 tables, 12 routes, 45 test files.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Scan all areas'));
+
+      // Verify all workers were tracked
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(3);
+
+      const completed = registry.getCompletedWorkers();
+      expect(completed.length).toBe(3);
+
+      // Verify all workers have the correct profile
+      workers.forEach((w) => {
+        expect(w.taskManifest.profile).toBe('read-only');
+        expect(w.status).toBe('completed');
+      });
+    });
+
+    it('should track failed workers without crashing Master', async () => {
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet"}[/SPAWN]`;
+
+      // Call 1: Master returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker fails
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Test command not found',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // Call 3: Feedback with error
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The tests could not run: test command not found.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Run tests'));
+
+      // Verify failed worker was tracked
+      const registry = masterManager.getWorkerRegistry();
+      const workers = registry.getAllWorkers();
+      expect(workers.length).toBe(1);
+
+      const worker = workers[0];
+      expect(worker?.status).toBe('failed');
+      expect(worker?.result?.exitCode).toBe(1);
+      expect(worker?.error).toContain('Exit code 1');
+      expect(worker?.error).toContain('Test command not found');
+    });
+
+    it('should persist worker registry to disk', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Check files","model":"haiku"}[/SPAWN]`;
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Files checked',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'All good.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Check files'));
+
+      // Verify workers.json exists
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const persistedRegistry = await dotFolder.readWorkers();
+
+      expect(persistedRegistry).toBeDefined();
+      expect(Object.keys(persistedRegistry?.workers ?? {}).length).toBe(1);
+
+      const workerIds = Object.keys(persistedRegistry?.workers ?? {});
+      expect(workerIds.length).toBeGreaterThan(0);
+
+      const workerId = workerIds[0];
+      const worker = persistedRegistry?.workers[workerId!];
+      expect(worker?.status).toBe('completed');
+      expect(worker?.taskManifest.prompt).toBe('Check files');
+    });
+  });
 });

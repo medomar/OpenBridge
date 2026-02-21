@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 14 tasks in 4 phases | **Next up:** Phase 19
+> **Pending:** 13 tasks in 4 phases | **Next up:** Phase 19
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -113,7 +113,7 @@ The Master AI is the brain. It decides:
 | #   | Task                                                                                                                                                                                                                                                                                                       | ID     | Priority |  Status   |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 111 | **Worker registry** — create `src/master/worker-registry.ts`. Tracks active workers: { id, taskManifest, pid, startedAt, status, result }. Enforces max concurrent workers (default: 5). Persists to `.openbridge/workers.json` for cross-restart visibility. Mirrors OpenClaw's SubagentRunRecord pattern | OB-160 | 🟠 High  |  ✅ Done  |
-| 112 | **Parallel worker spawning** — Master can spawn multiple workers concurrently. AgentRunner returns promises. Worker registry tracks all active. Results collected via Promise.allSettled(). Failed workers logged but don't crash the Master                                                               | OB-161 | 🟠 High  | ◻ Pending |
+| 112 | **Parallel worker spawning** — Master can spawn multiple workers concurrently. AgentRunner returns promises. Worker registry tracks all active. Results collected via Promise.allSettled(). Failed workers logged but don't crash the Master                                                               | OB-161 | 🟠 High  |  ✅ Done  |
 | 113 | **Worker progress streaming** — for long-running workers, stream progress chunks back to Master and optionally to user (via WhatsApp). User sees "Working on it... (3/5 subtasks done)" style updates                                                                                                      | OB-162 |  🟡 Med  | ◻ Pending |
 | 114 | **Worker timeout + cleanup** — if a worker exceeds its timeout, SIGTERM it gracefully (5s grace), then SIGKILL. Update registry. Log the timeout. Master gets notified of the failure and can retry or skip                                                                                                | OB-163 |  🟡 Med  | ◻ Pending |
 | 115 | **Depth limiting** — workers cannot spawn other workers. Only the Master can spawn. Enforce via: workers get `--print` mode (single-turn, no session), Master gets `--session-id` (multi-turn). This is OpenClaw's `maxSpawnDepth=1` pattern                                                               | OB-164 |  🟡 Med  | ◻ Pending |
