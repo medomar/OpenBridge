@@ -19,3 +19,7 @@ export {
 // Export MasterManager for lifecycle management
 export { MasterManager } from './master-manager.js';
 export type { MasterManagerOptions } from './master-manager.js';
+
+// Export result parser utilities
+export { parseAIResult, parseAIResultWithRetry } from './result-parser.js';
+export type { ParseResult, ParseError, ParsedAIResult } from './result-parser.js';
