@@ -10,6 +10,7 @@ import { DelegationCoordinator } from './delegation.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
+import { WorkerRegistry } from './worker-registry.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -113,6 +114,7 @@ export class MasterManager {
   private readonly dotFolder: DotFolderManager;
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
+  private readonly workerRegistry: WorkerRegistry;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -136,6 +138,7 @@ export class MasterManager {
     this.dotFolder = new DotFolderManager(this.workspacePath);
     this.delegationCoordinator = new DelegationCoordinator();
     this.agentRunner = new AgentRunner();
+    this.workerRegistry = new WorkerRegistry();
 
     logger.info(
       {
@@ -199,6 +202,9 @@ export class MasterManager {
 
     // Initialize Master session FIRST — so exploration can use it
     await this.initMasterSession();
+
+    // Load worker registry from disk (if exists)
+    await this.loadWorkerRegistry();
 
     // Check if .openbridge already has exploration data
     const folderExistedBefore = await this.dotFolder.exists();
@@ -537,6 +543,46 @@ export class MasterManager {
    */
   public getRestartCount(): number {
     return this.restartCount;
+  }
+
+  /**
+   * Get the worker registry for external access.
+   * Useful for status queries and debugging.
+   */
+  public getWorkerRegistry(): WorkerRegistry {
+    return this.workerRegistry;
+  }
+
+  /**
+   * Load the worker registry from .openbridge/workers.json.
+   * Called during start() to restore worker state from previous sessions.
+   */
+  private async loadWorkerRegistry(): Promise<void> {
+    try {
+      const registry = await this.dotFolder.readWorkers();
+      if (registry) {
+        this.workerRegistry.fromJSON(registry);
+        logger.info(
+          { workerCount: Object.keys(registry.workers).length },
+          'Loaded worker registry from disk',
+        );
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Failed to load worker registry from disk (will start fresh)');
+    }
+  }
+
+  /**
+   * Persist the worker registry to .openbridge/workers.json.
+   * Called after worker state changes to maintain cross-restart visibility.
+   */
+  private async persistWorkerRegistry(): Promise<void> {
+    try {
+      const registry = this.workerRegistry.toJSON();
+      await this.dotFolder.writeWorkers(registry);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to persist worker registry to disk');
+    }
   }
 
   /**
@@ -1268,6 +1314,10 @@ Work silently — do not output conversational text, just explore and write the 
    * collects results, and returns a structured feedback prompt for injection
    * into the Master session.
    *
+   * Workers are tracked in the WorkerRegistry with full lifecycle management:
+   * pending → running → completed/failed. The registry enforces concurrency
+   * limits and persists to .openbridge/workers.json for cross-restart visibility.
+   *
    * Worker results include metadata (model, profile, duration, exit code)
    * so the Master can reason about what happened and synthesize a response.
    */
@@ -1276,12 +1326,57 @@ Work silently — do not output conversational text, just explore and write the 
     const customProfilesRegistry = await this.dotFolder.readProfiles();
     const customProfiles = customProfilesRegistry?.profiles;
 
+    // Register all workers in the registry BEFORE spawning
+    // This checks concurrency limits and creates worker records
+    const workerIds: string[] = [];
+    const workerManifests = markers.map((marker) => ({
+      prompt: marker.body.prompt,
+      workspacePath: this.workspacePath,
+      profile: marker.profile,
+      model: marker.body.model,
+      maxTurns: marker.body.maxTurns,
+      timeout: marker.body.timeout,
+      retries: marker.body.retries,
+    }));
+
+    for (const manifest of workerManifests) {
+      try {
+        const workerId = this.workerRegistry.addWorker(manifest);
+        workerIds.push(workerId);
+      } catch (error) {
+        // Max concurrency reached — log and skip this worker
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Failed to register worker (concurrency limit reached)',
+        );
+        // Add a placeholder so indices match
+        workerIds.push('');
+      }
+    }
+
+    // Persist registry after adding workers
+    await this.persistWorkerRegistry();
+
     // Spawn all workers concurrently via Promise.allSettled
-    const workerPromises = markers.map((marker, index) =>
-      this.spawnWorker(marker, index, customProfiles),
-    );
+    const workerPromises = markers.map((marker, index) => {
+      const workerId = workerIds[index];
+      if (!workerId) {
+        // Worker was skipped due to concurrency limit
+        return Promise.resolve({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Worker skipped: concurrency limit reached',
+          durationMs: 0,
+          retryCount: 0,
+        } as AgentResult);
+      }
+      return this.spawnWorker(workerId, marker, index, customProfiles);
+    });
 
     const settled = await Promise.allSettled(workerPromises);
+
+    // Persist registry after all workers complete
+    await this.persistWorkerRegistry();
 
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt } = formatWorkerBatch(settled, markers);
@@ -1291,8 +1386,10 @@ Work silently — do not output conversational text, just explore and write the 
   /**
    * Spawn a single worker from a parsed SPAWN marker.
    * Resolves the profile to tools via AgentRunner's manifest resolution.
+   * Tracks the worker lifecycle in the registry: pending → running → completed/failed.
    */
   private async spawnWorker(
+    workerId: string,
     marker: ParsedSpawnMarker,
     index: number,
     customProfiles?: Record<string, ToolProfile>,
@@ -1301,6 +1398,7 @@ Work silently — do not output conversational text, just explore and write the 
 
     logger.info(
       {
+        workerId,
         workerIndex: index,
         profile,
         model: body.model,
@@ -1323,7 +1421,42 @@ Work silently — do not output conversational text, just explore and write the 
       customProfiles,
     );
 
-    return this.agentRunner.spawn(spawnOpts);
+    try {
+      // Note: We cannot get the actual PID from spawn() because it's an async call
+      // that returns a promise. We mark it as running without a PID for now.
+      // A future enhancement could expose the child process from AgentRunner.
+      this.workerRegistry.markRunning(workerId, -1); // -1 indicates PID not available
+
+      const result = await this.agentRunner.spawn(spawnOpts);
+
+      // Update registry based on result
+      if (result.exitCode === 0) {
+        this.workerRegistry.markCompleted(workerId, result);
+      } else {
+        this.workerRegistry.markFailed(
+          workerId,
+          result,
+          `Exit code ${result.exitCode}: ${result.stderr.slice(0, 200)}`,
+        );
+      }
+
+      return result;
+    } catch (error) {
+      // Worker threw an exception (spawn error, exhausted retries, etc.)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const failedResult: AgentResult = {
+        exitCode: -1,
+        stdout: '',
+        stderr: errorMessage,
+        durationMs: 0,
+        retryCount: 0,
+      };
+
+      this.workerRegistry.markFailed(workerId, failedResult, errorMessage);
+
+      // Re-throw so Promise.allSettled captures it as rejected
+      throw error;
+    }
   }
 
   /**
