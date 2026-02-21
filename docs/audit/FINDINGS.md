@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Last Audit:** 2026-02-20
+> **Open:** 8 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -156,19 +156,20 @@
 
 ---
 
-### F-010 — Session continuity underprioritzed for multi-turn business conversations
+### F-010 — Session continuity underprioritzed for multi-turn business conversations ✅ Fixed
 
 | Field    | Value        |
 | -------- | ------------ |
 | Severity | 🟡 Medium    |
 | Category | Architecture |
 | Found    | 2026-02-20   |
+| Fixed    | 2026-02-21   |
 
 **What:** Task #67 (session continuity via `--resume`) was marked as Medium priority, but nearly every USE_CASES.md scenario implies multi-turn conversations: "which invoices are overdue?" followed by "send reminders to those clients". Without session continuity, each message is isolated and the AI loses context.
 
 **Impact:** Most business use cases become frustrating — users have to repeat context in every message. Breaks the "phone as control panel" promise.
 
-**Resolution:** Priority bumped to High (OB-097). Session continuity is required for preprod validation of use cases.
+**Resolution:** Priority bumped to High (OB-104). Session continuity is now implemented — **COMPLETED**. MasterManager tracks sessions per sender with 30-minute TTL, uses `--session-id` for new sessions and `--resume` for existing ones, enabling multi-turn conversations with full context preservation.
 
 ---
 

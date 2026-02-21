@@ -66,7 +66,7 @@ export class MasterManager {
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
   private explorationCoordinator: ExplorationCoordinator | null = null;
-  private sessionMap: Map<string, string> = new Map(); // sender → sessionId
+  private sessionMap: Map<string, { sessionId: string; createdAt: number }> = new Map(); // sender → session info
   private sessionTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private readonly sessionTTL = 30 * 60 * 1000; // 30 minutes
 
@@ -365,14 +365,15 @@ export class MasterManager {
       }
 
       // Get or create session ID for this sender
-      const sessionId = this.getOrCreateSession(message.sender);
+      const { sessionId, isNew } = this.getOrCreateSession(message.sender);
 
       // Execute message through Claude Code with session continuity (skip permissions — non-interactive)
+      // Use --session-id for new sessions, --resume for existing sessions
       let result = await executeClaudeCode({
         prompt: message.content,
         workspacePath: this.workspacePath,
         timeout: this.messageTimeout,
-        resumeSessionId: sessionId,
+        ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
         skipPermissions: true,
       });
 
@@ -398,6 +399,7 @@ export class MasterManager {
         const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
         this.state = 'processing';
+        // Always use resume here since we already started a session above
         result = await executeClaudeCode({
           prompt: feedbackPrompt,
           workspacePath: this.workspacePath,
@@ -502,15 +504,16 @@ export class MasterManager {
       }
 
       // Get or create session ID for this sender
-      const sessionId = this.getOrCreateSession(message.sender);
+      const { sessionId, isNew } = this.getOrCreateSession(message.sender);
 
       // Stream message through Claude Code with session continuity
+      // Use --session-id for new sessions, --resume for existing sessions
       let fullResponse = '';
       const stream = streamClaudeCode({
         prompt: message.content,
         workspacePath: this.workspacePath,
         timeout: this.messageTimeout,
-        resumeSessionId: sessionId,
+        ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
       });
 
       for await (const chunk of stream) {
@@ -537,6 +540,7 @@ export class MasterManager {
         const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
         this.state = 'processing';
+        // Always use resume here since we already started a session above
         const feedbackStream = streamClaudeCode({
           prompt: feedbackPrompt,
           workspacePath: this.workspacePath,
@@ -847,19 +851,32 @@ export class MasterManager {
   /**
    * Get or create a session ID for a sender.
    * Sessions are used to maintain conversation continuity.
+   * Returns { sessionId, isNew } where isNew indicates if this is a fresh session.
    */
-  private getOrCreateSession(sender: string): string {
+  private getOrCreateSession(sender: string): { sessionId: string; isNew: boolean } {
     // Clear existing timeout for this sender
     const existingTimeout = this.sessionTimeouts.get(sender);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
     }
 
-    // Get or create session ID
-    let sessionId = this.sessionMap.get(sender);
-    if (!sessionId) {
+    const now = Date.now();
+    const existing = this.sessionMap.get(sender);
+    let sessionId: string;
+    let isNew: boolean;
+
+    // Check if session exists and hasn't expired
+    if (existing && now - existing.createdAt < this.sessionTTL) {
+      sessionId = existing.sessionId;
+      isNew = false;
+      logger.debug({ sender, sessionId }, 'Resuming existing session');
+    } else {
+      if (existing) {
+        logger.debug({ sender, oldSessionId: existing.sessionId }, 'Session expired, creating new');
+      }
       sessionId = randomUUID();
-      this.sessionMap.set(sender, sessionId);
+      this.sessionMap.set(sender, { sessionId, createdAt: now });
+      isNew = true;
       logger.debug({ sender, sessionId }, 'Created new session');
     }
 
@@ -872,7 +889,7 @@ export class MasterManager {
 
     this.sessionTimeouts.set(sender, timeout);
 
-    return sessionId;
+    return { sessionId, isNew };
   }
 
   /**
