@@ -98,6 +98,14 @@ The Master runs your test suite, identifies failures, reads the failing code, ap
 
 The Master delegates subtasks — one AI tool analyzes the current schema, another generates Prisma models, the Master coordinates and verifies the result.
 
+### Multi-Turn Conversations
+
+> _You: "/ai which invoices are overdue?"_
+> _AI: "3 invoices: Client A ($1,200), Client B ($850), Client C ($2,400)"_
+> _You: "/ai send reminder emails to those clients"_
+
+Session continuity preserves context across messages. The AI remembers "those clients" refers to A, B, and C from the previous question.
+
 ## Architecture
 
 OpenBridge has 4 layers:
@@ -167,17 +175,24 @@ Auto-detects AI tools on the machine at startup:
 
 The autonomous agent that knows your project:
 
-- **Master Manager** — launches the Master AI, manages its lifecycle (idle → exploring → ready)
+- **Master Manager** — launches the Master AI, manages its lifecycle (idle → exploring → ready), session continuity for multi-turn conversations
+- **Incremental Exploration** — 5-pass strategy (structure scan → classification → directory dives → assembly → finalization), checkpointed and resumable, never times out on large projects
 - **`.openbridge/` Folder** — the AI's brain, stored inside your target project:
   ```
   .openbridge/
   ├── .git/                ← tracks all AI changes
   ├── workspace-map.json   ← auto-generated project understanding
+  ├── exploration/         ← incremental exploration state
+  │   ├── exploration-state.json  ← phase completion tracking
+  │   ├── structure-scan.json     ← top-level scan results
+  │   ├── classification.json     ← project type + frameworks
+  │   └── dirs/                   ← per-directory deep dives
   ├── exploration.log      ← scan history
   ├── agents.json          ← discovered AI tools + roles
   └── tasks/               ← task history
   ```
 - **Delegation** — Master can assign subtasks to other discovered AI tools
+- **Session Continuity** — preserves conversation context across messages (30-minute TTL)
 - **Silent by default** — only speaks when the user sends a message
 
 ## Business Model
@@ -192,16 +207,22 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 
 ## Current Status
 
-| Component        | Status                                                     |
-| ---------------- | ---------------------------------------------------------- |
-| WhatsApp         | V0 — auto-reconnect, sessions, chunking, typing indicators |
-| Claude Code      | V0 — streaming, sessions, error classification             |
-| Bridge Core      | V0 — router, auth, queue, metrics, health, audit           |
-| AI Discovery     | Planned — Phase 6                                          |
-| Master AI        | Planned — Phase 7                                          |
-| V2 Config        | Planned — Phase 8                                          |
-| Multi-AI         | Planned — Phase 10                                         |
-| Telegram/Discord | Planned — Phase 14                                         |
+| Component               | Status                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| WhatsApp                | ✅ V0 — auto-reconnect, sessions, chunking, typing indicators                                 |
+| Console                 | ✅ V0 — reference implementation for rapid testing                                            |
+| Claude Code             | ✅ V0 — streaming, sessions, error classification, generalized CLI executor                   |
+| Bridge Core             | ✅ V0 — router, auth, queue, metrics, health, audit, rate limiting                            |
+| AI Discovery            | ✅ Complete — CLI scanner, VS Code scanner, auto-selection, capability ranking                |
+| Master AI               | ✅ Complete — autonomous exploration, session continuity, status queries, git tracking        |
+| Incremental Exploration | ✅ Complete — 5-pass checkpointed strategy, resumable on restart, never times out             |
+| V2 Config               | ✅ Complete — 3-field setup (workspace + channel + auth), V0 backward compatibility           |
+| Multi-AI Delegation     | ✅ Complete — task delegation, timeout handling, concurrent limits, result aggregation        |
+| Status Commands         | ✅ Complete — exploration progress, estimated completion time, active tasks, session metrics  |
+| Resilient Startup       | ✅ Complete — reuses valid state, resumes incomplete exploration, re-explores on corruption   |
+| Documentation           | 🔄 In Progress — Phase 13 (OVERVIEW.md, README.md, ARCHITECTURE.md, CONFIGURATION.md rewrite) |
+| Testing + Verification  | ⏳ Pending — Phase 14 (E2E tests, non-code workspaces, Console workflow)                      |
+| Telegram/Discord        | ⏳ Pending — Phase 15 (future channels)                                                       |
 
 ## Tech Stack
 
