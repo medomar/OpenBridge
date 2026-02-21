@@ -706,6 +706,14 @@ export class MasterManager {
       status += `\nAI Calls: ${progress.totalCalls}\n`;
       const totalTimeSeconds = Math.floor(progress.totalAITimeMs / 1000);
       status += `Total AI Time: ${totalTimeSeconds}s\n`;
+
+      // Estimate time to completion
+      if (progress.completionPercent > 0 && progress.completionPercent < 100) {
+        const estimatedTotalTimeMs = (progress.totalAITimeMs / progress.completionPercent) * 100;
+        const remainingTimeMs = estimatedTotalTimeMs - progress.totalAITimeMs;
+        const remainingMinutes = Math.ceil(remainingTimeMs / 60000);
+        status += `Estimated Time Remaining: ~${remainingMinutes} minute(s)\n`;
+      }
     } else if (this.explorationSummary) {
       status += `Exploration: ${this.explorationSummary.status}\n`;
       if (this.explorationSummary.projectType) {
