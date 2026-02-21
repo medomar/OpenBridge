@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 11 tasks across 4 phases | **Next up:** Phase 14
+> **Pending:** 10 tasks across 4 phases | **Next up:** Phase 14
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
@@ -31,7 +31,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 |  11   | Incremental exploration           |  8   |    0    |   ✅   |
 |  12   | Status + interaction              |  4   |    0    |   ✅   |
 |  13   | Documentation rewrite             |  6   |    0    |   ✅   |
-|  14   | Testing + verification            |  1   |    7    |   ◻    |
+|  14   | Testing + verification            |  2   |    6    |   ◻    |
 |  15   | Future: channels + views          |  0   |    4    |   ◻    |
 
 ---
@@ -166,7 +166,7 @@ Split exploration into **5 short passes**, checkpoint after each pass, and assem
 | #   | Task                                                                                                                                                                                                  | ID     | Priority |  Status   |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 83  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-113 | 🟠 High  |  ✅ Done  |
-| 84  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-114 | 🟠 High  | ◻ Pending |
+| 84  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-114 | 🟠 High  |  ✅ Done  |
 | 85  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-115 | 🟠 High  | ◻ Pending |
 | 86  | Full E2E verification — start OpenBridge, discover tools, explore workspace (incremental), send WhatsApp message, get response, check .openbridge/ (including exploration/ subfolder)                 | OB-116 | 🟠 High  | ◻ Pending |
 | 87  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-117 | 🟠 High  | ◻ Pending |
