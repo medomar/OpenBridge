@@ -18,6 +18,26 @@ export const DEFAULT_MAX_TURNS_EXPLORATION = 15;
 export const DEFAULT_MAX_TURNS_TASK = 25;
 
 /**
+ * Accepted model short names for the --model flag.
+ * The Claude CLI accepts these directly (no need to resolve to full IDs).
+ * Callers can also pass full model IDs like 'claude-sonnet-4-5-20250929'.
+ */
+export const MODEL_ALIASES = ['haiku', 'sonnet', 'opus'] as const;
+export type ModelAlias = (typeof MODEL_ALIASES)[number];
+
+/**
+ * Validate a model string.
+ * Accepts known short aliases ('haiku', 'sonnet', 'opus') or full model IDs
+ * matching the Claude naming pattern (e.g. 'claude-sonnet-4-5-20250929').
+ * Returns true if valid, false otherwise.
+ */
+export function isValidModel(model: string): boolean {
+  if (MODEL_ALIASES.includes(model as ModelAlias)) return true;
+  // Full model IDs follow the pattern: claude-<variant>-<version>
+  return /^claude-[a-z0-9]+-[a-z0-9._-]+$/.test(model);
+}
+
+/**
  * Tool group constants for --allowedTools.
  * Used instead of --dangerously-skip-permissions to give agents
  * only the tools they need for a given task type.
@@ -97,6 +117,8 @@ export interface AgentResult {
   exitCode: number;
   durationMs: number;
   retryCount: number;
+  /** The model that was requested (undefined = CLI default) */
+  model?: string;
 }
 
 /** Build the CLI argument array from spawn options. */
@@ -104,6 +126,12 @@ export function buildArgs(opts: SpawnOptions): string[] {
   const args = ['--print'];
 
   if (opts.model) {
+    if (!isValidModel(opts.model)) {
+      logger.warn(
+        { model: opts.model },
+        'Unrecognized model — passing through to CLI, which may reject it',
+      );
+    }
     args.push('--model', opts.model);
   }
 
@@ -233,12 +261,14 @@ export class AgentRunner {
       exitCode: lastResult?.exitCode ?? 1,
       durationMs,
       retryCount,
+      model: opts.model,
     };
 
     logger.info(
       {
         exitCode: result.exitCode,
         durationMs: result.durationMs,
+        model: result.model ?? 'default',
         retryCount: result.retryCount,
       },
       'Agent completed',

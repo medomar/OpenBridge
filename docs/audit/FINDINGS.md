@@ -2,14 +2,14 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 | **Last Audit:** 2026-02-21
+> **Open:** 3 | **Fixed:** 2 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md)
 
 ---
 
 ## Open Findings
 
-### OB-F13 — `--dangerously-skip-permissions` used for all Claude CLI calls 🔴 Critical
+### OB-F13 — `--dangerously-skip-permissions` used for all Claude CLI calls ✅ Fixed
 
 **Discovered:** 2026-02-21 (real-world testing)
 **Component:** `src/providers/claude-code/claude-code-executor.ts`
@@ -71,7 +71,7 @@ Error: Structure scan failed with exit code 143:
 
 ---
 
-### OB-F16 — No model selection — all calls use default model 🟡 Medium
+### OB-F16 — No model selection — all calls use default model ✅ Fixed
 
 **Discovered:** 2026-02-21 (code review)
 **Component:** `src/providers/claude-code/claude-code-executor.ts`
