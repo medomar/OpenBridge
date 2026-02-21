@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 task across 1 phase | **Next up:** Phase 14
+> **Pending:** 0 tasks across 0 phases | **Next up:** Phase 15
 > **Last Updated:** 2026-02-21
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md)
 
@@ -31,7 +31,7 @@ The user configures three things: **workspace path**, **messaging channel**, **p
 |  11   | Incremental exploration           |  8   |    0    |   ✅   |
 |  12   | Status + interaction              |  4   |    0    |   ✅   |
 |  13   | Documentation rewrite             |  6   |    0    |   ✅   |
-|  14   | Testing + verification            |  7   |    1    |   ◻    |
+|  14   | Testing + verification            |  8   |    0    |   ✅   |
 |  15   | Future: channels + views          |  0   |    4    |   ◻    |
 
 ---
@@ -163,16 +163,16 @@ Split exploration into **5 short passes**, checkpoint after each pass, and assem
 
 > **Focus:** Ensure everything compiles, passes tests, and works end-to-end. Includes use-case validation: non-code workspaces (cafes, law firms, accounting), Console-based rapid testing, graceful error handling, and prefix stripping verification.
 
-| #   | Task                                                                                                                                                                                                  | ID     | Priority |  Status   |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 83  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-113 | 🟠 High  |  ✅ Done  |
-| 84  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-114 | 🟠 High  |  ✅ Done  |
-| 85  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-115 | 🟠 High  |  ✅ Done  |
-| 86  | Full E2E verification — start OpenBridge, discover tools, explore workspace (incremental), send WhatsApp message, get response, check .openbridge/ (including exploration/ subfolder)                 | OB-116 | 🟠 High  |  ✅ Done  |
-| 87  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-117 | 🟠 High  |  ✅ Done  |
-| 88  | Console-based preprod test workflow — document and verify Console connector as primary rapid testing path (no WhatsApp QR dependency), test all use case categories through Console                   | OB-118 | 🟠 High  |  ✅ Done  |
-| 89  | Graceful "unknown" handling — verify AI responds helpfully when workspace lacks data for a query (e.g. "what's today's revenue?" with no sales file), no crashes or empty responses                   | OB-119 |  🟡 Med  |  ✅ Done  |
-| 90  | Command prefix stripping in Master flow — verify `/ai` prefix is cleanly stripped before reaching Master AI, Master receives natural language only                                                    | OB-120 |  🟡 Med  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                  | ID     | Priority | Status  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 83  | Run `npm run typecheck` — ensure no TypeScript errors after all changes                                                                                                                               | OB-113 | 🟠 High  | ✅ Done |
+| 84  | Run `npm run lint` — fix any ESLint issues                                                                                                                                                            | OB-114 | 🟠 High  | ✅ Done |
+| 85  | Run `npm run test` — update broken tests, add new tests for discovery + master modules                                                                                                                | OB-115 | 🟠 High  | ✅ Done |
+| 86  | Full E2E verification — start OpenBridge, discover tools, explore workspace (incremental), send WhatsApp message, get response, check .openbridge/ (including exploration/ subfolder)                 | OB-116 | 🟠 High  | ✅ Done |
+| 87  | Non-code workspace E2E test — point at a folder with CSVs/text/markdown business files, ask business-style questions (inventory, revenue, schedules), verify responses are accurate and non-technical | OB-117 | 🟠 High  | ✅ Done |
+| 88  | Console-based preprod test workflow — document and verify Console connector as primary rapid testing path (no WhatsApp QR dependency), test all use case categories through Console                   | OB-118 | 🟠 High  | ✅ Done |
+| 89  | Graceful "unknown" handling — verify AI responds helpfully when workspace lacks data for a query (e.g. "what's today's revenue?" with no sales file), no crashes or empty responses                   | OB-119 |  🟡 Med  | ✅ Done |
+| 90  | Command prefix stripping in Master flow — verify `/ai` prefix is cleanly stripped before reaching Master AI, Master receives natural language only                                                    | OB-120 |  🟡 Med  | ✅ Done |
 
 ---
 
