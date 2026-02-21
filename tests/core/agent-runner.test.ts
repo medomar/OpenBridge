@@ -1340,6 +1340,18 @@ describe('resolveProfile', () => {
     expect(resolveProfile('full-access')).toEqual(BUILT_IN_PROFILES['full-access'].tools);
   });
 
+  it('resolves "master" to file management tools without Bash', () => {
+    const tools = resolveProfile('master');
+    expect(tools).toEqual(BUILT_IN_PROFILES.master.tools);
+    expect(tools).toContain('Read');
+    expect(tools).toContain('Write');
+    expect(tools).toContain('Edit');
+    expect(tools).toContain('Glob');
+    expect(tools).toContain('Grep');
+    // Master must NOT have Bash access
+    expect(tools?.some((t) => t.startsWith('Bash'))).toBe(false);
+  });
+
   it('returns undefined for unknown profile names', () => {
     expect(resolveProfile('nonexistent')).toBeUndefined();
   });
@@ -1420,6 +1432,12 @@ describe('manifestToSpawnOptions', () => {
   it('resolves full-access profile to full tool set', () => {
     const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'full-access' });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['full-access'].tools);
+  });
+
+  it('resolves master profile to file management tools without Bash', () => {
+    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'master' });
+    expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES.master.tools);
+    expect(opts.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
   });
 
   it('explicit allowedTools override profile', () => {

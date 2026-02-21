@@ -4,6 +4,8 @@ import { generateMasterSystemPrompt } from './master-system-prompt.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import { BUILT_IN_PROFILES } from '../types/agent.js';
+import type { ToolProfile } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
@@ -17,7 +19,6 @@ import type {
   MasterSession,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { ToolProfile } from '../types/agent.js';
 import type { InboundMessage } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
@@ -29,10 +30,11 @@ const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
 
 /**
  * Tools available to the Master AI session.
+ * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
  * Master can read, write, and edit files (for .openbridge/ management)
  * but NOT execute arbitrary commands — it delegates to workers for that.
  */
-const MASTER_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit'] as const;
+const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
 
 /**
  * Default max turns for the Master session per interaction.
