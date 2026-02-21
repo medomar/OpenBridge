@@ -19,7 +19,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
-// Mock the AgentRunner class used by MasterManager, ExplorationCoordinator, and DelegationCoordinator
+// Mock the AgentRunner class used by MasterManager and DelegationCoordinator
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => ({
@@ -248,102 +248,11 @@ async function cleanupWorkspace(workspacePath: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Simulates successful incremental exploration responses for cafe workspace
+ * Simulates successful Master-driven exploration responses for cafe workspace
  */
 function setupMockCafeExplorationResponses(workspacePath: string) {
-  // Pass 1: Structure scan
-  const structureScanResult = {
-    workspacePath,
-    topLevelFiles: ['menu.txt', 'README.txt'],
-    topLevelDirs: ['inventory', 'sales', 'staff', 'suppliers'],
-    directoryCounts: {
-      inventory: 1,
-      sales: 2,
-      staff: 1,
-      suppliers: 1,
-    },
-    configFiles: [],
-    skippedDirs: [],
-    totalFiles: 7,
-    scannedAt: new Date().toISOString(),
-    durationMs: 80,
-  };
-
-  // Pass 2: Classification
-  const classificationResult = {
-    projectType: 'business-data',
-    projectName: 'cafe-business-files',
-    frameworks: [],
-    commands: {},
-    dependencies: [],
-    insights: [
-      'Small business data repository',
-      'Contains inventory, sales, staff schedules, and supplier contacts',
-      'Data formats: CSV, TXT, Markdown',
-      'Cafe/restaurant business context',
-    ],
-    classifiedAt: new Date().toISOString(),
-    durationMs: 90,
-  };
-
-  // Pass 3: Directory dives
-  const inventoryDiveResult = {
-    path: 'inventory',
-    purpose: 'Inventory tracking',
-    keyFiles: [
-      {
-        path: 'stock.csv',
-        type: 'data',
-        purpose: 'Current stock levels with reorder thresholds',
-      },
-    ],
-    subdirectories: [],
-    fileCount: 1,
-    insights: ['Tracks items like milk, coffee beans, butter with quantities and suppliers'],
-    exploredAt: new Date().toISOString(),
-    durationMs: 40,
-  };
-
-  const salesDiveResult = {
-    path: 'sales',
-    purpose: 'Sales records',
-    keyFiles: [
-      { path: 'january-2026.csv', type: 'data', purpose: 'January 2026 sales data' },
-      { path: 'february-2026.csv', type: 'data', purpose: 'February 2026 sales data' },
-    ],
-    subdirectories: [],
-    fileCount: 2,
-    insights: ['Daily sales records with item quantities and revenue'],
-    exploredAt: new Date().toISOString(),
-    durationMs: 50,
-  };
-
-  const staffDiveResult = {
-    path: 'staff',
-    purpose: 'Staff schedules',
-    keyFiles: [{ path: 'schedule-week8.txt', type: 'data', purpose: 'Week 8 staff schedule' }],
-    subdirectories: [],
-    fileCount: 1,
-    insights: ['Staff shift assignments for the week'],
-    exploredAt: new Date().toISOString(),
-    durationMs: 40,
-  };
-
-  const suppliersDiveResult = {
-    path: 'suppliers',
-    purpose: 'Supplier contacts',
-    keyFiles: [
-      { path: 'contacts.md', type: 'documentation', purpose: 'Supplier contact information' },
-    ],
-    subdirectories: [],
-    fileCount: 1,
-    insights: ['Contact details for dairy, coffee, and general supplies vendors'],
-    exploredAt: new Date().toISOString(),
-    durationMs: 40,
-  };
-
-  // Pass 4: Assembly (workspace-map.json)
-  const assemblyResult = {
+  // The workspace map that the Master session writes during exploration
+  const masterWorkspaceMap = {
     workspacePath,
     projectName: 'cafe-business-files',
     projectType: 'business-data',
@@ -373,82 +282,24 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
 
   let callCount = 0;
 
-  mockSpawn.mockImplementation(async () => {
+  // Mock spawn for Master-driven exploration
+  mockSpawn.mockImplementation(async (opts: { sessionId?: string; resumeSessionId?: string }) => {
     callCount++;
 
-    if (callCount === 1) {
+    // Master-driven exploration: first call with session writes workspace-map.json
+    if (callCount === 1 && (opts.sessionId || opts.resumeSessionId)) {
+      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
+      await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
       return {
-        stdout: JSON.stringify(structureScanResult),
+        stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
         stderr: '',
         exitCode: 0,
         retryCount: 0,
-        durationMs: 100,
+        durationMs: 200,
       };
     }
 
-    if (callCount === 2) {
-      return {
-        stdout: JSON.stringify(classificationResult),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    // Calls 3-6: Directory dives (inventory, sales, staff, suppliers)
-    if (callCount === 3) {
-      return {
-        stdout: JSON.stringify(inventoryDiveResult),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    if (callCount === 4) {
-      return {
-        stdout: JSON.stringify(salesDiveResult),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    if (callCount === 5) {
-      return {
-        stdout: JSON.stringify(staffDiveResult),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    if (callCount === 6) {
-      return {
-        stdout: JSON.stringify(suppliersDiveResult),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    // Call 7: Assembly (summary generation)
-    if (callCount === 7) {
-      return {
-        stdout: JSON.stringify({ summary: assemblyResult.summary }),
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 100,
-      };
-    }
-
-    // Fallback for any additional spawn calls (e.g. processMessage, re-explore)
+    // Fallback for any other spawn calls
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',

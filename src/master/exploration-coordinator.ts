@@ -1,7 +1,7 @@
 /**
- * Exploration Coordinator — Incremental Multi-Pass Strategy
+ * Exploration Coordinator — Utility Library for Incremental Exploration
  *
- * Orchestrates the 5-phase incremental exploration workflow:
+ * Provides a 5-phase incremental exploration workflow as a utility library:
  * 1. Structure Scan  (90s) — List files/dirs, count, detect configs
  * 2. Classification  (90s) — Determine project type, frameworks, commands
  * 3. Directory Dives (90s/dir) — Explore each significant directory in batches of 3
@@ -11,6 +11,15 @@
  * Each pass is checkpointed to disk via exploration-state.json, making the
  * exploration fully resumable on restart. If interrupted at any point, the
  * coordinator resumes from the last completed phase.
+ *
+ * **Usage:** This module is a **utility library only** — it is NOT the driver
+ * of exploration. The Master AI session drives exploration autonomously via
+ * its system prompt. The Master decides how many passes to make, which
+ * directories to explore, and what to record. The Master writes results
+ * directly to `.openbridge/` using its own tools (Read, Glob, Grep, Write, Edit).
+ *
+ * This coordinator is available for programmatic use (e.g., testing, scripts)
+ * but MasterManager does not use it for production exploration flows.
  */
 
 import { DotFolderManager } from './dotfolder-manager.js';
@@ -55,7 +64,10 @@ export interface ExplorationOptions {
 }
 
 /**
- * Main orchestrator for incremental exploration
+ * Utility library for incremental exploration.
+ *
+ * Available for programmatic use and testing, but production exploration
+ * is driven by the Master AI session directly (see MasterManager).
  */
 export class ExplorationCoordinator {
   private readonly workspacePath: string;

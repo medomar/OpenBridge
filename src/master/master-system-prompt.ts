@@ -3,6 +3,7 @@
  *
  * Generates the system prompt for the Master AI session. The prompt defines:
  * - Who the Master is and its role
+ * - How to explore the workspace autonomously
  * - Available tool profiles for spawning workers
  * - How to delegate tasks via [DELEGATE] markers
  * - How to respond to users
@@ -67,6 +68,57 @@ ${profilesSection}
 ## Discovered AI Tools
 
 ${toolsSection}
+
+## Workspace Exploration
+
+**You are the sole driver of exploration.** When you receive an exploration prompt (e.g., "Explore this workspace"), you autonomously explore the workspace and write results directly to \`.openbridge/\`. There are no hardcoded phases — you decide the strategy.
+
+You decide:
+- **How many passes** to make (scan structure first, then classify, then dive into directories — or do it differently if the project warrants it)
+- **Which directories** to explore in depth (focus on significant ones, skip node_modules/dist/.git)
+- **What model and approach** to use (adjust depth based on project size and complexity)
+- **What to record** in \`.openbridge/workspace-map.json\`
+
+### Recommended Exploration Strategy
+
+1. **Structure Scan** — Use Glob and Read to list top-level files and directories, count files per directory, identify config files
+2. **Classification** — Read config files (package.json, requirements.txt, etc.) to determine project type, frameworks, commands, dependencies
+3. **Directory Dives** — Explore significant directories in detail: identify key files, purposes, subdirectories, patterns
+4. **Assembly** — Write your findings to \`.openbridge/workspace-map.json\` with a concise summary
+
+You may adapt this strategy as needed. For simple projects, fewer passes may suffice. For complex monorepos, you may need more targeted exploration.
+
+### Workspace Map Schema
+
+Write \`workspace-map.json\` with this structure:
+\`\`\`json
+{
+  "workspacePath": "/absolute/path",
+  "projectName": "name",
+  "projectType": "node|python|business|mixed|...",
+  "frameworks": ["typescript", "react", ...],
+  "structure": { "src": { "path": "src", "purpose": "Source code", "fileCount": 42 } },
+  "keyFiles": [{ "path": "src/index.ts", "type": "entry", "purpose": "Main entry point" }],
+  "entryPoints": ["src/index.ts"],
+  "commands": { "dev": "npm run dev", "test": "npm test" },
+  "dependencies": [{ "name": "typescript", "version": "^5.7.0", "type": "dev" }],
+  "summary": "Concise 2-3 sentence project description",
+  "generatedAt": "ISO-8601-timestamp",
+  "schemaVersion": "1.0.0"
+}
+\`\`\`
+
+### Adaptive Style
+
+- **Code projects** (package.json, .py, Cargo.toml): Technical, developer-focused
+- **Business workspaces** (.xlsx, .csv, .pdf, no code): Plain language, non-technical
+- **Mixed**: Balanced — technical for code, plain for data
+
+### Constraints
+
+- **Only read and analyze** during exploration — do NOT modify workspace files outside \`.openbridge/\`
+- **Do NOT install dependencies or run code** during exploration
+- If you can't read a file (binary, permissions, too large), skip it and note in the log
 
 ## How to Delegate Tasks
 

@@ -13,7 +13,7 @@ function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
   return mockSpawn.mock.calls[callIndex]?.[0] as SpawnOptions | undefined;
 }
 
-// Mock AgentRunner (used by MasterManager, ExplorationCoordinator, DelegationCoordinator)
+// Mock AgentRunner (used by MasterManager, DelegationCoordinator)
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => ({
