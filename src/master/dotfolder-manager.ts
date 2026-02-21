@@ -30,11 +30,15 @@ export class DotFolderManager {
   private readonly workspacePath: string;
   private readonly dotFolderPath: string;
   private readonly tasksPath: string;
+  private readonly explorationPath: string;
+  private readonly explorationDirsPath: string;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
     this.dotFolderPath = path.join(workspacePath, '.openbridge');
     this.tasksPath = path.join(this.dotFolderPath, 'tasks');
+    this.explorationPath = path.join(this.dotFolderPath, 'exploration');
+    this.explorationDirsPath = path.join(this.explorationPath, 'dirs');
   }
 
   /**
@@ -82,10 +86,14 @@ export class DotFolderManager {
    * Creates:
    * - .openbridge/
    * - .openbridge/tasks/
+   * - .openbridge/exploration/
+   * - .openbridge/exploration/dirs/
    */
   public async createFolder(): Promise<void> {
     await fs.mkdir(this.dotFolderPath, { recursive: true });
     await fs.mkdir(this.tasksPath, { recursive: true });
+    await fs.mkdir(this.explorationPath, { recursive: true });
+    await fs.mkdir(this.explorationDirsPath, { recursive: true });
   }
 
   /**

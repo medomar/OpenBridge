@@ -1,0 +1,58 @@
+{
+  "connectors": [
+    {
+      "type": "whatsapp",
+      "enabled": true,
+      "options": {
+        "sessionName": "openbridge-default",
+        "sessionPath": ".wwebjs_auth"
+      }
+    }
+  ],
+  "providers": [
+    {
+      "type": "claude-code",
+      "enabled": true,
+      "options": {
+        "workspacePath": "~/Desktop/AI-Bridge/OpenBridge",
+        "maxTokens": 4096,
+        "timeout": 600000
+      }
+    }
+  ],
+  "defaultProvider": "claude-code",
+  "workspaces": [
+    {
+      "name": "Social-Media-Automation-Platform",
+      "path": "~/Desktop/Social-Media-Automation-Platform"
+    }
+  ],
+  "defaultWorkspace": "Social-Media-Automation-Platform",
+  "auth": {
+    "whitelist": ["+33617491603", "+33629539495"],
+    "prefix": "/ai",
+    "rateLimit": {
+      "enabled": true,
+      "maxMessages": 10,
+      "windowMs": 60000
+    },
+    "commandFilter": {
+      "denyPatterns": ["rm\\s+-rf", "drop\\s+table", "format\\s+disk"],
+      "allowPatterns": [],
+      "denyMessage": "That command is not allowed."
+    }
+  },
+  "queue": {
+    "maxRetries": 3,
+    "retryDelayMs": 1000
+  },
+  "audit": {
+    "enabled": false,
+    "logPath": "audit.log"
+  },
+  "health": {
+    "enabled": false,
+    "port": 8080
+  },
+  "logLevel": "info"
+}

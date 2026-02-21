@@ -234,3 +234,208 @@ export const ExplorationLogEntrySchema = z.object({
 });
 
 export type ExplorationLogEntry = z.infer<typeof ExplorationLogEntrySchema>;
+
+// ── Incremental Exploration (Phase 11) ──────────────────────────────
+
+/**
+ * Phase status for incremental exploration
+ */
+export const ExplorationPhaseSchema = z.enum([
+  'pending', // Not started yet
+  'in_progress', // Currently running
+  'completed', // Successfully finished
+  'failed', // Failed after retries
+]);
+
+export type ExplorationPhase = z.infer<typeof ExplorationPhaseSchema>;
+
+/**
+ * Status of a single directory dive in Pass 3
+ */
+export const DirectoryDiveStatusSchema = z.object({
+  /** Directory path relative to workspace root */
+  path: z.string(),
+
+  /** Status of this directory dive */
+  status: ExplorationPhaseSchema,
+
+  /** Output file path (relative to .openbridge/exploration/dirs/) */
+  outputFile: z.string().optional(),
+
+  /** Number of attempts made */
+  attempts: z.number().int().nonnegative().default(0),
+
+  /** Error message if failed */
+  error: z.string().optional(),
+});
+
+export type DirectoryDiveStatus = z.infer<typeof DirectoryDiveStatusSchema>;
+
+/**
+ * Main exploration state tracking file (exploration-state.json)
+ * Single source of truth for resumability
+ */
+export const ExplorationStateSchema = z.object({
+  /** Current phase being executed */
+  currentPhase: z.enum([
+    'structure_scan',
+    'classification',
+    'directory_dives',
+    'assembly',
+    'finalization',
+  ]),
+
+  /** Overall exploration status */
+  status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
+
+  /** When exploration started */
+  startedAt: z.string().datetime(),
+
+  /** When exploration completed (if finished) */
+  completedAt: z.string().datetime().optional(),
+
+  /** Status of each phase */
+  phases: z.object({
+    structure_scan: ExplorationPhaseSchema,
+    classification: ExplorationPhaseSchema,
+    directory_dives: ExplorationPhaseSchema,
+    assembly: ExplorationPhaseSchema,
+    finalization: ExplorationPhaseSchema,
+  }),
+
+  /** Directory dive tracking (Pass 3) */
+  directoryDives: z.array(DirectoryDiveStatusSchema).default([]),
+
+  /** Total number of AI calls made */
+  totalCalls: z.number().int().nonnegative().default(0),
+
+  /** Total AI execution time in milliseconds */
+  totalAITimeMs: z.number().int().nonnegative().default(0),
+
+  /** Error message if exploration failed */
+  error: z.string().optional(),
+});
+
+export type ExplorationState = z.infer<typeof ExplorationStateSchema>;
+
+/**
+ * Pass 1 output: Structure Scan (structure-scan.json)
+ * Lists top-level files/dirs, counts files per directory, detects config files
+ */
+export const StructureScanSchema = z.object({
+  /** Workspace path scanned */
+  workspacePath: z.string(),
+
+  /** Top-level files found */
+  topLevelFiles: z.array(z.string()).default([]),
+
+  /** Top-level directories found */
+  topLevelDirs: z.array(z.string()).default([]),
+
+  /** File count per directory */
+  directoryCounts: z.record(z.number().int().nonnegative()).default({}),
+
+  /** Detected configuration files (package.json, tsconfig.json, etc.) */
+  configFiles: z.array(z.string()).default([]),
+
+  /** Directories that were skipped (node_modules, .git, dist, etc.) */
+  skippedDirs: z.array(z.string()).default([]),
+
+  /** Total file count in workspace (excluding skipped) */
+  totalFiles: z.number().int().nonnegative(),
+
+  /** When this scan was performed */
+  scannedAt: z.string().datetime(),
+
+  /** Duration of the scan in milliseconds */
+  durationMs: z.number().int().nonnegative(),
+});
+
+export type StructureScan = z.infer<typeof StructureScanSchema>;
+
+/**
+ * Pass 2 output: Classification (classification.json)
+ * Detects project type, frameworks, commands, dependencies
+ */
+export const ClassificationSchema = z.object({
+  /** Detected project type (e.g., 'node', 'python', 'business', 'mixed') */
+  projectType: z.string(),
+
+  /** Project name (from package.json, directory name, or detected) */
+  projectName: z.string(),
+
+  /** Detected frameworks and tools */
+  frameworks: z.array(z.string()).default([]),
+
+  /** Build/test/dev commands detected */
+  commands: z.record(z.string()).default({}).describe('Map of command name to command string'),
+
+  /** Dependencies detected (from package.json, requirements.txt, etc.) */
+  dependencies: z
+    .array(
+      z.object({
+        name: z.string(),
+        version: z.string().optional(),
+        type: z.enum(['runtime', 'dev', 'peer']).optional(),
+      }),
+    )
+    .default([]),
+
+  /** Key insights from classification */
+  insights: z.array(z.string()).default([]),
+
+  /** When classification was performed */
+  classifiedAt: z.string().datetime(),
+
+  /** Duration of classification in milliseconds */
+  durationMs: z.number().int().nonnegative(),
+});
+
+export type Classification = z.infer<typeof ClassificationSchema>;
+
+/**
+ * Pass 3 output: Directory Dive Result (dirs/<dirname>.json)
+ * Exploration of a single significant directory
+ */
+export const DirectoryDiveResultSchema = z.object({
+  /** Directory path relative to workspace root */
+  path: z.string(),
+
+  /** Purpose of this directory */
+  purpose: z.string(),
+
+  /** Key files found in this directory */
+  keyFiles: z
+    .array(
+      z.object({
+        path: z.string(),
+        type: z.string(),
+        purpose: z.string(),
+      }),
+    )
+    .default([]),
+
+  /** Subdirectories and their purposes */
+  subdirectories: z
+    .array(
+      z.object({
+        path: z.string(),
+        purpose: z.string(),
+      }),
+    )
+    .default([]),
+
+  /** File count in this directory (excluding subdirs) */
+  fileCount: z.number().int().nonnegative(),
+
+  /** Insights about this directory */
+  insights: z.array(z.string()).default([]),
+
+  /** When this dive was performed */
+  exploredAt: z.string().datetime(),
+
+  /** Duration of the dive in milliseconds */
+  durationMs: z.number().int().nonnegative(),
+});
+
+export type DirectoryDiveResult = z.infer<typeof DirectoryDiveResultSchema>;
