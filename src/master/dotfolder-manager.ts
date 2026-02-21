@@ -307,6 +307,105 @@ Thumbs.db
   }
 
   /**
+   * Create exploration directory structure
+   * Creates:
+   * - .openbridge/exploration/
+   * - .openbridge/exploration/dirs/
+   */
+  public async createExplorationDir(): Promise<void> {
+    await fs.mkdir(this.explorationPath, { recursive: true });
+    await fs.mkdir(this.explorationDirsPath, { recursive: true });
+  }
+
+  /**
+   * Read exploration state from exploration-state.json
+   */
+  public async readExplorationState(): Promise<Record<string, unknown> | null> {
+    const statePath = path.join(this.explorationPath, 'exploration-state.json');
+
+    try {
+      const content = await fs.readFile(statePath, 'utf-8');
+      return JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write exploration state to exploration-state.json
+   */
+  public async writeExplorationState(state: Record<string, unknown>): Promise<void> {
+    const statePath = path.join(this.explorationPath, 'exploration-state.json');
+    await fs.writeFile(statePath, JSON.stringify(state, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read structure scan from structure-scan.json
+   */
+  public async readStructureScan(): Promise<Record<string, unknown> | null> {
+    const scanPath = path.join(this.explorationPath, 'structure-scan.json');
+
+    try {
+      const content = await fs.readFile(scanPath, 'utf-8');
+      return JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write structure scan to structure-scan.json
+   */
+  public async writeStructureScan(scan: Record<string, unknown>): Promise<void> {
+    const scanPath = path.join(this.explorationPath, 'structure-scan.json');
+    await fs.writeFile(scanPath, JSON.stringify(scan, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read classification from classification.json
+   */
+  public async readClassification(): Promise<Record<string, unknown> | null> {
+    const classificationPath = path.join(this.explorationPath, 'classification.json');
+
+    try {
+      const content = await fs.readFile(classificationPath, 'utf-8');
+      return JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write classification to classification.json
+   */
+  public async writeClassification(classification: Record<string, unknown>): Promise<void> {
+    const classificationPath = path.join(this.explorationPath, 'classification.json');
+    await fs.writeFile(classificationPath, JSON.stringify(classification, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read directory dive result from exploration/dirs/{dirName}.json
+   */
+  public async readDirectoryDive(dirName: string): Promise<Record<string, unknown> | null> {
+    const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
+
+    try {
+      const content = await fs.readFile(divePath, 'utf-8');
+      return JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write directory dive result to exploration/dirs/{dirName}.json
+   */
+  public async writeDirectoryDive(dirName: string, dive: Record<string, unknown>): Promise<void> {
+    const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
+    await fs.writeFile(divePath, JSON.stringify(dive, null, 2), 'utf-8');
+  }
+
+  /**
    * Initialize .openbridge folder if it doesn't exist
    * Creates folder structure and initializes git repo
    */
