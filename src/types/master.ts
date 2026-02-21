@@ -439,3 +439,31 @@ export const DirectoryDiveResultSchema = z.object({
 });
 
 export type DirectoryDiveResult = z.infer<typeof DirectoryDiveResultSchema>;
+
+// ── Master Session ──────────────────────────────────────────────
+
+/**
+ * Persistent Master session info stored in .openbridge/master-session.json.
+ * Used to resume the Master AI session across restarts.
+ */
+export const MasterSessionSchema = z.object({
+  /** Session ID used with the Claude CLI --session-id / --resume flags */
+  sessionId: z.string().min(1),
+
+  /** When this session was first created */
+  createdAt: z.string().datetime(),
+
+  /** When this session was last used */
+  lastUsedAt: z.string().datetime(),
+
+  /** Number of messages processed in this session */
+  messageCount: z.number().int().nonnegative().default(0),
+
+  /** The allowed tools configured for this Master session */
+  allowedTools: z.array(z.string()).default([]),
+
+  /** Max turns configured for this Master session */
+  maxTurns: z.number().int().positive().default(50),
+});
+
+export type MasterSession = z.infer<typeof MasterSessionSchema>;

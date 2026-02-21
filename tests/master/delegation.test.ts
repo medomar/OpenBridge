@@ -1,7 +1,43 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const mockSpawn = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: vi.fn(),
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
+}));
+
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
+
 import { DelegationCoordinator } from '../../src/master/delegation.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
-import * as executor from '../../src/providers/claude-code/claude-code-executor.js';
 
 describe('DelegationCoordinator', () => {
   let coordinator: DelegationCoordinator;
@@ -30,8 +66,10 @@ describe('DelegationCoordinator', () => {
         stdout: 'Task completed successfully',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       const result = await coordinator.delegate({
         prompt: 'Generate a test function',
@@ -52,8 +90,10 @@ describe('DelegationCoordinator', () => {
         stdout: '',
         stderr: 'Command failed',
         exitCode: 1,
+        retryCount: 0,
+        durationMs: 50,
       };
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       const result = await coordinator.delegate({
         prompt: 'Invalid task',
@@ -69,7 +109,7 @@ describe('DelegationCoordinator', () => {
     });
 
     it('should handle executor exceptions', async () => {
-      vi.spyOn(executor, 'executeClaudeCode').mockRejectedValue(new Error('Network timeout'));
+      mockSpawn.mockRejectedValue(new Error('Network timeout'));
 
       const result = await coordinator.delegate({
         prompt: 'Test task',
@@ -91,9 +131,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockImplementation(
+      mockSpawn.mockImplementation(
         () =>
           new Promise((resolve) => {
             setTimeout(() => resolve(mockResult), 100);
@@ -138,9 +180,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 200,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockImplementation(
+      mockSpawn.mockImplementation(
         () =>
           new Promise((resolve) => {
             setTimeout(() => resolve(mockResult), 200);
@@ -194,9 +238,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       // Complete first delegation
       await coordinator.delegate({
@@ -225,9 +271,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 200,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockImplementation(
+      mockSpawn.mockImplementation(
         () =>
           new Promise((resolve) => {
             setTimeout(() => resolve(mockResult), 200);
@@ -267,9 +315,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       expect(coordinator.getActiveDelegationCount()).toBe(0);
 
@@ -305,8 +355,10 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
-      const executorSpy = vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       await coordinator.delegate({
         prompt: 'Test task',
@@ -317,7 +369,7 @@ describe('DelegationCoordinator', () => {
       });
 
       // Verify default timeout was used (300_000ms = 5 minutes)
-      expect(executorSpy).toHaveBeenCalledWith(
+      expect(mockSpawn).toHaveBeenCalledWith(
         expect.objectContaining({
           timeout: 300_000,
         }),
@@ -330,8 +382,10 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
-      const executorSpy = vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       await customCoordinator.delegate({
         prompt: 'Test task',
@@ -342,7 +396,7 @@ describe('DelegationCoordinator', () => {
       });
 
       // Verify custom default timeout was used
-      expect(executorSpy).toHaveBeenCalledWith(
+      expect(mockSpawn).toHaveBeenCalledWith(
         expect.objectContaining({
           timeout: 60_000,
         }),
@@ -367,9 +421,11 @@ describe('DelegationCoordinator', () => {
         stdout: 'Success',
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       const result = await coordinator.delegate({
         prompt: 'Test task',
@@ -388,9 +444,11 @@ describe('DelegationCoordinator', () => {
         stdout: '',
         stderr: 'Error occurred',
         exitCode: 1,
+        retryCount: 0,
+        durationMs: 50,
       };
 
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockResult);
+      mockSpawn.mockResolvedValue(mockResult);
 
       const result = await coordinator.delegate({
         prompt: 'Test task',

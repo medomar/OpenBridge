@@ -3,9 +3,53 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import * as executor from '../../src/providers/claude-code/claude-code-executor.js';
+
+/** Helper to extract SpawnOptions from mock call args */
+function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
+  return mockSpawn.mock.calls[callIndex]?.[0] as SpawnOptions | undefined;
+}
+
+// Mock AgentRunner (used by MasterManager, ExplorationCoordinator, DelegationCoordinator)
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: mockStream,
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
+}));
+
+// Mock logger
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 
 describe('MasterManager - Delegation Integration', () => {
   let testWorkspace: string;
@@ -76,28 +120,32 @@ Generate a function that calculates fibonacci numbers
 I've delegated this to codex for better code generation.
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message and returns delegation markers
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithDelegation,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 500,
+      });
 
-      const mockDelegationResult = {
+      // Second call: Delegation to codex (via DelegationCoordinator's AgentRunner)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'function fibonacci(n) { /* implementation */ }',
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 300,
+      });
 
-      const mockFeedbackResult = {
+      // Third call: Feedback to Master session
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Here is the generated fibonacci function with explanation.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      vi.spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult) // Initial message processing
-        .mockResolvedValueOnce(mockDelegationResult) // Delegation execution
-        .mockResolvedValueOnce(mockFeedbackResult); // Feedback processing
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -111,17 +159,17 @@ I've delegated this to codex for better code generation.
       const response = await masterManager.processMessage(message);
 
       expect(response).toBe('Here is the generated fibonacci function with explanation.');
-      expect(executor.executeClaudeCode).toHaveBeenCalledTimes(3);
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
     });
 
     it('should process messages without delegation markers normally', async () => {
-      const mockExecuteResult = {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'This is a normal response without delegation.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      vi.spyOn(executor, 'executeClaudeCode').mockResolvedValue(mockExecuteResult);
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -135,7 +183,7 @@ I've delegated this to codex for better code generation.
       const response = await masterManager.processMessage(message);
 
       expect(response).toBe('This is a normal response without delegation.');
-      expect(executor.executeClaudeCode).toHaveBeenCalledTimes(1); // No delegation, no feedback
+      expect(mockSpawn).toHaveBeenCalledTimes(1); // No delegation, no feedback
     });
   });
 
@@ -147,21 +195,23 @@ Do something with unknown tool
 [/DELEGATE]
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithUnknownTool,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 200,
+      });
 
-      const mockFeedbackResult = {
+      // Second call: Feedback with error result
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Tool not found, I cannot complete this delegation.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      vi.spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult) // Initial message
-        .mockResolvedValueOnce(mockFeedbackResult); // Feedback
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -175,7 +225,7 @@ Do something with unknown tool
       const response = await masterManager.processMessage(message);
 
       expect(response).toBe('Tool not found, I cannot complete this delegation.');
-      expect(executor.executeClaudeCode).toHaveBeenCalledTimes(2); // Initial + feedback (no delegation)
+      expect(mockSpawn).toHaveBeenCalledTimes(2); // Initial + feedback (no delegation execution)
     });
 
     it('should find specialist tool by partial name match', async () => {
@@ -185,28 +235,32 @@ Generate code
 [/DELEGATE]
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithPartialName,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 200,
+      });
 
-      const mockDelegationResult = {
+      // Second call: Delegation to codex (matched by partial name)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Code generated',
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 300,
+      });
 
-      const mockFeedbackResult = {
+      // Third call: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Code generation complete.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      vi.spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult)
-        .mockResolvedValueOnce(mockDelegationResult)
-        .mockResolvedValueOnce(mockFeedbackResult);
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -231,29 +285,32 @@ Create helper function
 [/DELEGATE]
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithDelegation,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 200,
+      });
 
-      const mockDelegationResult = {
+      // Second call: Delegation to codex
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Helper function created successfully',
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 300,
+      });
 
-      const mockFeedbackResult = {
+      // Third call: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'The helper function has been created and is ready to use.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      const executeSpy = vi
-        .spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult)
-        .mockResolvedValueOnce(mockDelegationResult)
-        .mockResolvedValueOnce(mockFeedbackResult);
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -267,10 +324,10 @@ Create helper function
       await masterManager.processMessage(message);
 
       // Check that feedback was sent to Master with delegation results
-      const feedbackCall = executeSpy.mock.calls[2];
+      const feedbackCall = getSpawnCallOpts(2);
       expect(feedbackCall).toBeDefined();
-      expect(feedbackCall?.[0]?.prompt).toContain('delegation results');
-      expect(feedbackCall?.[0]?.prompt).toContain('Helper function created successfully');
+      expect(feedbackCall?.prompt).toContain('delegation results');
+      expect(feedbackCall?.prompt).toContain('Helper function created successfully');
     });
 
     it('should feed delegation errors back to Master', async () => {
@@ -280,29 +337,32 @@ Create invalid code
 [/DELEGATE]
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithDelegation,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 200,
+      });
 
-      const mockDelegationResult = {
+      // Second call: Delegation to codex fails
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
         stdout: '',
         stderr: 'Syntax error in generated code',
-        exitCode: 1,
-      };
+        retryCount: 0,
+        durationMs: 300,
+      });
 
-      const mockFeedbackResult = {
+      // Third call: Feedback with error
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'The code generation failed due to a syntax error.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      const executeSpy = vi
-        .spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult)
-        .mockResolvedValueOnce(mockDelegationResult)
-        .mockResolvedValueOnce(mockFeedbackResult);
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -316,42 +376,45 @@ Create invalid code
       await masterManager.processMessage(message);
 
       // Check that error was fed back to Master
-      const feedbackCall = executeSpy.mock.calls[2];
-      expect(feedbackCall?.[0]?.prompt).toContain('Syntax error in generated code');
+      const feedbackCall = getSpawnCallOpts(2);
+      expect(feedbackCall?.prompt).toContain('Syntax error in generated code');
     });
   });
 
   describe('Session Continuity During Delegation', () => {
-    it('should maintain session across delegation flow', async () => {
+    it('should maintain Master session across delegation flow', async () => {
       const responseWithDelegation = `
 [DELEGATE:codex]
 Generate code
 [/DELEGATE]
       `;
 
-      const mockExecuteResult = {
+      // First call: Master processes message (new session → --session-id)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: responseWithDelegation,
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 200,
+      });
 
-      const mockDelegationResult = {
+      // Second call: Delegation to codex (separate from Master session)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Code generated',
         stderr: '',
-        exitCode: 0,
-      };
+        retryCount: 0,
+        durationMs: 300,
+      });
 
-      const mockFeedbackResult = {
+      // Third call: Feedback to Master (resume → --resume)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
         stdout: 'Done.',
         stderr: '',
-        exitCode: 0,
-      };
-
-      const executeSpy = vi
-        .spyOn(executor, 'executeClaudeCode')
-        .mockResolvedValueOnce(mockExecuteResult)
-        .mockResolvedValueOnce(mockDelegationResult)
-        .mockResolvedValueOnce(mockFeedbackResult);
+        retryCount: 0,
+        durationMs: 200,
+      });
 
       const message: InboundMessage = {
         id: 'msg-1',
@@ -364,12 +427,13 @@ Generate code
 
       await masterManager.processMessage(message);
 
-      // Initial call and feedback call should use the same session
-      const initialCall = executeSpy.mock.calls[0];
-      const feedbackCall = executeSpy.mock.calls[2];
+      // Initial call: --session-id (first message)
+      const initialCall = getSpawnCallOpts(0);
+      // Feedback call: --resume (same session, after updateMasterSession)
+      const feedbackCall = getSpawnCallOpts(2);
 
-      expect(initialCall?.[0]?.resumeSessionId).toBeDefined();
-      expect(feedbackCall?.[0]?.resumeSessionId).toBe(initialCall?.[0]?.resumeSessionId);
+      expect(initialCall?.sessionId).toBeDefined();
+      expect(feedbackCall?.resumeSessionId).toBe(initialCall?.sessionId);
     });
   });
 });

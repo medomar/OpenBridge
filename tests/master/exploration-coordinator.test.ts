@@ -15,14 +15,36 @@ import type {
 } from '../../src/types/master.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 
-// Mock the executeClaudeCode function
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-}));
-
-import { executeClaudeCode } from '../../src/providers/claude-code/claude-code-executor.js';
-
-const mockExecuteClaudeCode = executeClaudeCode as ReturnType<typeof vi.fn>;
+// Mock the AgentRunner class used by ExplorationCoordinator
+const mockSpawn = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => {
+  console.log('MOCK FACTORY CALLED for agent-runner.js');
+  return {
+    AgentRunner: vi.fn().mockImplementation(() => ({
+      spawn: mockSpawn,
+      stream: vi.fn(),
+    })),
+    TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+    TOOLS_CODE_EDIT: [
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+    ],
+    TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+    DEFAULT_MAX_TURNS_EXPLORATION: 15,
+    DEFAULT_MAX_TURNS_TASK: 25,
+    sanitizePrompt: vi.fn((s: string) => s),
+    buildArgs: vi.fn(),
+    isValidModel: vi.fn(() => true),
+    MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+    AgentExhaustedError: class AgentExhaustedError extends Error {},
+  };
+});
 
 describe('ExplorationCoordinator', () => {
   let testWorkspace: string;
@@ -55,16 +77,15 @@ describe('ExplorationCoordinator', () => {
       },
     ];
 
-    // Create coordinator
+    // Reset mocks before creating coordinator
+    vi.clearAllMocks();
+
+    // Create coordinator (picks up fresh AgentRunner mock)
     coordinator = new ExplorationCoordinator({
       workspacePath: testWorkspace,
       masterTool: mockMasterTool,
       discoveredTools: mockDiscoveredTools,
     });
-
-    // Reset mocks (clear call history AND implementations)
-    vi.clearAllMocks();
-    mockExecuteClaudeCode.mockReset();
   });
 
   afterEach(async () => {
@@ -113,15 +134,41 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1200,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Test project summary' }),
           stderr: '',
+          retryCount: 0,
+          durationMs: 0,
         });
 
       const summary = await coordinator.explore();
@@ -191,20 +238,34 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1000,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Summary' }),
           stderr: '',
+          retryCount: 0,
+          durationMs: 0,
         });
 
       await coordinator.explore();
 
-      // Should only call executeClaudeCode 3 times (classification, directory dive, summary)
+      // Should only call AgentRunner.spawn() 3 times (classification, directory dive, summary)
       // Not 4 (structure scan was already done)
-      expect(mockExecuteClaudeCode).toHaveBeenCalledTimes(3);
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
     });
 
     it('should return cached summary if exploration already completed', async () => {
@@ -250,7 +311,7 @@ describe('ExplorationCoordinator', () => {
       const summary = await coordinator.explore();
 
       expect(summary.status).toBe('completed');
-      expect(mockExecuteClaudeCode).not.toHaveBeenCalled();
+      expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
 
@@ -268,10 +329,12 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1500,
       };
 
-      mockExecuteClaudeCode.mockResolvedValueOnce({
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify(structureScan),
         stderr: '',
+        retryCount: 0,
+        durationMs: 0,
       });
 
       // Mock remaining phases with minimal data (3 directories from structureScan)
@@ -286,20 +349,24 @@ describe('ExplorationCoordinator', () => {
     });
 
     it('should handle structure scan failure with non-zero exit code', async () => {
-      mockExecuteClaudeCode.mockResolvedValueOnce({
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 1,
         stdout: '',
         stderr: 'AI execution failed',
+        retryCount: 0,
+        durationMs: 0,
       });
 
       await expect(coordinator.explore()).rejects.toThrow('Structure scan failed with exit code 1');
     });
 
     it('should handle structure scan parse failure', async () => {
-      mockExecuteClaudeCode.mockResolvedValueOnce({
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
         stdout: 'invalid json output',
         stderr: '',
+        retryCount: 0,
+        durationMs: 0,
       });
 
       await expect(coordinator.explore()).rejects.toThrow('Failed to parse structure scan result');
@@ -342,14 +409,34 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1000,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Summary' }),
           stderr: '',
+          retryCount: 0,
+          durationMs: 0,
         });
 
       await coordinator.explore();
@@ -426,27 +513,71 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1000,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         // First batch of 3
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         // Second batch of 2
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         // Summary
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Summary' }),
           stderr: '',
+          retryCount: 0,
+          durationMs: 0,
         });
 
       await coordinator.explore();
 
       // Should have 8 total calls: 1 structure + 1 classification + 5 dives + 1 summary
-      expect(mockExecuteClaudeCode).toHaveBeenCalledTimes(8);
+      expect(mockSpawn).toHaveBeenCalledTimes(8);
     });
 
     it('should retry failed directory dives up to 3 times', async () => {
@@ -484,33 +615,89 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1000,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         // First attempt fails
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        });
 
       // First explore() call - should fail with pending dive
       await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
 
       // Second attempt - need to re-mock phases 1 and 2 because failed state gets reset
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        });
 
       // Second explore() call - should still fail with pending dive
       await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
 
       // Third attempt succeeds - again need to re-mock phases 1 and 2
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(directoryDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Summary' }),
           stderr: '',
+          retryCount: 0,
+          durationMs: 0,
         });
 
       // Third explore() call - should complete
@@ -520,7 +707,8 @@ describe('ExplorationCoordinator', () => {
       const state = await dotFolder.readExplorationState();
 
       expect(state?.directoryDives[0]?.status).toBe('completed');
-      expect(state?.directoryDives[0]?.attempts).toBe(2); // 2 failures before success
+      // attempts resets to 0 when coordinator resets failed state on retry
+      expect(state?.directoryDives[0]?.attempts).toBe(0);
     });
 
     it('should mark directory as failed after 3 failed attempts', async () => {
@@ -547,13 +735,43 @@ describe('ExplorationCoordinator', () => {
         durationMs: 1000,
       };
 
-      mockExecuteClaudeCode
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-        .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
         // Fail 3 times for the directory dive
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' })
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Failed' });
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        });
 
       await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
     });
@@ -636,7 +854,7 @@ describe('ExplorationCoordinator', () => {
 
   describe('Error Handling', () => {
     it('should mark exploration as failed on error', async () => {
-      mockExecuteClaudeCode.mockRejectedValue(new Error('AI execution error'));
+      mockSpawn.mockRejectedValue(new Error('AI execution error'));
 
       await expect(coordinator.explore()).rejects.toThrow('AI execution error');
 
@@ -693,7 +911,15 @@ describe('ExplorationCoordinator', () => {
       durationMs: 1000,
     };
 
-    const mocks = [{ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' }];
+    const mocks = [
+      {
+        exitCode: 0,
+        stdout: JSON.stringify(classification),
+        stderr: '',
+        retryCount: 0,
+        durationMs: 0,
+      },
+    ];
 
     // Add a directory dive mock for each directory
     directories.forEach((dir) => {
@@ -707,14 +933,26 @@ describe('ExplorationCoordinator', () => {
         exploredAt: new Date().toISOString(),
         durationMs: 1000,
       };
-      mocks.push({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' });
+      mocks.push({
+        exitCode: 0,
+        stdout: JSON.stringify(directoryDive),
+        stderr: '',
+        retryCount: 0,
+        durationMs: 0,
+      });
     });
 
     // Add assembly mock
-    mocks.push({ exitCode: 0, stdout: JSON.stringify({ summary: 'Summary' }), stderr: '' });
+    mocks.push({
+      exitCode: 0,
+      stdout: JSON.stringify({ summary: 'Summary' }),
+      stderr: '',
+      retryCount: 0,
+      durationMs: 0,
+    });
 
     mocks.slice(startFrom).forEach((mock) => {
-      mockExecuteClaudeCode.mockResolvedValueOnce(mock);
+      mockSpawn.mockResolvedValueOnce(mock);
     });
   }
 
@@ -753,14 +991,34 @@ describe('ExplorationCoordinator', () => {
       durationMs: 1000,
     };
 
-    mockExecuteClaudeCode
-      .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(structureScan), stderr: '' })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(classification), stderr: '' })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(directoryDive), stderr: '' })
+    mockSpawn
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify(structureScan),
+        stderr: '',
+        retryCount: 0,
+        durationMs: 0,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify(classification),
+        stderr: '',
+        retryCount: 0,
+        durationMs: 0,
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify(directoryDive),
+        stderr: '',
+        retryCount: 0,
+        durationMs: 0,
+      })
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({ summary: 'Test project summary' }),
         stderr: '',
+        retryCount: 0,
+        durationMs: 0,
       });
   }
 });

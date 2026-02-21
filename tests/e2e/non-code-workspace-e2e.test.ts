@@ -15,24 +15,47 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm, readFile, access } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
-// Mock the claude-code-executor module
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-  streamClaudeCode: vi.fn(),
+// Mock the AgentRunner class used by MasterManager, ExplorationCoordinator, and DelegationCoordinator
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: mockStream,
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
 }));
 
-import {
-  executeClaudeCode,
-  streamClaudeCode,
-} from '../../src/providers/claude-code/claude-code-executor.js';
-
-const mockExecuteClaudeCode = executeClaudeCode as ReturnType<typeof vi.fn>;
-const mockStreamClaudeCode = streamClaudeCode as ReturnType<typeof vi.fn>;
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 
 // ---------------------------------------------------------------------------
 // Test Workspace Setup: Cafe Business Files
@@ -350,7 +373,7 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
 
   let callCount = 0;
 
-  mockExecuteClaudeCode.mockImplementation(async () => {
+  mockSpawn.mockImplementation(async () => {
     callCount++;
 
     if (callCount === 1) {
@@ -358,6 +381,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(structureScanResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -366,6 +391,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(classificationResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -375,6 +402,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(inventoryDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -383,6 +412,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(salesDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -391,6 +422,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(staffDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -399,112 +432,99 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(suppliersDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
-    // Call 7: Assembly
+    // Call 7: Assembly (summary generation)
     if (callCount === 7) {
       return {
-        stdout: JSON.stringify(assemblyResult),
+        stdout: JSON.stringify({ summary: assemblyResult.summary }),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
-    // Fallback
+    // Fallback for any additional spawn calls (e.g. processMessage, re-explore)
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
       exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
   });
 
   // Mock streaming for business-appropriate responses
-  mockStreamClaudeCode.mockImplementation(async function* (args: {
-    prompt: string;
-    workingDir: string;
-  }) {
+  mockStream.mockImplementation(function (opts: { prompt: string }) {
     // Detect query type and provide business-appropriate responses
-    if (
-      args.prompt.toLowerCase().includes('low') ||
-      args.prompt.toLowerCase().includes('reorder')
-    ) {
-      yield 'Looking at your current inventory...\n\n';
-      yield 'Based on stock.csv, these items are running low:\n\n';
-      yield '• Milk: 25L (reorder level: 50L) - needs restocking\n';
-      yield '• Coffee Beans: 8kg (reorder level: 10kg) - almost at threshold\n';
-      yield '• Butter: 3kg (reorder level: 10kg) - urgently needs restocking\n\n';
-      yield 'I recommend ordering from your suppliers soon.';
+    let content: string;
 
+    if (
+      opts.prompt.toLowerCase().includes('low') ||
+      opts.prompt.toLowerCase().includes('reorder')
+    ) {
+      content =
+        'Looking at your current inventory...\n\nBased on stock.csv, these items are running low:\n\n' +
+        '\u2022 Milk: 25L (reorder level: 50L) - needs restocking\n' +
+        '\u2022 Coffee Beans: 8kg (reorder level: 10kg) - almost at threshold\n' +
+        '\u2022 Butter: 3kg (reorder level: 10kg) - urgently needs restocking\n\n' +
+        'I recommend ordering from your suppliers soon.';
+    } else if (
+      opts.prompt.toLowerCase().includes('saturday') &&
+      opts.prompt.toLowerCase().includes('schedule')
+    ) {
+      content =
+        'Checking the staff schedule...\n\nFor Saturday, you have:\n' +
+        'Ahmed, Sara, and Maria scheduled all day (8am-6pm)\n\n' +
+        'This is your full team for the busy weekend shift.';
+    } else if (
+      opts.prompt.toLowerCase().includes('revenue') ||
+      opts.prompt.toLowerCase().includes('sales')
+    ) {
+      content =
+        'Looking at your sales data...\n\nFrom the February 2026 records I can see:\n' +
+        '\u2022 Feb 10: 462.00 EGP (Espresso, Cappuccino, Croissant)\n' +
+        '\u2022 Feb 11: 417.50 EGP (Latte, Espresso)\n\n' +
+        'Your sales are looking healthy! Espresso and Latte are your top sellers.';
+    } else if (
+      opts.prompt.toLowerCase().includes('dairy') ||
+      opts.prompt.toLowerCase().includes('supplier')
+    ) {
+      content =
+        'Looking up your supplier contacts...\n\nYour dairy supplier is DairyFresh Co:\n' +
+        '\u2022 Contact: Omar Hassan\n' +
+        '\u2022 Phone: +20-123-456-789\n' +
+        '\u2022 Email: orders@dairyfresh.eg\n' +
+        '\u2022 Delivers on: Monday and Thursday\n\n' +
+        'They supply milk, butter, cream, and cheese.';
+    } else {
+      content =
+        "I've reviewed your cafe business files.\n\n" +
+        'You have inventory tracking, sales records, staff schedules, and supplier contacts all organized in this folder.\n\n' +
+        'How can I help you manage your cafe today?';
+    }
+
+    // Return an async generator that yields the content as a single chunk,
+    // then returns the AgentResult
+    async function* generate(): AsyncGenerator<
+      string,
+      { stdout: string; stderr: string; exitCode: number; retryCount: number; durationMs: number }
+    > {
+      yield content;
       return {
-        content:
-          'Looking at your current inventory...\n\nBased on stock.csv, these items are running low:\n\n• Milk: 25L (reorder level: 50L) - needs restocking\n• Coffee Beans: 8kg (reorder level: 10kg) - almost at threshold\n• Butter: 3kg (reorder level: 10kg) - urgently needs restocking\n\nI recommend ordering from your suppliers soon.',
-        metadata: { sessionId: randomUUID() },
+        stdout: content,
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
-    if (
-      args.prompt.toLowerCase().includes('saturday') &&
-      args.prompt.toLowerCase().includes('schedule')
-    ) {
-      yield 'Checking the staff schedule...\n\n';
-      yield 'For Saturday, you have:\n';
-      yield 'Ahmed, Sara, and Maria scheduled all day (8am-6pm)\n\n';
-      yield 'This is your full team for the busy weekend shift.';
-
-      return {
-        content:
-          'Checking the staff schedule...\n\nFor Saturday, you have:\nAhmed, Sara, and Maria scheduled all day (8am-6pm)\n\nThis is your full team for the busy weekend shift.',
-        metadata: { sessionId: randomUUID() },
-      };
-    }
-
-    if (
-      args.prompt.toLowerCase().includes('revenue') ||
-      args.prompt.toLowerCase().includes('sales')
-    ) {
-      yield 'Looking at your sales data...\n\n';
-      yield 'From the February 2026 records I can see:\n';
-      yield '• Feb 10: 462.00 EGP (Espresso, Cappuccino, Croissant)\n';
-      yield '• Feb 11: 417.50 EGP (Latte, Espresso)\n\n';
-      yield 'Your sales are looking healthy! Espresso and Latte are your top sellers.';
-
-      return {
-        content:
-          'Looking at your sales data...\n\nFrom the February 2026 records I can see:\n• Feb 10: 462.00 EGP (Espresso, Cappuccino, Croissant)\n• Feb 11: 417.50 EGP (Latte, Espresso)\n\nYour sales are looking healthy! Espresso and Latte are your top sellers.',
-        metadata: { sessionId: randomUUID() },
-      };
-    }
-
-    if (
-      args.prompt.toLowerCase().includes('dairy') ||
-      args.prompt.toLowerCase().includes('supplier')
-    ) {
-      yield 'Looking up your supplier contacts...\n\n';
-      yield 'Your dairy supplier is DairyFresh Co:\n';
-      yield '• Contact: Omar Hassan\n';
-      yield '• Phone: +20-123-456-789\n';
-      yield '• Email: orders@dairyfresh.eg\n';
-      yield '• Delivers on: Monday and Thursday\n\n';
-      yield 'They supply milk, butter, cream, and cheese.';
-
-      return {
-        content:
-          'Looking up your supplier contacts...\n\nYour dairy supplier is DairyFresh Co:\n• Contact: Omar Hassan\n• Phone: +20-123-456-789\n• Email: orders@dairyfresh.eg\n• Delivers on: Monday and Thursday\n\nThey supply milk, butter, cream, and cheese.',
-        metadata: { sessionId: randomUUID() },
-      };
-    }
-
-    // Default business-friendly response
-    yield "I've reviewed your cafe business files.\n\n";
-    yield 'You have inventory tracking, sales records, staff schedules, and supplier contacts all organized in this folder.\n\n';
-    yield 'How can I help you manage your cafe today?';
-
-    return {
-      content:
-        "I've reviewed your cafe business files.\n\nYou have inventory tracking, sales records, staff schedules, and supplier contacts all organized in this folder.\n\nHow can I help you manage your cafe today?",
-      metadata: { sessionId: randomUUID() },
-    };
+    return generate();
   });
 }
 
@@ -517,12 +537,12 @@ describe('E2E: Non-Code Workspace - Cafe Business Files', () => {
   let masterManager: MasterManager;
 
   const mockMasterTool: DiscoveredTool = {
-    type: 'cli',
     name: 'claude',
     path: '/usr/local/bin/claude',
     version: '1.0.0',
+    role: 'master',
     capabilities: ['chat', 'code', 'files'],
-    isAvailable: true,
+    available: true,
   };
 
   beforeEach(async () => {

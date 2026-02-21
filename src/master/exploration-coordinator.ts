@@ -21,7 +21,11 @@ import {
   generateSummaryPrompt,
 } from './exploration-prompts.js';
 import { parseAIResult } from './result-parser.js';
-import { executeClaudeCode } from '../providers/claude-code/claude-code-executor.js';
+import {
+  AgentRunner,
+  TOOLS_READ_ONLY,
+  DEFAULT_MAX_TURNS_EXPLORATION,
+} from '../core/agent-runner.js';
 import type {
   ExplorationState,
   StructureScan,
@@ -58,19 +62,21 @@ export class ExplorationCoordinator {
   private readonly masterTool: DiscoveredTool;
   private readonly discoveredTools: DiscoveredTool[];
   private readonly dotFolder: DotFolderManager;
+  private readonly agentRunner: AgentRunner;
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
     this.masterTool = options.masterTool;
     this.discoveredTools = options.discoveredTools;
     this.dotFolder = new DotFolderManager(this.workspacePath);
+    this.agentRunner = new AgentRunner();
   }
 
   /**
    * Main entry point: Execute the 5-phase exploration workflow
    *
    * This method loads/creates exploration-state.json, skips completed phases,
-   * runs each pass via executeClaudeCode(), parses results with result-parser,
+   * runs each pass via AgentRunner.spawn(), parses results with result-parser,
    * and checkpoints after each pass.
    *
    * If exploration is already complete, returns the existing summary.
@@ -157,11 +163,13 @@ export class ExplorationCoordinator {
     const prompt = generateStructureScanPrompt(this.workspacePath);
     const startTime = Date.now();
 
-    const result = await executeClaudeCode({
+    const result = await this.agentRunner.spawn({
       prompt,
       workspacePath: this.workspacePath,
       timeout: PHASE_TIMEOUT,
-      skipPermissions: true,
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
+      retries: 0,
     });
 
     const elapsed = Date.now() - startTime;
@@ -207,11 +215,13 @@ export class ExplorationCoordinator {
     const prompt = generateClassificationPrompt(this.workspacePath, structureScan);
     const startTime = Date.now();
 
-    const result = await executeClaudeCode({
+    const result = await this.agentRunner.spawn({
       prompt,
       workspacePath: this.workspacePath,
       timeout: PHASE_TIMEOUT,
-      skipPermissions: true,
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
+      retries: 0,
     });
 
     const elapsed = Date.now() - startTime;
@@ -346,11 +356,13 @@ export class ExplorationCoordinator {
     const prompt = generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
     const startTime = Date.now();
 
-    const result = await executeClaudeCode({
+    const result = await this.agentRunner.spawn({
       prompt,
       workspacePath: this.workspacePath,
       timeout: DIRECTORY_DIVE_TIMEOUT,
-      skipPermissions: true,
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
+      retries: 0,
     });
 
     const elapsed = Date.now() - startTime;
@@ -437,11 +449,13 @@ export class ExplorationCoordinator {
     const prompt = generateSummaryPrompt(this.workspacePath, partialMap);
     const startTime = Date.now();
 
-    const result = await executeClaudeCode({
+    const result = await this.agentRunner.spawn({
       prompt,
       workspacePath: this.workspacePath,
       timeout: PHASE_TIMEOUT,
-      skipPermissions: true,
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
+      retries: 0,
     });
 
     const elapsed = Date.now() - startTime;

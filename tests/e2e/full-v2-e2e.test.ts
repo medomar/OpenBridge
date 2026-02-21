@@ -10,30 +10,101 @@
  *
  * This test creates a real workspace, runs the full discovery + exploration flow,
  * and validates the entire .openbridge/ folder structure including exploration/ subfolder.
+ *
+ * Mocking strategy:
+ * - AgentRunner is mocked (no real CLI calls)
+ * - Logger is mocked (suppress output)
+ * - DotFolderManager is NOT mocked (real filesystem operations for E2E)
+ * - ExplorationCoordinator is NOT mocked (real orchestration logic)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm, readFile, access } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
-import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
-// Mock the claude-code-executor module
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-  streamClaudeCode: vi.fn(),
+// ---------------------------------------------------------------------------
+// Module-scope mock fns (must be declared before vi.mock calls)
+// ---------------------------------------------------------------------------
+
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+
+// ---------------------------------------------------------------------------
+// Mock the AgentRunner module
+// ---------------------------------------------------------------------------
+
+vi.mock('../../src/core/agent-runner.js', () => {
+  class AgentExhaustedError extends Error {
+    readonly attempts: Array<{ attempt: number; exitCode: number; stderr: string }>;
+    readonly lastExitCode: number;
+    readonly totalAttempts: number;
+    readonly durationMs: number;
+
+    constructor(
+      attempts: Array<{ attempt: number; exitCode: number; stderr: string }>,
+      durationMs: number,
+    ) {
+      const total = attempts.length;
+      const lastExit = attempts[total - 1]?.exitCode ?? 1;
+      super(`Agent failed after ${total} attempt(s) (last exit code ${lastExit})`);
+      this.name = 'AgentExhaustedError';
+      this.attempts = attempts;
+      this.lastExitCode = lastExit;
+      this.totalAttempts = total;
+      this.durationMs = durationMs;
+    }
+  }
+
+  return {
+    AgentRunner: vi.fn().mockImplementation(() => ({
+      spawn: mockSpawn,
+      stream: mockStream,
+      spawnFromManifest: vi.fn(),
+      streamFromManifest: vi.fn(),
+    })),
+    TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+    TOOLS_CODE_EDIT: [
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+    ],
+    TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+    DEFAULT_MAX_TURNS_EXPLORATION: 15,
+    DEFAULT_MAX_TURNS_TASK: 25,
+    sanitizePrompt: vi.fn((s: string) => s),
+    buildArgs: vi.fn(),
+    isValidModel: vi.fn(() => true),
+    MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+    AgentExhaustedError,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Mock the logger module (suppress console output in tests)
+// ---------------------------------------------------------------------------
+
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
 }));
 
-import {
-  executeClaudeCode,
-  streamClaudeCode,
-} from '../../src/providers/claude-code/claude-code-executor.js';
+// ---------------------------------------------------------------------------
+// Import MasterManager AFTER mocks are set up
+// ---------------------------------------------------------------------------
 
-const mockExecuteClaudeCode = executeClaudeCode as ReturnType<typeof vi.fn>;
-const mockStreamClaudeCode = streamClaudeCode as ReturnType<typeof vi.fn>;
+import { MasterManager } from '../../src/master/master-manager.js';
 
 // ---------------------------------------------------------------------------
 // Test Workspace Setup
@@ -143,6 +214,15 @@ async function cleanupWorkspace(workspacePath: string): Promise<void> {
 
 /**
  * Simulates successful incremental exploration responses from Claude
+ * via the mocked AgentRunner.spawn() method.
+ *
+ * The ExplorationCoordinator calls agentRunner.spawn() sequentially:
+ *   Call 1: Structure scan (Phase 1)
+ *   Call 2: Classification (Phase 2)
+ *   Calls 3-5: Directory dives (Phase 3) — one per significant dir (src, tests, docs)
+ *   Call 6: Assembly / summary generation (Phase 4)
+ *
+ * Phase 5 (Finalization) makes no AI calls — it writes agents.json and commits.
  */
 function setupMockExplorationResponses(workspacePath: string) {
   // Pass 1: Structure scan
@@ -217,39 +297,16 @@ function setupMockExplorationResponses(workspacePath: string) {
     durationMs: 50,
   };
 
-  // Pass 4: Assembly (workspace-map.json)
-  const assemblyResult = {
-    workspacePath,
-    projectName: 'test-project',
-    projectType: 'nodejs-typescript',
-    frameworks: ['express', 'vitest'],
-    structure: {
-      src: { path: 'src', purpose: 'Application source code', fileCount: 2 },
-      tests: { path: 'tests', purpose: 'Vitest test suite', fileCount: 1 },
-      docs: { path: 'docs', purpose: 'Documentation', fileCount: 1 },
-    },
-    keyFiles: [
-      { path: 'src/index.ts', type: 'entry', purpose: 'Express server entry point' },
-      { path: 'package.json', type: 'config', purpose: 'Node.js project configuration' },
-    ],
-    entryPoints: ['src/index.ts'],
-    commands: {
-      dev: 'npm run dev',
-      test: 'npm run test',
-    },
-    dependencies: [
-      { name: 'express', version: '^4.18.0', type: 'runtime' as const },
-      { name: 'vitest', version: '^1.0.0', type: 'dev' as const },
-    ],
+  // Pass 4: Assembly (summary generation — the coordinator mechanically builds
+  // the workspace map but asks the AI for a summary string)
+  const summaryResult = {
     summary:
       'A Node.js + TypeScript project using Express. Includes source code in src/, tests in tests/, and API docs.',
-    generatedAt: new Date().toISOString(),
-    schemaVersion: '1.0.0',
   };
 
   let callCount = 0;
 
-  mockExecuteClaudeCode.mockImplementation(async () => {
+  mockSpawn.mockImplementation(async () => {
     callCount++;
 
     // Determine which pass based on call count
@@ -258,6 +315,8 @@ function setupMockExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(structureScanResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -266,6 +325,8 @@ function setupMockExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(classificationResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -275,6 +336,8 @@ function setupMockExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(srcDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
     }
 
@@ -283,6 +346,8 @@ function setupMockExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(testsDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
     }
 
@@ -291,34 +356,43 @@ function setupMockExplorationResponses(workspacePath: string) {
         stdout: JSON.stringify(docsDiveResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 50,
       };
     }
 
-    // Call 6: Assembly
+    // Call 6: Assembly (summary generation)
     if (callCount === 6) {
       return {
-        stdout: JSON.stringify(assemblyResult),
+        stdout: JSON.stringify(summaryResult),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
-    // Fallback for any other calls
+    // Fallback for any other spawn calls (e.g., processMessage, re-exploration)
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
       exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
   });
 
-  // Mock streaming for messages
-  mockStreamClaudeCode.mockImplementation(async function* () {
+  // Mock streaming for messages (AgentRunner.stream() is an async generator)
+  mockStream.mockImplementation(async function* () {
     yield 'Processing your request...';
     yield '\n\nThe project is a Node.js + TypeScript application using Express.';
     return {
-      content:
+      stdout:
         'Processing your request...\n\nThe project is a Node.js + TypeScript application using Express.',
-      metadata: { sessionId: randomUUID() },
+      stderr: '',
+      exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
   });
 }
@@ -332,12 +406,12 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
   let masterManager: MasterManager;
 
   const mockMasterTool: DiscoveredTool = {
-    type: 'cli',
     name: 'claude',
     path: '/usr/local/bin/claude',
     version: '1.0.0',
     capabilities: ['chat', 'code', 'files'],
-    isAvailable: true,
+    role: 'master',
+    available: true,
   };
 
   beforeEach(async () => {
@@ -493,8 +567,8 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     expect(responseContent).toContain('Node.js');
     expect(responseContent).toContain('TypeScript');
 
-    // Verify message was processed with workspace context
-    expect(mockStreamClaudeCode).toHaveBeenCalled();
+    // Verify message was processed via the AgentRunner stream
+    expect(mockStream).toHaveBeenCalled();
   }, 15000);
 
   // ---------------------------------------------------------------------------
@@ -532,8 +606,7 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
       // consume stream
     }
 
-    const firstCallArgs =
-      mockStreamClaudeCode.mock.calls[mockStreamClaudeCode.mock.calls.length - 1];
+    const firstCallArgs = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(firstCallArgs).toBeDefined();
 
     // Second message from same sender
@@ -550,12 +623,11 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
       // consume stream
     }
 
-    const secondCallArgs =
-      mockStreamClaudeCode.mock.calls[mockStreamClaudeCode.mock.calls.length - 1];
+    const secondCallArgs = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(secondCallArgs).toBeDefined();
 
     // Both calls should use session continuity (either --session-id or --resume)
-    expect(mockStreamClaudeCode).toHaveBeenCalledTimes(2);
+    expect(mockStream).toHaveBeenCalledTimes(2);
   }, 15000);
 
   // ---------------------------------------------------------------------------

@@ -23,24 +23,48 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm, access } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 
-// Mock the claude-code-executor module
-vi.mock('../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: vi.fn(),
-  streamClaudeCode: vi.fn(),
+// Mock the AgentRunner class used by MasterManager, ExplorationCoordinator, and DelegationCoordinator
+const mockSpawn = vi.fn();
+const mockStream = vi.fn();
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: mockSpawn,
+    stream: mockStream,
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  TOOLS_CODE_EDIT: [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+  ],
+  TOOLS_FULL: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  DEFAULT_MAX_TURNS_EXPLORATION: 15,
+  DEFAULT_MAX_TURNS_TASK: 25,
+  sanitizePrompt: vi.fn((s: string) => s),
+  buildArgs: vi.fn(),
+  isValidModel: vi.fn(() => true),
+  MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
+  AgentExhaustedError: class AgentExhaustedError extends Error {},
 }));
 
-import {
-  executeClaudeCode,
-  streamClaudeCode,
-} from '../../src/providers/claude-code/claude-code-executor.js';
-
-const mockExecuteClaudeCode = executeClaudeCode as ReturnType<typeof vi.fn>;
-const mockStreamClaudeCode = streamClaudeCode as ReturnType<typeof vi.fn>;
+// Mock the logger to suppress output during tests
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 
 // ---------------------------------------------------------------------------
 // Workspace Setup Functions
@@ -292,7 +316,8 @@ function setupMinimalExplorationMocks(
     },
   };
 
-  mockExecuteClaudeCode.mockImplementation(async () => {
+  // Mock spawn for exploration phases (ExplorationCoordinator uses AgentRunner.spawn)
+  mockSpawn.mockImplementation(async () => {
     callCount++;
 
     // Pass 1: Structure scan
@@ -301,6 +326,8 @@ function setupMinimalExplorationMocks(
         stdout: JSON.stringify(structureScanResults[scenario]),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -310,6 +337,8 @@ function setupMinimalExplorationMocks(
         stdout: JSON.stringify(classificationResults[scenario]),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -328,16 +357,20 @@ function setupMinimalExplorationMocks(
         }),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
-    // Assembly pass
+    // Assembly pass (summary generation)
     const assemblyCallNumber = scenario === 'partial' ? 4 : 3;
     if (callCount === assemblyCallNumber) {
       return {
         stdout: JSON.stringify(assemblyResults[scenario]),
         stderr: '',
         exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -345,15 +378,14 @@ function setupMinimalExplorationMocks(
       stdout: JSON.stringify({ success: true }),
       stderr: '',
       exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
   });
 
-  // Mock streaming responses that handle missing data gracefully
-  mockStreamClaudeCode.mockImplementation(async function* (args: {
-    prompt: string;
-    workingDir: string;
-  }) {
-    const query = args.prompt.toLowerCase();
+  // Mock stream for message handling (MasterManager.streamMessage uses AgentRunner.stream)
+  mockStream.mockImplementation(async function* (opts: { prompt: string }) {
+    const query = opts.prompt.toLowerCase();
 
     // Revenue query (no sales data)
     if (query.includes('revenue') || query.includes('sales')) {
@@ -370,10 +402,13 @@ function setupMinimalExplorationMocks(
       }
 
       return {
-        content: query.includes('revenue')
+        stdout: query.includes('revenue')
           ? "I checked your workspace, but I don't see any sales data files.\n\nOnce you add sales records, I'll be able to help track your revenue."
           : "I checked your workspace, but I don't see any sales data files.",
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -388,14 +423,17 @@ function setupMinimalExplorationMocks(
       }
 
       return {
-        content:
+        stdout:
           "I don't see any invoice files in your workspace.\n\nIf you're tracking invoices, you'll need to add those files to the workspace first.",
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
     // Schedule query (no staff data)
-    if (query.includes('schedule') || query.includes('staff')) {
+    if (query.includes('schedule') || query.includes('staff') || query.includes('working')) {
       yield "I don't have any staff schedule files in the workspace.\n\n";
 
       if (scenario === 'partial') {
@@ -405,9 +443,12 @@ function setupMinimalExplorationMocks(
       }
 
       return {
-        content:
+        stdout:
           "I don't have any staff schedule files in the workspace.\n\nOnce you add staff schedules, I'll be able to help you check who's working.",
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -422,9 +463,12 @@ function setupMinimalExplorationMocks(
       }
 
       return {
-        content:
+        stdout:
           "I don't see any supplier contact information in the workspace.\n\nYou'll need to add supplier contact files for me to help with that.",
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -434,9 +478,12 @@ function setupMinimalExplorationMocks(
       yield "I don't have any forecasts or future schedules available yet.";
 
       return {
-        content:
+        stdout:
           "I can only see current and past data in the workspace.\n\nI don't have any forecasts or future schedules available yet.",
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -450,7 +497,7 @@ function setupMinimalExplorationMocks(
         yield 'Consider adding CSV, TXT, or Markdown files with your business data.';
       } else if (scenario === 'partial') {
         yield 'I currently have access to:\n';
-        yield '• Inventory data (stock levels)\n\n';
+        yield '- Inventory data (stock levels)\n\n';
         yield "I don't have: sales records, staff schedules, supplier contacts, or financial data.";
       } else {
         yield 'Your workspace has minimal data at the moment - just a README file.\n\n';
@@ -458,11 +505,14 @@ function setupMinimalExplorationMocks(
       }
 
       return {
-        content:
+        stdout:
           scenario === 'empty'
             ? 'Your workspace is currently empty - no files have been added yet.'
             : 'Your workspace has minimal data at the moment.',
-        metadata: { sessionId: randomUUID() },
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
       };
     }
 
@@ -476,8 +526,11 @@ function setupMinimalExplorationMocks(
     }
 
     return {
-      content: "I'm here to help, but I don't have the data needed to answer that question.",
-      metadata: { sessionId: randomUUID() },
+      stdout: "I'm here to help, but I don't have the data needed to answer that question.",
+      stderr: '',
+      exitCode: 0,
+      retryCount: 0,
+      durationMs: 100,
     };
   });
 }
@@ -487,12 +540,12 @@ function setupMinimalExplorationMocks(
 // ---------------------------------------------------------------------------
 
 const mockMasterTool: DiscoveredTool = {
-  type: 'cli',
   name: 'claude',
   path: '/usr/local/bin/claude',
   version: '1.0.0',
+  role: 'master',
   capabilities: ['chat', 'code', 'files'],
-  isAvailable: true,
+  available: true,
 };
 
 describe('E2E: Graceful Unknown Handling', () => {

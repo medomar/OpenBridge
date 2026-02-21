@@ -212,6 +212,8 @@ export interface SpawnOptions {
   resumeSessionId?: string;
   /** Start a new conversation with a specific session ID */
   sessionId?: string;
+  /** System prompt to append to the default Claude system prompt */
+  systemPrompt?: string;
 }
 
 /** Result returned from AgentRunner.spawn() */
@@ -285,6 +287,10 @@ export function buildArgs(opts: SpawnOptions): string[] {
     for (const tool of opts.allowedTools) {
       args.push('--allowedTools', tool);
     }
+  }
+
+  if (opts.systemPrompt) {
+    args.push('--append-system-prompt', opts.systemPrompt);
   }
 
   if (opts.resumeSessionId) {

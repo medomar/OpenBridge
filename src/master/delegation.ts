@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
-import { executeClaudeCode } from '../providers/claude-code/claude-code-executor.js';
+import { AgentRunner, TOOLS_CODE_EDIT, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { TaskRecord } from '../types/master.js';
 
@@ -75,10 +75,12 @@ export class DelegationCoordinator {
   private activeDelegations: Map<string, ActiveDelegation> = new Map();
   private readonly maxConcurrentDelegations: number;
   private readonly defaultTimeout: number;
+  private readonly agentRunner: AgentRunner;
 
   constructor(options?: { maxConcurrentDelegations?: number; defaultTimeout?: number }) {
     this.maxConcurrentDelegations = options?.maxConcurrentDelegations ?? 3;
     this.defaultTimeout = options?.defaultTimeout ?? DEFAULT_DELEGATION_TIMEOUT;
+    this.agentRunner = new AgentRunner();
 
     logger.info(
       {
@@ -238,13 +240,13 @@ export class DelegationCoordinator {
     startedAt: string,
   ): Promise<DelegationResult> {
     try {
-      // Execute the AI tool
-      // Note: Currently using the generalized executor (executeClaudeCode)
-      // In the future, this could be abstracted to support different AI tool CLIs
-      const result = await executeClaudeCode({
+      const result = await this.agentRunner.spawn({
         prompt: options.prompt,
         workspacePath: options.workspacePath,
         timeout: options.timeout ?? this.defaultTimeout,
+        allowedTools: [...TOOLS_CODE_EDIT],
+        maxTurns: DEFAULT_MAX_TURNS_TASK,
+        retries: 0,
       });
 
       const completedAt = new Date().toISOString();
