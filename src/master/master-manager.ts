@@ -1,5 +1,6 @@
 import { DotFolderManager } from './dotfolder-manager.js';
-import { generateExplorationPrompt, generateReExplorationPrompt } from './exploration-prompt.js';
+import { generateReExplorationPrompt } from './exploration-prompt.js';
+import { ExplorationCoordinator } from './exploration-coordinator.js';
 import {
   executeClaudeCode,
   streamClaudeCode,
@@ -163,6 +164,8 @@ export class MasterManager {
   /**
    * Autonomously explore the workspace and create .openbridge/ folder.
    * This is the Master AI's initialization step.
+   *
+   * Uses the incremental multi-pass exploration strategy via ExplorationCoordinator.
    */
   public async explore(): Promise<void> {
     if (this.state === 'exploring') {
@@ -172,110 +175,56 @@ export class MasterManager {
 
     this.state = 'exploring';
 
-    const startedAt = new Date().toISOString();
-    this.explorationSummary = {
-      startedAt,
-      status: 'in_progress',
-      filesScanned: 0,
-      directoriesExplored: 0,
-      frameworks: [],
-      insights: [],
-      gitInitialized: false,
-    };
-
-    logger.info({ workspacePath: this.workspacePath }, 'Starting workspace exploration');
+    logger.info(
+      { workspacePath: this.workspacePath },
+      'Starting incremental workspace exploration',
+    );
 
     try {
       // Initialize .openbridge folder
       await this.dotFolder.initialize();
 
       // Log exploration start
+      const startedAt = new Date().toISOString();
       await this.dotFolder.appendLog({
         timestamp: startedAt,
         level: 'info',
-        message: 'Autonomous workspace exploration started',
+        message: 'Incremental workspace exploration started',
         data: { masterTool: this.masterTool.name, version: this.masterTool.version },
       });
 
-      // Generate exploration prompt
-      const prompt = generateExplorationPrompt(this.workspacePath);
-
-      // Execute exploration (skip permissions — exploration runs in background without user interaction)
-      const result = await executeClaudeCode({
-        prompt,
+      // Delegate to ExplorationCoordinator for incremental multi-pass exploration
+      const coordinator = new ExplorationCoordinator({
         workspacePath: this.workspacePath,
-        timeout: this.explorationTimeout,
-        skipPermissions: true,
+        masterTool: this.masterTool,
+        discoveredTools: this.discoveredTools,
       });
 
-      if (result.exitCode !== 0) {
-        throw new Error(`Exploration failed with exit code ${result.exitCode}: ${result.stderr}`);
-      }
-
-      // Check if workspace map was created
-      const map = await this.dotFolder.readMap();
-      if (!map) {
-        throw new Error('Exploration completed but workspace-map.json was not created');
-      }
-
-      // Check if agents.json exists, if not create it
-      let agentsRegistry = await this.dotFolder.readAgents();
-      if (!agentsRegistry) {
-        agentsRegistry = this.createAgentsRegistry();
-        await this.dotFolder.writeAgents(agentsRegistry);
-        await this.dotFolder.commitChanges('Add agents.json');
-      }
-
-      const completedAt = new Date().toISOString();
-
-      this.explorationSummary = {
-        startedAt,
-        completedAt,
-        status: 'completed',
-        filesScanned: 0,
-        directoriesExplored: 0,
-        projectType: map.projectType,
-        frameworks: map.frameworks,
-        insights: [],
-        mapPath: this.dotFolder.getMapPath(),
-        gitInitialized: true,
-      };
-
-      // Log exploration completion
-      await this.dotFolder.appendLog({
-        timestamp: completedAt,
-        level: 'info',
-        message: 'Autonomous workspace exploration completed',
-        data: {
-          projectType: map.projectType,
-          frameworks: map.frameworks,
-          summary: map.summary,
-        },
-      });
+      this.explorationSummary = await coordinator.explore();
 
       this.state = 'ready';
 
       logger.info(
         {
-          projectType: map.projectType,
-          frameworks: map.frameworks,
-          durationMs: new Date(completedAt).getTime() - new Date(startedAt).getTime(),
+          projectType: this.explorationSummary.projectType,
+          frameworks: this.explorationSummary.frameworks,
+          directoriesExplored: this.explorationSummary.directoriesExplored,
+          status: this.explorationSummary.status,
         },
-        'Workspace exploration completed',
+        'Incremental workspace exploration completed',
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       this.explorationSummary = {
-        ...(this.explorationSummary ?? {}),
-        startedAt: this.explorationSummary?.startedAt ?? startedAt,
+        startedAt: this.explorationSummary?.startedAt ?? new Date().toISOString(),
         completedAt: new Date().toISOString(),
         status: 'failed',
-        filesScanned: this.explorationSummary?.filesScanned ?? 0,
-        directoriesExplored: this.explorationSummary?.directoriesExplored ?? 0,
-        frameworks: this.explorationSummary?.frameworks ?? [],
-        insights: this.explorationSummary?.insights ?? [],
-        gitInitialized: this.explorationSummary?.gitInitialized ?? false,
+        filesScanned: 0,
+        directoriesExplored: 0,
+        frameworks: [],
+        insights: [],
+        gitInitialized: false,
         error: errorMessage,
       };
 
@@ -283,7 +232,7 @@ export class MasterManager {
       await this.dotFolder.appendLog({
         timestamp: new Date().toISOString(),
         level: 'error',
-        message: 'Workspace exploration failed',
+        message: 'Incremental workspace exploration failed',
         data: { error: errorMessage },
       });
 
