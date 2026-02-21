@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as executor from '../../src/providers/claude-code/claude-code-executor.js';
@@ -36,6 +37,10 @@ describe('MasterManager - Delegation Integration', () => {
     // Create temporary test workspace
     testWorkspace = path.join(process.cwd(), 'test-workspace-delegation-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
+
+    // Initialize .openbridge folder with git
+    const dotFolderManager = new DotFolderManager(testWorkspace);
+    await dotFolderManager.initialize();
 
     // Create master manager (skip auto-exploration for tests)
     masterManager = new MasterManager({
