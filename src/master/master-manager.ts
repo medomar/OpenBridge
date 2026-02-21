@@ -113,7 +113,11 @@ export class MasterManager {
 
   /**
    * Start the Master AI.
-   * If auto-exploration is enabled and .openbridge/ doesn't exist, triggers autonomous exploration.
+   * Resilient startup logic:
+   * - If .openbridge/ doesn't exist → trigger fresh exploration
+   * - If incomplete exploration detected → resume from checkpoint
+   * - If map missing or corrupted → re-explore
+   * - If valid map exists → skip exploration, enter ready state
    */
   public async start(): Promise<void> {
     if (this.state !== 'idle') {
@@ -121,45 +125,86 @@ export class MasterManager {
       return;
     }
 
-    logger.info('Starting MasterManager');
+    logger.info('Starting MasterManager (resilient startup)');
 
     // Check if .openbridge folder exists
     const folderExists = await this.dotFolder.exists();
 
-    if (!folderExists && !this.skipAutoExploration) {
-      // No .openbridge folder — trigger exploration
-      logger.info('.openbridge folder does not exist, starting autonomous exploration');
-      await this.explore();
-    } else if (folderExists) {
-      // Folder exists — load existing workspace map and set state to ready
-      logger.info('.openbridge folder exists, loading workspace map');
-
-      const map = await this.dotFolder.readMap();
-      if (map) {
-        this.explorationSummary = {
-          startedAt: map.generatedAt,
-          completedAt: map.generatedAt,
-          status: 'completed',
-          filesScanned: 0,
-          directoriesExplored: 0,
-          projectType: map.projectType,
-          frameworks: map.frameworks,
-          insights: [],
-          mapPath: this.dotFolder.getMapPath(),
-          gitInitialized: true,
-        };
-
-        this.state = 'ready';
-        logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
+    if (!folderExists) {
+      // Scenario 1: No .openbridge folder — trigger fresh exploration
+      if (!this.skipAutoExploration) {
+        logger.info('.openbridge folder does not exist, starting fresh exploration');
+        await this.explore();
       } else {
-        logger.warn('Workspace map file exists but could not be parsed, entering ready state');
+        logger.info('Auto-exploration disabled, entering ready state');
         this.state = 'ready';
       }
-    } else {
-      // Skip auto-exploration — enter ready state
-      logger.info('Auto-exploration disabled, entering ready state');
-      this.state = 'ready';
+      return;
     }
+
+    // Folder exists — perform resilience checks
+    logger.info('.openbridge folder exists, performing resilience checks');
+
+    // Check for incomplete or failed exploration
+    const explorationState = await this.dotFolder.readExplorationState();
+    if (
+      explorationState &&
+      (explorationState.status === 'in_progress' || explorationState.status === 'failed')
+    ) {
+      // Scenario 2: Incomplete/failed exploration detected — resume/retry from checkpoint
+      const statusLabel = explorationState.status === 'in_progress' ? 'Incomplete' : 'Failed';
+      logger.info(
+        { currentPhase: explorationState.currentPhase, status: explorationState.status },
+        `${statusLabel} exploration detected, ${explorationState.status === 'failed' ? 'retrying' : 'resuming'} from checkpoint`,
+      );
+      if (!this.skipAutoExploration) {
+        await this.explore();
+      } else {
+        logger.warn(
+          `Auto-exploration disabled, but ${statusLabel.toLowerCase()} exploration exists. Entering ready state anyway.`,
+        );
+        this.state = 'ready';
+      }
+      return;
+    }
+
+    // Check if workspace map exists and is valid
+    const map = await this.dotFolder.readMap();
+
+    if (!map) {
+      // Scenario 3: Folder exists but map missing or corrupted — re-explore
+      logger.warn('.openbridge folder exists but workspace-map.json is missing or corrupted');
+      if (!this.skipAutoExploration) {
+        logger.info('Re-exploring workspace to regenerate map');
+        await this.explore();
+      } else {
+        logger.warn('Auto-exploration disabled, entering ready state without valid map');
+        this.state = 'ready';
+      }
+      return;
+    }
+
+    // Scenario 4: Valid map exists — skip exploration, enter ready state
+    logger.info(
+      { projectType: map.projectType },
+      'Valid workspace map found, skipping exploration',
+    );
+
+    this.explorationSummary = {
+      startedAt: map.generatedAt,
+      completedAt: map.generatedAt,
+      status: 'completed',
+      filesScanned: 0,
+      directoriesExplored: 0,
+      projectType: map.projectType,
+      frameworks: map.frameworks,
+      insights: [],
+      mapPath: this.dotFolder.getMapPath(),
+      gitInitialized: true,
+    };
+
+    this.state = 'ready';
+    logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
   }
 
   /**
