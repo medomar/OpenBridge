@@ -1007,3 +1007,313 @@ describe('Disk logging', () => {
     expect(writtenContent).toContain('# Max Turns: 15');
   });
 });
+
+// ── AgentRunner.stream() ────────────────────────────────────────────
+
+/** Collect all yielded values and the return value from an async generator */
+async function drainStream(
+  gen: AsyncGenerator<
+    string,
+    {
+      stdout: string;
+      exitCode: number;
+      durationMs: number;
+      retryCount: number;
+      stderr: string;
+      model?: string;
+    }
+  >,
+): Promise<{
+  chunks: string[];
+  result: {
+    stdout: string;
+    exitCode: number;
+    durationMs: number;
+    retryCount: number;
+    stderr: string;
+    model?: string;
+  };
+}> {
+  const chunks: string[] = [];
+  let iterResult = await gen.next();
+  while (!iterResult.done) {
+    chunks.push(iterResult.value);
+    iterResult = await gen.next();
+  }
+  return { chunks, result: iterResult.value };
+}
+
+describe('AgentRunner.stream()', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('yields stdout chunks as they arrive', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    // Start consuming
+    const resultPromise = drainStream(gen);
+
+    // Emit chunks then close
+    const child = lastChild();
+    child.stdout.emit('data', Buffer.from('chunk1'));
+    child.stdout.emit('data', Buffer.from('chunk2'));
+    child.stdout.emit('data', Buffer.from('chunk3'));
+    child.emit('close', 0);
+
+    const { chunks, result } = await resultPromise;
+
+    expect(chunks).toEqual(['chunk1', 'chunk2', 'chunk3']);
+    expect(result.stdout).toBe('chunk1chunk2chunk3');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('returns AgentResult with accumulated stdout', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'haiku',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    const child = lastChild();
+    child.stdout.emit('data', Buffer.from('hello '));
+    child.stdout.emit('data', Buffer.from('world'));
+    child.stderr.emit('data', Buffer.from('warning'));
+    child.emit('close', 0);
+
+    const { result } = await resultPromise;
+
+    expect(result.stdout).toBe('hello world');
+    expect(result.stderr).toBe('warning');
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('haiku');
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.retryCount).toBe(0);
+  });
+
+  it('uses buildArgs with all options (model, maxTurns, allowedTools)', async () => {
+    const gen = runner.stream({
+      prompt: 'explore',
+      workspacePath: '/tmp/project',
+      model: 'haiku',
+      maxTurns: 15,
+      allowedTools: ['Read', 'Glob', 'Grep'],
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+    await resultPromise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('--print');
+    expect(spawnedArgs).toContain('--model');
+    expect(spawnedArgs).toContain('haiku');
+    expect(spawnedArgs).toContain('--max-turns');
+    expect(spawnedArgs).toContain('15');
+    expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(3);
+    expect(spawnedArgs).toContain('Read');
+    expect(spawnedArgs).toContain('Glob');
+    expect(spawnedArgs).toContain('Grep');
+    expect(spawnedArgs).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('retries on non-zero exit codes', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 1000,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // First attempt — fails
+    resolveChild(lastChild(), 'partial', 1, 'error');
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Second attempt — succeeds
+    const child2 = lastChild();
+    child2.stdout.emit('data', Buffer.from('success'));
+    child2.emit('close', 0);
+
+    const { chunks, result } = await resultPromise;
+
+    // Chunks from both attempts are yielded (caller sees both)
+    expect(chunks).toContain('partial');
+    expect(chunks).toContain('success');
+    expect(result.exitCode).toBe(0);
+    expect(result.retryCount).toBe(1);
+    expect(spawnCalls).toHaveLength(2);
+  });
+
+  it('throws AgentExhaustedError after all retries exhausted', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 500,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // First attempt
+    resolveChild(lastChild(), '', 143, 'killed');
+    await vi.advanceTimersByTimeAsync(500);
+
+    // Second attempt
+    resolveChild(lastChild(), '', 143, 'killed again');
+
+    await expect(resultPromise).rejects.toThrow(AgentExhaustedError);
+    await expect(resultPromise).rejects.toThrow(/Agent failed after 2 attempt/);
+  });
+
+  it('throws without retrying when retries is 0', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), '', 1, 'fail');
+
+    try {
+      await resultPromise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(AgentExhaustedError);
+      const error = e as AgentExhaustedError;
+      expect(error.totalAttempts).toBe(1);
+      expect(error.lastExitCode).toBe(1);
+      expect(spawnCalls).toHaveLength(1);
+    }
+  });
+
+  it('retries on spawn errors then succeeds', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // First attempt — spawn error
+    lastChild().emit('error', new Error('ENOENT'));
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — success
+    resolveChild(lastChild(), 'recovered', 0);
+
+    const { result } = await resultPromise;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('recovered');
+  });
+
+  it('writes log file when logFile option is provided', async () => {
+    const gen = runner.stream({
+      prompt: 'explore workspace',
+      workspacePath: '/tmp/project',
+      logFile: '/tmp/project/.openbridge/logs/stream-1.log',
+      model: 'haiku',
+      allowedTools: ['Read', 'Glob', 'Grep'],
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'streamed output', 0, 'some warning');
+    await resultPromise;
+
+    expect(mockMkdir).toHaveBeenCalledWith('/tmp/project/.openbridge/logs', { recursive: true });
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+
+    const writtenContent = mockWriteFile.mock.calls[0]![1] as string;
+    expect(writtenContent).toContain('# Agent Run Log');
+    expect(writtenContent).toContain('# Model: haiku');
+    expect(writtenContent).toContain('# Tools: Read, Glob, Grep');
+    expect(writtenContent).toContain('streamed output');
+    expect(writtenContent).toContain('some warning');
+  });
+
+  it('does not write log file when logFile is not provided', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+    await resultPromise;
+
+    expect(mockMkdir).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('passes session options through to CLI args', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      resumeSessionId: 'sess-abc',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+    await resultPromise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    expect(spawnedArgs).toContain('--resume');
+    expect(spawnedArgs).toContain('sess-abc');
+  });
+
+  it('spawns claude with the correct command and cwd', async () => {
+    const gen = runner.stream({
+      prompt: 'hello',
+      workspacePath: '/tmp/project',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+    await resultPromise;
+
+    expect(spawnCalls).toHaveLength(1);
+    expect(spawnCalls[0]!.command).toBe('claude');
+    expect(spawnCalls[0]!.options['cwd']).toBe('/tmp/project');
+  });
+
+  it('does not throw if log writing fails', async () => {
+    mockWriteFile.mockRejectedValueOnce(new Error('EACCES'));
+
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      logFile: '/readonly/logs/task.log',
+      retries: 0,
+    });
+
+    const resultPromise = drainStream(gen);
+    resolveChild(lastChild(), 'output', 0);
+
+    const { result } = await resultPromise;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('output');
+  });
+});
