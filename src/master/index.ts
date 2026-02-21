@@ -36,6 +36,10 @@ export type { MasterSystemPromptContext } from './master-system-prompt.js';
 export { parseAIResult, parseAIResultWithRetry } from './result-parser.js';
 export type { ParseResult, ParseError, ParsedAIResult } from './result-parser.js';
 
+// Export spawn parser for task decomposition protocol
+export { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
+export type { ParsedSpawnMarker, SpawnParseResult, SpawnMarkerBody } from './spawn-parser.js';
+
 // Export ExplorationCoordinator for incremental exploration
 export { ExplorationCoordinator } from './exploration-coordinator.js';
 export type { ExplorationOptions } from './exploration-coordinator.js';

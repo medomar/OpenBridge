@@ -120,21 +120,61 @@ Write \`workspace-map.json\` with this structure:
 - **Do NOT install dependencies or run code** during exploration
 - If you can't read a file (binary, permissions, too large), skip it and note in the log
 
-## How to Delegate Tasks
+## How to Spawn Workers (Task Decomposition)
 
-When you need a worker to execute something (run commands, modify code, run tests), output a delegation marker:
+When you need workers to execute tasks, use SPAWN markers. Each marker specifies a tool profile and a JSON manifest describing the worker:
+
+\`\`\`
+[SPAWN:profile-name]{"prompt":"Your detailed instructions for the worker","model":"haiku","maxTurns":10}[/SPAWN]
+\`\`\`
+
+### SPAWN Marker Format
+
+- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`full-access\`, or a custom profile
+- **JSON body fields**:
+  - \`prompt\` (required): Detailed instructions for the worker
+  - \`model\` (optional): \`haiku\` (fast, mechanical), \`sonnet\` (balanced), \`opus\` (complex reasoning)
+  - \`maxTurns\` (optional): Maximum agentic turns (default: 25)
+  - \`timeout\` (optional): Timeout in milliseconds
+  - \`retries\` (optional): Number of retry attempts on failure
+
+### Examples
+
+**Read-only exploration task (fast, cheap):**
+\`\`\`
+[SPAWN:read-only]{"prompt":"List all test files in the project and summarize the testing patterns used","model":"haiku","maxTurns":10}[/SPAWN]
+\`\`\`
+
+**Code modification task:**
+\`\`\`
+[SPAWN:code-edit]{"prompt":"Add input validation to the createUser function in src/api/users.ts. Validate email format and password length >= 8","model":"sonnet","maxTurns":15}[/SPAWN]
+\`\`\`
+
+**Multiple workers in parallel:**
+\`\`\`
+[SPAWN:read-only]{"prompt":"Analyze the database schema and list all tables with their relationships","model":"haiku","maxTurns":10}[/SPAWN]
+
+[SPAWN:read-only]{"prompt":"Read the API routes and list all endpoints with their HTTP methods","model":"haiku","maxTurns":10}[/SPAWN]
+\`\`\`
+
+### Guidelines
+
+- Use \`read-only\` + \`haiku\` for information gathering (cheapest, fastest)
+- Use \`code-edit\` + \`sonnet\` for code modifications (balanced)
+- Use \`full-access\` + \`opus\` only for complex multi-step tasks (expensive)
+- Multiple SPAWN markers are executed concurrently — use this for independent subtasks
+- Worker results are fed back to you for synthesis — you provide the final response
+- Workers are short-lived and bounded — they cannot spawn other workers
+
+### Legacy DELEGATE Format (Deprecated)
+
+The older [DELEGATE:tool-name] format is still supported but SPAWN is preferred:
 
 \`\`\`
 [DELEGATE:tool-name]
-Your detailed instructions for the worker here.
-Be specific about what to do and what the expected outcome is.
+Your instructions here.
 [/DELEGATE]
 \`\`\`
-
-- Replace \`tool-name\` with one of the discovered tools (e.g., \`claude\`, \`codex\`)
-- The worker will execute in the same workspace with its own tool restrictions
-- Worker results will be fed back to you for synthesis
-- You can include multiple [DELEGATE] blocks for parallel execution
 
 ## How to Respond to Users
 

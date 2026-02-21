@@ -2,8 +2,11 @@ import { DotFolderManager } from './dotfolder-manager.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
-import type { SpawnOptions } from '../core/agent-runner.js';
+import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
+import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { DelegationCoordinator } from './delegation.js';
+import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
+import type { ParsedSpawnMarker } from './spawn-parser.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -13,6 +16,7 @@ import type {
   MasterSession,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
+import type { ToolProfile } from '../types/agent.js';
 import type { InboundMessage } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
@@ -666,31 +670,57 @@ Work silently — do not output conversational text, just explore and write the 
 
       let response = result.stdout.trim() || 'No response from AI';
 
-      // Check for delegation markers in the response
-      const delegations = this.parseDelegationMarkers(response);
-      if (delegations && delegations.length > 0) {
-        logger.info({ delegationCount: delegations.length }, 'Delegation markers detected');
+      // Check for SPAWN markers first (richer task decomposition protocol)
+      if (hasSpawnMarkers(response)) {
+        const spawnResult = parseSpawnMarkers(response);
+        if (spawnResult.markers.length > 0) {
+          logger.info({ spawnCount: spawnResult.markers.length }, 'SPAWN markers detected');
 
-        // Update task status to delegated
-        task.status = 'delegated';
-        await this.dotFolder.recordTask(task);
+          task.status = 'delegated';
+          await this.dotFolder.recordTask(task);
 
-        // Handle delegations
-        const delegationResults = await this.handleDelegations(delegations, message);
+          const workerResults = await this.handleSpawnMarkers(spawnResult.markers);
 
-        // Feed delegation results back to Master session (always resume)
-        const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+          // Feed worker results back to Master session
+          const feedbackPrompt = `The following worker results are available:\n\n${workerResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
-        this.state = 'processing';
-        const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
-        result = await this.agentRunner.spawn(feedbackOpts);
-        await this.updateMasterSession();
+          this.state = 'processing';
+          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          result = await this.agentRunner.spawn(feedbackOpts);
+          await this.updateMasterSession();
 
-        if (result.exitCode !== 0) {
-          throw new Error(`Delegation feedback processing failed: ${result.stderr}`);
+          if (result.exitCode !== 0) {
+            throw new Error(`Worker feedback processing failed: ${result.stderr}`);
+          }
+
+          response = result.stdout.trim() || workerResults;
         }
+      }
 
-        response = result.stdout.trim() || delegationResults;
+      // Check for legacy delegation markers (fallback)
+      if (!hasSpawnMarkers(response)) {
+        const delegations = this.parseDelegationMarkers(response);
+        if (delegations && delegations.length > 0) {
+          logger.info({ delegationCount: delegations.length }, 'Delegation markers detected');
+
+          task.status = 'delegated';
+          await this.dotFolder.recordTask(task);
+
+          const delegationResults = await this.handleDelegations(delegations, message);
+
+          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+
+          this.state = 'processing';
+          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          result = await this.agentRunner.spawn(feedbackOpts);
+          await this.updateMasterSession();
+
+          if (result.exitCode !== 0) {
+            throw new Error(`Delegation feedback processing failed: ${result.stderr}`);
+          }
+
+          response = result.stdout.trim() || delegationResults;
+        }
       }
 
       // Update task record
@@ -800,39 +830,72 @@ Work silently — do not output conversational text, just explore and write the 
         throw new Error(`Stream failed: ${streamResult.stderr}`);
       }
 
-      // Check for delegation markers in the response
-      const delegations = this.parseDelegationMarkers(fullResponse);
-      if (delegations && delegations.length > 0) {
-        logger.info(
-          { delegationCount: delegations.length },
-          'Delegation markers detected in stream',
-        );
+      // Check for SPAWN markers first (richer task decomposition protocol)
+      if (hasSpawnMarkers(fullResponse)) {
+        const spawnResult = parseSpawnMarkers(fullResponse);
+        if (spawnResult.markers.length > 0) {
+          logger.info(
+            { spawnCount: spawnResult.markers.length },
+            'SPAWN markers detected in stream',
+          );
 
-        // Update task status to delegated
-        task.status = 'delegated';
-        await this.dotFolder.recordTask(task);
+          task.status = 'delegated';
+          await this.dotFolder.recordTask(task);
 
-        // Handle delegations
-        const delegationResults = await this.handleDelegations(delegations, message);
+          const workerResults = await this.handleSpawnMarkers(spawnResult.markers);
 
-        // Feed delegation results back to Master session and stream the final response
-        const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+          const feedbackPrompt = `The following worker results are available:\n\n${workerResults}\n\nPlease synthesize these results and provide a final response to the user.`;
 
-        this.state = 'processing';
-        const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
-        const feedbackStream = this.agentRunner.stream(feedbackOpts);
+          this.state = 'processing';
+          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackStream = this.agentRunner.stream(feedbackOpts);
 
-        let finalResponse = '';
-        let feedbackIter = await feedbackStream.next();
-        while (!feedbackIter.done) {
-          const chunk = feedbackIter.value;
-          finalResponse += chunk;
-          yield chunk;
-          feedbackIter = await feedbackStream.next();
+          let finalResponse = '';
+          let feedbackIter = await feedbackStream.next();
+          while (!feedbackIter.done) {
+            const chunk = feedbackIter.value;
+            finalResponse += chunk;
+            yield chunk;
+            feedbackIter = await feedbackStream.next();
+          }
+          await this.updateMasterSession();
+
+          fullResponse = finalResponse.trim() || workerResults;
         }
-        await this.updateMasterSession();
+      }
 
-        fullResponse = finalResponse.trim() || delegationResults;
+      // Check for legacy delegation markers (fallback)
+      if (!hasSpawnMarkers(fullResponse)) {
+        const delegations = this.parseDelegationMarkers(fullResponse);
+        if (delegations && delegations.length > 0) {
+          logger.info(
+            { delegationCount: delegations.length },
+            'Delegation markers detected in stream',
+          );
+
+          task.status = 'delegated';
+          await this.dotFolder.recordTask(task);
+
+          const delegationResults = await this.handleDelegations(delegations, message);
+
+          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+
+          this.state = 'processing';
+          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackStream = this.agentRunner.stream(feedbackOpts);
+
+          let finalResponse = '';
+          let feedbackIter = await feedbackStream.next();
+          while (!feedbackIter.done) {
+            const chunk = feedbackIter.value;
+            finalResponse += chunk;
+            yield chunk;
+            feedbackIter = await feedbackStream.next();
+          }
+          await this.updateMasterSession();
+
+          fullResponse = finalResponse.trim() || delegationResults;
+        }
       }
 
       // Update task record
@@ -966,6 +1029,90 @@ Work silently — do not output conversational text, just explore and write the 
     }
 
     logger.info('MasterManager shutdown complete');
+  }
+
+  /**
+   * Handle SPAWN markers found in Master output.
+   * Spawns worker agents via AgentRunner based on parsed task manifests,
+   * collects results, and returns formatted output for feeding back to Master.
+   */
+  private async handleSpawnMarkers(markers: ParsedSpawnMarker[]): Promise<string> {
+    const results: string[] = [];
+
+    // Load custom profiles once for all workers
+    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfiles = customProfilesRegistry?.profiles;
+
+    // Spawn all workers concurrently via Promise.allSettled
+    const workerPromises = markers.map((marker, index) =>
+      this.spawnWorker(marker, index, customProfiles),
+    );
+
+    const settled = await Promise.allSettled(workerPromises);
+
+    for (let i = 0; i < settled.length; i++) {
+      const marker = markers[i]!;
+      const outcome = settled[i]!;
+
+      if (outcome.status === 'fulfilled') {
+        const workerResult = outcome.value;
+        if (workerResult.exitCode === 0) {
+          results.push(
+            `[WORKER RESULT (${marker.profile}, worker ${i + 1}/${markers.length})]\n${workerResult.stdout.trim()}\n[/WORKER RESULT]`,
+          );
+        } else {
+          results.push(
+            `[WORKER ERROR (${marker.profile}, worker ${i + 1}/${markers.length})]\nExit code ${workerResult.exitCode}: ${workerResult.stderr}\n[/WORKER ERROR]`,
+          );
+        }
+      } else {
+        const errorMsg =
+          outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        results.push(
+          `[WORKER ERROR (${marker.profile}, worker ${i + 1}/${markers.length})]\n${errorMsg}\n[/WORKER ERROR]`,
+        );
+      }
+    }
+
+    return results.join('\n\n');
+  }
+
+  /**
+   * Spawn a single worker from a parsed SPAWN marker.
+   * Resolves the profile to tools via AgentRunner's manifest resolution.
+   */
+  private async spawnWorker(
+    marker: ParsedSpawnMarker,
+    index: number,
+    customProfiles?: Record<string, ToolProfile>,
+  ): Promise<AgentResult> {
+    const { profile, body } = marker;
+
+    logger.info(
+      {
+        workerIndex: index,
+        profile,
+        model: body.model,
+        maxTurns: body.maxTurns,
+        promptLength: body.prompt.length,
+      },
+      'Spawning worker from SPAWN marker',
+    );
+
+    const spawnOpts = manifestToSpawnOptions(
+      {
+        prompt: body.prompt,
+        workspacePath: this.workspacePath,
+        profile,
+        model: body.model,
+        maxTurns: body.maxTurns,
+        timeout: body.timeout,
+        retries: body.retries,
+      },
+      customProfiles,
+    );
+
+    return this.agentRunner.spawn(spawnOpts);
   }
 
   /**
