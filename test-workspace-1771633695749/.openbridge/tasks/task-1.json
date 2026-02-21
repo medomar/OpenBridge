@@ -1,0 +1,10 @@
+{
+  "id": "task-1",
+  "userMessage": "/ai task 1",
+  "sender": "+1234567890",
+  "description": "Task 1",
+  "status": "completed",
+  "handledBy": "master",
+  "createdAt": "2026-02-21T00:28:15.749Z",
+  "metadata": {}
+}
