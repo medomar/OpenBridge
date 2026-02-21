@@ -121,6 +121,43 @@ export interface AgentResult {
   model?: string;
 }
 
+/** Record of a single execution attempt (used for aggregated error reporting) */
+export interface AttemptRecord {
+  attempt: number;
+  exitCode: number;
+  stderr: string;
+}
+
+/**
+ * Error thrown when all retry attempts are exhausted.
+ * Contains aggregated details from every attempt so callers can inspect
+ * what went wrong across the full retry sequence.
+ */
+export class AgentExhaustedError extends Error {
+  readonly attempts: AttemptRecord[];
+  readonly lastExitCode: number;
+  readonly totalAttempts: number;
+  readonly durationMs: number;
+
+  constructor(attempts: AttemptRecord[], durationMs: number) {
+    const total = attempts.length;
+    const lastExit = attempts[total - 1]?.exitCode ?? 1;
+    const summary = attempts
+      .map(
+        (a) =>
+          `  attempt ${a.attempt}: exit ${a.exitCode}` +
+          (a.stderr ? ` — ${a.stderr.slice(0, 200)}` : ''),
+      )
+      .join('\n');
+    super(`Agent failed after ${total} attempt(s) (last exit code ${lastExit}):\n${summary}`);
+    this.name = 'AgentExhaustedError';
+    this.attempts = attempts;
+    this.lastExitCode = lastExit;
+    this.totalAttempts = total;
+    this.durationMs = durationMs;
+  }
+}
+
 /** Build the CLI argument array from spawn options. */
 export function buildArgs(opts: SpawnOptions): string[] {
   const args = ['--print'];
@@ -222,6 +259,7 @@ export class AgentRunner {
 
     let lastResult: { stdout: string; stderr: string; exitCode: number } | undefined;
     let attempt = 0;
+    const attemptRecords: AttemptRecord[] = [];
 
     for (attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) {
@@ -236,10 +274,15 @@ export class AgentRunner {
         lastResult = await execOnce(args, opts.workspacePath, opts.timeout);
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
+        attemptRecords.push({
+          attempt,
+          exitCode: -1,
+          stderr: error instanceof Error ? error.message : String(error),
+        });
         if (attempt < retries) {
           continue;
         }
-        throw error;
+        throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
       }
 
       if (lastResult.exitCode === 0) {
@@ -250,15 +293,26 @@ export class AgentRunner {
         { exitCode: lastResult.exitCode, attempt, stderr: lastResult.stderr.slice(0, 500) },
         'Agent exited with non-zero code',
       );
+
+      attemptRecords.push({
+        attempt,
+        exitCode: lastResult.exitCode,
+        stderr: lastResult.stderr,
+      });
     }
 
     const durationMs = Date.now() - startTime;
     const retryCount = Math.min(attempt, retries);
 
+    // If we exited the loop without a success, throw aggregated error
+    if (!lastResult || lastResult.exitCode !== 0) {
+      throw new AgentExhaustedError(attemptRecords, durationMs);
+    }
+
     const result: AgentResult = {
-      stdout: lastResult?.stdout ?? '',
-      stderr: lastResult?.stderr ?? '',
-      exitCode: lastResult?.exitCode ?? 1,
+      stdout: lastResult.stdout,
+      stderr: lastResult.stderr,
+      exitCode: lastResult.exitCode,
       durationMs,
       retryCount,
       model: opts.model,

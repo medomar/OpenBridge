@@ -4,6 +4,7 @@ import {
   sanitizePrompt,
   buildArgs,
   AgentRunner,
+  AgentExhaustedError,
   TOOLS_READ_ONLY,
   TOOLS_CODE_EDIT,
   TOOLS_FULL,
@@ -492,7 +493,7 @@ describe('AgentRunner', () => {
     expect(spawnCalls).toHaveLength(3);
   });
 
-  it('returns last failed result after all retries exhausted', async () => {
+  it('throws AgentExhaustedError after all retries exhausted', async () => {
     const promise = runner.spawn({
       prompt: 'test',
       workspacePath: '/tmp',
@@ -507,14 +508,11 @@ describe('AgentRunner', () => {
     // Second attempt
     resolveChild(lastChild(), 'out2', 143, 'killed again');
 
-    const result = await promise;
-
-    expect(result.exitCode).toBe(143);
-    expect(result.stdout).toBe('out2');
-    expect(result.retryCount).toBe(1);
+    await expect(promise).rejects.toThrow(AgentExhaustedError);
+    await expect(promise).rejects.toThrow(/Agent failed after 2 attempt/);
   });
 
-  it('does not retry when retries is 0', async () => {
+  it('throws without retrying when retries is 0', async () => {
     const promise = runner.spawn({
       prompt: 'test',
       workspacePath: '/tmp',
@@ -522,11 +520,17 @@ describe('AgentRunner', () => {
     });
 
     resolveChild(lastChild(), '', 1, 'fail');
-    const result = await promise;
 
-    expect(result.exitCode).toBe(1);
-    expect(result.retryCount).toBe(0);
-    expect(spawnCalls).toHaveLength(1);
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(AgentExhaustedError);
+      const error = e as AgentExhaustedError;
+      expect(error.totalAttempts).toBe(1);
+      expect(error.lastExitCode).toBe(1);
+      expect(spawnCalls).toHaveLength(1);
+    }
   });
 
   it('uses default retries=3 and retryDelay=10000', async () => {
@@ -581,7 +585,7 @@ describe('AgentRunner', () => {
     expect(spawnCalls[0]!.options['timeout']).toBe(60_000);
   });
 
-  it('propagates spawn errors on final attempt', async () => {
+  it('throws AgentExhaustedError on spawn error with no retries', async () => {
     const promise = runner.spawn({
       prompt: 'test',
       workspacePath: '/tmp',
@@ -590,7 +594,16 @@ describe('AgentRunner', () => {
 
     lastChild().emit('error', new Error('ENOENT'));
 
-    await expect(promise).rejects.toThrow('ENOENT');
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(AgentExhaustedError);
+      const error = e as AgentExhaustedError;
+      expect(error.attempts).toHaveLength(1);
+      expect(error.attempts[0]!.exitCode).toBe(-1);
+      expect(error.attempts[0]!.stderr).toContain('ENOENT');
+    }
   });
 
   it('retries on spawn errors then succeeds', async () => {
@@ -628,5 +641,185 @@ describe('AgentRunner', () => {
 
     const result = await promise;
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── AgentExhaustedError ──────────────────────────────────────────────
+
+describe('AgentExhaustedError', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('contains attempt records for every failed attempt', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // Attempt 0
+    resolveChild(lastChild(), '', 1, 'error-0');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 1
+    resolveChild(lastChild(), '', 143, 'error-1');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 2
+    resolveChild(lastChild(), '', 2, 'error-2');
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error).toBeInstanceOf(AgentExhaustedError);
+      expect(error.attempts).toHaveLength(3);
+      expect(error.attempts[0]).toEqual({ attempt: 0, exitCode: 1, stderr: 'error-0' });
+      expect(error.attempts[1]).toEqual({ attempt: 1, exitCode: 143, stderr: 'error-1' });
+      expect(error.attempts[2]).toEqual({ attempt: 2, exitCode: 2, stderr: 'error-2' });
+    }
+  });
+
+  it('records lastExitCode from the final attempt', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    resolveChild(lastChild(), '', 1, 'first');
+    await vi.advanceTimersByTimeAsync(100);
+    resolveChild(lastChild(), '', 143, 'second');
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error.lastExitCode).toBe(143);
+    }
+  });
+
+  it('records totalAttempts including the initial attempt', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    resolveChild(lastChild(), '', 1);
+    await vi.advanceTimersByTimeAsync(100);
+    resolveChild(lastChild(), '', 1);
+    await vi.advanceTimersByTimeAsync(100);
+    resolveChild(lastChild(), '', 1);
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error.totalAttempts).toBe(3);
+    }
+  });
+
+  it('includes durationMs in the error', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), '', 1, 'fail');
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error.durationMs).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('formats a readable error message with all attempts', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    resolveChild(lastChild(), '', 1, 'timeout');
+    await vi.advanceTimersByTimeAsync(100);
+    resolveChild(lastChild(), '', 143, 'killed');
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error.message).toContain('Agent failed after 2 attempt(s)');
+      expect(error.message).toContain('exit 1');
+      expect(error.message).toContain('exit 143');
+      expect(error.message).toContain('timeout');
+      expect(error.message).toContain('killed');
+    }
+  });
+
+  it('aggregates spawn errors with exit code -1', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // Attempt 0 — spawn error
+    lastChild().emit('error', new Error('ENOENT'));
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 1 — non-zero exit
+    resolveChild(lastChild(), '', 1, 'fail');
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error).toBeInstanceOf(AgentExhaustedError);
+      expect(error.attempts).toHaveLength(2);
+      expect(error.attempts[0]!.exitCode).toBe(-1);
+      expect(error.attempts[0]!.stderr).toContain('ENOENT');
+      expect(error.attempts[1]!.exitCode).toBe(1);
+    }
+  });
+
+  it('error.name is AgentExhaustedError', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), '', 1);
+
+    try {
+      await promise;
+      expect.fail('should have thrown');
+    } catch (e) {
+      const error = e as AgentExhaustedError;
+      expect(error.name).toBe('AgentExhaustedError');
+    }
   });
 });
