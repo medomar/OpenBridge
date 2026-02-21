@@ -30,6 +30,50 @@ export const MODEL_ALIASES = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelAlias = (typeof MODEL_ALIASES)[number];
 
 /**
+ * Model fallback chain: opus → sonnet → haiku.
+ * If the preferred model is unavailable or rate-limited, the runner
+ * falls back to the next model in the chain before retrying.
+ */
+export const MODEL_FALLBACK_CHAIN: Record<string, string | undefined> = {
+  opus: 'sonnet',
+  sonnet: 'haiku',
+  haiku: undefined, // no further fallback
+};
+
+/**
+ * Heuristic patterns that indicate a rate-limit or model-unavailability error.
+ * Matched case-insensitively against stderr output.
+ */
+const RATE_LIMIT_PATTERNS = [
+  'rate limit',
+  'rate_limit',
+  'too many requests',
+  '429',
+  'overloaded',
+  'capacity',
+  'unavailable',
+  'model_not_available',
+];
+
+/**
+ * Check whether the stderr output from a failed attempt indicates a rate-limit
+ * or model-unavailability error that warrants falling back to a different model.
+ */
+export function isRateLimitError(stderr: string): boolean {
+  const lower = stderr.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+/**
+ * Get the next model in the fallback chain for a given model.
+ * Returns undefined if there is no further fallback (haiku is the end of the chain).
+ * For unknown models (full model IDs), falls back to sonnet as a safe default.
+ */
+export function getNextFallbackModel(currentModel: string): string | undefined {
+  return MODEL_FALLBACK_CHAIN[currentModel] ?? (currentModel === 'haiku' ? undefined : 'sonnet');
+}
+
+/**
  * Validate a model string.
  * Accepts known short aliases ('haiku', 'sonnet', 'opus') or full model IDs
  * matching the Claude naming pattern (e.g. 'claude-sonnet-4-5-20250929').
@@ -179,6 +223,8 @@ export interface AgentResult {
   retryCount: number;
   /** The model that was requested (undefined = CLI default) */
   model?: string;
+  /** Models that were tried and fell back from due to rate limits, in order */
+  modelFallbacks?: string[];
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -407,8 +453,10 @@ export class AgentRunner {
   async spawn(opts: SpawnOptions): Promise<AgentResult> {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
-    const args = buildArgs(opts);
+    let currentModel = opts.model;
+    let currentArgs = buildArgs(opts);
     const startTime = Date.now();
+    const modelFallbacks: string[] = [];
 
     logger.debug(
       {
@@ -437,7 +485,7 @@ export class AgentRunner {
       }
 
       try {
-        lastResult = await execOnce(args, opts.workspacePath, opts.timeout);
+        lastResult = await execOnce(currentArgs, opts.workspacePath, opts.timeout);
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
         attemptRecords.push({
@@ -465,6 +513,20 @@ export class AgentRunner {
         exitCode: lastResult.exitCode,
         stderr: lastResult.stderr,
       });
+
+      // Check for rate-limit / model unavailability — fall back to next model
+      if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
+        const nextModel = getNextFallbackModel(currentModel);
+        if (nextModel) {
+          logger.warn(
+            { from: currentModel, to: nextModel, attempt },
+            'Model rate-limited — falling back to next model in chain',
+          );
+          modelFallbacks.push(currentModel);
+          currentModel = nextModel;
+          currentArgs = buildArgs({ ...opts, model: currentModel });
+        }
+      }
     }
 
     const durationMs = Date.now() - startTime;
@@ -481,7 +543,8 @@ export class AgentRunner {
       exitCode: lastResult.exitCode,
       durationMs,
       retryCount,
-      model: opts.model,
+      model: currentModel,
+      modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
     };
 
     logger.info(
@@ -490,6 +553,7 @@ export class AgentRunner {
         durationMs: result.durationMs,
         model: result.model ?? 'default',
         retryCount: result.retryCount,
+        modelFallbacks: result.modelFallbacks,
       },
       'Agent completed',
     );
@@ -519,8 +583,10 @@ export class AgentRunner {
   async *stream(opts: SpawnOptions): AsyncGenerator<string, AgentResult> {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
-    const args = buildArgs(opts);
+    let currentModel = opts.model;
+    let currentArgs = buildArgs(opts);
     const startTime = Date.now();
+    const modelFallbacks: string[] = [];
 
     logger.debug(
       {
@@ -552,7 +618,7 @@ export class AgentRunner {
       let spawnError: Error | undefined;
 
       try {
-        const { chunks } = execOnceStreaming(args, opts.workspacePath, opts.timeout);
+        const { chunks } = execOnceStreaming(currentArgs, opts.workspacePath, opts.timeout);
 
         // Drain all chunks — yield each one and accumulate stdout
         let iterResult = await chunks.next();
@@ -591,15 +657,17 @@ export class AgentRunner {
           exitCode: 0,
           durationMs,
           retryCount,
-          model: opts.model,
+          model: currentModel,
+          modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
         };
 
         logger.info(
           {
             exitCode: 0,
             durationMs,
-            model: opts.model ?? 'default',
+            model: currentModel ?? 'default',
             retryCount,
+            modelFallbacks: result.modelFallbacks,
           },
           'Stream completed',
         );
@@ -631,6 +699,20 @@ export class AgentRunner {
         exitCode: streamResult!.exitCode,
         stderr: streamResult!.stderr,
       });
+
+      // Check for rate-limit / model unavailability — fall back to next model
+      if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
+        const nextModel = getNextFallbackModel(currentModel);
+        if (nextModel) {
+          logger.warn(
+            { from: currentModel, to: nextModel, attempt },
+            'Model rate-limited — falling back to next model in chain',
+          );
+          modelFallbacks.push(currentModel);
+          currentModel = nextModel;
+          currentArgs = buildArgs({ ...opts, model: currentModel });
+        }
+      }
     }
 
     // All retries exhausted

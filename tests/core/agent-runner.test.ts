@@ -11,7 +11,10 @@ import {
   DEFAULT_MAX_TURNS_EXPLORATION,
   DEFAULT_MAX_TURNS_TASK,
   MODEL_ALIASES,
+  MODEL_FALLBACK_CHAIN,
   isValidModel,
+  isRateLimitError,
+  getNextFallbackModel,
   resolveProfile,
   manifestToSpawnOptions,
 } from '../../src/core/agent-runner.js';
@@ -1645,5 +1648,339 @@ describe('AgentRunner.streamFromManifest()', () => {
     expect(spawnedArgs.filter((a) => a === '--allowedTools')).toHaveLength(1);
     expect(spawnedArgs).toContain('Read');
     expect(spawnedArgs).not.toContain('Bash(*)');
+  });
+});
+
+// ── MODEL_FALLBACK_CHAIN ─────────────────────────────────────────────
+
+describe('MODEL_FALLBACK_CHAIN', () => {
+  it('opus falls back to sonnet', () => {
+    expect(MODEL_FALLBACK_CHAIN['opus']).toBe('sonnet');
+  });
+
+  it('sonnet falls back to haiku', () => {
+    expect(MODEL_FALLBACK_CHAIN['sonnet']).toBe('haiku');
+  });
+
+  it('haiku has no further fallback', () => {
+    expect(MODEL_FALLBACK_CHAIN['haiku']).toBeUndefined();
+  });
+});
+
+// ── isRateLimitError ─────────────────────────────────────────────────
+
+describe('isRateLimitError', () => {
+  it('detects "rate limit" in stderr', () => {
+    expect(isRateLimitError('Error: rate limit exceeded')).toBe(true);
+  });
+
+  it('detects "rate_limit" in stderr', () => {
+    expect(isRateLimitError('{"error":"rate_limit_error"}')).toBe(true);
+  });
+
+  it('detects "too many requests" in stderr', () => {
+    expect(isRateLimitError('HTTP 429: Too Many Requests')).toBe(true);
+  });
+
+  it('detects "429" in stderr', () => {
+    expect(isRateLimitError('Status: 429')).toBe(true);
+  });
+
+  it('detects "overloaded" in stderr', () => {
+    expect(isRateLimitError('Model is overloaded, try again later')).toBe(true);
+  });
+
+  it('detects "capacity" in stderr', () => {
+    expect(isRateLimitError('No capacity available')).toBe(true);
+  });
+
+  it('detects "unavailable" in stderr', () => {
+    expect(isRateLimitError('Model unavailable')).toBe(true);
+  });
+
+  it('detects "model_not_available" in stderr', () => {
+    expect(isRateLimitError('Error: model_not_available')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isRateLimitError('RATE LIMIT EXCEEDED')).toBe(true);
+    expect(isRateLimitError('Too Many Requests')).toBe(true);
+  });
+
+  it('returns false for unrelated errors', () => {
+    expect(isRateLimitError('syntax error in prompt')).toBe(false);
+    expect(isRateLimitError('ENOENT: file not found')).toBe(false);
+    expect(isRateLimitError('')).toBe(false);
+  });
+});
+
+// ── getNextFallbackModel ─────────────────────────────────────────────
+
+describe('getNextFallbackModel', () => {
+  it('returns sonnet for opus', () => {
+    expect(getNextFallbackModel('opus')).toBe('sonnet');
+  });
+
+  it('returns haiku for sonnet', () => {
+    expect(getNextFallbackModel('sonnet')).toBe('haiku');
+  });
+
+  it('returns undefined for haiku (end of chain)', () => {
+    expect(getNextFallbackModel('haiku')).toBeUndefined();
+  });
+
+  it('returns sonnet for unknown full model IDs', () => {
+    expect(getNextFallbackModel('claude-opus-4-6')).toBe('sonnet');
+  });
+});
+
+// ── Model fallback in spawn() ────────────────────────────────────────
+
+describe('Model fallback in spawn()', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('falls back from opus to sonnet on rate limit error', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // First attempt with opus — rate limited
+    resolveChild(lastChild(), '', 1, 'Error: rate limit exceeded');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt with sonnet — succeeds
+    resolveChild(lastChild(), 'success', 0);
+
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('sonnet');
+    expect(result.modelFallbacks).toEqual(['opus']);
+
+    // Verify second spawn used sonnet
+    const secondArgs = spawnCalls[1]!.args;
+    expect(secondArgs).toContain('--model');
+    const modelIdx = secondArgs.indexOf('--model');
+    expect(secondArgs[modelIdx + 1]).toBe('sonnet');
+  });
+
+  it('falls back through the full chain: opus → sonnet → haiku', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // Attempt 0: opus — rate limited
+    resolveChild(lastChild(), '', 1, 'Too Many Requests');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 1: sonnet — rate limited
+    resolveChild(lastChild(), '', 1, 'rate_limit_error');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 2: haiku — succeeds
+    resolveChild(lastChild(), 'done', 0);
+
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('haiku');
+    expect(result.modelFallbacks).toEqual(['opus', 'sonnet']);
+  });
+
+  it('does not fall back on non-rate-limit errors', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // First attempt — generic error (not rate limit)
+    resolveChild(lastChild(), '', 1, 'syntax error in prompt');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — still opus, succeeds
+    resolveChild(lastChild(), 'ok', 0);
+
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('opus');
+    expect(result.modelFallbacks).toBeUndefined();
+
+    // Verify second spawn still used opus
+    const secondArgs = spawnCalls[1]!.args;
+    const modelIdx = secondArgs.indexOf('--model');
+    expect(secondArgs[modelIdx + 1]).toBe('opus');
+  });
+
+  it('does not fall back when no model is specified', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // First attempt — rate limited but no model set
+    resolveChild(lastChild(), '', 1, 'rate limit exceeded');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — succeeds
+    resolveChild(lastChild(), 'ok', 0);
+
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBeUndefined();
+    expect(result.modelFallbacks).toBeUndefined();
+  });
+
+  it('does not fall back past haiku (end of chain)', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'haiku',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    // First attempt — rate limited, no fallback available
+    resolveChild(lastChild(), '', 1, 'rate limit exceeded');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — still haiku, succeeds
+    resolveChild(lastChild(), 'ok', 0);
+
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('haiku');
+    expect(result.modelFallbacks).toBeUndefined();
+  });
+
+  it('modelFallbacks is undefined when no fallbacks occurred', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    expect(result.modelFallbacks).toBeUndefined();
+  });
+});
+
+// ── Model fallback in stream() ───────────────────────────────────────
+
+describe('Model fallback in stream()', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('falls back from opus to sonnet on rate limit error', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // First attempt with opus — rate limited
+    resolveChild(lastChild(), '', 1, 'Error: rate limit exceeded');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt with sonnet — succeeds
+    resolveChild(lastChild(), 'success', 0);
+
+    const { result } = await resultPromise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('sonnet');
+    expect(result.modelFallbacks).toEqual(['opus']);
+  });
+
+  it('falls back through full chain in stream: opus → sonnet → haiku', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // Attempt 0: opus — rate limited
+    resolveChild(lastChild(), '', 1, 'overloaded');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 1: sonnet — rate limited
+    resolveChild(lastChild(), '', 1, 'Too Many Requests');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Attempt 2: haiku — succeeds
+    resolveChild(lastChild(), 'done', 0);
+
+    const { result } = await resultPromise;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.model).toBe('haiku');
+    expect(result.modelFallbacks).toEqual(['opus', 'sonnet']);
+  });
+
+  it('does not fall back on non-rate-limit errors in stream', async () => {
+    const gen = runner.stream({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 1,
+      retryDelay: 100,
+    });
+
+    const resultPromise = drainStream(gen);
+
+    // First attempt — generic error
+    resolveChild(lastChild(), '', 1, 'file not found');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — still opus, succeeds
+    resolveChild(lastChild(), 'ok', 0);
+
+    const { result } = await resultPromise;
+
+    expect(result.model).toBe('opus');
+    expect(result.modelFallbacks).toBeUndefined();
   });
 });
