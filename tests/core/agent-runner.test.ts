@@ -9,6 +9,8 @@ import {
   TOOLS_FULL,
   DEFAULT_MAX_TURNS_EXPLORATION,
   DEFAULT_MAX_TURNS_TASK,
+  MODEL_ALIASES,
+  isValidModel,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 
@@ -265,6 +267,155 @@ describe('Max-turns defaults', () => {
     });
     const idx = args.indexOf('--max-turns');
     expect(args[idx + 1]).toBe('15');
+  });
+});
+
+// ── Model aliases + validation ───────────────────────────────────────
+
+describe('MODEL_ALIASES', () => {
+  it('contains haiku, sonnet, opus', () => {
+    expect(MODEL_ALIASES).toEqual(['haiku', 'sonnet', 'opus']);
+  });
+});
+
+describe('isValidModel', () => {
+  it('accepts short alias "haiku"', () => {
+    expect(isValidModel('haiku')).toBe(true);
+  });
+
+  it('accepts short alias "sonnet"', () => {
+    expect(isValidModel('sonnet')).toBe(true);
+  });
+
+  it('accepts short alias "opus"', () => {
+    expect(isValidModel('opus')).toBe(true);
+  });
+
+  it('accepts full model IDs like claude-sonnet-4-5-20250929', () => {
+    expect(isValidModel('claude-sonnet-4-5-20250929')).toBe(true);
+  });
+
+  it('accepts full model IDs like claude-haiku-4-5-20251001', () => {
+    expect(isValidModel('claude-haiku-4-5-20251001')).toBe(true);
+  });
+
+  it('accepts full model IDs like claude-opus-4-6', () => {
+    expect(isValidModel('claude-opus-4-6')).toBe(true);
+  });
+
+  it('rejects empty string', () => {
+    expect(isValidModel('')).toBe(false);
+  });
+
+  it('rejects random strings', () => {
+    expect(isValidModel('gpt-4')).toBe(false);
+  });
+
+  it('rejects partial aliases', () => {
+    expect(isValidModel('son')).toBe(false);
+  });
+});
+
+describe('buildArgs model handling', () => {
+  const base: SpawnOptions = {
+    prompt: 'test prompt',
+    workspacePath: '/tmp/ws',
+  };
+
+  it('passes alias "haiku" as --model haiku', () => {
+    const args = buildArgs({ ...base, model: 'haiku' });
+    const idx = args.indexOf('--model');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('haiku');
+  });
+
+  it('passes alias "sonnet" as --model sonnet', () => {
+    const args = buildArgs({ ...base, model: 'sonnet' });
+    const idx = args.indexOf('--model');
+    expect(args[idx + 1]).toBe('sonnet');
+  });
+
+  it('passes alias "opus" as --model opus', () => {
+    const args = buildArgs({ ...base, model: 'opus' });
+    const idx = args.indexOf('--model');
+    expect(args[idx + 1]).toBe('opus');
+  });
+
+  it('passes full model IDs through unchanged', () => {
+    const args = buildArgs({ ...base, model: 'claude-sonnet-4-5-20250929' });
+    const idx = args.indexOf('--model');
+    expect(args[idx + 1]).toBe('claude-sonnet-4-5-20250929');
+  });
+
+  it('omits --model when model is not set', () => {
+    const args = buildArgs(base);
+    expect(args).not.toContain('--model');
+  });
+
+  it('still passes through unrecognized model values (with warning)', () => {
+    const args = buildArgs({ ...base, model: 'gpt-4' });
+    const idx = args.indexOf('--model');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('gpt-4');
+  });
+});
+
+// ── AgentRunner.spawn() model in result ─────────────────────────────
+
+describe('AgentRunner model in result', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('includes model in the result when specified', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'haiku',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    expect(result.model).toBe('haiku');
+  });
+
+  it('result.model is undefined when no model specified', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    const result = await promise;
+
+    expect(result.model).toBeUndefined();
+  });
+
+  it('passes model to the CLI args when spawning', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'opus',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'output', 0);
+    await promise;
+
+    const spawnedArgs = spawnCalls[0]!.args;
+    const idx = spawnedArgs.indexOf('--model');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(spawnedArgs[idx + 1]).toBe('opus');
   });
 });
 

@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 5.85/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 5.80
-> **Open Findings:** 4 (0 critical, 2 high, 2 medium) | **Pending Tasks:** 31 (Phases 16–21)
+> **Current Score:** 5.88/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 5.85
+> **Open Findings:** 3 (0 critical, 2 high, 1 medium) | **Pending Tasks:** 30 (Phases 16–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 5.85** — MVP foundation complete and tested. AgentRunner exists with --allowedTools and --max-turns support, removing the critical --dangerously-skip-permissions security risk and preventing runaway agents (OB-F14). Once Phase 16 lands fully, the score should jump significantly.
+**Current state: 5.88** — MVP foundation complete and tested. AgentRunner exists with --allowedTools, --max-turns, and --model support, removing the critical --dangerously-skip-permissions security risk, preventing runaway agents (OB-F14), and enabling model selection per task (OB-F16). Once Phase 16 lands fully, the score should jump significantly.
 
 ---
 
@@ -80,6 +80,7 @@
 | 2026-02-21 | 5.65  |    +0.15    | OB-130: AgentRunner class with spawn(), buildArgs(), retries, sanitizePrompt. 24 tests passing                                                                                         |
 | 2026-02-21 | 5.80  |    +0.15    | OB-131: --allowedTools support with TOOLS_READ_ONLY/CODE_EDIT/FULL constants. Removed all --dangerously-skip-permissions usage (OB-F13 fixed)                                          |
 | 2026-02-21 | 5.85  |    +0.05    | OB-132: --max-turns support with DEFAULT_MAX_TURNS_EXPLORATION (15) and DEFAULT_MAX_TURNS_TASK (25). Always passes --max-turns to prevent runaway agents (OB-F14 partial fix)          |
+| 2026-02-21 | 5.88  |    +0.03    | OB-133: --model support with MODEL_ALIASES (haiku/sonnet/opus), isValidModel() validation, model in AgentResult. Fixes OB-F16 (no model selection)                                     |
 
 ---
 
