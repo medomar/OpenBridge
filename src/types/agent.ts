@@ -192,6 +192,76 @@ export type ScriptEventListeners = {
   [K in ScriptEventType]?: Array<(event: Extract<ScriptEvent, { type: K }>) => void>;
 };
 
+// ── Tool Profiles ───────────────────────────────────────────────
+
+/** A named set of allowed tools that defines what a worker agent can do */
+export const ToolProfileSchema = z.object({
+  /** Profile identifier (e.g., 'read-only', 'code-edit', 'full-access') */
+  name: z.string().min(1),
+  /** Human-readable description of this profile's purpose */
+  description: z.string().optional(),
+  /** List of tools the agent is allowed to use (passed as --allowedTools) */
+  tools: z.array(z.string().min(1)).min(1),
+});
+
+/** Built-in profile names that ship with OpenBridge */
+export const BuiltInProfileNameSchema = z.enum(['read-only', 'code-edit', 'full-access']);
+
+/**
+ * Built-in tool profiles.
+ *
+ * These mirror the tool group constants in agent-runner.ts but wrapped
+ * as named profiles so the Master AI can reference them by name.
+ *
+ * - read-only:    safe for exploration and information gathering
+ * - code-edit:    for implementation tasks that modify files
+ * - full-access:  unrestricted (use sparingly)
+ */
+export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
+  'read-only': {
+    name: 'read-only',
+    description: 'Safe for exploration and information gathering',
+    tools: ['Read', 'Glob', 'Grep'],
+  },
+  'code-edit': {
+    name: 'code-edit',
+    description: 'For implementation tasks that modify files',
+    tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npm:*)', 'Bash(npx:*)'],
+  },
+  'full-access': {
+    name: 'full-access',
+    description: 'Unrestricted tool access (use sparingly)',
+    tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+  },
+};
+
+// ── Task Manifest ───────────────────────────────────────────────
+
+/**
+ * A task manifest describes everything needed to spawn a worker agent.
+ * The Master AI produces these; AgentRunner consumes them.
+ */
+export const TaskManifestSchema = z.object({
+  /** The prompt to send to the worker agent */
+  prompt: z.string().min(1),
+  /** Working directory for the worker */
+  workspacePath: z.string().min(1),
+  /** Model to use: 'haiku', 'sonnet', 'opus', or a full model ID */
+  model: z.string().optional(),
+  /** Named tool profile — resolved to tools[] by AgentRunner */
+  profile: z.string().optional(),
+  /** Explicit tools list — overrides profile if both are provided */
+  allowedTools: z.array(z.string().min(1)).optional(),
+  /** Maximum number of agentic turns */
+  maxTurns: z.number().int().positive().optional(),
+  /** Timeout in milliseconds for each attempt */
+  timeout: z.number().int().positive().optional(),
+  /** Number of retry attempts on failure */
+  retries: z.number().int().nonnegative().optional(),
+  /** Delay in milliseconds between retries */
+  retryDelay: z.number().int().nonnegative().optional(),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -209,3 +279,6 @@ export type TaskCompleteEvent = z.infer<typeof TaskCompleteEventSchema>;
 export type TaskFailedEvent = z.infer<typeof TaskFailedEventSchema>;
 export type TaskProgressEvent = z.infer<typeof TaskProgressEventSchema>;
 export type ScriptEvent = z.infer<typeof ScriptEventSchema>;
+export type ToolProfile = z.infer<typeof ToolProfileSchema>;
+export type BuiltInProfileName = z.infer<typeof BuiltInProfileNameSchema>;
+export type TaskManifest = z.infer<typeof TaskManifestSchema>;
