@@ -65,6 +65,7 @@ export class MasterManager {
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
+  private explorationCoordinator: ExplorationCoordinator | null = null;
   private sessionMap: Map<string, string> = new Map(); // sender → sessionId
   private sessionTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private readonly sessionTTL = 30 * 60 * 1000; // 30 minutes
@@ -194,13 +195,13 @@ export class MasterManager {
       });
 
       // Delegate to ExplorationCoordinator for incremental multi-pass exploration
-      const coordinator = new ExplorationCoordinator({
+      this.explorationCoordinator = new ExplorationCoordinator({
         workspacePath: this.workspacePath,
         masterTool: this.masterTool,
         discoveredTools: this.discoveredTools,
       });
 
-      this.explorationSummary = await coordinator.explore();
+      this.explorationSummary = await this.explorationCoordinator.explore();
 
       this.state = 'ready';
 
@@ -602,7 +603,61 @@ export class MasterManager {
     let status = `**OpenBridge Master AI Status**\n\n`;
     status += `State: ${this.state}\n`;
 
-    if (this.explorationSummary) {
+    // Show detailed exploration progress if exploration is in progress
+    // Try to get progress from coordinator or directly from state file
+    let progress = null;
+    if (this.explorationCoordinator) {
+      progress = await this.explorationCoordinator.getProgress();
+    } else if (this.state === 'exploring') {
+      // Exploration in progress but coordinator not available (shouldn't happen but handle gracefully)
+      const tempCoordinator = new ExplorationCoordinator({
+        workspacePath: this.workspacePath,
+        masterTool: this.masterTool,
+        discoveredTools: this.discoveredTools,
+      });
+      progress = await tempCoordinator.getProgress();
+    }
+
+    if (this.state === 'exploring' && progress) {
+      status += `\n**Exploration Progress: ${progress.completionPercent}%**\n`;
+      status += `Current Phase: ${progress.currentPhase}\n\n`;
+
+      // Show phase statuses
+      status += `Phases:\n`;
+      const phaseLabels: Record<string, string> = {
+        structure_scan: 'Structure Scan',
+        classification: 'Classification',
+        directory_dives: 'Directory Dives',
+        assembly: 'Assembly',
+        finalization: 'Finalization',
+      };
+      for (const [phase, label] of Object.entries(phaseLabels)) {
+        const phaseStatus = progress.phases[phase];
+        const icon =
+          phaseStatus === 'completed'
+            ? '✅'
+            : phaseStatus === 'in_progress'
+              ? '🔄'
+              : phaseStatus === 'failed'
+                ? '❌'
+                : '⏳';
+        status += `  ${icon} ${label}: ${phaseStatus}\n`;
+      }
+
+      // Show directory dive details if in that phase
+      if (progress.currentPhase === 'directory_dives' && progress.directoriesTotal > 0) {
+        status += `\nDirectory Dives: ${progress.directoriesCompleted}/${progress.directoriesTotal} completed`;
+        if (progress.directoriesFailed > 0) {
+          status += ` (${progress.directoriesFailed} failed)`;
+        }
+        status += `\n`;
+      }
+
+      // Show performance metrics
+      status += `\nAI Calls: ${progress.totalCalls}\n`;
+      const totalTimeSeconds = Math.floor(progress.totalAITimeMs / 1000);
+      status += `Total AI Time: ${totalTimeSeconds}s\n`;
+    } else if (this.explorationSummary) {
       status += `Exploration: ${this.explorationSummary.status}\n`;
       if (this.explorationSummary.projectType) {
         status += `Project Type: ${this.explorationSummary.projectType}\n`;

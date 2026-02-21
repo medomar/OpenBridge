@@ -588,4 +588,62 @@ export class ExplorationCoordinator {
       error: state.error,
     };
   }
+
+  /**
+   * Get current exploration progress
+   * Returns phase-by-phase completion status and overall percentage
+   */
+  public async getProgress(): Promise<{
+    currentPhase: string;
+    phases: Record<string, 'pending' | 'in_progress' | 'completed' | 'failed'>;
+    completionPercent: number;
+    directoriesTotal: number;
+    directoriesCompleted: number;
+    directoriesFailed: number;
+    totalCalls: number;
+    totalAITimeMs: number;
+  } | null> {
+    const state = await this.dotFolder.readExplorationState();
+    if (!state) {
+      return null;
+    }
+
+    // Calculate completion percentage
+    const phaseWeights = {
+      structure_scan: 15,
+      classification: 15,
+      directory_dives: 50,
+      assembly: 15,
+      finalization: 5,
+    };
+
+    let completedWeight = 0;
+    for (const [phase, status] of Object.entries(state.phases)) {
+      if (status === 'completed') {
+        completedWeight += phaseWeights[phase as keyof typeof phaseWeights] ?? 0;
+      }
+    }
+
+    // For directory_dives, calculate partial completion
+    if (state.phases.directory_dives === 'in_progress' && state.directoryDives.length > 0) {
+      const completedDives = state.directoryDives.filter((d) => d.status === 'completed').length;
+      const totalDives = state.directoryDives.length;
+      const diveProgressPercent = completedDives / totalDives;
+      completedWeight +=
+        phaseWeights.directory_dives * diveProgressPercent - phaseWeights.directory_dives;
+    }
+
+    const completionPercent = Math.round(completedWeight);
+
+    return {
+      currentPhase: state.currentPhase,
+      phases: state.phases,
+      completionPercent,
+      directoriesTotal: state.directoryDives.length,
+      directoriesCompleted: state.directoryDives.filter((d) => d.status === 'completed').length,
+      directoriesFailed: state.directoryDives.filter((d) => d.status === 'failed').length,
+      totalCalls: state.totalCalls,
+      totalAITimeMs: state.totalAITimeMs,
+    };
+  }
 }
