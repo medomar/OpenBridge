@@ -15,7 +15,7 @@ npm run format:check # Check Prettier formatting
 
 ## What is OpenBridge?
 
-An open-source **autonomous AI bridge** — connects messaging channels to AI agents that **explore your workspace, discover your project, and execute tasks**. The AI auto-discovers tools on your machine (Claude Code, Codex, Aider), picks the best one as Master, and silently learns your project on startup. You interact through messaging (WhatsApp). Zero API keys. Zero extra cost.
+An open-source **autonomous AI bridge** — connects messaging channels to AI agents that **explore your workspace, discover your project, and execute tasks**. The AI auto-discovers tools on your machine (Claude Code, Codex, Aider), picks the best one as Master, and silently learns your project on startup through 5 incremental passes (never times out). Session continuity enables multi-turn conversations. You interact through messaging (WhatsApp or Console). Zero API keys. Zero extra cost.
 
 ## How to Use OpenBridge
 
@@ -52,8 +52,13 @@ On startup, OpenBridge:
 
 1. Scans your machine for AI tools (`which claude`, `which codex`, etc.)
 2. Picks the most capable one as Master
-3. Master silently explores the target workspace
-4. Creates `.openbridge/` folder with a git repo to track everything
+3. Master silently explores the target workspace in 5 incremental passes:
+   - Pass 1: Structure scan (list top-level files/dirs, count files per dir)
+   - Pass 2: Classification (detect project type, frameworks, commands)
+   - Pass 3: Directory dives (explore each significant directory)
+   - Pass 4: Assembly (merge results into workspace-map.json)
+   - Pass 5: Finalization (create agents.json, git commit)
+4. Creates `.openbridge/` folder with a git repo and exploration/ subfolder to track everything
 5. Waits for your messages
 
 ### Step 3: Send a command
@@ -104,41 +109,44 @@ The bridge will:
 
 ### Key Files
 
-| File                                                | Purpose                                                    |
-| --------------------------------------------------- | ---------------------------------------------------------- |
-| `config.json`                                       | Your runtime config (gitignored)                           |
-| `src/index.ts`                                      | Entry point — V0 + V2 startup flows                        |
-| `src/core/bridge.ts`                                | Orchestrator — wires connectors, auth, queue, Master AI    |
-| `src/core/router.ts`                                | Routes messages: connector → Master AI → connector         |
-| `src/core/auth.ts`                                  | Phone whitelist + prefix + command allow/deny filters      |
-| `src/core/queue.ts`                                 | Per-user sequential processing, retry, DLQ                 |
-| `src/core/registry.ts`                              | Plugin registry — auto-discovers connectors                |
-| `src/core/config.ts`                                | Config loader — V2 detection + V0 fallback (Zod validated) |
-| `src/core/config-watcher.ts`                        | Config hot-reload (file watcher)                           |
-| `src/core/health.ts`                                | Health check HTTP endpoint                                 |
-| `src/core/metrics.ts`                               | Message count, latency, error rate metrics                 |
-| `src/core/audit-logger.ts`                          | Structured audit trail of all message events               |
-| `src/core/rate-limiter.ts`                          | Per-user rate limiting                                     |
-| `src/core/logger.ts`                                | Pino logger                                                |
-| `src/types/connector.ts`                            | Interface every connector must implement                   |
-| `src/types/provider.ts`                             | Interface every AI provider must implement                 |
-| `src/types/message.ts`                              | InboundMessage / OutboundMessage types                     |
-| `src/types/config.ts`                               | Zod config schemas (V0 + V2)                               |
-| `src/types/discovery.ts`                            | DiscoveredTool, ScanResult Zod schemas                     |
-| `src/types/master.ts`                               | MasterState, ExplorationSummary Zod schemas                |
-| `src/types/common.ts`                               | Shared types                                               |
-| `src/discovery/tool-scanner.ts`                     | CLI tool detection (`which claude`, `which codex`, etc.)   |
-| `src/discovery/vscode-scanner.ts`                   | VS Code AI extension detection                             |
-| `src/discovery/index.ts`                            | `scanForAITools()` export — combines CLI + VS Code scans   |
-| `src/master/master-manager.ts`                      | Master AI lifecycle (idle → exploring → ready) + messaging |
-| `src/master/dotfolder-manager.ts`                   | `.openbridge/` folder CRUD + git operations                |
-| `src/master/exploration-prompt.ts`                  | System prompt for autonomous workspace exploration         |
-| `src/master/delegation.ts`                          | Multi-AI task delegation coordinator                       |
-| `src/connectors/whatsapp/`                          | WhatsApp connector — auto-reconnect, sessions, typing      |
-| `src/connectors/console/`                           | Console connector (reference implementation)               |
-| `src/providers/claude-code/`                        | Claude Code CLI provider — streaming, sessions, errors     |
-| `src/providers/claude-code/claude-code-executor.ts` | Generalized CLI executor (any AI tool)                     |
-| `src/cli/init.ts`                                   | CLI config generator — 3 questions for V2 config           |
+| File                                                | Purpose                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `config.json`                                       | Your runtime config (gitignored)                                                |
+| `src/index.ts`                                      | Entry point — V0 + V2 startup flows                                             |
+| `src/core/bridge.ts`                                | Orchestrator — wires connectors, auth, queue, Master AI                         |
+| `src/core/router.ts`                                | Routes messages: connector → Master AI → connector                              |
+| `src/core/auth.ts`                                  | Phone whitelist + prefix + command allow/deny filters                           |
+| `src/core/queue.ts`                                 | Per-user sequential processing, retry, DLQ                                      |
+| `src/core/registry.ts`                              | Plugin registry — auto-discovers connectors                                     |
+| `src/core/config.ts`                                | Config loader — V2 detection + V0 fallback (Zod validated)                      |
+| `src/core/config-watcher.ts`                        | Config hot-reload (file watcher)                                                |
+| `src/core/health.ts`                                | Health check HTTP endpoint                                                      |
+| `src/core/metrics.ts`                               | Message count, latency, error rate metrics                                      |
+| `src/core/audit-logger.ts`                          | Structured audit trail of all message events                                    |
+| `src/core/rate-limiter.ts`                          | Per-user rate limiting                                                          |
+| `src/core/logger.ts`                                | Pino logger                                                                     |
+| `src/types/connector.ts`                            | Interface every connector must implement                                        |
+| `src/types/provider.ts`                             | Interface every AI provider must implement                                      |
+| `src/types/message.ts`                              | InboundMessage / OutboundMessage types                                          |
+| `src/types/config.ts`                               | Zod config schemas (V0 + V2)                                                    |
+| `src/types/discovery.ts`                            | DiscoveredTool, ScanResult Zod schemas                                          |
+| `src/types/master.ts`                               | MasterState, ExplorationSummary Zod schemas                                     |
+| `src/types/common.ts`                               | Shared types                                                                    |
+| `src/discovery/tool-scanner.ts`                     | CLI tool detection (`which claude`, `which codex`, etc.)                        |
+| `src/discovery/vscode-scanner.ts`                   | VS Code AI extension detection                                                  |
+| `src/discovery/index.ts`                            | `scanForAITools()` export — combines CLI + VS Code scans                        |
+| `src/master/master-manager.ts`                      | Master AI lifecycle (idle → exploring → ready) + messaging + session continuity |
+| `src/master/dotfolder-manager.ts`                   | `.openbridge/` folder CRUD + git operations + exploration state CRUD            |
+| `src/master/exploration-coordinator.ts`             | 5-phase incremental exploration orchestrator with checkpointing + resumability  |
+| `src/master/exploration-prompts.ts`                 | Focused prompts (structure scan, classification, directory dive, assembly)      |
+| `src/master/result-parser.ts`                       | Robust JSON extraction from AI output with progressive fallbacks                |
+| `src/master/exploration-prompt.ts`                  | Legacy monolithic exploration prompt (V0 compatibility)                         |
+| `src/master/delegation.ts`                          | Multi-AI task delegation coordinator                                            |
+| `src/connectors/whatsapp/`                          | WhatsApp connector — auto-reconnect, sessions, typing                           |
+| `src/connectors/console/`                           | Console connector (reference implementation)                                    |
+| `src/providers/claude-code/`                        | Claude Code CLI provider — streaming, sessions, errors                          |
+| `src/providers/claude-code/claude-code-executor.ts` | Generalized CLI executor (any AI tool)                                          |
+| `src/cli/init.ts`                                   | CLI config generator — 3 questions for V2 config                                |
 
 ### How `workspacePath` Works
 
@@ -160,9 +168,17 @@ my-app/
 ├── package.json
 └── .openbridge/                 ← Created by Master AI
     ├── .git/                    ← Local git repo (AI's changes only)
-    ├── workspace-map.json       ← Auto-generated project understanding
+    ├── exploration/             ← Intermediate exploration state (for resumability)
+    │   ├── exploration-state.json  ← Phase progress tracker (single source of truth)
+    │   ├── structure-scan.json     ← Pass 1 output
+    │   ├── classification.json     ← Pass 2 output
+    │   └── dirs/                   ← Pass 3 outputs (one per directory)
+    │       ├── src.json
+    │       ├── tests.json
+    │       └── docs.json
+    ├── workspace-map.json       ← Auto-generated project understanding (Pass 4 output)
+    ├── agents.json              ← Discovered AI tools + their roles (Pass 5 output)
     ├── exploration.log          ← Timestamped scan history
-    ├── agents.json              ← Discovered AI tools + their roles
     └── tasks/                   ← Task history (one JSON per task)
 ```
 
@@ -217,10 +233,13 @@ src/
 │   └── vscode-scanner.ts       VS Code extension detection
 └── master/                     Master AI management
     ├── index.ts                Module exports
-    ├── master-manager.ts       Master AI lifecycle + message routing
-    ├── dotfolder-manager.ts    .openbridge/ folder CRUD + git
-    ├── exploration-prompt.ts   Workspace exploration prompt
-    └── delegation.ts           Multi-AI task delegation
+    ├── master-manager.ts       Master AI lifecycle + message routing + session continuity
+    ├── dotfolder-manager.ts    .openbridge/ folder CRUD + git + exploration state CRUD
+    ├── exploration-coordinator.ts  5-phase incremental exploration orchestrator
+    ├── exploration-prompts.ts      Focused prompts (structure, classification, dive, assembly)
+    ├── result-parser.ts            Robust JSON extraction from AI output
+    ├── exploration-prompt.ts       Legacy monolithic exploration prompt (V0 compatibility)
+    └── delegation.ts               Multi-AI task delegation
 
 tests/                          Vitest test suite
 ├── core/                       Unit tests for each core module
