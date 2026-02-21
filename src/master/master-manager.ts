@@ -7,6 +7,7 @@ import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { DelegationCoordinator } from './delegation.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
+import { formatWorkerBatch } from './worker-result-formatter.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -679,11 +680,9 @@ Work silently — do not output conversational text, just explore and write the 
           task.status = 'delegated';
           await this.dotFolder.recordTask(task);
 
-          const workerResults = await this.handleSpawnMarkers(spawnResult.markers);
+          const feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
 
-          // Feed worker results back to Master session
-          const feedbackPrompt = `The following worker results are available:\n\n${workerResults}\n\nPlease synthesize these results and provide a final response to the user.`;
-
+          // Inject worker results back into the Master session
           this.state = 'processing';
           const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
           result = await this.agentRunner.spawn(feedbackOpts);
@@ -693,7 +692,7 @@ Work silently — do not output conversational text, just explore and write the 
             throw new Error(`Worker feedback processing failed: ${result.stderr}`);
           }
 
-          response = result.stdout.trim() || workerResults;
+          response = result.stdout.trim() || feedbackPrompt;
         }
       }
 
@@ -842,10 +841,9 @@ Work silently — do not output conversational text, just explore and write the 
           task.status = 'delegated';
           await this.dotFolder.recordTask(task);
 
-          const workerResults = await this.handleSpawnMarkers(spawnResult.markers);
+          const feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
 
-          const feedbackPrompt = `The following worker results are available:\n\n${workerResults}\n\nPlease synthesize these results and provide a final response to the user.`;
-
+          // Inject worker results back into the Master session (streamed)
           this.state = 'processing';
           const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
           const feedbackStream = this.agentRunner.stream(feedbackOpts);
@@ -860,7 +858,7 @@ Work silently — do not output conversational text, just explore and write the 
           }
           await this.updateMasterSession();
 
-          fullResponse = finalResponse.trim() || workerResults;
+          fullResponse = finalResponse.trim() || feedbackPrompt;
         }
       }
 
@@ -1034,11 +1032,13 @@ Work silently — do not output conversational text, just explore and write the 
   /**
    * Handle SPAWN markers found in Master output.
    * Spawns worker agents via AgentRunner based on parsed task manifests,
-   * collects results, and returns formatted output for feeding back to Master.
+   * collects results, and returns a structured feedback prompt for injection
+   * into the Master session.
+   *
+   * Worker results include metadata (model, profile, duration, exit code)
+   * so the Master can reason about what happened and synthesize a response.
    */
   private async handleSpawnMarkers(markers: ParsedSpawnMarker[]): Promise<string> {
-    const results: string[] = [];
-
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.dotFolder.readProfiles();
     const customProfiles = customProfilesRegistry?.profiles;
@@ -1050,31 +1050,9 @@ Work silently — do not output conversational text, just explore and write the 
 
     const settled = await Promise.allSettled(workerPromises);
 
-    for (let i = 0; i < settled.length; i++) {
-      const marker = markers[i]!;
-      const outcome = settled[i]!;
-
-      if (outcome.status === 'fulfilled') {
-        const workerResult = outcome.value;
-        if (workerResult.exitCode === 0) {
-          results.push(
-            `[WORKER RESULT (${marker.profile}, worker ${i + 1}/${markers.length})]\n${workerResult.stdout.trim()}\n[/WORKER RESULT]`,
-          );
-        } else {
-          results.push(
-            `[WORKER ERROR (${marker.profile}, worker ${i + 1}/${markers.length})]\nExit code ${workerResult.exitCode}: ${workerResult.stderr}\n[/WORKER ERROR]`,
-          );
-        }
-      } else {
-        const errorMsg =
-          outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
-        results.push(
-          `[WORKER ERROR (${marker.profile}, worker ${i + 1}/${markers.length})]\n${errorMsg}\n[/WORKER ERROR]`,
-        );
-      }
-    }
-
-    return results.join('\n\n');
+    // Format all results with structured metadata and build the feedback prompt
+    const { feedbackPrompt } = formatWorkerBatch(settled, markers);
+    return feedbackPrompt;
   }
 
   /**
