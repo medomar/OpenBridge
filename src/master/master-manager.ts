@@ -29,6 +29,32 @@ const DEFAULT_TIMEOUT = 600_000; // 10 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
 
 /**
+ * Exit codes and stderr patterns that indicate a dead/unrecoverable Master session.
+ * These warrant creating a new session rather than retrying the same one.
+ */
+const SESSION_DEAD_EXIT_CODES = new Set([
+  143, // SIGTERM — timeout killed the process
+  137, // SIGKILL — force-killed (OOM or external)
+  1, // General error — may be context overflow or session corruption
+]);
+
+const SESSION_DEAD_PATTERNS = [
+  'context window',
+  'context length',
+  'context_length',
+  'too many tokens',
+  'token limit',
+  'maximum context',
+  'session not found',
+  'session expired',
+  'invalid session',
+  'conversation too long',
+];
+
+/** Maximum number of recent tasks to include in a context summary on restart */
+const RESTART_CONTEXT_TASK_LIMIT = 10;
+
+/**
  * Tools available to the Master AI session.
  * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
  * Master can read, write, and edit files (for .openbridge/ management)
@@ -97,6 +123,8 @@ export class MasterManager {
   private sessionInitialized = false;
   /** Cached system prompt content (loaded from .openbridge/prompts/master-system.md) */
   private systemPrompt: string | null = null;
+  /** Number of times the Master session has been restarted */
+  private restartCount = 0;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -354,6 +382,161 @@ export class MasterManager {
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session update');
     }
+  }
+
+  /**
+   * Check whether a failed AgentResult indicates the Master session is dead
+   * (crash, timeout, context overflow) and cannot be resumed.
+   */
+  private isSessionDead(exitCode: number, stderr: string): boolean {
+    // Check exit code
+    if (SESSION_DEAD_EXIT_CODES.has(exitCode)) {
+      // Exit code 1 is only considered dead if stderr contains a session-related pattern
+      if (exitCode === 1) {
+        const lower = stderr.toLowerCase();
+        return SESSION_DEAD_PATTERNS.some((pattern) => lower.includes(pattern));
+      }
+      return true;
+    }
+
+    // Check stderr patterns regardless of exit code
+    const lower = stderr.toLowerCase();
+    return SESSION_DEAD_PATTERNS.some((pattern) => lower.includes(pattern));
+  }
+
+  /**
+   * Build a context summary for a restarted Master session.
+   * Loads workspace-map.json and recent task history to seed the new session
+   * with accumulated knowledge so the user sees no interruption.
+   */
+  private async buildContextSummary(): Promise<string> {
+    const parts: string[] = [];
+
+    parts.push(
+      '# Session Context Recovery',
+      '',
+      'Your previous session ended unexpectedly. Here is the accumulated context to resume from:',
+      '',
+    );
+
+    // Load workspace map
+    const map = await this.dotFolder.readMap();
+    if (map) {
+      parts.push('## Workspace Summary');
+      parts.push(`- **Project:** ${map.projectName} (${map.projectType})`);
+      parts.push(`- **Path:** ${map.workspacePath}`);
+      if (map.frameworks.length > 0) {
+        parts.push(`- **Frameworks:** ${map.frameworks.join(', ')}`);
+      }
+      parts.push(`- **Summary:** ${map.summary}`);
+      parts.push('');
+    }
+
+    // Load recent task history
+    const tasks = await this.dotFolder.readAllTasks();
+    if (tasks.length > 0) {
+      // Sort by createdAt descending, take most recent
+      const recentTasks = tasks
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, RESTART_CONTEXT_TASK_LIMIT);
+
+      parts.push('## Recent Task History');
+      for (const task of recentTasks) {
+        const status = task.status === 'completed' ? 'completed' : task.status;
+        parts.push(`- [${status}] "${task.description.slice(0, 100)}" (from ${task.sender})`);
+        if (task.result) {
+          parts.push(`  Result: ${task.result.slice(0, 200)}`);
+        }
+      }
+      parts.push('');
+    }
+
+    parts.push('Continue operating normally. Respond to the next user message as usual.');
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Restart the Master session after detecting it has died.
+   * Saves the old session state, creates a new session, and seeds it
+   * with a context summary so the user sees no interruption.
+   */
+  private async restartMasterSession(): Promise<void> {
+    const oldSession = this.masterSession;
+    this.restartCount++;
+
+    logger.warn(
+      {
+        oldSessionId: oldSession?.sessionId,
+        oldMessageCount: oldSession?.messageCount,
+        restartCount: this.restartCount,
+      },
+      'Restarting Master session after failure',
+    );
+
+    // Log the restart
+    await this.dotFolder.appendLog({
+      timestamp: new Date().toISOString(),
+      level: 'warn',
+      message: 'Master session restarted',
+      data: {
+        oldSessionId: oldSession?.sessionId,
+        oldMessageCount: oldSession?.messageCount,
+        restartCount: this.restartCount,
+      },
+    });
+
+    // Create a new session
+    const sessionId = `master-${randomUUID()}`;
+    const now = new Date().toISOString();
+
+    this.masterSession = {
+      sessionId,
+      createdAt: now,
+      lastUsedAt: now,
+      messageCount: 0,
+      allowedTools: [...MASTER_TOOLS],
+      maxTurns: MASTER_MAX_TURNS,
+    };
+    this.sessionInitialized = false;
+
+    // Persist the new session
+    try {
+      await this.dotFolder.writeMasterSession(this.masterSession);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to persist restarted Master session');
+    }
+
+    // Build and send context summary to seed the new session
+    const contextSummary = await this.buildContextSummary();
+    const spawnOpts = this.buildMasterSpawnOptions(contextSummary, this.messageTimeout);
+
+    try {
+      const result = await this.agentRunner.spawn(spawnOpts);
+      await this.updateMasterSession();
+
+      if (result.exitCode !== 0) {
+        logger.warn(
+          { exitCode: result.exitCode, stderr: result.stderr },
+          'Context recovery prompt returned non-zero exit code',
+        );
+      } else {
+        logger.info({ sessionId }, 'Master session restarted with context summary');
+      }
+    } catch (error) {
+      // Context seeding failed — session is still usable, just without history
+      logger.warn({ error }, 'Failed to seed restarted session with context summary');
+      // Mark session as initialized even on failure so future calls use --resume
+      this.sessionInitialized = true;
+      await this.updateMasterSession();
+    }
+  }
+
+  /**
+   * Get the number of times the Master session has been restarted.
+   */
+  public getRestartCount(): number {
+    return this.restartCount;
   }
 
   /**
@@ -667,6 +850,21 @@ Work silently — do not output conversational text, just explore and write the 
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
+      // Detect dead session and restart transparently
+      if (result.exitCode !== 0 && this.isSessionDead(result.exitCode, result.stderr)) {
+        logger.warn(
+          { exitCode: result.exitCode, stderr: result.stderr.slice(0, 200) },
+          'Master session appears dead, attempting restart',
+        );
+
+        await this.restartMasterSession();
+
+        // Retry the original message with the new session
+        const retryOpts = this.buildMasterSpawnOptions(message.content);
+        result = await this.agentRunner.spawn(retryOpts);
+        await this.updateMasterSession();
+      }
+
       if (result.exitCode !== 0) {
         throw new Error(`Message processing failed: ${result.stderr}`);
       }
@@ -827,7 +1025,37 @@ Work silently — do not output conversational text, just explore and write the 
       const streamResult = iterResult.value;
       await this.updateMasterSession();
 
-      if (streamResult.exitCode !== 0) {
+      // Detect dead session and restart transparently
+      if (
+        streamResult.exitCode !== 0 &&
+        this.isSessionDead(streamResult.exitCode, streamResult.stderr)
+      ) {
+        logger.warn(
+          { exitCode: streamResult.exitCode, stderr: streamResult.stderr.slice(0, 200) },
+          'Master session appears dead during streaming, attempting restart',
+        );
+
+        await this.restartMasterSession();
+
+        // Retry the message with the new session (streamed)
+        const retryOpts = this.buildMasterSpawnOptions(message.content);
+        fullResponse = '';
+        const retryStream = this.agentRunner.stream(retryOpts);
+
+        let retryIter = await retryStream.next();
+        while (!retryIter.done) {
+          const chunk = retryIter.value;
+          fullResponse += chunk;
+          yield chunk;
+          retryIter = await retryStream.next();
+        }
+        const retryResult = retryIter.value;
+        await this.updateMasterSession();
+
+        if (retryResult.exitCode !== 0) {
+          throw new Error(`Stream failed after restart: ${retryResult.stderr}`);
+        }
+      } else if (streamResult.exitCode !== 0) {
         throw new Error(`Stream failed: ${streamResult.stderr}`);
       }
 
@@ -952,6 +1180,9 @@ Work silently — do not output conversational text, just explore and write the 
     if (this.masterSession) {
       status += `Master Session: ${this.masterSession.sessionId}\n`;
       status += `Session Messages: ${this.masterSession.messageCount}\n`;
+      if (this.restartCount > 0) {
+        status += `Session Restarts: ${this.restartCount}\n`;
+      }
     }
 
     // Show exploration status

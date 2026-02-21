@@ -860,4 +860,436 @@ describe('MasterManager', () => {
       expect(call?.systemPrompt).toContain('Master AI');
     });
   });
+
+  describe('Graceful Master Restart (OB-156)', () => {
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+    });
+
+    it('should detect SIGTERM (exit code 143) as dead session', async () => {
+      // First call fails with SIGTERM (timeout)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: 'Process killed',
+        retryCount: 0,
+        durationMs: 60000,
+      });
+
+      // Context summary seed call (restart)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry after restart succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Hello after restart!',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-restart-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      expect(response).toBe('Hello after restart!');
+      expect(masterManager.getState()).toBe('ready');
+      expect(masterManager.getRestartCount()).toBe(1);
+      // 3 spawn calls: original (failed), context seed, retry
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
+    });
+
+    it('should detect SIGKILL (exit code 137) as dead session', async () => {
+      // First call fails with SIGKILL (OOM)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 137,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 5000,
+      });
+
+      // Context summary seed
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Recovered!',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-restart-2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai test',
+        content: 'test',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      expect(response).toBe('Recovered!');
+      expect(masterManager.getRestartCount()).toBe(1);
+    });
+
+    it('should detect context overflow pattern in stderr', async () => {
+      // Exit code 1 with context overflow pattern
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Error: context length exceeded maximum',
+        retryCount: 0,
+        durationMs: 1000,
+      });
+
+      // Context summary seed
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Fresh response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-restart-3',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai question',
+        content: 'question',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      expect(response).toBe('Fresh response');
+      expect(masterManager.getRestartCount()).toBe(1);
+    });
+
+    it('should NOT restart on regular exit code 1 without session-dead patterns', async () => {
+      // Regular error — not a dead session
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Some regular error',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-no-restart',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await expect(masterManager.processMessage(message)).rejects.toThrow(
+        'Message processing failed',
+      );
+      expect(masterManager.getRestartCount()).toBe(0);
+      // Only 1 spawn call — no restart attempted
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should create a new session ID after restart', async () => {
+      const oldSessionId = masterManager.getMasterSession()?.sessionId;
+
+      // SIGTERM triggers restart
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 60000,
+      });
+
+      // Context seed
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-new-session',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const newSessionId = masterManager.getMasterSession()?.sessionId;
+      expect(newSessionId).not.toBe(oldSessionId);
+      expect(newSessionId).toMatch(/^master-/);
+    });
+
+    it('should include workspace map in context summary', async () => {
+      // Write a workspace map
+      const dotFolder = new DotFolderManager(testWorkspace);
+      await dotFolder.writeMap({
+        workspacePath: testWorkspace,
+        projectName: 'my-project',
+        projectType: 'node',
+        frameworks: ['express', 'typescript'],
+        structure: {},
+        keyFiles: [],
+        entryPoints: [],
+        commands: {},
+        dependencies: [],
+        summary: 'A Node.js project with Express',
+        generatedAt: new Date().toISOString(),
+        schemaVersion: '1.0.0',
+      });
+
+      // SIGTERM triggers restart
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 60000,
+      });
+
+      // Context seed — capture what's sent
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-context',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // The second spawn call should be the context summary seed
+      const contextCall = getSpawnCallOpts(1);
+      expect(contextCall?.prompt).toContain('Session Context Recovery');
+      expect(contextCall?.prompt).toContain('my-project');
+      expect(contextCall?.prompt).toContain('Node.js project with Express');
+    });
+
+    it('should show restart count in status', async () => {
+      // Trigger a restart
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 60000,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'OK',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-status-restart',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const status = await masterManager.getStatus();
+      expect(status).toContain('Session Restarts: 1');
+    });
+
+    it('should handle restart during streaming', async () => {
+      // Stream fails with SIGTERM
+      async function* failingStream(): AsyncGenerator<
+        string,
+        { exitCode: number; stderr: string; stdout: string; durationMs: number; retryCount: number }
+      > {
+        yield 'partial ';
+        return {
+          exitCode: 143,
+          stderr: '',
+          stdout: 'partial ',
+          durationMs: 60000,
+          retryCount: 0,
+        };
+      }
+
+      // Context seed (non-streaming spawn during restart)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Retry stream succeeds
+      async function* retryStream(): AsyncGenerator<
+        string,
+        { exitCode: number; stderr: string; stdout: string; durationMs: number; retryCount: number }
+      > {
+        yield 'recovered ';
+        yield 'response';
+        return {
+          exitCode: 0,
+          stderr: '',
+          stdout: 'recovered response',
+          durationMs: 300,
+          retryCount: 0,
+        };
+      }
+
+      mockStream.mockReturnValueOnce(failingStream());
+      mockStream.mockReturnValueOnce(retryStream());
+
+      const message: InboundMessage = {
+        id: 'msg-stream-restart',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai streaming test',
+        content: 'streaming test',
+        timestamp: new Date(),
+      };
+
+      const chunks: string[] = [];
+      for await (const chunk of masterManager.streamMessage(message)) {
+        chunks.push(chunk);
+      }
+
+      // Should contain both the partial output and the recovered output
+      expect(chunks).toContain('partial ');
+      expect(chunks).toContain('recovered ');
+      expect(chunks).toContain('response');
+      expect(masterManager.getRestartCount()).toBe(1);
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('should persist new session to disk after restart', async () => {
+      // SIGTERM triggers restart
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 143,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 60000,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Context loaded',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'OK',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-persist',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const savedSession = await dotFolder.readMasterSession();
+
+      expect(savedSession).toBeDefined();
+      expect(savedSession?.sessionId).toBe(masterManager.getMasterSession()?.sessionId);
+    });
+  });
 });
