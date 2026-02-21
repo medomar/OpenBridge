@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.55/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.50
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 19 (Phases 18–21)
+> **Current Score:** 6.60/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.55
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 18 (Phases 18–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.55** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 in progress. Master session lifecycle implemented (OB-150). Master system prompt seeded (OB-151). Master-driven exploration: ExplorationCoordinator removed as driver, Master session autonomously explores and writes workspace-map.json (OB-152).
+**Current state: 6.60** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 in progress. Master session lifecycle implemented (OB-150). Master system prompt seeded (OB-151). Master-driven exploration (OB-152). Task decomposition protocol: SPAWN markers for Master→worker task delegation with profile resolution and concurrent execution (OB-153).
 
 ---
 
@@ -93,6 +93,7 @@
 | 2026-02-21 | 6.35  |    +0.15    | OB-150: Master session lifecycle — persistent session via --session-id/--resume, MasterSession schema, session persisted to .openbridge/master-session.json. Phase 18 started             |
 | 2026-02-21 | 6.50  |    +0.15    | OB-151: Master system prompt — generateMasterSystemPrompt(), seeded to .openbridge/prompts/master-system.md, injected via --append-system-prompt. Editable by Master for self-improvement |
 | 2026-02-21 | 6.55  |    +0.05    | OB-152: Master-driven exploration — removed ExplorationCoordinator as driver, Master session autonomously explores workspace via system prompt. Coordinator retained as utility library   |
+| 2026-02-21 | 6.60  |    +0.05    | OB-153: Task decomposition protocol — [SPAWN:profile]{JSON}[/SPAWN] markers, spawn-parser with Zod validation, concurrent worker execution, profile→tools resolution, result injection    |
 
 ---
 
