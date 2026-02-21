@@ -311,6 +311,13 @@ export function buildArgs(opts: SpawnOptions): string[] {
   return args;
 }
 
+/**
+ * Grace period in milliseconds between SIGTERM and SIGKILL.
+ * When a worker times out, we send SIGTERM first, wait this long,
+ * then send SIGKILL if the process hasn't exited.
+ */
+const SIGTERM_GRACE_PERIOD_MS = 5000;
+
 /** Execute a single agent attempt. Returns stdout, stderr, exitCode. */
 function execOnce(
   args: string[],
@@ -320,12 +327,46 @@ function execOnce(
   return new Promise((resolve, reject) => {
     const child = nodeSpawn('claude', args, {
       cwd: workspacePath,
-      timeout,
+      // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
       env: { ...process.env },
     });
 
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    let timeoutTimer: NodeJS.Timeout | undefined;
+    let gracePeriodTimer: NodeJS.Timeout | undefined;
+
+    // Manual timeout handling with SIGTERM → SIGKILL progression
+    if (timeout && timeout > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        logger.warn(
+          { timeout, pid: child.pid },
+          'Worker timeout exceeded — sending SIGTERM (5s grace period)',
+        );
+
+        // Send SIGTERM for graceful shutdown
+        const terminated = child.kill('SIGTERM');
+
+        if (!terminated) {
+          logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to worker');
+          // Resolve immediately if kill failed
+          resolve({
+            stdout,
+            stderr: stderr + '\nTimeout: failed to terminate process',
+            exitCode: 143,
+          });
+          return;
+        }
+
+        // Set up grace period timer for SIGKILL
+        gracePeriodTimer = setTimeout(() => {
+          logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
+          child.kill('SIGKILL');
+        }, SIGTERM_GRACE_PERIOD_MS);
+      }, timeout);
+    }
 
     child.stdout.on('data', (data: Buffer) => {
       stdout += data.toString();
@@ -335,11 +376,29 @@ function execOnce(
       stderr += data.toString();
     });
 
-    child.on('close', (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    child.on('close', (code, signal) => {
+      // Clear both timers
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+      if (timedOut) {
+        // Process was terminated due to timeout
+        const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
+        resolve({
+          stdout,
+          stderr:
+            stderr +
+            `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
+          exitCode,
+        });
+      } else {
+        resolve({ stdout, stderr, exitCode: code ?? 1 });
+      }
     });
 
     child.on('error', (error) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
       reject(error);
     });
   });
@@ -391,11 +450,42 @@ function execOnceStreaming(
 } {
   const child = nodeSpawn('claude', args, {
     cwd: workspacePath,
-    timeout,
+    // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
     env: { ...process.env },
   });
 
   let stderr = '';
+  let timedOut = false;
+  let timeoutTimer: NodeJS.Timeout | undefined;
+  let gracePeriodTimer: NodeJS.Timeout | undefined;
+
+  // Manual timeout handling with SIGTERM → SIGKILL progression
+  if (timeout && timeout > 0) {
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      logger.warn(
+        { timeout, pid: child.pid },
+        'Worker streaming timeout exceeded — sending SIGTERM (5s grace period)',
+      );
+
+      // Send SIGTERM for graceful shutdown
+      const terminated = child.kill('SIGTERM');
+
+      if (!terminated) {
+        logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to streaming worker');
+        return;
+      }
+
+      // Set up grace period timer for SIGKILL
+      gracePeriodTimer = setTimeout(() => {
+        logger.warn(
+          { timeout, pid: child.pid },
+          'Grace period expired — sending SIGKILL to streaming worker',
+        );
+        child.kill('SIGKILL');
+      }, SIGTERM_GRACE_PERIOD_MS);
+    }, timeout);
+  }
 
   child.stderr.on('data', (data: Buffer) => {
     stderr += data.toString();
@@ -404,6 +494,7 @@ function execOnceStreaming(
   const chunkQueue: string[] = [];
   let done = false;
   let exitCode = 1;
+  let _exitSignal: string | null = null;
   let spawnError: Error | undefined;
 
   let notify: (() => void) | undefined;
@@ -418,13 +509,28 @@ function execOnceStreaming(
     notify?.();
   });
 
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
+    // Clear both timers
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
     exitCode = code ?? 1;
+    _exitSignal = signal;
+
+    if (timedOut) {
+      // Process was terminated due to timeout
+      exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
+      stderr += `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`;
+    }
+
     done = true;
     notify?.();
   });
 
   child.on('error', (error) => {
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
     logger.error({ error }, 'Agent streaming error');
     spawnError = error;
     done = true;
@@ -450,7 +556,19 @@ function execOnceStreaming(
   return {
     chunks: generate(),
     abort: (): void => {
-      child.kill('SIGTERM');
+      // Clear timers if abort is called manually
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+      // Graceful shutdown with SIGTERM
+      const terminated = child.kill('SIGTERM');
+
+      if (terminated) {
+        // Set up grace period for SIGKILL
+        gracePeriodTimer = setTimeout(() => {
+          child.kill('SIGKILL');
+        }, SIGTERM_GRACE_PERIOD_MS);
+      }
     },
   };
 }
