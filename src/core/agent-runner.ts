@@ -263,6 +263,81 @@ async function writeLogFile(
   await writeFile(logFile, header, 'utf-8');
 }
 
+/** Execute a single agent attempt in streaming mode. Yields stdout chunks. */
+function execOnceStreaming(
+  args: string[],
+  workspacePath: string,
+  timeout?: number,
+): {
+  chunks: AsyncGenerator<string, { exitCode: number; stderr: string }>;
+  abort: () => void;
+} {
+  const child = nodeSpawn('claude', args, {
+    cwd: workspacePath,
+    timeout,
+    env: { ...process.env },
+  });
+
+  let stderr = '';
+
+  child.stderr.on('data', (data: Buffer) => {
+    stderr += data.toString();
+  });
+
+  const chunkQueue: string[] = [];
+  let done = false;
+  let exitCode = 1;
+  let spawnError: Error | undefined;
+
+  let notify: (() => void) | undefined;
+  function waitForData(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+  }
+
+  child.stdout.on('data', (data: Buffer) => {
+    chunkQueue.push(data.toString());
+    notify?.();
+  });
+
+  child.on('close', (code) => {
+    exitCode = code ?? 1;
+    done = true;
+    notify?.();
+  });
+
+  child.on('error', (error) => {
+    logger.error({ error }, 'Agent streaming error');
+    spawnError = error;
+    done = true;
+    notify?.();
+  });
+
+  async function* generate(): AsyncGenerator<string, { exitCode: number; stderr: string }> {
+    while (!done || chunkQueue.length > 0) {
+      if (chunkQueue.length > 0) {
+        yield chunkQueue.shift()!;
+      } else if (!done) {
+        await waitForData();
+      }
+    }
+
+    if (spawnError) {
+      throw spawnError;
+    }
+
+    return { exitCode, stderr };
+  }
+
+  return {
+    chunks: generate(),
+    abort: (): void => {
+      child.kill('SIGTERM');
+    },
+  };
+}
+
 export class AgentRunner {
   /**
    * Spawn a Claude CLI agent with the given options.
@@ -371,5 +446,136 @@ export class AgentRunner {
     }
 
     return result;
+  }
+
+  /**
+   * Stream a Claude CLI agent, yielding stdout chunks as they arrive.
+   *
+   * Supports all the same options as spawn() — allowedTools, maxTurns,
+   * model, retries, disk logging. On non-zero exit codes, retries the
+   * entire execution (previous chunks are discarded for that attempt).
+   *
+   * The generator's return value is an AgentResult with the accumulated
+   * stdout from the successful attempt.
+   */
+  async *stream(opts: SpawnOptions): AsyncGenerator<string, AgentResult> {
+    const retries = opts.retries ?? 3;
+    const retryDelay = opts.retryDelay ?? 10_000;
+    const args = buildArgs(opts);
+    const startTime = Date.now();
+
+    logger.debug(
+      {
+        workspacePath: opts.workspacePath,
+        model: opts.model,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        timeout: opts.timeout,
+        retries,
+        sessionId: opts.resumeSessionId ?? opts.sessionId,
+      },
+      'Streaming agent',
+    );
+
+    const attemptRecords: AttemptRecord[] = [];
+    let attempt = 0;
+
+    for (attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        logger.warn(
+          { attempt, maxRetries: retries, delay: retryDelay },
+          'Retrying stream after non-zero exit',
+        );
+        await sleep(retryDelay);
+      }
+
+      let stdout = '';
+      let streamResult: { exitCode: number; stderr: string } | undefined;
+      let spawnError: Error | undefined;
+
+      try {
+        const { chunks } = execOnceStreaming(args, opts.workspacePath, opts.timeout);
+
+        // Drain all chunks — yield each one and accumulate stdout
+        let iterResult = await chunks.next();
+        while (!iterResult.done) {
+          const chunk = iterResult.value;
+          stdout += chunk;
+          yield chunk;
+          iterResult = await chunks.next();
+        }
+
+        streamResult = iterResult.value;
+      } catch (error) {
+        logger.error({ error, attempt }, 'Agent stream error');
+        spawnError = error instanceof Error ? error : new Error(String(error));
+      }
+
+      if (spawnError) {
+        attemptRecords.push({
+          attempt,
+          exitCode: -1,
+          stderr: spawnError.message,
+        });
+        if (attempt < retries) {
+          continue;
+        }
+        throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+      }
+
+      if (streamResult!.exitCode === 0) {
+        const durationMs = Date.now() - startTime;
+        const retryCount = attempt;
+
+        const result: AgentResult = {
+          stdout,
+          stderr: streamResult!.stderr,
+          exitCode: 0,
+          durationMs,
+          retryCount,
+          model: opts.model,
+        };
+
+        logger.info(
+          {
+            exitCode: 0,
+            durationMs,
+            model: opts.model ?? 'default',
+            retryCount,
+          },
+          'Stream completed',
+        );
+
+        if (opts.logFile) {
+          try {
+            await writeLogFile(opts.logFile, opts, result);
+            logger.debug({ logFile: opts.logFile }, 'Stream log written to disk');
+          } catch (logError) {
+            logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write stream log');
+          }
+        }
+
+        return result;
+      }
+
+      // Non-zero exit — record and possibly retry
+      logger.warn(
+        {
+          exitCode: streamResult!.exitCode,
+          attempt,
+          stderr: streamResult!.stderr.slice(0, 500),
+        },
+        'Stream exited with non-zero code',
+      );
+
+      attemptRecords.push({
+        attempt,
+        exitCode: streamResult!.exitCode,
+        stderr: streamResult!.stderr,
+      });
+    }
+
+    // All retries exhausted
+    throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
   }
 }
