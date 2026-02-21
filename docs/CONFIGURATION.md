@@ -130,19 +130,46 @@ Authentication and security configuration.
 
 ### `master` (optional)
 
-Override the auto-detected Master AI settings.
+Override the auto-detected Master AI settings. By default, OpenBridge scans your machine for AI tools (`claude`, `codex`, `aider`, etc.) and picks the most capable one as Master. Use this section to override that behavior.
 
 ```json
 "master": {
-  "tool": "codex",
-  "explorationPrompt": "Custom exploration instructions..."
+  "tool": "codex"
 }
 ```
 
-| Field               | Type     | Default       | Description                               |
-| ------------------- | -------- | ------------- | ----------------------------------------- |
-| `tool`              | `string` | auto-detected | Force a specific tool as Master (by name) |
-| `explorationPrompt` | `string` | built-in      | Custom prompt for workspace exploration   |
+| Field               | Type     | Default       | Description                                          |
+| ------------------- | -------- | ------------- | ---------------------------------------------------- |
+| `tool`              | `string` | auto-detected | Force a specific tool as Master (exact name or path) |
+| `explorationPrompt` | `string` | built-in      | Custom prompt for workspace exploration _(planned)_  |
+| `sessionTtlMs`      | `number` | `1800000`     | Session lifetime in milliseconds _(planned)_         |
+
+#### Discovery Override Examples
+
+**Force a specific tool by name:**
+
+```json
+"master": {
+  "tool": "aider"
+}
+```
+
+OpenBridge will skip auto-detection and use `aider` if it's installed.
+
+**Use a specific Claude installation:**
+
+```json
+"master": {
+  "tool": "/usr/local/bin/claude"
+}
+```
+
+Useful if you have multiple AI CLIs installed and want to pick a specific one.
+
+**Planned features (not yet implemented):**
+
+- `explorationPrompt`: Custom exploration instructions for non-code workspaces
+- `sessionTtlMs`: Override session expiry time for privacy/performance tuning
 
 ### `queue`
 

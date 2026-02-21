@@ -60,7 +60,35 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   logger.info('Discovering AI tools...');
   const scanResult = await scanForAITools();
 
-  if (!scanResult.master) {
+  // Step 1a: Apply master tool override if configured
+  let selectedMaster = scanResult.master;
+
+  if (v2Config.master?.tool) {
+    logger.info({ override: v2Config.master.tool }, 'Master tool override specified in config');
+
+    // Try to find the tool in discovered tools by name or path
+    const overrideTool = scanResult.cliTools.find(
+      (tool) =>
+        tool.name === v2Config.master?.tool ||
+        tool.path === v2Config.master?.tool ||
+        tool.path.endsWith(`/${v2Config.master?.tool}`),
+    );
+
+    if (overrideTool) {
+      selectedMaster = overrideTool;
+      logger.info(
+        { tool: overrideTool.name },
+        'Using overridden Master tool from discovered tools',
+      );
+    } else {
+      logger.warn(
+        { requested: v2Config.master.tool },
+        'Overridden tool not found in discovered tools — falling back to auto-detected Master',
+      );
+    }
+  }
+
+  if (!selectedMaster) {
     logger.error('No Master AI tool found. V2 flow requires at least one CLI AI tool.');
     logger.error(
       'Install Claude Code CLI (https://claude.ai/download) or another supported AI tool.',
@@ -70,7 +98,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
 
   logger.info(
     {
-      master: scanResult.master.name,
+      master: selectedMaster.name,
       totalTools: scanResult.totalDiscovered,
       cliTools: scanResult.cliTools.length,
       vscodeExtensions: scanResult.vscodeExtensions.length,
@@ -96,7 +124,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
 
   const masterManager = new MasterManager({
     workspacePath: v2Config.workspacePath,
-    masterTool: scanResult.master,
+    masterTool: selectedMaster,
     discoveredTools: scanResult.cliTools,
   });
 

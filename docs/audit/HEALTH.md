@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 5.155/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 5.125
-> **Open Findings:** 8 | **Pending Tasks:** 15
+> **Current Score:** 5.170/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 5.155
+> **Open Findings:** 8 | **Pending Tasks:** 14
 > **Reason for current state:** Vision shifted to autonomous AI exploration. V0 foundation solid, but core new features (discovery, Master AI, V2 config) don't exist yet.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md)
 
@@ -113,6 +113,7 @@ Completing **Phases 5–9** (bug fix + discovery + Master AI + V2 config + archi
 | 2026-02-21 | 5.095 |    +0.03    | OB-107 completed — OVERVIEW.md rewritten with autonomous AI vision, incremental exploration architecture, session continuity, updated status table |
 | 2026-02-21 | 5.125 |    +0.03    | OB-108 completed — README.md rewritten with new positioning, 5-pass exploration flow, non-code workspace examples, session continuity demos        |
 | 2026-02-21 | 5.155 |    +0.03    | OB-109 completed — ARCHITECTURE.md rewritten with 4-layer system, incremental 5-pass exploration, .openbridge/ folder spec, session continuity     |
+| 2026-02-21 | 5.170 |   +0.015    | OB-110 completed — CONFIGURATION.md simplified with V2 config emphasis, discovery overrides (master.tool) added to schema and V2 startup flow      |
 
 ---
 
