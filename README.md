@@ -10,7 +10,7 @@
 [![CI](https://github.com/medomar/OpenBridge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/medomar/OpenBridge/actions/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-An open-source **autonomous AI bridge** that connects messaging channels to AI agents that **explore your workspace, discover your project structure, and execute tasks** — all using the AI tools already installed on your machine. Zero API keys. Zero extra cost.
+An open-source **self-governing AI bridge** that connects messaging channels to a **Master AI** that explores your workspace, spawns worker agents, and executes tasks — all using the AI tools already installed on your machine. Zero API keys. Zero extra cost.
 
 [Quick Start](#quick-start) |
 [How It Works](#how-it-works) |
@@ -32,17 +32,17 @@ You configure three things: **workspace path**, **messaging channel**, **phone w
 
 **What Happens Next:**
 
-OpenBridge auto-discovers available AI tools on your machine, picks the best one as Master, silently explores your workspace in 5 incremental passes, and waits for your messages.
+OpenBridge auto-discovers AI tools on your machine, picks the best one as Master, explores your workspace using worker agents, and waits for your messages. The Master AI governs itself — it decides which model, tools, and strategy to use for each task.
 
 **Key Features:**
 
 - **Zero-config AI** — auto-discovers Claude Code, Codex, Aider, etc. on your machine
-- **Autonomous exploration** — Master AI silently learns your project structure on startup
-- **Incremental 5-pass exploration** — short, checkpointed scans that never timeout
+- **Self-governing Master** — decides which model and tools each worker gets
+- **Worker delegation** — spawns short-lived agents with bounded permissions (`--allowedTools`, `--max-turns`)
 - **Session continuity** — multi-turn conversations with full context
-- **Multi-AI delegation** — Master assigns subtasks to other discovered tools
+- **Self-improvement** — learns from task outcomes, refines its own prompts
 - **`.openbridge/` folder** — the AI's brain, git-tracked inside your project
-- **Silent worker** — only speaks when you ask
+- **Your subscription** — uses your existing AI tools, zero extra cost
 
 ---
 
@@ -60,11 +60,11 @@ Master: This is a Node.js REST API (Express + TypeScript) with:
         - Docker setup with docker-compose.yml
 
 You:    /ai run the tests and fix any failures
-Master: Running tests... 45/47 passing. 2 failures in auth.test.ts.
-        → Reading failing tests...
-        → Fixed: expired mock token + missing header check
-        → Re-running... 47/47 passing.
-        Changes committed to .openbridge/.git
+Master: Spawning workers...
+        → Worker 1 (haiku): running tests... 45/47 passing
+        → Worker 2 (sonnet): fixing 2 failures in auth.test.ts
+        → Worker 3 (haiku): re-running tests... 47/47 passing
+        Changes committed. All tests pass.
 
 You:    /ai how does the payment flow work?
 Master: Payment flow (src/services/payment.ts):
@@ -93,41 +93,24 @@ Master: Top 5 from sales_weekly.csv:
         3. Americano (97 sold)
         4. Cold Brew (89 sold)
         5. Mocha (76 sold)
-
-You:    /ai create a reorder list for next week
-Master: Created reorder_2026-02-21.txt with:
-        - Robusta beans: 20kg
-        - Oat milk: 15L (running low based on latte sales trend)
-        - Paper cups (16oz): 500 units
 ```
 
-### Multi-Turn Session Continuity
+### How Workers Are Governed
 
 ```
-You:    /ai which invoices are overdue?
-Master: 3 overdue invoices:
-        - Invoice #1247 ($850) — 12 days overdue
-        - Invoice #1289 ($1,200) — 8 days overdue
-        - Invoice #1302 ($450) — 5 days overdue
+You:    /ai refactor auth to use JWT
 
-You:    /ai send reminders to those clients
-Master: Created reminder emails in drafts/:
-        - reminder_1247_acme_corp.txt
-        - reminder_1289_stellar_inc.txt
-        - reminder_1302_zenith_co.txt
-        Review and send when ready.
+Master (opus, long-lived session):
+  "Complex task. Breaking it down..."
+
+  → Worker 1: { model: "haiku",  profile: "read-only",  task: "read current auth code" }
+  → Worker 2: { model: "sonnet", profile: "code-edit",  task: "implement JWT auth" }
+  → Worker 3: { model: "haiku",  profile: "code-edit",  task: "run tests" }
+
+Master: "Done. Refactored to JWT. 4 files modified, all tests pass."
 ```
 
-### Multi-AI Delegation
-
-```
-You:    /ai refactor the user model to add role-based access
-Master: Breaking this into subtasks...
-        → Analyzing current user model (Master)
-        → Generating migration script (Codex)
-        → Updating middleware + tests (Master)
-        Done. 4 files modified, migration ready, tests passing.
-```
+The Master decides the model, tool permissions, and turn limits for each worker. No human configuration needed.
 
 ---
 
@@ -137,30 +120,49 @@ Master: Breaking this into subtasks...
 ┌─────────────┐     ┌──────────────────────────────────┐     ┌──────────────┐
 │  CHANNELS   │     │          BRIDGE CORE              │     │  MASTER AI   │
 │             │     │                                    │     │              │
-│  WhatsApp ──┼────>│  Auth → Queue → Router ───────────┼────>│  5-Pass      │
-│  Console    │     │                                    │     │  Exploration │
+│  WhatsApp ──┼────>│  Auth → Queue → Router ───────────┼────>│  Self-       │
+│  Console    │     │                                    │     │  Governing   │
 │  Telegram   │     │  Discovery: scans for AI tools     │     │  Session     │
 │  Discord    │     │                                    │     │  Continuity  │
-│             │<────┼── Health · Metrics · Audit         │<────│  Delegation  │
-└─────────────┘     └──────────────────────────────────┘     └──────────────┘
-                                                               .openbridge/
-                                                               ├── .git/
-                                                               ├── exploration/
-                                                               │   ├── exploration-state.json
-                                                               │   ├── structure-scan.json
-                                                               │   ├── classification.json
-                                                               │   └── dirs/
-                                                               ├── workspace-map.json
-                                                               ├── agents.json
-                                                               └── tasks/
+│             │<────┼── Health · Metrics · Audit         │<────│  Workers     │
+└─────────────┘     └──────────────────────────────────┘     └──────┬───────┘
+                                                                     │
+                                                              ┌──────▼───────┐
+                                                              │ AGENT RUNNER  │
+                                                              │ --allowedTools│
+                                                              │ --max-turns   │
+                                                              │ --model       │
+                                                              │ retries+logs  │
+                                                              └──────┬───────┘
+                                                                     │
+                                                              ┌──────▼───────┐
+                                                              │   WORKERS    │
+                                                              │ Short-lived  │
+                                                              │ Bounded      │
+                                                              │ per-task     │
+                                                              └──────────────┘
+
+.openbridge/                          ← The AI's brain
+├── .git/                             ← tracks all changes
+├── workspace-map.json                ← project understanding
+├── master-session.json               ← session ID for resume
+├── profiles.json                     ← custom tool profiles
+├── prompts/                          ← editable prompt templates
+├── learnings.json                    ← what works, what doesn't
+├── logs/                             ← full worker execution logs
+├── exploration/                      ← exploration state
+├── agents.json                       ← discovered AI tools
+├── workers.json                      ← active worker registry
+└── tasks/                            ← task history
 ```
 
-| Layer            | What it does                                                        |
-| ---------------- | ------------------------------------------------------------------- |
-| **Channels**     | Messaging adapters (WhatsApp, Console, Telegram, Discord)           |
-| **Bridge Core**  | Routing, auth, queuing, config, metrics, health, AI discovery       |
-| **AI Discovery** | Scans machine for AI CLIs + VS Code extensions, ranks, picks Master |
-| **Master AI**    | Incremental exploration, session continuity, delegation coordinator |
+| Layer            | What it does                                                                |
+| ---------------- | --------------------------------------------------------------------------- |
+| **Channels**     | Messaging adapters (WhatsApp, Console)                                      |
+| **Bridge Core**  | Routing, auth, queuing, config, metrics, health, AI discovery               |
+| **Master AI**    | Self-governing agent: task decomposition, worker spawning, self-improvement |
+| **Agent Runner** | Unified CLI executor: tool profiles, model selection, retries, logging      |
+| **Workers**      | Short-lived agents with bounded permissions, spawned per-task               |
 
 ---
 
@@ -230,11 +232,11 @@ Your Phone                    Your Machine
                          Queue ──> Router
                                      │
                                      ▼
-                              Master AI (already explored your workspace)
+                              Master AI (long-lived session)
                                      │
+                              Thinks: "Simple query, I know the answer"
                               Reads .openbridge/workspace-map.json
                               Checks project git log
-                              Builds response
                                      │
   WhatsApp <──── Response <──────────┘
 
@@ -244,33 +246,39 @@ Your Phone                    Your Machine
 
 **On startup:**
 
-1. **AI Discovery** — scans your machine for AI CLIs (`which claude`, `which codex`, etc.) and VS Code extensions
-2. **Master Selection** — picks the most capable tool as Master (ranked by features)
-3. **Incremental Exploration** — Master explores the workspace in 5 short passes:
-   - **Pass 1:** Structure scan (list files/dirs, detect config files) — 90s
-   - **Pass 2:** Classification (detect project type, frameworks, dependencies) — 90s
-   - **Pass 3:** Directory dives (explore key folders in parallel batches) — 90s/dir
-   - **Pass 4:** Assembly (merge results into `workspace-map.json`) — 60s
-   - **Pass 5:** Finalization (create `agents.json`, git commit, log)
-4. **Checkpointing** — each pass is saved to `.openbridge/exploration/` for resumability
+1. **AI Discovery** — scans your machine for AI CLIs and VS Code extensions
+2. **Master Selection** — picks the most capable tool as Master
+3. **Master Session** — launches Master as a long-lived Claude session
+4. **Workspace Exploration** — Master spawns read-only workers (haiku) to explore:
+   - Workers scan files/dirs, classify project type, dive into directories
+   - Master assembles results into `workspace-map.json`
+   - All checkpointed to `.openbridge/exploration/` for resumability
 5. **Ready** — Master waits for your messages with full project context
+
+**On user message:**
+
+1. Master receives the message in its long-lived session
+2. Master decides how to handle it (answer directly or delegate to workers)
+3. For complex tasks, Master creates **task manifests** for workers:
+   - Each manifest specifies: model, tool profile, max turns, timeout
+   - Workers execute and report results back to Master
+4. Master synthesizes results and responds to user
 
 ---
 
 ## Current Status
 
-| Component            | Status                                                                     |
-| -------------------- | -------------------------------------------------------------------------- |
-| WhatsApp             | ✅ Stable — auto-reconnect, sessions, chunking, typing                     |
-| Claude Code Provider | ✅ Stable — streaming, sessions, error classification                      |
-| Bridge Core          | ✅ Stable — router, auth, queue, metrics, health, audit                    |
-| AI Discovery         | ✅ Stable — CLI scanner, VS Code scanner, auto-selection                   |
-| Master AI            | ✅ Stable — incremental exploration, session continuity, resilient startup |
-| Multi-AI Delegation  | ✅ Stable — task parsing, concurrent delegation, timeout handling          |
-| Console Connector    | ✅ Stable — rapid preprod testing without WhatsApp QR                      |
-| Telegram/Discord     | 🔜 Planned (Phase 15)                                                      |
-| Web Chat UI          | 🔜 Planned (Phase 15)                                                      |
-| Interactive Views    | 🔜 Planned (Phase 15)                                                      |
+| Component             | Status                                                             |
+| --------------------- | ------------------------------------------------------------------ |
+| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing             |
+| Console               | ✅ Stable — rapid preprod testing                                  |
+| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit            |
+| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection           |
+| Agent Runner          | 🔧 Building — Phase 16 (core executor with profiles + retries)     |
+| Self-Governing Master | 🔧 Planned — Phase 18 (long-lived session, task decomposition)     |
+| Worker Orchestration  | 🔧 Planned — Phase 19 (parallel workers, registry, depth limiting) |
+| Self-Improvement      | 🔧 Planned — Phase 20 (learnings, prompt refinement)               |
+| Telegram/Discord      | ⏳ Backlog — after Master is stable                                |
 
 ---
 
@@ -281,6 +289,7 @@ Your Phone                    Your Machine
 | [Project Overview](OVERVIEW.md)                    | Vision, architecture, roadmap       |
 | [Architecture](docs/ARCHITECTURE.md)               | System design, message flow, layers |
 | [Configuration Guide](docs/CONFIGURATION.md)       | All config options explained        |
+| [Use Cases](docs/USE_CASES.md)                     | Examples for every industry         |
 | [API Reference](docs/API_REFERENCE.md)             | Interfaces, types, module APIs      |
 | [Writing a Connector](docs/WRITING_A_CONNECTOR.md) | How to add a new messaging channel  |
 | [Writing a Provider](docs/WRITING_A_PROVIDER.md)   | How to add a new AI backend         |
