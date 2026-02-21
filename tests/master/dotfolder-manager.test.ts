@@ -559,4 +559,259 @@ describe('DotFolderManager', () => {
       expect(afterCount.trim()).toBe(beforeCount.trim());
     });
   });
+
+  describe('Exploration State Operations', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+      await manager.createExplorationDir();
+    });
+
+    it('should create exploration directory', async () => {
+      const explorationPath = path.join(manager.getDotFolderPath(), 'exploration');
+      const dirsPath = path.join(explorationPath, 'dirs');
+
+      const explorationExists = await fs
+        .access(explorationPath)
+        .then(() => true)
+        .catch(() => false);
+      const dirsExists = await fs
+        .access(dirsPath)
+        .then(() => true)
+        .catch(() => false);
+
+      expect(explorationExists).toBe(true);
+      expect(dirsExists).toBe(true);
+    });
+
+    it('should return null when reading non-existent exploration state', async () => {
+      const state = await manager.readExplorationState();
+      expect(state).toBeNull();
+    });
+
+    it('should write and read exploration state', async () => {
+      const testState = {
+        currentPhase: 'classification' as const,
+        status: 'in_progress' as const,
+        startedAt: new Date().toISOString(),
+        phases: {
+          structure_scan: 'completed' as const,
+          classification: 'in_progress' as const,
+          directory_dives: 'pending' as const,
+          assembly: 'pending' as const,
+          finalization: 'pending' as const,
+        },
+        directoryDives: [
+          {
+            path: 'src',
+            status: 'pending' as const,
+            attempts: 0,
+          },
+        ],
+        totalCalls: 1,
+        totalAITimeMs: 1500,
+      };
+
+      await manager.writeExplorationState(testState);
+      const readState = await manager.readExplorationState();
+
+      expect(readState).toEqual(testState);
+    });
+
+    it('should validate exploration state schema before writing', async () => {
+      const invalidState = {
+        currentPhase: 'invalid_phase',
+        // Missing required fields
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await expect(manager.writeExplorationState(invalidState as any)).rejects.toThrow();
+    });
+  });
+
+  describe('Structure Scan Operations', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+      await manager.createExplorationDir();
+    });
+
+    it('should return null when reading non-existent structure scan', async () => {
+      const scan = await manager.readStructureScan();
+      expect(scan).toBeNull();
+    });
+
+    it('should write and read structure scan', async () => {
+      const testScan = {
+        workspacePath: testWorkspace,
+        topLevelFiles: ['README.md', 'package.json'],
+        topLevelDirs: ['src', 'tests', 'docs'],
+        directoryCounts: { src: 42, tests: 18, docs: 5 },
+        configFiles: ['package.json', 'tsconfig.json'],
+        skippedDirs: ['node_modules', '.git'],
+        totalFiles: 65,
+        scannedAt: new Date().toISOString(),
+        durationMs: 1500,
+      };
+
+      await manager.writeStructureScan(testScan);
+      const readScan = await manager.readStructureScan();
+
+      expect(readScan).toEqual(testScan);
+    });
+
+    it('should validate structure scan schema before writing', async () => {
+      const invalidScan = {
+        workspacePath: testWorkspace,
+        totalFiles: 'not-a-number',
+        // Invalid type
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await expect(manager.writeStructureScan(invalidScan as any)).rejects.toThrow();
+    });
+  });
+
+  describe('Classification Operations', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+      await manager.createExplorationDir();
+    });
+
+    it('should return null when reading non-existent classification', async () => {
+      const classification = await manager.readClassification();
+      expect(classification).toBeNull();
+    });
+
+    it('should write and read classification', async () => {
+      const testClassification = {
+        projectType: 'node',
+        projectName: 'openbridge',
+        frameworks: ['typescript', 'vitest', 'node'],
+        commands: {
+          dev: 'npm run dev',
+          test: 'npm test',
+          build: 'npm run build',
+        },
+        dependencies: [
+          { name: 'typescript', version: '^5.7.0', type: 'dev' as const },
+          { name: 'vitest', version: '^1.0.0', type: 'dev' as const },
+        ],
+        insights: ['TypeScript strict mode enabled', 'ESM-only project'],
+        classifiedAt: new Date().toISOString(),
+        durationMs: 2000,
+      };
+
+      await manager.writeClassification(testClassification);
+      const readClassification = await manager.readClassification();
+
+      expect(readClassification).toEqual(testClassification);
+    });
+
+    it('should validate classification schema before writing', async () => {
+      const invalidClassification = {
+        projectType: 'node',
+        // Missing required fields
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await expect(manager.writeClassification(invalidClassification as any)).rejects.toThrow();
+    });
+  });
+
+  describe('Directory Dive Operations', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+      await manager.createExplorationDir();
+    });
+
+    it('should return null when reading non-existent directory dive', async () => {
+      const dive = await manager.readDirectoryDive('src');
+      expect(dive).toBeNull();
+    });
+
+    it('should write and read directory dive', async () => {
+      const testDive = {
+        path: 'src',
+        purpose: 'Application source code — main implementation files',
+        keyFiles: [
+          { path: 'src/index.ts', type: 'entry', purpose: 'Main entry point' },
+          { path: 'src/core/bridge.ts', type: 'core', purpose: 'Bridge orchestrator' },
+        ],
+        subdirectories: [
+          { path: 'src/core', purpose: 'Core bridge engine' },
+          { path: 'src/connectors', purpose: 'Messaging platform adapters' },
+        ],
+        fileCount: 8,
+        insights: ['Uses ESM imports throughout', 'Follows plugin architecture pattern'],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1200,
+      };
+
+      await manager.writeDirectoryDive('src', testDive);
+      const readDive = await manager.readDirectoryDive('src');
+
+      expect(readDive).toEqual(testDive);
+    });
+
+    it('should handle directory names with special characters', async () => {
+      const testDive = {
+        path: 'src/sub-dir',
+        purpose: 'Subdirectory',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 5,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      await manager.writeDirectoryDive('src-sub-dir', testDive);
+      const readDive = await manager.readDirectoryDive('src-sub-dir');
+
+      expect(readDive).toEqual(testDive);
+    });
+
+    it('should validate directory dive schema before writing', async () => {
+      const invalidDive = {
+        path: 'src',
+        fileCount: 'not-a-number',
+        // Invalid type
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await expect(manager.writeDirectoryDive('src', invalidDive as any)).rejects.toThrow();
+    });
+
+    it('should write multiple directory dives independently', async () => {
+      const dive1 = {
+        path: 'src',
+        purpose: 'Source code',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 10,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      const dive2 = {
+        path: 'tests',
+        purpose: 'Test suite',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 5,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 800,
+      };
+
+      await manager.writeDirectoryDive('src', dive1);
+      await manager.writeDirectoryDive('tests', dive2);
+
+      const readDive1 = await manager.readDirectoryDive('src');
+      const readDive2 = await manager.readDirectoryDive('tests');
+
+      expect(readDive1).toEqual(dive1);
+      expect(readDive2).toEqual(dive2);
+    });
+  });
 });
