@@ -207,22 +207,22 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 
 ## Current Status
 
-| Component               | Status                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------- |
-| WhatsApp                | ✅ V0 — auto-reconnect, sessions, chunking, typing indicators                                 |
-| Console                 | ✅ V0 — reference implementation for rapid testing                                            |
-| Claude Code             | ✅ V0 — streaming, sessions, error classification, generalized CLI executor                   |
-| Bridge Core             | ✅ V0 — router, auth, queue, metrics, health, audit, rate limiting                            |
-| AI Discovery            | ✅ Complete — CLI scanner, VS Code scanner, auto-selection, capability ranking                |
-| Master AI               | ✅ Complete — autonomous exploration, session continuity, status queries, git tracking        |
-| Incremental Exploration | ✅ Complete — 5-pass checkpointed strategy, resumable on restart, never times out             |
-| V2 Config               | ✅ Complete — 3-field setup (workspace + channel + auth), V0 backward compatibility           |
-| Multi-AI Delegation     | ✅ Complete — task delegation, timeout handling, concurrent limits, result aggregation        |
-| Status Commands         | ✅ Complete — exploration progress, estimated completion time, active tasks, session metrics  |
-| Resilient Startup       | ✅ Complete — reuses valid state, resumes incomplete exploration, re-explores on corruption   |
-| Documentation           | 🔄 In Progress — Phase 13 (OVERVIEW.md, README.md, ARCHITECTURE.md, CONFIGURATION.md rewrite) |
-| Testing + Verification  | ⏳ Pending — Phase 14 (E2E tests, non-code workspaces, Console workflow)                      |
-| Telegram/Discord        | ⏳ Pending — Phase 15 (future channels)                                                       |
+| Component               | Status                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| WhatsApp                | ✅ V0 — auto-reconnect, sessions, chunking, typing indicators                                |
+| Console                 | ✅ V0 — reference implementation for rapid testing                                           |
+| Claude Code             | ✅ V0 — streaming, sessions, error classification, generalized CLI executor                  |
+| Bridge Core             | ✅ V0 — router, auth, queue, metrics, health, audit, rate limiting                           |
+| AI Discovery            | ✅ Complete — CLI scanner, VS Code scanner, auto-selection, capability ranking               |
+| Master AI               | ✅ Complete — autonomous exploration, session continuity, status queries, git tracking       |
+| Incremental Exploration | ✅ Complete — 5-pass checkpointed strategy, resumable on restart, never times out            |
+| V2 Config               | ✅ Complete — 3-field setup (workspace + channel + auth), V0 backward compatibility          |
+| Multi-AI Delegation     | ✅ Complete — task delegation, timeout handling, concurrent limits, result aggregation       |
+| Status Commands         | ✅ Complete — exploration progress, estimated completion time, active tasks, session metrics |
+| Resilient Startup       | ✅ Complete — reuses valid state, resumes incomplete exploration, re-explores on corruption  |
+| Documentation           | ✅ Complete — all docs rewritten for autonomous AI vision (Phase 13)                         |
+| Testing + Verification  | ✅ Complete — E2E tests, non-code workspaces, Console workflow, prefix stripping (Phase 14)  |
+| Telegram/Discord        | ⏳ Pending — Phase 15 (future channels)                                                      |
 
 ## Tech Stack
 
