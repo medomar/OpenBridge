@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Last Audit:** 2026-02-21
+> **Open:** 7 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md)
 
 ---
@@ -140,19 +140,20 @@
 
 ---
 
-### F-009 — No validation for non-code workspace use cases
+### F-009 — No validation for non-code workspace use cases ✅ Fixed
 
 | Field    | Value                |
 | -------- | -------------------- |
 | Severity | 🟠 High              |
 | Category | Testing / Validation |
 | Found    | 2026-02-20           |
+| Fixed    | 2026-02-21           |
 
 **What:** USE_CASES.md describes non-code scenarios (cafes with inventory spreadsheets, law firms with contracts, accountants with CSVs). No test or verification exists to confirm the system handles non-code workspaces correctly. Claude Code CLI works well with text-based files but behavior with binary formats (`.xlsx`, `.docx`, `.pdf`) is unverified. Response tone for non-technical users is also untested.
 
 **Impact:** The core marketing promise ("beyond code — any business with files") is unvalidated. Could ship with broken or confusing behavior for the primary non-developer audience.
 
-**Resolution:** Phase 13 (OB-108) — non-code workspace E2E test. Phase 7 (OB-077) — exploration prompt should include adaptive response style for business vs code workspaces.
+**Resolution:** Phase 14 (OB-117) — **COMPLETED**. Created comprehensive E2E test suite (`tests/e2e/non-code-workspace-e2e.test.ts`) with cafe business scenario (inventory CSVs, sales data, staff schedules, supplier contacts). All 6 tests pass, verifying: exploration works on non-code workspaces, business-style questions get accurate responses, response tone is non-technical, no crashes with available data queries.
 
 ---
 
