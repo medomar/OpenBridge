@@ -7,12 +7,20 @@ import type {
   AgentsRegistry,
   ExplorationLogEntry,
   TaskRecord,
+  ExplorationState,
+  StructureScan,
+  Classification,
+  DirectoryDiveResult,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
   AgentsRegistrySchema,
   ExplorationLogEntrySchema,
   TaskRecordSchema,
+  ExplorationStateSchema,
+  StructureScanSchema,
+  ClassificationSchema,
+  DirectoryDiveResultSchema,
 } from '../types/master.js';
 
 const execAsync = promisify(exec);
@@ -320,12 +328,13 @@ Thumbs.db
   /**
    * Read exploration state from exploration-state.json
    */
-  public async readExplorationState(): Promise<Record<string, unknown> | null> {
+  public async readExplorationState(): Promise<ExplorationState | null> {
     const statePath = path.join(this.explorationPath, 'exploration-state.json');
 
     try {
       const content = await fs.readFile(statePath, 'utf-8');
-      return JSON.parse(content) as Record<string, unknown>;
+      const data = JSON.parse(content) as unknown;
+      return ExplorationStateSchema.parse(data);
     } catch {
       return null;
     }
@@ -334,20 +343,24 @@ Thumbs.db
   /**
    * Write exploration state to exploration-state.json
    */
-  public async writeExplorationState(state: Record<string, unknown>): Promise<void> {
+  public async writeExplorationState(state: ExplorationState): Promise<void> {
+    // Validate before writing
+    const validated = ExplorationStateSchema.parse(state);
+
     const statePath = path.join(this.explorationPath, 'exploration-state.json');
-    await fs.writeFile(statePath, JSON.stringify(state, null, 2), 'utf-8');
+    await fs.writeFile(statePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
    * Read structure scan from structure-scan.json
    */
-  public async readStructureScan(): Promise<Record<string, unknown> | null> {
+  public async readStructureScan(): Promise<StructureScan | null> {
     const scanPath = path.join(this.explorationPath, 'structure-scan.json');
 
     try {
       const content = await fs.readFile(scanPath, 'utf-8');
-      return JSON.parse(content) as Record<string, unknown>;
+      const data = JSON.parse(content) as unknown;
+      return StructureScanSchema.parse(data);
     } catch {
       return null;
     }
@@ -356,20 +369,24 @@ Thumbs.db
   /**
    * Write structure scan to structure-scan.json
    */
-  public async writeStructureScan(scan: Record<string, unknown>): Promise<void> {
+  public async writeStructureScan(scan: StructureScan): Promise<void> {
+    // Validate before writing
+    const validated = StructureScanSchema.parse(scan);
+
     const scanPath = path.join(this.explorationPath, 'structure-scan.json');
-    await fs.writeFile(scanPath, JSON.stringify(scan, null, 2), 'utf-8');
+    await fs.writeFile(scanPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
    * Read classification from classification.json
    */
-  public async readClassification(): Promise<Record<string, unknown> | null> {
+  public async readClassification(): Promise<Classification | null> {
     const classificationPath = path.join(this.explorationPath, 'classification.json');
 
     try {
       const content = await fs.readFile(classificationPath, 'utf-8');
-      return JSON.parse(content) as Record<string, unknown>;
+      const data = JSON.parse(content) as unknown;
+      return ClassificationSchema.parse(data);
     } catch {
       return null;
     }
@@ -378,20 +395,24 @@ Thumbs.db
   /**
    * Write classification to classification.json
    */
-  public async writeClassification(classification: Record<string, unknown>): Promise<void> {
+  public async writeClassification(classification: Classification): Promise<void> {
+    // Validate before writing
+    const validated = ClassificationSchema.parse(classification);
+
     const classificationPath = path.join(this.explorationPath, 'classification.json');
-    await fs.writeFile(classificationPath, JSON.stringify(classification, null, 2), 'utf-8');
+    await fs.writeFile(classificationPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
    * Read directory dive result from exploration/dirs/{dirName}.json
    */
-  public async readDirectoryDive(dirName: string): Promise<Record<string, unknown> | null> {
+  public async readDirectoryDive(dirName: string): Promise<DirectoryDiveResult | null> {
     const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
 
     try {
       const content = await fs.readFile(divePath, 'utf-8');
-      return JSON.parse(content) as Record<string, unknown>;
+      const data = JSON.parse(content) as unknown;
+      return DirectoryDiveResultSchema.parse(data);
     } catch {
       return null;
     }
@@ -400,9 +421,12 @@ Thumbs.db
   /**
    * Write directory dive result to exploration/dirs/{dirName}.json
    */
-  public async writeDirectoryDive(dirName: string, dive: Record<string, unknown>): Promise<void> {
+  public async writeDirectoryDive(dirName: string, dive: DirectoryDiveResult): Promise<void> {
+    // Validate before writing
+    const validated = DirectoryDiveResultSchema.parse(dive);
+
     const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
-    await fs.writeFile(divePath, JSON.stringify(dive, null, 2), 'utf-8');
+    await fs.writeFile(divePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
