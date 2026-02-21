@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 5.5/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 7.8
-> **Open Findings:** 5 (1 critical, 2 high, 2 medium) | **Pending Tasks:** 34 (Phases 16–21)
+> **Current Score:** 5.65/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 5.5
+> **Open Findings:** 5 (1 critical, 2 high, 2 medium) | **Pending Tasks:** 33 (Phases 16–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -77,6 +77,7 @@
 | 2026-02-21 | 5.510 |    +0.32    | Phase 14 complete — typecheck, lint, tests, E2E (code + non-code), prefix stripping                                                                                                    |
 | 2026-02-21 |  7.8  |  re-score   | MVP cleanup — actual scores updated to reflect implemented features                                                                                                                    |
 | 2026-02-21 |  5.5  | re-baseline | Vision expanded to self-governing Master AI. 5 findings from real-world testing. New scoring categories (Agent Runner 20%, Master 25%, Profiles 10%, Workers 10%, Self-Improvement 5%) |
+| 2026-02-21 | 5.65  |    +0.15    | OB-130: AgentRunner class with spawn(), buildArgs(), retries, sanitizePrompt. 24 tests passing                                                                                         |
 
 ---
 
