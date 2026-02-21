@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.10/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-21 | **Previous Score:** 6.07
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 25 (Phases 17–21)
+> **Current Score:** 6.13/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-21 | **Previous Score:** 6.10
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 24 (Phases 17–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.10** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) started. ToolProfile and TaskManifest Zod schemas added to src/types/agent.ts with BUILT_IN_PROFILES (read-only, code-edit, full-access).
+**Current state: 6.13** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) in progress. ToolProfile and TaskManifest Zod schemas added. Model selection strategy implemented with profile-based and description-based recommendations.
 
 ---
 
@@ -86,6 +86,7 @@
 | 2026-02-21 | 5.99  |    +0.03    | OB-136: Streaming support via AgentRunner.stream() — yields stdout chunks as they arrive with full feature parity (allowedTools, maxTurns, model, retries, disk logging)               |
 | 2026-02-21 | 6.07  |    +0.08    | OB-137: All callers migrated to AgentRunner. claude-code-executor.ts deleted. Phase 16 complete. OB-F14 fixed (exploration no longer times out with unbounded turns)                   |
 | 2026-02-21 | 6.10  |    +0.03    | OB-140: ToolProfile + TaskManifest Zod schemas with BUILT_IN_PROFILES (read-only, code-edit, full-access). Phase 17 started                                                            |
+| 2026-02-21 | 6.13  |    +0.03    | OB-141: Model selection strategy — recommendByProfile, recommendByDescription, recommendModel. Profile→model mapping + keyword-based complexity detection. 14 tests passing            |
 
 ---
 
