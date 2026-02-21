@@ -1,4 +1,6 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('agent-runner');
@@ -230,6 +232,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Write a log file with a header and full stdout/stderr output.
+ * Creates the parent directory if it doesn't exist.
+ */
+async function writeLogFile(
+  logFile: string,
+  opts: SpawnOptions,
+  result: AgentResult,
+): Promise<void> {
+  const header = [
+    `# Agent Run Log`,
+    `# Timestamp: ${new Date().toISOString()}`,
+    `# Model: ${opts.model ?? 'default'}`,
+    `# Tools: ${opts.allowedTools?.join(', ') ?? 'none specified'}`,
+    `# Max Turns: ${opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK}`,
+    `# Prompt Length: ${opts.prompt.length}`,
+    `# Exit Code: ${result.exitCode}`,
+    `# Duration: ${result.durationMs}ms`,
+    `# Retries: ${result.retryCount}`,
+    '',
+    '--- STDOUT ---',
+    result.stdout,
+    '',
+    '--- STDERR ---',
+    result.stderr,
+  ].join('\n');
+
+  await mkdir(dirname(logFile), { recursive: true });
+  await writeFile(logFile, header, 'utf-8');
+}
+
 export class AgentRunner {
   /**
    * Spawn a Claude CLI agent with the given options.
@@ -327,6 +360,15 @@ export class AgentRunner {
       },
       'Agent completed',
     );
+
+    if (opts.logFile) {
+      try {
+        await writeLogFile(opts.logFile, opts, result);
+        logger.debug({ logFile: opts.logFile }, 'Agent log written to disk');
+      } catch (logError) {
+        logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write agent log');
+      }
+    }
 
     return result;
   }

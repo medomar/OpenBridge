@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 3 | **Last Audit:** 2026-02-21
+> **Open:** 1 | **Fixed:** 4 | **Last Audit:** 2026-02-21
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md)
 
 ---
@@ -86,7 +86,7 @@ The executor never passes `--model`. All Claude CLI calls use whatever model the
 
 ---
 
-### OB-F17 — No disk logging for AI calls — debugging is blind 🟡 Medium
+### OB-F17 — No disk logging for AI calls — debugging is blind ✅ Fixed
 
 **Discovered:** 2026-02-21 (real-world testing)
 **Component:** `src/providers/claude-code/claude-code-executor.ts`
