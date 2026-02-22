@@ -586,6 +586,163 @@ export class MasterManager {
   }
 
   /**
+   * Detect which prompt template (if any) was used for this worker task.
+   * Matches the task prompt against known template patterns.
+   *
+   * Returns the prompt ID or null if no template match found.
+   */
+  private detectPromptTemplate(prompt: string): string | null {
+    // Check for exploration structure scan markers
+    if (
+      prompt.includes('Workspace Structure Scan') ||
+      prompt.includes('topLevelFiles') ||
+      prompt.includes('directoryCounts')
+    ) {
+      return 'exploration-structure-scan';
+    }
+
+    // Check for exploration classification markers
+    if (
+      prompt.includes('Project Classification') ||
+      (prompt.includes('projectType') && prompt.includes('frameworks'))
+    ) {
+      return 'exploration-classification';
+    }
+
+    // Check for task execution markers
+    if (
+      prompt.includes('Execute User Request') ||
+      prompt.includes('User Request') ||
+      prompt.includes('Workspace Context')
+    ) {
+      return 'task-execute';
+    }
+
+    // Check for task verification markers
+    if (
+      prompt.includes('Verify Implementation') ||
+      (prompt.includes('Verification Steps') && prompt.includes('verified'))
+    ) {
+      return 'task-verify';
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate worker output to determine if the prompt produced valid results.
+   *
+   * For exploration/verification prompts: checks if output is parseable JSON with expected fields
+   * For task prompts: checks if exit code is 0 (successful execution)
+   */
+  private validateWorkerOutput(
+    promptId: string | null,
+    result: AgentResult,
+    _taskRecord: TaskRecord,
+  ): boolean {
+    // If no prompt template detected, fall back to simple exit code check
+    if (!promptId) {
+      return result.exitCode === 0;
+    }
+
+    // Exit code must be 0 for all prompts
+    if (result.exitCode !== 0) {
+      return false;
+    }
+
+    const output = result.stdout.trim();
+
+    // For exploration and verification prompts, validate JSON structure
+    if (
+      promptId === 'exploration-structure-scan' ||
+      promptId === 'exploration-classification' ||
+      promptId === 'task-verify'
+    ) {
+      try {
+        const parsed = JSON.parse(output) as Record<string, unknown>;
+
+        // Validate required fields based on prompt type
+        switch (promptId) {
+          case 'exploration-structure-scan':
+            return (
+              typeof parsed['workspacePath'] === 'string' &&
+              Array.isArray(parsed['topLevelFiles']) &&
+              Array.isArray(parsed['topLevelDirs']) &&
+              typeof parsed['directoryCounts'] === 'object'
+            );
+
+          case 'exploration-classification':
+            return (
+              typeof parsed['projectType'] === 'string' &&
+              typeof parsed['projectName'] === 'string' &&
+              Array.isArray(parsed['frameworks'])
+            );
+
+          case 'task-verify':
+            return typeof parsed['verified'] === 'boolean';
+
+          default:
+            return true;
+        }
+      } catch {
+        // JSON parse failed — output is not valid
+        return false;
+      }
+    }
+
+    // For task execution prompts, success is based on exit code + non-empty output
+    if (promptId === 'task-execute') {
+      return result.exitCode === 0 && output.length > 0;
+    }
+
+    // Default: success based on exit code
+    return result.exitCode === 0;
+  }
+
+  /**
+   * Record prompt effectiveness after worker execution (OB-172: prompt effectiveness tracking).
+   *
+   * Detects which prompt template was used (if any) and validates the output.
+   * Records success/failure to the prompt manifest for self-improvement.
+   */
+  private async recordPromptEffectiveness(
+    taskRecord: TaskRecord,
+    result: AgentResult,
+  ): Promise<void> {
+    try {
+      const promptId = this.detectPromptTemplate(taskRecord.userMessage);
+
+      if (!promptId) {
+        // No template detected — skip effectiveness tracking
+        logger.debug(
+          { workerId: taskRecord.id },
+          'No prompt template detected for worker — skipping effectiveness tracking',
+        );
+        return;
+      }
+
+      const isValid = this.validateWorkerOutput(promptId, result, taskRecord);
+
+      await this.dotFolder.recordPromptUsage(promptId, isValid);
+
+      logger.debug(
+        {
+          workerId: taskRecord.id,
+          promptId,
+          isValid,
+          exitCode: result.exitCode,
+        },
+        'Recorded prompt effectiveness',
+      );
+    } catch (error) {
+      logger.warn(
+        { error, workerId: taskRecord.id },
+        'Failed to record prompt effectiveness — non-blocking',
+      );
+    }
+  }
+
+  /**
    * Record a learning entry for a completed worker execution (OB-171: learnings store).
    * After each task, the Master appends a learning entry with task type, model used,
    * profile used, success, duration, and notes. On startup, the Master reads this
@@ -1720,6 +1877,9 @@ Work silently — do not output conversational text, just explore and write the 
       // Record learning entry for this worker execution (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, result, profile, spawnOpts.model);
 
+      // Record prompt effectiveness (OB-172: prompt effectiveness tracking)
+      await this.recordPromptEffectiveness(taskRecord, result);
+
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
@@ -1755,6 +1915,9 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Record learning entry even on exception (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, failedResult, profile, body.model);
+
+      // Record prompt effectiveness even on exception (OB-172: prompt effectiveness tracking)
+      await this.recordPromptEffectiveness(taskRecord, failedResult);
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;
