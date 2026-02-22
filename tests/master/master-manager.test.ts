@@ -41,6 +41,61 @@ vi.mock('../../src/core/agent-runner.js', () => ({
   isValidModel: vi.fn(() => true),
   MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
   AgentExhaustedError: class AgentExhaustedError extends Error {},
+  resolveProfile: (profileName: string): string[] | undefined => {
+    const profiles: Record<string, string[]> = {
+      'read-only': ['Read', 'Glob', 'Grep'],
+      'code-edit': [
+        'Read',
+        'Edit',
+        'Write',
+        'Glob',
+        'Grep',
+        'Bash(git:*)',
+        'Bash(npm:*)',
+        'Bash(npx:*)',
+      ],
+      'full-access': ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+    };
+    return profiles[profileName];
+  },
+  manifestToSpawnOptions: (
+    manifest: Record<string, unknown>,
+    customProfiles?: Record<string, unknown>,
+  ) => {
+    const profile = manifest.profile as string | undefined;
+    const profiles: Record<string, string[]> = {
+      'read-only': ['Read', 'Glob', 'Grep'],
+      'code-edit': [
+        'Read',
+        'Edit',
+        'Write',
+        'Glob',
+        'Grep',
+        'Bash(git:*)',
+        'Bash(npm:*)',
+        'Bash(npx:*)',
+      ],
+      'full-access': ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
+    };
+    const customAllowedTools =
+      profile && customProfiles
+        ? (customProfiles[profile] as { allowedTools?: string[] } | undefined)?.allowedTools
+        : undefined;
+    const allowedTools =
+      (manifest.allowedTools as string[] | undefined) ??
+      customAllowedTools ??
+      (profile ? profiles[profile] : undefined);
+    return {
+      prompt: manifest.prompt,
+      workspacePath: manifest.workspacePath,
+      model: manifest.model,
+      allowedTools,
+      maxTurns: manifest.maxTurns,
+      timeout: manifest.timeout,
+      retries: manifest.retries,
+      retryDelay: manifest.retryDelay,
+    };
+  },
 }));
 
 // Mock logger
@@ -1378,6 +1433,77 @@ describe('MasterManager', () => {
 
       expect(savedSession).toBeDefined();
       expect(savedSession?.sessionId).toBe(masterManager.getMasterSession()?.sessionId);
+    });
+  });
+
+  describe('Worker Delegation (SPAWN Markers) (OB-311)', () => {
+    beforeEach(async () => {
+      mockSpawn.mockReset();
+      mockStream.mockReset();
+
+      // Create and start a fresh MasterManager for each test
+      masterManager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await masterManager.start();
+    });
+
+    it('should spawn a worker and include worker result in final response', async () => {
+      const spawnMarkerResponse = `I'll read those files for you.\n\n[SPAWN:read-only]{"prompt":"List all TypeScript files in src/","model":"haiku","maxTurns":5}[/SPAWN]`;
+
+      // Call 1: Master processes message → returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: spawnMarkerResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 400,
+      });
+
+      // Call 2: Worker spawned from SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'worker result: found 42 TypeScript files',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 250,
+      });
+
+      // Call 3: Feedback to Master with worker results → final response
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The project contains 42 TypeScript files.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-spawn-e2e',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai list ts files',
+        content: 'list ts files',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // Final response is the Master's synthesis after worker results were injected
+      expect(response).toBe('The project contains 42 TypeScript files.');
+      // 3 spawn calls: (1) Master + message, (2) worker, (3) Master + worker feedback
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
+
+      // Verify worker was spawned with the correct prompt from the SPAWN marker
+      const workerCall = mockSpawn.mock.calls[1]?.[0] as SpawnOptions | undefined;
+      expect(workerCall?.prompt).toBe('List all TypeScript files in src/');
+      expect(workerCall?.model).toBe('haiku');
+      expect(workerCall?.maxTurns).toBe(5);
+      // read-only profile → Read, Glob, Grep
+      expect(workerCall?.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
     });
   });
 });
