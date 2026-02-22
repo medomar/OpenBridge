@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.005/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 7.990
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 1 (Phase 23: 5/5 done ✅, Phase 24: 4/5)
+> **Current Score:** 8.010/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.005
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 (Phase 24: 5/5 done ✅ — all phases complete)
 > **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -10,20 +10,20 @@
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                               |
-| -------------------- | :------: | :----: | :-------: | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                                                                    |
-| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                                                                             |
-| Connectors           |    5%    | 8.5/10 |   0.425   | WhatsApp + Console + Telegram + WebChat working. Parallel init. QR scan confirmed. grammY + ws WebSocket support                    |
-| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. 24+ tests passing                    |
-| Tool Profiles        |   10%    | 8.0/10 |   0.800   | read-only/code-edit/full-access/master built-in profiles. Custom profiles registry. AgentRunner integration                         |
-| Master AI (self-gov) |   25%    | 7.5/10 |   1.875   | Persistent session, task decomposition (SPAWN markers), worker delegation, session recovery. E2E verified                           |
-| Worker Orchestration |   10%    | 7.5/10 |   0.750   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. handleSpawnMarkersWithProgress                    |
-| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                 |
-| Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                                                 |
-| Testing              |    5%    | 8.5/10 |   0.425   | 1037 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                                   |
-| Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                                            |
-| **TOTAL**            | **100%** |   —    | **8.005** | **Re-scored to reflect Phases 16–23 complete + Telegram + WebChat + multi-connector + connector integration tests (OB-320–OB-323)** |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                                         |
+| -------------------- | :------: | :----: | :-------: | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                                                                              |
+| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                                                                                       |
+| Connectors           |    5%    | 8.5/10 |   0.425   | WhatsApp + Console + Telegram + WebChat + Discord working. Parallel init. QR scan confirmed. grammY + ws + discord.js support                 |
+| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. 24+ tests passing                              |
+| Tool Profiles        |   10%    | 8.0/10 |   0.800   | read-only/code-edit/full-access/master built-in profiles. Custom profiles registry. AgentRunner integration                                   |
+| Master AI (self-gov) |   25%    | 7.5/10 |   1.875   | Persistent session, task decomposition (SPAWN markers), worker delegation, session recovery. E2E verified                                     |
+| Worker Orchestration |   10%    | 7.5/10 |   0.750   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. handleSpawnMarkersWithProgress                              |
+| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                           |
+| Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                                                           |
+| Testing              |    5%    | 8.5/10 |   0.425   | 1037 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                                             |
+| Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                                                      |
+| **TOTAL**            | **100%** |   —    | **8.010** | **Re-scored to reflect Phases 16–24 complete + Telegram + WebChat + Discord + multi-connector + connector integration tests (OB-320–OB-324)** |
 
 > **Note:** Breakdown re-baselined to reflect completion of Phases 16–23. Agent Runner (Phase 16), Tool Profiles (Phase 17), Self-Governing Master (Phase 18), Worker Orchestration (Phase 19), Self-Improvement (Phase 20), E2E Hardening (Phase 21), Make It Work (Phase 22), Production Hardening (Phase 23) all complete.
 
@@ -120,6 +120,7 @@
 | 2026-02-23 | 7.975 |   +0.015    | OB-321: WebChat connector — Node.js http + ws WebSocket, serves minimal HTML chat UI on localhost:3000, WebChatConnector class, WebChatConfigSchema (Zod), broadcasts to all OPEN clients, typing indicator, shutdown, 21 unit tests (1013 tests passing). Phase 24 (2/5 tasks)                                                                                                                                                                                                                                                                             |
 | 2026-02-23 | 7.990 |   +0.015    | OB-322: Multi-connector startup — updated config.example.json to show all 4 connectors (console + whatsapp + telegram + webchat). Verified bridge.ts parallel init (Promise.allSettled) and Router connector-by-source mapping handle 3+ connectors correctly. Integration test with 3 named mock connectors: parallel init, response isolation, graceful failure, shutdown. 1018 tests passing. Phase 24 (3/5 tasks)                                                                                                                                       |
 | 2026-02-23 | 8.005 |   +0.015    | OB-323: Connector integration tests — telegram-integration.test.ts (9 tests: DM flow, ack ordering, auth whitelist, prefix strip, group @mention, shutdown) + webchat-integration.test.ts (10 tests: WS flow, ack+typing ordering, prefix strip, broadcast to all clients, closed client skip, disconnect tracking, empty whitelist). Full pipeline: connector receives → Bridge auth/queue/router → MockProvider → sendMessage. 1037 tests passing. Phase 24 (4/5 tasks)                                                                                   |
+| 2026-02-23 | 8.010 |   +0.005    | OB-324: Discord connector — discord.js v14 Client with GatewayIntentBits (Guilds, GuildMessages, MessageContent, DirectMessages), DM + guild channel support, bot message filtering, dynamic import for testability, DiscordConfigSchema (Zod), registered in connectors/index.ts, 17 unit tests (1054 passing). Phase 24 complete ✅ — all phases done                                                                                                                                                                                                     |
 
 ---
 
