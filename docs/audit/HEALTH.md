@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.050/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 7.035
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 — ALL PHASES COMPLETE ✅
+> **Current Score:** 7.060/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 7.050
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 16 (Phase 22: 1/7 done, Phase 23: 0/5, Phase 24: 0/5)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -110,6 +110,7 @@
 | 2026-02-22 | 6.985 |    +0.05    | OB-181: Real workspace test — created scripts/real-workspace-test.sh that validates OpenBridge against a realistic TypeScript/Express workspace (simulating Social-Media-Automation-Platform). Tests: Master explores complex workspace successfully, detects project type/frameworks/structure, spawns workers with proper tool restrictions, persists session state, tracks exploration in git. Comprehensive validation of all exploration phases with detailed result documentation. Phase 21 (2/4 tasks done)                         |
 | 2026-02-22 | 7.035 |    +0.05    | OB-182: WhatsApp full flow test — created scripts/whatsapp-flow-test.sh (automated + manual modes) and comprehensive docs/testing/WHATSAPP-E2E-TEST.md. Validates: QR code generation, session persistence, message reception, Master AI processing, response delivery within 2 minutes, message chunking for long responses, error handling. Includes automated infrastructure validation and manual test guide with detailed troubleshooting. Phase 21 (3/4 tasks done)                                                                  |
 | 2026-02-22 | 7.050 |   +0.015    | OB-183: Error resilience test — created scripts/error-resilience-test.sh and comprehensive docs/testing/ERROR-RESILIENCE-TEST.md. Tests 4 failure scenarios: (1) kill Master mid-task → verify graceful restart, (2) send message during exploration → verify queuing, (3) send very long message → verify truncation, (4) kill worker mid-response → verify no crash. Validates process isolation, state persistence, error handling, queue resilience. Phase 21 complete (4/4 tasks done). ALL PHASES COMPLETE ✅                        |
+| 2026-02-22 | 7.060 |    +0.01    | OB-300: Session lifecycle verification — verified that exploration uses --session-id (not --print) and processMessage() uses --resume on same session. Code was already correct (buildMasterSpawnOptions uses sessionId on first call, resumeSessionId on subsequent calls). Session continuity already tested in E2E tests (full-v2-e2e.test.ts). Added documentation test file referencing existing verification. Bug OB-F21 (invalid UUID format) was already fixed on 2026-02-22. Phase 22 started (1/7 tasks done)                    |
 
 ---
 
