@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 6 | **Last Audit:** 2026-02-22
+> **Open:** 3 | **Fixed:** 7 | **Last Audit:** 2026-02-22
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
@@ -83,9 +83,10 @@ The `streamMessage()` method calls `this.handleSpawnMarkersWithProgress(spawnRes
 **Details:**
 The score breakdown table was never updated after Phases 16–21 completed. It still shows the baseline from when the phases were empty. The increment-by-task scoring added 0.015 per task but the category weights were never re-evaluated.
 
-**Fix:** Re-score all categories based on actual implementation state.
+**Fix applied:**
+Re-scored all categories: Agent Runner 8.5/10, Tool Profiles 8.0/10, Master AI 7.5/10, Worker Orchestration 7.5/10, Self-Improvement 7.0/10, Testing 8.5/10. Recalculated weighted total to 7.925. Updated header Current Score to 7.930 (+0.005 for OB-314). Added new row to score history. README Current Status table also updated.
 
-**Resolves in:** Phase 23, OB-213 + OB-214
+**Status:** ✅ Fixed (2026-02-22, OB-314)
 
 ---
 
