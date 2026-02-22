@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.885/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 6.880
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 5 (Phase 21)
+> **Current Score:** 6.935/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 6.885
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 4 (Phase 21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -106,6 +106,7 @@
 | 2026-02-22 | 6.875 |   +0.015    | OB-171: Learnings store in .openbridge/learnings.json — LearningEntry/LearningsRegistry Zod schemas, DotFolderManager CRUD methods (append/query by task type/model/profile, stats calculation), integrated into MasterManager worker execution, auto-classify task types, 24 new tests. Phase 20 (2/4)                                                                                                                                                                                                                                    |
 | 2026-02-22 | 6.880 |   +0.005    | OB-172: Prompt effectiveness tracking — detectPromptTemplate/validateWorkerOutput/recordPromptEffectiveness methods in MasterManager, integrated after each worker execution, validates JSON structure for exploration/verification prompts, flags prompts with <50% success rate (getLowPerformingPrompts), 9 new tests. Phase 20 (3/4)                                                                                                                                                                                                   |
 | 2026-02-22 | 6.885 |   +0.005    | OB-173: Master self-improvement cycle — idle detection timer (5-min threshold, 1-min checks), runSelfImprovementCycle with 3 tasks: rewritePrompt (uses Master AI to rewrite low-performing prompts, reads from disk, resets stats), createProfilesFromLearnings (analyzes >5 samples with >70% success, creates auto-\* profiles), updateWorkspaceMapIfChanged (detects package.json changes, triggers re-exploration). resetPromptStats in DotFolderManager. Timer starts on Master.start(), stops on shutdown. Phase 20 complete (4/4). |
+| 2026-02-22 | 6.935 |    +0.05    | OB-180: E2E smoke test script — created scripts/e2e-smoke.sh that starts OpenBridge with console connector, validates Master delegates to workers via AgentRunner (not direct claude --print), verifies --allowedTools/--max-turns passed, worker logs written to disk, task history persisted. Validates no --dangerously-skip-permissions. Phase 21 started (1/4 tasks done)                                                                                                                                                             |
 
 ---
 
