@@ -496,7 +496,7 @@ describe('MasterManager', () => {
 
       const call = getSpawnCallOpts(0);
       expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
-      expect(call?.maxTurns).toBe(3); // MESSAGE_MAX_TURNS — reduced to prevent runaway conversations
+      expect(call?.maxTurns).toBe(3); // quick-answer classification (no action keywords) → MESSAGE_MAX_TURNS_QUICK
     });
 
     it('should increment session messageCount after each message', async () => {
