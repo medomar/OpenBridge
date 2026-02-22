@@ -384,13 +384,43 @@ export class MasterManager {
       opts.systemPrompt = this.systemPrompt;
     }
 
-    if (this.sessionInitialized) {
-      opts.resumeSessionId = session.sessionId;
-    } else {
-      opts.sessionId = session.sessionId;
+    // Use --print mode (non-interactive). Interactive sessions (--session-id)
+    // hang as headless child processes — no TTY for permission prompts.
+    // No sessionId/resumeSessionId set → buildArgs() defaults to --print.
+
+    // Inject workspace context for non-exploration calls
+    if (this.explorationSummary?.status === 'completed') {
+      const mapContext = this.getWorkspaceContextSummary();
+      if (mapContext) {
+        opts.systemPrompt =
+          (opts.systemPrompt ?? '') + '\n\n## Current Workspace Knowledge\n\n' + mapContext;
+      }
     }
 
     return opts;
+  }
+
+  /**
+   * Build a concise workspace context string from the loaded workspace map.
+   */
+  private getWorkspaceContextSummary(): string | null {
+    if (!this.explorationSummary) return null;
+    const parts: string[] = [];
+    if (this.explorationSummary.projectType) {
+      parts.push(`Project type: ${this.explorationSummary.projectType}`);
+    }
+    if (this.explorationSummary.frameworks && this.explorationSummary.frameworks.length > 0) {
+      parts.push(`Frameworks: ${this.explorationSummary.frameworks.join(', ')}`);
+    }
+    if (this.explorationSummary.insights && this.explorationSummary.insights.length > 0) {
+      parts.push(
+        `Key insights:\n${this.explorationSummary.insights.map((i) => `- ${i}`).join('\n')}`,
+      );
+    }
+    if (this.explorationSummary.mapPath) {
+      parts.push(`Full workspace map available at: ${this.explorationSummary.mapPath}`);
+    }
+    return parts.length > 0 ? parts.join('\n') : null;
   }
 
   /**
@@ -972,15 +1002,58 @@ export class MasterManager {
   private async masterDrivenExplore(): Promise<void> {
     logger.info('Executing Master-driven exploration via session');
 
+    // Log exploration start
+    await this.dotFolder.appendLog({
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: 'Starting Master-driven workspace exploration',
+      data: { workspacePath: this.workspacePath },
+    });
+
     const explorationPrompt = this.buildExplorationPrompt();
     const spawnOpts = this.buildMasterSpawnOptions(explorationPrompt, this.explorationTimeout);
-    const result = await this.agentRunner.spawn(spawnOpts);
+
+    // Use streaming to provide real-time progress feedback
+    const stream = this.agentRunner.stream(spawnOpts);
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_UPDATE_INTERVAL = 10_000; // Log every 10 seconds
+
+    // Consume the stream and collect the final result
+    let iterResult = await stream.next();
+    while (!iterResult.done) {
+      const chunk = iterResult.value;
+
+      // Log progress periodically to avoid spam
+      const now = Date.now();
+      if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
+        const progressMessage = this.extractProgressMessage(chunk);
+        if (progressMessage) {
+          logger.info(progressMessage);
+          await this.dotFolder.appendLog({
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: progressMessage,
+          });
+        }
+        lastProgressUpdate = now;
+      }
+
+      iterResult = await stream.next();
+    }
+
+    // The final iterResult.value is the AgentResult
+    const result = iterResult.value;
+
     await this.updateMasterSession();
 
-    if (result.exitCode !== 0) {
-      throw new Error(
-        `Master-driven exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
-      );
+    if (!result || result.exitCode !== 0) {
+      const errorMessage = `Master-driven exploration failed with exit code ${result?.exitCode ?? 'unknown'}: ${result?.stderr ?? 'no error details'}`;
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message: errorMessage,
+      });
+      throw new Error(errorMessage);
     }
 
     // Write agents.json (Master can't spawn workers, so we do this mechanically)
@@ -997,8 +1070,46 @@ export class MasterManager {
       data: { durationMs: result.durationMs },
     });
 
+    logger.info('Master-driven exploration completed successfully');
+
     // Build summary from whatever the Master wrote
     await this.loadExplorationSummary();
+  }
+
+  /**
+   * Extract a human-readable progress message from a stdout chunk.
+   * Looks for tool calls and file operations to give the user visibility
+   * into what the Master is doing during exploration.
+   */
+  private extractProgressMessage(chunk: string): string | null {
+    // Look for tool usage patterns in the chunk
+    if (chunk.includes('Reading') || chunk.includes('Read:')) {
+      return 'Exploring workspace files...';
+    }
+    if (chunk.includes('Globbing') || chunk.includes('Glob:')) {
+      return 'Scanning directory structure...';
+    }
+    if (chunk.includes('Grepping') || chunk.includes('Grep:')) {
+      return 'Searching for project patterns...';
+    }
+    if (chunk.includes('Writing') || chunk.includes('Write:') || chunk.includes('workspace-map')) {
+      return 'Writing workspace map...';
+    }
+    if (chunk.includes('package.json')) {
+      return 'Analyzing package configuration...';
+    }
+    if (chunk.includes('tsconfig') || chunk.includes('typescript')) {
+      return 'Detecting TypeScript configuration...';
+    }
+    if (chunk.includes('src/') || chunk.includes('lib/')) {
+      return 'Exploring source code structure...';
+    }
+    if (chunk.includes('test') || chunk.includes('spec')) {
+      return 'Analyzing test structure...';
+    }
+
+    // Return null if no recognizable pattern found
+    return null;
   }
 
   /**

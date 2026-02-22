@@ -496,8 +496,9 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const secondCallArgs = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(secondCallArgs).toBeDefined();
 
-    // Both calls should use session continuity (either --session-id or --resume)
-    expect(mockStream).toHaveBeenCalledTimes(2);
+    // Three calls total: 1 for exploration, 2 for user messages
+    // All should use session continuity (either --session-id or --resume)
+    expect(mockStream).toHaveBeenCalledTimes(3);
   }, 15000);
 
   // ---------------------------------------------------------------------------
