@@ -268,17 +268,17 @@ Your Phone                    Your Machine
 
 ## Current Status
 
-| Component             | Status                                                             |
-| --------------------- | ------------------------------------------------------------------ |
-| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing             |
-| Console               | ✅ Stable — rapid preprod testing                                  |
-| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit            |
-| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection           |
-| Agent Runner          | 🔧 Building — Phase 16 (core executor with profiles + retries)     |
-| Self-Governing Master | 🔧 Planned — Phase 18 (long-lived session, task decomposition)     |
-| Worker Orchestration  | 🔧 Planned — Phase 19 (parallel workers, registry, depth limiting) |
-| Self-Improvement      | 🔧 Planned — Phase 20 (learnings, prompt refinement)               |
-| Telegram/Discord      | ⏳ Backlog — after Master is stable                                |
+| Component             | Status                                                                        |
+| --------------------- | ----------------------------------------------------------------------------- |
+| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing                        |
+| Console               | ✅ Stable — E2E verified, `/ai` messages return project-specific responses    |
+| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit                       |
+| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection                      |
+| Agent Runner          | ✅ Stable — `--allowedTools`, `--max-turns`, `--model`, retries, streaming    |
+| Self-Governing Master | ✅ Stable — persistent session, task decomposition, worker spawning, recovery |
+| Worker Orchestration  | ✅ Stable — parallel workers, registry, depth limiting, task history          |
+| Self-Improvement      | ✅ Stable — prompt library, learnings store, effectiveness tracking           |
+| Telegram/Discord      | ⏳ Planned — Phase 24                                                         |
 
 ---
 

@@ -1,33 +1,31 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.230/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 7.215
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 6 (Phase 22: 7/7 done ✅, Phase 23: 4/5, Phase 24: 0/5)
-> **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
+> **Current Score:** 7.930/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 7.230
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 5 (Phase 23: 5/5 done ✅, Phase 24: 0/5)
+> **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                 |
-| -------------------- | :------: | :----: | :-------: | ------------------------------------------------------------------------------------- |
-| Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                      |
-| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                               |
-| Connectors           |    5%    | 7.0/10 |   0.350   | WhatsApp + Console working. QR scan flow confirmed                                    |
-| Agent Runner         |   20%    | 0.0/10 |   0.000   | Does not exist yet. Current executor is broken (OB-F13, OB-F14, OB-F15)               |
-| Tool Profiles        |   10%    | 0.0/10 |   0.000   | Does not exist yet. No --allowedTools, no --max-turns, no --model                     |
-| Master AI (self-gov) |   25%    | 3.0/10 |   0.750   | MasterManager exists but is a passive executor, not self-governing. Exploration fails |
-| Worker Orchestration |   10%    | 2.0/10 |   0.200   | DelegationCoordinator exists but not integrated with AgentRunner/profiles             |
-| Self-Improvement     |    5%    | 0.0/10 |   0.000   | Does not exist yet                                                                    |
-| Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher working                           |
-| Testing              |    5%    | 7.0/10 |   0.350   | Good unit/integration/E2E coverage. Needs real-world E2E after Agent Runner is built  |
-| Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md updated for new vision                                     |
-| **TOTAL**            | **100%** |   —    | **3.300** | **Re-scored against self-governing Master vision**                                    |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                            |
+| -------------------- | :------: | :----: | :-------: | ---------------------------------------------------------------------------------------------------------------- |
+| Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                                                 |
+| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                                                          |
+| Connectors           |    5%    | 7.5/10 |   0.375   | WhatsApp + Console working. Parallel init. QR scan confirmed                                                     |
+| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. 24+ tests passing |
+| Tool Profiles        |   10%    | 8.0/10 |   0.800   | read-only/code-edit/full-access/master built-in profiles. Custom profiles registry. AgentRunner integration      |
+| Master AI (self-gov) |   25%    | 7.5/10 |   1.875   | Persistent session, task decomposition (SPAWN markers), worker delegation, session recovery. E2E verified        |
+| Worker Orchestration |   10%    | 7.5/10 |   0.750   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. handleSpawnMarkersWithProgress |
+| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection              |
+| Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                              |
+| Testing              |    5%    | 8.5/10 |   0.425   | 974 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                 |
+| Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                         |
+| **TOTAL**            | **100%** |   —    | **7.925** | **Re-scored to reflect Phases 16–23 complete**                                                                   |
 
-> **Note:** Score dropped from 7.8 to 3.3 because the scoring categories changed. The old score measured the MVP (which is complete). The new score measures progress toward the self-governing Master AI vision (which is just starting). Previous feature scores are preserved in areas that haven't changed (architecture, core, connectors, config).
-
-> **Adjusted Score:** 5.5/10 — crediting completed MVP work that still applies (architecture, core engine, connectors, config, docs, tests) while reflecting that the new Agent Runner + self-governing Master layers are at 0%.
+> **Note:** Breakdown re-baselined to reflect completion of Phases 16–23. Agent Runner (Phase 16), Tool Profiles (Phase 17), Self-Governing Master (Phase 18), Worker Orchestration (Phase 19), Self-Improvement (Phase 20), E2E Hardening (Phase 21), Make It Work (Phase 22), Production Hardening (Phase 23) all complete.
 
 ---
 
@@ -117,6 +115,7 @@
 | 2026-02-22 | 7.200 |    +0.03    | OB-311: Worker delegation E2E — verified handleSpawnMarkers() and handleSpawnMarkersWithProgress() are fully implemented (master-manager.ts lines 2267–2402). Added manifestToSpawnOptions/resolveProfile to AgentRunner mock in master-manager.test.ts. Added Worker Delegation describe block with E2E test: Master returns [SPAWN:read-only]{...}[/SPAWN] marker, worker spawned with correct profile-resolved tools/model/maxTurns, Master receives worker feedback, final response is synthesized answer. 974 tests passing. Phase 23 (2/5 tasks done) |
 | 2026-02-22 | 7.215 |   +0.015    | OB-312: Fix MaxListenersExceededWarning — root cause: 30 module-level createLogger() calls each creating a pino transport (each registers process.on('exit')), all executing before setMaxListeners(20) in ESM import order. Fix: converted logger.ts to singleton root logger + child() per module (one transport → one handler regardless of logger count). 974 tests passing. Phase 23 (3/5 tasks done)                                                                                                                                                  |
 | 2026-02-22 | 7.230 |   +0.015    | OB-313: Fix test suite failures — verified all 974 tests already passing after OB-310/311/312 fixes. Previously known failures (exploration-coordinator race conditions, agent-runner unhandled rejections, Phase 22 breakage) were resolved by prior tasks. Full verification: lint ✅, typecheck ✅, test 974/974 ✅, build ✅. Phase 23 (4/5 tasks done)                                                                                                                                                                                                 |
+| 2026-02-22 | 7.930 | re-baseline | OB-314: Health re-baseline — updated all category scores to reflect Phases 16–23 complete. Agent Runner 8.5/10 (fully built), Tool Profiles 8.0/10, Master AI 7.5/10 (E2E verified), Worker Orchestration 7.5/10, Self-Improvement 7.0/10, Testing 8.5/10 (974 passing). Breakdown total: 7.925 + 0.005 (Low task). npm pack verified (509 files). README status table updated. Phase 23 complete ✅                                                                                                                                                        |
 
 ---
 
