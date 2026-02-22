@@ -427,13 +427,15 @@ Generate code
 
       await masterManager.processMessage(message);
 
-      // Initial call: --session-id (first message)
+      // processMessage() uses --print mode (non-interactive) — no sessionId on any call.
+      // Context continuity is provided via systemPrompt (workspace map) injected each time.
       const initialCall = getSpawnCallOpts(0);
-      // Feedback call: --resume (same session, after updateMasterSession)
       const feedbackCall = getSpawnCallOpts(2);
 
-      expect(initialCall?.sessionId).toBeDefined();
-      expect(feedbackCall?.resumeSessionId).toBe(initialCall?.sessionId);
+      expect(initialCall?.sessionId).toBeUndefined();
+      expect(initialCall?.resumeSessionId).toBeUndefined();
+      expect(feedbackCall?.sessionId).toBeUndefined();
+      expect(feedbackCall?.resumeSessionId).toBeUndefined();
     });
   });
 });

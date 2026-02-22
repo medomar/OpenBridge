@@ -2323,6 +2323,11 @@ describe('Worker Timeout + Cleanup', () => {
     // Mock kill to fail
     killSpy.mockReturnValue(false);
 
+    // Pre-attach rejection handler before advancing time to avoid an "unhandled rejection"
+    // race: the timeout fires and rejects the promise *during* advanceTimersByTimeAsync,
+    // before the try/catch below has a chance to attach its handler.
+    const caught = promise.catch((e: unknown) => e);
+
     // Advance to timeout
     await vi.advanceTimersByTimeAsync(10000);
 
@@ -2330,16 +2335,12 @@ describe('Worker Timeout + Cleanup', () => {
     expect(killSpy).toHaveBeenCalledWith('SIGTERM');
 
     // Process should throw immediately with timeout error
-    try {
-      await promise;
-      expect.fail('Should have thrown AgentExhaustedError');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AgentExhaustedError);
-      expect((error as AgentExhaustedError).lastExitCode).toBe(143);
-      expect((error as AgentExhaustedError).attempts[0]?.stderr).toContain(
-        'failed to terminate process',
-      );
-    }
+    const error = await caught;
+    expect(error).toBeInstanceOf(AgentExhaustedError);
+    expect((error as AgentExhaustedError).lastExitCode).toBe(143);
+    expect((error as AgentExhaustedError).attempts[0]?.stderr).toContain(
+      'failed to terminate process',
+    );
 
     // SIGKILL should NOT be attempted since SIGTERM failed
     await vi.advanceTimersByTimeAsync(5000);

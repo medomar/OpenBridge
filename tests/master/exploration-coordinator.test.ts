@@ -7,6 +7,7 @@ import { ExplorationCoordinator } from '../../src/master/exploration-coordinator
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import type {
   ExplorationState,
   StructureScan,
@@ -53,8 +54,12 @@ describe('ExplorationCoordinator', () => {
   let mockDiscoveredTools: DiscoveredTool[];
 
   beforeEach(async () => {
-    // Create a temporary test workspace
-    testWorkspace = path.join(process.cwd(), 'test-workspace-' + Date.now());
+    // Create a temporary test workspace in the system temp dir (not the project root)
+    // to avoid git race conditions when parallel tests delete directories inside the project.
+    testWorkspace = path.join(
+      os.tmpdir(),
+      'test-workspace-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    );
     await fs.mkdir(testWorkspace, { recursive: true });
 
     // Mock discovered tools
@@ -77,8 +82,11 @@ describe('ExplorationCoordinator', () => {
       },
     ];
 
-    // Reset mocks before creating coordinator
+    // Reset mocks before creating coordinator.
+    // vi.clearAllMocks() clears call history but NOT the mockResolvedValueOnce queue.
+    // mockSpawn.mockReset() is needed to flush leftover once-values from previous tests.
     vi.clearAllMocks();
+    mockSpawn.mockReset();
 
     // Create coordinator (picks up fresh AgentRunner mock)
     coordinator = new ExplorationCoordinator({

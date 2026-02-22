@@ -65,7 +65,7 @@ vi.mock('../../src/core/logger.js', () => ({
  * Creates a realistic cafe workspace with inventory, sales, and schedules
  */
 async function createCafeWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
 
   await mkdir(workspacePath, { recursive: true });
@@ -280,26 +280,8 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
     schemaVersion: '1.0.0',
   };
 
-  let callCount = 0;
-
-  // Mock spawn for Master-driven exploration
-  mockSpawn.mockImplementation(async (opts: { sessionId?: string; resumeSessionId?: string }) => {
-    callCount++;
-
-    // Master-driven exploration: first call with session writes workspace-map.json
-    if (callCount === 1 && (opts.sessionId || opts.resumeSessionId)) {
-      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
-      await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
-      return {
-        stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 200,
-      };
-    }
-
-    // Fallback for any other spawn calls
+  // Mock spawn for any remaining spawn calls (processMessage uses --print mode, no session)
+  mockSpawn.mockImplementation(async () => {
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
@@ -309,8 +291,32 @@ function setupMockCafeExplorationResponses(workspacePath: string) {
     };
   });
 
-  // Mock streaming for business-appropriate responses
+  // Mock streaming for both exploration and business-appropriate responses.
+  // Exploration uses stream() and writes workspace-map.json on the first call.
+  let streamCallCount = 0;
   mockStream.mockImplementation(function (opts: { prompt: string }) {
+    streamCallCount++;
+
+    // First stream call is exploration — write workspace-map.json to simulate Master AI
+    if (streamCallCount === 1 && opts.prompt.includes('workspace-map.json')) {
+      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
+      async function* exploreGen(): AsyncGenerator<
+        string,
+        { stdout: string; stderr: string; exitCode: number; retryCount: number; durationMs: number }
+      > {
+        await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
+        yield 'Exploring workspace...';
+        return {
+          stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
+          stderr: '',
+          exitCode: 0,
+          retryCount: 0,
+          durationMs: 200,
+        };
+      }
+      return exploreGen();
+    }
+
     // Detect query type and provide business-appropriate responses
     let content: string;
 

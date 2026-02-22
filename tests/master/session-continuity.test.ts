@@ -136,7 +136,7 @@ describe('Session Continuity', () => {
     }
   });
 
-  it('first message should use --session-id, second should use --resume', async () => {
+  it('each message goes through the Master (two spawn calls in --print mode)', async () => {
     const message1: InboundMessage = {
       id: 'msg-1',
       source: 'test',
@@ -160,24 +160,20 @@ describe('Session Continuity', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-    // First call should use sessionId (new Master session)
+    // processMessage() uses --print mode (non-interactive) to avoid headless TTY issues.
+    // Context continuity is provided via the systemPrompt (workspace map) on each call.
     const call1 = getSpawnCallOpts(0);
     expect(call1).toBeDefined();
-    expect(call1?.sessionId).toBeDefined();
-    expect(call1?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+    expect(call1?.sessionId).toBeUndefined();
     expect(call1?.resumeSessionId).toBeUndefined();
 
-    // Second call should use resumeSessionId (resume existing Master session)
     const call2 = getSpawnCallOpts(1);
     expect(call2).toBeDefined();
-    expect(call2?.resumeSessionId).toBeDefined();
     expect(call2?.sessionId).toBeUndefined();
-
-    // Both should use the same Master session ID
-    expect(call2?.resumeSessionId).toBe(call1?.sessionId);
+    expect(call2?.resumeSessionId).toBeUndefined();
   });
 
-  it('different senders should share the same Master session', async () => {
+  it('messages from different senders both go through Master in --print mode', async () => {
     const message1: InboundMessage = {
       id: 'msg-1',
       source: 'test',
@@ -199,12 +195,15 @@ describe('Session Continuity', () => {
     await masterManager.processMessage(message1);
     await masterManager.processMessage(message2);
 
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+    // processMessage() uses --print mode (non-interactive) — no sessionId for either sender.
+    // Workspace context is injected via systemPrompt on each call instead.
     const call1 = getSpawnCallOpts(0);
     const call2 = getSpawnCallOpts(1);
-
-    // First call: new Master session (--session-id)
-    expect(call1?.sessionId).toBeDefined();
-    // Second call: resume same Master session (--resume) — NOT a new session
-    expect(call2?.resumeSessionId).toBe(call1?.sessionId);
+    expect(call1?.sessionId).toBeUndefined();
+    expect(call1?.resumeSessionId).toBeUndefined();
+    expect(call2?.sessionId).toBeUndefined();
+    expect(call2?.resumeSessionId).toBeUndefined();
   });
 });
