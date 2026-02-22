@@ -467,3 +467,66 @@ export const MasterSessionSchema = z.object({
 });
 
 export type MasterSession = z.infer<typeof MasterSessionSchema>;
+
+// ── Prompt Library ──────────────────────────────────────────────
+
+/**
+ * Single prompt template in the prompt library.
+ * Each prompt has a version and success rate tracked for self-improvement.
+ */
+export const PromptTemplateSchema = z.object({
+  /** Prompt identifier (filename without .md) */
+  id: z.string().min(1),
+
+  /** Template version (semver-like: "1.0.0") */
+  version: z.string().default('1.0.0'),
+
+  /** Prompt file path relative to .openbridge/prompts/ */
+  filePath: z.string(),
+
+  /** Description of what this prompt does */
+  description: z.string(),
+
+  /** Prompt category (exploration, task, verification, etc.) */
+  category: z.enum(['exploration', 'task', 'verification', 'other']),
+
+  /** Total number of times this prompt was used */
+  usageCount: z.number().int().nonnegative().default(0),
+
+  /** Number of successful executions (parseable output, valid format) */
+  successCount: z.number().int().nonnegative().default(0),
+
+  /** Success rate (successCount / usageCount) - computed field */
+  successRate: z.number().min(0).max(1).optional(),
+
+  /** When this prompt was created */
+  createdAt: z.string().datetime(),
+
+  /** When this prompt was last updated */
+  updatedAt: z.string().datetime(),
+
+  /** When this prompt was last used */
+  lastUsedAt: z.string().datetime().optional(),
+});
+
+export type PromptTemplate = z.infer<typeof PromptTemplateSchema>;
+
+/**
+ * Prompt library manifest stored in .openbridge/prompts/manifest.json.
+ * Tracks all prompts, their versions, and effectiveness metrics.
+ */
+export const PromptManifestSchema = z.object({
+  /** Map of prompt ID to prompt metadata */
+  prompts: z.record(PromptTemplateSchema).default({}),
+
+  /** When this manifest was created */
+  createdAt: z.string().datetime(),
+
+  /** When this manifest was last updated */
+  updatedAt: z.string().datetime(),
+
+  /** Version of the manifest schema */
+  schemaVersion: z.string().default('1.0.0'),
+});
+
+export type PromptManifest = z.infer<typeof PromptManifestSchema>;
