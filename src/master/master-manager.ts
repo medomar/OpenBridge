@@ -82,11 +82,14 @@ const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
 const MASTER_MAX_TURNS = 50;
 
 /**
- * Max turns for message processing (conversational replies).
- * Much lower than exploration — the workspace context is injected into the
- * system prompt so the AI can answer most questions without tool calls.
+ * Max turns for message processing — varies by task classification.
+ * quick-answer: questions, lookups, explanations (context in system prompt, no tools needed)
+ * tool-use: file generation, single edits, targeted fixes (needs room to act)
+ * complex-task: multi-step implementations, refactors, builds (planning + delegation)
  */
-const MESSAGE_MAX_TURNS = 3;
+const MESSAGE_MAX_TURNS_QUICK = 3;
+const MESSAGE_MAX_TURNS_TOOL_USE = 10;
+const MESSAGE_MAX_TURNS_COMPLEX = 15;
 
 /**
  * Options for creating a MasterManager
@@ -403,7 +406,11 @@ export class MasterManager {
    * Uses --session-id on first call, --resume on subsequent calls.
    * Injects the system prompt via --append-system-prompt.
    */
-  private buildMasterSpawnOptions(prompt: string, timeout?: number): SpawnOptions {
+  private buildMasterSpawnOptions(
+    prompt: string,
+    timeout?: number,
+    maxTurns?: number,
+  ): SpawnOptions {
     if (!this.masterSession) {
       throw new Error('Master session not initialized — call initMasterSession() first');
     }
@@ -412,7 +419,7 @@ export class MasterManager {
       prompt,
       workspacePath: this.workspacePath,
       allowedTools: [...session.allowedTools],
-      maxTurns: MESSAGE_MAX_TURNS, // Use lower turns for messages — context is in system prompt
+      maxTurns: maxTurns ?? MESSAGE_MAX_TURNS_QUICK,
       timeout: timeout ?? this.messageTimeout,
       retries: 0, // Master session calls don't auto-retry (caller handles)
     };
@@ -1032,6 +1039,43 @@ export class MasterManager {
   }
 
   /**
+   * Classify a user message as quick-answer, tool-use, or complex-task.
+   * Used to determine the appropriate maxTurns for the Master session.
+   *
+   * - quick-answer: questions, lookups, explanations → 3 turns
+   * - tool-use: file generation, single edits, targeted fixes → 10 turns
+   * - complex-task: multi-step implementations, refactors, builds → 15 turns
+   *
+   * This is a fast local classification — no AI call needed.
+   */
+  public classifyTask(content: string): 'quick-answer' | 'tool-use' | 'complex-task' {
+    const lower = content.toLowerCase();
+
+    // Complex task keywords — multi-step work requiring planning and delegation
+    const complexKeywords = ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'];
+    if (complexKeywords.some((kw) => lower.includes(kw))) {
+      return 'complex-task';
+    }
+
+    // Tool-use keywords — single-action file generation or targeted edits
+    const toolUseKeywords = [
+      'generate',
+      'create',
+      'write',
+      'fix',
+      'update file',
+      'add to',
+      'make a',
+    ];
+    if (toolUseKeywords.some((kw) => lower.includes(kw))) {
+      return 'tool-use';
+    }
+
+    // Default: quick-answer for questions, lookups, and unclassified messages
+    return 'quick-answer';
+  }
+
+  /**
    * Autonomously explore the workspace and create .openbridge/ folder.
    * This is the Master AI's initialization step.
    *
@@ -1638,8 +1682,18 @@ Work silently — do not output conversational text, just explore and write the 
         return status;
       }
 
+      // Classify message to determine appropriate turn budget
+      const taskClass = this.classifyTask(message.content);
+      const taskMaxTurns =
+        taskClass === 'complex-task'
+          ? MESSAGE_MAX_TURNS_COMPLEX
+          : taskClass === 'tool-use'
+            ? MESSAGE_MAX_TURNS_TOOL_USE
+            : MESSAGE_MAX_TURNS_QUICK;
+      logger.info({ taskClass, taskMaxTurns }, 'Message classified');
+
       // Execute message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(message.content);
+      const spawnOpts = this.buildMasterSpawnOptions(message.content, undefined, taskMaxTurns);
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -1653,7 +1707,7 @@ Work silently — do not output conversational text, just explore and write the 
         await this.restartMasterSession();
 
         // Retry the original message with the new session
-        const retryOpts = this.buildMasterSpawnOptions(message.content);
+        const retryOpts = this.buildMasterSpawnOptions(message.content, undefined, taskMaxTurns);
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
       }

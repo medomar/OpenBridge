@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.010/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.005
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 (Phase 24: 5/5 done ✅ — all phases complete)
+> **Current Score:** 8.160/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.010
+> **Open Findings:** 1 (0 critical, 0 high, 1 medium) | **Pending Tasks:** 15 (Phase 25 started: 1/6 done)
 > **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -121,6 +121,7 @@
 | 2026-02-23 | 7.990 |   +0.015    | OB-322: Multi-connector startup — updated config.example.json to show all 4 connectors (console + whatsapp + telegram + webchat). Verified bridge.ts parallel init (Promise.allSettled) and Router connector-by-source mapping handle 3+ connectors correctly. Integration test with 3 named mock connectors: parallel init, response isolation, graceful failure, shutdown. 1018 tests passing. Phase 24 (3/5 tasks)                                                                                                                                       |
 | 2026-02-23 | 8.005 |   +0.015    | OB-323: Connector integration tests — telegram-integration.test.ts (9 tests: DM flow, ack ordering, auth whitelist, prefix strip, group @mention, shutdown) + webchat-integration.test.ts (10 tests: WS flow, ack+typing ordering, prefix strip, broadcast to all clients, closed client skip, disconnect tracking, empty whitelist). Full pipeline: connector receives → Bridge auth/queue/router → MockProvider → sendMessage. 1037 tests passing. Phase 24 (4/5 tasks)                                                                                   |
 | 2026-02-23 | 8.010 |   +0.005    | OB-324: Discord connector — discord.js v14 Client with GatewayIntentBits (Guilds, GuildMessages, MessageContent, DirectMessages), DM + guild channel support, bot message filtering, dynamic import for testability, DiscordConfigSchema (Zod), registered in connectors/index.ts, 17 unit tests (1054 passing). Phase 24 complete ✅ — all phases done                                                                                                                                                                                                     |
+| 2026-02-23 | 8.160 |   +0.150    | OB-400: Task classifier — added `classifyTask()` to MasterManager with keyword heuristics (complex-task/tool-use/quick-answer). `processMessage()` now sets maxTurns dynamically: quick=3, tool-use=10, complex=15. Fixes OB-F22 (maxTurns:3 blocked file-generation tasks). Phase 25 started (1/6 tasks). 1071 tests passing.                                                                                                                                                                                                                              |
 
 ---
 

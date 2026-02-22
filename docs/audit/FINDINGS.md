@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 9 | **Last Audit:** 2026-02-23
+> **Open:** 1 | **Fixed:** 10 | **Last Audit:** 2026-02-23
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
@@ -25,29 +25,14 @@ DotFolderManager tests create temporary `.git` directories. When tests run in pa
 
 ---
 
-### OB-F22 — maxTurns: 3 blocks all non-Q&A tasks
+### OB-F22 — maxTurns: 3 blocks all non-Q&A tasks ✅
 
 **Discovered:** 2026-02-23 (real-world E2E testing)
-**Component:** `src/master/master-manager.ts:89, 415`
-**Severity:** 🔴 Critical
-**Impact:** Any user request that requires file generation, code changes, or multi-step research fails with "Error: Reached max turns (3)". The Master cannot output SPAWN markers within 3 turns for complex tasks.
+**Fixed:** 2026-02-23 (OB-400)
+**Component:** `src/master/master-manager.ts`
+**Severity:** 🔴 Critical → ✅ Fixed
 
-**Details:**
-`MESSAGE_MAX_TURNS = 3` was set to keep Q&A fast (context is injected in system prompt, so the Master can answer most questions without tools). But tasks like "generate me an HTML file for investors" require the Master to: (1) read workspace context, (2) plan the approach, (3) decide to delegate or act directly. 3 turns isn't enough.
-
-**Evidence from E2E log (2026-02-23):**
-
-```
-content: "can you generate me a small pdf or HTML file to share with potential investors?"
-... (107 seconds of "Still working...")
-Error: Reached max turns (3)
-```
-
-The 107s duration suggests the Master spent all 3 turns on tool calls (reading context) and never reached the point of generating output or SPAWN markers.
-
-**Fix:** Task classification — classify messages as quick-answer/tool-use/complex-task, set maxTurns per category, auto-delegate complex tasks via planning prompt.
-
-**Resolves in:** Phase 25, OB-400 + OB-401
+**Fix applied:** Added `classifyTask()` to `MasterManager` with keyword heuristics. `processMessage()` now classifies each message and sets `maxTurns` accordingly: quick-answer=3, tool-use=10, complex-task=15. "Generate me an HTML file" → tool-use → 10 turns. "Implement authentication" → complex-task → 15 turns.
 
 ---
 
