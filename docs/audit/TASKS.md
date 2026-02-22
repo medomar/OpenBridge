@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 3 tasks in 1 phase | **Next up:** Phase 21
+> **Pending:** 1 task in 1 phase | **Next up:** Phase 21
 > **Last Updated:** 2026-02-22
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -146,7 +146,7 @@ The Master AI is the brain. It decides:
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 121 | **E2E smoke test script** — create `scripts/e2e-smoke.sh` that starts OpenBridge, sends a Console message, verifies Master responds via worker delegation (not direct claude --print). Validates: AgentRunner used, --allowedTools passed, --max-turns passed, worker log written to disk | OB-180 | 🟠 High  |  ✅ Done  |
 | 122 | **Real workspace test** — run OpenBridge against the Social-Media-Automation-Platform workspace (the one that was failing). Master must: explore successfully, respond to "what's in this project?", handle "run the tests", handle multi-turn follow-ups. Document results and fixes     | OB-181 | 🟠 High  |  ✅ Done  |
-| 123 | **WhatsApp full flow test** — complete end-to-end: QR scan → send "/ai what's in my project?" from phone → receive response on phone within 2 minutes. Document the flow, any error handling needed, message chunking for long responses                                                  | OB-182 | 🟠 High  | ◻ Pending |
+| 123 | **WhatsApp full flow test** — complete end-to-end: QR scan → send "/ai what's in my project?" from phone → receive response on phone within 2 minutes. Document the flow, any error handling needed, message chunking for long responses                                                  | OB-182 | 🟠 High  |  ✅ Done  |
 | 124 | **Error resilience test** — deliberately trigger failure scenarios: kill Master mid-task (verify restart), send message during exploration (verify queuing), send very long message (verify truncation), disconnect WhatsApp mid-response (verify no crash)                               | OB-183 |  🟡 Med  | ◻ Pending |
 
 ---
