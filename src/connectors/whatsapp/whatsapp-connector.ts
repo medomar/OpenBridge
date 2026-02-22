@@ -91,7 +91,6 @@ export class WhatsAppConnector implements Connector {
           '--disable-gpu',
           '--disable-dev-shm-usage',
           '--disable-extensions',
-          '--single-process',
         ],
       },
     }) as unknown as WAClient;
@@ -143,6 +142,16 @@ export class WhatsAppConnector implements Connector {
       logger.warn({ reason }, 'WhatsApp disconnected');
       this.emit('disconnected', reason);
       this.scheduleReconnect();
+    });
+
+    // Catch Puppeteer ProtocolError / browser crashes that don't trigger 'disconnected'
+    this.client.on('error', (err: Error) => {
+      logger.error({ err: err.message }, 'WhatsApp client error');
+      if (this.connected) {
+        this.connected = false;
+        this.emit('error', err);
+        this.scheduleReconnect();
+      }
     });
 
     logger.info('Launching Chromium and loading WhatsApp Web...');
