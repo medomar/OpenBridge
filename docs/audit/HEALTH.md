@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.935/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 6.885
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 4 (Phase 21)
+> **Current Score:** 6.985/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 6.935
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 3 (Phase 21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.885** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. Phase 20 (Self-Improvement + Learnings) complete. Master self-improvement cycle (OB-173) implemented: idle detection timer checks every minute whether Master has been idle >5 min (no user messages). When idle, triggers self-improvement cycle that: (1) rewrites low-performing prompts using Master AI session, resets usage stats for fresh start; (2) analyzes learnings to identify recurring task patterns (>5 samples, >70% success rate) and creates custom profiles auto-prefixed with "auto-" based on most common successful profile; (3) checks if workspace changed (package.json modified) and triggers re-exploration. All improvements are git-committed with descriptive messages. Timer stops on shutdown. Ready for Phase 21 (E2E hardening).
+**Current state: 6.985** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. Phase 20 (Self-Improvement + Learnings) complete. Phase 21 (E2E Hardening) in progress (2/4 tasks done). Created comprehensive test scripts: e2e-smoke.sh validates worker delegation and AgentRunner integration, real-workspace-test.sh validates Master exploration against realistic TypeScript/Express workspace with detailed result documentation. Both scripts verify no unsafe --dangerously-skip-permissions usage, proper tool restrictions, worker logs, task history, and git tracking.
 
 ---
 
@@ -107,6 +107,7 @@
 | 2026-02-22 | 6.880 |   +0.005    | OB-172: Prompt effectiveness tracking — detectPromptTemplate/validateWorkerOutput/recordPromptEffectiveness methods in MasterManager, integrated after each worker execution, validates JSON structure for exploration/verification prompts, flags prompts with <50% success rate (getLowPerformingPrompts), 9 new tests. Phase 20 (3/4)                                                                                                                                                                                                   |
 | 2026-02-22 | 6.885 |   +0.005    | OB-173: Master self-improvement cycle — idle detection timer (5-min threshold, 1-min checks), runSelfImprovementCycle with 3 tasks: rewritePrompt (uses Master AI to rewrite low-performing prompts, reads from disk, resets stats), createProfilesFromLearnings (analyzes >5 samples with >70% success, creates auto-\* profiles), updateWorkspaceMapIfChanged (detects package.json changes, triggers re-exploration). resetPromptStats in DotFolderManager. Timer starts on Master.start(), stops on shutdown. Phase 20 complete (4/4). |
 | 2026-02-22 | 6.935 |    +0.05    | OB-180: E2E smoke test script — created scripts/e2e-smoke.sh that starts OpenBridge with console connector, validates Master delegates to workers via AgentRunner (not direct claude --print), verifies --allowedTools/--max-turns passed, worker logs written to disk, task history persisted. Validates no --dangerously-skip-permissions. Phase 21 started (1/4 tasks done)                                                                                                                                                             |
+| 2026-02-22 | 6.985 |    +0.05    | OB-181: Real workspace test — created scripts/real-workspace-test.sh that validates OpenBridge against a realistic TypeScript/Express workspace (simulating Social-Media-Automation-Platform). Tests: Master explores complex workspace successfully, detects project type/frameworks/structure, spawns workers with proper tool restrictions, persists session state, tracks exploration in git. Comprehensive validation of all exploration phases with detailed result documentation. Phase 21 (2/4 tasks done)                         |
 
 ---
 
