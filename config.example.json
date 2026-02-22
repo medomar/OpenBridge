@@ -2,8 +2,26 @@
   "workspacePath": "/absolute/path/to/your/project",
   "channels": [
     {
-      "type": "whatsapp",
+      "type": "console",
       "enabled": true
+    },
+    {
+      "type": "whatsapp",
+      "enabled": false
+    },
+    {
+      "type": "telegram",
+      "enabled": false,
+      "options": {
+        "token": "YOUR_BOT_TOKEN_HERE"
+      }
+    },
+    {
+      "type": "webchat",
+      "enabled": false,
+      "options": {
+        "port": 3000
+      }
     }
   ],
   "auth": {

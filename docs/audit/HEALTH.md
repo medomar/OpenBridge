@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.975/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 7.960
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 3 (Phase 23: 5/5 done ✅, Phase 24: 2/5)
+> **Current Score:** 7.990/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 7.975
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 2 (Phase 23: 5/5 done ✅, Phase 24: 3/5)
 > **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -21,9 +21,9 @@
 | Worker Orchestration |   10%    | 7.5/10 |   0.750   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. handleSpawnMarkersWithProgress |
 | Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection              |
 | Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                              |
-| Testing              |    5%    | 8.5/10 |   0.425   | 974 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                 |
+| Testing              |    5%    | 8.5/10 |   0.425   | 1018 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                |
 | Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                         |
-| **TOTAL**            | **100%** |   —    | **7.975** | **Re-scored to reflect Phases 16–23 complete + Telegram + WebChat connectors (OB-320, OB-321)**                  |
+| **TOTAL**            | **100%** |   —    | **7.990** | **Re-scored to reflect Phases 16–23 complete + Telegram + WebChat + multi-connector (OB-320, OB-321, OB-322)**   |
 
 > **Note:** Breakdown re-baselined to reflect completion of Phases 16–23. Agent Runner (Phase 16), Tool Profiles (Phase 17), Self-Governing Master (Phase 18), Worker Orchestration (Phase 19), Self-Improvement (Phase 20), E2E Hardening (Phase 21), Make It Work (Phase 22), Production Hardening (Phase 23) all complete.
 
@@ -118,6 +118,7 @@
 | 2026-02-22 | 7.930 | re-baseline | OB-314: Health re-baseline — updated all category scores to reflect Phases 16–23 complete. Agent Runner 8.5/10 (fully built), Tool Profiles 8.0/10, Master AI 7.5/10 (E2E verified), Worker Orchestration 7.5/10, Self-Improvement 7.0/10, Testing 8.5/10 (974 passing). Breakdown total: 7.925 + 0.005 (Low task). npm pack verified (509 files). README status table updated. Phase 23 complete ✅                                                                                                                                                        |
 | 2026-02-22 | 7.960 |    +0.03    | OB-320: Telegram connector — grammY-based connector with DM + group @mention support, TelegramConnector class, TelegramConfigSchema (Zod), dynamic import, typing indicator, shutdown, 18 unit tests (992 tests passing). Phase 24 started (1/5 tasks)                                                                                                                                                                                                                                                                                                      |
 | 2026-02-23 | 7.975 |   +0.015    | OB-321: WebChat connector — Node.js http + ws WebSocket, serves minimal HTML chat UI on localhost:3000, WebChatConnector class, WebChatConfigSchema (Zod), broadcasts to all OPEN clients, typing indicator, shutdown, 21 unit tests (1013 tests passing). Phase 24 (2/5 tasks)                                                                                                                                                                                                                                                                             |
+| 2026-02-23 | 7.990 |   +0.015    | OB-322: Multi-connector startup — updated config.example.json to show all 4 connectors (console + whatsapp + telegram + webchat). Verified bridge.ts parallel init (Promise.allSettled) and Router connector-by-source mapping handle 3+ connectors correctly. Integration test with 3 named mock connectors: parallel init, response isolation, graceful failure, shutdown. 1018 tests passing. Phase 24 (3/5 tasks)                                                                                                                                       |
 
 ---
 
