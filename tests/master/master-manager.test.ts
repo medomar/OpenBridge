@@ -325,10 +325,17 @@ describe('MasterManager', () => {
       expect(mockSpawn).toHaveBeenCalledTimes(1);
     });
 
-    it('should use --session-id on first call and --resume on subsequent calls', async () => {
-      mockSpawn.mockResolvedValue({
+    it('should call spawn for each message in --print mode (no session IDs)', async () => {
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
-        stdout: 'Response',
+        stdout: 'First response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Second response',
         stderr: '',
         retryCount: 0,
         durationMs: 100,
@@ -357,23 +364,27 @@ describe('MasterManager', () => {
 
       expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-      // First call should use sessionId (new session)
+      // processMessage uses --print mode — no sessionId or resumeSessionId
       const call1 = getSpawnCallOpts(0);
-      expect(call1?.sessionId).toBeDefined();
-      expect(call1?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+      expect(call1?.sessionId).toBeUndefined();
       expect(call1?.resumeSessionId).toBeUndefined();
 
-      // Second call should use resumeSessionId
       const call2 = getSpawnCallOpts(1);
-      expect(call2?.resumeSessionId).toBeDefined();
-      expect(call2?.resumeSessionId).toBe(call1?.sessionId);
       expect(call2?.sessionId).toBeUndefined();
+      expect(call2?.resumeSessionId).toBeUndefined();
     });
 
-    it('should use the same Master session for different senders', async () => {
-      mockSpawn.mockResolvedValue({
+    it('should route messages from different senders through the same Master (--print mode)', async () => {
+      mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
-        stdout: 'Response',
+        stdout: 'Response from sender1',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response from sender2',
         stderr: '',
         retryCount: 0,
         durationMs: 100,
@@ -400,13 +411,12 @@ describe('MasterManager', () => {
       await masterManager.processMessage(message1);
       await masterManager.processMessage(message2);
 
-      // Both messages should use the same Master session
+      // Both messages spawn separate --print calls via the same MasterManager
+      expect(mockSpawn).toHaveBeenCalledTimes(2);
       const call1 = getSpawnCallOpts(0);
       const call2 = getSpawnCallOpts(1);
-
-      // First call: --session-id, second call: --resume with same session ID
-      expect(call1?.sessionId).toBeDefined();
-      expect(call2?.resumeSessionId).toBe(call1?.sessionId);
+      expect(call1?.workspacePath).toBe(call2?.workspacePath);
+      expect(call1?.allowedTools).toEqual(call2?.allowedTools);
     });
 
     it('should pass Master tools (allowedTools) to AgentRunner', async () => {
@@ -431,7 +441,7 @@ describe('MasterManager', () => {
 
       const call = getSpawnCallOpts(0);
       expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
-      expect(call?.maxTurns).toBe(50);
+      expect(call?.maxTurns).toBe(3); // MESSAGE_MAX_TURNS — reduced to prevent runaway conversations
     });
 
     it('should increment session messageCount after each message', async () => {
@@ -819,19 +829,22 @@ describe('MasterManager', () => {
       const exploringManager = new MasterManager(options);
       await exploringManager.start();
 
-      mockSpawn.mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: 'Explored',
-        stderr: '',
-        retryCount: 0,
-        durationMs: 500,
-      });
+      // explore() uses agentRunner.stream() (not spawn) for real-time progress
+      async function* explorationStreamGen(): AsyncGenerator<
+        string,
+        { exitCode: number; stderr: string; stdout: string; durationMs: number; retryCount: number }
+      > {
+        yield 'Exploring...';
+        return { exitCode: 0, stdout: 'Explored', stderr: '', durationMs: 500, retryCount: 0 };
+      }
+      mockStream.mockReturnValueOnce(explorationStreamGen());
 
       await exploringManager.explore();
 
-      const call = getSpawnCallOpts(0);
-      expect(call?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
-      expect(call?.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
+      // Verify stream was called with Master profile tools
+      const streamCall = mockStream.mock.calls[0]?.[0] as { allowedTools?: string[] } | undefined;
+      expect(streamCall?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
+      expect(streamCall?.allowedTools?.some((t: string) => t.startsWith('Bash'))).toBe(false);
 
       await exploringManager.shutdown();
     });
@@ -934,6 +947,10 @@ describe('MasterManager', () => {
 
   describe('Graceful Master Restart (OB-156)', () => {
     beforeEach(async () => {
+      // Reset spawn/stream mocks to clear any leaked mockResolvedValue/Once from prior describe blocks
+      mockSpawn.mockReset();
+      mockStream.mockReset();
+
       const dotFolderManager = new DotFolderManager(testWorkspace);
       await dotFolderManager.initialize();
 
