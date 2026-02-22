@@ -393,7 +393,7 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     // Verify Master session was used (first call has sessionId)
     expect(mockSpawn).toHaveBeenCalled();
     const firstCall = mockSpawn.mock.calls[0]?.[0] as { sessionId?: string } | undefined;
-    expect(firstCall?.sessionId).toMatch(/^master-/);
+    expect(firstCall?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
   }, 15000);
 
   // ---------------------------------------------------------------------------

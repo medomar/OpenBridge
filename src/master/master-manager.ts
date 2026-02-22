@@ -29,7 +29,7 @@ import * as path from 'node:path';
 
 const logger = createLogger('master-manager');
 
-const DEFAULT_TIMEOUT = 600_000; // 10 minutes for exploration
+const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
 
 /** Idle time threshold (5 minutes) before triggering self-improvement cycle */
@@ -309,8 +309,8 @@ export class MasterManager {
       return;
     }
 
-    // Create new session
-    const sessionId = `master-${randomUUID()}`;
+    // Create new session — use raw UUID (Claude CLI requires valid UUID format)
+    const sessionId = randomUUID();
     const now = new Date().toISOString();
 
     this.masterSession = {
@@ -366,7 +366,10 @@ export class MasterManager {
    * Injects the system prompt via --append-system-prompt.
    */
   private buildMasterSpawnOptions(prompt: string, timeout?: number): SpawnOptions {
-    const session = this.masterSession!;
+    if (!this.masterSession) {
+      throw new Error('Master session not initialized — call initMasterSession() first');
+    }
+    const session = this.masterSession;
     const opts: SpawnOptions = {
       prompt,
       workspacePath: this.workspacePath,
@@ -509,8 +512,8 @@ export class MasterManager {
       },
     });
 
-    // Create a new session
-    const sessionId = `master-${randomUUID()}`;
+    // Create a new session — use raw UUID (Claude CLI requires valid UUID format)
+    const sessionId = randomUUID();
     const now = new Date().toISOString();
 
     this.masterSession = {
