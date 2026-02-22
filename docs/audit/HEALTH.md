@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.86/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 6.845
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 8 (Phases 20–21)
+> **Current Score:** 6.875/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 6.86
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 7 (Phases 20–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.845** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. All 6 tasks done: worker registry (OB-160), parallel worker spawning (OB-161), worker progress streaming (OB-162), worker timeout + cleanup (OB-163), depth limiting (OB-164), task history + audit trail (OB-165). Every worker execution now logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Master can read this history to learn from past executions.
+**Current state: 6.875** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. Phase 20 in progress (2/4 tasks done). Learnings store (OB-171) implemented: every worker execution now appends a learning entry to `.openbridge/learnings.json` with task type classification, model/profile used, success/failure, duration, retry count. DotFolderManager provides query methods (by task type, model, profile, failed only) and statistics calculation (success rate, avg duration, avg retries). Master can read this history on startup to inform future decisions (e.g., "haiku failed on refactoring tasks, use sonnet instead").
 
 ---
 
@@ -103,6 +103,7 @@
 | 2026-02-22 | 6.84  |   +0.015    | OB-164: Depth limiting — workers cannot spawn workers (maxSpawnDepth=1). Workers get --print mode (single-turn, stateless), Master gets --session-id/--resume (multi-turn, persistent). Enforced in buildArgs() via session mode. 6 new tests                                                            |
 | 2026-02-22 | 6.845 |   +0.005    | OB-165: Task history + audit trail — every worker execution logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Added DotFolderManager.writeTask() (no git commit). Phase 19 complete (6/6 tasks done)                                             |
 | 2026-02-22 | 6.86  |   +0.015    | OB-170: Prompt library in .openbridge/prompts/ — Zod schemas (PromptTemplate, PromptManifest), DotFolderManager CRUD methods (read/write/track usage/detect low-performing), 4 seed templates (exploration-scan, classification, task-execute, task-verify), 24 tests. Phase 20 started (1/4 tasks done) |
+| 2026-02-22 | 6.875 |   +0.015    | OB-171: Learnings store in .openbridge/learnings.json — LearningEntry/LearningsRegistry Zod schemas, DotFolderManager CRUD methods (append/query by task type/model/profile, stats calculation), integrated into MasterManager worker execution, auto-classify task types, 24 new tests. Phase 20 (2/4)  |
 
 ---
 

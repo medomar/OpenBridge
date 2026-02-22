@@ -586,6 +586,121 @@ export class MasterManager {
   }
 
   /**
+   * Record a learning entry for a completed worker execution (OB-171: learnings store).
+   * After each task, the Master appends a learning entry with task type, model used,
+   * profile used, success, duration, and notes. On startup, the Master reads this
+   * history to inform future decisions (e.g., "haiku failed on refactoring tasks 3
+   * times, use sonnet instead").
+   */
+  private async recordWorkerLearning(
+    taskRecord: TaskRecord,
+    result: AgentResult,
+    profile: string,
+    model?: string,
+  ): Promise<void> {
+    try {
+      // Classify task type based on the prompt content
+      const taskType = this.classifyTaskType(taskRecord.userMessage);
+
+      // Determine success based on exit code and task status
+      const success = result.exitCode === 0 && taskRecord.status === 'completed';
+
+      // Extract notes from the task record or result
+      const notes = success
+        ? `Worker completed successfully using ${profile} profile` +
+          (result.retryCount > 0 ? ` (${result.retryCount} retries required)` : '')
+        : `Worker failed: ${taskRecord.error?.slice(0, 200) ?? 'Unknown error'}` +
+          (result.retryCount > 0 ? ` (${result.retryCount} retries attempted)` : '');
+
+      const learningEntry = {
+        id: `learning-${taskRecord.id}`,
+        taskType,
+        modelUsed: result.model ?? model,
+        profileUsed: profile,
+        success,
+        durationMs: result.durationMs,
+        notes,
+        recordedAt: new Date().toISOString(),
+        exitCode: result.exitCode,
+        retryCount: result.retryCount,
+        metadata: {
+          workerId: taskRecord.id,
+          workerIndex: taskRecord.metadata?.['workerIndex'] as number | undefined,
+          modelFallbacks: result.modelFallbacks,
+        },
+      };
+
+      await this.dotFolder.appendLearning(learningEntry);
+
+      logger.debug(
+        {
+          learningId: learningEntry.id,
+          taskType,
+          model: learningEntry.modelUsed,
+          profile,
+          success,
+        },
+        'Learning entry recorded',
+      );
+    } catch (error) {
+      logger.warn({ error, taskId: taskRecord.id }, 'Failed to record learning entry');
+    }
+  }
+
+  /**
+   * Classify task type based on prompt content.
+   * Uses heuristics to categorize tasks for learning analysis.
+   */
+  private classifyTaskType(prompt: string): string {
+    const lower = prompt.toLowerCase();
+
+    // Check for common task patterns
+    if (
+      lower.includes('refactor') ||
+      lower.includes('restructure') ||
+      lower.includes('reorganize')
+    ) {
+      return 'refactoring';
+    }
+    if (
+      lower.includes('bug') ||
+      lower.includes('fix') ||
+      lower.includes('error') ||
+      lower.includes('issue')
+    ) {
+      return 'bug-fix';
+    }
+    if (lower.includes('test') || lower.includes('spec') || lower.includes('verify')) {
+      return 'testing';
+    }
+    if (
+      lower.includes('add') ||
+      lower.includes('implement') ||
+      lower.includes('create') ||
+      lower.includes('feature')
+    ) {
+      return 'feature';
+    }
+    if (
+      lower.includes('explore') ||
+      lower.includes('analyze') ||
+      lower.includes('investigate') ||
+      lower.includes('find')
+    ) {
+      return 'exploration';
+    }
+    if (lower.includes('document') || lower.includes('explain') || lower.includes('describe')) {
+      return 'documentation';
+    }
+    if (lower.includes('optimize') || lower.includes('improve') || lower.includes('performance')) {
+      return 'optimization';
+    }
+
+    // Default to generic task type
+    return 'task';
+  }
+
+  /**
    * Autonomously explore the workspace and create .openbridge/ folder.
    * This is the Master AI's initialization step.
    *
@@ -1602,6 +1717,9 @@ Work silently — do not output conversational text, just explore and write the 
       // Workers are batched, so we don't commit each one individually to avoid git lock contention
       await this.dotFolder.writeTask(taskRecord);
 
+      // Record learning entry for this worker execution (OB-171: learnings store)
+      await this.recordWorkerLearning(taskRecord, result, profile, spawnOpts.model);
+
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
@@ -1634,6 +1752,9 @@ Work silently — do not output conversational text, just explore and write the 
       // Write worker task to disk even on exception (OB-165: task history + audit trail)
       // Workers are batched, so we don't commit each one individually to avoid git lock contention
       await this.dotFolder.writeTask(taskRecord);
+
+      // Record learning entry even on exception (OB-171: learnings store)
+      await this.recordWorkerLearning(taskRecord, failedResult, profile, body.model);
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;

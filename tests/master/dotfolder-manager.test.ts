@@ -9,6 +9,8 @@ import type {
   AgentsRegistry,
   ExplorationLogEntry,
   TaskRecord,
+  LearningEntry,
+  LearningsRegistry,
 } from '../../src/types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../../src/types/agent.js';
 
@@ -979,6 +981,448 @@ describe('DotFolderManager', () => {
     it('should return null for profile lookup when no registry exists', async () => {
       const result = await manager.getProfile('test-runner');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('Learnings Store (OB-171)', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+    });
+
+    it('should return null when learnings.json does not exist', async () => {
+      const result = await manager.readLearnings();
+      expect(result).toBeNull();
+    });
+
+    it('should write and read learnings registry', async () => {
+      const registry: LearningsRegistry = {
+        entries: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        schemaVersion: '1.0.0',
+      };
+
+      await manager.writeLearnings(registry);
+      const result = await manager.readLearnings();
+
+      expect(result).toBeDefined();
+      expect(result?.entries).toEqual([]);
+      expect(result?.schemaVersion).toBe('1.0.0');
+    });
+
+    it('should append a learning entry to registry', async () => {
+      const entry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'refactoring',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        notes: 'Worker completed successfully',
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry);
+      const result = await manager.readLearnings();
+
+      expect(result).toBeDefined();
+      expect(result?.entries).toHaveLength(1);
+      expect(result?.entries[0]).toMatchObject({
+        id: 'learning-001',
+        taskType: 'refactoring',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+      });
+    });
+
+    it('should append multiple learning entries in order', async () => {
+      const entry1: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 8000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const entry2: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'bug-fix',
+        modelUsed: 'haiku',
+        profileUsed: 'read-only',
+        success: false,
+        durationMs: 2000,
+        notes: 'Worker failed: exit code 1',
+        recordedAt: new Date().toISOString(),
+        exitCode: 1,
+        retryCount: 2,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry1);
+      await manager.appendLearning(entry2);
+
+      const result = await manager.readLearnings();
+
+      expect(result?.entries).toHaveLength(2);
+      expect(result?.entries[0]?.id).toBe('learning-001');
+      expect(result?.entries[1]?.id).toBe('learning-002');
+    });
+
+    it('should create learnings.json if it does not exist on first append', async () => {
+      const entry: LearningEntry = {
+        id: 'learning-first',
+        taskType: 'exploration',
+        modelUsed: 'haiku',
+        profileUsed: 'read-only',
+        success: true,
+        durationMs: 3000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry);
+
+      const exists = await fs
+        .access(manager.getLearningsPath())
+        .then(() => true)
+        .catch(() => false);
+
+      expect(exists).toBe(true);
+    });
+
+    it('should get learnings by task type', async () => {
+      const refactoringEntry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'refactoring',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 10000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const bugFixEntry: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'bug-fix',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 3000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(refactoringEntry);
+      await manager.appendLearning(bugFixEntry);
+      await manager.appendLearning({ ...refactoringEntry, id: 'learning-003' });
+
+      const refactoringResults = await manager.getLearningsByTaskType('refactoring');
+      const bugFixResults = await manager.getLearningsByTaskType('bug-fix');
+
+      expect(refactoringResults).toHaveLength(2);
+      expect(bugFixResults).toHaveLength(1);
+    });
+
+    it('should get learnings by model', async () => {
+      const haikuEntry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const sonnetEntry: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'refactoring',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 8000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(haikuEntry);
+      await manager.appendLearning(sonnetEntry);
+      await manager.appendLearning({ ...haikuEntry, id: 'learning-003' });
+
+      const haikuResults = await manager.getLearningsByModel('haiku');
+      const sonnetResults = await manager.getLearningsByModel('sonnet');
+
+      expect(haikuResults).toHaveLength(2);
+      expect(sonnetResults).toHaveLength(1);
+    });
+
+    it('should get learnings by profile', async () => {
+      const readOnlyEntry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'exploration',
+        modelUsed: 'haiku',
+        profileUsed: 'read-only',
+        success: true,
+        durationMs: 2000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const codeEditEntry: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'feature',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 7000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(readOnlyEntry);
+      await manager.appendLearning(codeEditEntry);
+      await manager.appendLearning({ ...readOnlyEntry, id: 'learning-003' });
+
+      const readOnlyResults = await manager.getLearningsByProfile('read-only');
+      const codeEditResults = await manager.getLearningsByProfile('code-edit');
+
+      expect(readOnlyResults).toHaveLength(2);
+      expect(codeEditResults).toHaveLength(1);
+    });
+
+    it('should get failed learnings only', async () => {
+      const successEntry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const failureEntry1: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'refactoring',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: false,
+        durationMs: 2000,
+        notes: 'Worker failed: timeout',
+        recordedAt: new Date().toISOString(),
+        exitCode: 143,
+        retryCount: 1,
+        metadata: {},
+      };
+
+      const failureEntry2: LearningEntry = {
+        id: 'learning-003',
+        taskType: 'bug-fix',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: false,
+        durationMs: 3000,
+        notes: 'Worker failed: error',
+        recordedAt: new Date().toISOString(),
+        exitCode: 1,
+        retryCount: 3,
+        metadata: {},
+      };
+
+      await manager.appendLearning(successEntry);
+      await manager.appendLearning(failureEntry1);
+      await manager.appendLearning(failureEntry2);
+
+      const failedResults = await manager.getFailedLearnings();
+
+      expect(failedResults).toHaveLength(2);
+      expect(failedResults.every((e) => !e.success)).toBe(true);
+    });
+
+    it('should calculate task type statistics correctly', async () => {
+      const entry1: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'refactoring',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const entry2: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'refactoring',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: false,
+        durationMs: 3000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 1,
+        retryCount: 2,
+        metadata: {},
+      };
+
+      const entry3: LearningEntry = {
+        id: 'learning-003',
+        taskType: 'refactoring',
+        modelUsed: 'sonnet',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 7000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 1,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry1);
+      await manager.appendLearning(entry2);
+      await manager.appendLearning(entry3);
+
+      const stats = await manager.getTaskTypeStats('refactoring');
+
+      expect(stats).toBeDefined();
+      expect(stats?.totalCount).toBe(3);
+      expect(stats?.successCount).toBe(2);
+      expect(stats?.failureCount).toBe(1);
+      expect(stats?.successRate).toBeCloseTo(0.6667, 2);
+      expect(stats?.avgDurationMs).toBeCloseTo(5000, 0);
+      expect(stats?.avgRetryCount).toBeCloseTo(1, 0);
+    });
+
+    it('should return null for task type stats when no entries exist', async () => {
+      const stats = await manager.getTaskTypeStats('nonexistent');
+      expect(stats).toBeNull();
+    });
+
+    it('should calculate model statistics correctly', async () => {
+      const entry1: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 4000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      const entry2: LearningEntry = {
+        id: 'learning-002',
+        taskType: 'bug-fix',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 6000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 1,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry1);
+      await manager.appendLearning(entry2);
+
+      const stats = await manager.getModelStats('haiku');
+
+      expect(stats).toBeDefined();
+      expect(stats?.totalCount).toBe(2);
+      expect(stats?.successCount).toBe(2);
+      expect(stats?.failureCount).toBe(0);
+      expect(stats?.successRate).toBe(1.0);
+      expect(stats?.avgDurationMs).toBe(5000);
+      expect(stats?.avgRetryCount).toBe(0.5);
+    });
+
+    it('should return null for model stats when no entries exist', async () => {
+      const stats = await manager.getModelStats('nonexistent');
+      expect(stats).toBeNull();
+    });
+
+    it('should return empty array when filtering by task type with no matches', async () => {
+      const entry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry);
+
+      const results = await manager.getLearningsByTaskType('refactoring');
+      expect(results).toEqual([]);
+    });
+
+    it('should return empty array when getting failed learnings with no failures', async () => {
+      const entry: LearningEntry = {
+        id: 'learning-001',
+        taskType: 'feature',
+        modelUsed: 'haiku',
+        profileUsed: 'code-edit',
+        success: true,
+        durationMs: 5000,
+        recordedAt: new Date().toISOString(),
+        exitCode: 0,
+        retryCount: 0,
+        metadata: {},
+      };
+
+      await manager.appendLearning(entry);
+
+      const results = await manager.getFailedLearnings();
+      expect(results).toEqual([]);
+    });
+
+    it('should return empty arrays for all query methods when no registry exists', async () => {
+      const taskTypeResults = await manager.getLearningsByTaskType('refactoring');
+      const modelResults = await manager.getLearningsByModel('haiku');
+      const profileResults = await manager.getLearningsByProfile('code-edit');
+      const failedResults = await manager.getFailedLearnings();
+
+      expect(taskTypeResults).toEqual([]);
+      expect(modelResults).toEqual([]);
+      expect(profileResults).toEqual([]);
+      expect(failedResults).toEqual([]);
     });
   });
 });
