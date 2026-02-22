@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.200/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 7.170
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 8 (Phase 22: 7/7 done ✅, Phase 23: 2/5, Phase 24: 0/5)
+> **Current Score:** 7.215/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 7.200
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 7 (Phase 22: 7/7 done ✅, Phase 23: 3/5, Phase 24: 0/5)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -115,6 +115,7 @@
 | 2026-02-22 | 7.140 |    +0.03    | OB-302: Handle messages during exploration — added pendingMessages queue to MasterManager, processMessage() queues messages when state === 'exploring' and returns a user-friendly message, explore() drains the queue via Router after state transitions to 'ready', bridge.ts calls master.setRouter(router) to enable response delivery. Added 1 new test verifying queue drain via router mock. Phase 22 complete (7/7 tasks done ✅)                                                                                                                   |
 | 2026-02-22 | 7.170 |    +0.03    | OB-310: Session recovery on crash — verified isSessionDead()/restartMasterSession() logic is correct in processMessage(). Fixed 9 failing tests in master-manager.test.ts: updated 3 tests to reflect --print mode (no sessionId/resumeSessionId in processMessage), fixed explore test to use mockStream instead of mockSpawn, added mockSpawn.mockReset()/mockStream.mockReset() to Graceful Restart beforeEach to prevent mock leakage. Phase 23 started (1/5 tasks done)                                                                                |
 | 2026-02-22 | 7.200 |    +0.03    | OB-311: Worker delegation E2E — verified handleSpawnMarkers() and handleSpawnMarkersWithProgress() are fully implemented (master-manager.ts lines 2267–2402). Added manifestToSpawnOptions/resolveProfile to AgentRunner mock in master-manager.test.ts. Added Worker Delegation describe block with E2E test: Master returns [SPAWN:read-only]{...}[/SPAWN] marker, worker spawned with correct profile-resolved tools/model/maxTurns, Master receives worker feedback, final response is synthesized answer. 974 tests passing. Phase 23 (2/5 tasks done) |
+| 2026-02-22 | 7.215 |   +0.015    | OB-312: Fix MaxListenersExceededWarning — root cause: 30 module-level createLogger() calls each creating a pino transport (each registers process.on('exit')), all executing before setMaxListeners(20) in ESM import order. Fix: converted logger.ts to singleton root logger + child() per module (one transport → one handler regardless of logger count). 974 tests passing. Phase 23 (3/5 tasks done)                                                                                                                                                  |
 
 ---
 
