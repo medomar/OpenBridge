@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const WhatsAppConfigSchema = z.object({
   sessionName: z.string().default('openbridge-default'),
   sessionPath: z.string().optional(),
+  headless: z.boolean().default(true),
   reconnect: z
     .object({
       enabled: z.boolean().default(true),
