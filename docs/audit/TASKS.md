@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 11 tasks in 4 phases | **Next up:** Phase 19
+> **Pending:** 9 tasks in 3 phases | **Next up:** Phase 20
 > **Last Updated:** 2026-02-22
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -43,7 +43,7 @@ The Master AI is the brain. It decides:
 |  16   | Agent Runner — core executor           |   8    |   ✅   |
 |  17   | Tool profiles + model selection        |   5    |   ✅   |
 |  18   | Master AI rewrite — self-governing     |   7    |   ✅   |
-|  19   | Worker orchestration + task manifests  |  4/6   |   🔄   |
+|  19   | Worker orchestration + task manifests  |   6    |   ✅   |
 |  20   | Self-improvement + learnings           |   4    |   ◻    |
 |  21   | End-to-end hardening + production test |   4    |   ◻    |
 
@@ -110,14 +110,14 @@ The Master AI is the brain. It decides:
 >
 > **Why this fourth:** The Master can now make decisions (Phase 18) and has the AgentRunner to execute them (Phase 16). This phase adds the orchestration — parallel workers, result collection, progress tracking.
 
-| #   | Task                                                                                                                                                                                                                                                                                                       | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 111 | **Worker registry** — create `src/master/worker-registry.ts`. Tracks active workers: { id, taskManifest, pid, startedAt, status, result }. Enforces max concurrent workers (default: 5). Persists to `.openbridge/workers.json` for cross-restart visibility. Mirrors OpenClaw's SubagentRunRecord pattern | OB-160 | 🟠 High  |  ✅ Done  |
-| 112 | **Parallel worker spawning** — Master can spawn multiple workers concurrently. AgentRunner returns promises. Worker registry tracks all active. Results collected via Promise.allSettled(). Failed workers logged but don't crash the Master                                                               | OB-161 | 🟠 High  |  ✅ Done  |
-| 113 | **Worker progress streaming** — for long-running workers, stream progress chunks back to Master and optionally to user (via WhatsApp). User sees "Working on it... (3/5 subtasks done)" style updates                                                                                                      | OB-162 |  🟡 Med  |  ✅ Done  |
-| 114 | **Worker timeout + cleanup** — if a worker exceeds its timeout, SIGTERM it gracefully (5s grace), then SIGKILL. Update registry. Log the timeout. Master gets notified of the failure and can retry or skip                                                                                                | OB-163 |  🟡 Med  |  ✅ Done  |
-| 115 | **Depth limiting** — workers cannot spawn other workers. Only the Master can spawn. Enforce via: workers get `--print` mode (single-turn, no session), Master gets `--session-id` (multi-turn). This is OpenClaw's `maxSpawnDepth=1` pattern                                                               | OB-164 |  🟡 Med  | ◻ Pending |
-| 116 | **Task history + audit trail** — every worker execution is logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Master can read this history to learn from past executions                                                                            | OB-165 |  🟢 Low  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                       | ID     | Priority | Status  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 111 | **Worker registry** — create `src/master/worker-registry.ts`. Tracks active workers: { id, taskManifest, pid, startedAt, status, result }. Enforces max concurrent workers (default: 5). Persists to `.openbridge/workers.json` for cross-restart visibility. Mirrors OpenClaw's SubagentRunRecord pattern | OB-160 | 🟠 High  | ✅ Done |
+| 112 | **Parallel worker spawning** — Master can spawn multiple workers concurrently. AgentRunner returns promises. Worker registry tracks all active. Results collected via Promise.allSettled(). Failed workers logged but don't crash the Master                                                               | OB-161 | 🟠 High  | ✅ Done |
+| 113 | **Worker progress streaming** — for long-running workers, stream progress chunks back to Master and optionally to user (via WhatsApp). User sees "Working on it... (3/5 subtasks done)" style updates                                                                                                      | OB-162 |  🟡 Med  | ✅ Done |
+| 114 | **Worker timeout + cleanup** — if a worker exceeds its timeout, SIGTERM it gracefully (5s grace), then SIGKILL. Update registry. Log the timeout. Master gets notified of the failure and can retry or skip                                                                                                | OB-163 |  🟡 Med  | ✅ Done |
+| 115 | **Depth limiting** — workers cannot spawn other workers. Only the Master can spawn. Enforce via: workers get `--print` mode (single-turn, no session), Master gets `--session-id` (multi-turn). This is OpenClaw's `maxSpawnDepth=1` pattern                                                               | OB-164 |  🟡 Med  | ✅ Done |
+| 116 | **Task history + audit trail** — every worker execution is logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Master can read this history to learn from past executions                                                                            | OB-165 |  🟢 Low  | ✅ Done |
 
 ---
 
