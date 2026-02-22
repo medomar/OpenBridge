@@ -5,6 +5,8 @@ import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
+import { unlink, readlink } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const logger = createLogger('whatsapp');
 
@@ -70,8 +72,28 @@ export class WhatsAppConnector implements Connector {
       localAuthOptions.dataPath = this.config.sessionPath;
     }
 
+    // Remove stale SingletonLock — left behind when Chromium crashes or the process is killed.
+    // Without this, Puppeteer hangs trying to connect to a dead browser.
+    await this.removeStaleLock();
+
     this.client = new Client({
       authStrategy: new LocalAuth(localAuthOptions),
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/nicokant/nicokant.github.io/main/nicokant/',
+      },
+      puppeteer: {
+        headless: this.config.headless,
+        protocolTimeout: 300_000, // 5 min — WhatsApp Web can be slow to load
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--disable-extensions',
+          '--single-process',
+        ],
+      },
     }) as unknown as WAClient;
 
     this.client.on('qr', (qr: string) => {
@@ -123,7 +145,40 @@ export class WhatsAppConnector implements Connector {
       this.scheduleReconnect();
     });
 
+    logger.info('Launching Chromium and loading WhatsApp Web...');
     await this.client.initialize();
+    logger.info('WhatsApp client initialized successfully');
+  }
+
+  /**
+   * Remove stale SingletonLock from the Chromium profile directory.
+   * This lock is a symlink like `Mac-<PID>`. If the PID is no longer running,
+   * the lock is stale and will prevent Puppeteer from launching.
+   */
+  private async removeStaleLock(): Promise<void> {
+    const dataPath = this.config.sessionPath ?? '.wwebjs_auth';
+    const lockPath = join(dataPath, `session-${this.config.sessionName}`, 'SingletonLock');
+
+    try {
+      const target = await readlink(lockPath);
+      // Target format: "Mac-<PID>" or "<hostname>-<PID>"
+      const pidMatch = target.match(/-(\d+)$/);
+      if (!pidMatch?.[1]) return;
+
+      const pid = parseInt(pidMatch[1], 10);
+      try {
+        // signal 0 = check if process exists without sending a signal
+        process.kill(pid, 0);
+        // Process is alive — lock is valid, don't remove
+        logger.debug({ pid }, 'SingletonLock held by running process');
+      } catch {
+        // Process doesn't exist — lock is stale
+        await unlink(lockPath);
+        logger.info({ pid }, 'Removed stale SingletonLock from previous Chromium crash');
+      }
+    } catch {
+      // Lock doesn't exist or can't be read — nothing to do
+    }
   }
 
   private scheduleReconnect(): void {
