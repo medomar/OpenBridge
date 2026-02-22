@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 15 tasks in 3 phases | **Next up:** Phase 22
+> **Pending:** 12 tasks in 3 phases | **Next up:** OB-302 (Phase 22)
 > **Last Updated:** 2026-02-22
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing archive (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md)
 
@@ -10,7 +10,7 @@
 
 OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging channels to a **Master AI** that explores your workspace, spawns worker agents, and executes tasks — all using the AI tools already installed on your machine (zero API keys, zero extra cost).
 
-**Current state:** All layers are built but the **end-to-end flow is broken**. Exploration never completes, sessions die, user messages get no AI response. The architecture is there — it's just not wired up correctly. Phase 22 fixes this.
+**Current state:** Core E2E flow is working — exploration completes, user messages get intelligent AI responses via Console. Remaining work: handle messages during exploration, E2E testing, production hardening.
 
 ---
 
@@ -21,7 +21,7 @@ OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging c
 | 1–14  | MVP foundation                     |   98    |   ✅   |
 | 16–21 | Self-Governing Master AI           |   34    |   ✅   |
 |       | **Total completed**                | **132** |        |
-|  22   | Make it work (E2E)                 |   2/7   |   🔄   |
+|  22   | Make it work (E2E)                 |   4/7   |   🔄   |
 |  23   | Production hardening + polish      |    5    |   ◻    |
 |  24   | New channels (Telegram + Web Chat) |    5    |   ◻    |
 
@@ -43,10 +43,10 @@ OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging c
 
 ### Step 2: User Message → AI Response
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | ID     |  Priority   |  Status   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :---------: | :-------: |
-| 136 | **Fix message processing after exploration** — After exploration completes, `processMessage()` must work. Verify the full chain: user types `/ai what's in this project?` → Router strips prefix → Master receives "what's in this project?" → Master has workspace context (from exploration or workspace-map.json) → Master responds with accurate project description → response sent back to Console/WhatsApp. Test with Console connector first. **Key file:** `src/master/master-manager.ts` — `processMessage()` (line ~1148), `src/core/router.ts` — `route()` | OB-303 | 🔴 Critical | ◻ Pending |
-| 137 | **Verify workspace context is available to Master** — After exploration, the Master should know about the project. Check: does `processMessage()` inject `workspace-map.json` content into the prompt? Does the Master's system prompt include project knowledge? If not, wire it up — the Master MUST have workspace context when answering user questions. Without this, responses are generic and useless                                                                                                                                                           | OB-304 | 🔴 Critical | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | ID     |  Priority   | Status  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :---------: | :-----: |
+| 136 | **Fix message processing after exploration** — After exploration completes, `processMessage()` must work. Verify the full chain: user types `/ai what's in this project?` → Router strips prefix → Master receives "what's in this project?" → Master has workspace context (from exploration or workspace-map.json) → Master responds with accurate project description → response sent back to Console/WhatsApp. Test with Console connector first. **Key file:** `src/master/master-manager.ts` — `processMessage()` (line ~1148), `src/core/router.ts` — `route()` | OB-303 | 🔴 Critical | ✅ Done |
+| 137 | **Verify workspace context is available to Master** — After exploration, the Master should know about the project. Check: does `processMessage()` inject `workspace-map.json` content into the prompt? Does the Master's system prompt include project knowledge? If not, wire it up — the Master MUST have workspace context when answering user questions. Without this, responses are generic and useless                                                                                                                                                           | OB-304 | 🔴 Critical | ✅ Done |
 
 ### Step 3: End-to-End Verification
 
@@ -108,6 +108,8 @@ OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging c
 **Phases 16–21 (34 tasks):** Self-Governing Master — AgentRunner (retries, logging, --allowedTools, --max-turns, --model), tool profiles (read-only, code-edit, full-access), model selection (haiku/sonnet/opus), self-governing Master session (persistent, spawns workers, self-improving), worker orchestration (parallel, registry, progress, timeouts), self-improvement (prompt library, learnings store, effectiveness tracking), E2E test scripts.
 
 **Hotfix (2026-02-22):** Fixed OB-F21 — Master session ID used invalid UUID format (`master-` prefix rejected by Claude CLI), exploration timeout too short (10min→30min), null safety in buildMasterSpawnOptions. Updated 5 test assertions.
+
+**Phase 22 progress (2026-02-22):** OB-300 ✅ exploration lifecycle fixed (--print mode, env var stripping for both execOnce + execOnceStreaming). OB-301 ✅ exploration progress logging via streaming. OB-303 ✅ message processing E2E working — fixed stdin pipe hang (stdio: 'ignore'), reduced maxTurns 50→3 for messages, Zod schema .passthrough() for enriched workspace maps. OB-304 ✅ workspace context injected — buildMapSummary() injects project name/summary/structure/commands/dependencies into system prompt. Console E2E verified: `/ai what's in this project?` returns 1,329-char project-specific response in 13 seconds.
 
 ---
 

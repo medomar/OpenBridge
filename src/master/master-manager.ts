@@ -30,7 +30,7 @@ import * as path from 'node:path';
 const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
-const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
+const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
 
 /** Idle time threshold (5 minutes) before triggering self-improvement cycle */
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -76,6 +76,13 @@ const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
  * Higher than workers because the Master needs room to reason + coordinate.
  */
 const MASTER_MAX_TURNS = 50;
+
+/**
+ * Max turns for message processing (conversational replies).
+ * Much lower than exploration — the workspace context is injected into the
+ * system prompt so the AI can answer most questions without tool calls.
+ */
+const MESSAGE_MAX_TURNS = 3;
 
 /**
  * Options for creating a MasterManager
@@ -141,6 +148,8 @@ export class MasterManager {
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
   private isSelfImproving = false;
+  /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
+  private workspaceMapSummary: string | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -245,6 +254,9 @@ export class MasterManager {
         mapPath: this.dotFolder.getMapPath(),
         gitInitialized: true,
       };
+
+      // Cache workspace map summary for system prompt injection
+      this.workspaceMapSummary = this.buildMapSummary(map);
 
       this.state = 'ready';
       logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
@@ -374,7 +386,7 @@ export class MasterManager {
       prompt,
       workspacePath: this.workspacePath,
       allowedTools: [...session.allowedTools],
-      maxTurns: session.maxTurns,
+      maxTurns: MESSAGE_MAX_TURNS, // Use lower turns for messages — context is in system prompt
       timeout: timeout ?? this.messageTimeout,
       retries: 0, // Master session calls don't auto-retry (caller handles)
     };
@@ -402,8 +414,15 @@ export class MasterManager {
 
   /**
    * Build a concise workspace context string from the loaded workspace map.
+   * Uses the cached map summary if available (much richer than exploration metadata).
    */
   private getWorkspaceContextSummary(): string | null {
+    // Prefer the cached full map summary — it contains everything the AI needs
+    if (this.workspaceMapSummary) {
+      return this.workspaceMapSummary;
+    }
+
+    // Fallback to exploration metadata
     if (!this.explorationSummary) return null;
     const parts: string[] = [];
     if (this.explorationSummary.projectType) {
@@ -421,6 +440,77 @@ export class MasterManager {
       parts.push(`Full workspace map available at: ${this.explorationSummary.mapPath}`);
     }
     return parts.length > 0 ? parts.join('\n') : null;
+  }
+
+  /**
+   * Build a rich text summary from the workspace map for system prompt injection.
+   * Includes project name, type, summary, frameworks, structure, and key files —
+   * enough for the AI to answer most questions without needing tool calls.
+   */
+  private buildMapSummary(map: Record<string, unknown>): string {
+    const parts: string[] = [];
+    const str = (key: string): string | undefined => {
+      const v = map[key];
+      return typeof v === 'string' ? v : undefined;
+    };
+
+    const name = str('projectName');
+    if (name) parts.push(`Project: ${name}`);
+    const ptype = str('projectType');
+    if (ptype) parts.push(`Type: ${ptype}`);
+    const phase = str('projectPhase');
+    if (phase) parts.push(`Phase: ${phase}`);
+    const summary = str('summary');
+    if (summary) parts.push(`\nSummary: ${summary}`);
+
+    const frameworks = map['frameworks'];
+    if (Array.isArray(frameworks) && frameworks.length > 0) {
+      parts.push(`\nFrameworks: ${frameworks.map(String).join(', ')}`);
+    }
+
+    const structure = map['structure'];
+    if (structure && typeof structure === 'object' && !Array.isArray(structure)) {
+      const dirs = Object.entries(structure as Record<string, unknown>)
+        .map(([dirName, info]) => {
+          const purpose =
+            info && typeof info === 'object' && 'purpose' in info
+              ? String((info as Record<string, unknown>)['purpose'])
+              : 'unknown';
+          return `- ${dirName}/: ${purpose}`;
+        })
+        .join('\n');
+      if (dirs) parts.push(`\nDirectory structure:\n${dirs}`);
+    }
+
+    const commands = map['commands'];
+    if (commands && typeof commands === 'object' && !Array.isArray(commands)) {
+      const cmds = Object.entries(commands as Record<string, unknown>)
+        .map(([cmdName, cmd]) => `- ${cmdName}: ${String(cmd)}`)
+        .join('\n');
+      if (cmds) parts.push(`\nAvailable commands:\n${cmds}`);
+    }
+
+    const dependencies = map['dependencies'];
+    if (Array.isArray(dependencies) && dependencies.length > 0) {
+      const deps = dependencies
+        .map((d: unknown) => {
+          if (d && typeof d === 'object') {
+            const dep = d as Record<string, unknown>;
+            const depName = typeof dep['name'] === 'string' ? dep['name'] : '';
+            const depPurpose = typeof dep['purpose'] === 'string' ? dep['purpose'] : '';
+            return `- ${depName}${depPurpose ? `: ${depPurpose}` : ''}`;
+          }
+          return `- ${String(d)}`;
+        })
+        .join('\n');
+      parts.push(`\nDependencies:\n${deps}`);
+    }
+
+    if (this.explorationSummary?.mapPath) {
+      parts.push(`\nFull workspace map: ${this.explorationSummary.mapPath}`);
+    }
+
+    return parts.join('\n');
   }
 
   /**

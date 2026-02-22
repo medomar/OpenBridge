@@ -131,16 +131,18 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   // Wire Master into the bridge router (must happen before start)
   bridge.setMaster(masterManager);
 
-  // Step 4: Start bridge (connectors only — Master handles AI routing)
-  await bridge.start();
-
-  // Step 5: Start exploration (runs in background — does NOT block the bridge)
-  masterManager.start().catch((error) => {
+  // Step 4: Start Master AI BEFORE bridge — so it's ready when messages arrive.
+  // This loads workspace-map.json and transitions from 'idle' to 'ready'.
+  // Runs in parallel with bridge.start() so neither blocks the other.
+  const masterStartPromise = masterManager.start().catch((error) => {
     logger.error(
       { err: error },
       'Master AI exploration failed — bridge continues running without workspace context',
     );
   });
+
+  // Step 5: Start bridge (connectors + queue handler)
+  await Promise.all([masterStartPromise, bridge.start()]);
 
   logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
   logger.info('Press Ctrl+C to stop.');
