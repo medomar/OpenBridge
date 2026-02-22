@@ -2,91 +2,68 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 3 | **Fixed:** 7 | **Last Audit:** 2026-02-22
+> **Open:** 2 | **Fixed:** 9 | **Last Audit:** 2026-02-23
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
 
 ## Open Findings
 
-### OB-F21 — Master session ID uses invalid UUID format (FIXED)
-
-**Discovered:** 2026-02-22 (real-world E2E testing)
-**Component:** `src/master/master-manager.ts:313, 513`
-**Severity:** 🔴 Critical
-**Impact:** Master AI exploration never completes. Session ID rejected by Claude CLI.
-
-**Details:**
-Session IDs were generated as `master-${randomUUID()}` (e.g., `master-dc262cc8-160a-410c-b5e3-96f7f2c905df`). Claude CLI's `--session-id` flag requires a raw UUID — the `master-` prefix makes it invalid. This caused exit code 1 ("Invalid session ID. Must be a valid UUID"). Combined with a 10-minute exploration timeout (DEFAULT_TIMEOUT = 600_000), the Master would either get rejected immediately or time out with exit code 143 (SIGTERM).
-
-**Evidence from exploration.log:**
-
-```
-exit code 1 — Error: Invalid session ID. Must be a valid UUID.
-exit code 143 — (timeout after 10 minutes)
-```
-
-**Fix applied:**
-
-1. Removed `master-` prefix from session ID generation (lines 313, 516) — now uses raw `randomUUID()`
-2. Increased DEFAULT_TIMEOUT from 600_000 (10 min) to 1_800_000 (30 min)
-3. Added null safety check in `buildMasterSpawnOptions()` (line 369)
-4. Updated 5 test assertions across 3 test files to match new UUID format
-
-**Status:** ✅ Fixed (2026-02-22)
-
----
-
 ### OB-F18 — Test suite has 7 failures due to git hook race condition
 
 **Discovered:** 2026-02-22 (post-automation audit)
-**Component:** `tests/master/dotfolder-manager.test.ts`, `tests/master/exploration-coordinator.test.ts`, `tests/connectors/whatsapp.test.ts`
-**Impact:** CI is red. Cannot verify DotFolderManager, ExplorationCoordinator, or WhatsApp reconnect logic.
+**Component:** `tests/master/dotfolder-manager.test.ts`, `tests/master/exploration-coordinator.test.ts`
+**Severity:** 🟡 Medium
+**Impact:** CI may be intermittently red. Test failures are from parallel test execution colliding on temp `.git` directories.
 
 **Details:**
-DotFolderManager tests create temporary `.git` directories for testing. When tests run in parallel, they collide on `.git/hooks/update.sample` file creation. This cascades into 5 ExplorationCoordinator failures (which depend on DotFolderManager). The WhatsApp reconnect test is a separate issue — the reconnect counter reset logic isn't matching test expectations.
+DotFolderManager tests create temporary `.git` directories. When tests run in parallel, they collide on `.git/hooks/update.sample` file creation. This cascades into ExplorationCoordinator failures (which depend on DotFolderManager).
 
-**Evidence:**
+**Fix:** Use unique temp directories per test (e.g., `mkdtemp` in os.tmpdir()). Already proven to work in `workspace-change-tracker.test.ts`.
 
-```
-Test Files  1 failed | 47 passed (48)
-Tests      10 failed | 961 passed (971)
-```
-
-**Fix:** Use unique temp directories per test (e.g., `mkdtemp`), or use `--pool forks` for test isolation.
-
-**Resolves in:** Phase 22, OB-200 + OB-201 + OB-202
+**Resolves in:** Phase 28, OB-430
 
 ---
 
-### OB-F19 — handleSpawnMarkersWithProgress() missing or incomplete
+### OB-F22 — maxTurns: 3 blocks all non-Q&A tasks
 
-**Discovered:** 2026-02-22 (code audit)
-**Component:** `src/master/master-manager.ts:1423-1437`
-**Impact:** Multi-worker progress streaming doesn't work. When Master spawns 2+ workers, the user gets no progress updates until all workers finish.
+**Discovered:** 2026-02-23 (real-world E2E testing)
+**Component:** `src/master/master-manager.ts:89, 415`
+**Severity:** 🔴 Critical
+**Impact:** Any user request that requires file generation, code changes, or multi-step research fails with "Error: Reached max turns (3)". The Master cannot output SPAWN markers within 3 turns for complex tasks.
 
 **Details:**
-The `streamMessage()` method calls `this.handleSpawnMarkersWithProgress(spawnResult.markers)` for multi-worker tasks, but the method is either missing or has an incomplete implementation. The code tries to iterate over an async generator but the underlying method doesn't exist properly.
+`MESSAGE_MAX_TURNS = 3` was set to keep Q&A fast (context is injected in system prompt, so the Master can answer most questions without tools). But tasks like "generate me an HTML file for investors" require the Master to: (1) read workspace context, (2) plan the approach, (3) decide to delegate or act directly. 3 turns isn't enough.
 
-**Fix:** Implement the method — yield "Working on it... (N/M subtasks done)" as each worker completes.
+**Evidence from E2E log (2026-02-23):**
 
-**Resolves in:** Phase 22, OB-204
+```
+content: "can you generate me a small pdf or HTML file to share with potential investors?"
+... (107 seconds of "Still working...")
+Error: Reached max turns (3)
+```
+
+The 107s duration suggests the Master spent all 3 turns on tool calls (reading context) and never reached the point of generating output or SPAWN markers.
+
+**Fix:** Task classification — classify messages as quick-answer/tool-use/complex-task, set maxTurns per category, auto-delegate complex tasks via planning prompt.
+
+**Resolves in:** Phase 25, OB-400 + OB-401
 
 ---
 
-### OB-F20 — HEALTH.md scores are outdated (still showing 0/10 for completed work)
+## Fixed Findings (Recent)
 
-**Discovered:** 2026-02-22 (post-automation audit)
-**Component:** `docs/audit/HEALTH.md`
-**Impact:** Health score breakdown shows 0/10 for Agent Runner, Tool Profiles, Self-Improvement — all of which are fully built. The overall score (7.05) doesn't match reality.
+### OB-F21 — Master session ID uses invalid UUID format ✅
 
-**Details:**
-The score breakdown table was never updated after Phases 16–21 completed. It still shows the baseline from when the phases were empty. The increment-by-task scoring added 0.015 per task but the category weights were never re-evaluated.
+Fixed 2026-02-22. Removed `master-` prefix from session ID generation. Claude CLI requires raw UUID.
 
-**Fix applied:**
-Re-scored all categories: Agent Runner 8.5/10, Tool Profiles 8.0/10, Master AI 7.5/10, Worker Orchestration 7.5/10, Self-Improvement 7.0/10, Testing 8.5/10. Recalculated weighted total to 7.925. Updated header Current Score to 7.930 (+0.005 for OB-314). Added new row to score history. README Current Status table also updated.
+### OB-F19 — handleSpawnMarkersWithProgress() missing or incomplete ✅
 
-**Status:** ✅ Fixed (2026-02-22, OB-314)
+Fixed 2026-02-22 (OB-311). Method fully implemented with async generator yielding progress updates.
+
+### OB-F20 — HEALTH.md scores outdated ✅
+
+Fixed 2026-02-22 (OB-314). All categories re-scored, weighted total recalculated.
 
 ---
 
