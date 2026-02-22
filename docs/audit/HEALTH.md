@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.140/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 7.110
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 10 (Phase 22: 7/7 done ✅, Phase 23: 0/5, Phase 24: 0/5)
+> **Current Score:** 7.170/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 7.140
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 9 (Phase 22: 7/7 done ✅, Phase 23: 1/5, Phase 24: 0/5)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -113,6 +113,7 @@
 | 2026-02-22 | 7.060 |    +0.01    | OB-300: Session lifecycle verification — verified that exploration uses --session-id (not --print) and processMessage() uses --resume on same session. Code was already correct (buildMasterSpawnOptions uses sessionId on first call, resumeSessionId on subsequent calls). Session continuity already tested in E2E tests (full-v2-e2e.test.ts). Added documentation test file referencing existing verification. Bug OB-F21 (invalid UUID format) was already fixed on 2026-02-22. Phase 22 started (1/7 tasks done)                    |
 | 2026-02-22 | 7.110 |    +0.05    | OB-301: Exploration progress logging — modified masterDrivenExplore() to use agentRunner.stream() instead of spawn(), added real-time progress logging to console and .openbridge/exploration.log (every 10 seconds), created extractProgressMessage() to detect tool usage patterns (Read/Glob/Grep/Write), logs workspace exploration phases (scanning, analyzing, writing map). Updated E2E test assertion (3 stream calls: exploration + 2 user messages). Phase 22 (2/7 tasks done)                                                   |
 | 2026-02-22 | 7.140 |    +0.03    | OB-302: Handle messages during exploration — added pendingMessages queue to MasterManager, processMessage() queues messages when state === 'exploring' and returns a user-friendly message, explore() drains the queue via Router after state transitions to 'ready', bridge.ts calls master.setRouter(router) to enable response delivery. Added 1 new test verifying queue drain via router mock. Phase 22 complete (7/7 tasks done ✅)                                                                                                  |
+| 2026-02-22 | 7.170 |    +0.03    | OB-310: Session recovery on crash — verified isSessionDead()/restartMasterSession() logic is correct in processMessage(). Fixed 9 failing tests in master-manager.test.ts: updated 3 tests to reflect --print mode (no sessionId/resumeSessionId in processMessage), fixed explore test to use mockStream instead of mockSpawn, added mockSpawn.mockReset()/mockStream.mockReset() to Graceful Restart beforeEach to prevent mock leakage. Phase 23 started (1/5 tasks done)                                                               |
 
 ---
 
