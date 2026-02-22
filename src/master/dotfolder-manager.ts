@@ -14,6 +14,8 @@ import type {
   MasterSession,
   PromptManifest,
   PromptTemplate,
+  LearningEntry,
+  LearningsRegistry,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -26,6 +28,8 @@ import {
   DirectoryDiveResultSchema,
   MasterSessionSchema,
   PromptManifestSchema,
+  LearningEntrySchema,
+  LearningsRegistrySchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -756,6 +760,165 @@ Thumbs.db
       const rate = prompt.successRate ?? 0;
       return rate < threshold;
     });
+  }
+
+  /**
+   * Get the path to the learnings.json file
+   */
+  public getLearningsPath(): string {
+    return path.join(this.dotFolderPath, 'learnings.json');
+  }
+
+  /**
+   * Read the learnings registry from .openbridge/learnings.json
+   */
+  public async readLearnings(): Promise<LearningsRegistry | null> {
+    const learningsPath = this.getLearningsPath();
+
+    try {
+      const content = await fs.readFile(learningsPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return LearningsRegistrySchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the learnings registry to .openbridge/learnings.json
+   */
+  public async writeLearnings(registry: LearningsRegistry): Promise<void> {
+    const validated = LearningsRegistrySchema.parse(registry);
+    const learningsPath = this.getLearningsPath();
+    await fs.writeFile(learningsPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Append a new learning entry to the learnings registry.
+   * Creates learnings.json if it doesn't exist.
+   */
+  public async appendLearning(entry: LearningEntry): Promise<void> {
+    LearningEntrySchema.parse(entry);
+
+    const existing = await this.readLearnings();
+    const now = new Date().toISOString();
+    const registry: LearningsRegistry = existing ?? {
+      entries: [],
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: '1.0.0',
+    };
+
+    registry.entries.push(entry);
+    registry.updatedAt = now;
+
+    await this.writeLearnings(registry);
+  }
+
+  /**
+   * Get all learning entries for a specific task type.
+   * Useful for analyzing patterns in task execution.
+   */
+  public async getLearningsByTaskType(taskType: string): Promise<LearningEntry[]> {
+    const registry = await this.readLearnings();
+    if (!registry) return [];
+
+    return registry.entries.filter((entry) => entry.taskType === taskType);
+  }
+
+  /**
+   * Get all learning entries for a specific model.
+   * Useful for analyzing model performance patterns.
+   */
+  public async getLearningsByModel(model: string): Promise<LearningEntry[]> {
+    const registry = await this.readLearnings();
+    if (!registry) return [];
+
+    return registry.entries.filter((entry) => entry.modelUsed === model);
+  }
+
+  /**
+   * Get all learning entries for a specific profile.
+   * Useful for analyzing profile effectiveness.
+   */
+  public async getLearningsByProfile(profile: string): Promise<LearningEntry[]> {
+    const registry = await this.readLearnings();
+    if (!registry) return [];
+
+    return registry.entries.filter((entry) => entry.profileUsed === profile);
+  }
+
+  /**
+   * Get all failed learning entries.
+   * Useful for identifying problem areas and patterns.
+   */
+  public async getFailedLearnings(): Promise<LearningEntry[]> {
+    const registry = await this.readLearnings();
+    if (!registry) return [];
+
+    return registry.entries.filter((entry) => !entry.success);
+  }
+
+  /**
+   * Get learning statistics for a specific task type.
+   * Returns success rate, average duration, total count, etc.
+   */
+  public async getTaskTypeStats(taskType: string): Promise<{
+    totalCount: number;
+    successCount: number;
+    failureCount: number;
+    successRate: number;
+    avgDurationMs: number;
+    avgRetryCount: number;
+  } | null> {
+    const entries = await this.getLearningsByTaskType(taskType);
+    if (entries.length === 0) return null;
+
+    const successCount = entries.filter((e) => e.success).length;
+    const failureCount = entries.length - successCount;
+    const successRate = successCount / entries.length;
+    const avgDurationMs = entries.reduce((sum, e) => sum + e.durationMs, 0) / entries.length;
+    const avgRetryCount = entries.reduce((sum, e) => sum + e.retryCount, 0) / entries.length;
+
+    return {
+      totalCount: entries.length,
+      successCount,
+      failureCount,
+      successRate,
+      avgDurationMs,
+      avgRetryCount,
+    };
+  }
+
+  /**
+   * Get learning statistics for a specific model.
+   * Returns success rate, average duration, total count, etc.
+   */
+  public async getModelStats(model: string): Promise<{
+    totalCount: number;
+    successCount: number;
+    failureCount: number;
+    successRate: number;
+    avgDurationMs: number;
+    avgRetryCount: number;
+  } | null> {
+    const entries = await this.getLearningsByModel(model);
+    if (entries.length === 0) return null;
+
+    const successCount = entries.filter((e) => e.success).length;
+    const failureCount = entries.length - successCount;
+    const successRate = successCount / entries.length;
+    const avgDurationMs = entries.reduce((sum, e) => sum + e.durationMs, 0) / entries.length;
+    const avgRetryCount = entries.reduce((sum, e) => sum + e.retryCount, 0) / entries.length;
+
+    return {
+      totalCount: entries.length,
+      successCount,
+      failureCount,
+      successRate,
+      avgDurationMs,
+      avgRetryCount,
+    };
   }
 
   /**

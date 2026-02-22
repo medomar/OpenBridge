@@ -530,3 +530,66 @@ export const PromptManifestSchema = z.object({
 });
 
 export type PromptManifest = z.infer<typeof PromptManifestSchema>;
+
+// ── Learning Store ──────────────────────────────────────────────
+
+/**
+ * Single learning entry recorded after each task execution.
+ * The Master AI reads this history on startup to inform future decisions.
+ */
+export const LearningEntrySchema = z.object({
+  /** Unique learning identifier */
+  id: z.string().min(1),
+
+  /** Task type classification (e.g., 'refactoring', 'bug-fix', 'feature', 'exploration') */
+  taskType: z.string(),
+
+  /** Model that was used for this task */
+  modelUsed: z.string().optional(),
+
+  /** Tool profile that was used for this task */
+  profileUsed: z.string().optional(),
+
+  /** Whether the task succeeded (exit code 0, valid output) */
+  success: z.boolean(),
+
+  /** Duration in milliseconds */
+  durationMs: z.number().int().nonnegative(),
+
+  /** Free-form notes about the task execution, outcomes, or lessons */
+  notes: z.string().optional(),
+
+  /** When this learning was recorded */
+  recordedAt: z.string().datetime(),
+
+  /** Exit code from the worker execution */
+  exitCode: z.number().int().optional(),
+
+  /** Number of retries required */
+  retryCount: z.number().int().nonnegative().default(0),
+
+  /** Additional structured metadata */
+  metadata: z.record(z.unknown()).default({}),
+});
+
+export type LearningEntry = z.infer<typeof LearningEntrySchema>;
+
+/**
+ * Learnings registry stored in .openbridge/learnings.json.
+ * Accumulates knowledge from all task executions for the Master AI to learn from.
+ */
+export const LearningsRegistrySchema = z.object({
+  /** Array of learning entries, ordered by recordedAt (oldest first) */
+  entries: z.array(LearningEntrySchema).default([]),
+
+  /** When this registry was created */
+  createdAt: z.string().datetime(),
+
+  /** When this registry was last updated */
+  updatedAt: z.string().datetime(),
+
+  /** Version of the learnings schema */
+  schemaVersion: z.string().default('1.0.0'),
+});
+
+export type LearningsRegistry = z.infer<typeof LearningsRegistrySchema>;
