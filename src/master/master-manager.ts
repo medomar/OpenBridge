@@ -1478,6 +1478,11 @@ Work silently — do not output conversational text, just explore and write the 
    * Spawn a single worker from a parsed SPAWN marker.
    * Resolves the profile to tools via AgentRunner's manifest resolution.
    * Tracks the worker lifecycle in the registry: pending → running → completed/failed.
+   * Logs each worker execution to .openbridge/tasks/ for audit trail and learning.
+   *
+   * **Depth Limiting (OB-164):**
+   * Workers are spawned WITHOUT sessionId, so they get --print mode (single-turn, stateless).
+   * This enforces maxSpawnDepth=1 — only the Master can spawn workers, workers cannot spawn.
    */
   private async spawnWorker(
     workerId: string,
@@ -1499,6 +1504,7 @@ Work silently — do not output conversational text, just explore and write the 
       'Spawning worker from SPAWN marker',
     );
 
+    // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     const spawnOpts = manifestToSpawnOptions(
       {
         prompt: body.prompt,
@@ -1511,6 +1517,35 @@ Work silently — do not output conversational text, just explore and write the 
       },
       customProfiles,
     );
+
+    // Create task record for this worker execution (OB-165: task history + audit trail)
+    const taskRecord: TaskRecord = {
+      id: workerId,
+      userMessage: body.prompt,
+      sender: 'master',
+      description: `Worker ${index}: ${body.prompt.slice(0, 100)}`,
+      status: 'processing',
+      handledBy: 'worker',
+      createdAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      metadata: {
+        workerIndex: index,
+        profile,
+        model: body.model,
+        maxTurns: body.maxTurns,
+        timeout: body.timeout,
+        retries: body.retries,
+        manifest: {
+          prompt: body.prompt,
+          workspacePath: this.workspacePath,
+          profile,
+          model: body.model,
+          maxTurns: body.maxTurns,
+          timeout: body.timeout,
+          retries: body.retries,
+        },
+      },
+    };
 
     try {
       // Note: We cannot get the actual PID from spawn() because it's an async call
@@ -1548,6 +1583,25 @@ Work silently — do not output conversational text, just explore and write the 
       // Persist registry after worker completion or failure
       await this.persistWorkerRegistry();
 
+      // Update task record with result (OB-165)
+      taskRecord.status = result.exitCode === 0 ? 'completed' : 'failed';
+      taskRecord.result = result.exitCode === 0 ? result.stdout : undefined;
+      taskRecord.error = result.exitCode === 0 ? undefined : result.stderr;
+      taskRecord.completedAt = new Date().toISOString();
+      taskRecord.durationMs = result.durationMs;
+      taskRecord.metadata = {
+        ...taskRecord.metadata,
+        exitCode: result.exitCode,
+        retryCount: result.retryCount,
+        modelUsed: result.model,
+        modelFallbacks: result.modelFallbacks,
+        resolvedTools: spawnOpts.allowedTools,
+      };
+
+      // Write worker task to disk without git commit (OB-165: task history + audit trail)
+      // Workers are batched, so we don't commit each one individually to avoid git lock contention
+      await this.dotFolder.writeTask(taskRecord);
+
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
@@ -1564,6 +1618,22 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Persist registry after exception
       await this.persistWorkerRegistry();
+
+      // Update task record with error (OB-165)
+      taskRecord.status = 'failed';
+      taskRecord.error = errorMessage;
+      taskRecord.completedAt = new Date().toISOString();
+      taskRecord.durationMs = 0;
+      taskRecord.metadata = {
+        ...taskRecord.metadata,
+        exitCode: -1,
+        retryCount: 0,
+        exceptionThrown: true,
+      };
+
+      // Write worker task to disk even on exception (OB-165: task history + audit trail)
+      // Workers are batched, so we don't commit each one individually to avoid git lock contention
+      await this.dotFolder.writeTask(taskRecord);
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;

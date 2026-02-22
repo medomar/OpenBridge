@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 6.825/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 6.81
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 11 (Phases 19–21)
+> **Current Score:** 6.845/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 6.84
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 9 (Phases 20–21)
 > **Reason for current state:** Re-baseline after real-world testing. MVP code exists but exploration fails in production (exit code 143), executor uses unsafe permissions, no retry logic, no model selection. Architecture is sound but execution layer needs rebuilding.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -41,7 +41,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 6.71** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Master session lifecycle (OB-150). Master system prompt (OB-151). Master-driven exploration (OB-152). Task decomposition protocol (OB-153). Worker result injection (OB-154). Master tool access control (OB-155). Graceful Master restart: detects dead sessions (SIGTERM, SIGKILL, context overflow), creates new session with context summary from workspace-map.json + recent task history, retries transparently so user sees no interruption (OB-156). 10 new tests passing.
+**Current state: 6.845** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. All 6 tasks done: worker registry (OB-160), parallel worker spawning (OB-161), worker progress streaming (OB-162), worker timeout + cleanup (OB-163), depth limiting (OB-164), task history + audit trail (OB-165). Every worker execution now logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Master can read this history to learn from past executions.
 
 ---
 
@@ -100,6 +100,8 @@
 | 2026-02-21 | 6.76  |    +0.05    | OB-160: Worker registry — WorkerRegistry class with full lifecycle tracking (pending/running/completed/failed/cancelled), concurrency limits (default: 5), persistence via DotFolderManager (readWorkers/writeWorkers). 48 new tests. Phase 19 started       |
 | 2026-02-21 | 6.81  |    +0.05    | OB-161: Parallel worker spawning — integrated WorkerRegistry into handleSpawnMarkers() flow. Workers registered before spawning, lifecycle tracked (pending→running→completed/failed), registry persisted to .openbridge/workers.json. 4 new tests           |
 | 2026-02-22 | 6.825 |   +0.015    | OB-163: Worker timeout + cleanup — detect SIGTERM (143) / SIGKILL (137) exit codes, mark workers as timeout failures with specific error messages, log timeout events, persist registry after worker completion. 4 new tests in master-manager-spawn.test.ts |
+| 2026-02-22 | 6.84  |   +0.015    | OB-164: Depth limiting — workers cannot spawn workers (maxSpawnDepth=1). Workers get --print mode (single-turn, stateless), Master gets --session-id/--resume (multi-turn, persistent). Enforced in buildArgs() via session mode. 6 new tests                |
+| 2026-02-22 | 6.845 |   +0.005    | OB-165: Task history + audit trail — every worker execution logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Added DotFolderManager.writeTask() (no git commit). Phase 19 complete (6/6 tasks done) |
 
 ---
 

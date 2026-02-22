@@ -287,6 +287,18 @@ Thumbs.db
   }
 
   /**
+   * Write a task record to tasks/ folder WITHOUT committing to git.
+   * Useful for worker tasks that should be batched into a single commit later.
+   */
+  public async writeTask(task: TaskRecord): Promise<void> {
+    // Validate before recording
+    const validated = TaskRecordSchema.parse(task);
+
+    const taskPath = path.join(this.tasksPath, `${task.id}.json`);
+    await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
    * Read a task by ID
    */
   public async readTask(taskId: string): Promise<TaskRecord | null> {
