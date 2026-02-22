@@ -4,6 +4,7 @@ import { generateMasterSystemPrompt } from './master-system-prompt.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import type { Router } from '../core/router.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ToolProfile } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
@@ -134,6 +135,11 @@ export class MasterManager {
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
 
+  /** Messages queued while exploration is in progress — drained after exploration completes */
+  private pendingMessages: InboundMessage[] = [];
+  /** Router reference for sending pending message responses after exploration completes */
+  private router: Router | null = null;
+
   /** Persistent Master session — shared across all user messages */
   private masterSession: MasterSession | null = null;
   /** Whether the session has been used (first call uses --session-id, subsequent use --resume) */
@@ -260,6 +266,7 @@ export class MasterManager {
 
       this.state = 'ready';
       logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
+      await this.drainPendingMessages();
       return;
     }
 
@@ -694,6 +701,14 @@ export class MasterManager {
   }
 
   /**
+   * Set the Router so pending messages can be routed after exploration completes.
+   * Bridge calls this after setMaster() so the Master can deliver queued messages.
+   */
+  public setRouter(router: Router): void {
+    this.router = router;
+  }
+
+  /**
    * Load the worker registry from .openbridge/workers.json.
    * Called during start() to restore worker state from previous sessions.
    */
@@ -1041,6 +1056,9 @@ export class MasterManager {
 
       this.state = 'ready';
 
+      // Drain any messages queued while exploration was running
+      await this.drainPendingMessages();
+
       logger.info(
         {
           projectType: this.explorationSummary?.projectType,
@@ -1342,6 +1360,45 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
+   * Drain messages that were queued during exploration.
+   * Called after state transitions to 'ready'. Routes each queued message through
+   * the Router (which sends the response back to the user's connector) if a router
+   * is set, or processes silently and logs a warning if no router is available.
+   */
+  private async drainPendingMessages(): Promise<void> {
+    if (this.pendingMessages.length === 0) return;
+
+    const messages = [...this.pendingMessages];
+    this.pendingMessages = [];
+
+    logger.info({ count: messages.length }, 'Draining pending messages after exploration');
+
+    for (const message of messages) {
+      if (this.router) {
+        try {
+          await this.router.route(message);
+        } catch (error) {
+          logger.error({ error, sender: message.sender }, 'Failed to route pending message');
+        }
+      } else {
+        logger.warn(
+          { sender: message.sender },
+          'No router set — pending message processed but response not delivered',
+        );
+        try {
+          const response = await this.processMessage(message);
+          logger.info(
+            { sender: message.sender, responseLength: response.length },
+            'Pending message processed (no router)',
+          );
+        } catch (error) {
+          logger.error({ error, sender: message.sender }, 'Failed to process pending message');
+        }
+      }
+    }
+  }
+
+  /**
    * Process a message from a user.
    * Uses the persistent Master session for conversation continuity.
    * All messages go through the same Master session regardless of sender.
@@ -1349,6 +1406,17 @@ Work silently — do not output conversational text, just explore and write the 
   public async processMessage(message: InboundMessage): Promise<string> {
     // Reset idle timer on new message
     this.resetIdleTimer();
+
+    // Queue messages that arrive while the Master is exploring the workspace.
+    // They will be processed once exploration completes and state transitions to 'ready'.
+    if (this.state === 'exploring') {
+      logger.info(
+        { sender: message.sender },
+        'Master is exploring workspace, queueing message for later processing',
+      );
+      this.pendingMessages.push(message);
+      return "I'm still exploring your workspace. Your message will be processed once exploration completes.";
+    }
 
     if (this.state !== 'ready') {
       logger.warn(

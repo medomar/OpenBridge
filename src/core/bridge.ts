@@ -74,6 +74,7 @@ export class Bridge {
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
       this.router.setMaster(this.master);
+      this.master.setRouter(this.router);
       logger.info('Master AI wired into router (V2 mode — providers skipped)');
     } else {
       // V0 flow: initialize providers and wire orchestrator
