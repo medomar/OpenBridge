@@ -1,189 +1,113 @@
 # OpenBridge — Task List
 
-> **Pending:** 0 tasks | **Status:** ALL PHASES COMPLETE ✅
+> **Pending:** 17 tasks in 3 phases | **Next up:** Phase 22
 > **Last Updated:** 2026-02-22
-> **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
+> **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing archive (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md)
 
 ---
 
 ## Vision
 
-OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging channels to a **Master AI** that explores your workspace, delegates tasks to worker agents, and continuously improves its own capabilities — all using the AI tools already installed on your machine (zero API keys, zero extra cost).
+OpenBridge is a **self-governing autonomous AI bridge**. It connects messaging channels to a **Master AI** that explores your workspace, spawns worker agents, and executes tasks — all using the AI tools already installed on your machine (zero API keys, zero extra cost).
 
-The Master AI is the brain. It decides:
-
-- **Which model** each worker uses (haiku for mechanical tasks, opus for reasoning)
-- **Which tools** each worker gets (read-only for exploration, code-edit for implementation)
-- **How to break down** complex user requests into worker subtasks
-- **How to improve** its own prompts, scripts, and strategies over time
-
-**Key principles:**
-
-- **Zero config AI** — auto-discovers Claude Code, Codex, Aider, etc. on the machine
-- **Master AI is self-governing** — chooses models, tools, and strategies for workers
-- **Agent Runner** — unified TypeScript executor inspired by our bash scripts (retries, logging, tool restrictions, model selection)
-- **Workers are short-lived** — spawned per-task with bounded turns and restricted tools
-- **Master is long-lived** — maintains session continuity, accumulates knowledge
-- **`.openbridge/` is the AI's brain** — everything it learns lives in the target project
-- **Self-improvement** — Master can refine its own prompts and learn from task outcomes
+**Current state:** All layers are built but the **end-to-end flow is broken**. Exploration never completes, sessions die, user messages get no AI response. The architecture is there — it's just not wired up correctly. Phase 22 fixes this.
 
 ---
 
 ## Roadmap
 
-| Phase | Focus                                  | Tasks  | Status |
-| :---: | -------------------------------------- | :----: | :----: |
-|  1–5  | V0 foundation + bug fixes              |   40   |   ✅   |
-| 6–10  | Discovery, Master, V2, Delegation      |   24   |   ✅   |
-|  11   | Incremental exploration                |   8    |   ✅   |
-|  12   | Status + interaction                   |   4    |   ✅   |
-|  13   | Documentation rewrite                  |   6    |   ✅   |
-|  14   | Testing + verification                 |   8    |   ✅   |
-|       | **Total completed**                    | **98** |        |
-|  16   | Agent Runner — core executor           |   8    |   ✅   |
-|  17   | Tool profiles + model selection        |   5    |   ✅   |
-|  18   | Master AI rewrite — self-governing     |   7    |   ✅   |
-|  19   | Worker orchestration + task manifests  |   6    |   ✅   |
-|  20   | Self-improvement + learnings           |   4    |   ✅   |
-|  21   | End-to-end hardening + production test |   4    |   ✅   |
-
-> Phase 15 (Telegram, Discord, Web Chat) moved to backlog. The Master AI must work reliably before adding more channels.
+| Phase | Focus                              |  Tasks  | Status |
+| :---: | ---------------------------------- | :-----: | :----: |
+| 1–14  | MVP foundation                     |   98    |   ✅   |
+| 16–21 | Self-Governing Master AI           |   34    |   ✅   |
+|       | **Total completed**                | **132** |        |
+|  22   | Make it work (E2E)                 |    7    |   ◻    |
+|  23   | Production hardening + polish      |    5    |   ◻    |
+|  24   | New channels (Telegram + Web Chat) |    5    |   ◻    |
 
 ---
 
-## Phase 16 — Agent Runner: Core Executor
+## Phase 22 — Make It Work (End-to-End)
 
-> **Focus:** Replace `executeClaudeCode()` with a production-grade agent runner inspired by our bash scripts. This is the foundation everything else builds on.
+> **Goal:** User runs `npm start`, exploration completes with visible progress, user sends `/ai hello`, gets an intelligent response back. This is the ONLY thing that matters right now.
 >
-> **Why this first:** The current executor uses `--dangerously-skip-permissions` (security risk), has no retry logic (one failure kills exploration), no model selection, no turn limits, and no logging to disk. Our bash scripts already solved all of these problems — this phase ports those patterns into TypeScript.
+> **Why this order:** Tasks are ordered by dependency. Each task unblocks the next. Don't skip ahead.
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                         | ID     |  Priority   | Status  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :---------: | :-----: |
-| 91  | **AgentRunner class** — create `src/core/agent-runner.ts` with `spawn()` method. Accepts: prompt, workspacePath, model, allowedTools[], maxTurns, timeout, retries, retryDelay, logFile. Internally builds `claude` CLI args and spawns child process. Returns `AgentResult { stdout, stderr, exitCode, durationMs, retryCount }`. Replaces raw `spawn('claude', ...)` calls                                                                                 | OB-130 | 🔴 Critical | ✅ Done |
-| 92  | **--allowedTools support** — AgentRunner builds `--allowedTools` flags from the tools array instead of using `--dangerously-skip-permissions`. Define tool group constants: `TOOLS_READ_ONLY = ['Read', 'Glob', 'Grep']`, `TOOLS_CODE_EDIT = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npm:*)', 'Bash(npx:*)']`, `TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)']`. Remove all `--dangerously-skip-permissions` usage | OB-131 | 🔴 Critical | ✅ Done |
-| 93  | **--max-turns support** — AgentRunner passes `--max-turns N` to prevent runaway agents. Default: 15 for exploration, 25 for user tasks. Configurable per spawn call                                                                                                                                                                                                                                                                                          | OB-132 |   🟠 High   | ✅ Done |
-| 94  | **--model support** — AgentRunner passes `--model <name>` to select the model. Accepts: 'haiku', 'sonnet', 'opus' or full model IDs. Default: inherits from config or uses the discovered tool's default                                                                                                                                                                                                                                                     | OB-133 |   🟠 High   | ✅ Done |
-| 95  | **Retry logic with backoff** — AgentRunner retries on non-zero exit codes up to `retries` times (default: 3). Waits `retryDelay` ms between attempts (default: 10000). Logs each attempt. Throws after all retries exhausted with aggregated error. Mirrors bash scripts' `MAX_CONSECUTIVE_FAILURES` + `SLEEP_ON_RETRY` pattern                                                                                                                              | OB-134 |   🟠 High   | ✅ Done |
-| 96  | **Disk logging** — AgentRunner writes full stdout/stderr to `logFile` path (default: `.openbridge/logs/<taskId>.log`). Creates log directory if missing. Includes timestamp, model, tools, prompt length in log header. Mirrors bash scripts' `tee "$LOG_FILE"` pattern                                                                                                                                                                                      | OB-135 |   🟡 Med    | ✅ Done |
-| 97  | **Streaming support** — Add `AgentRunner.stream()` method that yields chunks as they arrive (same as current `streamClaudeCode` but with all the new features: allowedTools, maxTurns, model, retries). Returns `AsyncGenerator<string, AgentResult>`                                                                                                                                                                                                        | OB-136 |   🟡 Med    | ✅ Done |
-| 98  | **Migrate all callers** — Update `exploration-coordinator.ts`, `master-manager.ts` (processMessage, streamMessage, reExplore), and `delegation.ts` to use `AgentRunner.spawn()` / `AgentRunner.stream()` instead of `executeClaudeCode()` / `streamClaudeCode()`. Delete `claude-code-executor.ts` after migration is verified                                                                                                                               | OB-137 |   🟠 High   | ✅ Done |
+### Step 1: Exploration Must Complete
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | ID     |  Priority   |  Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :---------: | :-------: |
+| 133 | **Fix exploration session lifecycle** — The Master exploration uses `agentRunner.spawn()` which runs a single `claude --print` call. After exploration, the session is closed/disposed. Then `processMessage()` tries `--resume` on the dead session and crashes. **Fix:** Exploration must use `--session-id <UUID>` (not `--print`) so the session stays alive for future messages. Or: make exploration write `workspace-map.json` and let `processMessage()` inject it as context into a NEW session. Verify: exploration completes and `workspace-map.json` is written to `.openbridge/`. **Key file:** `src/master/master-manager.ts` — `masterDrivenExplore()` (line ~972) and `buildMasterSpawnOptions()` (line ~368) | OB-300 | 🔴 Critical | ◻ Pending |
+| 134 | **Add exploration progress logging** — Right now exploration is a black box — no output for 30 minutes. Add real-time progress logs so the user knows what's happening. Log: "Scanning workspace structure...", "Found N files, classifying project...", "Exploring src/ directory...", "Writing workspace map...". Either stream AgentRunner output line-by-line, or have the Master write progress to `.openbridge/exploration.log` and tail it. **Key files:** `src/master/master-manager.ts`, `src/core/agent-runner.ts` (check if `stream()` method exists and use it)                                                                                                                                                   | OB-301 |   🟠 High   | ◻ Pending |
+| 135 | **Handle messages during exploration** — When exploration is running and user sends `/ai hello`, they get stuck or an error. **Fix:** Either queue the message and process it after exploration, or let the Master handle messages in parallel (exploration + message are separate sessions). At minimum, respond with "I'm still exploring your workspace, please wait..." with an ETA                                                                                                                                                                                                                                                                                                                                       | OB-302 |   🟠 High   | ◻ Pending |
+
+### Step 2: User Message → AI Response
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | ID     |  Priority   |  Status   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :---------: | :-------: |
+| 136 | **Fix message processing after exploration** — After exploration completes, `processMessage()` must work. Verify the full chain: user types `/ai what's in this project?` → Router strips prefix → Master receives "what's in this project?" → Master has workspace context (from exploration or workspace-map.json) → Master responds with accurate project description → response sent back to Console/WhatsApp. Test with Console connector first. **Key file:** `src/master/master-manager.ts` — `processMessage()` (line ~1148), `src/core/router.ts` — `route()` | OB-303 | 🔴 Critical | ◻ Pending |
+| 137 | **Verify workspace context is available to Master** — After exploration, the Master should know about the project. Check: does `processMessage()` inject `workspace-map.json` content into the prompt? Does the Master's system prompt include project knowledge? If not, wire it up — the Master MUST have workspace context when answering user questions. Without this, responses are generic and useless                                                                                                                                                           | OB-304 | 🔴 Critical | ◻ Pending |
+
+### Step 3: End-to-End Verification
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                               | ID     |  Priority   |  Status   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :---------: | :-------: |
+| 138 | **E2E test: Software Dev use case** — Point OpenBridge at a real codebase (e.g., Social-Media-Automation-Platform). Run `npm start`. Wait for exploration. Send `/ai what's in this project?` via Console. Verify response is accurate and project-specific. Send `/ai what technologies does this project use?`. Verify follow-up uses conversation context. Fix any issues found | OB-305 | 🔴 Critical | ◻ Pending |
+| 139 | **E2E test: Business files use case** — Create a folder with CSV/text business files (menu, inventory, schedule). Point OpenBridge at it. Send `/ai what ingredients are running low?`. Verify the Master reads the CSV and gives a correct answer. This validates the USE_CASES.md scenarios (cafe, law firm, etc.)                                                               | OB-306 |   🟠 High   | ◻ Pending |
 
 ---
 
-## Phase 17 — Tool Profiles + Model Selection
+## Phase 23 — Production Hardening + Polish
 
-> **Focus:** Give the Master AI a vocabulary for describing worker capabilities. Tool profiles define what a worker can do. Model selection defines how smart it needs to be.
+> **Focus:** Now that E2E works, make it reliable. Error recovery, session durability, worker delegation, and cleanup.
 >
-> **Why this second:** Once the AgentRunner exists, the Master needs a way to express "this worker should only read files" or "this worker needs to edit code". Profiles are the interface between Master decisions and AgentRunner execution.
+> **Prerequisite:** Phase 22 must be complete (exploration works, messages get responses).
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                  | ID     | Priority | Status  |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 99  | **Tool profile schema** — create `src/types/agent.ts` with Zod schemas: `ToolProfile` (name + tools[]), `TaskManifest` (prompt, workspacePath, model, profile, maxTurns, timeout, retries). Define built-in profiles: `read-only` (Read, Glob, Grep), `code-edit` (Read, Edit, Write, Glob, Grep, Bash(git:\*), Bash(npm:\*), Bash(npx:\*)), `full-access` (all tools). Export as `BUILT_IN_PROFILES` | OB-140 | 🟠 High  | ✅ Done |
-| 100 | **Model selection strategy** — create `src/core/model-selector.ts`. Given a task description and profile, recommend a model. Rules: read-only tasks → haiku (fast, cheap), code-edit tasks → sonnet (balanced), complex reasoning → opus (best). Allow override via TaskManifest. Master can call this or ignore it                                                                                   | OB-141 |  🟡 Med  | ✅ Done |
-| 101 | **AgentRunner integration** — AgentRunner resolves `profile` field from TaskManifest into `--allowedTools` flags. If both `profile` and explicit `allowedTools` are provided, explicit wins. Add `TaskManifest` as an alternative input to `AgentRunner.spawn()`                                                                                                                                      | OB-142 | 🟠 High  | ✅ Done |
-| 102 | **Profile registry in .openbridge/** — Master can create custom profiles beyond built-in ones. Stored in `.openbridge/profiles.json`. AgentRunner reads built-in + custom profiles. Master can add profiles like `test-runner` (Read, Glob, Grep, Bash(npm:test))                                                                                                                                     | OB-143 |  🟡 Med  | ✅ Done |
-| 103 | **Model fallback chain** — if preferred model is unavailable or rate-limited (exit code indicating rate limit), fall back to next model. Chain: opus → sonnet → haiku. Log fallback decisions. Mirrors OpenClaw's model-fallback.ts pattern                                                                                                                                                           | OB-144 |  🟢 Low  | ✅ Done |
+| #   | Task                                                                                                                                                                                                                                                                                                                                                | ID     | Priority |  Status   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 140 | **Session recovery on crash** — If the Master session crashes (exit 143, OOM, context overflow), it should automatically restart with a fresh session and re-inject workspace context. Currently `restartMasterSession()` exists but may not trigger correctly. Verify: kill the Master mid-conversation, send another message, confirm it recovers | OB-310 | 🟠 High  | ◻ Pending |
+| 141 | **Worker delegation E2E** — Verify SPAWN markers work: Master decides a task needs a worker, spawns `claude --print` with restricted tools, gets result back, synthesizes response. Test with: `/ai run the tests` (should spawn a worker with Bash tool). Fix `handleSpawnMarkers()` and `handleSpawnMarkersWithProgress()` if broken              | OB-311 | 🟠 High  | ◻ Pending |
+| 142 | **Fix MaxListenersExceededWarning** — Node warns about 11 exit listeners on startup. Audit all `process.on('exit')` / `process.on('SIGTERM')` handlers across modules and deduplicate. Not critical but noisy                                                                                                                                       | OB-312 |  🟡 Med  | ◻ Pending |
+| 143 | **Fix test suite failures** — 4 tests fail in exploration-coordinator.test.ts (git race condition) + 1 unhandled rejection in agent-runner.test.ts. Fix them. Also update any tests broken by Phase 22 changes. Run full suite green                                                                                                                | OB-313 |  🟡 Med  | ◻ Pending |
+| 144 | **Health score re-baseline + npm package prep** — Update HEALTH.md scores to reflect reality. Verify `npm pack` works, `npx openbridge init` runs, README is accurate                                                                                                                                                                               | OB-314 |  🟢 Low  | ◻ Pending |
 
 ---
 
-## Phase 18 — Master AI Rewrite: Self-Governing Agent
+## Phase 24 — New Channels (Telegram + Web Chat)
 
-> **Focus:** Rewrite MasterManager so the Master AI is a long-lived session that makes its own decisions about how to handle tasks. Instead of hardcoded exploration phases, the Master reads its context and decides what to do.
+> **Focus:** Add Telegram and Web Chat connectors. Each implements the same `Connector` interface.
 >
-> **Why this third:** With AgentRunner + profiles in place, the Master can now express "spawn a worker with read-only profile using haiku" as a concrete action. This phase rewires the Master from a passive executor to an active decision-maker.
+> **Prerequisite:** Phase 23 complete (system is stable and tested).
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                           | ID     |  Priority   | Status  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :---------: | :-----: |
-| 104 | **Master session lifecycle** — Master AI runs as a persistent `claude` session (not `--print`). On startup: `claude --session-id master-{uuid} --allowedTools "Read Glob Grep Write Edit" --max-turns 50`. Master session stays alive across user messages. Session ID persists in `.openbridge/master-session.json` for resume across restarts                                                                                | OB-150 | 🔴 Critical | ✅ Done |
-| 105 | **Master system prompt** — create `.openbridge/prompts/master-system.md`. Contains: who the Master is, what tools it can spawn, available profiles, how to delegate tasks, how to respond to users. Seeded on first startup, editable by the Master itself. Injected via `--system-prompt` flag or prepended to first message                                                                                                  | OB-151 | 🔴 Critical | ✅ Done |
-| 106 | **Master-driven exploration** — remove hardcoded 5-phase exploration from ExplorationCoordinator. Instead, Master's system prompt instructs it to explore the workspace using worker agents. Master decides how many passes, which directories to dive into, what model to use. Master writes results to `.openbridge/` directly. Keep ExplorationCoordinator as a utility library the Master can reference, not as the driver | OB-152 |   🟠 High   | ✅ Done |
-| 107 | **Task decomposition protocol** — define how Master breaks user requests into worker subtasks. Master outputs structured JSON task manifests in its response. OpenBridge parses them, spawns workers via AgentRunner, returns results to Master session. Format: `[SPAWN:profile]{"prompt":"...","model":"haiku","maxTurns":10}[/SPAWN]` — similar to current `[DELEGATE]` markers but richer                                  | OB-153 |   🟠 High   | ✅ Done |
-| 108 | **Worker result injection** — when workers complete, their results are fed back into the Master session as a follow-up message: "Worker result (haiku, read-only): {output}". Master synthesizes and responds to user. Mirrors OpenClaw's auto-announcement pattern (no polling)                                                                                                                                               | OB-154 |   🟠 High   | ✅ Done |
-| 109 | **Master tool access control** — Master itself gets a `master` profile: Read, Write, Edit, Glob, Grep (for .openbridge/ management) but NOT Bash. Master cannot execute commands directly — it delegates to workers. This keeps the Master safe and forces delegation                                                                                                                                                          | OB-155 |   🟡 Med    | ✅ Done |
-| 110 | **Graceful Master restart** — if Master session dies (crash, timeout, context overflow), detect it, save state, create new session with context summary. Load `.openbridge/workspace-map.json` + recent task history into new session. User sees no interruption                                                                                                                                                               | OB-156 |   🟡 Med    | ✅ Done |
+| #   | Task                                                                                                                                                                                                                  | ID     | Priority |  Status   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 145 | **Telegram connector** — Create `src/connectors/telegram/` using grammY. Support DM messages, group mentions (`@bot`), inline replies. Register in connector registry. Add Telegram user ID to auth whitelist support | OB-320 | 🟠 High  | ◻ Pending |
+| 146 | **Web Chat connector** — Create `src/connectors/webchat/` serving HTML chat on `localhost:3000`. WebSocket for real-time. No auth for localhost                                                                       | OB-321 |  🟡 Med  | ◻ Pending |
+| 147 | **Multi-connector startup** — Support multiple connectors running simultaneously (WhatsApp + Telegram + Console). Currently works but verify with 3+ connectors                                                       | OB-322 |  🟡 Med  | ◻ Pending |
+| 148 | **Connector integration tests** — Mock-based tests for Telegram and WebChat connectors                                                                                                                                | OB-323 |  🟡 Med  | ◻ Pending |
+| 149 | **Discord connector** — discord.js, DM + server channels                                                                                                                                                              | OB-324 |  🟢 Low  | ◻ Pending |
 
 ---
 
-## Phase 19 — Worker Orchestration + Task Manifests
+## Backlog — Future Phases
 
-> **Focus:** Build the infrastructure for Master to spawn, monitor, and collect results from multiple concurrent workers. This is the multi-agent coordination layer.
->
-> **Why this fourth:** The Master can now make decisions (Phase 18) and has the AgentRunner to execute them (Phase 16). This phase adds the orchestration — parallel workers, result collection, progress tracking.
-
-| #   | Task                                                                                                                                                                                                                                                                                                       | ID     | Priority | Status  |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 111 | **Worker registry** — create `src/master/worker-registry.ts`. Tracks active workers: { id, taskManifest, pid, startedAt, status, result }. Enforces max concurrent workers (default: 5). Persists to `.openbridge/workers.json` for cross-restart visibility. Mirrors OpenClaw's SubagentRunRecord pattern | OB-160 | 🟠 High  | ✅ Done |
-| 112 | **Parallel worker spawning** — Master can spawn multiple workers concurrently. AgentRunner returns promises. Worker registry tracks all active. Results collected via Promise.allSettled(). Failed workers logged but don't crash the Master                                                               | OB-161 | 🟠 High  | ✅ Done |
-| 113 | **Worker progress streaming** — for long-running workers, stream progress chunks back to Master and optionally to user (via WhatsApp). User sees "Working on it... (3/5 subtasks done)" style updates                                                                                                      | OB-162 |  🟡 Med  | ✅ Done |
-| 114 | **Worker timeout + cleanup** — if a worker exceeds its timeout, SIGTERM it gracefully (5s grace), then SIGKILL. Update registry. Log the timeout. Master gets notified of the failure and can retry or skip                                                                                                | OB-163 |  🟡 Med  | ✅ Done |
-| 115 | **Depth limiting** — workers cannot spawn other workers. Only the Master can spawn. Enforce via: workers get `--print` mode (single-turn, no session), Master gets `--session-id` (multi-turn). This is OpenClaw's `maxSpawnDepth=1` pattern                                                               | OB-164 |  🟡 Med  | ✅ Done |
-| 116 | **Task history + audit trail** — every worker execution is logged to `.openbridge/tasks/` with full manifest, result, duration, model used, tools used, retry count. Master can read this history to learn from past executions                                                                            | OB-165 |  🟢 Low  | ✅ Done |
+| Task                                                                          | ID     | Priority |
+| ----------------------------------------------------------------------------- | ------ | :------: |
+| Context compaction — progressive summarization when Master context gets large | OB-190 |  🟡 Med  |
+| Vector memory — SQLite + embeddings for long-term knowledge retrieval         | OB-191 |  🟢 Low  |
+| Skill creator — Master creates reusable skill templates                       | OB-192 |  🟢 Low  |
+| Docker sandbox — run workers in containers for untrusted workspaces           | OB-193 |  🟢 Low  |
+| Interactive AI views — AI generates reports/dashboards on local HTTP          | OB-124 |  🟢 Low  |
 
 ---
 
-## Phase 20 — Self-Improvement + Learnings
+## Completed Milestones
 
-> **Focus:** Give the Master the ability to learn from its own experience and improve over time. The Master can edit its prompts, create new profiles, and track what works.
->
-> **Why this fifth:** With everything working (runner, profiles, Master, workers), this phase makes it all get better over time. The Master accumulates knowledge and refines its strategies.
+**Phases 1–14 (98 tasks):** MVP — WhatsApp + Console connectors, Claude Code provider, bridge core, auth, queue, metrics, AI discovery, Master AI, exploration, delegation, testing, documentation.
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                           | ID     | Priority | Status  |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 117 | **Prompt library in .openbridge/** — seed `.openbridge/prompts/` with initial prompt templates (exploration-scan.md, exploration-classify.md, task-execute.md, task-verify.md). Master can read and edit these. Each prompt has a version + success_rate field tracked in `.openbridge/prompts/manifest.json`                                  | OB-170 |  🟡 Med  | ✅ Done |
-| 118 | **Learnings store** — create `.openbridge/learnings.json`. After each task, Master appends: { task_type, model_used, profile_used, success, duration, notes }. On startup, Master reads learnings to inform future decisions (e.g., "haiku failed on refactoring tasks 3 times, use sonnet instead")                                           | OB-171 |  🟡 Med  | ✅ Done |
-| 119 | **Prompt effectiveness tracking** — after each worker task, record whether the prompt produced valid output (parseable JSON, correct format). Prompts with <50% success rate get flagged. Master can rewrite flagged prompts on idle                                                                                                           | OB-172 |  🟢 Low  | ✅ Done |
-| 120 | **Master self-improvement cycle** — when Master is idle (no pending user messages for >5 min), it reviews its learnings and can: (1) update prompts that have low success rates, (2) create new custom profiles for recurring task patterns, (3) update workspace-map.json if project has changed. This runs as a low-priority background task | OB-173 |  🟢 Low  | ✅ Done |
+**Phases 16–21 (34 tasks):** Self-Governing Master — AgentRunner (retries, logging, --allowedTools, --max-turns, --model), tool profiles (read-only, code-edit, full-access), model selection (haiku/sonnet/opus), self-governing Master session (persistent, spawns workers, self-improving), worker orchestration (parallel, registry, progress, timeouts), self-improvement (prompt library, learnings store, effectiveness tracking), E2E test scripts.
 
----
-
-## Phase 21 — End-to-End Hardening + Production Test
-
-> **Focus:** Run the complete system on real workspaces. Fix everything that breaks. Verify the full flow: install → init → WhatsApp QR → send message → Master delegates → worker executes → response arrives on phone.
->
-> **Why this last:** Everything else must be built first. This phase is about making it actually work in the real world, not just in tests.
-
-| #   | Task                                                                                                                                                                                                                                                                                      | ID     | Priority | Status  |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| 121 | **E2E smoke test script** — create `scripts/e2e-smoke.sh` that starts OpenBridge, sends a Console message, verifies Master responds via worker delegation (not direct claude --print). Validates: AgentRunner used, --allowedTools passed, --max-turns passed, worker log written to disk | OB-180 | 🟠 High  | ✅ Done |
-| 122 | **Real workspace test** — run OpenBridge against the Social-Media-Automation-Platform workspace (the one that was failing). Master must: explore successfully, respond to "what's in this project?", handle "run the tests", handle multi-turn follow-ups. Document results and fixes     | OB-181 | 🟠 High  | ✅ Done |
-| 123 | **WhatsApp full flow test** — complete end-to-end: QR scan → send "/ai what's in my project?" from phone → receive response on phone within 2 minutes. Document the flow, any error handling needed, message chunking for long responses                                                  | OB-182 | 🟠 High  | ✅ Done |
-| 124 | **Error resilience test** — deliberately trigger failure scenarios: kill Master mid-task (verify restart), send message during exploration (verify queuing), send very long message (verify truncation), disconnect WhatsApp mid-response (verify no crash)                               | OB-183 |  🟡 Med  | ✅ Done |
-
----
-
-## Backlog — Future Phases (Not Blocking)
-
-> These tasks are valuable but not required for the self-governing Master to work.
-
-| #   | Task                                                                                             | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| —   | Telegram connector — Bot API via grammY, supports DM + group                                     | OB-121 |  🟡 Med  | ◻ Backlog |
-| —   | Discord connector — discord.js, supports DM + server channels                                    | OB-122 |  🟢 Low  | ◻ Backlog |
-| —   | Web chat connector — browser-based chat widget                                                   | OB-123 |  🟢 Low  | ◻ Backlog |
-| —   | Interactive AI views — AI generates reports/dashboards served on local HTTP                      | OB-124 |  🟢 Low  | ◻ Backlog |
-| —   | Context compaction — progressive summarization when Master context gets large (OpenClaw pattern) | OB-190 |  🟡 Med  | ◻ Backlog |
-| —   | Vector memory — SQLite + embeddings for long-term knowledge retrieval (beyond JSON learnings)    | OB-191 |  🟢 Low  | ◻ Backlog |
-| —   | Skill creator — Master can create new reusable skill templates for common task patterns          | OB-192 |  🟢 Low  | ◻ Backlog |
-| —   | Docker sandbox — run workers in containers for untrusted workspaces                              | OB-193 |  🟢 Low  | ◻ Backlog |
-
----
-
-## MVP Milestone — COMPLETE (Phases 1–14)
-
-**Phases 1–14** (90 tasks) delivered the initial MVP:
-
-- V0 foundation: WhatsApp connector, Claude Code provider, bridge core, auth, queue, metrics
-- AI tool auto-discovery (zero API keys) — CLI + VS Code scanner
-- Master AI with autonomous workspace exploration (incremental 5-pass, never times out)
-- `.openbridge/` folder with git tracking and exploration state
-- V2 config (3 fields only) with V0 backward compatibility
-- Session continuity (multi-turn conversations with 30min TTL)
-- Multi-AI delegation (Master assigns tasks to other discovered tools)
-- Dead code archived cleanly to `src/_archived/`
-- Documentation fully rewritten for autonomous AI vision
-- Comprehensive test suite: unit, integration, E2E (code + non-code workspaces)
-
-**Now:** Phases 16–21 evolve the MVP from a passive executor to a **self-governing autonomous AI**.
+**Hotfix (2026-02-22):** Fixed OB-F21 — Master session ID used invalid UUID format (`master-` prefix rejected by Claude CLI), exploration timeout too short (10min→30min), null safety in buildMasterSpawnOptions. Updated 5 test assertions.
 
 ---
 
@@ -194,4 +118,3 @@ The Master AI is the brain. It decides:
 |   ◻ Pending    | Not started               |
 | 🔄 In Progress | Currently being worked on |
 |    ✅ Done     | Completed and verified    |
-|   ◻ Backlog    | Planned but not scheduled |

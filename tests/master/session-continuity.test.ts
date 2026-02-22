@@ -164,7 +164,7 @@ describe('Session Continuity', () => {
     const call1 = getSpawnCallOpts(0);
     expect(call1).toBeDefined();
     expect(call1?.sessionId).toBeDefined();
-    expect(call1?.sessionId).toMatch(/^master-/);
+    expect(call1?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
     expect(call1?.resumeSessionId).toBeUndefined();
 
     // Second call should use resumeSessionId (resume existing Master session)

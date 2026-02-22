@@ -158,7 +158,7 @@ describe('MasterManager', () => {
 
       const session = masterManager.getMasterSession();
       expect(session).toBeDefined();
-      expect(session?.sessionId).toMatch(/^master-/);
+      expect(session?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
       expect(session?.messageCount).toBe(0);
       expect(session?.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Write', 'Edit']);
       expect(session?.maxTurns).toBe(50);
@@ -187,7 +187,7 @@ describe('MasterManager', () => {
       const dotFolder = new DotFolderManager(testWorkspace);
       await dotFolder.initialize();
       await dotFolder.writeMasterSession({
-        sessionId: 'master-existing-session',
+        sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
         createdAt: new Date().toISOString(),
         lastUsedAt: new Date().toISOString(),
         messageCount: 5,
@@ -222,7 +222,7 @@ describe('MasterManager', () => {
       await masterManager.start();
 
       const session = masterManager.getMasterSession();
-      expect(session?.sessionId).toBe('master-existing-session');
+      expect(session?.sessionId).toBe('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
       expect(session?.messageCount).toBe(5);
     });
 
@@ -359,7 +359,7 @@ describe('MasterManager', () => {
       // First call should use sessionId (new session)
       const call1 = getSpawnCallOpts(0);
       expect(call1?.sessionId).toBeDefined();
-      expect(call1?.sessionId).toMatch(/^master-/);
+      expect(call1?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
       expect(call1?.resumeSessionId).toBeUndefined();
 
       // Second call should use resumeSessionId
@@ -1079,7 +1079,7 @@ describe('MasterManager', () => {
 
       const newSessionId = masterManager.getMasterSession()?.sessionId;
       expect(newSessionId).not.toBe(oldSessionId);
-      expect(newSessionId).toMatch(/^master-/);
+      expect(newSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
     });
 
     it('should include workspace map in context summary', async () => {
