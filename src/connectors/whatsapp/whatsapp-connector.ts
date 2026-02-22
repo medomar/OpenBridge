@@ -151,24 +151,27 @@ export class WhatsAppConnector implements Connector {
       'WhatsApp scheduling reconnect',
     );
 
-    this.reconnectTimer = setTimeout(() => {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       if (this.shuttingDown) return;
 
       logger.info({ attempt: this.reconnectAttempt }, 'WhatsApp attempting reconnect');
 
       if (this.client) {
-        this.client.destroy().catch((err: unknown) => {
+        await this.client.destroy().catch((err: unknown) => {
           logger.warn({ err }, 'Error destroying old WhatsApp client before reconnect');
         });
         this.client = null;
       }
 
-      this.createAndStartClient().catch((err: unknown) => {
+      try {
+        await this.createAndStartClient();
+      } catch (err: unknown) {
         logger.error({ err }, 'WhatsApp reconnect failed');
         this.emit('error', err instanceof Error ? err : new Error(String(err)));
         this.scheduleReconnect();
-      });
+      }
     }, delay);
   }
 
