@@ -538,18 +538,21 @@ Working on both tasks.`;
 
       await masterManager.processMessage(makeMessage('Check files'));
 
-      // Initial Master call: uses --session-id
+      // processMessage() uses --print mode (non-interactive) — no sessionId on any call.
+      // Workers also use --print mode (stateless, depth-limited).
       const initialCall = getSpawnCallOpts(0);
-      expect(initialCall?.sessionId).toBeDefined();
+      expect(initialCall?.sessionId).toBeUndefined();
+      expect(initialCall?.resumeSessionId).toBeUndefined();
 
       // Worker call: no session (independent worker)
       const workerCall = getSpawnCallOpts(1);
       expect(workerCall?.sessionId).toBeUndefined();
       expect(workerCall?.resumeSessionId).toBeUndefined();
 
-      // Feedback call: uses --resume with same session ID
+      // Feedback call: also --print mode (no sessionId)
       const feedbackCall = getSpawnCallOpts(2);
-      expect(feedbackCall?.resumeSessionId).toBe(initialCall?.sessionId);
+      expect(feedbackCall?.sessionId).toBeUndefined();
+      expect(feedbackCall?.resumeSessionId).toBeUndefined();
     });
   });
 

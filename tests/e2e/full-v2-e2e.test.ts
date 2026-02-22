@@ -114,7 +114,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
  * Creates a realistic test workspace with code, docs, and config files
  */
 async function createTestWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
 
   await mkdir(workspacePath, { recursive: true });
@@ -282,8 +282,27 @@ function setupMockExplorationResponses(workspacePath: string) {
     };
   });
 
-  // Mock streaming for messages (AgentRunner.stream() is an async generator)
-  mockStream.mockImplementation(async function* () {
+  // Mock streaming for both exploration and messages (AgentRunner.stream() is an async generator).
+  // Exploration uses stream() and the mock writes workspace-map.json on the first call.
+  let streamCallCount = 0;
+  mockStream.mockImplementation(async function* (opts: { prompt?: string }) {
+    streamCallCount++;
+
+    // First stream call is the exploration prompt — write workspace-map.json to simulate Master AI
+    if (streamCallCount === 1 && opts.prompt?.includes('workspace-map.json')) {
+      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
+      await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
+      yield 'Exploring workspace...';
+      yield '\nWorkspace map written.';
+      return {
+        stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 200,
+      };
+    }
+
     yield 'Processing your request...';
     yield '\n\nThe project is a Node.js + TypeScript application using Express.';
     return {
@@ -390,10 +409,8 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const gitPath = join(dotFolderPath, '.git');
     await expect(access(gitPath)).resolves.toBeUndefined();
 
-    // Verify Master session was used (first call has sessionId)
-    expect(mockSpawn).toHaveBeenCalled();
-    const firstCall = mockSpawn.mock.calls[0]?.[0] as { sessionId?: string } | undefined;
-    expect(firstCall?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/);
+    // Verify Master stream was used for exploration (exploration uses stream(), not spawn())
+    expect(mockStream).toHaveBeenCalled();
   }, 15000);
 
   // ---------------------------------------------------------------------------
@@ -497,7 +514,6 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     expect(secondCallArgs).toBeDefined();
 
     // Three calls total: 1 for exploration, 2 for user messages
-    // All should use session continuity (either --session-id or --resume)
     expect(mockStream).toHaveBeenCalledTimes(3);
   }, 15000);
 

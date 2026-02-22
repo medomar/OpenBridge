@@ -74,7 +74,7 @@ vi.mock('../../src/core/logger.js', () => ({
  * Creates a workspace with minimal data (missing most business files)
  */
 async function createMinimalWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
 
   await mkdir(workspacePath, { recursive: true });
@@ -92,7 +92,7 @@ async function createMinimalWorkspace(): Promise<string> {
  * Creates a completely empty workspace (no files at all)
  */
 async function createEmptyWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
   await mkdir(workspacePath, { recursive: true });
   return workspacePath;
@@ -102,7 +102,7 @@ async function createEmptyWorkspace(): Promise<string> {
  * Creates a workspace with only binary files (no readable text data)
  */
 async function createBinaryOnlyWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
 
   await mkdir(workspacePath, { recursive: true });
@@ -119,7 +119,7 @@ async function createBinaryOnlyWorkspace(): Promise<string> {
  * Creates a cafe workspace with ONLY inventory (no sales, no schedules)
  */
 async function createPartialCafeWorkspace(): Promise<string> {
-  const workspaceId = `test-workspace-${Date.now()}`;
+  const workspaceId = `test-workspace-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const workspacePath = join(tmpdir(), workspaceId);
 
   await mkdir(workspacePath, { recursive: true });
@@ -156,8 +156,6 @@ function setupMinimalExplorationMocks(
   workspacePath: string,
   scenario: 'minimal' | 'empty' | 'binary' | 'partial',
 ) {
-  let callCount = 0;
-
   // Workspace maps the Master session writes per scenario
   const workspaceMaps: Record<typeof scenario, unknown> = {
     minimal: {
@@ -226,24 +224,8 @@ function setupMinimalExplorationMocks(
     },
   };
 
-  // Mock spawn for Master-driven exploration
-  mockSpawn.mockImplementation(async (opts: { sessionId?: string; resumeSessionId?: string }) => {
-    callCount++;
-
-    // Master-driven exploration: first call with session writes workspace-map.json
-    if (callCount === 1 && (opts.sessionId || opts.resumeSessionId)) {
-      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
-      await writeFile(mapPath, JSON.stringify(workspaceMaps[scenario], null, 2), 'utf-8');
-      return {
-        stdout: 'Exploration complete.',
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 200,
-      };
-    }
-
-    // Fallback for any other spawn calls
+  // Mock spawn for any remaining spawn calls (processMessage uses --print mode, no session)
+  mockSpawn.mockImplementation(async () => {
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
@@ -253,9 +235,26 @@ function setupMinimalExplorationMocks(
     };
   });
 
-  // Mock stream for message handling (MasterManager.streamMessage uses AgentRunner.stream)
+  // Mock stream for both exploration and message handling.
+  // Exploration uses stream() and writes workspace-map.json on the first call.
+  let streamCallCount = 0;
   mockStream.mockImplementation(async function* (opts: { prompt: string }) {
+    streamCallCount++;
     const query = opts.prompt.toLowerCase();
+
+    // First stream call is exploration — write workspace-map.json to simulate Master AI
+    if (streamCallCount === 1 && opts.prompt.includes('workspace-map.json')) {
+      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
+      await writeFile(mapPath, JSON.stringify(workspaceMaps[scenario], null, 2), 'utf-8');
+      yield 'Exploring workspace...';
+      return {
+        stdout: 'Exploration complete.',
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 200,
+      };
+    }
 
     // Revenue query (no sales data)
     if (query.includes('revenue') || query.includes('sales')) {
