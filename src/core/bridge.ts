@@ -92,7 +92,15 @@ export class Bridge {
       logger.info('Agent orchestrator wired into router');
     }
 
-    // Initialize connectors
+    // Set up queue processing BEFORE connectors — so messages are handled
+    // as soon as any connector is ready (don't wait for slow ones like WhatsApp).
+    this.queue.onMessage(async (message) => {
+      await this.router.route(message);
+    });
+
+    // Initialize connectors in parallel — slow connectors (WhatsApp/Puppeteer)
+    // must not block fast connectors (Console) from starting.
+    const connectorPromises: Promise<void>[] = [];
     for (const connectorConfig of this.config.connectors) {
       if (!connectorConfig.enabled) continue;
 
@@ -113,16 +121,24 @@ export class Bridge {
         logger.error({ connector: connector.name, error }, 'Connector error');
       });
 
-      await connector.initialize();
-      this.router.addConnector(connector);
-      this.connectors.push(connector);
-      logger.info({ connector: connector.name }, 'Connector initialized');
+      // Initialize each connector independently — don't await sequentially
+      const initPromise = connector
+        .initialize()
+        .then(() => {
+          this.router.addConnector(connector);
+          this.connectors.push(connector);
+          logger.info({ connector: connector.name }, 'Connector initialized');
+        })
+        .catch((error: unknown) => {
+          logger.error(
+            { connector: connector.name, error },
+            'Connector initialization failed — other connectors continue',
+          );
+        });
+      connectorPromises.push(initPromise);
     }
-
-    // Set up queue processing
-    this.queue.onMessage(async (message) => {
-      await this.router.route(message);
-    });
+    // Wait for all connectors to finish (success or failure)
+    await Promise.allSettled(connectorPromises);
 
     // Start health check endpoint
     this.healthServer.setDataProvider(() => this.getHealthStatus());

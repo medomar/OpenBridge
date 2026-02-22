@@ -325,11 +325,30 @@ function execOnce(
   timeout?: number,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
+    // Remove Claude Code env vars to prevent "nested session" detection.
+    // When OpenBridge runs inside a Claude Code session (VS Code extension or CLI),
+    // these vars cause child `claude` calls to refuse to start or behave unexpectedly.
+    const cleanEnv = { ...process.env };
+    for (const key of Object.keys(cleanEnv)) {
+      if (
+        key === 'CLAUDECODE' ||
+        key.startsWith('CLAUDE_CODE_') ||
+        key.startsWith('CLAUDE_AGENT_SDK_')
+      ) {
+        delete cleanEnv[key];
+      }
+    }
+
     const child = nodeSpawn('claude', args, {
       cwd: workspacePath,
-      // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
-      env: { ...process.env },
+      env: cleanEnv,
+      stdio: ['ignore', 'pipe', 'pipe'], // Close stdin immediately — claude --print doesn't need it
     });
+
+    logger.debug(
+      { pid: child.pid, argCount: args.length, promptLen: args[args.length - 1]?.length },
+      'Spawned claude child process',
+    );
 
     let stdout = '';
     let stderr = '';
@@ -369,7 +388,12 @@ function execOnce(
     }
 
     child.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
+      const chunk = data.toString();
+      stdout += chunk;
+      logger.debug(
+        { pid: child.pid, chunkLen: chunk.length, totalLen: stdout.length },
+        'stdout data received',
+      );
     });
 
     child.stderr.on('data', (data: Buffer) => {
@@ -380,6 +404,11 @@ function execOnce(
       // Clear both timers
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+      logger.debug(
+        { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
+        'claude child process closed',
+      );
 
       if (timedOut) {
         // Process was terminated due to timeout
@@ -448,10 +477,22 @@ function execOnceStreaming(
   chunks: AsyncGenerator<string, { exitCode: number; stderr: string }>;
   abort: () => void;
 } {
+  // Remove Claude Code env vars to prevent "nested session" detection (same as execOnce).
+  const cleanEnv = { ...process.env };
+  for (const key of Object.keys(cleanEnv)) {
+    if (
+      key === 'CLAUDECODE' ||
+      key.startsWith('CLAUDE_CODE_') ||
+      key.startsWith('CLAUDE_AGENT_SDK_')
+    ) {
+      delete cleanEnv[key];
+    }
+  }
+
   const child = nodeSpawn('claude', args, {
     cwd: workspacePath,
     // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
-    env: { ...process.env },
+    env: cleanEnv,
   });
 
   let stderr = '';
