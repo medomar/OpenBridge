@@ -12,6 +12,8 @@ import type {
   Classification,
   DirectoryDiveResult,
   MasterSession,
+  PromptManifest,
+  PromptTemplate,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -23,6 +25,7 @@ import {
   ClassificationSchema,
   DirectoryDiveResultSchema,
   MasterSessionSchema,
+  PromptManifestSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -621,6 +624,138 @@ Thumbs.db
     const validated = WorkersRegistrySchema.parse(registry);
     const workersPath = this.getWorkersPath();
     await fs.writeFile(workersPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Get the path to the prompts manifest file
+   */
+  public getPromptManifestPath(): string {
+    return path.join(this.promptsPath, 'manifest.json');
+  }
+
+  /**
+   * Read the prompt library manifest from .openbridge/prompts/manifest.json
+   */
+  public async readPromptManifest(): Promise<PromptManifest | null> {
+    const manifestPath = this.getPromptManifestPath();
+
+    try {
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return PromptManifestSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the prompt library manifest to .openbridge/prompts/manifest.json
+   */
+  public async writePromptManifest(manifest: PromptManifest): Promise<void> {
+    const validated = PromptManifestSchema.parse(manifest);
+    const manifestPath = this.getPromptManifestPath();
+    await fs.mkdir(this.promptsPath, { recursive: true });
+    await fs.writeFile(manifestPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read a specific prompt template content from .openbridge/prompts/<filename>
+   */
+  public async readPromptTemplate(filename: string): Promise<string | null> {
+    const promptPath = path.join(this.promptsPath, filename);
+
+    try {
+      return await fs.readFile(promptPath, 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write a prompt template file to .openbridge/prompts/<filename>
+   * Also updates the manifest with metadata.
+   */
+  public async writePromptTemplate(
+    filename: string,
+    content: string,
+    metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>,
+  ): Promise<void> {
+    await fs.mkdir(this.promptsPath, { recursive: true });
+
+    // Write the prompt file
+    const promptPath = path.join(this.promptsPath, filename);
+    await fs.writeFile(promptPath, content, 'utf-8');
+
+    // Update manifest
+    const manifest = await this.readPromptManifest();
+    const now = new Date().toISOString();
+
+    const existingPrompt = manifest?.prompts[metadata.id];
+    const promptTemplate: PromptTemplate = {
+      ...metadata,
+      filePath: filename,
+      createdAt: existingPrompt?.createdAt ?? now,
+      updatedAt: now,
+      lastUsedAt: existingPrompt?.lastUsedAt,
+    };
+
+    const newManifest: PromptManifest = manifest ?? {
+      prompts: {},
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: '1.0.0',
+    };
+
+    newManifest.prompts[metadata.id] = promptTemplate;
+    newManifest.updatedAt = now;
+
+    await this.writePromptManifest(newManifest);
+  }
+
+  /**
+   * Get a prompt template by ID from the manifest
+   */
+  public async getPromptTemplate(promptId: string): Promise<PromptTemplate | null> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return null;
+    return manifest.prompts[promptId] ?? null;
+  }
+
+  /**
+   * Record prompt usage (increments usage count and updates lastUsedAt)
+   */
+  public async recordPromptUsage(promptId: string, success: boolean): Promise<void> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest || !manifest.prompts[promptId]) {
+      return;
+    }
+
+    const prompt = manifest.prompts[promptId];
+    prompt.usageCount += 1;
+    if (success) {
+      prompt.successCount += 1;
+    }
+    prompt.successRate = prompt.usageCount > 0 ? prompt.successCount / prompt.usageCount : 0;
+    prompt.lastUsedAt = new Date().toISOString();
+    prompt.updatedAt = new Date().toISOString();
+
+    manifest.updatedAt = new Date().toISOString();
+    await this.writePromptManifest(manifest);
+  }
+
+  /**
+   * Get all prompts with success rate below threshold (for self-improvement)
+   */
+  public async getLowPerformingPrompts(threshold = 0.5): Promise<PromptTemplate[]> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return [];
+
+    return Object.values(manifest.prompts).filter((prompt) => {
+      // Only consider prompts that have been used at least 3 times
+      if (prompt.usageCount < 3) return false;
+      const rate = prompt.successRate ?? 0;
+      return rate < threshold;
+    });
   }
 
   /**
