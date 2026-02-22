@@ -18,16 +18,24 @@ import type {
   AgentsRegistry,
   WorkspaceMap,
   MasterSession,
+  PromptTemplate,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 600_000; // 10 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 60_000; // 1 minute for message processing
+
+/** Idle time threshold (5 minutes) before triggering self-improvement cycle */
+const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+/** How often to check for idle state (1 minute) */
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 
 /**
  * Exit codes and stderr patterns that indicate a dead/unrecoverable Master session.
@@ -127,6 +135,12 @@ export class MasterManager {
   private systemPrompt: string | null = null;
   /** Number of times the Master session has been restarted */
   private restartCount = 0;
+  /** Timestamp of last user message (for idle detection) */
+  private lastMessageTimestamp: number | null = null;
+  /** Idle detection timer (runs self-improvement when idle for >5 min) */
+  private idleCheckTimer: NodeJS.Timeout | null = null;
+  /** Whether self-improvement is currently running */
+  private isSelfImproving = false;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -259,6 +273,9 @@ export class MasterManager {
       logger.info('Auto-exploration disabled, entering ready state');
       this.state = 'ready';
     }
+
+    // Start idle detection timer for self-improvement cycle (OB-173)
+    this.startIdleDetection();
   }
 
   /**
@@ -1113,11 +1130,22 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
+   * Reset the idle timer (called on each user message).
+   * Tracks the timestamp of the last user interaction for idle detection.
+   */
+  private resetIdleTimer(): void {
+    this.lastMessageTimestamp = Date.now();
+  }
+
+  /**
    * Process a message from a user.
    * Uses the persistent Master session for conversation continuity.
    * All messages go through the same Master session regardless of sender.
    */
   public async processMessage(message: InboundMessage): Promise<string> {
+    // Reset idle timer on new message
+    this.resetIdleTimer();
+
     if (this.state !== 'ready') {
       logger.warn(
         { currentState: this.state, sender: message.sender },
@@ -1281,6 +1309,9 @@ Work silently — do not output conversational text, just explore and write the 
    * Uses the persistent Master session for conversation continuity.
    */
   public async *streamMessage(message: InboundMessage): AsyncGenerator<string, void> {
+    // Reset idle timer on new message
+    this.resetIdleTimer();
+
     if (this.state !== 'ready') {
       logger.warn(
         { currentState: this.state, sender: message.sender },
@@ -1558,6 +1589,356 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
+   * Start idle detection timer for self-improvement cycle (OB-173).
+   * Checks every minute whether the Master has been idle for >5 minutes.
+   * If idle, triggers a self-improvement cycle.
+   */
+  private startIdleDetection(): void {
+    // Stop any existing timer
+    if (this.idleCheckTimer) {
+      clearInterval(this.idleCheckTimer);
+    }
+
+    // Set initial timestamp
+    this.lastMessageTimestamp = Date.now();
+
+    // Start periodic idle check
+    this.idleCheckTimer = setInterval(() => {
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      this.checkIdleAndImprove();
+    }, IDLE_CHECK_INTERVAL_MS);
+
+    logger.info('Idle detection timer started for self-improvement cycle');
+  }
+
+  /**
+   * Stop idle detection timer (called on shutdown).
+   */
+  private stopIdleDetection(): void {
+    if (this.idleCheckTimer) {
+      clearInterval(this.idleCheckTimer);
+      this.idleCheckTimer = null;
+      logger.info('Idle detection timer stopped');
+    }
+  }
+
+  /**
+   * Check if Master is idle and trigger self-improvement if needed.
+   * Called periodically by the idle detection timer.
+   */
+  private async checkIdleAndImprove(): Promise<void> {
+    // Skip if:
+    // - Already running self-improvement
+    // - Not in ready state
+    // - No message timestamp yet
+    if (this.isSelfImproving || this.state !== 'ready' || !this.lastMessageTimestamp) {
+      return;
+    }
+
+    const idleTime = Date.now() - this.lastMessageTimestamp;
+
+    // Check if idle threshold exceeded
+    if (idleTime >= IDLE_THRESHOLD_MS) {
+      logger.info(
+        { idleTimeMs: idleTime },
+        'Idle threshold exceeded, starting self-improvement cycle',
+      );
+
+      try {
+        await this.runSelfImprovementCycle();
+      } catch (error) {
+        logger.error({ err: error }, 'Self-improvement cycle failed');
+      }
+
+      // Reset last message timestamp to prevent immediate re-trigger
+      this.lastMessageTimestamp = Date.now();
+    }
+  }
+
+  /**
+   * Run the self-improvement cycle (OB-173).
+   * Reviews learnings and performs improvements:
+   * 1. Update prompts with low success rates
+   * 2. Create new custom profiles for recurring task patterns
+   * 3. Update workspace-map.json if project has changed
+   */
+  private async runSelfImprovementCycle(): Promise<void> {
+    if (this.isSelfImproving) {
+      logger.warn('Self-improvement cycle already running');
+      return;
+    }
+
+    this.isSelfImproving = true;
+    const startedAt = new Date().toISOString();
+
+    logger.info('Starting self-improvement cycle');
+
+    try {
+      await this.dotFolder.appendLog({
+        timestamp: startedAt,
+        level: 'info',
+        message: 'Self-improvement cycle started',
+        data: {},
+      });
+
+      // Task 1: Identify and rewrite low-performing prompts
+      const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
+      if (lowPerformingPrompts.length > 0) {
+        logger.info(
+          { promptCount: lowPerformingPrompts.length },
+          'Found low-performing prompts to rewrite',
+        );
+
+        for (const prompt of lowPerformingPrompts) {
+          await this.rewritePrompt(prompt);
+        }
+      }
+
+      // Task 2: Analyze learnings for recurring task patterns and create custom profiles
+      await this.createProfilesFromLearnings();
+
+      // Task 3: Check if workspace has changed and update map if needed
+      await this.updateWorkspaceMapIfChanged();
+
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Self-improvement cycle completed',
+        data: {
+          lowPerformingPrompts: lowPerformingPrompts.length,
+          durationMs: new Date().getTime() - new Date(startedAt).getTime(),
+        },
+      });
+
+      logger.info('Self-improvement cycle completed successfully');
+    } catch (error) {
+      logger.error({ err: error }, 'Self-improvement cycle encountered an error');
+
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message: 'Self-improvement cycle failed',
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
+    } finally {
+      this.isSelfImproving = false;
+    }
+  }
+
+  /**
+   * Rewrite a low-performing prompt using the Master AI session.
+   * Asks the Master to analyze the prompt's failure patterns and suggest improvements.
+   */
+  private async rewritePrompt(prompt: PromptTemplate): Promise<void> {
+    logger.info(
+      { promptId: prompt.id, successRate: prompt.successRate, usageCount: prompt.usageCount },
+      'Rewriting low-performing prompt',
+    );
+
+    try {
+      // Read the current prompt content from disk
+      const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
+      const currentContent = await fs.readFile(promptPath, 'utf-8');
+
+      // Build a self-improvement prompt for the Master
+      const improvementPrompt = `You are reviewing your own prompt templates for effectiveness.
+
+The following prompt template has a low success rate and needs to be rewritten:
+
+**Prompt ID:** ${prompt.id}
+**Description:** ${prompt.description}
+**Success Rate:** ${(prompt.successRate ?? 0) * 100}% (${prompt.successCount}/${prompt.usageCount} uses)
+**Current Content:**
+\`\`\`
+${currentContent}
+\`\`\`
+
+**Task:** Rewrite this prompt to improve its effectiveness. Focus on:
+1. Clarity of instructions
+2. Explicit output format requirements
+3. Error handling guidance
+4. Context that helps the worker succeed
+
+**Output Format:** Return ONLY the rewritten prompt content (no explanations, no markdown fences, just the raw prompt text).`;
+
+      const spawnOpts = this.buildMasterSpawnOptions(improvementPrompt, this.messageTimeout);
+      const result = await this.agentRunner.spawn(spawnOpts);
+      await this.updateMasterSession();
+
+      if (result.exitCode !== 0) {
+        logger.warn({ promptId: prompt.id, exitCode: result.exitCode }, 'Failed to rewrite prompt');
+        return;
+      }
+
+      const rewrittenContent = result.stdout.trim();
+
+      if (rewrittenContent.length === 0) {
+        logger.warn({ promptId: prompt.id }, 'Master returned empty prompt rewrite');
+        return;
+      }
+
+      // Update the prompt file
+      await fs.writeFile(promptPath, rewrittenContent, 'utf-8');
+
+      // Reset the prompt's usage stats (fresh start with new version)
+      await this.dotFolder.resetPromptStats(prompt.id);
+
+      // Commit the rewrite
+      await this.dotFolder.commitChanges(
+        `feat(master): rewrite ${prompt.id} prompt (low success rate: ${(prompt.successRate ?? 0) * 100}%)`,
+      );
+
+      logger.info({ promptId: prompt.id }, 'Successfully rewrote prompt');
+    } catch (error) {
+      logger.error({ err: error, promptId: prompt.id }, 'Failed to rewrite prompt (non-blocking)');
+    }
+  }
+
+  /**
+   * Analyze learnings to identify recurring task patterns and create custom profiles.
+   * For example: if "test-runner" tasks consistently succeed with specific tools,
+   * create a "test-runner" profile.
+   */
+  private async createProfilesFromLearnings(): Promise<void> {
+    const learnings = await this.dotFolder.readLearnings();
+    if (!learnings || learnings.entries.length < 10) {
+      // Need at least 10 learnings to identify patterns
+      return;
+    }
+
+    logger.info(
+      { learningCount: learnings.entries.length },
+      'Analyzing learnings for profile patterns',
+    );
+
+    // Group learnings by task type
+    const byTaskType = new Map<string, typeof learnings.entries>();
+    for (const entry of learnings.entries) {
+      const existing = byTaskType.get(entry.taskType) ?? [];
+      existing.push(entry);
+      byTaskType.set(entry.taskType, existing);
+    }
+
+    // Look for task types with >5 entries and >70% success rate
+    for (const [taskType, entries] of byTaskType) {
+      if (entries.length < 5) continue;
+
+      const successCount = entries.filter((e) => e.success).length;
+      const successRate = successCount / entries.length;
+
+      if (successRate < 0.7) continue;
+
+      // Check if a profile already exists for this task type
+      const existingProfiles = await this.dotFolder.readProfiles();
+      const profileId = `auto-${taskType}`;
+
+      if (existingProfiles?.profiles[profileId]) {
+        // Profile already exists
+        continue;
+      }
+
+      // Analyze which profile was most commonly used for successful tasks
+      const successfulProfiles = entries
+        .filter((e) => e.success && e.profileUsed !== undefined)
+        .map((e) => e.profileUsed as string); // Safe because we filtered out undefined above
+
+      // Find most common profile
+      const profileCounts = new Map<string, number>();
+      for (const profile of successfulProfiles) {
+        profileCounts.set(profile, (profileCounts.get(profile) ?? 0) + 1);
+      }
+
+      const [mostCommonProfile, count] = [...profileCounts.entries()].sort(
+        (a, b) => b[1] - a[1],
+      )[0] ?? [null, 0];
+
+      if (!mostCommonProfile || count < 3) {
+        // Not enough evidence for a pattern
+        continue;
+      }
+
+      // Find the tools from the most common profile
+      const builtInProfile = BUILT_IN_PROFILES[mostCommonProfile as keyof typeof BUILT_IN_PROFILES];
+      if (!builtInProfile) {
+        continue;
+      }
+
+      logger.info(
+        {
+          taskType,
+          profileId,
+          baseProfile: mostCommonProfile,
+          successRate,
+          usageCount: entries.length,
+        },
+        'Creating custom profile from learning patterns',
+      );
+
+      // Create new profile
+      const newProfile: ToolProfile = {
+        name: profileId,
+        description: `Auto-generated profile for ${taskType} tasks (success rate: ${(successRate * 100).toFixed(1)}%)`,
+        tools: [...builtInProfile.tools],
+      };
+
+      try {
+        await this.dotFolder.addProfile(newProfile);
+        await this.dotFolder.commitChanges(
+          `feat(master): create custom profile ${profileId} from learnings (${entries.length} samples, ${(successRate * 100).toFixed(1)}% success)`,
+        );
+
+        logger.info({ profileId }, 'Successfully created custom profile from learnings');
+      } catch (error) {
+        logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
+      }
+    }
+  }
+
+  /**
+   * Check if the workspace has changed significantly and update workspace-map.json if needed.
+   * Detects changes by checking for new files, modified package.json, new directories, etc.
+   */
+  private async updateWorkspaceMapIfChanged(): Promise<void> {
+    const map = await this.dotFolder.readMap();
+    if (!map) {
+      // No map to update
+      return;
+    }
+
+    logger.info('Checking if workspace has changed significantly');
+
+    // Check for significant changes:
+    // 1. New top-level directories
+    // 2. package.json modifications (dependencies changed)
+    // 3. New frameworks detected
+
+    try {
+      const packageJsonPath = path.join(this.workspacePath, 'package.json');
+      let hasPackageJsonChanged = false;
+
+      try {
+        const stats = await fs.stat(packageJsonPath);
+        const mapGeneratedTime = new Date(map.generatedAt).getTime();
+        const packageModifiedTime = stats.mtimeMs;
+
+        hasPackageJsonChanged = packageModifiedTime > mapGeneratedTime;
+      } catch {
+        // package.json doesn't exist or can't be read
+        hasPackageJsonChanged = false;
+      }
+
+      if (hasPackageJsonChanged) {
+        logger.info(
+          'package.json has changed since last map generation, triggering re-exploration',
+        );
+        await this.reExplore();
+      }
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to check workspace changes (non-blocking)');
+    }
+  }
+
+  /**
    * Gracefully shut down the Master AI
    */
   public async shutdown(): Promise<void> {
@@ -1568,6 +1949,9 @@ Work silently — do not output conversational text, just explore and write the 
     logger.info('Shutting down MasterManager');
 
     this.state = 'shutdown';
+
+    // Stop idle detection timer
+    this.stopIdleDetection();
 
     // Shutdown delegation coordinator
     this.delegationCoordinator.shutdown();

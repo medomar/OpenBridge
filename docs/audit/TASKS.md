@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 tasks in 2 phases | **Next up:** Phase 20
+> **Pending:** 5 tasks in 1 phase | **Next up:** Phase 21
 > **Last Updated:** 2026-02-22
 > **Completed work:** [V0 archive (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 archive (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 archive (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP archive (Phase 15)](archive/v3/TASKS-v3-mvp.md)
 
@@ -44,7 +44,7 @@ The Master AI is the brain. It decides:
 |  17   | Tool profiles + model selection        |   5    |   ✅   |
 |  18   | Master AI rewrite — self-governing     |   7    |   ✅   |
 |  19   | Worker orchestration + task manifests  |   6    |   ✅   |
-|  20   | Self-improvement + learnings           |   4    |   🔄   |
+|  20   | Self-improvement + learnings           |   4    |   ✅   |
 |  21   | End-to-end hardening + production test |   4    |   ◻    |
 
 > Phase 15 (Telegram, Discord, Web Chat) moved to backlog. The Master AI must work reliably before adding more channels.
@@ -127,12 +127,12 @@ The Master AI is the brain. It decides:
 >
 > **Why this fifth:** With everything working (runner, profiles, Master, workers), this phase makes it all get better over time. The Master accumulates knowledge and refines its strategies.
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                           | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 117 | **Prompt library in .openbridge/** — seed `.openbridge/prompts/` with initial prompt templates (exploration-scan.md, exploration-classify.md, task-execute.md, task-verify.md). Master can read and edit these. Each prompt has a version + success_rate field tracked in `.openbridge/prompts/manifest.json`                                  | OB-170 |  🟡 Med  |  ✅ Done  |
-| 118 | **Learnings store** — create `.openbridge/learnings.json`. After each task, Master appends: { task_type, model_used, profile_used, success, duration, notes }. On startup, Master reads learnings to inform future decisions (e.g., "haiku failed on refactoring tasks 3 times, use sonnet instead")                                           | OB-171 |  🟡 Med  |  ✅ Done  |
-| 119 | **Prompt effectiveness tracking** — after each worker task, record whether the prompt produced valid output (parseable JSON, correct format). Prompts with <50% success rate get flagged. Master can rewrite flagged prompts on idle                                                                                                           | OB-172 |  🟢 Low  |  ✅ Done  |
-| 120 | **Master self-improvement cycle** — when Master is idle (no pending user messages for >5 min), it reviews its learnings and can: (1) update prompts that have low success rates, (2) create new custom profiles for recurring task patterns, (3) update workspace-map.json if project has changed. This runs as a low-priority background task | OB-173 |  🟢 Low  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                                                           | ID     | Priority | Status  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 117 | **Prompt library in .openbridge/** — seed `.openbridge/prompts/` with initial prompt templates (exploration-scan.md, exploration-classify.md, task-execute.md, task-verify.md). Master can read and edit these. Each prompt has a version + success_rate field tracked in `.openbridge/prompts/manifest.json`                                  | OB-170 |  🟡 Med  | ✅ Done |
+| 118 | **Learnings store** — create `.openbridge/learnings.json`. After each task, Master appends: { task_type, model_used, profile_used, success, duration, notes }. On startup, Master reads learnings to inform future decisions (e.g., "haiku failed on refactoring tasks 3 times, use sonnet instead")                                           | OB-171 |  🟡 Med  | ✅ Done |
+| 119 | **Prompt effectiveness tracking** — after each worker task, record whether the prompt produced valid output (parseable JSON, correct format). Prompts with <50% success rate get flagged. Master can rewrite flagged prompts on idle                                                                                                           | OB-172 |  🟢 Low  | ✅ Done |
+| 120 | **Master self-improvement cycle** — when Master is idle (no pending user messages for >5 min), it reviews its learnings and can: (1) update prompts that have low success rates, (2) create new custom profiles for recurring task patterns, (3) update workspace-map.json if project has changed. This runs as a low-priority background task | OB-173 |  🟢 Low  | ✅ Done |
 
 ---
 

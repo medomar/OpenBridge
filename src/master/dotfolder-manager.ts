@@ -763,6 +763,27 @@ Thumbs.db
   }
 
   /**
+   * Reset usage statistics for a prompt (e.g., after rewriting it).
+   * Keeps the version number but resets counts to give the new version a fresh start.
+   */
+  public async resetPromptStats(promptId: string): Promise<void> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest || !manifest.prompts[promptId]) {
+      return;
+    }
+
+    const prompt = manifest.prompts[promptId];
+    prompt.usageCount = 0;
+    prompt.successCount = 0;
+    prompt.successRate = 0;
+    prompt.version = (parseInt(prompt.version) + 1).toString();
+    prompt.updatedAt = new Date().toISOString();
+
+    manifest.updatedAt = new Date().toISOString();
+    await this.writePromptManifest(manifest);
+  }
+
+  /**
    * Get the path to the learnings.json file
    */
   public getLearningsPath(): string {
