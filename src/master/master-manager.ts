@@ -83,13 +83,13 @@ const MASTER_MAX_TURNS = 50;
 
 /**
  * Max turns for message processing — varies by task classification.
- * quick-answer: questions, lookups, explanations (context in system prompt, no tools needed)
- * tool-use: file generation, single edits, targeted fixes (needs room to act)
- * complex-task: multi-step implementations, refactors, builds (planning + delegation)
+ * quick-answer: questions, lookups, explanations → 3 turns
+ * tool-use: file generation, single edits, targeted fixes → 10 turns
+ * complex-task (planning): forces Master to output SPAWN markers fast → 5 turns
  */
 const MESSAGE_MAX_TURNS_QUICK = 3;
 const MESSAGE_MAX_TURNS_TOOL_USE = 10;
-const MESSAGE_MAX_TURNS_COMPLEX = 15;
+const MESSAGE_MAX_TURNS_PLANNING = 5;
 
 /**
  * Options for creating a MasterManager
@@ -1076,6 +1076,23 @@ export class MasterManager {
   }
 
   /**
+   * Build a planning prompt for complex tasks.
+   * Instructs the Master to decompose the request into SPAWN markers
+   * without executing the tasks itself — forcing delegation within 3-5 turns.
+   */
+  private buildPlanningPrompt(userMessage: string): string {
+    return (
+      `The user asked: "${userMessage}"\n\n` +
+      `Break this into 1-3 concrete subtasks. For each subtask, output a SPAWN marker ` +
+      `with the appropriate profile, model, and instructions. ` +
+      `Do NOT execute the tasks yourself — only plan and delegate.\n\n` +
+      `Use this format for each subtask:\n` +
+      `[SPAWN:profile]{"prompt":"...","model":"sonnet","maxTurns":15}[/SPAWN]\n\n` +
+      `Available profiles: read-only (Read/Glob/Grep), code-edit (Read/Edit/Write/Glob/Grep/Bash(git:*)/Bash(npm:*)), full-access (all tools).`
+    );
+  }
+
+  /**
    * Autonomously explore the workspace and create .openbridge/ folder.
    * This is the Master AI's initialization step.
    *
@@ -1685,15 +1702,22 @@ Work silently — do not output conversational text, just explore and write the 
       // Classify message to determine appropriate turn budget
       const taskClass = this.classifyTask(message.content);
       const taskMaxTurns =
-        taskClass === 'complex-task'
-          ? MESSAGE_MAX_TURNS_COMPLEX
-          : taskClass === 'tool-use'
-            ? MESSAGE_MAX_TURNS_TOOL_USE
-            : MESSAGE_MAX_TURNS_QUICK;
+        taskClass === 'tool-use' ? MESSAGE_MAX_TURNS_TOOL_USE : MESSAGE_MAX_TURNS_QUICK;
       logger.info({ taskClass, taskMaxTurns }, 'Message classified');
 
+      // For complex tasks, send a planning prompt that forces the Master to output
+      // SPAWN markers within a small turn budget instead of attempting execution itself.
+      const promptToSend =
+        taskClass === 'complex-task' ? this.buildPlanningPrompt(message.content) : message.content;
+      const maxTurnsToUse =
+        taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
+
+      if (taskClass === 'complex-task') {
+        logger.info('Complex task — using planning prompt for auto-delegation');
+      }
+
       // Execute message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(message.content, undefined, taskMaxTurns);
+      const spawnOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -1706,8 +1730,8 @@ Work silently — do not output conversational text, just explore and write the 
 
         await this.restartMasterSession();
 
-        // Retry the original message with the new session
-        const retryOpts = this.buildMasterSpawnOptions(message.content, undefined, taskMaxTurns);
+        // Retry with the same prompt (planning or raw) and the new session
+        const retryOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
       }
@@ -1860,8 +1884,25 @@ Work silently — do not output conversational text, just explore and write the 
         return;
       }
 
+      // Classify message to determine appropriate turn budget and prompt
+      const streamTaskClass = this.classifyTask(message.content);
+      const streamPromptToSend =
+        streamTaskClass === 'complex-task'
+          ? this.buildPlanningPrompt(message.content)
+          : message.content;
+      const streamMaxTurns =
+        streamTaskClass === 'complex-task'
+          ? MESSAGE_MAX_TURNS_PLANNING
+          : streamTaskClass === 'tool-use'
+            ? MESSAGE_MAX_TURNS_TOOL_USE
+            : MESSAGE_MAX_TURNS_QUICK;
+
+      if (streamTaskClass === 'complex-task') {
+        logger.info('Complex task — using planning prompt for auto-delegation (stream)');
+      }
+
       // Stream message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(message.content);
+      const spawnOpts = this.buildMasterSpawnOptions(streamPromptToSend, undefined, streamMaxTurns);
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
 
@@ -1887,8 +1928,12 @@ Work silently — do not output conversational text, just explore and write the 
 
         await this.restartMasterSession();
 
-        // Retry the message with the new session (streamed)
-        const retryOpts = this.buildMasterSpawnOptions(message.content);
+        // Retry with the same prompt (planning or raw) and the new session (streamed)
+        const retryOpts = this.buildMasterSpawnOptions(
+          streamPromptToSend,
+          undefined,
+          streamMaxTurns,
+        );
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);
 
