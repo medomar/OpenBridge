@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 7.930/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-22 | **Previous Score:** 7.230
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 5 (Phase 23: 5/5 done ✅, Phase 24: 0/5)
+> **Current Score:** 7.960/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-22 | **Previous Score:** 7.930
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 4 (Phase 23: 5/5 done ✅, Phase 24: 1/5)
 > **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -14,7 +14,7 @@
 | -------------------- | :------: | :----: | :-------: | ---------------------------------------------------------------------------------------------------------------- |
 | Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                                                 |
 | Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                                                          |
-| Connectors           |    5%    | 7.5/10 |   0.375   | WhatsApp + Console working. Parallel init. QR scan confirmed                                                     |
+| Connectors           |    5%    | 8.0/10 |   0.400   | WhatsApp + Console + Telegram working. Parallel init. QR scan confirmed. grammY DM + group @mention support      |
 | Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. 24+ tests passing |
 | Tool Profiles        |   10%    | 8.0/10 |   0.800   | read-only/code-edit/full-access/master built-in profiles. Custom profiles registry. AgentRunner integration      |
 | Master AI (self-gov) |   25%    | 7.5/10 |   1.875   | Persistent session, task decomposition (SPAWN markers), worker delegation, session recovery. E2E verified        |
@@ -23,7 +23,7 @@
 | Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                              |
 | Testing              |    5%    | 8.5/10 |   0.425   | 974 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                 |
 | Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                         |
-| **TOTAL**            | **100%** |   —    | **7.925** | **Re-scored to reflect Phases 16–23 complete**                                                                   |
+| **TOTAL**            | **100%** |   —    | **7.950** | **Re-scored to reflect Phases 16–23 complete + Telegram connector (OB-320)**                                     |
 
 > **Note:** Breakdown re-baselined to reflect completion of Phases 16–23. Agent Runner (Phase 16), Tool Profiles (Phase 17), Self-Governing Master (Phase 18), Worker Orchestration (Phase 19), Self-Improvement (Phase 20), E2E Hardening (Phase 21), Make It Work (Phase 22), Production Hardening (Phase 23) all complete.
 
@@ -116,6 +116,7 @@
 | 2026-02-22 | 7.215 |   +0.015    | OB-312: Fix MaxListenersExceededWarning — root cause: 30 module-level createLogger() calls each creating a pino transport (each registers process.on('exit')), all executing before setMaxListeners(20) in ESM import order. Fix: converted logger.ts to singleton root logger + child() per module (one transport → one handler regardless of logger count). 974 tests passing. Phase 23 (3/5 tasks done)                                                                                                                                                  |
 | 2026-02-22 | 7.230 |   +0.015    | OB-313: Fix test suite failures — verified all 974 tests already passing after OB-310/311/312 fixes. Previously known failures (exploration-coordinator race conditions, agent-runner unhandled rejections, Phase 22 breakage) were resolved by prior tasks. Full verification: lint ✅, typecheck ✅, test 974/974 ✅, build ✅. Phase 23 (4/5 tasks done)                                                                                                                                                                                                 |
 | 2026-02-22 | 7.930 | re-baseline | OB-314: Health re-baseline — updated all category scores to reflect Phases 16–23 complete. Agent Runner 8.5/10 (fully built), Tool Profiles 8.0/10, Master AI 7.5/10 (E2E verified), Worker Orchestration 7.5/10, Self-Improvement 7.0/10, Testing 8.5/10 (974 passing). Breakdown total: 7.925 + 0.005 (Low task). npm pack verified (509 files). README status table updated. Phase 23 complete ✅                                                                                                                                                        |
+| 2026-02-22 | 7.960 |    +0.03    | OB-320: Telegram connector — grammY-based connector with DM + group @mention support, TelegramConnector class, TelegramConfigSchema (Zod), dynamic import, typing indicator, shutdown, 18 unit tests (992 tests passing). Phase 24 started (1/5 tasks)                                                                                                                                                                                                                                                                                                      |
 
 ---
 
