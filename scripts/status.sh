@@ -204,12 +204,12 @@ ${grandchild_lines}"
   if [[ -f "$STATE_PATH" ]]; then
     echo ""
     echo "  Run state:"
-    local started_at iteration phase model parallel status consecutive_failures
+    local started_at iteration phase model budget status consecutive_failures
     started_at=$(json_val "started_at" "$STATE_PATH")
     iteration=$(json_val "iteration" "$STATE_PATH")
     phase=$(json_val "phase" "$STATE_PATH")
     model=$(json_val "model" "$STATE_PATH")
-    parallel=$(json_val "parallel" "$STATE_PATH")
+    budget=$(json_val "budget" "$STATE_PATH")
     status=$(json_val "status" "$STATE_PATH")
     consecutive_failures=$(json_val "consecutive_failures" "$STATE_PATH")
     echo "    Status:     ${status:-unknown}"
@@ -217,23 +217,13 @@ ${grandchild_lines}"
     echo "    Iteration:  ${iteration:-?}"
     echo "    Phase:      ${phase:-all}"
     echo "    Model:      ${model:-default}"
-    echo "    Parallel:   ${parallel:-1}"
+    echo "    Budget:     \$${budget:-5}/agent"
     echo "    Failures:   ${consecutive_failures:-0} consecutive"
 
-    # Show orchestrator and skip info if available
-    local orchestrator task_timeout skipped max_task_failures
-    orchestrator=$(json_val "orchestrator" "$STATE_PATH")
-    task_timeout=$(json_val "task_timeout" "$STATE_PATH")
+    # Show skip info if available
+    local skipped max_task_failures
     skipped=$(json_val "skipped_tasks" "$STATE_PATH")
     max_task_failures=$(json_val "max_task_failures" "$STATE_PATH")
-    if [[ -n "$orchestrator" ]]; then
-      local orch_model
-      orch_model=$(json_val "orchestrator_model" "$STATE_PATH")
-      echo "    Orchestr:   ${orchestrator} (${orch_model:-haiku})"
-    fi
-    if [[ -n "$task_timeout" && "$task_timeout" != "none" ]]; then
-      echo "    Timeout:    ${task_timeout}s per task"
-    fi
     if [[ -n "$skipped" && "$skipped" != "0" ]]; then
       echo "    Skipped:    ${skipped} task(s)"
     fi
