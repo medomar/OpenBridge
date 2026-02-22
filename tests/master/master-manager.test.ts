@@ -3,6 +3,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { MasterManagerOptions } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
@@ -502,6 +503,76 @@ describe('MasterManager', () => {
       expect(response).toContain('currently idle');
 
       await idleManager.shutdown();
+    });
+
+    it('should queue messages during exploration and drain via router after exploration completes', async () => {
+      // Initialize dotfolder for the exploring manager
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      // Create manager with skipAutoExploration to reach 'ready' state first
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+      const exploringManager = new MasterManager(options);
+      await exploringManager.start(); // state = 'ready'
+
+      // Set up a controlled exploration stream (hangs until released)
+      let releaseExploration!: () => void;
+      const explorationBarrier = new Promise<void>((resolve) => {
+        releaseExploration = resolve;
+      });
+
+      async function* mockExplorationStream(): AsyncGenerator<
+        string,
+        { exitCode: number; stdout: string; stderr: string; durationMs: number; retryCount: number }
+      > {
+        await explorationBarrier;
+        yield ''; // required: wait for barrier before returning final result
+        return { exitCode: 0, stdout: '', stderr: '', durationMs: 1000, retryCount: 0 };
+      }
+
+      mockStream.mockReturnValueOnce(mockExplorationStream());
+
+      // Set up mock router
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      exploringManager.setRouter({ route: mockRoute } as unknown as Router);
+
+      // Start exploration without awaiting (explore() sets state to 'exploring')
+      const explorePromise = exploringManager.explore();
+
+      // Wait a tick for async state transition
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(exploringManager.getState()).toBe('exploring');
+
+      // Send a message during exploration — should be queued
+      const message: InboundMessage = {
+        id: 'msg-queued',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello during exploration',
+        content: 'hello during exploration',
+        timestamp: new Date(),
+      };
+
+      const queuedResponse = await exploringManager.processMessage(message);
+      expect(queuedResponse).toBe(
+        "I'm still exploring your workspace. Your message will be processed once exploration completes.",
+      );
+
+      // Release exploration — state transitions to 'ready' and drain runs
+      releaseExploration();
+      await explorePromise;
+
+      // Router.route() should have been called with the queued message
+      expect(mockRoute).toHaveBeenCalledTimes(1);
+      expect(mockRoute).toHaveBeenCalledWith(message);
+
+      await exploringManager.shutdown();
     });
 
     it('should handle message processing errors', async () => {
