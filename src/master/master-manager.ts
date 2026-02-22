@@ -1,6 +1,9 @@
 import { DotFolderManager } from './dotfolder-manager.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
+import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
+import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
+import type { WorkspaceChanges } from './workspace-change-tracker.js';
 import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
@@ -128,6 +131,7 @@ export class MasterManager {
   private readonly messageTimeout: number;
   private readonly skipAutoExploration: boolean;
   private readonly dotFolder: DotFolderManager;
+  private readonly changeTracker: WorkspaceChangeTracker;
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
@@ -165,6 +169,7 @@ export class MasterManager {
     this.messageTimeout = options.messageTimeout ?? DEFAULT_MESSAGE_TIMEOUT;
     this.skipAutoExploration = options.skipAutoExploration ?? false;
     this.dotFolder = new DotFolderManager(this.workspacePath);
+    this.changeTracker = new WorkspaceChangeTracker(this.workspacePath);
     this.delegationCoordinator = new DelegationCoordinator();
     this.agentRunner = new AgentRunner();
     this.workerRegistry = new WorkerRegistry();
@@ -242,32 +247,46 @@ export class MasterManager {
     const map = await this.dotFolder.readMap();
 
     if (map) {
-      // Scenario 1: Valid map exists — skip exploration, enter ready state
-      logger.info(
-        { projectType: map.projectType },
-        'Valid workspace map found, skipping exploration',
-      );
+      // Check for workspace changes before deciding to skip exploration
+      const changeResult = await this.checkWorkspaceChanges(map);
 
-      this.explorationSummary = {
-        startedAt: map.generatedAt,
-        completedAt: map.generatedAt,
-        status: 'completed',
-        filesScanned: 0,
-        directoriesExplored: 0,
-        projectType: map.projectType,
-        frameworks: map.frameworks,
-        insights: [],
-        mapPath: this.dotFolder.getMapPath(),
-        gitInitialized: true,
-      };
+      if (changeResult === 'no-changes') {
+        // Scenario 1a: Valid map + no workspace changes — skip exploration
+        logger.info(
+          { projectType: map.projectType },
+          'Valid workspace map found, no workspace changes detected — skipping exploration',
+        );
 
-      // Cache workspace map summary for system prompt injection
-      this.workspaceMapSummary = this.buildMapSummary(map);
+        this.explorationSummary = {
+          startedAt: map.generatedAt,
+          completedAt: map.generatedAt,
+          status: 'completed',
+          filesScanned: 0,
+          directoriesExplored: 0,
+          projectType: map.projectType,
+          frameworks: map.frameworks,
+          insights: [],
+          mapPath: this.dotFolder.getMapPath(),
+          gitInitialized: true,
+        };
 
-      this.state = 'ready';
-      logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
-      await this.drainPendingMessages();
-      return;
+        this.workspaceMapSummary = this.buildMapSummary(map);
+        this.state = 'ready';
+        logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
+        await this.drainPendingMessages();
+        return;
+      }
+
+      if (changeResult === 'incremental') {
+        // Scenario 1b: Valid map + small changes — incremental update done
+        this.state = 'ready';
+        logger.info('Master AI ready (incremental map update completed)');
+        await this.drainPendingMessages();
+        return;
+      }
+
+      // Scenario 1c: changeResult === 'full-reexplore' — fall through to full exploration
+      logger.info('Workspace changes too large for incremental update — full re-exploration');
     }
 
     // Check for incomplete or failed exploration state
@@ -1103,6 +1122,158 @@ export class MasterManager {
   }
 
   /**
+   * Check for workspace changes since the last analysis and decide which
+   * exploration path to take.
+   * Returns 'no-changes', 'incremental', or 'full-reexplore'.
+   */
+  private async checkWorkspaceChanges(
+    existingMap: WorkspaceMap,
+  ): Promise<'no-changes' | 'incremental' | 'full-reexplore'> {
+    const marker = await this.dotFolder.readAnalysisMarker();
+
+    // No marker but valid map exists = upgrade from before incremental tracking.
+    // Write a marker now and treat as no-changes (skip re-exploration).
+    if (!marker) {
+      logger.info('No analysis marker found — writing initial marker for existing map');
+      const initialMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+      await this.dotFolder.writeAnalysisMarker(initialMarker);
+      return 'no-changes';
+    }
+
+    const changes = await this.changeTracker.detectChanges(marker);
+
+    logger.info(
+      {
+        method: changes.method,
+        hasChanges: changes.hasChanges,
+        changedCount: changes.changedFiles.length,
+        deletedCount: changes.deletedFiles.length,
+        tooLarge: changes.tooLargeForIncremental,
+      },
+      `Workspace change detection: ${changes.summary}`,
+    );
+
+    if (!changes.hasChanges) {
+      return 'no-changes';
+    }
+
+    if (changes.tooLargeForIncremental) {
+      return 'full-reexplore';
+    }
+
+    // Perform incremental exploration
+    await this.incrementalExplore(existingMap, changes);
+    return 'incremental';
+  }
+
+  /**
+   * Perform an incremental exploration: send only the changed files to
+   * the Master AI for a targeted map update.
+   */
+  private async incrementalExplore(
+    existingMap: WorkspaceMap,
+    changes: WorkspaceChanges,
+  ): Promise<void> {
+    this.state = 'exploring';
+
+    const startedAt = new Date().toISOString();
+
+    logger.info(
+      {
+        changedFiles: changes.changedFiles.length,
+        deletedFiles: changes.deletedFiles.length,
+      },
+      'Starting incremental workspace exploration',
+    );
+
+    await this.dotFolder.appendLog({
+      timestamp: startedAt,
+      level: 'info',
+      message: 'Incremental workspace exploration started',
+      data: {
+        method: changes.method,
+        changedCount: changes.changedFiles.length,
+        deletedCount: changes.deletedFiles.length,
+        summary: changes.summary,
+      },
+    });
+
+    try {
+      const prompt = generateIncrementalExplorationPrompt(
+        this.workspacePath,
+        existingMap,
+        changes.changedFiles,
+        changes.deletedFiles,
+        changes.summary,
+      );
+
+      const spawnOpts = this.buildMasterSpawnOptions(prompt, this.explorationTimeout);
+      // Scale maxTurns to change size — incremental is smaller scope
+      spawnOpts.maxTurns = Math.min(
+        MASTER_MAX_TURNS,
+        Math.max(10, changes.changedFiles.length + 5),
+      );
+
+      const result = await this.agentRunner.spawn(spawnOpts);
+      await this.updateMasterSession();
+
+      if (result.exitCode !== 0) {
+        throw new Error(
+          `Incremental exploration failed (exit ${result.exitCode}): ${result.stderr}`,
+        );
+      }
+
+      // Save the analysis marker with the current workspace state
+      const totalChanged = changes.changedFiles.length + changes.deletedFiles.length;
+      const newMarker = await this.changeTracker.buildCurrentMarker('incremental', totalChanged);
+      await this.dotFolder.writeAnalysisMarker(newMarker);
+
+      // Commit all .openbridge changes
+      await this.dotFolder.commitChanges(
+        `feat(master): incremental map update (${totalChanged} files changed)`,
+      );
+
+      // Reload the map into memory
+      await this.loadExplorationSummary();
+
+      // Update cached map summary
+      const updatedMap = await this.dotFolder.readMap();
+      if (updatedMap) {
+        this.workspaceMapSummary = this.buildMapSummary(updatedMap);
+      }
+
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Incremental exploration completed',
+        data: { filesChanged: totalChanged, durationMs: result.durationMs },
+      });
+
+      logger.info(
+        { filesChanged: totalChanged, durationMs: result.durationMs },
+        'Incremental exploration completed',
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        message: 'Incremental exploration failed — falling back to full re-explore',
+        data: { error: errorMessage },
+      });
+
+      logger.warn(
+        { error: errorMessage },
+        'Incremental exploration failed, falling back to full re-exploration',
+      );
+
+      // Fall back to full exploration
+      await this.explore();
+    }
+  }
+
+  /**
    * Master-driven exploration: sends an exploration prompt through the
    * persistent Master session. The Master uses its own tools to explore
    * the workspace and write results to `.openbridge/`.
@@ -1169,6 +1340,10 @@ export class MasterManager {
 
     // Commit exploration results
     await this.dotFolder.commitChanges('feat(master): Master-driven workspace exploration');
+
+    // Write analysis marker for incremental change detection on next startup
+    const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+    await this.dotFolder.writeAnalysisMarker(fullMarker);
 
     // Log completion
     await this.dotFolder.appendLog({

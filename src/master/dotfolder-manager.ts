@@ -16,6 +16,7 @@ import type {
   PromptTemplate,
   LearningEntry,
   LearningsRegistry,
+  WorkspaceAnalysisMarker,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -30,6 +31,7 @@ import {
   PromptManifestSchema,
   LearningEntrySchema,
   LearningsRegistrySchema,
+  WorkspaceAnalysisMarkerSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -218,6 +220,38 @@ Thumbs.db
 
     const mapPath = this.getMapPath();
     await fs.writeFile(mapPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Get the path to the analysis-marker.json file
+   */
+  public getAnalysisMarkerPath(): string {
+    return path.join(this.dotFolderPath, 'analysis-marker.json');
+  }
+
+  /**
+   * Read the workspace analysis marker from .openbridge/analysis-marker.json.
+   * Returns null if the file doesn't exist or is invalid.
+   */
+  public async readAnalysisMarker(): Promise<WorkspaceAnalysisMarker | null> {
+    const markerPath = this.getAnalysisMarkerPath();
+    try {
+      const content = await fs.readFile(markerPath, 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return WorkspaceAnalysisMarkerSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the workspace analysis marker to .openbridge/analysis-marker.json.
+   * Called after every successful exploration (full or incremental).
+   */
+  public async writeAnalysisMarker(marker: WorkspaceAnalysisMarker): Promise<void> {
+    const validated = WorkspaceAnalysisMarkerSchema.parse(marker);
+    const markerPath = this.getAnalysisMarkerPath();
+    await fs.writeFile(markerPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**

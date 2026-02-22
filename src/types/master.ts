@@ -599,3 +599,35 @@ export const LearningsRegistrySchema = z.object({
 });
 
 export type LearningsRegistry = z.infer<typeof LearningsRegistrySchema>;
+
+// ── Workspace Analysis Marker ───────────────────────────────────
+
+/**
+ * Marker stored in .openbridge/analysis-marker.json.
+ * Records the workspace's git state at the time of last successful exploration.
+ * Used for incremental change detection on subsequent startups.
+ */
+export const WorkspaceAnalysisMarkerSchema = z.object({
+  /** The workspace HEAD commit hash at the time of last analysis */
+  workspaceCommitHash: z.string().optional(),
+
+  /** The workspace branch at the time of last analysis */
+  workspaceBranch: z.string().optional(),
+
+  /** Whether the workspace had a git repository */
+  workspaceHasGit: z.boolean(),
+
+  /** ISO timestamp of when the analysis completed */
+  analyzedAt: z.string(),
+
+  /** Type of analysis performed */
+  analysisType: z.enum(['full', 'incremental']),
+
+  /** Number of files that were changed in this analysis (0 for full) */
+  filesChanged: z.number().int().nonnegative().default(0),
+
+  /** Schema version for forward compatibility */
+  schemaVersion: z.string().default('1.0.0'),
+});
+
+export type WorkspaceAnalysisMarker = z.infer<typeof WorkspaceAnalysisMarkerSchema>;

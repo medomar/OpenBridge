@@ -22,7 +22,12 @@ export {
   generateClassificationPrompt,
   generateDirectoryDivePrompt,
   generateSummaryPrompt,
+  generateIncrementalExplorationPrompt,
 } from './exploration-prompts.js';
+
+// Export workspace change tracker for incremental exploration
+export { WorkspaceChangeTracker } from './workspace-change-tracker.js';
+export type { WorkspaceChanges } from './workspace-change-tracker.js';
 
 // Export MasterManager for lifecycle management
 export { MasterManager } from './master-manager.js';

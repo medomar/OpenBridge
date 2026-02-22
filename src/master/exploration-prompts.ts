@@ -11,7 +11,7 @@
  * Phase 4: Assembly        - Merge partial results into workspace-map.json
  */
 
-import type { StructureScan } from '../types/master.js';
+import type { StructureScan, WorkspaceMap } from '../types/master.js';
 
 /**
  * Pass 1: Structure Scan
@@ -347,4 +347,71 @@ Return ONLY a JSON object with a single "summary" field:
 - Keep it concise (2-3 sentences maximum)
 - Adapt tone based on project type (code vs business)
 `;
+}
+
+/**
+ * Incremental Exploration Prompt
+ *
+ * Instructs the Master AI to update the existing workspace-map.json
+ * based on a set of changed/added/deleted files since the last analysis.
+ * The AI only reads the changed files and updates the relevant sections.
+ *
+ * @param workspacePath - Absolute path to the workspace root
+ * @param currentMap - The existing workspace map (for context)
+ * @param changedFiles - Files that were added or modified
+ * @param deletedFiles - Files that were removed
+ * @param changesSummary - Human-readable summary of what changed
+ * @returns Prompt for incremental map update
+ */
+export function generateIncrementalExplorationPrompt(
+  workspacePath: string,
+  currentMap: WorkspaceMap,
+  changedFiles: string[],
+  deletedFiles: string[],
+  changesSummary: string,
+): string {
+  return `# Task: Incremental Workspace Map Update
+
+The workspace at **${workspacePath}** has changed since the last exploration.
+
+## What Changed
+
+${changesSummary}
+
+### Modified/Added Files (${changedFiles.length}):
+${changedFiles.length > 0 ? changedFiles.map((f) => `- ${f}`).join('\n') : '(none)'}
+
+### Deleted Files (${deletedFiles.length}):
+${deletedFiles.length > 0 ? deletedFiles.map((f) => `- ${f}`).join('\n') : '(none)'}
+
+## Current Workspace Map
+
+\`\`\`json
+${JSON.stringify(currentMap, null, 2)}
+\`\`\`
+
+## Instructions
+
+1. **Read only the changed/added files** listed above using Read, Glob, and Grep
+2. **Update the workspace map** with any new insights from the changed files:
+   - If a changed file is in a directory already in \`structure\`, update its \`purpose\` or \`fileCount\` if needed
+   - If a changed file introduces a new directory not in \`structure\`, add it
+   - If a changed file is a new key file (config, entry point, documentation), add it to \`keyFiles\`
+   - If a deleted file was in \`keyFiles\`, remove it
+   - If frameworks or dependencies changed (e.g., package.json modified), update \`frameworks\` and \`dependencies\`
+   - If commands changed (e.g., package.json scripts modified), update \`commands\`
+   - Update \`generatedAt\` to the current timestamp
+3. **Do NOT re-explore unchanged files** — trust the existing map for those
+4. **Write the updated map** to \`.openbridge/workspace-map.json\` using the Write tool
+5. If the changes are trivial (e.g., only whitespace, comments), you may leave the map unchanged but still write it with an updated \`generatedAt\`
+
+## Important Constraints
+
+- Only read files from the changed/added list — do NOT scan the entire workspace
+- Do NOT modify any workspace files outside \`.openbridge/\`
+- If a changed file is binary or unreadable, skip it
+- Keep the existing map structure intact — only modify sections affected by the changes
+- Update the \`summary\` field ONLY if the changes significantly alter the project's nature
+
+Work silently. Write the updated map and finish.`;
 }
