@@ -332,4 +332,82 @@ describe('WebChatConnector', () => {
     const c = new WebChatConnector({ port: 8080, host: '127.0.0.1' });
     expect(c.name).toBe('webchat');
   });
+
+  it('should send progress event to all OPEN clients', async () => {
+    await connector.initialize();
+
+    const client1 = createMockClient();
+    const client2 = createMockClient();
+    latestWss().simulateConnection(client1);
+    latestWss().simulateConnection(client2);
+
+    await connector.sendProgress({ type: 'classifying' }, 'webchat-user');
+
+    const expected = JSON.stringify({ type: 'progress', event: { type: 'classifying' } });
+    expect(client1.send).toHaveBeenCalledWith(expected);
+    expect(client2.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should send spawning progress event with workerCount', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress({ type: 'spawning', workerCount: 3 }, 'webchat-user');
+
+    const expected = JSON.stringify({
+      type: 'progress',
+      event: { type: 'spawning', workerCount: 3 },
+    });
+    expect(client.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should send worker-progress event with completed and total', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress(
+      { type: 'worker-progress', completed: 2, total: 3, workerName: 'ReadProject' },
+      'webchat-user',
+    );
+
+    const expected = JSON.stringify({
+      type: 'progress',
+      event: { type: 'worker-progress', completed: 2, total: 3, workerName: 'ReadProject' },
+    });
+    expect(client.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should send complete progress event', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress({ type: 'complete' }, 'webchat-user');
+
+    const expected = JSON.stringify({ type: 'progress', event: { type: 'complete' } });
+    expect(client.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should not send progress to non-OPEN clients', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    client.readyState = 3; // CLOSED
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress({ type: 'synthesizing' }, 'webchat-user');
+
+    expect(client.send).not.toHaveBeenCalled();
+  });
+
+  it('should silently skip sendProgress when not connected', async () => {
+    await expect(
+      connector.sendProgress({ type: 'classifying' }, 'webchat-user'),
+    ).resolves.toBeUndefined();
+  });
 });
