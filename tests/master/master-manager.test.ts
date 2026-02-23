@@ -158,14 +158,14 @@ describe('MasterManager', () => {
             lower.includes(kw),
           )
         )
-          return 'complex-task';
+          return { class: 'complex-task' as const, maxTurns: 5, reason: 'test mock: complex-task' };
         if (
           ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'].some((kw) =>
             lower.includes(kw),
           )
         )
-          return 'tool-use';
-        return 'quick-answer';
+          return { class: 'tool-use' as const, maxTurns: 10, reason: 'test mock: tool-use' };
+        return { class: 'quick-answer' as const, maxTurns: 3, reason: 'test mock: quick-answer' };
       },
     );
   });
@@ -1559,79 +1559,92 @@ describe('MasterManager', () => {
       });
 
       it('classifies "what is this project?" as quick-answer', async () => {
-        expect(await masterManager.classifyTask('what is this project?')).toBe('quick-answer');
+        expect((await masterManager.classifyTask('what is this project?')).class).toBe(
+          'quick-answer',
+        );
       });
 
       it('classifies "how does the router work?" as quick-answer', async () => {
-        expect(await masterManager.classifyTask('how does the router work?')).toBe('quick-answer');
+        expect((await masterManager.classifyTask('how does the router work?')).class).toBe(
+          'quick-answer',
+        );
       });
 
       it('classifies "explain the bridge architecture" as quick-answer', async () => {
-        expect(await masterManager.classifyTask('explain the bridge architecture')).toBe(
+        expect((await masterManager.classifyTask('explain the bridge architecture')).class).toBe(
           'quick-answer',
         );
       });
 
       it('classifies "list all files in src/" as quick-answer', async () => {
-        expect(await masterManager.classifyTask('list all files in src/')).toBe('quick-answer');
+        expect((await masterManager.classifyTask('list all files in src/')).class).toBe(
+          'quick-answer',
+        );
       });
 
       it('classifies "show me the config schema" as quick-answer', async () => {
-        expect(await masterManager.classifyTask('show me the config schema')).toBe('quick-answer');
+        expect((await masterManager.classifyTask('show me the config schema')).class).toBe(
+          'quick-answer',
+        );
       });
 
       it('classifies "generate an HTML report" as tool-use', async () => {
-        expect(await masterManager.classifyTask('generate an HTML report')).toBe('tool-use');
+        expect((await masterManager.classifyTask('generate an HTML report')).class).toBe(
+          'tool-use',
+        );
       });
 
       it('classifies "create a new test file for auth.ts" as tool-use', async () => {
-        expect(await masterManager.classifyTask('create a new test file for auth.ts')).toBe(
+        expect((await masterManager.classifyTask('create a new test file for auth.ts')).class).toBe(
           'tool-use',
         );
       });
 
       it('classifies "write a README section about configuration" as tool-use', async () => {
-        expect(await masterManager.classifyTask('write a README section about configuration')).toBe(
-          'tool-use',
-        );
+        expect(
+          (await masterManager.classifyTask('write a README section about configuration')).class,
+        ).toBe('tool-use');
       });
 
       it('classifies "fix the bug in queue.ts line 42" as tool-use', async () => {
-        expect(await masterManager.classifyTask('fix the bug in queue.ts line 42')).toBe(
+        expect((await masterManager.classifyTask('fix the bug in queue.ts line 42')).class).toBe(
           'tool-use',
         );
       });
 
       it('classifies "make a Dockerfile for this project" as tool-use', async () => {
-        expect(await masterManager.classifyTask('make a Dockerfile for this project')).toBe(
+        expect((await masterManager.classifyTask('make a Dockerfile for this project')).class).toBe(
           'tool-use',
         );
       });
 
       it('classifies "implement user authentication" as complex-task', async () => {
-        expect(await masterManager.classifyTask('implement user authentication')).toBe(
+        expect((await masterManager.classifyTask('implement user authentication')).class).toBe(
           'complex-task',
         );
       });
 
       it('classifies "build a REST API for the dashboard" as complex-task', async () => {
-        expect(await masterManager.classifyTask('build a REST API for the dashboard')).toBe(
+        expect((await masterManager.classifyTask('build a REST API for the dashboard')).class).toBe(
           'complex-task',
         );
       });
 
       it('classifies "refactor the MasterManager to use async generators" as complex-task', async () => {
         expect(
-          await masterManager.classifyTask('refactor the MasterManager to use async generators'),
+          (await masterManager.classifyTask('refactor the MasterManager to use async generators'))
+            .class,
         ).toBe('complex-task');
       });
 
       it('is case-insensitive (IMPLEMENT → complex-task)', async () => {
-        expect(await masterManager.classifyTask('IMPLEMENT a login flow')).toBe('complex-task');
+        expect((await masterManager.classifyTask('IMPLEMENT a login flow')).class).toBe(
+          'complex-task',
+        );
       });
 
       it('is case-insensitive (GENERATE → tool-use)', async () => {
-        expect(await masterManager.classifyTask('GENERATE a config file')).toBe('tool-use');
+        expect((await masterManager.classifyTask('GENERATE a config file')).class).toBe('tool-use');
       });
 
       it('falls back to tool-use when AI returns an unrecognised response', async () => {
@@ -1642,22 +1655,45 @@ describe('MasterManager', () => {
           retryCount: 0,
           durationMs: 100,
         });
-        expect(await masterManager.classifyTask('provide me a HTML Preview')).toBe('tool-use');
+        expect((await masterManager.classifyTask('provide me a HTML Preview')).class).toBe(
+          'tool-use',
+        );
       });
 
-      it('uses AI result when it returns a valid category', async () => {
+      it('uses AI result when it returns a valid JSON category', async () => {
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
-          stdout: 'complex-task',
+          stdout:
+            '{"class":"complex-task","maxTurns":20,"reason":"full-stack app requires multi-step planning"}',
           stderr: '',
           retryCount: 0,
           durationMs: 100,
         });
         // "provide" is not a keyword — keyword fallback would give quick-answer,
-        // but AI correctly returns complex-task
-        expect(await masterManager.classifyTask('provide me a full-stack web app')).toBe(
-          'complex-task',
-        );
+        // but AI correctly returns complex-task with a custom maxTurns
+        const result = await masterManager.classifyTask('provide me a full-stack web app');
+        expect(result.class).toBe('complex-task');
+        expect(result.maxTurns).toBe(20);
+        expect(result.reason).toBe('full-stack app requires multi-step planning');
+      });
+
+      it('returns AI-suggested maxTurns in the result', async () => {
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout:
+            '{"class":"tool-use","maxTurns":15,"reason":"generating an HTML page takes more turns"}',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+        const result = await masterManager.classifyTask('provide me a HTML Preview');
+        expect(result.class).toBe('tool-use');
+        expect(result.maxTurns).toBe(15);
+      });
+
+      it('result has a reason field', async () => {
+        const result = await masterManager.classifyTask('what is this project?');
+        expect(typeof result.reason).toBe('string');
       });
     });
 

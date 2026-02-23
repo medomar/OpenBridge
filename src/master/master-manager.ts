@@ -110,6 +110,20 @@ const MESSAGE_MAX_TURNS_PLANNING = 5;
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
 
 /**
+ * Result returned by classifyTask() — includes class, suggested turn budget, and reasoning.
+ * The maxTurns value is AI-suggested based on message content and workspace context,
+ * replacing the fixed MESSAGE_MAX_TURNS_QUICK / MESSAGE_MAX_TURNS_TOOL_USE constants.
+ */
+export interface ClassificationResult {
+  /** One of quick-answer, tool-use, or complex-task */
+  class: 'quick-answer' | 'tool-use' | 'complex-task';
+  /** AI-suggested turn budget for this specific message */
+  maxTurns: number;
+  /** Brief reason for the classification (for logging/debugging) */
+  reason: string;
+}
+
+/**
  * Options for creating a MasterManager
  */
 export interface MasterManagerOptions {
@@ -1077,13 +1091,17 @@ export class MasterManager {
    * is unavailable or times out. Returns 'tool-use' as the default so that
    * borderline messages get enough turns instead of timing out.
    */
-  private classifyTaskByKeywords(content: string): 'quick-answer' | 'tool-use' | 'complex-task' {
+  private classifyTaskByKeywords(content: string): ClassificationResult {
     const lower = content.toLowerCase();
 
     // Complex task keywords — multi-step work requiring planning and delegation
     const complexKeywords = ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'];
     if (complexKeywords.some((kw) => lower.includes(kw))) {
-      return 'complex-task';
+      return {
+        class: 'complex-task',
+        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        reason: 'keyword match: complex-task',
+      };
     }
 
     // Tool-use keywords — single-action file generation or targeted edits
@@ -1097,31 +1115,48 @@ export class MasterManager {
       'make a',
     ];
     if (toolUseKeywords.some((kw) => lower.includes(kw))) {
-      return 'tool-use';
+      return {
+        class: 'tool-use',
+        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+        reason: 'keyword match: tool-use',
+      };
     }
 
     // Default: quick-answer for questions, lookups, and unclassified messages
-    return 'quick-answer';
+    return {
+      class: 'quick-answer',
+      maxTurns: MESSAGE_MAX_TURNS_QUICK,
+      reason: 'keyword fallback: quick-answer',
+    };
   }
 
   /**
    * AI-powered task classifier using a 1-turn haiku call.
+   * Returns a ClassificationResult with class, AI-suggested maxTurns, and reason.
    * Falls back to keyword heuristics if the AI call fails or takes >3s.
-   * Falls back to 'tool-use' if the response cannot be parsed (safe default —
-   * over-budget is cheap, under-budget causes timeouts).
+   * Falls back to 'tool-use' with default turns if the JSON cannot be parsed.
+   *
+   * The AI is given the workspace context (project type, frameworks) so it can
+   * calibrate the turn budget based on scope (e.g. "full-stack app" → more turns
+   * than "simple HTML page").
    */
-  public async classifyTask(
-    content: string,
-  ): Promise<'quick-answer' | 'tool-use' | 'complex-task'> {
+  public async classifyTask(content: string): Promise<ClassificationResult> {
     const CLASSIFIER_TIMEOUT_MS = 3000;
 
+    // Include workspace context so the AI can calibrate scope
+    const workspaceCtx = this.getWorkspaceContextSummary();
+    const contextSection = workspaceCtx ? `Workspace context:\n${workspaceCtx}\n\n` : '';
+
     const prompt =
-      `Classify this user message into exactly one category: quick-answer, tool-use, or complex-task.\n` +
-      `- quick-answer: questions, explanations, lookups (no file changes needed)\n` +
-      `- tool-use: generate/create/write/fix a file or make a single targeted edit\n` +
-      `- complex-task: multi-step work that requires planning, many files, or full implementation\n\n` +
-      `Message: "${content}"\n\n` +
-      `Reply with ONLY the category name (quick-answer, tool-use, or complex-task).`;
+      `You are a task classifier for an AI assistant. Analyze the user message and suggest how to handle it.\n\n` +
+      contextSection +
+      `User message: "${content}"\n\n` +
+      `Classify the message and suggest a turn budget. Reply with ONLY a JSON object — no markdown, no explanation:\n` +
+      `{"class":"<category>","maxTurns":<number>,"reason":"<brief reason>"}\n\n` +
+      `Categories and turn guidance:\n` +
+      `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
+      `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
+      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30`;
 
     try {
       const result = await Promise.race([
@@ -1137,23 +1172,68 @@ export class MasterManager {
         ),
       ]);
 
-      const response = result.stdout.trim().toLowerCase();
-      if (response === 'quick-answer' || response === 'tool-use' || response === 'complex-task') {
-        logger.debug({ response }, 'AI classifier result');
-        return response;
+      const raw = result.stdout.trim();
+
+      // Extract JSON from the response (handle cases where AI wraps in markdown)
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+          const cls = parsed['class'];
+          const turns = parsed['maxTurns'];
+          const reason = typeof parsed['reason'] === 'string' ? parsed['reason'] : '';
+
+          if (cls === 'quick-answer' || cls === 'tool-use' || cls === 'complex-task') {
+            const maxTurns =
+              typeof turns === 'number' && turns > 0 && turns <= 50
+                ? turns
+                : cls === 'quick-answer'
+                  ? MESSAGE_MAX_TURNS_QUICK
+                  : cls === 'tool-use'
+                    ? MESSAGE_MAX_TURNS_TOOL_USE
+                    : MESSAGE_MAX_TURNS_PLANNING;
+            logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
+            return { class: cls, maxTurns, reason };
+          }
+        } catch {
+          // JSON parse error — fall through to text scan
+        }
       }
 
-      // Response contains the category somewhere but with extra text
-      if (response.includes('quick-answer')) return 'quick-answer';
-      if (response.includes('complex-task')) return 'complex-task';
-      if (response.includes('tool-use')) return 'tool-use';
+      // Last-chance text scan — response may contain the category without valid JSON
+      const lower = raw.toLowerCase();
+      if (lower.includes('quick-answer')) {
+        return {
+          class: 'quick-answer',
+          maxTurns: MESSAGE_MAX_TURNS_QUICK,
+          reason: 'text scan fallback',
+        };
+      }
+      if (lower.includes('complex-task')) {
+        return {
+          class: 'complex-task',
+          maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+          reason: 'text scan fallback',
+        };
+      }
+      if (lower.includes('tool-use')) {
+        return {
+          class: 'tool-use',
+          maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+          reason: 'text scan fallback',
+        };
+      }
 
-      // Parse failure → safe default
+      // Parse failure → safe default (tool-use: enough turns without over-committing)
       logger.warn(
-        { response },
+        { response: raw },
         'AI classifier returned unexpected response, defaulting to tool-use',
       );
-      return 'tool-use';
+      return {
+        class: 'tool-use',
+        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+        reason: 'parse failure default',
+      };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
@@ -1793,15 +1873,16 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Classify message to determine appropriate turn budget
-      const taskClass = await this.classifyTask(message.content);
-      const taskMaxTurns =
-        taskClass === 'tool-use' ? MESSAGE_MAX_TURNS_TOOL_USE : MESSAGE_MAX_TURNS_QUICK;
-      logger.info({ taskClass, taskMaxTurns }, 'Message classified');
+      const classification = await this.classifyTask(message.content);
+      const taskClass = classification.class;
+      const taskMaxTurns = classification.maxTurns;
+      logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
 
       // For complex tasks, send a planning prompt that forces the Master to output
       // SPAWN markers within a small turn budget instead of attempting execution itself.
       const promptToSend =
         taskClass === 'complex-task' ? this.buildPlanningPrompt(message.content) : message.content;
+      // complex-task always uses planning turns (5); otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
 
@@ -2011,17 +2092,17 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Classify message to determine appropriate turn budget and prompt
-      const streamTaskClass = await this.classifyTask(message.content);
+      const streamClassification = await this.classifyTask(message.content);
+      const streamTaskClass = streamClassification.class;
       const streamPromptToSend =
         streamTaskClass === 'complex-task'
           ? this.buildPlanningPrompt(message.content)
           : message.content;
+      // complex-task always uses planning turns (5); otherwise use AI-suggested budget
       const streamMaxTurns =
         streamTaskClass === 'complex-task'
           ? MESSAGE_MAX_TURNS_PLANNING
-          : streamTaskClass === 'tool-use'
-            ? MESSAGE_MAX_TURNS_TOOL_USE
-            : MESSAGE_MAX_TURNS_QUICK;
+          : streamClassification.maxTurns;
 
       if (streamTaskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation (stream)');
