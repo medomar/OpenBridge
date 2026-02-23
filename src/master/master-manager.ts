@@ -90,6 +90,8 @@ const MASTER_MAX_TURNS = 50;
 const MESSAGE_MAX_TURNS_QUICK = 3;
 const MESSAGE_MAX_TURNS_TOOL_USE = 10;
 const MESSAGE_MAX_TURNS_PLANNING = 5;
+/** Synthesis call — feeds worker results back to Master for a final user-facing response. */
+const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
 
 /**
  * Options for creating a MasterManager
@@ -1780,7 +1782,11 @@ Work silently — do not output conversational text, just explore and write the 
 
           // Inject worker results back into the Master session
           this.state = 'processing';
-          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackOpts = this.buildMasterSpawnOptions(
+            feedbackPrompt,
+            undefined,
+            MESSAGE_MAX_TURNS_SYNTHESIS,
+          );
           result = await this.agentRunner.spawn(feedbackOpts);
           await this.updateMasterSession();
 
@@ -1803,10 +1809,14 @@ Work silently — do not output conversational text, just explore and write the 
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
-          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nSummarize the delegation results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
 
           this.state = 'processing';
-          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackOpts = this.buildMasterSpawnOptions(
+            feedbackPrompt,
+            undefined,
+            MESSAGE_MAX_TURNS_SYNTHESIS,
+          );
           result = await this.agentRunner.spawn(feedbackOpts);
           await this.updateMasterSession();
 
@@ -2010,7 +2020,11 @@ Work silently — do not output conversational text, just explore and write the 
 
           // Inject worker results back into the Master session (streamed)
           this.state = 'processing';
-          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackOpts = this.buildMasterSpawnOptions(
+            feedbackPrompt,
+            undefined,
+            MESSAGE_MAX_TURNS_SYNTHESIS,
+          );
           const feedbackStream = this.agentRunner.stream(feedbackOpts);
 
           let finalResponse = '';
@@ -2041,10 +2055,14 @@ Work silently — do not output conversational text, just explore and write the 
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
-          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nPlease synthesize these results and provide a final response to the user.`;
+          const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nSummarize the delegation results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
 
           this.state = 'processing';
-          const feedbackOpts = this.buildMasterSpawnOptions(feedbackPrompt);
+          const feedbackOpts = this.buildMasterSpawnOptions(
+            feedbackPrompt,
+            undefined,
+            MESSAGE_MAX_TURNS_SYNTHESIS,
+          );
           const feedbackStream = this.agentRunner.stream(feedbackOpts);
 
           let finalResponse = '';

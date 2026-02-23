@@ -70,7 +70,7 @@ export function formatWorkerError(meta: WorkerResultMeta, error: string): string
 export function buildWorkerFeedbackPrompt(formattedResults: string[]): string {
   const summary = formattedResults.length === 1 ? '1 worker' : `${formattedResults.length} workers`;
 
-  return `${summary} completed. Results:\n\n${formattedResults.join('\n\n')}\n\nPlease synthesize these results and provide a final response to the user.`;
+  return `${summary} completed. Results:\n\n${formattedResults.join('\n\n')}\n\nSummarize the worker results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
 }
 
 /**
