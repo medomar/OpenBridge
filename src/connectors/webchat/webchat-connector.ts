@@ -49,7 +49,6 @@ const CHAT_HTML = `<!DOCTYPE html>
     .bubble.user { align-self: flex-end; background: #1a73e8; color: #fff; border-bottom-right-radius: 4px; }
     .bubble.ai { align-self: flex-start; background: #f1f3f4; color: #202124; border-bottom-left-radius: 4px; }
     .bubble.sys { align-self: center; background: transparent; color: #9aa0a6; font-size: 12px; font-style: italic; padding: 2px 0; }
-    .bubble.thinking { align-self: flex-start; background: #f1f3f4; color: #9aa0a6; border-bottom-left-radius: 4px; }
     .dot-anim span { display: inline-block; animation: pulse 1.3s infinite; }
     .dot-anim span:nth-child(2) { animation-delay: 0.22s; }
     .dot-anim span:nth-child(3) { animation-delay: 0.44s; }
@@ -59,6 +58,13 @@ const CHAT_HTML = `<!DOCTYPE html>
     .bubble.ai pre code { background: transparent; padding: 0; }
     .bubble.ai strong { font-weight: 600; }
     .bubble.ai em { font-style: italic; }
+    #status-bar { padding: 6px 16px; border-top: 1px solid #e8eaed; display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 34px; background: #fafbfc; }
+    #status-bar.hidden { display: none; }
+    #status-text { flex: 1; font-size: 13px; color: #5f6368; }
+    #status-timer { font-size: 12px; color: #9aa0a6; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .status-dot-anim span { display: inline-block; animation: pulse 1.3s infinite; }
+    .status-dot-anim span:nth-child(2) { animation-delay: 0.22s; }
+    .status-dot-anim span:nth-child(3) { animation-delay: 0.44s; }
     .input-row { padding: 12px 16px; border-top: 1px solid #e8eaed; display: flex; gap: 10px; flex-shrink: 0; }
     #inp { flex: 1; padding: 10px 16px; border: 1.5px solid #dadce0; border-radius: 24px; font-size: 14px; outline: none; transition: border-color 0.2s; background: #fff; }
     #inp:focus { border-color: #1a73e8; }
@@ -78,6 +84,10 @@ const CHAT_HTML = `<!DOCTYPE html>
       </div>
     </div>
     <div id="msgs"></div>
+    <div id="status-bar" class="hidden">
+      <span id="status-text"></span>
+      <span id="status-timer"></span>
+    </div>
     <form class="input-row" id="form">
       <input id="inp" type="text" placeholder="Type a message..." autocomplete="off" disabled />
       <button type="submit" id="send" disabled>Send</button>
@@ -90,7 +100,11 @@ const CHAT_HTML = `<!DOCTYPE html>
     var send = document.getElementById('send');
     var dot = document.getElementById('dot');
     var connLabel = document.getElementById('connLabel');
-    var thinkingEl = null;
+    var statusBar = document.getElementById('status-bar');
+    var statusText = document.getElementById('status-text');
+    var statusTimer = document.getElementById('status-timer');
+    var timerInterval = null;
+    var timerStart = null;
 
     function md(raw) {
       var h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
@@ -143,17 +157,53 @@ const CHAT_HTML = `<!DOCTYPE html>
       return div;
     }
 
-    function showThinking() {
-      if (thinkingEl) return;
-      thinkingEl = document.createElement('div');
-      thinkingEl.className = 'bubble thinking';
-      thinkingEl.innerHTML = 'Thinking<span class="dot-anim"><span>.</span><span>.</span><span>.</span></span>';
-      msgs.appendChild(thinkingEl);
-      msgs.scrollTop = msgs.scrollHeight;
+    function startTimer() {
+      if (timerInterval) return;
+      timerStart = Date.now();
+      statusTimer.textContent = '0s';
+      timerInterval = setInterval(function() {
+        var elapsed = Math.floor((Date.now() - timerStart) / 1000);
+        statusTimer.textContent = elapsed + 's';
+      }, 1000);
     }
 
-    function hideThinking() {
-      if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+    function stopTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      timerStart = null;
+      statusTimer.textContent = '';
+    }
+
+    function showStatus(html) {
+      statusBar.classList.remove('hidden');
+      statusText.innerHTML = html;
+      if (!timerInterval) startTimer();
+    }
+
+    function hideStatus() {
+      statusBar.classList.add('hidden');
+      statusText.innerHTML = '';
+      stopTimer();
+    }
+
+    function progressLabel(event) {
+      if (event.type === 'classifying') {
+        return '\uD83D\uDD0D Analyzing request<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      if (event.type === 'planning') {
+        return '\uD83D\uDCCB Planning subtasks<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      if (event.type === 'spawning') {
+        var n = event.workerCount;
+        return '\uD83D\uDCCB Breaking into ' + n + ' subtask' + (n !== 1 ? 's' : '') + '<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      if (event.type === 'worker-progress') {
+        var label = event.workerName ? '\u2699\uFE0F ' + event.workerName + ': ' : '\u2699\uFE0F ';
+        return label + event.completed + '/' + event.total + ' workers done<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      if (event.type === 'synthesizing') {
+        return '\uD83D\uDCDD Preparing final response<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      return null;
     }
 
     function setOnline(online) {
@@ -165,12 +215,23 @@ const CHAT_HTML = `<!DOCTYPE html>
 
     var ws = new WebSocket('ws://' + location.host);
     ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
-    ws.onclose = function() { setOnline(false); hideThinking(); addBubble('Disconnected', 'sys'); };
+    ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected', 'sys'); };
     ws.onmessage = function(e) {
       try {
         var data = JSON.parse(e.data);
-        if (data.type === 'response') { hideThinking(); addBubble(data.content, 'ai'); }
-        else if (data.type === 'typing') { showThinking(); }
+        if (data.type === 'response') {
+          hideStatus();
+          addBubble(data.content, 'ai');
+        } else if (data.type === 'typing') {
+          showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
+        } else if (data.type === 'progress') {
+          if (data.event && data.event.type === 'complete') {
+            hideStatus();
+          } else if (data.event) {
+            var label = progressLabel(data.event);
+            if (label) showStatus(label);
+          }
+        }
       } catch(ex) {}
     };
     form.onsubmit = function(e) {
@@ -180,7 +241,7 @@ const CHAT_HTML = `<!DOCTYPE html>
       addBubble(text, 'user');
       ws.send(JSON.stringify({ type: 'message', content: text }));
       inp.value = '';
-      showThinking();
+      showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
     };
   </script>
 </body>
