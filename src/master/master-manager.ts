@@ -1751,7 +1751,32 @@ Work silently — do not output conversational text, just explore and write the 
           task.status = 'delegated';
           await this.dotFolder.recordTask(task);
 
-          const feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
+          const n = spawnResult.markers.length;
+
+          // Immediately notify the user that delegation is in progress
+          if (this.router) {
+            await this.router.sendDirect(
+              message.source,
+              message.sender,
+              `Working on your request — I've broken it into ${n} subtask${n !== 1 ? 's' : ''}...`,
+              message.id,
+            );
+          }
+
+          // Send per-worker progress updates via the Router as each worker completes
+          const feedbackPrompt = await this.handleSpawnMarkers(
+            spawnResult.markers,
+            this.router
+              ? async (completed: number, total: number): Promise<void> => {
+                  await this.router!.sendDirect(
+                    message.source,
+                    message.sender,
+                    `Subtask ${completed}/${total} done...`,
+                    message.id,
+                  );
+                }
+              : undefined,
+          );
 
           // Inject worker results back into the Master session
           this.state = 'processing';
@@ -2552,8 +2577,14 @@ ${currentContent}
    *
    * Worker results include metadata (model, profile, duration, exit code)
    * so the Master can reason about what happened and synthesize a response.
+   *
+   * @param onProgress - Optional callback invoked after each worker completes.
+   *   Receives (completedCount, totalCount) so the caller can send progress updates.
    */
-  private async handleSpawnMarkers(markers: ParsedSpawnMarker[]): Promise<string> {
+  private async handleSpawnMarkers(
+    markers: ParsedSpawnMarker[],
+    onProgress?: (completed: number, total: number) => Promise<void>,
+  ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.dotFolder.readProfiles();
     const customProfiles = customProfilesRegistry?.profiles;
@@ -2590,6 +2621,10 @@ ${currentContent}
     // Persist registry after adding workers
     await this.persistWorkerRegistry();
 
+    // Count only workers that were actually registered (not skipped)
+    const total = workerIds.filter((id) => id !== '').length;
+    let completedCount = 0;
+
     // Spawn all workers concurrently via Promise.allSettled
     const workerPromises = markers.map((marker, index) => {
       const workerId = workerIds[index];
@@ -2603,7 +2638,15 @@ ${currentContent}
           retryCount: 0,
         } as AgentResult);
       }
-      return this.spawnWorker(workerId, marker, index, customProfiles);
+      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles);
+      if (onProgress) {
+        return workerPromise.then(async (result) => {
+          completedCount++;
+          await onProgress(completedCount, total);
+          return result;
+        });
+      }
+      return workerPromise;
     });
 
     const settled = await Promise.allSettled(workerPromises);

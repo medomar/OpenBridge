@@ -62,6 +62,30 @@ export class Router {
     this.providers.set(provider.name, provider);
   }
 
+  /**
+   * Send a message directly to a user on a specific connector (best-effort).
+   * Used by MasterManager to deliver progress updates during worker delegation
+   * without going through the full routing flow.
+   */
+  async sendDirect(
+    source: string,
+    recipient: string,
+    content: string,
+    replyTo?: string,
+  ): Promise<void> {
+    const connector = this.connectors.get(source);
+    if (!connector) {
+      logger.warn({ source }, 'sendDirect: connector not found');
+      return;
+    }
+    const msg: OutboundMessage = { target: source, recipient, content, replyTo };
+    try {
+      await connector.sendMessage(msg);
+    } catch (err) {
+      logger.warn({ err, source, recipient }, 'sendDirect: failed to send message');
+    }
+  }
+
   /** Route an inbound message to the appropriate provider and send the response back */
   async route(message: InboundMessage): Promise<void> {
     // Validate routing target exists

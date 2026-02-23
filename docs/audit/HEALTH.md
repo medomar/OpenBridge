@@ -1,8 +1,8 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.220/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.190
-> **Open Findings:** 1 (0 critical, 0 high, 1 medium) | **Pending Tasks:** 13 (Phase 25 started: 3/6 done)
+> **Current Score:** 8.250/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.220
+> **Open Findings:** 1 (0 critical, 0 high, 1 medium) | **Pending Tasks:** 12 (Phase 25 started: 4/6 done)
 > **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
@@ -124,6 +124,7 @@
 | 2026-02-23 | 8.160 |   +0.150    | OB-400: Task classifier — added `classifyTask()` to MasterManager with keyword heuristics (complex-task/tool-use/quick-answer). `processMessage()` now sets maxTurns dynamically: quick=3, tool-use=10, complex=15. Fixes OB-F22 (maxTurns:3 blocked file-generation tasks). Phase 25 started (1/6 tasks). 1071 tests passing.                                                                                                                                                                                                                              |
 | 2026-02-23 | 8.190 |    +0.03    | OB-401: Auto-delegation — complex tasks now use a planning prompt (5 turns) that forces the Master to output SPAWN markers instead of attempting execution itself. `buildPlanningPrompt()` added to MasterManager; `processMessage()` and `streamMessage()` both use it when `classifyTask()` returns `complex-task`. Removes `MESSAGE_MAX_TURNS_COMPLEX`. Phase 25 (2/6 tasks). 1071 tests passing.                                                                                                                                                        |
 | 2026-02-23 | 8.220 |    +0.03    | OB-402: Worker turn budget — profile-based default `maxTurns` in `handleSpawnMarkers()` and `handleSpawnMarkersWithProgress()`: code-edit/full-access=15, read-only=10. `defaultMaxTurnsForProfile()` helper added to MasterManager. Added `maxBudgetUsd` to `SpawnOptions`, `TaskManifest`, `SpawnMarkerBody`, and `buildArgs()` (--max-budget-usd CLI flag). Phase 25 (3/6 tasks). 1071 tests passing.                                                                                                                                                    |
+| 2026-02-23 | 8.250 |    +0.03    | OB-403: Progress feedback during delegation — `Router.sendDirect()` added for connector-targeted delivery. `handleSpawnMarkers()` accepts optional `onProgress` callback (fires after each worker completes). `processMessage()` sends "Working on your request — I've broken it into N subtasks..." on SPAWN detection, then "Subtask X/N done..." per-worker via Router. Phase 25 (4/6 tasks). 1071 tests passing.                                                                                                                                        |
 
 ---
 
