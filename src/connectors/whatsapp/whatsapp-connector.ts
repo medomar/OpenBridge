@@ -78,9 +78,9 @@ export class WhatsAppConnector implements Connector {
 
     this.client = new Client({
       authStrategy: new LocalAuth(localAuthOptions),
+      // Use local cache to avoid remote fetch failures (GitHub URL can be unreachable)
       webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/nicokant/nicokant.github.io/main/nicokant/',
+        type: 'local',
       },
       puppeteer: {
         headless: this.config.headless,
@@ -144,9 +144,21 @@ export class WhatsAppConnector implements Connector {
       this.scheduleReconnect();
     });
 
-    // Catch Puppeteer ProtocolError / browser crashes that don't trigger 'disconnected'
+    // Catch Puppeteer ProtocolError / browser crashes that don't trigger 'disconnected'.
+    // Log the phase (pre-ready vs post-ready) to help diagnose where the error occurs.
     this.client.on('error', (err: Error) => {
-      logger.error({ err: err.message }, 'WhatsApp client error');
+      const phase = this.connected ? 'post-ready' : 'pre-ready';
+      const isProtocolError =
+        err.message.includes('ProtocolError') ||
+        err.message.includes('Execution context was destroyed');
+      if (isProtocolError) {
+        logger.error(
+          { err: err.message, phase },
+          'WhatsApp ProtocolError — Chromium context destroyed',
+        );
+      } else {
+        logger.error({ err: err.message, phase }, 'WhatsApp client error');
+      }
       if (this.connected) {
         this.connected = false;
         this.emit('error', err);
@@ -154,9 +166,40 @@ export class WhatsAppConnector implements Connector {
       }
     });
 
-    logger.info('Launching Chromium and loading WhatsApp Web...');
-    await this.client.initialize();
-    logger.info('WhatsApp client initialized successfully');
+    // Retry initialize() up to 3 times with exponential backoff.
+    // ProtocolError: Execution context was destroyed can occur transiently during startup.
+    const MAX_INIT_ATTEMPTS = 3;
+    const { initialDelayMs, backoffFactor, maxDelayMs } = this.config.reconnect;
+    let lastInitError: Error | null = null;
+    for (let attempt = 1; attempt <= MAX_INIT_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          logger.info(
+            { attempt, maxAttempts: MAX_INIT_ATTEMPTS },
+            'Retrying client.initialize() after previous failure',
+          );
+        } else {
+          logger.info('Launching Chromium and loading WhatsApp Web...');
+        }
+        await this.client.initialize();
+        logger.info('WhatsApp client initialized successfully');
+        return;
+      } catch (err: unknown) {
+        lastInitError = err instanceof Error ? err : new Error(String(err));
+        logger.warn(
+          { attempt, maxAttempts: MAX_INIT_ATTEMPTS, err: lastInitError.message },
+          'client.initialize() failed',
+        );
+        if (attempt < MAX_INIT_ATTEMPTS) {
+          const backoffMs = Math.min(
+            initialDelayMs * Math.pow(backoffFactor, attempt - 1),
+            maxDelayMs,
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
+    }
+    throw lastInitError ?? new Error('client.initialize() failed after all retries');
   }
 
   /**
@@ -195,6 +238,12 @@ export class WhatsAppConnector implements Connector {
       this.config.reconnect;
 
     if (this.shuttingDown || !enabled) {
+      return;
+    }
+
+    // Guard against double-scheduling (e.g. both 'error' and 'disconnected' fire together)
+    if (this.reconnectTimer !== null) {
+      logger.debug('Reconnect already scheduled — skipping duplicate');
       return;
     }
 
