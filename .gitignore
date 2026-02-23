@@ -57,6 +57,9 @@ config.json
 config.local.json
 config.production.json
 
+# OpenBridge runtime state (generated when running against itself)
+.openbridge/
+
 # Script runtime state
 docs/audit/.current_task
 
