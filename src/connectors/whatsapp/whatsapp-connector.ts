@@ -1,5 +1,5 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { OutboundMessage } from '../../types/message.js';
+import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
@@ -314,6 +314,12 @@ export class WhatsAppConnector implements Connector {
     } catch (err) {
       logger.warn({ chatId, err }, 'Failed to send typing indicator');
     }
+  }
+
+  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
+    // Basic implementation: log progress event. OB-512 will add WhatsApp-specific rendering.
+    logger.debug({ event }, 'Progress event');
+    return Promise.resolve();
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {

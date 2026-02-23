@@ -1,5 +1,5 @@
 export type { Result, PluginMeta } from './common.js';
-export type { InboundMessage, OutboundMessage } from './message.js';
+export type { InboundMessage, OutboundMessage, ProgressEvent } from './message.js';
 export type { Connector, ConnectorEvents } from './connector.js';
 export type { AIProvider, ProviderResult, ProviderContext } from './provider.js';
 export {

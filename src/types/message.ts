@@ -1,4 +1,23 @@
 /**
+ * A typed progress event emitted during Master AI processing.
+ *
+ * Variants:
+ * - classifying    — AI is analyzing the incoming message
+ * - planning       — Master is decomposing the task into subtasks
+ * - spawning       — N worker agents are being created
+ * - worker-progress — worker X of N has completed
+ * - synthesizing   — Master is combining worker results into a final response
+ * - complete       — Processing finished
+ */
+export type ProgressEvent =
+  | { type: 'classifying' }
+  | { type: 'planning' }
+  | { type: 'spawning'; workerCount: number }
+  | { type: 'worker-progress'; completed: number; total: number; workerName?: string }
+  | { type: 'synthesizing' }
+  | { type: 'complete' };
+
+/**
  * A message received from a messaging connector.
  */
 export interface InboundMessage {
