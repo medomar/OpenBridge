@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.325/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.310
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 16 (Phase 30 ◻)
-> **Reason for current state:** OB-629: Updated `docs/CONFIGURATION.md` — added options tables for all 5 connector types (Console, WebChat, Telegram, Discord, WhatsApp), documented V2 whitelist `.min(1)` requirement. 1164 tests passing.
+> **Current Score:** 9.330/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.325
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 15 (Phase 30 ◻)
+> **Reason for current state:** OB-630: Updated `CONTRIBUTING.md` — added missing commit scopes (`discovery`, `master`, `runner`, `ci`, `docs`) to match CLAUDE.md. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -172,6 +172,7 @@
 | 2026-02-23 | 9.295 |   +0.015    | OB-627: Remove `--dangerously-skip-permissions` dead code — `skipPermissions` removed from `ExecutionOptions` interface and both `if (opts.skipPermissions)` branches deleted from `executeClaudeCode()` and `streamClaudeCode()`. Closes privilege escalation surface with no active functionality impact. 1164 tests passing.                                                                                                                                                                                                                             |
 | 2026-02-23 | 9.310 |   +0.015    | OB-628: Cap inbound message length — `MAX_INBOUND_LENGTH = 32_768` constant added to `bridge.ts`. `handleIncomingMessage()` truncates `rawContent` before auth/prefix/queue processing and logs a `warn` with original length. Protects queue, auth, and prefix checks from oversized payloads. 1164 tests passing.                                                                                                                                                                                                                                         |
 | 2026-02-23 | 9.325 |   +0.015    | OB-629: Fix CONFIGURATION.md — updated `channels.type` to list all 5 connector types (`console`, `webchat`, `whatsapp`, `telegram`, `discord`). Added options tables for Console (none), WebChat (`port`/`host`), Telegram (`token` required, `botUsername` optional), Discord (`token` required). Fixed `auth.whitelist` row to document V2 `.min(1)` requirement with a warning note. 1164 tests passing.                                                                                                                                                 |
+| 2026-02-23 | 9.330 |   +0.005    | OB-630: Fix CONTRIBUTING.md — updated commit scopes list from `core, whatsapp, claude, connector, provider, config, deps` to `core, whatsapp, claude, connector, provider, config, discovery, master, runner, deps, ci, docs` to match CLAUDE.md. 1164 tests passing.                                                                                                                                                                                                                                                                                       |
 
 ---
 

@@ -47,7 +47,7 @@ Format: `<type>(<scope>): <description>`
 
 **Types**: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
 
-**Scopes**: core, whatsapp, claude, connector, provider, config, deps
+**Scopes**: core, whatsapp, claude, connector, provider, config, discovery, master, runner, deps, ci, docs
 
 Examples:
 
