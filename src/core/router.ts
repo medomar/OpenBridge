@@ -1,5 +1,5 @@
 import type { AIProvider, ProviderResult } from '../types/provider.js';
-import type { InboundMessage, OutboundMessage } from '../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { RouterConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
@@ -60,6 +60,21 @@ export class Router {
   /** Register an active provider */
   addProvider(provider: AIProvider): void {
     this.providers.set(provider.name, provider);
+  }
+
+  /**
+   * Send a progress event to a specific connector (best-effort).
+   * Used by MasterManager to emit typed ProgressEvents to the right connector
+   * without going through the full routing flow.
+   */
+  async sendProgress(source: string, recipient: string, event: ProgressEvent): Promise<void> {
+    const connector = this.connectors.get(source);
+    if (!connector?.sendProgress) return;
+    try {
+      await connector.sendProgress(event, recipient);
+    } catch (err) {
+      logger.warn({ err, source, recipient }, 'sendProgress: failed to send progress event');
+    }
   }
 
   /**

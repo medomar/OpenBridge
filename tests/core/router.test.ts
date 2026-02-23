@@ -430,4 +430,41 @@ describe('Router', () => {
       await expect(router.route(createMessage())).rejects.toThrow('Master AI failed');
     });
   });
+
+  describe('sendProgress (OB-513)', () => {
+    it('should call connector sendProgress when connector supports it', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      await connector.initialize();
+
+      await router.sendProgress('mock', '+1234567890', { type: 'classifying' });
+
+      expect(connector.progressEvents).toHaveLength(1);
+      expect(connector.progressEvents[0]?.event).toEqual({ type: 'classifying' });
+      expect(connector.progressEvents[0]?.chatId).toBe('+1234567890');
+    });
+
+    it('should pass the full event payload to the connector', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      await connector.initialize();
+
+      await router.sendProgress('mock', '+1234567890', {
+        type: 'spawning',
+        workerCount: 3,
+      });
+
+      expect(connector.progressEvents[0]?.event).toEqual({ type: 'spawning', workerCount: 3 });
+    });
+
+    it('should be a no-op when connector is not found', async () => {
+      const router = new Router('mock');
+      // No connector added
+      await expect(
+        router.sendProgress('unknown', '+1234567890', { type: 'classifying' }),
+      ).resolves.toBeUndefined();
+    });
+  });
 });

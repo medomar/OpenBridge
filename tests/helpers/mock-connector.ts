@@ -1,10 +1,11 @@
 import type { Connector, ConnectorEvents } from '../../src/types/connector.js';
-import type { OutboundMessage } from '../../src/types/message.js';
+import type { OutboundMessage, ProgressEvent } from '../../src/types/message.js';
 
 export class MockConnector implements Connector {
   readonly name = 'mock';
   readonly sentMessages: OutboundMessage[] = [];
   readonly typingIndicators: string[] = [];
+  readonly progressEvents: Array<{ event: ProgressEvent; chatId: string }> = [];
   private connected = false;
   private readonly listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
 
@@ -19,6 +20,10 @@ export class MockConnector implements Connector {
 
   async sendTypingIndicator(chatId: string): Promise<void> {
     this.typingIndicators.push(chatId);
+  }
+
+  async sendProgress(event: ProgressEvent, chatId: string): Promise<void> {
+    this.progressEvents.push({ event, chatId });
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
