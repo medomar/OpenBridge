@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.465/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.460
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 4 (Phase 30 ◻)
-> **Reason for current state:** OB-641: Removed `injectDevConnectors` and `expandTilde` from `src/core/index.ts` public API. Both are internal startup utilities, not plugin contracts. `src/index.ts` now imports `injectDevConnectors` directly from `./core/config.js`. 1218 tests passing.
+> **Current Score:** 9.495/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.465
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 3 (Phase 30 ◻)
+> **Reason for current state:** OB-620: Full CI pipeline verified — lint ✅, typecheck ✅, 1218 tests ✅, build ✅. npm pack --dry-run: 346 files / 1.6 MB (no .openbridge/, no secrets). Fresh install verified. Added \*.tgz to .gitignore. 1218 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -184,6 +184,7 @@
 | 2026-02-23 | 9.445 |   +0.005    | OB-639: Remove dead `_level` parameter from `createLogger` in `src/core/logger.ts`. No callers passed a second argument; the parameter only created a misleading API. 1218 tests passing.                                                                                                                                                                                                                                                                                                                                                                   |
 | 2026-02-23 | 9.460 |   +0.015    | OB-640: Add missing plugin types to `src/types/index.ts` — exported `ToolProfileSchema`, `BuiltInProfileNameSchema`, `ProfilesRegistrySchema`, `TaskManifestSchema`, `BUILT_IN_PROFILES`, and types `ToolProfile`, `BuiltInProfileName`, `ProfilesRegistry`, `TaskManifest` from public entry point. Plugin authors can now access all tool profile types without deep imports. 1218 tests passing.                                                                                                                                                         |
 | 2026-02-23 | 9.465 |   +0.005    | OB-641: Remove internal utilities from `src/core/index.ts` public API — removed `injectDevConnectors` and `expandTilde` exports. Both remain importable via relative paths. `src/index.ts` updated to import `injectDevConnectors` directly from `./core/config.js`. 1218 tests passing.                                                                                                                                                                                                                                                                    |
+| 2026-02-23 | 9.495 |   +0.030    | OB-620: Full CI pipeline verification — lint ✅, typecheck ✅, 1218 tests ✅ (60 test files), build ✅. `npm pack --dry-run` shows 346 files / 1.6 MB (no `.openbridge/` session data, no secrets). Fresh install verified. Added `*.tgz` to `.gitignore` to prevent accidental pack artifact commits.                                                                                                                                                                                                                                                      |
 
 ---
 
