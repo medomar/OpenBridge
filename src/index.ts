@@ -6,6 +6,7 @@ import {
   loadConfig,
   resolveConfigPath,
   createLogger,
+  setLogLevel,
   isV2Config,
   injectDevConnectors,
 } from './core/index.js';
@@ -46,6 +47,7 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
   logger.info('Starting V0 flow (legacy mode)');
 
   const config = await loadConfig();
+  setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
   const bridge = new Bridge(config, { configPath });
 
@@ -130,6 +132,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
 
   // Step 2: Load config and create bridge
   const config = await loadConfig();
+  setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
   const bridge = new Bridge(config, { configPath });
 
