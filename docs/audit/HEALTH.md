@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.080/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.050
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 30 (Phase 30 ◻)
-> **Reason for current state:** OB-612: Fixed logging — `LOG_LEVEL` env var + config `logLevel` wired into root logger via `setLogLevel()`, pino-pretty moved to devDependencies with try/catch fallback for production. 1164 tests passing.
+> **Current Score:** 9.110/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.080
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 29 (Phase 30 ◻)
+> **Reason for current state:** OB-613: Fixed start script — `"start"` script now sets `NODE_ENV=production` before launching `node dist/index.js`. `injectDevConnectors()` correctly gated on `NODE_ENV !== 'production'`. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -158,6 +158,7 @@
 | 2026-02-23 | 9.020 |   +0.030    | OB-610: Fix npm packaging — added `"files": ["dist/", "config.example.json", "LICENSE", "README.md", "CHANGELOG.md"]` and `"exports"` map to `package.json`. `dist/` now published despite `.gitignore`. Tarball reduced from 567 to 346 files. `.openbridge/` session data excluded. 1164 tests passing.                                                                                                                                                                                                                                                   |
 | 2026-02-23 | 9.050 |   +0.030    | OB-611: Fix process resilience — added `unhandledRejection`/`uncaughtException`/`SIGHUP` handlers to `src/index.ts`. `shutdownInProgress` flag prevents double-shutdown on concurrent SIGINT+SIGTERM. `Bridge.stop()` made idempotent with `stopped` guard. 1164 tests passing.                                                                                                                                                                                                                                                                             |
 | 2026-02-23 | 9.080 |   +0.030    | OB-612: Fix logging — `LOG_LEVEL` env var + config `logLevel` wired into root logger via `setLogLevel()` (called in both V0 and V2 startup flows after `loadConfig()`). `pino-pretty` moved from `dependencies` to `devDependencies`. `createRootLogger()` wraps transport in try/catch so production installs without pino-pretty still work. 1164 tests passing.                                                                                                                                                                                          |
+| 2026-02-23 | 9.110 |   +0.030    | OB-613: Fix start script — `"start"` script in `package.json` changed to `NODE_ENV=production node dist/index.js`. `injectDevConnectors()` confirmed correctly gated on `NODE_ENV !== 'production'` (returns early at `src/core/config.ts:94`). 1164 tests passing.                                                                                                                                                                                                                                                                                         |
 
 ---
 
