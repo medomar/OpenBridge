@@ -140,7 +140,7 @@ describe('Worker Result Formatter', () => {
 
       expect(prompt).toContain('1 worker completed');
       expect(prompt).toContain('Output');
-      expect(prompt).toContain('synthesize these results');
+      expect(prompt).toContain('Summarize the worker results');
     });
 
     it('should build feedback prompt for multiple workers', () => {

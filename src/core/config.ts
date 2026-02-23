@@ -1,10 +1,18 @@
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { AppConfigSchema, V2ConfigSchema } from '../types/config.js';
 import type { AppConfig, V2Config } from '../types/config.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('config');
+
+export function expandTilde(filePath: string): string {
+  if (filePath === '~' || filePath.startsWith('~/') || filePath.startsWith('~\\')) {
+    return homedir() + filePath.slice(1);
+  }
+  return filePath;
+}
 
 export function resolveConfigPath(configPath?: string): string {
   const path = configPath ?? process.env['CONFIG_PATH'] ?? './config.json';
@@ -34,7 +42,7 @@ export function convertV2ToInternal(v2Config: V2Config): AppConfig {
     workspaces: [
       {
         name: 'default',
-        path: v2Config.workspacePath,
+        path: expandTilde(v2Config.workspacePath),
       },
     ],
     defaultWorkspace: 'default',

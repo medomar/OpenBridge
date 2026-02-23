@@ -1,6 +1,7 @@
+import { homedir } from 'node:os';
 import { describe, it, expect } from 'vitest';
 import { AppConfigSchema, V2ConfigSchema } from '../../src/types/config.js';
-import { isV2Config, convertV2ToInternal } from '../../src/core/config.js';
+import { isV2Config, convertV2ToInternal, expandTilde } from '../../src/core/config.js';
 
 describe('AppConfigSchema', () => {
   it('should validate a valid config', () => {
@@ -209,7 +210,41 @@ describe('isV2Config', () => {
   });
 });
 
+describe('expandTilde', () => {
+  it('should expand ~ to home directory', () => {
+    expect(expandTilde('~/Desktop/project')).toBe(`${homedir()}/Desktop/project`);
+  });
+
+  it('should expand bare ~ to home directory', () => {
+    expect(expandTilde('~')).toBe(homedir());
+  });
+
+  it('should not modify absolute paths', () => {
+    expect(expandTilde('/absolute/path')).toBe('/absolute/path');
+  });
+
+  it('should not modify relative paths', () => {
+    expect(expandTilde('relative/path')).toBe('relative/path');
+  });
+
+  it('should not expand ~ when not at the start', () => {
+    expect(expandTilde('/path/with/~/tilde')).toBe('/path/with/~/tilde');
+  });
+});
+
 describe('convertV2ToInternal', () => {
+  it('should expand tilde in workspacePath', () => {
+    const v2Config = {
+      workspacePath: '~/Desktop/project',
+      channels: [{ type: 'console', enabled: true }],
+      auth: { whitelist: ['+1234567890'], prefix: '/ai' },
+    };
+
+    const internalConfig = convertV2ToInternal(v2Config);
+
+    expect(internalConfig.workspaces[0]?.path).toBe(`${homedir()}/Desktop/project`);
+  });
+
   it('should convert minimal V2 config to internal AppConfig format', () => {
     const v2Config = {
       workspacePath: '/path/to/workspace',
