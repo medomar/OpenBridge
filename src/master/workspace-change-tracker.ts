@@ -329,7 +329,7 @@ export class WorkspaceChangeTracker {
 
   /**
    * Recursively find files modified after a given timestamp.
-   * Respects EXCLUDED_DIRS and caps depth at 5 levels.
+   * Respects EXCLUDED_DIRS and caps depth at 10 levels.
    */
   private async findModifiedFiles(
     dirPath: string,
@@ -337,7 +337,7 @@ export class WorkspaceChangeTracker {
     results: string[],
     depth: number,
   ): Promise<void> {
-    if (depth > 5) return;
+    if (depth > 10) return;
     if (results.length > MAX_INCREMENTAL_FILES) return;
 
     const entries = await fs.readdir(dirPath, { withFileTypes: true });

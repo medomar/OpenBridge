@@ -267,6 +267,57 @@ describe('WorkspaceChangeTracker', () => {
       expect(result.changedFiles).toContain('doc.txt');
     });
 
+    it('should detect files in deep folder structures (depth 6+) for non-git workspaces', async () => {
+      // Create a deeply nested directory structure (depth 7: a/b/c/d/e/f/g/)
+      const deepDir = path.join(testWorkspace, 'a', 'b', 'c', 'd', 'e', 'f', 'g');
+      await fs.mkdir(deepDir, { recursive: true });
+      await fs.writeFile(path.join(deepDir, 'deep-file.txt'), 'deep content');
+
+      // Also create a file at depth 6
+      const depth6Dir = path.join(testWorkspace, 'x', 'y', 'z', 'w', 'v', 'u');
+      await fs.mkdir(depth6Dir, { recursive: true });
+      await fs.writeFile(path.join(depth6Dir, 'depth6-file.txt'), 'depth 6');
+
+      // Marker from the past
+      const marker: WorkspaceAnalysisMarker = {
+        workspaceHasGit: false,
+        analyzedAt: new Date(Date.now() - 60_000).toISOString(), // 1 minute ago
+        analysisType: 'full',
+        filesChanged: 0,
+        schemaVersion: '1.0.0',
+      };
+
+      const result = await tracker.detectChanges(marker);
+      expect(result.method).toBe('timestamp');
+      expect(result.hasChanges).toBe(true);
+      // Both deep files should be detected (depth > 5 is now allowed up to 10)
+      expect(result.changedFiles).toContain(
+        path.join('a', 'b', 'c', 'd', 'e', 'f', 'g', 'deep-file.txt'),
+      );
+      expect(result.changedFiles).toContain(
+        path.join('x', 'y', 'z', 'w', 'v', 'u', 'depth6-file.txt'),
+      );
+    });
+
+    it('should detect no changes in non-git workspace when files are older than marker', async () => {
+      // Create a file, then create a marker with a timestamp in the future
+      await fs.writeFile(path.join(testWorkspace, 'old-doc.txt'), 'hello');
+
+      // Marker from the future (no files are newer than this)
+      const marker: WorkspaceAnalysisMarker = {
+        workspaceHasGit: false,
+        analyzedAt: new Date(Date.now() + 60_000).toISOString(), // 1 minute in the future
+        analysisType: 'full',
+        filesChanged: 0,
+        schemaVersion: '1.0.0',
+      };
+
+      const result = await tracker.detectChanges(marker);
+      expect(result.method).toBe('timestamp');
+      expect(result.hasChanges).toBe(false);
+      expect(result.changedFiles).toEqual([]);
+    });
+
     it('should return full-reexplore when workspace gained git', async () => {
       await execAsync('git init -b main', { cwd: testWorkspace });
       await execAsync('git config user.email "test@test.com"', { cwd: testWorkspace });
