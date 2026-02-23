@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 tasks | **In Progress:** 0
+> **Pending:** 0 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-23
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md)
 
@@ -20,7 +20,7 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 | :---: | ------------------------------------------------ | :---: | :----: |
 | 1–28  | Foundation → Smart Orchestration + Polish        |  169  |   ✅   |
 |  29   | AI Classification + Live Progress                |   8   |   ✅   |
-|  30   | Production Readiness — Analysis & Fixes (v0.0.1) |  30   | ◻ Next |
+|  30   | Production Readiness — Analysis & Fixes (v0.0.1) |  30   |   ✅   |
 
 ---
 
@@ -112,11 +112,11 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 
 ### 30c — Final Verification
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                       | ID     |  Priority   |  Status   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :---------: | :-------: |
-| 198 | **Full build + test + lint + typecheck verification** — Run the complete CI pipeline locally: `npm run lint && npm run typecheck && npm run test && npm run build`. All must pass with zero errors, zero warnings. If any step fails, fix the issue before proceeding. Run `npm pack --dry-run` to verify the published package contents. Verify the package installs cleanly in a fresh directory (`npm install ./openbridge-0.0.1.tgz`). | OB-620 | 🔴 Critical |  ✅ Done  |
-| 199 | **Smoke test — fresh install E2E** — In a temp directory: `npm init -y && npm install ../OpenBridge/openbridge-0.0.1.tgz`. Run `npx openbridge init` → verify config is generated. Run `npx openbridge` with Console connector → verify it starts, accepts input, gets AI response, shuts down cleanly on Ctrl+C. This simulates a real user's first experience.                                                                           | OB-621 | 🔴 Critical |  ✅ Done  |
-| 200 | **Tag v0.0.1 + prepare release** — Update `package.json` version to `0.0.1`. Finalize CHANGELOG with release date. Create git tag `v0.0.1`. Prepare release notes summarizing: what OpenBridge is, what's in v0.0.1, known limitations, how to get started. Do NOT push or publish — just prepare locally for user review.                                                                                                                 | OB-622 | 🔴 Critical | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                       | ID     |  Priority   | Status  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :---------: | :-----: |
+| 198 | **Full build + test + lint + typecheck verification** — Run the complete CI pipeline locally: `npm run lint && npm run typecheck && npm run test && npm run build`. All must pass with zero errors, zero warnings. If any step fails, fix the issue before proceeding. Run `npm pack --dry-run` to verify the published package contents. Verify the package installs cleanly in a fresh directory (`npm install ./openbridge-0.0.1.tgz`). | OB-620 | 🔴 Critical | ✅ Done |
+| 199 | **Smoke test — fresh install E2E** — In a temp directory: `npm init -y && npm install ../OpenBridge/openbridge-0.0.1.tgz`. Run `npx openbridge init` → verify config is generated. Run `npx openbridge` with Console connector → verify it starts, accepts input, gets AI response, shuts down cleanly on Ctrl+C. This simulates a real user's first experience.                                                                           | OB-621 | 🔴 Critical | ✅ Done |
+| 200 | **Tag v0.0.1 + prepare release** — Update `package.json` version to `0.0.1`. Finalize CHANGELOG with release date. Create git tag `v0.0.1`. Prepare release notes summarizing: what OpenBridge is, what's in v0.0.1, known limitations, how to get started. Do NOT push or publish — just prepare locally for user review.                                                                                                                 | OB-622 | 🔴 Critical | ✅ Done |
 
 ---
 
