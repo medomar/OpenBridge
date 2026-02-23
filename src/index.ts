@@ -1,7 +1,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
-import { Bridge, loadConfig, resolveConfigPath, createLogger, isV2Config } from './core/index.js';
+import {
+  Bridge,
+  loadConfig,
+  resolveConfigPath,
+  createLogger,
+  isV2Config,
+  injectDevConnectors,
+} from './core/index.js';
 import { V2ConfigSchema } from './types/config.js';
 
 // whatsapp-web.js / puppeteer registers multiple exit handlers — raise the limit to avoid the warning
@@ -25,6 +32,7 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
   logger.info('Starting V0 flow (legacy mode)');
 
   const config = await loadConfig();
+  injectDevConnectors(config);
   const bridge = new Bridge(config, { configPath });
 
   // Register built-in plugins (manual fallback)
@@ -108,6 +116,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
 
   // Step 2: Load config and create bridge
   const config = await loadConfig();
+  injectDevConnectors(config);
   const bridge = new Bridge(config, { configPath });
 
   // Register built-in plugins
