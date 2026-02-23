@@ -1,31 +1,31 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.440/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.425
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 1 (Phase 25 ✅, Phase 26 ✅, Phase 27 ✅, Phase 28 2/3)
-> **Reason for current state:** Re-baseline after Phases 16–23 complete. All layers built and tested: Agent Runner, Tool Profiles, Self-Governing Master, Worker Orchestration, Self-Improvement. E2E Console verified working. 974 tests passing.
+> **Current Score:** 8.525/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.440
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 (Phase 25 ✅, Phase 26 ✅, Phase 27 ✅, Phase 28 ✅)
+> **Reason for current state:** Re-baseline after Phases 25–27 complete. Smart orchestration (task classification, auto-delegation, synthesis quality), workspace mapping reliability (tilde fix, freshness indicator, deep folder support), connector hardening (WhatsApp stability, WebChat polished, testing guide). 1114 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                                         |
-| -------------------- | :------: | :----: | :-------: | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Architecture         |    5%    | 8.5/10 |   0.425   | 4-layer design solid. Plugin architecture proven                                                                                              |
-| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working                                                                                       |
-| Connectors           |    5%    | 8.5/10 |   0.425   | WhatsApp + Console + Telegram + WebChat + Discord working. Parallel init. QR scan confirmed. grammY + ws + discord.js support                 |
-| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. 24+ tests passing                              |
-| Tool Profiles        |   10%    | 8.0/10 |   0.800   | read-only/code-edit/full-access/master built-in profiles. Custom profiles registry. AgentRunner integration                                   |
-| Master AI (self-gov) |   25%    | 7.5/10 |   1.875   | Persistent session, task decomposition (SPAWN markers), worker delegation, session recovery. E2E verified                                     |
-| Worker Orchestration |   10%    | 7.5/10 |   0.750   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. handleSpawnMarkersWithProgress                              |
-| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                           |
-| Configuration        |    5%    | 8.0/10 |   0.400   | V2 config working, CLI init working, config watcher, Zod validation                                                                           |
-| Testing              |    5%    | 8.5/10 |   0.425   | 1037 tests passing. lint ✅, typecheck ✅, build ✅. E2E Console verified working                                                             |
-| Documentation        |    5%    | 8.0/10 |   0.400   | All docs current. TASKS.md, FINDINGS.md, HEALTH.md, README.md up to date                                                                      |
-| **TOTAL**            | **100%** |   —    | **8.010** | **Re-scored to reflect Phases 16–24 complete + Telegram + WebChat + Discord + multi-connector + connector integration tests (OB-320–OB-324)** |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                                                                          |
+| -------------------- | :------: | :----: | :-------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Architecture         |    5%    | 9.0/10 |   0.450   | 4-layer design solid. Plugin architecture proven. Smart orchestration integrates cleanly into existing layers                                                                  |
+| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working. Router.sendDirect() added for connector-targeted progress updates                                                     |
+| Connectors           |    5%    | 9.0/10 |   0.450   | 5 connectors stable (Console, WebChat, WhatsApp, Telegram, Discord). WhatsApp stability improved (local webVersionCache + retry). WebChat polished with markdown + Thinking UI |
+| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. maxBudgetUsd (--max-budget-usd) support added. 24+ tests passing                |
+| Tool Profiles        |   10%    | 8.5/10 |   0.850   | read-only/code-edit/full-access/master built-in profiles. Profile-based default maxTurns (code-edit/full-access=15, read-only=10). maxBudgetUsd per worker                     |
+| Master AI (self-gov) |   25%    | 8.5/10 |   2.125   | Task classification, auto-delegation (planning prompt), synthesis quality (5 turns). Workspace map freshness indicator. Session recovery. E2E verified                         |
+| Worker Orchestration |   10%    | 8.5/10 |   0.850   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. Progress feedback (N subtasks, per-worker updates). handleSpawnMarkersWithProgress           |
+| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                                                            |
+| Configuration        |    5%    | 8.5/10 |   0.425   | V2 config working, CLI init working, config watcher, Zod validation. Tilde (~) expansion fixed. Timestamp depth limit increased to 10 for deep folder structures               |
+| Testing              |    5%    | 9.0/10 |   0.450   | 1114 tests passing. Integration tests for incremental exploration. lint ✅, typecheck ✅, build ✅. mkdtemp isolation eliminates git race conditions                           |
+| Documentation        |    5%    | 9.0/10 |   0.450   | Connector testing guide (docs/CONNECTORS.md). README/OVERVIEW updated for all 5 connectors + smart orchestration. All docs current                                             |
+| **TOTAL**            | **100%** |   —    | **8.525** | **Re-scored to reflect Phases 25–27 complete: Smart Orchestration, Workspace Mapping Reliability, Connector Hardening + Phase 28 production polish**                           |
 
-> **Note:** Breakdown re-baselined to reflect completion of Phases 16–23. Agent Runner (Phase 16), Tool Profiles (Phase 17), Self-Governing Master (Phase 18), Worker Orchestration (Phase 19), Self-Improvement (Phase 20), E2E Hardening (Phase 21), Make It Work (Phase 22), Production Hardening (Phase 23) all complete.
+> **Note:** Breakdown re-baselined to reflect completion of Phases 25–27. Smart Orchestration (Phase 25), Workspace Mapping Reliability (Phase 26), Connector Hardening (Phase 27), Production Polish (Phase 28) all complete.
 
 ---
 
@@ -39,7 +39,7 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 7.035** — Phase 16 (Agent Runner) complete. Phase 17 (Tool Profiles + Model Selection) complete. Phase 18 (Master AI Rewrite) complete. Phase 19 (Worker Orchestration) complete. Phase 20 (Self-Improvement + Learnings) complete. Phase 21 (E2E Hardening) in progress (3/4 tasks done). Created comprehensive test suite: e2e-smoke.sh validates worker delegation and AgentRunner integration, real-workspace-test.sh validates Master exploration against realistic TypeScript/Express workspace, whatsapp-flow-test.sh validates complete WhatsApp integration flow (QR scan, message exchange, chunking, session persistence) with both automated and manual modes. All scripts verify no unsafe --dangerously-skip-permissions usage, proper tool restrictions, worker logs, task history, and git tracking.
+**Current state: 8.525** — Phases 25–27 complete. Smart orchestration: classifyTask() routes messages to appropriate maxTurns (quick=3, tool-use=10, complex=15), auto-delegation via planning prompt, synthesis quality improved. Workspace mapping: tilde expansion, freshness indicator, deep folder support. Connector hardening: WhatsApp stability (local webVersionCache + retry), WebChat polished (markdown renderer, Thinking animation, connection status), connector testing guide. 1114 tests passing.
 
 ---
 
@@ -136,6 +136,7 @@
 | 2026-02-23 | 8.345 |   +0.005    | OB-412: Workspace map freshness indicator — added `lastVerifiedAt` optional field to `WorkspaceAnalysisMarkerSchema`. `buildCurrentMarker()` sets it to now. On no-changes startup, marker is updated with fresh `lastVerifiedAt`. `MasterManager` tracks `mapLastVerifiedAt` and appends "Map last verified: X ago" to Master's system prompt workspace context. Phase 26 (3/4 tasks). 1101 tests passing.                                                                                                                                                 |
 | 2026-02-23 | 8.340 |   +0.015    | OB-411: Fix tilde in workspacePath — added `expandTilde()` helper to `src/core/config.ts` using `os.homedir()`. Applied in `convertV2ToInternal()` so `~/Desktop/project` resolves correctly. 6 new tests (expandTilde + convertV2ToInternal tilde case). Fixed pre-existing test assertion in worker-result-formatter.test.ts. Phase 26 (2/4 tasks). 1101 tests passing.                                                                                                                                                                                   |
 | 2026-02-23 | 8.325 |    +0.03    | OB-410: Incremental exploration E2E — added `tests/integration/incremental-exploration.test.ts` with 4 integration tests covering the full change-detection lifecycle: fresh workspace (full exploration + marker written), new committed file (incremental update via spawn), no changes (exploration skipped), 200+ files changed (tooLargeForIncremental → full re-exploration via stream). Phase 26 started (1/4 tasks). 1098 tests passing.                                                                                                            |
+| 2026-02-23 | 8.525 | re-baseline | OB-432: HEALTH.md re-baseline — re-scored all categories to reflect Phases 25–27 complete. Architecture 9.0 (+0.5), Connectors 9.0 (+0.5), Tool Profiles 8.5 (+0.5), Master AI 8.5 (+1.0), Worker Orchestration 8.5 (+1.0), Configuration 8.5 (+0.5), Testing 9.0 (+0.5), Documentation 9.0 (+1.0). New weighted total 8.525. Phase 28 complete ✅ — all tasks done.                                                                                                                                                                                        |
 
 ---
 
