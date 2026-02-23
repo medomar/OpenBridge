@@ -620,6 +620,9 @@ export const WorkspaceAnalysisMarkerSchema = z.object({
   /** ISO timestamp of when the analysis completed */
   analyzedAt: z.string(),
 
+  /** ISO timestamp of the most recent startup verification — updated on every startup, even if no changes detected */
+  lastVerifiedAt: z.string().optional(),
+
   /** Type of analysis performed */
   analysisType: z.enum(['full', 'incremental']),
 

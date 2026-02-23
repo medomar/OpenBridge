@@ -163,11 +163,13 @@ export class WorkspaceChangeTracker {
     const commitHash = hasGit ? await this.getHeadCommitHash() : null;
     const branch = hasGit ? await this.getCurrentBranch() : null;
 
+    const now = new Date().toISOString();
     return {
       workspaceCommitHash: commitHash ?? undefined,
       workspaceBranch: branch ?? undefined,
       workspaceHasGit: hasGit,
-      analyzedAt: new Date().toISOString(),
+      analyzedAt: now,
+      lastVerifiedAt: now,
       analysisType,
       filesChanged,
       schemaVersion: '1.0.0',
