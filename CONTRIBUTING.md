@@ -73,6 +73,36 @@ docs(readme): add installation instructions
 - Prefer explicit types over `any`
 - Use interfaces for plugin contracts (connectors, providers)
 
+## Release Process
+
+Releases are automated via the `.github/workflows/release.yml` workflow. When a version tag is pushed to `main`, the workflow runs the full CI pipeline (lint → typecheck → test → build) and then publishes to npm and creates a GitHub Release.
+
+### Repository Secrets
+
+Maintainers must configure the following secret in the GitHub repository settings before releases can be published:
+
+| Secret      | Description                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NPM_TOKEN` | An npm automation token with publish access to the `openbridge` package. Generate at npmjs.com → Access Tokens → Generate New Token → Automation. |
+
+### Tagging a Release
+
+```bash
+# Ensure you are on main and up to date
+git checkout main && git pull
+
+# Create and push the version tag (triggers the release workflow)
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+The workflow will:
+
+1. Run lint, type check, and tests
+2. Build `dist/`
+3. Publish to npm (`npm publish --provenance --access public`)
+4. Create a GitHub Release with changelog notes extracted from `CHANGELOG.md`
+
 ## Adding a Connector
 
 1. Create a new directory: `src/connectors/your-connector/`
