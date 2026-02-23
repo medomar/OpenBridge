@@ -35,7 +35,7 @@ openbridge init
 
 ```
 1. Load config (workspace path + channel + whitelist)
-2. Connect WhatsApp (restore session or scan QR)
+2. Connect channel (Console / WebChat / WhatsApp / Telegram / Discord)
 3. Auto-discover AI tools:
    - Scan: claude? codex? aider? cursor?
    - Pick Master (most capable)
@@ -152,7 +152,7 @@ OpenBridge has 5 layers:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        CHANNELS                                   │
-│  WhatsApp · Console · (Telegram · Discord — planned)              │
+│  Console · WebChat · WhatsApp · Telegram · Discord                 │
 │  Messaging adapters that translate between platforms and bridge    │
 └──────────────────────┬────────────────────────────────────────────┘
                        │
@@ -193,10 +193,11 @@ Messaging platform adapters. Each implements the `Connector` interface.
 
 | Channel  | Status | Library           |
 | -------- | :----: | ----------------- |
-| WhatsApp |   ✅   | `whatsapp-web.js` |
 | Console  |   ✅   | built-in (stdin)  |
-| Telegram |   --   | planned           |
-| Discord  |   --   | planned           |
+| WebChat  |   ✅   | built-in (ws)     |
+| WhatsApp |   ✅   | `whatsapp-web.js` |
+| Telegram |   ✅   | `grammy`          |
+| Discord  |   ✅   | `discord.js` v14  |
 
 ### Layer 2: Bridge Core
 
@@ -267,19 +268,23 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 
 ## Current Status
 
-| Component             | Status                                                                          |
-| --------------------- | ------------------------------------------------------------------------------- |
-| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing indicators               |
-| Console               | ✅ Stable — reference implementation for rapid testing                          |
-| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit, rate limiting          |
-| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection, capability ranking    |
-| V2 Config             | ✅ Stable — 3-field setup, V0 backward compatibility, CLI init                  |
-| Agent Runner          | 🔧 Building — replacing broken executor with production-grade runner (Phase 16) |
-| Tool Profiles         | 🔧 Planned — read-only, code-edit, full-access profiles (Phase 17)              |
-| Self-Governing Master | 🔧 Planned — long-lived session, task decomposition, worker spawning (Phase 18) |
-| Worker Orchestration  | 🔧 Planned — parallel workers, progress tracking, depth limiting (Phase 19)     |
-| Self-Improvement      | 🔧 Planned — learnings, prompt effectiveness, idle self-refinement (Phase 20)   |
-| Telegram/Discord      | ⏳ Backlog — after Master is stable                                             |
+| Component               | Status                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| Console                 | ✅ Stable — simplest path; E2E verified, no external accounts required                    |
+| WebChat                 | ✅ Stable — localhost:3000 UI, markdown rendering, connection status, typing indicator    |
+| WhatsApp                | ✅ Stable — auto-reconnect, sessions, chunking, typing indicators, local web cache        |
+| Telegram                | ✅ Stable — grammY, DM + group @mention support, typing indicator                         |
+| Discord                 | ✅ Stable — discord.js v14, DM + guild channel, bot message filtering                     |
+| Bridge Core             | ✅ Stable — router, auth, queue, metrics, health, audit, rate limiting                    |
+| AI Discovery            | ✅ Stable — CLI scanner, VS Code scanner, auto-selection, capability ranking              |
+| V2 Config               | ✅ Stable — 3-field setup, V0 backward compatibility, CLI init, tilde expansion           |
+| Agent Runner            | ✅ Stable — `--allowedTools`, `--max-turns`, `--model`, retries, streaming, disk logging  |
+| Tool Profiles           | ✅ Stable — read-only, code-edit, full-access, master; custom profiles registry           |
+| Smart Orchestration     | ✅ Stable — task classifier (quick/tool-use/complex), auto-delegation, progress feedback  |
+| Self-Governing Master   | ✅ Stable — persistent session, task decomposition, worker spawning, session recovery     |
+| Worker Orchestration    | ✅ Stable — parallel workers, registry, depth limiting, task history, timeout + cleanup   |
+| Incremental Exploration | ✅ Stable — 5-pass with checkpointing, git + timestamp change detection, freshness track  |
+| Self-Improvement        | ✅ Stable — prompt library, learnings store, effectiveness tracking, idle self-refinement |
 
 ## Tech Stack
 
