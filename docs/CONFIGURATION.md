@@ -1,6 +1,6 @@
 # OpenBridge — Configuration Guide
 
-> **Last Updated:** 2026-02-20
+> **Last Updated:** 2026-02-23
 
 ---
 
@@ -73,11 +73,43 @@ Array of messaging channel configurations. At least one required.
 ]
 ```
 
-| Field     | Type      | Required | Default | Description                          |
-| --------- | --------- | :------: | ------- | ------------------------------------ |
-| `type`    | `string`  |   Yes    | —       | Channel type (`whatsapp`, `console`) |
-| `enabled` | `boolean` |    No    | `true`  | Enable/disable this channel          |
-| `options` | `object`  |    No    | `{}`    | Channel-specific options             |
+| Field     | Type      | Required | Default | Description                                                              |
+| --------- | --------- | :------: | ------- | ------------------------------------------------------------------------ |
+| `type`    | `string`  |   Yes    | —       | Channel type: `console`, `webchat`, `whatsapp`, `telegram`, or `discord` |
+| `enabled` | `boolean` |    No    | `true`  | Enable/disable this channel                                              |
+| `options` | `object`  |    No    | `{}`    | Channel-specific options (see per-type tables below)                     |
+
+#### Console Options
+
+No options required. The Console connector reads from stdin and writes to stdout.
+
+> **Note:** Console messages are sent as `console-user`. Add `"console-user"` to your whitelist, or leave whitelist empty (V0 only) to allow all.
+
+#### WebChat Options
+
+| Option | Type     | Default     | Description                               |
+| ------ | -------- | ----------- | ----------------------------------------- |
+| `port` | `number` | `3000`      | TCP port the HTTP + WebSocket server uses |
+| `host` | `string` | `localhost` | Hostname the server binds to              |
+
+> **Tip:** To expose WebChat on your local network, set `"host": "0.0.0.0"`.
+
+#### Telegram Options
+
+| Option        | Type     | Required | Description                                             |
+| ------------- | -------- | :------: | ------------------------------------------------------- |
+| `token`       | `string` |   Yes    | Bot token from @BotFather                               |
+| `botUsername` | `string` |    No    | Bot username without `@` — required for group @mentions |
+
+> **Setup:** Create a bot via [@BotFather](https://t.me/botfather) (`/newbot`), copy the token. Telegram whitelist entries use the sender's phone number or numeric user ID.
+
+#### Discord Options
+
+| Option  | Type     | Required | Description                         |
+| ------- | -------- | :------: | ----------------------------------- |
+| `token` | `string` |   Yes    | Bot token from the Developer Portal |
+
+> **Setup:** Create an application at [discord.com/developers/applications](https://discord.com/developers/applications), add a Bot, copy the token. Discord whitelist entries use numeric user IDs (e.g. `"123456789012345678"`).
 
 #### WhatsApp Options
 
@@ -105,12 +137,14 @@ Authentication and security configuration.
 }
 ```
 
-| Field           | Type       | Default | Description                                      |
-| --------------- | ---------- | ------- | ------------------------------------------------ |
-| `whitelist`     | `string[]` | `[]`    | Phone numbers allowed to use the bridge          |
-| `prefix`        | `string`   | `/ai`   | Command prefix (messages without it are ignored) |
-| `rateLimit`     | `object`   | `{}`    | Per-user rate limiting                           |
-| `commandFilter` | `object`   | `{}`    | Command allow/deny patterns                      |
+| Field           | Type       | Default                   | Description                                                           |
+| --------------- | ---------- | ------------------------- | --------------------------------------------------------------------- |
+| `whitelist`     | `string[]` | `[]` (V0) / required (V2) | Senders allowed to use the bridge. **V2 requires at least one entry** |
+| `prefix`        | `string`   | `/ai`                     | Command prefix (messages without it are ignored)                      |
+| `rateLimit`     | `object`   | `{}`                      | Per-user rate limiting                                                |
+| `commandFilter` | `object`   | `{}`                      | Command allow/deny patterns                                           |
+
+> **V2 whitelist requirement:** In V2 config, `auth.whitelist` must contain at least one entry. An empty array is rejected at startup with a Zod validation error. Use the sender's identifier for each connector: phone number for WhatsApp/Telegram (e.g. `"+1234567890"`), `"console-user"` for Console, `"webchat-user"` for WebChat, and numeric user ID for Discord. If you need open access during development, use V0 config format instead.
 
 #### Rate Limit
 
