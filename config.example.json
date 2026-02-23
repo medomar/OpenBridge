@@ -13,12 +13,19 @@
       "type": "telegram",
       "enabled": false,
       "options": {
-        "token": "YOUR_BOT_TOKEN_HERE"
+        "token": "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+      }
+    },
+    {
+      "type": "discord",
+      "enabled": false,
+      "options": {
+        "token": "YOUR_DISCORD_BOT_TOKEN_HERE"
       }
     },
     {
       "type": "webchat",
-      "enabled": true,
+      "enabled": false,
       "options": {
         "port": 3000
       }

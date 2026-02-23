@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.215/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.200
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 24 (Phase 30 ◻)
-> **Reason for current state:** OB-618: Dependabot config added — `.github/dependabot.yml` with weekly npm checks, minor/patch grouping, reviewer set to `medomar`. 1164 tests passing.
+> **Current Score:** 9.230/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.215
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 23 (Phase 30 ◻)
+> **Reason for current state:** OB-619: config.example.json safe defaults — webchat disabled by default, discord entry added, all token placeholders use YOUR\_\*\_HERE pattern. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -164,6 +164,7 @@
 | 2026-02-23 | 9.170 |   +0.015    | OB-616: Fix ARCHITECTURE.md — updated "4-layer" to "5-layer", added Agent Runner layer to diagram, removed "(planned)" from Telegram/Discord, added WebChat to all connector listings, updated Implemented Connectors table with all 5 connectors (Console, WebChat, WhatsApp, Telegram, Discord), updated directory structure with missing files. 1164 tests passing.                                                                                                                                                                                      |
 | 2026-02-23 | 9.200 |   +0.030    | OB-617: Add release workflow — created `.github/workflows/release.yml` triggered on `v*` tag push. Jobs: lint → typecheck → test → build → publish (npm publish --provenance) → GitHub Release with changelog notes extracted from CHANGELOG.md. NPM_TOKEN secret documented in CONTRIBUTING.md with tagging instructions. 1164 tests passing.                                                                                                                                                                                                              |
 | 2026-02-23 | 9.215 |   +0.015    | OB-618: Add Dependabot config — created `.github/dependabot.yml` with weekly npm dependency checks on Mondays, minor/patch updates grouped, reviewer set to `medomar`. Prevents dependency drift post-release. 1164 tests passing.                                                                                                                                                                                                                                                                                                                          |
+| 2026-02-23 | 9.230 |   +0.015    | OB-619: Fix config.example.json safe defaults — set webchat `enabled: false` (opt-in), added discord entry with `YOUR_DISCORD_BOT_TOKEN_HERE`, updated telegram token to `YOUR_TELEGRAM_BOT_TOKEN_HERE`, whitelist non-empty. All 5 connectors shown; only console enabled by default. 1164 tests passing.                                                                                                                                                                                                                                                  |
 
 ---
 
