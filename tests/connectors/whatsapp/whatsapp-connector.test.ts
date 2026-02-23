@@ -26,6 +26,12 @@ const createdClients: MockClientInstance[] = [];
 // Convenience accessor — always points to the most recently created client
 let mockClientInstance: MockClientInstance;
 
+// Options passed to the Client constructor (captured per test)
+const capturedClientOptions: unknown[] = [];
+
+// Controls how many times initialize() fails before succeeding (0 = never fail)
+let initializeFailCount = 0;
+
 vi.mock('whatsapp-web.js', () => {
   class MockClient {
     private handlers: Map<string, ((...args: unknown[]) => void)[]> = new Map();
@@ -37,7 +43,12 @@ vi.mock('whatsapp-web.js', () => {
       this.handlers.get(event)!.push(handler);
     });
 
-    initialize = vi.fn(async () => {});
+    initialize = vi.fn(async () => {
+      if (initializeFailCount > 0) {
+        initializeFailCount--;
+        throw new Error('ProtocolError: Execution context was destroyed');
+      }
+    });
     sendMessage = vi.fn(async () => {});
     getChatById = vi.fn(async () => ({ sendStateTyping: vi.fn(async () => {}) }));
     destroy = vi.fn(async () => {});
@@ -52,7 +63,8 @@ vi.mock('whatsapp-web.js', () => {
 
   class LocalAuth {}
 
-  const ClientConstructor = vi.fn(function (this: MockClientInstance) {
+  const ClientConstructor = vi.fn(function (this: MockClientInstance, options: unknown) {
+    capturedClientOptions.push(options);
     const instance = new MockClient() as unknown as MockClientInstance;
     createdClients.push(instance);
     mockClientInstance = instance;
@@ -91,6 +103,8 @@ describe('WhatsAppConnector', () => {
     vi.clearAllMocks();
     vi.clearAllTimers();
     createdClients.length = 0;
+    capturedClientOptions.length = 0;
+    initializeFailCount = 0;
   });
 
   afterEach(() => {
@@ -443,6 +457,101 @@ describe('WhatsAppConnector', () => {
 
       expect(listener1).toHaveBeenCalledOnce();
       expect(listener2).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // OB-420: WhatsApp stability improvements
+  // -----------------------------------------------------------------------
+
+  describe('stability improvements (OB-420)', () => {
+    it('uses local webVersionCache to avoid remote fetch failures', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+
+      const options = capturedClientOptions[0] as { webVersionCache: { type: string } };
+      expect(options.webVersionCache.type).toBe('local');
+    });
+
+    it('retries client.initialize() on ProtocolError and succeeds on 2nd attempt', async () => {
+      vi.useRealTimers(); // Need real async for retry backoff
+      // Fail once, succeed on 2nd attempt
+      initializeFailCount = 1;
+      const connector = buildConnector({
+        // 1ms delay so retries are fast but real-timer-compatible
+        reconnect: { initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 1 },
+      });
+
+      await connector.initialize();
+
+      expect(mockClientInstance.initialize).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws after exhausting all 3 initialize() retry attempts', async () => {
+      vi.useRealTimers(); // Need real async for retry backoff
+      // Fail all 3 attempts
+      initializeFailCount = 3;
+      const connector = buildConnector({
+        reconnect: { initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 1 },
+      });
+
+      await expect(connector.initialize()).rejects.toThrow('ProtocolError');
+
+      expect(mockClientInstance.initialize).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not double-schedule reconnect when disconnected event fires twice', async () => {
+      vi.useRealTimers(); // Need real async for the reconnect timer to fire and complete
+      const connector = buildConnector({
+        reconnect: {
+          enabled: true,
+          maxAttempts: 5,
+          initialDelayMs: 5,
+          maxDelayMs: 5,
+          backoffFactor: 1,
+        },
+      });
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Fire disconnected twice in the same tick — second call should be skipped by guard
+      mockClientInstance._trigger('disconnected', 'reason 1');
+      mockClientInstance._trigger('disconnected', 'reason 2');
+
+      // Wait for the single reconnect timer to fire and createAndStartClient() to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      expect(createdClients.length).toBe(2); // original + exactly one reconnect
+    });
+
+    it('logs ProtocolError as post-ready when error fires after ready', async () => {
+      vi.useRealTimers(); // Need real async for the reconnect timer to complete
+      const errorListener = vi.fn();
+      const connector = buildConnector({
+        reconnect: {
+          enabled: true,
+          maxAttempts: 5,
+          initialDelayMs: 5,
+          maxDelayMs: 5,
+          backoffFactor: 1,
+        },
+      });
+      connector.on('error', errorListener);
+
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      expect(connector.isConnected()).toBe(true);
+
+      // Fire error event post-ready — should trigger reconnect
+      mockClientInstance._trigger(
+        'error',
+        new Error('ProtocolError: Execution context was destroyed'),
+      );
+
+      expect(errorListener).toHaveBeenCalledOnce();
+      expect(connector.isConnected()).toBe(false);
+      // Reconnect should be scheduled — wait for it to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      expect(createdClients.length).toBe(2);
     });
   });
 });
