@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 5 tasks | **In Progress:** 0
+> **Pending:** 4 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-23
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md)
 
@@ -108,7 +108,7 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 
 | 217 | **Remove dead `_level` parameter from `createLogger`** — `src/core/logger.ts:16` declares `createLogger(name: string, _level = 'info')` but never uses `_level` — the function returns `rootLogger.child({ name })` regardless. No callers pass a second argument. Remove `_level` from the function signature. This eliminates a misleading API where callers might expect per-module log levels to take effect (they don't). | OB-639 | 🟢 Low | ✅ Done |
 | 218 | **Add missing plugin types to `src/types/index.ts`** — `src/types/index.ts` does not export `ToolProfile`, `BuiltInProfileName`, `ProfilesRegistry`, `TaskManifest`, `BUILT_IN_PROFILES`, `ToolProfileSchema`, `BuiltInProfileNameSchema`, `ProfilesRegistrySchema`, or `TaskManifestSchema` — all defined in `src/types/agent.ts`. Plugin authors writing custom connectors or providers cannot access these through the intended public entry point. Add them to `src/types/index.ts` exports alongside the existing agent type exports. | OB-640 | 🟡 Med | ✅ Done |
-| 219 | **Remove internal utilities from `src/core/index.ts` public API** — `src/core/index.ts` exports `injectDevConnectors` (a dev-only function that auto-adds WebChat in non-production mode) and `expandTilde` (an internal config path utility). Neither is part of the intended plugin interface — both are internal startup concerns. Remove them from `src/core/index.ts`; they remain importable via relative paths within the project. This reduces the public API surface to intentional plugin contracts (`Bridge`, `Router`, `AuthService`, `MessageQueue`, `PluginRegistry`, `createLogger`, `loadConfig`). | OB-641 | 🟢 Low | ◻ Pending |
+| 219 | **Remove internal utilities from `src/core/index.ts` public API** — `src/core/index.ts` exports `injectDevConnectors` (a dev-only function that auto-adds WebChat in non-production mode) and `expandTilde` (an internal config path utility). Neither is part of the intended plugin interface — both are internal startup concerns. Remove them from `src/core/index.ts`; they remain importable via relative paths within the project. This reduces the public API surface to intentional plugin contracts (`Bridge`, `Router`, `AuthService`, `MessageQueue`, `PluginRegistry`, `createLogger`, `loadConfig`). | OB-641 | 🟢 Low | ✅ Done |
 
 ### 30c — Final Verification
 

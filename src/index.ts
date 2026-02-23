@@ -9,8 +9,8 @@ import {
   createLogger,
   setLogLevel,
   isV2Config,
-  injectDevConnectors,
 } from './core/index.js';
+import { injectDevConnectors } from './core/config.js';
 import { V2ConfigSchema } from './types/config.js';
 // whatsapp-web.js / puppeteer registers multiple exit handlers — raise the limit to avoid the warning
 process.setMaxListeners(20);
