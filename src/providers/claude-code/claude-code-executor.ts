@@ -47,8 +47,6 @@ export interface ExecutionOptions {
   resumeSessionId?: string;
   /** Start a new conversation with a specific session ID */
   sessionId?: string;
-  /** Skip permission prompts — required for background operations like exploration */
-  skipPermissions?: boolean;
 }
 
 /** Execute a Claude Code CLI command in a given workspace */
@@ -73,10 +71,6 @@ export function executeClaudeCode(
     const sanitized = sanitizePrompt(opts.prompt);
     const args = ['--print'];
 
-    if (opts.skipPermissions) {
-      args.push('--dangerously-skip-permissions');
-    }
-
     if (opts.resumeSessionId) {
       args.push('--resume', opts.resumeSessionId);
     } else if (opts.sessionId) {
@@ -89,7 +83,6 @@ export function executeClaudeCode(
       {
         workspacePath: opts.workspacePath,
         timeout: opts.timeout,
-        skipPermissions: opts.skipPermissions,
         sessionId: opts.resumeSessionId ?? opts.sessionId,
       },
       'Executing Claude Code CLI',
@@ -159,10 +152,6 @@ export async function* streamClaudeCode(
   const sanitized = sanitizePrompt(opts.prompt);
   const args = ['--print'];
 
-  if (opts.skipPermissions) {
-    args.push('--dangerously-skip-permissions');
-  }
-
   if (opts.resumeSessionId) {
     args.push('--resume', opts.resumeSessionId);
   } else if (opts.sessionId) {
@@ -175,7 +164,6 @@ export async function* streamClaudeCode(
     {
       workspacePath: opts.workspacePath,
       timeout: opts.timeout,
-      skipPermissions: opts.skipPermissions,
       sessionId: opts.resumeSessionId ?? opts.sessionId,
     },
     'Streaming Claude Code CLI',
