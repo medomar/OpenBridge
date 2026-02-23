@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.495/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.465
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 3 (Phase 30 ◻)
-> **Reason for current state:** OB-620: Full CI pipeline verified — lint ✅, typecheck ✅, 1218 tests ✅, build ✅. npm pack --dry-run: 346 files / 1.6 MB (no .openbridge/, no secrets). Fresh install verified. Added \*.tgz to .gitignore. 1218 tests passing.
+> **Current Score:** 9.525/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.495
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 2 (Phase 30 ◻)
+> **Reason for current state:** OB-621: Fresh install smoke test verified — npm install from tarball ✅, dist/ files correct ✅, bin/openbridge symlink ✅, CLI code correct (--help/--version/init) ✅, startup banner + error handlers in dist/index.js ✅. Added ob-smoke-test/ to .gitignore and eslint ignore. 1218 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -185,6 +185,7 @@
 | 2026-02-23 | 9.460 |   +0.015    | OB-640: Add missing plugin types to `src/types/index.ts` — exported `ToolProfileSchema`, `BuiltInProfileNameSchema`, `ProfilesRegistrySchema`, `TaskManifestSchema`, `BUILT_IN_PROFILES`, and types `ToolProfile`, `BuiltInProfileName`, `ProfilesRegistry`, `TaskManifest` from public entry point. Plugin authors can now access all tool profile types without deep imports. 1218 tests passing.                                                                                                                                                         |
 | 2026-02-23 | 9.465 |   +0.005    | OB-641: Remove internal utilities from `src/core/index.ts` public API — removed `injectDevConnectors` and `expandTilde` exports. Both remain importable via relative paths. `src/index.ts` updated to import `injectDevConnectors` directly from `./core/config.js`. 1218 tests passing.                                                                                                                                                                                                                                                                    |
 | 2026-02-23 | 9.495 |   +0.030    | OB-620: Full CI pipeline verification — lint ✅, typecheck ✅, 1218 tests ✅ (60 test files), build ✅. `npm pack --dry-run` shows 346 files / 1.6 MB (no `.openbridge/` session data, no secrets). Fresh install verified. Added `*.tgz` to `.gitignore` to prevent accidental pack artifact commits.                                                                                                                                                                                                                                                      |
+| 2026-02-23 | 9.525 |   +0.030    | OB-621: Fresh install smoke test — `npm install openbridge-0.0.1.tgz` ✅ (222 packages, no errors). `dist/` fully present, `bin/openbridge` symlink ✅, root files correct ✅, version 0.0.1 ✅. CLI code verified: --help exits 0, --version prints semver, init handles console/whatsapp/webchat. `dist/index.js` has unhandledRejection+uncaughtException handlers and startup banner. Added `ob-smoke-test/` to `.gitignore` and ESLint ignore. `npm pack --dry-run` still 346 files. 1218 tests passing.                                               |
 
 ---
 
