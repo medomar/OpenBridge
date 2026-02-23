@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.335/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.330
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 14 (Phase 30 ◻)
-> **Reason for current state:** OB-631: Added Branch Protection subsection to `CONTRIBUTING.md` — documents recommended GitHub branch protection settings for `main` and `develop` (PR reviews, CI checks, no direct pushes, no force-pushes). 1164 tests passing.
+> **Current Score:** 9.340/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.335
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 13 (Phase 30 ◻)
+> **Reason for current state:** OB-632: Fixed missing config file error — `main()` now checks for ENOENT and logs a single actionable message ("Config file not found: ... Create one by running: npx openbridge init") instead of a raw duplicate error+fatal pair. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -174,6 +174,7 @@
 | 2026-02-23 | 9.325 |   +0.015    | OB-629: Fix CONFIGURATION.md — updated `channels.type` to list all 5 connector types (`console`, `webchat`, `whatsapp`, `telegram`, `discord`). Added options tables for Console (none), WebChat (`port`/`host`), Telegram (`token` required, `botUsername` optional), Discord (`token` required). Fixed `auth.whitelist` row to document V2 `.min(1)` requirement with a warning note. 1164 tests passing.                                                                                                                                                 |
 | 2026-02-23 | 9.330 |   +0.005    | OB-630: Fix CONTRIBUTING.md — updated commit scopes list from `core, whatsapp, claude, connector, provider, config, deps` to `core, whatsapp, claude, connector, provider, config, discovery, master, runner, deps, ci, docs` to match CLAUDE.md. 1164 tests passing.                                                                                                                                                                                                                                                                                       |
 | 2026-02-23 | 9.335 |   +0.005    | OB-631: Add branch protection docs to `CONTRIBUTING.md` — added "Branch Protection" subsection with recommended GitHub settings for `main`/`develop`: require 1 PR review, all CI checks (lint/typecheck/test/build), no direct pushes, no force-pushes. 1164 tests passing.                                                                                                                                                                                                                                                                                |
+| 2026-02-23 | 9.340 |   +0.005    | OB-632: Fix missing config file error — `main()` now checks for ENOENT in catch block and logs a single actionable message ("Config file not found: {path}. Create one by running: npx openbridge init"). `detectConfigVersion()` suppresses the duplicate error log for ENOENT. 1164 tests passing.                                                                                                                                                                                                                                                        |
 
 ---
 
