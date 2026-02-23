@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import {
   Bridge,
   loadConfig,
@@ -11,7 +12,6 @@ import {
   injectDevConnectors,
 } from './core/index.js';
 import { V2ConfigSchema } from './types/config.js';
-
 // whatsapp-web.js / puppeteer registers multiple exit handlers — raise the limit to avoid the warning
 process.setMaxListeners(20);
 import { registerBuiltInConnectors } from './connectors/index.js';
@@ -19,6 +19,13 @@ import { registerBuiltInProviders } from './providers/index.js';
 import { scanForAITools } from './discovery/index.js';
 import { MasterManager } from './master/index.js';
 import type { V2Config } from './types/config.js';
+
+interface PackageJson {
+  version: string;
+}
+const _require = createRequire(import.meta.url);
+const _pkg = _require('../package.json') as PackageJson;
+const OPENBRIDGE_VERSION = _pkg.version;
 
 const logger = createLogger('main');
 
@@ -61,6 +68,11 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
   await registry.discoverPlugins(srcDir);
 
   await bridge.start();
+
+  const connectorNames = bridge.getActiveConnectorNames();
+  process.stdout.write(
+    `OpenBridge v${OPENBRIDGE_VERSION} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+  );
 
   logger.info('OpenBridge (V0) is running. Press Ctrl+C to stop.');
 
@@ -169,6 +181,11 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
 
   // Step 5: Start bridge (connectors + queue handler)
   await Promise.all([masterStartPromise, bridge.start()]);
+
+  const connectorNames = bridge.getActiveConnectorNames();
+  process.stdout.write(
+    `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+  );
 
   logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
   logger.info('Press Ctrl+C to stop.');

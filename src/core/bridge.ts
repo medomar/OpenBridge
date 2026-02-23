@@ -69,6 +69,11 @@ export class Bridge {
     return this.registry;
   }
 
+  /** Returns the names of all successfully initialized connectors */
+  getActiveConnectorNames(): string[] {
+    return this.connectors.map((c) => c.name);
+  }
+
   /** Set the Master AI — must be called before start() to enable Master routing */
   setMaster(master: MasterManager): void {
     this.master = master;
