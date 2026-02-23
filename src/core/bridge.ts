@@ -18,6 +18,9 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
 
+/** Maximum inbound message length — matches sanitizePrompt's cap in agent-runner.ts */
+const MAX_INBOUND_LENGTH = 32_768;
+
 export interface BridgeOptions {
   configPath?: string;
   /** Max ms to wait for queue drain on shutdown before proceeding. Default: 30 000 */
@@ -279,7 +282,20 @@ export class Bridge {
     };
   }
 
-  private handleIncomingMessage(message: InboundMessage, _connector?: Connector): void {
+  private handleIncomingMessage(incomingMessage: InboundMessage, _connector?: Connector): void {
+    // Cap rawContent length before any further processing to protect queue, auth, and prefix checks
+    let message = incomingMessage;
+    if (incomingMessage.rawContent.length > MAX_INBOUND_LENGTH) {
+      logger.warn(
+        { sender: incomingMessage.sender, originalLength: incomingMessage.rawContent.length },
+        `Inbound message truncated from ${incomingMessage.rawContent.length} to ${MAX_INBOUND_LENGTH} chars`,
+      );
+      message = {
+        ...incomingMessage,
+        rawContent: incomingMessage.rawContent.slice(0, MAX_INBOUND_LENGTH),
+      };
+    }
+
     this.metrics.recordReceived();
 
     if (!this.auth.isAuthorized(message.sender)) {
