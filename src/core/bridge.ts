@@ -20,6 +20,8 @@ const logger = createLogger('bridge');
 
 export interface BridgeOptions {
   configPath?: string;
+  /** Max ms to wait for queue drain on shutdown before proceeding. Default: 30 000 */
+  drainTimeoutMs?: number;
 }
 
 export class Bridge {
@@ -41,10 +43,12 @@ export class Bridge {
   private readonly startedAt: number = Date.now();
   private readonly configPath?: string;
   private stopped = false;
+  private readonly drainTimeoutMs: number;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
     this.configPath = options?.configPath;
+    this.drainTimeoutMs = options?.drainTimeoutMs ?? 30_000;
     this.auth = new AuthService(config.auth);
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
@@ -170,8 +174,21 @@ export class Bridge {
     logger.info('Stopping OpenBridge...');
 
     logger.info('Draining message queue...');
-    await this.queue.drain();
-    logger.info('Message queue drained');
+    const drainTimeout = new Promise<'timeout'>((resolve) =>
+      setTimeout(() => resolve('timeout'), this.drainTimeoutMs),
+    );
+    const result = await Promise.race([
+      this.queue.drain().then(() => 'done' as const),
+      drainTimeout,
+    ]);
+    if (result === 'timeout') {
+      logger.warn(
+        { drainTimeoutMs: this.drainTimeoutMs },
+        `Queue drain timed out after ${this.drainTimeoutMs}ms — proceeding with shutdown`,
+      );
+    } else {
+      logger.info('Message queue drained');
+    }
 
     // Shut down Master AI if set
     if (this.master) {
