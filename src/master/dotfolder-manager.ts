@@ -17,6 +17,7 @@ import type {
   LearningEntry,
   LearningsRegistry,
   WorkspaceAnalysisMarker,
+  ClassificationCache,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -32,6 +33,7 @@ import {
   LearningEntrySchema,
   LearningsRegistrySchema,
   WorkspaceAnalysisMarkerSchema,
+  ClassificationCacheSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -987,5 +989,37 @@ Thumbs.db
       await this.createFolder();
       await this.initGit();
     }
+  }
+
+  // ── Classification Cache ──────────────────────────────────────
+
+  /**
+   * Get the path to the classifications.json file
+   */
+  public getClassificationsPath(): string {
+    return path.join(this.dotFolderPath, 'classifications.json');
+  }
+
+  /**
+   * Read the classification cache from .openbridge/classifications.json.
+   * Returns null if the file does not exist or cannot be parsed.
+   */
+  public async readClassifications(): Promise<ClassificationCache | null> {
+    const classificationsPath = this.getClassificationsPath();
+    try {
+      const content = await fs.readFile(classificationsPath, 'utf-8');
+      return ClassificationCacheSchema.parse(JSON.parse(content));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the classification cache to .openbridge/classifications.json.
+   */
+  public async writeClassifications(cache: ClassificationCache): Promise<void> {
+    const validated = ClassificationCacheSchema.parse(cache);
+    const classificationsPath = this.getClassificationsPath();
+    await fs.writeFile(classificationsPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 }

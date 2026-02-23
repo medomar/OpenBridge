@@ -634,3 +634,66 @@ export const WorkspaceAnalysisMarkerSchema = z.object({
 });
 
 export type WorkspaceAnalysisMarker = z.infer<typeof WorkspaceAnalysisMarkerSchema>;
+
+// ── Classification Cache ─────────────────────────────────────────
+
+/**
+ * Single feedback record appended after a classified message completes.
+ * Tracks whether the assigned turn budget was sufficient for the task.
+ */
+export const ClassificationFeedbackSchema = z.object({
+  /** When this feedback was recorded */
+  recordedAt: z.string().datetime(),
+
+  /** Whether the turn budget was sufficient (task completed without timeout/error) */
+  turnBudgetSufficient: z.boolean(),
+
+  /** Whether the Master session timed out (exit code 143 or 137) */
+  timedOut: z.boolean(),
+});
+
+export type ClassificationFeedback = z.infer<typeof ClassificationFeedbackSchema>;
+
+/**
+ * Cached classification result for a normalized message pattern.
+ * Accumulates feedback to improve turn budgets over time.
+ */
+export const ClassificationCacheEntrySchema = z.object({
+  /** The normalized message key (lowercase, punctuation stripped) */
+  normalizedKey: z.string(),
+
+  /** The classification result assigned when this entry was first created */
+  result: z.object({
+    class: z.enum(['quick-answer', 'tool-use', 'complex-task']),
+    maxTurns: z.number().int().positive(),
+    reason: z.string(),
+  }),
+
+  /** When this entry was first recorded */
+  recordedAt: z.string().datetime(),
+
+  /** Number of times this cache entry was used (cache hits) */
+  hitCount: z.number().int().nonnegative().default(0),
+
+  /** Feedback from completed tasks classified with this entry */
+  feedback: z.array(ClassificationFeedbackSchema).default([]),
+});
+
+export type ClassificationCacheEntry = z.infer<typeof ClassificationCacheEntrySchema>;
+
+/**
+ * Full classification cache stored in .openbridge/classifications.json.
+ * Keyed by normalized message pattern for fast lookups.
+ */
+export const ClassificationCacheSchema = z.object({
+  /** Map of normalized message key → cache entry */
+  entries: z.record(z.string(), ClassificationCacheEntrySchema),
+
+  /** When this cache was last updated */
+  updatedAt: z.string().datetime(),
+
+  /** Schema version for forward compatibility */
+  schemaVersion: z.string().default('1.0.0'),
+});
+
+export type ClassificationCache = z.infer<typeof ClassificationCacheSchema>;

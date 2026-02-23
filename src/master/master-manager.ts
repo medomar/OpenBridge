@@ -23,6 +23,7 @@ import type {
   WorkspaceMap,
   MasterSession,
   PromptTemplate,
+  ClassificationCacheEntry,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage } from '../types/message.js';
@@ -197,6 +198,10 @@ export class MasterManager {
   private workspaceMapSummary: string | null = null;
   /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
   private mapLastVerifiedAt: string | null = null;
+  /** In-memory classification cache — normalized key → cached result + feedback */
+  private readonly classificationCache = new Map<string, ClassificationCacheEntry>();
+  /** Whether the classification cache has been loaded from disk */
+  private cacheLoaded = false;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -1077,15 +1082,99 @@ export class MasterManager {
   }
 
   /**
-   * Classify a user message as quick-answer, tool-use, or complex-task.
-   * Used to determine the appropriate maxTurns for the Master session.
-   *
-   * - quick-answer: questions, lookups, explanations → 3 turns
-   * - tool-use: file generation, single edits, targeted fixes → 10 turns
-   * - complex-task: multi-step implementations, refactors, builds → 15 turns
-   *
-   * This is a fast local classification — no AI call needed.
+   * Normalize a message for cache lookup.
+   * Converts to lowercase, strips punctuation, and collapses whitespace.
+   * This ensures "Create a README" and "create a readme" share the same cache entry.
    */
+  public normalizeForCache(content: string): string {
+    return content
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ') // strip punctuation
+      .replace(/\s+/g, ' ') // collapse whitespace
+      .trim();
+  }
+
+  /**
+   * Load the classification cache from disk into the in-memory map.
+   * Called lazily on the first classifyTask() call. Non-blocking on failure.
+   */
+  private async loadClassificationCache(): Promise<void> {
+    if (this.cacheLoaded) return;
+    this.cacheLoaded = true;
+    try {
+      const stored = await this.dotFolder.readClassifications();
+      if (stored) {
+        for (const [key, entry] of Object.entries(stored.entries)) {
+          this.classificationCache.set(key, entry);
+        }
+        logger.debug({ size: this.classificationCache.size }, 'Classification cache loaded');
+      }
+    } catch {
+      // Cache load failure is non-fatal — we'll just re-classify
+    }
+  }
+
+  /**
+   * Persist the in-memory classification cache to .openbridge/classifications.json.
+   * Called non-blockingly after cache updates. Failures are logged but not thrown.
+   */
+  private async persistClassificationCache(): Promise<void> {
+    try {
+      const entries: Record<string, ClassificationCacheEntry> = {};
+      for (const [key, entry] of this.classificationCache) {
+        entries[key] = entry;
+      }
+      await this.dotFolder.writeClassifications({
+        entries,
+        updatedAt: new Date().toISOString(),
+        schemaVersion: '1.0.0',
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to persist classification cache — non-fatal');
+    }
+  }
+
+  /**
+   * Record feedback for a classification after the task completes.
+   * Updates the cached entry's feedback array and adjusts maxTurns if the
+   * budget consistently proves insufficient.
+   *
+   * @param normalizedKey - The normalized message key (from normalizeForCache)
+   * @param turnBudgetSufficient - Whether the task completed without timeout/error
+   * @param timedOut - Whether the Master session timed out (exit code 143/137)
+   */
+  public async recordClassificationFeedback(
+    normalizedKey: string,
+    turnBudgetSufficient: boolean,
+    timedOut: boolean,
+  ): Promise<void> {
+    const entry = this.classificationCache.get(normalizedKey);
+    if (!entry) return;
+
+    entry.feedback.push({
+      recordedAt: new Date().toISOString(),
+      turnBudgetSufficient,
+      timedOut,
+    });
+
+    // If 2+ of the last 3 executions timed out, bump maxTurns by 50% (capped at 30)
+    const recent = entry.feedback.slice(-3);
+    const timeoutCount = recent.filter((f) => f.timedOut).length;
+    if (recent.length >= 2 && timeoutCount >= 2) {
+      const bumped = Math.min(Math.ceil(entry.result.maxTurns * 1.5), 30);
+      if (bumped > entry.result.maxTurns) {
+        logger.info(
+          { normalizedKey, oldMaxTurns: entry.result.maxTurns, newMaxTurns: bumped },
+          'Classification cache: bumping maxTurns due to repeated timeouts',
+        );
+        entry.result.maxTurns = bumped;
+        entry.result.reason = `${entry.result.reason} (auto-adjusted: repeated timeouts)`;
+      }
+    }
+
+    await this.persistClassificationCache();
+  }
+
   /**
    * Keyword-based task classifier — instant fallback when the AI classifier
    * is unavailable or times out. Returns 'tool-use' as the default so that
@@ -1143,6 +1232,20 @@ export class MasterManager {
   public async classifyTask(content: string): Promise<ClassificationResult> {
     const CLASSIFIER_TIMEOUT_MS = 3000;
 
+    // Check in-memory cache first (0ms, avoids AI call for repeated patterns)
+    await this.loadClassificationCache();
+    const cacheKey = this.normalizeForCache(content);
+    const cached = this.classificationCache.get(cacheKey);
+    if (cached) {
+      cached.hitCount++;
+      logger.debug(
+        { cacheKey, class: cached.result.class, hitCount: cached.hitCount },
+        'Classification cache hit',
+      );
+      void this.persistClassificationCache();
+      return { ...cached.result };
+    }
+
     // Include workspace context so the AI can calibrate scope
     const workspaceCtx = this.getWorkspaceContextSummary();
     const contextSection = workspaceCtx ? `Workspace context:\n${workspaceCtx}\n\n` : '';
@@ -1157,6 +1260,8 @@ export class MasterManager {
       `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
       `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
       `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30`;
+
+    let classificationResult: ClassificationResult;
 
     try {
       const result = await Promise.race([
@@ -1193,52 +1298,94 @@ export class MasterManager {
                     ? MESSAGE_MAX_TURNS_TOOL_USE
                     : MESSAGE_MAX_TURNS_PLANNING;
             logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
-            return { class: cls, maxTurns, reason };
+            classificationResult = { class: cls, maxTurns, reason };
+          } else {
+            classificationResult = {
+              class: 'tool-use',
+              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              reason: 'parse failure default',
+            };
           }
         } catch {
           // JSON parse error — fall through to text scan
+          const lower = raw.toLowerCase();
+          if (lower.includes('quick-answer')) {
+            classificationResult = {
+              class: 'quick-answer',
+              maxTurns: MESSAGE_MAX_TURNS_QUICK,
+              reason: 'text scan fallback',
+            };
+          } else if (lower.includes('complex-task')) {
+            classificationResult = {
+              class: 'complex-task',
+              maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+              reason: 'text scan fallback',
+            };
+          } else if (lower.includes('tool-use')) {
+            classificationResult = {
+              class: 'tool-use',
+              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              reason: 'text scan fallback',
+            };
+          } else {
+            classificationResult = {
+              class: 'tool-use',
+              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              reason: 'parse failure default',
+            };
+          }
+        }
+      } else {
+        // Last-chance text scan — response may contain the category without valid JSON
+        const lower = raw.toLowerCase();
+        if (lower.includes('quick-answer')) {
+          classificationResult = {
+            class: 'quick-answer',
+            maxTurns: MESSAGE_MAX_TURNS_QUICK,
+            reason: 'text scan fallback',
+          };
+        } else if (lower.includes('complex-task')) {
+          classificationResult = {
+            class: 'complex-task',
+            maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+            reason: 'text scan fallback',
+          };
+        } else if (lower.includes('tool-use')) {
+          classificationResult = {
+            class: 'tool-use',
+            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+            reason: 'text scan fallback',
+          };
+        } else {
+          // Parse failure → safe default (tool-use: enough turns without over-committing)
+          logger.warn(
+            { response: raw },
+            'AI classifier returned unexpected response, defaulting to tool-use',
+          );
+          classificationResult = {
+            class: 'tool-use',
+            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+            reason: 'parse failure default',
+          };
         }
       }
-
-      // Last-chance text scan — response may contain the category without valid JSON
-      const lower = raw.toLowerCase();
-      if (lower.includes('quick-answer')) {
-        return {
-          class: 'quick-answer',
-          maxTurns: MESSAGE_MAX_TURNS_QUICK,
-          reason: 'text scan fallback',
-        };
-      }
-      if (lower.includes('complex-task')) {
-        return {
-          class: 'complex-task',
-          maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-          reason: 'text scan fallback',
-        };
-      }
-      if (lower.includes('tool-use')) {
-        return {
-          class: 'tool-use',
-          maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-          reason: 'text scan fallback',
-        };
-      }
-
-      // Parse failure → safe default (tool-use: enough turns without over-committing)
-      logger.warn(
-        { response: raw },
-        'AI classifier returned unexpected response, defaulting to tool-use',
-      );
-      return {
-        class: 'tool-use',
-        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-        reason: 'parse failure default',
-      };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      return this.classifyTaskByKeywords(content);
+      classificationResult = this.classifyTaskByKeywords(content);
     }
+
+    // Store result in cache for future lookups
+    this.classificationCache.set(cacheKey, {
+      normalizedKey: cacheKey,
+      result: { ...classificationResult },
+      recordedAt: new Date().toISOString(),
+      hitCount: 0,
+      feedback: [],
+    });
+    void this.persistClassificationCache();
+
+    return classificationResult;
   }
 
   /**
@@ -2009,6 +2156,9 @@ Work silently — do not output conversational text, just explore and write the 
       await this.dotFolder.recordTask(task);
       await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
 
+      // Record classification feedback: task succeeded → turn budget was sufficient
+      void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
+
       this.state = 'ready';
 
       logger.info(
@@ -2027,6 +2177,19 @@ Work silently — do not output conversational text, just explore and write the 
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
       await this.dotFolder.recordTask(task);
+
+      // Record classification feedback: task failed — check if it was a timeout
+      const timedOut =
+        errorMessage.includes('SIGTERM') ||
+        errorMessage.includes('SIGKILL') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('exit code 143') ||
+        errorMessage.includes('exit code 137');
+      void this.recordClassificationFeedback(
+        this.normalizeForCache(message.content),
+        false,
+        timedOut,
+      );
 
       this.state = 'ready';
 
