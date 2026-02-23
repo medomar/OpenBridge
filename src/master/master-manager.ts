@@ -26,7 +26,7 @@ import type {
   ClassificationCacheEntry,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { InboundMessage } from '../types/message.js';
+import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
@@ -123,6 +123,12 @@ export interface ClassificationResult {
   /** Brief reason for the classification (for logging/debugging) */
   reason: string;
 }
+
+/**
+ * Callback for emitting progress events — decouples MasterManager from Router.
+ * Created per-message via makeProgressReporter(). No-op when no router is set.
+ */
+export type ProgressReporter = (event: ProgressEvent) => Promise<void>;
 
 /**
  * Options for creating a MasterManager
@@ -775,6 +781,18 @@ export class MasterManager {
    */
   public setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /**
+   * Build a ProgressReporter for a specific message's source and sender.
+   * Returns undefined when no router is set (e.g. in unit tests).
+   */
+  private makeProgressReporter(source: string, sender: string): ProgressReporter | undefined {
+    if (!this.router) return undefined;
+    const router = this.router;
+    return async (event: ProgressEvent) => {
+      await router.sendProgress(source, sender, event);
+    };
   }
 
   /**
@@ -2005,6 +2023,9 @@ Work silently — do not output conversational text, just explore and write the 
       },
     };
 
+    // Build a ProgressReporter that maps events to the connector's sendProgress()
+    const progress = this.makeProgressReporter(message.source, message.sender);
+
     try {
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
@@ -2018,6 +2039,9 @@ Work silently — do not output conversational text, just explore and write the 
         await this.dotFolder.recordTask(task);
         return status;
       }
+
+      // (1) Emit classifying event — AI is analyzing the message
+      await progress?.({ type: 'classifying' });
 
       // Classify message to determine appropriate turn budget
       const classification = await this.classifyTask(message.content);
@@ -2035,6 +2059,8 @@ Work silently — do not output conversational text, just explore and write the 
 
       if (taskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation');
+        // (2) Emit planning event — Master is decomposing the task
+        await progress?.({ type: 'planning' });
       }
 
       // Execute message through the persistent Master session
@@ -2074,30 +2100,19 @@ Work silently — do not output conversational text, just explore and write the 
 
           const n = spawnResult.markers.length;
 
-          // Immediately notify the user that delegation is in progress
-          if (this.router) {
-            await this.router.sendDirect(
-              message.source,
-              message.sender,
-              `Working on your request — I've broken it into ${n} subtask${n !== 1 ? 's' : ''}...`,
-              message.id,
-            );
-          }
+          // (3) Emit spawning event — N workers are being created
+          await progress?.({ type: 'spawning', workerCount: n });
 
-          // Send per-worker progress updates via the Router as each worker completes
+          // (4) Emit worker-progress events as each worker completes
           const feedbackPrompt = await this.handleSpawnMarkers(
             spawnResult.markers,
-            this.router
-              ? async (completed: number, total: number): Promise<void> => {
-                  await this.router!.sendDirect(
-                    message.source,
-                    message.sender,
-                    `Subtask ${completed}/${total} done...`,
-                    message.id,
-                  );
-                }
-              : undefined,
+            async (completed: number, total: number): Promise<void> => {
+              await progress?.({ type: 'worker-progress', completed, total });
+            },
           );
+
+          // (5) Emit synthesizing event — Master is combining worker results
+          await progress?.({ type: 'synthesizing' });
 
           // Inject worker results back into the Master session
           this.state = 'processing';
@@ -2129,6 +2144,9 @@ Work silently — do not output conversational text, just explore and write the 
           const delegationResults = await this.handleDelegations(delegations, message);
 
           const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nSummarize the delegation results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
+
+          // Emit synthesizing event for legacy delegation path
+          await progress?.({ type: 'synthesizing' });
 
           this.state = 'processing';
           const feedbackOpts = this.buildMasterSpawnOptions(
@@ -2166,6 +2184,9 @@ Work silently — do not output conversational text, just explore and write the 
         'Message processed successfully',
       );
 
+      // (6) Emit complete event — processing finished, status bar can be hidden
+      await progress?.({ type: 'complete' });
+
       return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -2194,6 +2215,9 @@ Work silently — do not output conversational text, just explore and write the 
       this.state = 'ready';
 
       logger.error({ err: error, taskId, sender: message.sender }, 'Message processing failed');
+
+      // Ensure complete event is always emitted so status bars are cleaned up
+      await progress?.({ type: 'complete' });
 
       throw error;
     }
@@ -2239,6 +2263,9 @@ Work silently — do not output conversational text, just explore and write the 
       },
     };
 
+    // Build a ProgressReporter that maps events to the connector's sendProgress()
+    const streamProgress = this.makeProgressReporter(message.source, message.sender);
+
     try {
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
@@ -2253,6 +2280,9 @@ Work silently — do not output conversational text, just explore and write the 
         yield status;
         return;
       }
+
+      // (1) Emit classifying event — AI is analyzing the message
+      await streamProgress?.({ type: 'classifying' });
 
       // Classify message to determine appropriate turn budget and prompt
       const streamClassification = await this.classifyTask(message.content);
@@ -2269,6 +2299,8 @@ Work silently — do not output conversational text, just explore and write the 
 
       if (streamTaskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation (stream)');
+        // (2) Emit planning event — Master is decomposing the task
+        await streamProgress?.({ type: 'planning' });
       }
 
       // Stream message through the persistent Master session
@@ -2336,11 +2368,22 @@ Work silently — do not output conversational text, just explore and write the 
           task.status = 'delegated';
           await this.dotFolder.recordTask(task);
 
+          const streamN = spawnResult.markers.length;
+
+          // (3) Emit spawning event — N workers are being created
+          await streamProgress?.({ type: 'spawning', workerCount: streamN });
+
           // Use progress-streaming variant if multiple workers are spawned
           let feedbackPrompt: string;
           if (spawnResult.markers.length > 1) {
-            // Stream progress updates as workers complete
-            const progressGen = this.handleSpawnMarkersWithProgress(spawnResult.markers);
+            // Stream progress updates as workers complete, also emitting worker-progress events
+            const progressGen = this.handleSpawnMarkersWithProgress(
+              spawnResult.markers,
+              async (completed: number, total: number): Promise<void> => {
+                // (4) Emit worker-progress event per completed worker
+                await streamProgress?.({ type: 'worker-progress', completed, total });
+              },
+            );
             let progressIter = await progressGen.next();
             while (!progressIter.done) {
               const progressChunk = progressIter.value;
@@ -2349,9 +2392,17 @@ Work silently — do not output conversational text, just explore and write the 
             }
             feedbackPrompt = progressIter.value;
           } else {
-            // Single worker — no progress streaming needed
-            feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers);
+            // Single worker — emit worker-progress on completion
+            feedbackPrompt = await this.handleSpawnMarkers(
+              spawnResult.markers,
+              async (completed: number, total: number): Promise<void> => {
+                await streamProgress?.({ type: 'worker-progress', completed, total });
+              },
+            );
           }
+
+          // (5) Emit synthesizing event — Master is combining worker results
+          await streamProgress?.({ type: 'synthesizing' });
 
           // Inject worker results back into the Master session (streamed)
           this.state = 'processing';
@@ -2392,6 +2443,9 @@ Work silently — do not output conversational text, just explore and write the 
 
           const feedbackPrompt = `The following delegation results are available:\n\n${delegationResults}\n\nSummarize the delegation results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
 
+          // Emit synthesizing event for legacy delegation path
+          await streamProgress?.({ type: 'synthesizing' });
+
           this.state = 'processing';
           const feedbackOpts = this.buildMasterSpawnOptions(
             feedbackPrompt,
@@ -2429,6 +2483,9 @@ Work silently — do not output conversational text, just explore and write the 
         { taskId, durationMs: task.durationMs, responseLength: fullResponse.length },
         'Message streamed successfully',
       );
+
+      // (6) Emit complete event — processing finished, status bar can be hidden
+      await streamProgress?.({ type: 'complete' });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -2443,6 +2500,9 @@ Work silently — do not output conversational text, just explore and write the 
       this.state = 'ready';
 
       logger.error({ err: error, taskId, sender: message.sender }, 'Message streaming failed');
+
+      // Ensure complete event is always emitted so status bars are cleaned up
+      await streamProgress?.({ type: 'complete' });
 
       yield `Error: ${errorMessage}`;
     }
@@ -3021,6 +3081,7 @@ ${currentContent}
    */
   private async *handleSpawnMarkersWithProgress(
     markers: ParsedSpawnMarker[],
+    onProgress?: (completed: number, total: number) => Promise<void>,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.dotFolder.readProfiles();
@@ -3058,6 +3119,8 @@ ${currentContent}
     const totalWorkers = workerIds.filter((id) => id !== '').length;
     yield `\n\n_[Starting ${totalWorkers} parallel subtasks...]_\n`;
 
+    let progressCompletedCount = 0;
+
     // Spawn all workers concurrently
     const workerPromises = markers.map((marker, index) => {
       const workerId = workerIds[index];
@@ -3070,7 +3133,15 @@ ${currentContent}
           retryCount: 0,
         } as AgentResult);
       }
-      return this.spawnWorker(workerId, marker, index, customProfiles);
+      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles);
+      if (onProgress) {
+        return workerPromise.then(async (result) => {
+          progressCompletedCount++;
+          await onProgress(progressCompletedCount, totalWorkers);
+          return result;
+        });
+      }
+      return workerPromise;
     });
 
     // Wait for all workers to complete

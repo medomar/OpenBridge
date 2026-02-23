@@ -31,7 +31,11 @@ export type { WorkspaceChanges } from './workspace-change-tracker.js';
 
 // Export MasterManager for lifecycle management
 export { MasterManager } from './master-manager.js';
-export type { MasterManagerOptions, ClassificationResult } from './master-manager.js';
+export type {
+  MasterManagerOptions,
+  ClassificationResult,
+  ProgressReporter,
+} from './master-manager.js';
 
 // Export Master system prompt generator
 export { generateMasterSystemPrompt } from './master-system-prompt.js';

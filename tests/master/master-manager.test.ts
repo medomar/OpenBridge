@@ -2150,4 +2150,228 @@ describe('MasterManager', () => {
       expect(masterCall?.maxTurns).toBe(10);
     });
   });
+
+  describe('Progress Events (OB-513)', () => {
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+    });
+
+    it('emits classifying and complete events for a simple message', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'The answer is 42.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const progressEvents: string[] = [];
+      const mockRouter = {
+        sendProgress: vi.fn(async (_src: string, _recipient: string, event: { type: string }) => {
+          progressEvents.push(event.type);
+        }),
+        sendDirect: vi.fn(),
+      } as unknown as Router;
+      masterManager.setRouter(mockRouter);
+
+      const message: InboundMessage = {
+        id: 'msg-p1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what is the answer?',
+        content: 'what is the answer?',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      expect(progressEvents).toContain('classifying');
+      expect(progressEvents).toContain('complete');
+      // complete must be last
+      expect(progressEvents[progressEvents.length - 1]).toBe('complete');
+    });
+
+    it('emits planning event for complex tasks', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Done.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const progressEvents: string[] = [];
+      const mockRouter = {
+        sendProgress: vi.fn(async (_src: string, _recipient: string, event: { type: string }) => {
+          progressEvents.push(event.type);
+        }),
+        sendDirect: vi.fn(),
+      } as unknown as Router;
+      masterManager.setRouter(mockRouter);
+
+      const message: InboundMessage = {
+        id: 'msg-p2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement a full auth system',
+        content: 'implement a full auth system',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      expect(progressEvents).toContain('classifying');
+      expect(progressEvents).toContain('planning');
+    });
+
+    it('emits spawning, worker-progress, synthesizing, complete for delegation', async () => {
+      // First spawn: Master returns SPAWN markers
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout:
+            '[SPAWN:read-only]{"prompt":"List files","workspacePath":"/tmp"}[/SPAWN]' +
+            '[SPAWN:read-only]{"prompt":"Read README","workspacePath":"/tmp"}[/SPAWN]',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })
+        // Workers spawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'worker1 result',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 50,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'worker2 result',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 50,
+        })
+        // Synthesis
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'All done.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 80,
+        });
+
+      const progressEvents: Array<{ type: string; workerCount?: number; completed?: number }> = [];
+      const mockRouter = {
+        sendProgress: vi.fn(
+          async (
+            _src: string,
+            _recipient: string,
+            event: { type: string; workerCount?: number; completed?: number },
+          ) => {
+            progressEvents.push({
+              type: event.type,
+              workerCount: event.workerCount,
+              completed: event.completed,
+            });
+          },
+        ),
+        sendDirect: vi.fn(),
+      } as unknown as Router;
+      masterManager.setRouter(mockRouter);
+
+      const message: InboundMessage = {
+        id: 'msg-p3',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement auth',
+        content: 'implement auth',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const types = progressEvents.map((e) => e.type);
+      expect(types).toContain('classifying');
+      expect(types).toContain('spawning');
+      expect(types).toContain('synthesizing');
+      expect(types).toContain('complete');
+
+      // spawning event carries worker count
+      const spawningEvent = progressEvents.find((e) => e.type === 'spawning');
+      expect(spawningEvent?.workerCount).toBe(2);
+
+      // worker-progress events
+      const workerProgressEvents = progressEvents.filter((e) => e.type === 'worker-progress');
+      expect(workerProgressEvents.length).toBeGreaterThanOrEqual(1);
+
+      // complete is always last
+      expect(types[types.length - 1]).toBe('complete');
+    });
+
+    it('emits complete even when processing fails', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'fatal error',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const progressEvents: string[] = [];
+      const mockRouter = {
+        sendProgress: vi.fn(async (_src: string, _recipient: string, event: { type: string }) => {
+          progressEvents.push(event.type);
+        }),
+        sendDirect: vi.fn(),
+      } as unknown as Router;
+      masterManager.setRouter(mockRouter);
+
+      const message: InboundMessage = {
+        id: 'msg-p4',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what is this?',
+        content: 'what is this?',
+        timestamp: new Date(),
+      };
+
+      await expect(masterManager.processMessage(message)).rejects.toThrow();
+
+      // complete must still be emitted on error to clean up status bars
+      expect(progressEvents).toContain('complete');
+    });
+
+    it('does not throw when no router is set (no progress reporter)', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // No router set — makeProgressReporter returns undefined
+      const message: InboundMessage = {
+        id: 'msg-p5',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await expect(masterManager.processMessage(message)).resolves.toBe('response');
+    });
+  });
 });
