@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.600/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.585
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 28 (Phase 29 ◻, Phase 30 ◻)
-> **Reason for current state:** OB-502: Classification cache — `classifyTask()` checks in-memory cache keyed by normalized message (lowercase + strip punctuation). Cache misses populate the cache; hits return instantly (0ms, no AI call). `recordClassificationFeedback()` records success/timeout after each task; 2+ timeouts auto-bump maxTurns by 50%. Persisted to `.openbridge/classifications.json`. 1125 tests passing.
+> **Current Score:** 8.630/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.600
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 27 (Phase 29 ◻, Phase 30 ◻)
+> **Reason for current state:** OB-503: AI classifier tests — 3 integration tests added to `tests/master/master-manager.test.ts` covering: processMessage() uses AI-classified maxTurns for tool-use, full delegation flow driven by AI classification, and fallback to keyword heuristics when AI classifier fails during processing. 1128 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -21,7 +21,7 @@
 | Worker Orchestration |   10%    | 8.5/10 |   0.850   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. Progress feedback (N subtasks, per-worker updates). handleSpawnMarkersWithProgress           |
 | Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                                                            |
 | Configuration        |    5%    | 8.5/10 |   0.425   | V2 config working, CLI init working, config watcher, Zod validation. Tilde (~) expansion fixed. Timestamp depth limit increased to 10 for deep folder structures               |
-| Testing              |    5%    | 9.0/10 |   0.450   | 1114 tests passing. Integration tests for incremental exploration. lint ✅, typecheck ✅, build ✅. mkdtemp isolation eliminates git race conditions                           |
+| Testing              |    5%    | 9.0/10 |   0.450   | 1128 tests passing. Integration tests for incremental exploration. AI classifier integration tests (OB-503). lint ✅, typecheck ✅, build ✅                                   |
 | Documentation        |    5%    | 9.0/10 |   0.450   | Connector testing guide (docs/CONNECTORS.md). README/OVERVIEW updated for all 5 connectors + smart orchestration. All docs current                                             |
 | **TOTAL**            | **100%** |   —    | **8.525** | **Re-scored to reflect Phases 25–27 complete: Smart Orchestration, Workspace Mapping Reliability, Connector Hardening + Phase 28 production polish**                           |
 
@@ -140,6 +140,7 @@
 | 2026-02-23 | 8.555 |   +0.030    | OB-500: AI classifier — `classifyTask()` now uses 1-turn haiku `claude --print` call with 3s timeout. Falls back to keyword heuristics on failure/timeout. Falls back to `tool-use` on parse failure. `classifyTaskByKeywords()` extracted as reusable fallback. 1116 tests passing.                                                                                                                                                                                                                                                                        |
 | 2026-02-23 | 8.585 |   +0.030    | OB-501: Classification enrichment — `classifyTask()` returns `ClassificationResult { class, maxTurns, reason }`. AI prompt requests JSON with workspace context injected (project type, frameworks). Turn budgets auto-tuned per message instead of fixed 3/10/15 values. `ClassificationResult` exported from master module. 1118 tests passing (+2 new tests).                                                                                                                                                                                            |
 | 2026-02-23 | 8.600 |   +0.015    | OB-502: Classification cache — in-memory cache keyed by normalized message pattern (lowercase + strip punctuation). Cache hits return instantly (0ms). Cache persisted to `.openbridge/classifications.json`. `recordClassificationFeedback()` appended after each task; 2+ timeouts auto-bump maxTurns by 50% (capped at 30). 1125 tests passing (+7 new tests).                                                                                                                                                                                           |
+| 2026-02-23 | 8.630 |   +0.030    | OB-503: AI classifier tests — 3 integration tests added in `'AI classification integration (OB-503)'` describe block: (1) processMessage() uses AI-classified maxTurns for tool-use (verifies "provide me a HTML Preview" uses AI result), (2) full delegation flow driven by AI classification (AI classifier → planning → worker → synthesis, 4 spawn calls), (3) keyword fallback when AI classifier fails during processing. 1128 tests passing (+3 new tests).                                                                                         |
 
 ---
 
