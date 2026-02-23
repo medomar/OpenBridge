@@ -38,6 +38,21 @@ npm run dev          # Start in development mode with hot reload
 
 Always branch from `develop`, not `main`.
 
+## Branch Protection
+
+The `main` and `develop` branches are protected. Maintainers should configure the following settings in **GitHub → Settings → Branches → Branch protection rules**:
+
+| Rule                              |            `main`            |          `develop`           |
+| --------------------------------- | :--------------------------: | :--------------------------: |
+| Require pull request before merge |              ✅              |              ✅              |
+| Required approving reviews        |              1               |              1               |
+| Require status checks to pass     |              ✅              |              ✅              |
+| Required status checks            | lint, typecheck, test, build | lint, typecheck, test, build |
+| Restrict direct pushes            |              ✅              |              ✅              |
+| Allow force pushes                |              ❌              |              ❌              |
+
+All changes to `main` and `develop` must go through a pull request. Direct commits and force-pushes are not permitted. If your push is rejected, open a PR from your feature branch instead.
+
 ## Commit Convention
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). Commits are
