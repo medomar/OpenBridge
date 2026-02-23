@@ -124,8 +124,14 @@ export class ConsoleConnector implements Connector {
 
   sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
     if (!this.connected) return Promise.resolve();
+    if (event.type === 'complete') {
+      // Erase the status line so it doesn't linger in the terminal
+      process.stdout.write('\r\x1b[K');
+      return Promise.resolve();
+    }
     const label = formatProgressEvent(event);
-    process.stdout.write(`[${label}]\n`);
+    // Overwrite the current line — terminal-friendly, no new lines per event
+    process.stdout.write(`\r[${label}]`);
     return Promise.resolve();
   }
 

@@ -554,4 +554,82 @@ describe('WhatsAppConnector', () => {
       expect(createdClients.length).toBe(2);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // sendProgress()
+  // -----------------------------------------------------------------------
+
+  describe('sendProgress()', () => {
+    it('sends a single message on spawning event', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 3 }, '+1234567890@c.us');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledWith(
+        '+1234567890@c.us',
+        '🔄 Breaking into 3 subtasks...',
+      );
+    });
+
+    it('sends "1 subtask" (singular) when workerCount is 1', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 1 }, '+1234567890@c.us');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledWith(
+        '+1234567890@c.us',
+        '🔄 Breaking into 1 subtask...',
+      );
+    });
+
+    it('does not send a second spawning message if one was already sent', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('silently skips non-spawning events (no message spam)', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'classifying' }, chatId);
+      await connector.sendProgress({ type: 'planning' }, chatId);
+      await connector.sendProgress({ type: 'synthesizing' }, chatId);
+
+      expect(mockClientInstance.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('clears sent state on complete so a new progress can be sent', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+      await connector.sendProgress({ type: 'complete' }, chatId);
+      // After complete, a new spawning event should send again
+      await connector.sendProgress({ type: 'spawning', workerCount: 1 }, chatId);
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('silently skips when disconnected', async () => {
+      const connector = buildConnector();
+      // Not initialized — not connected
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, '+1234567890@c.us');
+      // No mock client yet — should not throw
+    });
+  });
 });

@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.690/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.660
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 25 (Phase 29 ◻, Phase 30 ◻)
-> **Reason for current state:** OB-511: WebChat live progress UI — Rich `#status-bar` added to WebChat HTML (below chat, above input). Handles `progress` WS messages: classifying/planning/spawning/worker-progress/synthesizing show step-by-step labels with animated dots; `complete` hides the bar. Elapsed timer starts on first status event, stops on complete/response. `typing` messages also use the status bar. `sendProgress()` tests added (6 new tests). 1134 tests passing.
+> **Current Score:** 8.720/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.690
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 24 (Phase 29 ◻, Phase 30 ◻)
+> **Reason for current state:** OB-512: Console/WhatsApp/Telegram/Discord sendProgress() — Console uses `\r` to overwrite same line (clear on complete). WhatsApp sends one consolidated message on `spawning` only (no spam). Telegram edits-in-place via `editMessageText`/`deleteMessage` with per-chatId message tracking. Discord edits-in-place via `message.edit()`/`message.delete()` with per-channelId message tracking. 22 new tests. 1156 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -143,6 +143,7 @@
 | 2026-02-23 | 8.630 |   +0.030    | OB-503: AI classifier tests — 3 integration tests added in `'AI classification integration (OB-503)'` describe block: (1) processMessage() uses AI-classified maxTurns for tool-use (verifies "provide me a HTML Preview" uses AI result), (2) full delegation flow driven by AI classification (AI classifier → planning → worker → synthesis, 4 spawn calls), (3) keyword fallback when AI classifier fails during processing. 1128 tests passing (+3 new tests).                                                                                         |
 | 2026-02-23 | 8.660 |   +0.030    | OB-510: Progress event protocol — `ProgressEvent` discriminated union (classifying/planning/spawning/worker-progress/synthesizing/complete) added to `src/types/message.ts`. `sendProgress?(event, chatId): Promise<void>` added to `Connector` interface. Console connector prints formatted status lines; WebChat broadcasts `{ type: 'progress', event }` WS messages; WhatsApp/Telegram/Discord log events (full rendering deferred to OB-512). Exported from `src/types/index.ts`. 1128 tests passing.                                                 |
 | 2026-02-23 | 8.690 |   +0.030    | OB-511: WebChat live progress UI — `#status-bar` area added below chat bubbles, above input. Handles `progress` WS messages: classifying→"🔍 Analyzing request...", planning→"📋 Planning subtasks...", spawning→"📋 Breaking into N subtasks...", worker-progress→"⚙️ X/N workers done...", synthesizing→"📝 Preparing final response...", complete→hide bar. Elapsed timer starts on first event, stops on complete/response. `typing` messages now use status bar instead of chat bubble. 6 new `sendProgress()` tests. 1134 tests passing.              |
+| 2026-02-23 | 8.720 |   +0.030    | OB-512: Console/WhatsApp/Telegram/Discord sendProgress() — Console uses `\r` to overwrite same line (clear with `\x1b[K` on complete). WhatsApp sends one consolidated message on `spawning` only (no spam). Telegram edits-in-place via `editMessageText`/`deleteMessage` (per-chatId message tracking). Discord edits-in-place via `message.edit()`/`message.delete()` (per-channelId message tracking). 22 new tests. 1156 tests passing.                                                                                                                |
 
 ---
 
