@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.400/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.370
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 11 (Phase 30 ◻)
-> **Reason for current state:** OB-634: Added tests for discovery module — created `tests/discovery/tool-scanner.test.ts` (19 tests) and `tests/discovery/vscode-scanner.test.ts` (18 tests). Both files mock `node:child_process` and `node:fs/promises` respectively. 1201 tests passing.
+> **Current Score:** 9.415/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.400
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 10 (Phase 30 ◻)
+> **Reason for current state:** OB-635: Added bridge.ts and router.ts unit tests — created `tests/core/bridge.test.ts` (6 tests: connector init failure, idempotent stop, provider shutdown error, drain timeout) and extended `tests/core/router.test.ts` (+5 tests: ProviderError handling, connector-not-found fallback, defaultProvider getter). 1211 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -177,6 +177,7 @@
 | 2026-02-23 | 9.340 |   +0.005    | OB-632: Fix missing config file error — `main()` now checks for ENOENT in catch block and logs a single actionable message ("Config file not found: {path}. Create one by running: npx openbridge init"). `detectConfigVersion()` suppresses the duplicate error log for ENOENT. 1164 tests passing.                                                                                                                                                                                                                                                        |
 | 2026-02-23 | 9.370 |   +0.030    | OB-633: Fix vitest coverage config — added `'src/_archived/**'` and `'src/orchestrator/**'` to coverage `exclude` list in `vitest.config.ts`. Overall line coverage rose from 63.7% to 82.63% (above 70% threshold). CI coverage check now passes. 1164 tests passing.                                                                                                                                                                                                                                                                                      |
 | 2026-02-23 | 9.400 |   +0.030    | OB-634: Add tests for discovery module — created `tests/discovery/tool-scanner.test.ts` (19 tests for `scanForCLITools` + `selectMaster`) and `tests/discovery/vscode-scanner.test.ts` (18 tests for `scanVSCodeExtensions`). Mocks `node:child_process` execSync and `node:fs/promises` readdir/readFile. 1201 tests passing.                                                                                                                                                                                                                              |
+| 2026-02-23 | 9.415 |   +0.015    | OB-635: Improve bridge.ts and router.ts coverage — created `tests/core/bridge.test.ts` (6 tests: connector init failure, idempotent stop, provider shutdown error, drain timeout) and added 5 tests to `tests/core/router.test.ts` (ProviderError permanent/timeout/transient handling, connector-not-found, defaultProvider getter). 1211 tests passing.                                                                                                                                                                                                   |
 
 ---
 
