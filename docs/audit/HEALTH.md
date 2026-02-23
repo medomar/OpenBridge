@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.020/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.990
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 32 (Phase 30 ◻)
-> **Reason for current state:** OB-610: Fixed npm packaging — added `"files"` field and `"exports"` map to `package.json`. `dist/` now included in published tarball despite `.gitignore`. Package reduced from 567 files to 346 files (1.6MB). `.openbridge/` session data excluded. 1164 tests passing.
+> **Current Score:** 9.050/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.020
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 31 (Phase 30 ◻)
+> **Reason for current state:** OB-611: Fixed process resilience — added `unhandledRejection`/`uncaughtException`/`SIGHUP` handlers to `src/index.ts`, `shutdownInProgress` guard prevents double-shutdown on concurrent SIGINT+SIGTERM, `bridge.stop()` made idempotent. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -156,6 +156,7 @@
 | 2026-02-23 | 8.975 |   +0.015    | OB-608: CLI & UX analysis — `--help` exits code 1 (should be 0), no `--version` flag, `init` hardcodes WhatsApp (Console is simpler), success message "npm run dev" wrong for npx users, no startup banner. 3 fix tasks appended: OB-636 (--help/--version), OB-637 (init connector selection + success message), OB-638 (startup banner). 1164 tests passing.                                                                                                                                                                                              |
 | 2026-02-23 | 8.990 |   +0.015    | OB-609: API surface & type exports analysis — dead `_level` param in `createLogger` misleads callers, `ToolProfile`/`TaskManifest` and related types missing from `src/types/index.ts`, `injectDevConnectors`/`expandTilde` internal utilities in `src/core/index.ts` public API, no `"exports"` map confirmed (captured by OB-610). 3 fix tasks appended: OB-639, OB-640, OB-641. 1164 tests passing.                                                                                                                                                      |
 | 2026-02-23 | 9.020 |   +0.030    | OB-610: Fix npm packaging — added `"files": ["dist/", "config.example.json", "LICENSE", "README.md", "CHANGELOG.md"]` and `"exports"` map to `package.json`. `dist/` now published despite `.gitignore`. Tarball reduced from 567 to 346 files. `.openbridge/` session data excluded. 1164 tests passing.                                                                                                                                                                                                                                                   |
+| 2026-02-23 | 9.050 |   +0.030    | OB-611: Fix process resilience — added `unhandledRejection`/`uncaughtException`/`SIGHUP` handlers to `src/index.ts`. `shutdownInProgress` flag prevents double-shutdown on concurrent SIGINT+SIGTERM. `Bridge.stop()` made idempotent with `stopped` guard. 1164 tests passing.                                                                                                                                                                                                                                                                             |
 
 ---
 

@@ -21,6 +21,20 @@ import type { V2Config } from './types/config.js';
 
 const logger = createLogger('main');
 
+// Module-level flag prevents double-shutdown when SIGINT and SIGTERM arrive together
+let shutdownInProgress = false;
+
+// Safety net: log unhandled rejections so they don't disappear silently
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error({ reason }, 'Unhandled promise rejection');
+});
+
+// Safety net: log and exit on uncaught exceptions — the process is in an unknown state
+process.on('uncaughtException', (error: Error) => {
+  logger.fatal({ err: error }, 'Uncaught exception — exiting');
+  process.exit(1);
+});
+
 /**
  * V0 startup flow (legacy)
  * - Load config
@@ -200,8 +214,13 @@ async function main(): Promise<void> {
       bridge = await startV0Flow(configPath);
     }
 
-    // Graceful shutdown
+    // Graceful shutdown — guarded against concurrent SIGINT + SIGTERM
     const shutdown = async (): Promise<void> => {
+      if (shutdownInProgress) {
+        logger.warn('Shutdown already in progress — ignoring duplicate signal');
+        return;
+      }
+      shutdownInProgress = true;
       logger.info('Shutting down...');
       if (bridge) {
         await bridge.stop();
@@ -211,6 +230,10 @@ async function main(): Promise<void> {
 
     process.on('SIGINT', () => void shutdown());
     process.on('SIGTERM', () => void shutdown());
+    // SIGHUP: reload is handled by ConfigWatcher (file-change events) — ignore gracefully
+    process.on('SIGHUP', () => {
+      logger.info('SIGHUP received — config hot-reload is file-driven, ignoring signal');
+    });
   } catch (error) {
     logger.fatal({ err: error }, 'Failed to start OpenBridge');
     process.exit(1);

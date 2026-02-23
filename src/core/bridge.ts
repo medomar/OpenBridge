@@ -40,6 +40,7 @@ export class Bridge {
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
   private readonly configPath?: string;
+  private stopped = false;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -161,6 +162,11 @@ export class Bridge {
 
   /** Stop the bridge gracefully — drains in-flight messages, then shuts down connectors and providers */
   async stop(): Promise<void> {
+    if (this.stopped) {
+      logger.warn('Bridge.stop() called again — already stopped, skipping');
+      return;
+    }
+    this.stopped = true;
     logger.info('Stopping OpenBridge...');
 
     logger.info('Draining message queue...');
