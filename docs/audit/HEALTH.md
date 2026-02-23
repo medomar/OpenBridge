@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.840/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.810
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 23 (Phase 30 ◻)
-> **Reason for current state:** OB-602: logging analysis — logLevel hardcoded to 'info' (not read from config), no LOG_LEVEL env var override, pino-pretty in dependencies (not devDeps). All 3 issues already captured by pre-populated OB-612. Production JSON mode correct. Health endpoint meaningful. Metrics comprehensive. No new fix tasks appended. 1164 tests passing.
+> **Current Score:** 8.870/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.840
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 25 (Phase 30 ◻)
+> **Reason for current state:** OB-603: security analysis — empty whitelist silently enables open access (V0), --dangerously-skip-permissions dead code in legacy executor, inbound message length not capped before queueing. 3 new fix tasks appended (OB-626/627/628). No hardcoded secrets found, sanitizePrompt solid, no active privilege escalation. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -148,6 +148,7 @@
 | 2026-02-23 | 8.780 |   +0.030    | OB-600: npm packaging analysis — `npm pack --dry-run` reveals 567 files / 3.7 MB unpacked (should be ~5 files). No "files" field, no "exports" map, pino-pretty in dependencies, version 0.1.0 (should be 0.0.1), .openbridge/ session data included. Confirmed OB-610/612/622 valid. Appended OB-623 (.openbridge/ to .gitignore) and OB-624 (stale description fix). 1164 tests passing.                                                                                                                                                                  |
 | 2026-02-23 | 8.810 |   +0.030    | OB-601: error handling & process resilience analysis — no `unhandledRejection`/`uncaughtException`/`SIGHUP` handlers, no `shutdownInProgress` guard (all pre-captured in OB-611). New finding: `queue.drain()` in `bridge.stop()` has no timeout — if handler hangs, shutdown hangs indefinitely. Appended OB-625 (shutdown drain timeout fix). Worker shutdown plumbing exists via `master.shutdown()` + `orchestrator.shutdown()`. 1164 tests passing.                                                                                                    |
 | 2026-02-23 | 8.840 |   +0.030    | OB-602: logging & observability analysis — logLevel config field not applied to root logger (hardcoded 'info'), no LOG_LEVEL env var override, pino-pretty in dependencies not devDeps. All 3 issues pre-captured by OB-612. Production JSON mode correct. Health endpoint meaningful. Metrics comprehensive. No new fix tasks needed. 1164 tests passing.                                                                                                                                                                                                  |
+| 2026-02-23 | 8.870 |   +0.030    | OB-603: security analysis — empty whitelist silently enables open access in V0 config (OB-626 appended), --dangerously-skip-permissions dead code in legacy executor (OB-627 appended), inbound message length not capped before queueing (OB-628 appended). No hardcoded secrets found. sanitizePrompt() solid. No active --dangerously-skip-permissions usage. SECURITY.md contact/token gaps pre-captured by OB-615. 1164 tests passing.                                                                                                                 |
 
 ---
 
