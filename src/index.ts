@@ -190,7 +190,10 @@ async function detectConfigVersion(configPath: string): Promise<'v0' | 'v2'> {
 
     return 'v0';
   } catch (error) {
-    logger.error({ err: error }, 'Failed to detect config version');
+    // ENOENT: rethrow without logging — main() will show an actionable message
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      logger.error({ err: error }, 'Failed to detect config version');
+    }
     throw error;
   }
 }
@@ -199,9 +202,10 @@ async function main(): Promise<void> {
   logger.info('OpenBridge starting...');
 
   let bridge: Bridge | null = null;
+  let configPath: string | undefined;
 
   try {
-    const configPath = resolveConfigPath();
+    configPath = resolveConfigPath();
 
     // Detect config version
     const version = await detectConfigVersion(configPath);
@@ -238,7 +242,14 @@ async function main(): Promise<void> {
       logger.info('SIGHUP received — config hot-reload is file-driven, ignoring signal');
     });
   } catch (error) {
-    logger.fatal({ err: error }, 'Failed to start OpenBridge');
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const resolvedPath = configPath ?? 'config.json';
+      logger.error(
+        `Config file not found: ${resolvedPath}. Create one by running: npx openbridge init`,
+      );
+    } else {
+      logger.fatal({ err: error }, 'Failed to start OpenBridge');
+    }
     process.exit(1);
   }
 }
