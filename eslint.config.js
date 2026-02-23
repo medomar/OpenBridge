@@ -15,6 +15,7 @@ export default tseslint.config(
       'src/orchestrator/**',
       'tests/types/**',
       'test-workspace-*/',
+      'ob-smoke-test/',
     ],
   },
 
