@@ -1698,6 +1698,90 @@ describe('MasterManager', () => {
     });
 
     // -----------------------------------------------------------------------
+    // (1b) Classification cache — normalizeForCache + cache hit + feedback
+    // -----------------------------------------------------------------------
+    describe('classification cache', () => {
+      beforeEach(() => {
+        // Restore real classifyTask so we test caching behavior
+        MasterManager.prototype.classifyTask = _originalClassifyTask;
+        // AI calls reject by default — forcing keyword-heuristic fallback
+        mockSpawn.mockRejectedValue(new Error('classifier disabled in tests'));
+      });
+
+      it('normalizeForCache lowercases and strips punctuation', () => {
+        expect(masterManager.normalizeForCache('What is this?')).toBe('what is this');
+        expect(masterManager.normalizeForCache('Create a README!')).toBe('create a readme');
+        expect(masterManager.normalizeForCache('  multiple   spaces  ')).toBe('multiple spaces');
+      });
+
+      it('normalizeForCache treats same message with different case/punctuation as equal', () => {
+        const a = masterManager.normalizeForCache('Generate an HTML report!');
+        const b = masterManager.normalizeForCache('generate an html report');
+        expect(a).toBe(b);
+      });
+
+      it('second call with same (normalized) message hits cache and returns same result', async () => {
+        const msg1 = 'generate a config file';
+        const msg2 = 'GENERATE A CONFIG FILE!';
+
+        const result1 = await masterManager.classifyTask(msg1);
+        // Clear spawn mock to confirm second call does not invoke AI
+        mockSpawn.mockReset();
+
+        const result2 = await masterManager.classifyTask(msg2);
+        expect(result2.class).toBe(result1.class);
+        expect(result2.maxTurns).toBe(result1.maxTurns);
+        // AI should NOT have been called again
+        expect(mockSpawn).not.toHaveBeenCalled();
+      });
+
+      it('cache miss classifies and populates cache', async () => {
+        const msg = 'explain the bridge architecture unique-xyz';
+        const result = await masterManager.classifyTask(msg);
+        expect(result.class).toBe('quick-answer');
+
+        // Second call hits cache
+        mockSpawn.mockReset();
+        const result2 = await masterManager.classifyTask(msg);
+        expect(result2.class).toBe('quick-answer');
+        expect(mockSpawn).not.toHaveBeenCalled();
+      });
+
+      it('recordClassificationFeedback records success feedback', async () => {
+        // Prime the cache with a classification
+        await masterManager.classifyTask('what is typescript?');
+        const key = masterManager.normalizeForCache('what is typescript?');
+
+        await masterManager.recordClassificationFeedback(key, true, false);
+        // No error thrown — feedback recorded silently
+      });
+
+      it('recordClassificationFeedback does nothing for unknown key', async () => {
+        // Should not throw for an unseen key
+        await expect(
+          masterManager.recordClassificationFeedback('nonexistent-key-xyz', true, false),
+        ).resolves.not.toThrow();
+      });
+
+      it('repeated timeouts bump maxTurns in cached entry', async () => {
+        const msg = 'implement auth system for testing';
+        // First classify to populate cache
+        const initial = await masterManager.classifyTask(msg);
+        const key = masterManager.normalizeForCache(msg);
+        const originalMaxTurns = initial.maxTurns;
+
+        // Record 2 timeout feedbacks
+        await masterManager.recordClassificationFeedback(key, false, true);
+        await masterManager.recordClassificationFeedback(key, false, true);
+
+        // Next cache hit should return bumped maxTurns
+        mockSpawn.mockReset();
+        const updated = await masterManager.classifyTask(msg);
+        expect(updated.maxTurns).toBeGreaterThan(originalMaxTurns);
+      });
+    });
+
+    // -----------------------------------------------------------------------
     // (2) processMessage() with a complex task triggers SPAWN markers
     // -----------------------------------------------------------------------
     it('sends a planning prompt (not raw message) for complex tasks', async () => {

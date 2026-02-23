@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.585/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.555
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 29 (Phase 29 ◻, Phase 30 ◻)
-> **Reason for current state:** OB-501: `classifyTask()` now returns `ClassificationResult` with AI-suggested `maxTurns` and `reason`. Prompt requests JSON `{class, maxTurns, reason}` with workspace context injected. Turn budgets auto-tuned per message instead of fixed 3/10/15. 1118 tests passing.
+> **Current Score:** 8.600/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.585
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 28 (Phase 29 ◻, Phase 30 ◻)
+> **Reason for current state:** OB-502: Classification cache — `classifyTask()` checks in-memory cache keyed by normalized message (lowercase + strip punctuation). Cache misses populate the cache; hits return instantly (0ms, no AI call). `recordClassificationFeedback()` records success/timeout after each task; 2+ timeouts auto-bump maxTurns by 50%. Persisted to `.openbridge/classifications.json`. 1125 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -139,6 +139,7 @@
 | 2026-02-23 | 8.525 | re-baseline | OB-432: HEALTH.md re-baseline — re-scored all categories to reflect Phases 25–27 complete. Architecture 9.0 (+0.5), Connectors 9.0 (+0.5), Tool Profiles 8.5 (+0.5), Master AI 8.5 (+1.0), Worker Orchestration 8.5 (+1.0), Configuration 8.5 (+0.5), Testing 9.0 (+0.5), Documentation 9.0 (+1.0). New weighted total 8.525. Phase 28 complete ✅ — all tasks done.                                                                                                                                                                                        |
 | 2026-02-23 | 8.555 |   +0.030    | OB-500: AI classifier — `classifyTask()` now uses 1-turn haiku `claude --print` call with 3s timeout. Falls back to keyword heuristics on failure/timeout. Falls back to `tool-use` on parse failure. `classifyTaskByKeywords()` extracted as reusable fallback. 1116 tests passing.                                                                                                                                                                                                                                                                        |
 | 2026-02-23 | 8.585 |   +0.030    | OB-501: Classification enrichment — `classifyTask()` returns `ClassificationResult { class, maxTurns, reason }`. AI prompt requests JSON with workspace context injected (project type, frameworks). Turn budgets auto-tuned per message instead of fixed 3/10/15 values. `ClassificationResult` exported from master module. 1118 tests passing (+2 new tests).                                                                                                                                                                                            |
+| 2026-02-23 | 8.600 |   +0.015    | OB-502: Classification cache — in-memory cache keyed by normalized message pattern (lowercase + strip punctuation). Cache hits return instantly (0ms). Cache persisted to `.openbridge/classifications.json`. `recordClassificationFeedback()` appended after each task; 2+ timeouts auto-bump maxTurns by 50% (capped at 30). 1125 tests passing (+7 new tests).                                                                                                                                                                                           |
 
 ---
 
