@@ -281,6 +281,8 @@ export const TaskManifestSchema = z.object({
   retries: z.number().int().nonnegative().optional(),
   /** Delay in milliseconds between retries */
   retryDelay: z.number().int().nonnegative().optional(),
+  /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
+  maxBudgetUsd: z.number().positive().optional(),
 });
 
 // ── Inferred Types ───────────────────────────────────────────────

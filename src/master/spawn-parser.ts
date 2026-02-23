@@ -35,6 +35,8 @@ export const SpawnMarkerBodySchema = z.object({
   timeout: z.number().int().positive().optional(),
   /** Number of retries on failure */
   retries: z.number().int().nonnegative().optional(),
+  /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
+  maxBudgetUsd: z.number().positive().optional(),
 });
 
 export type SpawnMarkerBody = z.infer<typeof SpawnMarkerBodySchema>;
