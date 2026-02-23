@@ -94,6 +94,26 @@ describe('MasterManager - SPAWN Task Decomposition', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
+    // Use keyword-based classification by default so tests don't consume spawn mocks
+    vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(
+      async (content: string) => {
+        const lower = content.toLowerCase();
+        if (
+          ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'].some((kw) =>
+            lower.includes(kw),
+          )
+        )
+          return 'complex-task';
+        if (
+          ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'].some((kw) =>
+            lower.includes(kw),
+          )
+        )
+          return 'tool-use';
+        return 'quick-answer';
+      },
+    );
+
     testWorkspace = path.join(process.cwd(), 'test-workspace-spawn-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 

@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.525/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.440
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 (Phase 25 ✅, Phase 26 ✅, Phase 27 ✅, Phase 28 ✅)
-> **Reason for current state:** Re-baseline after Phases 25–27 complete. Smart orchestration (task classification, auto-delegation, synthesis quality), workspace mapping reliability (tilde fix, freshness indicator, deep folder support), connector hardening (WhatsApp stability, WebChat polished, testing guide). 1114 tests passing.
+> **Current Score:** 8.555/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.525
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 30 (Phase 29 ◻, Phase 30 ◻)
+> **Reason for current state:** OB-500: AI-based task classifier replaces keyword heuristics. `classifyTask()` uses 1-turn haiku call with 3s timeout, falls back to keyword heuristics on failure. 1116 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -137,6 +137,7 @@
 | 2026-02-23 | 8.340 |   +0.015    | OB-411: Fix tilde in workspacePath — added `expandTilde()` helper to `src/core/config.ts` using `os.homedir()`. Applied in `convertV2ToInternal()` so `~/Desktop/project` resolves correctly. 6 new tests (expandTilde + convertV2ToInternal tilde case). Fixed pre-existing test assertion in worker-result-formatter.test.ts. Phase 26 (2/4 tasks). 1101 tests passing.                                                                                                                                                                                   |
 | 2026-02-23 | 8.325 |    +0.03    | OB-410: Incremental exploration E2E — added `tests/integration/incremental-exploration.test.ts` with 4 integration tests covering the full change-detection lifecycle: fresh workspace (full exploration + marker written), new committed file (incremental update via spawn), no changes (exploration skipped), 200+ files changed (tooLargeForIncremental → full re-exploration via stream). Phase 26 started (1/4 tasks). 1098 tests passing.                                                                                                            |
 | 2026-02-23 | 8.525 | re-baseline | OB-432: HEALTH.md re-baseline — re-scored all categories to reflect Phases 25–27 complete. Architecture 9.0 (+0.5), Connectors 9.0 (+0.5), Tool Profiles 8.5 (+0.5), Master AI 8.5 (+1.0), Worker Orchestration 8.5 (+1.0), Configuration 8.5 (+0.5), Testing 9.0 (+0.5), Documentation 9.0 (+1.0). New weighted total 8.525. Phase 28 complete ✅ — all tasks done.                                                                                                                                                                                        |
+| 2026-02-23 | 8.555 |   +0.030    | OB-500: AI classifier — `classifyTask()` now uses 1-turn haiku `claude --print` call with 3s timeout. Falls back to keyword heuristics on failure/timeout. Falls back to `tool-use` on parse failure. `classifyTaskByKeywords()` extracted as reusable fallback. 1116 tests passing.                                                                                                                                                                                                                                                                        |
 
 ---
 

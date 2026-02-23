@@ -1072,7 +1072,12 @@ export class MasterManager {
    *
    * This is a fast local classification — no AI call needed.
    */
-  public classifyTask(content: string): 'quick-answer' | 'tool-use' | 'complex-task' {
+  /**
+   * Keyword-based task classifier — instant fallback when the AI classifier
+   * is unavailable or times out. Returns 'tool-use' as the default so that
+   * borderline messages get enough turns instead of timing out.
+   */
+  private classifyTaskByKeywords(content: string): 'quick-answer' | 'tool-use' | 'complex-task' {
     const lower = content.toLowerCase();
 
     // Complex task keywords — multi-step work requiring planning and delegation
@@ -1097,6 +1102,63 @@ export class MasterManager {
 
     // Default: quick-answer for questions, lookups, and unclassified messages
     return 'quick-answer';
+  }
+
+  /**
+   * AI-powered task classifier using a 1-turn haiku call.
+   * Falls back to keyword heuristics if the AI call fails or takes >3s.
+   * Falls back to 'tool-use' if the response cannot be parsed (safe default —
+   * over-budget is cheap, under-budget causes timeouts).
+   */
+  public async classifyTask(
+    content: string,
+  ): Promise<'quick-answer' | 'tool-use' | 'complex-task'> {
+    const CLASSIFIER_TIMEOUT_MS = 3000;
+
+    const prompt =
+      `Classify this user message into exactly one category: quick-answer, tool-use, or complex-task.\n` +
+      `- quick-answer: questions, explanations, lookups (no file changes needed)\n` +
+      `- tool-use: generate/create/write/fix a file or make a single targeted edit\n` +
+      `- complex-task: multi-step work that requires planning, many files, or full implementation\n\n` +
+      `Message: "${content}"\n\n` +
+      `Reply with ONLY the category name (quick-answer, tool-use, or complex-task).`;
+
+    try {
+      const result = await Promise.race([
+        this.agentRunner.spawn({
+          prompt,
+          workspacePath: this.workspacePath,
+          model: 'haiku',
+          maxTurns: 1,
+          retries: 0,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('classifier timeout')), CLASSIFIER_TIMEOUT_MS),
+        ),
+      ]);
+
+      const response = result.stdout.trim().toLowerCase();
+      if (response === 'quick-answer' || response === 'tool-use' || response === 'complex-task') {
+        logger.debug({ response }, 'AI classifier result');
+        return response;
+      }
+
+      // Response contains the category somewhere but with extra text
+      if (response.includes('quick-answer')) return 'quick-answer';
+      if (response.includes('complex-task')) return 'complex-task';
+      if (response.includes('tool-use')) return 'tool-use';
+
+      // Parse failure → safe default
+      logger.warn(
+        { response },
+        'AI classifier returned unexpected response, defaulting to tool-use',
+      );
+      return 'tool-use';
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
+      return this.classifyTaskByKeywords(content);
+    }
   }
 
   /**
@@ -1731,7 +1793,7 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Classify message to determine appropriate turn budget
-      const taskClass = this.classifyTask(message.content);
+      const taskClass = await this.classifyTask(message.content);
       const taskMaxTurns =
         taskClass === 'tool-use' ? MESSAGE_MAX_TURNS_TOOL_USE : MESSAGE_MAX_TURNS_QUICK;
       logger.info({ taskClass, taskMaxTurns }, 'Message classified');
@@ -1949,7 +2011,7 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Classify message to determine appropriate turn budget and prompt
-      const streamTaskClass = this.classifyTask(message.content);
+      const streamTaskClass = await this.classifyTask(message.content);
       const streamPromptToSend =
         streamTaskClass === 'complex-task'
           ? this.buildPlanningPrompt(message.content)
