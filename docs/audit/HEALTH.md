@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.155/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.140
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 27 (Phase 30 ◻)
-> **Reason for current state:** OB-615: SECURITY.md updated — GitHub advisory link + email, full responsible disclosure process (ack 48h, assess 7d, patch 14/30d, 90d embargo, credit policy), Telegram/Discord token guidance added. 1164 tests passing.
+> **Current Score:** 9.170/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.155
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 26 (Phase 30 ◻)
+> **Reason for current state:** OB-616: ARCHITECTURE.md updated — "4-layer" → "5-layer", Telegram/Discord "(planned)" removed, WebChat added, Agent Runner layer added to diagram, Implemented Connectors table updated to all 5 connectors, directory structure updated. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -161,6 +161,7 @@
 | 2026-02-23 | 9.110 |   +0.030    | OB-613: Fix start script — `"start"` script in `package.json` changed to `NODE_ENV=production node dist/index.js`. `injectDevConnectors()` confirmed correctly gated on `NODE_ENV !== 'production'` (returns early at `src/core/config.ts:94`). 1164 tests passing.                                                                                                                                                                                                                                                                                         |
 | 2026-02-23 | 9.140 |   +0.030    | OB-614: Fix CHANGELOG — `[Unreleased]` renamed to `[0.0.1] — 2026-02-23`, new empty `[Unreleased]` section added. `package.json` version updated from `0.1.0` to `0.0.1`. 1164 tests passing.                                                                                                                                                                                                                                                                                                                                                               |
 | 2026-02-23 | 9.155 |   +0.015    | OB-615: Fix SECURITY.md — added GitHub Security Advisories link + security@openbridge.dev email, full responsible disclosure process (48h ack, 7d assessment, 14/30d patch targets, 90-day embargo, credit policy), Telegram/Discord token handling section with rotation guidance. 1164 tests passing.                                                                                                                                                                                                                                                     |
+| 2026-02-23 | 9.170 |   +0.015    | OB-616: Fix ARCHITECTURE.md — updated "4-layer" to "5-layer", added Agent Runner layer to diagram, removed "(planned)" from Telegram/Discord, added WebChat to all connector listings, updated Implemented Connectors table with all 5 connectors (Console, WebChat, WhatsApp, Telegram, Discord), updated directory structure with missing files. 1164 tests passing.                                                                                                                                                                                      |
 
 ---
 

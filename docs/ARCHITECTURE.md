@@ -1,17 +1,17 @@
 # OpenBridge — Architecture
 
-> **Last Updated:** 2026-02-21
+> **Last Updated:** 2026-02-23
 
 ---
 
 ## Overview
 
-OpenBridge is a 4-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
+OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        CHANNELS                                   │
-│  WhatsApp · Console · Telegram (planned) · Discord (planned)      │
+│  WhatsApp · Console · WebChat · Telegram · Discord                │
 │  Connectors translate between messaging APIs and OpenBridge       │
 └──────────────────────┬────────────────────────────────────────────┘
                        │
@@ -31,10 +31,19 @@ OpenBridge is a 4-layer autonomous AI bridge that connects messaging channels to
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
+│                     AGENT RUNNER                                   │
+│  AgentRunner · Model Selector · Tool Profiles                     │
+│  Unified CLI executor: --allowedTools, --max-turns, --model,      │
+│  retries, disk logging, model fallback, worker orchestration      │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
 │                     MASTER AI                                      │
-│  Master Manager · Exploration Coordinator · Delegation            │
-│  Incremental 5-pass exploration, session continuity, multi-AI     │
-│  delegation, git-tracked knowledge in .openbridge/                 │
+│  Master Manager · Worker Registry · Exploration Coordinator       │
+│  Self-governing Master, AI task classification, auto-delegation   │
+│  via SPAWN markers, worker orchestration, session continuity,     │
+│  self-improvement, git-tracked knowledge in .openbridge/          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,8 +72,11 @@ interface Connector {
 
 | Connector | Directory                  | Library           | Features                                                                                               |
 | --------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Console   | `src/connectors/console/`  | built-in (stdin)  | Rapid local testing without any external service dependency                                            |
+| WebChat   | `src/connectors/webchat/`  | built-in (ws)     | Browser chat UI on localhost, markdown rendering, live progress bar, Thinking animation                |
 | WhatsApp  | `src/connectors/whatsapp/` | `whatsapp-web.js` | QR auth, session persistence, auto-reconnect, message chunking, typing indicators, markdown formatting |
-| Console   | `src/connectors/console/`  | built-in (stdin)  | Rapid preprod testing without WhatsApp QR dependency                                                   |
+| Telegram  | `src/connectors/telegram/` | `grammy`          | DM and group @mention support, in-place progress editing via editMessageText                           |
+| Discord   | `src/connectors/discord/`  | `discord.js` v14  | DM and guild channel support, bot message filtering, in-place progress editing                         |
 
 ### WhatsApp Connector Details
 
@@ -475,7 +487,7 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 1. loadConfig()                    → detect V2 format
 2. scanForAITools()                → discover claude, codex, etc.
 3. new Bridge(config)              → create bridge with auth, queue, router
-4. registerBuiltInConnectors()     → register WhatsApp, Console
+4. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
 5. bridge.start()                  → initialize connectors, health, metrics
 6. new MasterManager(tool, path)   → create Master with discovered tool
 7. bridge.setMaster(master)        → wire Master into router
@@ -494,7 +506,7 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 ```
 1. loadConfig()                    → detect V0 format
 2. new Bridge(config)              → create bridge
-3. registerBuiltInConnectors()     → register WhatsApp, Console
+3. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
 4. registerBuiltInProviders()      → register Claude Code provider
 5. bridge.start()                  → initialize connectors + providers
 6. Ready — messages route directly to provider
@@ -575,6 +587,8 @@ src/
 │   ├── registry.ts             ← Plugin registry (auto-discovery)
 │   ├── config.ts               ← Config loader (V2 detection + V0 fallback)
 │   ├── config-watcher.ts       ← Config hot-reload
+│   ├── agent-runner.ts         ← Unified CLI executor (--allowedTools, --max-turns, --model, retries)
+│   ├── model-selector.ts       ← Model recommendation per task type + profile
 │   ├── health.ts               ← Health check endpoint
 │   ├── metrics.ts              ← Metrics collection
 │   ├── audit-logger.ts         ← Audit trail
@@ -582,13 +596,15 @@ src/
 │   └── logger.ts               ← Pino logger
 ├── connectors/
 │   ├── index.ts                ← Connector registry
-│   ├── whatsapp/               ← WhatsApp connector (V0)
-│   └── console/                ← Console connector (reference impl)
+│   ├── console/                ← Console connector (reference impl)
+│   ├── webchat/                ← WebChat connector (browser UI)
+│   ├── whatsapp/               ← WhatsApp connector
+│   ├── telegram/               ← Telegram connector (grammY)
+│   └── discord/                ← Discord connector (discord.js v14)
 ├── providers/
 │   ├── index.ts                ← Provider registry
 │   └── claude-code/            ← Claude Code CLI provider (V0)
 │       ├── claude-code-provider.ts
-│       ├── claude-code-executor.ts  ← Generalized executor (any CLI)
 │       ├── claude-code-config.ts
 │       ├── session-manager.ts
 │       └── provider-error.ts
@@ -598,7 +614,8 @@ src/
 │   └── vscode-scanner.ts       ← VS Code extension detection
 └── master/
     ├── index.ts                ← Module exports
-    ├── master-manager.ts       ← Master AI lifecycle + message routing + sessions
+    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions
+    ├── worker-registry.ts      ← Active worker tracking + concurrency limits
     ├── dotfolder-manager.ts    ← .openbridge/ CRUD + git operations
     ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
     ├── exploration-prompts.ts  ← Pass-specific prompt generators
