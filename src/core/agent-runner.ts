@@ -162,6 +162,7 @@ export function manifestToSpawnOptions(
     timeout: manifest.timeout,
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
+    maxBudgetUsd: manifest.maxBudgetUsd,
   };
 }
 
@@ -214,6 +215,8 @@ export interface SpawnOptions {
   sessionId?: string;
   /** System prompt to append to the default Claude system prompt */
   systemPrompt?: string;
+  /** Maximum spend in USD for this agent run (passed as --max-budget-usd) */
+  maxBudgetUsd?: number;
 }
 
 /** Result returned from AgentRunner.spawn() */
@@ -304,6 +307,10 @@ export function buildArgs(opts: SpawnOptions): string[] {
 
   if (opts.systemPrompt) {
     args.push('--append-system-prompt', opts.systemPrompt);
+  }
+
+  if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd > 0) {
+    args.push('--max-budget-usd', String(opts.maxBudgetUsd));
   }
 
   args.push(sanitizePrompt(opts.prompt));

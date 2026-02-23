@@ -4,7 +4,7 @@ import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
-import { AgentRunner, TOOLS_READ_ONLY } from '../core/agent-runner.js';
+import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import type { Router } from '../core/router.js';
@@ -2526,6 +2526,21 @@ ${currentContent}
   }
 
   /**
+   * Return the default maxTurns for a worker based on its profile.
+   *
+   * Profile-based defaults ensure workers have enough room to complete their
+   * tasks without being cut off mid-execution:
+   *   - code-edit / full-access: 15 turns (need to read context + write files)
+   *   - read-only:               10 turns (exploration only, no file writes)
+   *   - other / unknown:         DEFAULT_MAX_TURNS_TASK (25)
+   */
+  private defaultMaxTurnsForProfile(profile: string): number {
+    if (profile === 'code-edit' || profile === 'full-access') return 15;
+    if (profile === 'read-only') return 10;
+    return DEFAULT_MAX_TURNS_TASK;
+  }
+
+  /**
    * Handle SPAWN markers found in Master output.
    * Spawns worker agents via AgentRunner based on parsed task manifests,
    * collects results, and returns a structured feedback prompt for injection
@@ -2551,9 +2566,10 @@ ${currentContent}
       workspacePath: this.workspacePath,
       profile: marker.profile,
       model: marker.body.model,
-      maxTurns: marker.body.maxTurns,
+      maxTurns: marker.body.maxTurns ?? this.defaultMaxTurnsForProfile(marker.profile),
       timeout: marker.body.timeout,
       retries: marker.body.retries,
+      maxBudgetUsd: marker.body.maxBudgetUsd,
     }));
 
     for (const manifest of workerManifests) {
@@ -2621,9 +2637,10 @@ ${currentContent}
       workspacePath: this.workspacePath,
       profile: marker.profile,
       model: marker.body.model,
-      maxTurns: marker.body.maxTurns,
+      maxTurns: marker.body.maxTurns ?? this.defaultMaxTurnsForProfile(marker.profile),
       timeout: marker.body.timeout,
       retries: marker.body.retries,
+      maxBudgetUsd: marker.body.maxBudgetUsd,
     }));
 
     for (const manifest of workerManifests) {
@@ -2713,9 +2730,10 @@ ${currentContent}
         workspacePath: this.workspacePath,
         profile,
         model: body.model,
-        maxTurns: body.maxTurns,
+        maxTurns: body.maxTurns ?? this.defaultMaxTurnsForProfile(profile),
         timeout: body.timeout,
         retries: body.retries,
+        maxBudgetUsd: body.maxBudgetUsd,
       },
       customProfiles,
     );
