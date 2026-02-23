@@ -1,11 +1,28 @@
 import type { Interface as ReadlineInterface } from 'node:readline';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { InboundMessage, OutboundMessage } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { ConsoleConfigSchema } from './console-config.js';
 import type { ConsoleConfig } from './console-config.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('console');
+
+function formatProgressEvent(event: ProgressEvent): string {
+  switch (event.type) {
+    case 'classifying':
+      return 'Analyzing request...';
+    case 'planning':
+      return 'Planning subtasks...';
+    case 'spawning':
+      return `Spawning ${event.workerCount.toString()} worker${event.workerCount !== 1 ? 's' : ''}...`;
+    case 'worker-progress':
+      return `Worker ${event.completed.toString()}/${event.total.toString()} done${event.workerName ? ` (${event.workerName})` : ''}`;
+    case 'synthesizing':
+      return 'Preparing final response...';
+    case 'complete':
+      return 'Done';
+  }
+}
 
 type EventListeners = {
   [E in keyof ConnectorEvents]: ConnectorEvents[E][];
@@ -102,6 +119,13 @@ export class ConsoleConnector implements Connector {
   sendTypingIndicator(_chatId: string): Promise<void> {
     if (!this.connected) return Promise.resolve();
     process.stdout.write('...\n');
+    return Promise.resolve();
+  }
+
+  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
+    if (!this.connected) return Promise.resolve();
+    const label = formatProgressEvent(event);
+    process.stdout.write(`[${label}]\n`);
     return Promise.resolve();
   }
 

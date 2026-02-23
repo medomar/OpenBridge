@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { InboundMessage, OutboundMessage } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WebChatConfigSchema } from './webchat-config.js';
 import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
@@ -298,6 +298,17 @@ export class WebChatConnector implements Connector {
   sendTypingIndicator(_chatId: string): Promise<void> {
     if (!this.connected) return Promise.resolve();
     const payload = JSON.stringify({ type: 'typing' });
+    for (const client of this.clients) {
+      if (client.readyState === WS_OPEN) {
+        client.send(payload);
+      }
+    }
+    return Promise.resolve();
+  }
+
+  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
+    if (!this.connected) return Promise.resolve();
+    const payload = JSON.stringify({ type: 'progress', event });
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {
         client.send(payload);

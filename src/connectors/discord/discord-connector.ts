@@ -1,5 +1,5 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { InboundMessage, OutboundMessage } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { DiscordConfigSchema } from './discord-config.js';
 import type { DiscordConfig } from './discord-config.js';
 import { createLogger } from '../../core/logger.js';
@@ -144,6 +144,12 @@ export class DiscordConnector implements Connector {
   sendTypingIndicator(_chatId: string): Promise<void> {
     // discord.js typing indicators require a channel fetch;
     // skip silently to match the Telegram connector behaviour
+    return Promise.resolve();
+  }
+
+  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
+    // Basic implementation: log progress event. OB-512 will add Discord-specific rendering.
+    logger.debug({ event }, 'Progress event');
     return Promise.resolve();
   }
 

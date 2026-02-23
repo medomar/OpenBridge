@@ -1,4 +1,4 @@
-import type { InboundMessage, OutboundMessage } from './message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from './message.js';
 
 /**
  * Lifecycle events emitted by a connector.
@@ -36,6 +36,9 @@ export interface Connector {
 
   /** Send a typing indicator to the given chat (best-effort, not all connectors support this) */
   sendTypingIndicator?(chatId: string): Promise<void>;
+
+  /** Send a progress event update to the given chat (best-effort, not all connectors support this) */
+  sendProgress?(event: ProgressEvent, chatId: string): Promise<void>;
 
   /** Register event listeners */
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void;

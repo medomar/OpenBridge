@@ -1,5 +1,5 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { InboundMessage, OutboundMessage } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { TelegramConfigSchema } from './telegram-config.js';
 import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
@@ -127,6 +127,12 @@ export class TelegramConnector implements Connector {
   async sendTypingIndicator(chatId: string): Promise<void> {
     if (!this.bot || !this.connected) return;
     await this.bot.api.sendChatAction(chatId, 'typing');
+  }
+
+  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
+    // Basic implementation: log progress event. OB-512 will add Telegram-specific rendering.
+    logger.debug({ event }, 'Progress event');
+    return Promise.resolve();
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {

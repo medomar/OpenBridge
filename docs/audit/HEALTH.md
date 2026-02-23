@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.630/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.600
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 27 (Phase 29 ◻, Phase 30 ◻)
-> **Reason for current state:** OB-503: AI classifier tests — 3 integration tests added to `tests/master/master-manager.test.ts` covering: processMessage() uses AI-classified maxTurns for tool-use, full delegation flow driven by AI classification, and fallback to keyword heuristics when AI classifier fails during processing. 1128 tests passing.
+> **Current Score:** 8.660/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.630
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 26 (Phase 29 ◻, Phase 30 ◻)
+> **Reason for current state:** OB-510: Progress event protocol — `ProgressEvent` discriminated union type added to `src/types/message.ts`. `sendProgress?(event, chatId)` added to `Connector` interface. All 5 connectors implement `sendProgress`: Console prints formatted status lines, WebChat broadcasts `{ type: 'progress', event }` WS messages, WhatsApp/Telegram/Discord log events (full rendering in OB-512). 1128 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -141,6 +141,7 @@
 | 2026-02-23 | 8.585 |   +0.030    | OB-501: Classification enrichment — `classifyTask()` returns `ClassificationResult { class, maxTurns, reason }`. AI prompt requests JSON with workspace context injected (project type, frameworks). Turn budgets auto-tuned per message instead of fixed 3/10/15 values. `ClassificationResult` exported from master module. 1118 tests passing (+2 new tests).                                                                                                                                                                                            |
 | 2026-02-23 | 8.600 |   +0.015    | OB-502: Classification cache — in-memory cache keyed by normalized message pattern (lowercase + strip punctuation). Cache hits return instantly (0ms). Cache persisted to `.openbridge/classifications.json`. `recordClassificationFeedback()` appended after each task; 2+ timeouts auto-bump maxTurns by 50% (capped at 30). 1125 tests passing (+7 new tests).                                                                                                                                                                                           |
 | 2026-02-23 | 8.630 |   +0.030    | OB-503: AI classifier tests — 3 integration tests added in `'AI classification integration (OB-503)'` describe block: (1) processMessage() uses AI-classified maxTurns for tool-use (verifies "provide me a HTML Preview" uses AI result), (2) full delegation flow driven by AI classification (AI classifier → planning → worker → synthesis, 4 spawn calls), (3) keyword fallback when AI classifier fails during processing. 1128 tests passing (+3 new tests).                                                                                         |
+| 2026-02-23 | 8.660 |   +0.030    | OB-510: Progress event protocol — `ProgressEvent` discriminated union (classifying/planning/spawning/worker-progress/synthesizing/complete) added to `src/types/message.ts`. `sendProgress?(event, chatId): Promise<void>` added to `Connector` interface. Console connector prints formatted status lines; WebChat broadcasts `{ type: 'progress', event }` WS messages; WhatsApp/Telegram/Discord log events (full rendering deferred to OB-512). Exported from `src/types/index.ts`. 1128 tests passing.                                                 |
 
 ---
 
