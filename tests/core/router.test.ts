@@ -3,6 +3,7 @@ import { Router } from '../../src/core/router.js';
 import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
+import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MasterManager } from '../../src/master/master-manager.js';
 
@@ -465,6 +466,101 @@ describe('Router', () => {
       await expect(
         router.sendProgress('unknown', '+1234567890', { type: 'classifying' }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('defaultProvider getter (OB-635)', () => {
+    it('should return the configured default provider name', () => {
+      const router = new Router('claude');
+      expect(router.defaultProvider).toBe('claude');
+    });
+  });
+
+  describe('route() — connector not found (OB-635)', () => {
+    it('should return early without throwing when source connector is not registered', async () => {
+      const router = new Router('mock');
+      const provider = new MockProvider();
+      router.addProvider(provider);
+      // No connector added for source 'unknown'
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'unknown',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      // Should resolve without throwing (early return after logging error)
+      await expect(router.route(message)).resolves.toBeUndefined();
+
+      // Provider was NOT called because routing short-circuited
+      expect(provider.processedMessages).toHaveLength(0);
+    });
+  });
+
+  describe('ProviderError handling (OB-635)', () => {
+    it('should send a user-friendly error message and rethrow for permanent ProviderError', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('auth failed', 'permanent', 1));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('auth failed');
+
+      // Should have sent ack + error message
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toContain('Request failed');
+    });
+
+    it('should send a timeout message for ProviderError with exit code 124', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('timed out', 'transient', 124));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('timed out');
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('timed out');
+    });
+
+    it('should send a transient error message for transient ProviderError', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('rate limit exceeded', 'transient', 429));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('rate limit exceeded');
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('temporarily unavailable');
     });
   });
 });
