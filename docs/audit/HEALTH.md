@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.945/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.930
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 26 (Phase 30 ◻)
-> **Reason for current state:** OB-606: production startup & config analysis — `npm start` missing NODE_ENV=production (pre-captured OB-613), `injectDevConnectors()` correctly gated, `npx openbridge init` generates valid config, WebChat enabled in example (pre-captured OB-619). New fix task: OB-632 (missing config file ENOENT gives no guidance). 1164 tests passing.
+> **Current Score:** 8.960/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.945
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 29 (Phase 30 ◻)
+> **Reason for current state:** OB-607: test coverage & quality analysis — all 1164 tests pass, no skipped tests, E2E covers happy path. Coverage thresholds failing (63.7% lines < 70%) due to `src/_archived/**` and `src/orchestrator/**` with 0% coverage pulling totals down. `discovery/` module has 0% coverage. `bridge.ts` (76%) and `router.ts` (77%) below 80% core target. 3 fix tasks appended: OB-633 (vitest exclude list), OB-634 (discovery tests), OB-635 (bridge/router coverage). 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -152,6 +152,7 @@
 | 2026-02-23 | 8.900 |   +0.030    | OB-604: documentation analysis — ARCHITECTURE.md stale "planned" labels + 4-layer description (pre-captured OB-616), CHANGELOG [Unreleased] unversioned (pre-captured OB-614). New fix tasks: OB-629 (CONFIGURATION.md missing connector options for Telegram/Discord/WebChat + V2 whitelist requirement), OB-630 (CONTRIBUTING.md stale commit scopes). Deployment guide actionable, CONNECTORS.md covers all 5 connectors. 1164 tests passing.                                                                                                            |
 | 2026-02-23 | 8.930 |   +0.030    | OB-605: CI/CD analysis — CI workflow correct (lint/typecheck/test/build all jobs present). No release.yml (pre-captured OB-617), no Dependabot (pre-captured OB-618). New fix task: OB-631 (branch protection not documented in CONTRIBUTING.md). CI badge URL points to correct workflow. 1164 tests passing.                                                                                                                                                                                                                                              |
 | 2026-02-23 | 8.945 |   +0.015    | OB-606: production startup & config analysis — `npm start` missing NODE_ENV=production (pre-captured OB-613), `injectDevConnectors()` correctly gated on NODE_ENV, `npx openbridge init` generates valid safe config, WebChat enabled in example (pre-captured OB-619). New fix task: OB-632 (ENOENT on missing config.json gives no actionable guidance). 1164 tests passing.                                                                                                                                                                              |
+| 2026-02-23 | 8.960 |   +0.015    | OB-607: test coverage & quality analysis — 1164 tests pass, no skipped tests, E2E covers happy path. Coverage thresholds fail (lines 63.7% < 70%) due to 0% coverage in `src/_archived/**` and `src/orchestrator/**`. `discovery/` module 0% coverage. `bridge.ts` 76% and `router.ts` 77% below 80% core target. Appended 3 fix tasks: OB-633 (vitest exclude list), OB-634 (discovery tests), OB-635 (bridge/router coverage). 1164 tests passing.                                                                                                        |
 
 ---
 
