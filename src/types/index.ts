@@ -25,6 +25,11 @@ export {
   TaskCompleteEventSchema,
   TaskFailedEventSchema,
   TaskProgressEventSchema,
+  ToolProfileSchema,
+  BuiltInProfileNameSchema,
+  ProfilesRegistrySchema,
+  TaskManifestSchema,
+  BUILT_IN_PROFILES,
 } from './agent.js';
 export type {
   Agent,
@@ -44,4 +49,8 @@ export type {
   TaskCompleteEvent,
   TaskFailedEvent,
   TaskProgressEvent,
+  ToolProfile,
+  BuiltInProfileName,
+  ProfilesRegistry,
+  TaskManifest,
 } from './agent.js';
