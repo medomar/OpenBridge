@@ -1,29 +1,29 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.370/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.340
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 12 (Phase 30 ◻)
-> **Reason for current state:** OB-633: Fixed vitest coverage config — added `src/_archived/**` and `src/orchestrator/**` to coverage exclude list. Overall line coverage rose from 63.7% to 82.63%, above the 70% threshold. 1164 tests passing.
+> **Current Score:** 9.400/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.370
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 11 (Phase 30 ◻)
+> **Reason for current state:** OB-634: Added tests for discovery module — created `tests/discovery/tool-scanner.test.ts` (19 tests) and `tests/discovery/vscode-scanner.test.ts` (18 tests). Both files mock `node:child_process` and `node:fs/promises` respectively. 1201 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                                                                          |
-| -------------------- | :------: | :----: | :-------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Architecture         |    5%    | 9.0/10 |   0.450   | 4-layer design solid. Plugin architecture proven. Smart orchestration integrates cleanly into existing layers                                                                  |
-| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working. Router.sendDirect() added for connector-targeted progress updates                                                     |
-| Connectors           |    5%    | 9.0/10 |   0.450   | 5 connectors stable (Console, WebChat, WhatsApp, Telegram, Discord). WhatsApp stability improved (local webVersionCache + retry). WebChat polished with markdown + Thinking UI |
-| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. maxBudgetUsd (--max-budget-usd) support added. 24+ tests passing                |
-| Tool Profiles        |   10%    | 8.5/10 |   0.850   | read-only/code-edit/full-access/master built-in profiles. Profile-based default maxTurns (code-edit/full-access=15, read-only=10). maxBudgetUsd per worker                     |
-| Master AI (self-gov) |   25%    | 8.5/10 |   2.125   | Task classification, auto-delegation (planning prompt), synthesis quality (5 turns). Workspace map freshness indicator. Session recovery. E2E verified                         |
-| Worker Orchestration |   10%    | 8.5/10 |   0.850   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. Progress feedback (N subtasks, per-worker updates). handleSpawnMarkersWithProgress           |
-| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                                                            |
-| Configuration        |    5%    | 8.5/10 |   0.425   | V2 config working, CLI init working, config watcher, Zod validation. Tilde (~) expansion fixed. Timestamp depth limit increased to 10 for deep folder structures               |
-| Testing              |    5%    | 9.0/10 |   0.450   | 1128 tests passing. Integration tests for incremental exploration. AI classifier integration tests (OB-503). lint ✅, typecheck ✅, build ✅                                   |
-| Documentation        |    5%    | 9.0/10 |   0.450   | Connector testing guide (docs/CONNECTORS.md). README/OVERVIEW updated for all 5 connectors + smart orchestration. All docs current                                             |
-| **TOTAL**            | **100%** |   —    | **8.525** | **Re-scored to reflect Phases 25–27 complete: Smart Orchestration, Workspace Mapping Reliability, Connector Hardening + Phase 28 production polish**                           |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                                                                                               |
+| -------------------- | :------: | :----: | :-------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture         |    5%    | 9.0/10 |   0.450   | 4-layer design solid. Plugin architecture proven. Smart orchestration integrates cleanly into existing layers                                                                       |
+| Core Engine          |    5%    | 8.5/10 |   0.425   | Router, auth, queue, metrics, health, audit all working. Router.sendDirect() added for connector-targeted progress updates                                                          |
+| Connectors           |    5%    | 9.0/10 |   0.450   | 5 connectors stable (Console, WebChat, WhatsApp, Telegram, Discord). WhatsApp stability improved (local webVersionCache + retry). WebChat polished with markdown + Thinking UI      |
+| Agent Runner         |   20%    | 8.5/10 |   1.700   | spawn()/stream(), --allowedTools, --max-turns, --model, retries, disk logging, model fallback. maxBudgetUsd (--max-budget-usd) support added. 24+ tests passing                     |
+| Tool Profiles        |   10%    | 8.5/10 |   0.850   | read-only/code-edit/full-access/master built-in profiles. Profile-based default maxTurns (code-edit/full-access=15, read-only=10). maxBudgetUsd per worker                          |
+| Master AI (self-gov) |   25%    | 8.5/10 |   2.125   | Task classification, auto-delegation (planning prompt), synthesis quality (5 turns). Workspace map freshness indicator. Session recovery. E2E verified                              |
+| Worker Orchestration |   10%    | 8.5/10 |   0.850   | WorkerRegistry, parallel spawning, timeout+cleanup, depth limiting, task history. Progress feedback (N subtasks, per-worker updates). handleSpawnMarkersWithProgress                |
+| Self-Improvement     |    5%    | 7.0/10 |   0.350   | Prompt library, learnings store, effectiveness tracking, self-improvement cycle with idle detection                                                                                 |
+| Configuration        |    5%    | 8.5/10 |   0.425   | V2 config working, CLI init working, config watcher, Zod validation. Tilde (~) expansion fixed. Timestamp depth limit increased to 10 for deep folder structures                    |
+| Testing              |    5%    | 9.0/10 |   0.450   | 1201 tests passing. Discovery module tests added (OB-634). Integration tests for incremental exploration. AI classifier integration tests (OB-503). lint ✅, typecheck ✅, build ✅ |
+| Documentation        |    5%    | 9.0/10 |   0.450   | Connector testing guide (docs/CONNECTORS.md). README/OVERVIEW updated for all 5 connectors + smart orchestration. All docs current                                                  |
+| **TOTAL**            | **100%** |   —    | **8.525** | **Re-scored to reflect Phases 25–27 complete: Smart Orchestration, Workspace Mapping Reliability, Connector Hardening + Phase 28 production polish**                                |
 
 > **Note:** Breakdown re-baselined to reflect completion of Phases 25–27. Smart Orchestration (Phase 25), Workspace Mapping Reliability (Phase 26), Connector Hardening (Phase 27), Production Polish (Phase 28) all complete.
 
@@ -176,6 +176,7 @@
 | 2026-02-23 | 9.335 |   +0.005    | OB-631: Add branch protection docs to `CONTRIBUTING.md` — added "Branch Protection" subsection with recommended GitHub settings for `main`/`develop`: require 1 PR review, all CI checks (lint/typecheck/test/build), no direct pushes, no force-pushes. 1164 tests passing.                                                                                                                                                                                                                                                                                |
 | 2026-02-23 | 9.340 |   +0.005    | OB-632: Fix missing config file error — `main()` now checks for ENOENT in catch block and logs a single actionable message ("Config file not found: {path}. Create one by running: npx openbridge init"). `detectConfigVersion()` suppresses the duplicate error log for ENOENT. 1164 tests passing.                                                                                                                                                                                                                                                        |
 | 2026-02-23 | 9.370 |   +0.030    | OB-633: Fix vitest coverage config — added `'src/_archived/**'` and `'src/orchestrator/**'` to coverage `exclude` list in `vitest.config.ts`. Overall line coverage rose from 63.7% to 82.63% (above 70% threshold). CI coverage check now passes. 1164 tests passing.                                                                                                                                                                                                                                                                                      |
+| 2026-02-23 | 9.400 |   +0.030    | OB-634: Add tests for discovery module — created `tests/discovery/tool-scanner.test.ts` (19 tests for `scanForCLITools` + `selectMaster`) and `tests/discovery/vscode-scanner.test.ts` (18 tests for `scanVSCodeExtensions`). Mocks `node:child_process` execSync and `node:fs/promises` readdir/readFile. 1201 tests passing.                                                                                                                                                                                                                              |
 
 ---
 
