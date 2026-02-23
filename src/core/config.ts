@@ -83,6 +83,32 @@ export function convertV2ToInternal(v2Config: V2Config): AppConfig {
   };
 }
 
+/**
+ * In non-production environments, automatically add the WebChat connector if
+ * not already configured. Also adds 'webchat-user' to the auth whitelist so
+ * local connector senders (webchat-user, console-user) can authenticate.
+ *
+ * Call this after loadConfig() in startup flows.
+ */
+export function injectDevConnectors(config: AppConfig): void {
+  if (process.env['NODE_ENV'] === 'production') return;
+
+  const hasWebChat = config.connectors.some((c) => c.type === 'webchat');
+  if (hasWebChat) return;
+
+  config.connectors.push({ type: 'webchat', enabled: true, options: {} });
+
+  // Allow non-numeric senders (webchat-user, console-user) through auth.
+  // normalizeNumber() strips non-digits → 'webchat-user' → ''. Adding any
+  // non-numeric entry to the whitelist puts '' in the normalized set, which
+  // authorises all local-connector senders in dev mode.
+  if (!config.auth.whitelist.includes('webchat-user')) {
+    config.auth.whitelist.push('webchat-user');
+  }
+
+  logger.info('Dev mode: WebChat connector auto-injected (localhost:3000)');
+}
+
 export async function loadConfig(configPath?: string): Promise<AppConfig> {
   const absolutePath = resolveConfigPath(configPath);
 

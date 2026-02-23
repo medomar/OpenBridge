@@ -18,7 +18,7 @@
     },
     {
       "type": "webchat",
-      "enabled": false,
+      "enabled": true,
       "options": {
         "port": 3000
       }

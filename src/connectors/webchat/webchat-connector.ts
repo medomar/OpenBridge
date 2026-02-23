@@ -33,56 +33,154 @@ const CHAT_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenBridge WebChat</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 0 16px; }
-    #messages { border: 1px solid #ddd; border-radius: 8px; height: 400px; overflow-y: auto; padding: 12px; margin-bottom: 12px; }
-    .msg { margin: 6px 0; }
-    .msg.user { color: #1a73e8; }
-    .msg.ai { color: #333; }
-    .msg.system { color: #999; font-style: italic; }
-    #form { display: flex; gap: 8px; }
-    #input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-    button { padding: 8px 16px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .chat-wrap { width: 100%; max-width: 720px; height: 92vh; display: flex; flex-direction: column; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.12); overflow: hidden; }
+    .header { padding: 14px 20px; background: #1a73e8; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .header h1 { font-size: 17px; font-weight: 600; }
+    .conn-status { display: flex; align-items: center; gap: 7px; font-size: 13px; opacity: 0.92; }
+    .conn-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff5252; transition: background 0.4s; flex-shrink: 0; }
+    .conn-dot.online { background: #69f0ae; }
+    #msgs { flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+    .bubble { max-width: 78%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.55; word-wrap: break-word; }
+    .bubble.user { align-self: flex-end; background: #1a73e8; color: #fff; border-bottom-right-radius: 4px; }
+    .bubble.ai { align-self: flex-start; background: #f1f3f4; color: #202124; border-bottom-left-radius: 4px; }
+    .bubble.sys { align-self: center; background: transparent; color: #9aa0a6; font-size: 12px; font-style: italic; padding: 2px 0; }
+    .bubble.thinking { align-self: flex-start; background: #f1f3f4; color: #9aa0a6; border-bottom-left-radius: 4px; }
+    .dot-anim span { display: inline-block; animation: pulse 1.3s infinite; }
+    .dot-anim span:nth-child(2) { animation-delay: 0.22s; }
+    .dot-anim span:nth-child(3) { animation-delay: 0.44s; }
+    @keyframes pulse { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+    .bubble.ai code { font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 13px; background: rgba(0,0,0,0.07); padding: 1px 5px; border-radius: 3px; }
+    .bubble.ai pre { background: rgba(0,0,0,0.06); border-radius: 6px; padding: 10px 12px; margin: 6px 0; overflow-x: auto; }
+    .bubble.ai pre code { background: transparent; padding: 0; }
+    .bubble.ai strong { font-weight: 600; }
+    .bubble.ai em { font-style: italic; }
+    .input-row { padding: 12px 16px; border-top: 1px solid #e8eaed; display: flex; gap: 10px; flex-shrink: 0; }
+    #inp { flex: 1; padding: 10px 16px; border: 1.5px solid #dadce0; border-radius: 24px; font-size: 14px; outline: none; transition: border-color 0.2s; background: #fff; }
+    #inp:focus { border-color: #1a73e8; }
+    #inp:disabled { background: #f8f9fa; }
+    #send { padding: 10px 22px; background: #1a73e8; color: #fff; border: none; border-radius: 24px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+    #send:hover:not(:disabled) { background: #1557b0; }
+    #send:disabled { background: #bdc1c6; cursor: not-allowed; }
   </style>
 </head>
 <body>
-  <h2>OpenBridge WebChat</h2>
-  <div id="messages"></div>
-  <form id="form">
-    <input id="input" type="text" placeholder="Type a message..." autocomplete="off" />
-    <button type="submit">Send</button>
-  </form>
+  <div class="chat-wrap">
+    <div class="header">
+      <h1>OpenBridge WebChat</h1>
+      <div class="conn-status">
+        <div class="conn-dot" id="dot"></div>
+        <span id="connLabel">Connecting...</span>
+      </div>
+    </div>
+    <div id="msgs"></div>
+    <form class="input-row" id="form">
+      <input id="inp" type="text" placeholder="Type a message..." autocomplete="off" disabled />
+      <button type="submit" id="send" disabled>Send</button>
+    </form>
+  </div>
   <script>
-    const messages = document.getElementById('messages');
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
+    var msgs = document.getElementById('msgs');
+    var form = document.getElementById('form');
+    var inp = document.getElementById('inp');
+    var send = document.getElementById('send');
+    var dot = document.getElementById('dot');
+    var connLabel = document.getElementById('connLabel');
+    var thinkingEl = null;
 
-    function addMsg(text, cls) {
-      const div = document.createElement('div');
-      div.className = 'msg ' + cls;
-      div.textContent = text;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+    function md(raw) {
+      var h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
+      // Code blocks: \`\`\`lang\\ncode\`\`\`
+      var T3 = '\x60\x60\x60';
+      var cp = h.split(T3);
+      var cr = '';
+      for (var ci = 0; ci < cp.length; ci++) {
+        if (ci % 2 === 1) {
+          var ln = cp[ci].split('\\n');
+          var firstLine = ln[0] ? ln[0].trim() : '';
+          var code = firstLine ? ln.slice(1).join('\\n').trim() : cp[ci].trim();
+          cr += '<pre><code>' + code + '</code></pre>';
+        } else { cr += cp[ci]; }
+      }
+      h = cr;
+      // Inline code: \`...\`
+      var T1 = '\x60';
+      var ip = h.split(T1);
+      var ir = '';
+      for (var ii = 0; ii < ip.length; ii++) {
+        ir += ii % 2 === 1 ? '<code>' + ip[ii] + '</code>' : ip[ii];
+      }
+      h = ir;
+      // Bold+italic: ***text***
+      var tp = h.split('***');
+      var tr = '';
+      for (var ti = 0; ti < tp.length; ti++) {
+        tr += ti % 2 === 1 ? '<strong><em>' + tp[ti] + '</em></strong>' : tp[ti];
+      }
+      h = tr;
+      // Bold: **text**
+      var bp = h.split('**');
+      var br = '';
+      for (var bi = 0; bi < bp.length; bi++) {
+        br += bi % 2 === 1 ? '<strong>' + bp[bi] + '</strong>' : bp[bi];
+      }
+      h = br;
+      // Newlines
+      return h.split('\\n').join('<br>');
     }
 
-    const ws = new WebSocket('ws://' + location.host);
-    ws.onopen = () => addMsg('Connected to OpenBridge', 'system');
-    ws.onclose = () => addMsg('Disconnected', 'system');
-    ws.onmessage = (e) => {
+    function addBubble(content, cls) {
+      var div = document.createElement('div');
+      div.className = 'bubble ' + cls;
+      if (cls === 'ai') { div.innerHTML = md(content); }
+      else { div.textContent = content; }
+      msgs.appendChild(div);
+      msgs.scrollTop = msgs.scrollHeight;
+      return div;
+    }
+
+    function showThinking() {
+      if (thinkingEl) return;
+      thinkingEl = document.createElement('div');
+      thinkingEl.className = 'bubble thinking';
+      thinkingEl.innerHTML = 'Thinking<span class="dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      msgs.appendChild(thinkingEl);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function hideThinking() {
+      if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+    }
+
+    function setOnline(online) {
+      dot.className = 'conn-dot' + (online ? ' online' : '');
+      connLabel.textContent = online ? 'Connected' : 'Disconnected';
+      inp.disabled = !online;
+      send.disabled = !online;
+    }
+
+    var ws = new WebSocket('ws://' + location.host);
+    ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
+    ws.onclose = function() { setOnline(false); hideThinking(); addBubble('Disconnected', 'sys'); };
+    ws.onmessage = function(e) {
       try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'response') addMsg('AI: ' + data.content, 'ai');
-        else if (data.type === 'typing') addMsg('AI is typing\u2026', 'system');
-      } catch {}
+        var data = JSON.parse(e.data);
+        if (data.type === 'response') { hideThinking(); addBubble(data.content, 'ai'); }
+        else if (data.type === 'typing') { showThinking(); }
+      } catch(ex) {}
     };
-    form.onsubmit = (e) => {
+    form.onsubmit = function(e) {
       e.preventDefault();
-      const text = input.value.trim();
-      if (!text || ws.readyState !== WebSocket.OPEN) return;
-      addMsg('You: ' + text, 'user');
+      var text = inp.value.trim();
+      if (!text || ws.readyState !== 1) return;
+      addBubble(text, 'user');
       ws.send(JSON.stringify({ type: 'message', content: text }));
-      input.value = '';
+      inp.value = '';
+      showThinking();
     };
   </script>
 </body>

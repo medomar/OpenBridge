@@ -1,7 +1,13 @@
 import { homedir } from 'node:os';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AppConfigSchema, V2ConfigSchema } from '../../src/types/config.js';
-import { isV2Config, convertV2ToInternal, expandTilde } from '../../src/core/config.js';
+import {
+  isV2Config,
+  convertV2ToInternal,
+  expandTilde,
+  injectDevConnectors,
+} from '../../src/core/config.js';
+import type { AppConfig } from '../../src/types/config.js';
 
 describe('AppConfigSchema', () => {
   it('should validate a valid config', () => {
@@ -355,5 +361,97 @@ describe('convertV2ToInternal', () => {
       retryDelayMs: 2_000,
     });
     expect(internalConfig.logLevel).toBe('debug');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper to build a minimal AppConfig for injectDevConnectors tests
+// ---------------------------------------------------------------------------
+
+function makeConfig(connectorTypes: string[] = ['console']): AppConfig {
+  return {
+    connectors: connectorTypes.map((type) => ({ type, enabled: true, options: {} })),
+    providers: [{ type: 'auto-discovered', enabled: true, options: {} }],
+    defaultProvider: 'auto-discovered',
+    workspaces: [{ name: 'default', path: '/workspace' }],
+    defaultWorkspace: 'default',
+    auth: {
+      whitelist: ['+1234567890'],
+      prefix: '/ai',
+      rateLimit: { enabled: true, maxMessages: 10, windowMs: 60_000 },
+      commandFilter: { allowPatterns: [], denyPatterns: [], denyMessage: '' },
+    },
+    queue: { maxRetries: 3, retryDelayMs: 1_000 },
+    router: { progressIntervalMs: 15_000 },
+    audit: { enabled: false, logPath: 'audit.log' },
+    health: { enabled: false, port: 8080 },
+    metrics: { enabled: false, port: 9090 },
+    logLevel: 'info',
+  };
+}
+
+describe('injectDevConnectors', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('injects webchat connector when NODE_ENV is not set', () => {
+    vi.stubEnv('NODE_ENV', '');
+    const config = makeConfig(['console']);
+
+    injectDevConnectors(config);
+
+    expect(config.connectors).toHaveLength(2);
+    expect(config.connectors.some((c) => c.type === 'webchat')).toBe(true);
+  });
+
+  it('adds webchat-user to whitelist for local connector auth', () => {
+    vi.stubEnv('NODE_ENV', '');
+    const config = makeConfig(['console']);
+
+    injectDevConnectors(config);
+
+    expect(config.auth.whitelist).toContain('webchat-user');
+  });
+
+  it('does not inject when NODE_ENV=production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const config = makeConfig(['console']);
+
+    injectDevConnectors(config);
+
+    expect(config.connectors).toHaveLength(1);
+    expect(config.connectors.some((c) => c.type === 'webchat')).toBe(false);
+  });
+
+  it('does not inject duplicate webchat if already configured', () => {
+    vi.stubEnv('NODE_ENV', '');
+    const config = makeConfig(['console', 'webchat']);
+
+    injectDevConnectors(config);
+
+    const webchatCount = config.connectors.filter((c) => c.type === 'webchat').length;
+    expect(webchatCount).toBe(1);
+  });
+
+  it('does not duplicate webchat-user in whitelist if already present', () => {
+    vi.stubEnv('NODE_ENV', '');
+    const config = makeConfig(['console']);
+    config.auth.whitelist.push('webchat-user');
+
+    injectDevConnectors(config);
+
+    const count = config.auth.whitelist.filter((w) => w === 'webchat-user').length;
+    expect(count).toBe(1);
+  });
+
+  it('injected webchat connector has enabled:true and empty options', () => {
+    vi.stubEnv('NODE_ENV', '');
+    const config = makeConfig(['console']);
+
+    injectDevConnectors(config);
+
+    const webchat = config.connectors.find((c) => c.type === 'webchat');
+    expect(webchat).toEqual({ type: 'webchat', enabled: true, options: {} });
   });
 });
