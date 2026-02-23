@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.435/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.420
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 8 (Phase 30 ◻)
-> **Reason for current state:** OB-637: Fixed `init` wizard — added connector selection question (console/whatsapp/webchat, default: console), console skips whitelist/prefix questions, success message now shows both start options (npm run dev + node dist/index.js). 1218 tests passing.
+> **Current Score:** 9.440/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.435
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 7 (Phase 30 ◻)
+> **Reason for current state:** OB-638: Added human-readable startup banner — `process.stdout.write()` prints `OpenBridge v{version} | Master: {tool} | Connectors: {list}` after bridge init in both V0 and V2 flows. Version read from package.json via createRequire. Bridge.getActiveConnectorNames() added. 1218 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -180,6 +180,7 @@
 | 2026-02-23 | 9.415 |   +0.015    | OB-635: Improve bridge.ts and router.ts coverage — created `tests/core/bridge.test.ts` (6 tests: connector init failure, idempotent stop, provider shutdown error, drain timeout) and added 5 tests to `tests/core/router.test.ts` (ProviderError permanent/timeout/transient handling, connector-not-found, defaultProvider getter). 1211 tests passing.                                                                                                                                                                                                   |
 | 2026-02-23 | 9.420 |   +0.005    | OB-636: Fix CLI --help/-h and --version/-v flags — added explicit handling in `src/cli/index.ts` using `createRequire` to read package.json at runtime. --help exits 0 (was 1), prints app name/description/version/commands. --version exits 0, prints semver string. 1212 tests passing.                                                                                                                                                                                                                                                                  |
 | 2026-02-23 | 9.435 |   +0.015    | OB-637: Fix `init` wizard — added connector selection (console/whatsapp/webchat, default: console). Console and webchat skip whitelist/prefix questions. WhatsApp retains all 4 questions. Success message updated to show both start options (npm run dev for cloned repo, node dist/index.js for npm install). 6 new tests. 1218 tests passing.                                                                                                                                                                                                           |
+| 2026-02-23 | 9.440 |   +0.005    | OB-638: Add human-readable startup banner — `process.stdout.write()` prints `OpenBridge v{version} \| Master: {tool} \| Connectors: {list}` after bridge init in both V0 and V2 flows. Version read from package.json via `createRequire`. `Bridge.getActiveConnectorNames()` added. 1218 tests passing.                                                                                                                                                                                                                                                    |
 
 ---
 
