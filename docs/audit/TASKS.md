@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 task | **In Progress:** 0
+> **Pending:** 0 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-23
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md)
 
@@ -22,7 +22,7 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 |  25   | Smart Orchestration (task routing)      |   6   |   ✅   |
 |  26   | Workspace Mapping Reliability           |   4   |   ✅   |
 |  27   | Connector Hardening (WhatsApp + others) |   3   |   ✅   |
-|  28   | Production Polish                       |   3   |   ◻    |
+|  28   | Production Polish                       |   3   |   ✅   |
 
 ---
 
@@ -76,11 +76,11 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 
 > **Goal:** Clean up remaining tech debt, update docs, prepare for public release.
 
-| #   | Task                                                                                                                                                                                                                                                                                                                                                     | ID     | Priority |  Status   |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 167 | **Fix remaining test failures** — Run `npm test`, fix all failures. Currently 7 failures from git race condition (OB-F18). Use unique temp directories per test via `mkdtemp`. Target: 100% pass rate.                                                                                                                                                   | OB-430 |  🟡 Med  |  ✅ Done  |
-| 168 | **Update README and OVERVIEW for current state** — README still describes MVP-era architecture. Update to reflect: 5 connectors (Console, WhatsApp, Telegram, WebChat, Discord), smart orchestration, incremental exploration, self-governing Master with worker delegation. Update the "Quick Start" to show the simplest path (Console + Claude Code). | OB-431 |  🟡 Med  |  ✅ Done  |
-| 169 | **HEALTH.md re-baseline** — Re-score all categories to reflect Phases 25-27 work. Update the overall score.                                                                                                                                                                                                                                              | OB-432 |  🟢 Low  | ◻ Pending |
+| #   | Task                                                                                                                                                                                                                                                                                                                                                     | ID     | Priority | Status  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 167 | **Fix remaining test failures** — Run `npm test`, fix all failures. Currently 7 failures from git race condition (OB-F18). Use unique temp directories per test via `mkdtemp`. Target: 100% pass rate.                                                                                                                                                   | OB-430 |  🟡 Med  | ✅ Done |
+| 168 | **Update README and OVERVIEW for current state** — README still describes MVP-era architecture. Update to reflect: 5 connectors (Console, WhatsApp, Telegram, WebChat, Discord), smart orchestration, incremental exploration, self-governing Master with worker delegation. Update the "Quick Start" to show the simplest path (Console + Claude Code). | OB-431 |  🟡 Med  | ✅ Done |
+| 169 | **HEALTH.md re-baseline** — Re-score all categories to reflect Phases 25-27 work. Update the overall score.                                                                                                                                                                                                                                              | OB-432 |  🟢 Low  | ✅ Done |
 
 ---
 
