@@ -53,8 +53,9 @@ function createLineFeeder(lines: string[]): {
 }
 
 describe('buildConfig', () => {
-  it('should build a valid V2 config object from answers', () => {
+  it('should build a whatsapp config with auth', () => {
     const config = buildConfig({
+      connector: 'whatsapp',
       workspacePath: '/home/user/project',
       whitelist: ['+1234567890'],
       prefix: '/ai',
@@ -62,12 +63,7 @@ describe('buildConfig', () => {
 
     expect(config).toEqual({
       workspacePath: '/home/user/project',
-      channels: [
-        {
-          type: 'whatsapp',
-          enabled: true,
-        },
-      ],
+      channels: [{ type: 'whatsapp', enabled: true }],
       auth: {
         whitelist: ['+1234567890'],
         prefix: '/ai',
@@ -75,8 +71,35 @@ describe('buildConfig', () => {
     });
   });
 
+  it('should build a console config without auth', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).toEqual({
+      workspacePath: '/home/user/project',
+      channels: [{ type: 'console', enabled: true }],
+    });
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should build a webchat config without auth', () => {
+    const config = buildConfig({
+      connector: 'webchat',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).toEqual({
+      workspacePath: '/home/user/project',
+      channels: [{ type: 'webchat', enabled: true }],
+    });
+    expect(config).not.toHaveProperty('auth');
+  });
+
   it('should support multiple whitelist numbers', () => {
     const config = buildConfig({
+      connector: 'whatsapp',
       workspacePath: '/tmp/test',
       whitelist: ['+111', '+222', '+333'],
       prefix: '/bot',
@@ -84,12 +107,7 @@ describe('buildConfig', () => {
 
     expect(config).toEqual({
       workspacePath: '/tmp/test',
-      channels: [
-        {
-          type: 'whatsapp',
-          enabled: true,
-        },
-      ],
+      channels: [{ type: 'whatsapp', enabled: true }],
       auth: {
         whitelist: ['+111', '+222', '+333'],
         prefix: '/bot',
@@ -115,8 +133,9 @@ describe('runInit', () => {
     }
   });
 
-  it('should generate a V2 config file from interactive input', async () => {
+  it('should generate a whatsapp config from interactive input', async () => {
     const { input, output } = createLineFeeder([
+      'whatsapp', // connector
       '/home/user/my-project', // workspace path
       '+1234567890', // whitelist
       '/ai', // prefix
@@ -139,9 +158,42 @@ describe('runInit', () => {
     expect(auth.prefix).toBe('/ai');
   });
 
-  it('should apply defaults when user presses enter', async () => {
+  it('should generate a console config without auth', async () => {
     const { input, output } = createLineFeeder([
-      '/home/user/project', // workspace path (required)
+      'console', // connector
+      '/home/user/my-project', // workspace path
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).toHaveProperty('workspacePath', '/home/user/my-project');
+
+    const channels = config['channels'] as Array<{ type: string }>;
+    expect(channels[0]?.type).toBe('console');
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should default to console when connector answer is empty', async () => {
+    const { input, output } = createLineFeeder([
+      '', // empty = default console
+      '/home/user/project', // workspace path
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string }>;
+    expect(channels[0]?.type).toBe('console');
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should apply prefix default when user presses enter', async () => {
+    const { input, output } = createLineFeeder([
+      'whatsapp', // connector
+      '/home/user/project', // workspace path
       '+555', // whitelist
       '', // prefix — default /ai
     ]);
@@ -155,7 +207,10 @@ describe('runInit', () => {
   });
 
   it('should abort if workspace path is empty', async () => {
-    const { input, output } = createLineFeeder(['']);
+    const { input, output } = createLineFeeder([
+      '', // connector (default console)
+      '', // empty workspace path
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
@@ -164,6 +219,7 @@ describe('runInit', () => {
 
   it('should abort if whitelist is empty', async () => {
     const { input, output } = createLineFeeder([
+      'whatsapp', // connector
       '/home/user/project', // workspace path
       '', // empty whitelist
     ]);
@@ -171,6 +227,16 @@ describe('runInit', () => {
     await runInit({ input, output, outputPath: testConfigPath });
 
     expect(output.data).toContain('at least one phone number is required');
+  });
+
+  it('should abort on invalid connector', async () => {
+    const { input, output } = createLineFeeder([
+      'telegram', // invalid connector
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('invalid connector');
   });
 
   it('should abort if user declines overwrite', async () => {
@@ -188,6 +254,7 @@ describe('runInit', () => {
 
     const { input, output } = createLineFeeder([
       'y', // confirm overwrite
+      'whatsapp', // connector
       '/home/user/project', // workspace path
       '+1234567890', // whitelist
       '', // prefix
@@ -200,5 +267,14 @@ describe('runInit', () => {
     expect(config).toHaveProperty('workspacePath', '/home/user/project');
     expect(config).toHaveProperty('channels');
     expect(config).toHaveProperty('auth');
+  });
+
+  it('should show updated success message with both start options', async () => {
+    const { input, output } = createLineFeeder(['console', '/home/user/project']);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('npm run dev');
+    expect(output.data).toContain('node dist/index.js');
   });
 });

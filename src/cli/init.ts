@@ -11,10 +11,13 @@ export interface InitOptions {
 }
 
 interface Answers {
+  connector: string;
   workspacePath: string;
-  whitelist: string[];
-  prefix: string;
+  whitelist?: string[];
+  prefix?: string;
 }
+
+const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat'] as const;
 
 function ask(rl: ReadlineInterface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -25,19 +28,19 @@ function ask(rl: ReadlineInterface, question: string): Promise<string> {
 }
 
 export function buildConfig(answers: Answers): Record<string, unknown> {
-  return {
+  const config: Record<string, unknown> = {
     workspacePath: answers.workspacePath,
-    channels: [
-      {
-        type: 'whatsapp',
-        enabled: true,
-      },
-    ],
-    auth: {
-      whitelist: answers.whitelist,
-      prefix: answers.prefix,
-    },
+    channels: [{ type: answers.connector, enabled: true }],
   };
+
+  if (answers.whitelist !== undefined) {
+    config['auth'] = {
+      whitelist: answers.whitelist,
+      prefix: answers.prefix ?? '/ai',
+    };
+  }
+
+  return config;
 }
 
 export async function runInit(options: InitOptions = {}): Promise<void> {
@@ -63,42 +66,58 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Question 1: Workspace path
+    // Question 1: Connector selection
+    const connectorAnswer = await ask(
+      rl,
+      '  Connector type (console/whatsapp/webchat) [default: console]: ',
+    );
+    const connector = connectorAnswer || 'console';
+
+    if (!(VALID_CONNECTORS as readonly string[]).includes(connector)) {
+      write(`  Error: invalid connector "${connector}". Choose console, whatsapp, or webchat.\n`);
+      return;
+    }
+
+    // Question 2: Workspace path
     const workspacePath = await ask(rl, '  Workspace path (absolute path to your project): ');
     if (!workspacePath) {
       write('  Error: workspace path is required.\n');
       return;
     }
 
-    // Question 2: Phone whitelist
-    const whitelistRaw = await ask(
-      rl,
-      '  Phone whitelist (comma-separated, e.g. +1234567890,+0987654321): ',
-    );
-    const whitelist = whitelistRaw
-      .split(',')
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0);
+    let config: Record<string, unknown>;
 
-    if (whitelist.length === 0) {
-      write('  Error: at least one phone number is required.\n');
-      return;
+    if (connector === 'whatsapp') {
+      // Question 3: Phone whitelist (WhatsApp only)
+      const whitelistRaw = await ask(
+        rl,
+        '  Phone whitelist (comma-separated, e.g. +1234567890,+0987654321): ',
+      );
+      const whitelist = whitelistRaw
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0);
+
+      if (whitelist.length === 0) {
+        write('  Error: at least one phone number is required.\n');
+        return;
+      }
+
+      // Question 4: Command prefix (WhatsApp only)
+      const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');
+      const prefix = prefixAnswer || '/ai';
+
+      config = buildConfig({ connector, workspacePath, whitelist, prefix });
+    } else {
+      config = buildConfig({ connector, workspacePath });
     }
-
-    // Question 3: Command prefix
-    const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');
-    const prefix = prefixAnswer || '/ai';
-
-    const config = buildConfig({
-      workspacePath,
-      whitelist,
-      prefix,
-    });
 
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 
     write(`\n  Config written to ${outputPath}\n`);
-    write('  Run `npm run dev` to start OpenBridge.\n\n');
+    write('  To start OpenBridge:\n');
+    write('    - Cloned from repo:    npm run dev\n');
+    write('    - Installed via npm:   node dist/index.js\n\n');
   } finally {
     rl.close();
   }
