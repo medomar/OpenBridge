@@ -24,7 +24,7 @@ function createRootLogger(): pino.Logger {
 
 const rootLogger = createRootLogger();
 
-export function createLogger(name: string, _level = 'info'): pino.Logger {
+export function createLogger(name: string): pino.Logger {
   return rootLogger.child({ name });
 }
 
