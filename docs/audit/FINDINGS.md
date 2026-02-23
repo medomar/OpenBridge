@@ -2,26 +2,25 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 1 | **Fixed:** 10 | **Last Audit:** 2026-02-23
+> **Open:** 0 | **Fixed:** 11 | **Last Audit:** 2026-02-23
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
 
 ## Open Findings
 
-### OB-F18 — Test suite has 7 failures due to git hook race condition
+_No open findings._
+
+---
+
+### OB-F18 — Test suite has 7 failures due to git hook race condition ✅
 
 **Discovered:** 2026-02-22 (post-automation audit)
-**Component:** `tests/master/dotfolder-manager.test.ts`, `tests/master/exploration-coordinator.test.ts`
-**Severity:** 🟡 Medium
-**Impact:** CI may be intermittently red. Test failures are from parallel test execution colliding on temp `.git` directories.
+**Fixed:** 2026-02-23 (OB-430)
+**Component:** `tests/master/dotfolder-manager.test.ts`
+**Severity:** 🟡 Medium → ✅ Fixed
 
-**Details:**
-DotFolderManager tests create temporary `.git` directories. When tests run in parallel, they collide on `.git/hooks/update.sample` file creation. This cascades into ExplorationCoordinator failures (which depend on DotFolderManager).
-
-**Fix:** Use unique temp directories per test (e.g., `mkdtemp` in os.tmpdir()). Already proven to work in `workspace-change-tracker.test.ts`.
-
-**Resolves in:** Phase 28, OB-430
+**Fix applied:** Changed `dotfolder-manager.test.ts` to use `fs.mkdtemp(path.join(os.tmpdir(), 'openbridge-dfm-test-'))` instead of `path.join(process.cwd(), 'test-workspace-' + Date.now())`. This creates unique isolated temp directories outside the project git repo, eliminating `.git/hooks` race conditions during parallel test execution. 1114 tests passing.
 
 ---
 
