@@ -68,6 +68,22 @@ const SESSION_DEAD_PATTERNS = [
 const RESTART_CONTEXT_TASK_LIMIT = 10;
 
 /**
+ * Format an ISO timestamp as a human-readable "X ago" string.
+ * Used to show the Master how fresh its workspace knowledge is.
+ */
+function formatTimeAgo(isoTimestamp: string): string {
+  const ms = Date.now() - new Date(isoTimestamp).getTime();
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days} day${days !== 1 ? 's' : ''} ago`;
+  if (hours > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  if (minutes > 0) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+  return 'just now';
+}
+
+/**
  * Tools available to the Master AI session.
  * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
  * Master can read, write, and edit files (for .openbridge/ management)
@@ -165,6 +181,8 @@ export class MasterManager {
   private isSelfImproving = false;
   /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
   private workspaceMapSummary: string | null = null;
+  /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
+  private mapLastVerifiedAt: string | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -439,8 +457,12 @@ export class MasterManager {
     if (this.explorationSummary?.status === 'completed') {
       const mapContext = this.getWorkspaceContextSummary();
       if (mapContext) {
+        let contextText = mapContext;
+        if (this.mapLastVerifiedAt) {
+          contextText += `\n\nMap last verified: ${formatTimeAgo(this.mapLastVerifiedAt)}`;
+        }
         opts.systemPrompt =
-          (opts.systemPrompt ?? '') + '\n\n## Current Workspace Knowledge\n\n' + mapContext;
+          (opts.systemPrompt ?? '') + '\n\n## Current Workspace Knowledge\n\n' + contextText;
       }
     }
 
@@ -1200,6 +1222,7 @@ export class MasterManager {
       logger.info('No analysis marker found — writing initial marker for existing map');
       const initialMarker = await this.changeTracker.buildCurrentMarker('full', 0);
       await this.dotFolder.writeAnalysisMarker(initialMarker);
+      this.mapLastVerifiedAt = initialMarker.lastVerifiedAt ?? initialMarker.analyzedAt;
       return 'no-changes';
     }
 
@@ -1217,6 +1240,10 @@ export class MasterManager {
     );
 
     if (!changes.hasChanges) {
+      // Update lastVerifiedAt to record this startup even if no changes detected
+      const now = new Date().toISOString();
+      await this.dotFolder.writeAnalysisMarker({ ...marker, lastVerifiedAt: now });
+      this.mapLastVerifiedAt = now;
       return 'no-changes';
     }
 
@@ -1290,6 +1317,7 @@ export class MasterManager {
       const totalChanged = changes.changedFiles.length + changes.deletedFiles.length;
       const newMarker = await this.changeTracker.buildCurrentMarker('incremental', totalChanged);
       await this.dotFolder.writeAnalysisMarker(newMarker);
+      this.mapLastVerifiedAt = newMarker.lastVerifiedAt ?? newMarker.analyzedAt;
 
       // Commit all .openbridge changes
       await this.dotFolder.commitChanges(
@@ -1407,6 +1435,7 @@ export class MasterManager {
     // Write analysis marker for incremental change detection on next startup
     const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
     await this.dotFolder.writeAnalysisMarker(fullMarker);
+    this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
 
     // Log completion
     await this.dotFolder.appendLog({
