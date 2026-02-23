@@ -1782,6 +1782,178 @@ describe('MasterManager', () => {
     });
 
     // -----------------------------------------------------------------------
+    // OB-503: AI classification integration tests
+    // -----------------------------------------------------------------------
+    describe('AI classification integration (OB-503)', () => {
+      beforeEach(() => {
+        // Restore real classifyTask so AI spawn call is actually made
+        MasterManager.prototype.classifyTask = _originalClassifyTask;
+      });
+
+      it('processMessage() uses AI-classified maxTurns for a tool-use task', async () => {
+        // Call 0: AI classifier → tool-use with 12 turns
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout:
+            '{"class":"tool-use","maxTurns":12,"reason":"HTML generation is a single file task"}',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 90,
+        });
+
+        // Call 1: Master executes the tool-use task directly
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'preview.html has been created.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 300,
+        });
+
+        const message: InboundMessage = {
+          id: 'msg-ai-tooluse',
+          source: 'test',
+          sender: '+1234567890',
+          rawContent: '/ai provide me a HTML Preview',
+          content: 'provide me a HTML Preview',
+          timestamp: new Date(),
+        };
+
+        const response = await masterManager.processMessage(message);
+
+        // Two spawn calls: AI classifier + task execution
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+        // First call is the AI classifier: haiku, maxTurns=1
+        const classifierCall = getSpawnCallOpts(0);
+        expect(classifierCall?.model).toBe('haiku');
+        expect(classifierCall?.maxTurns).toBe(1);
+        expect(classifierCall?.prompt).toContain('provide me a HTML Preview');
+
+        // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
+        const taskCall = getSpawnCallOpts(1);
+        expect(taskCall?.maxTurns).toBe(12);
+
+        expect(response).toBe('preview.html has been created.');
+      });
+
+      it('processMessage() with AI classification drives full delegation flow for complex tasks', async () => {
+        // "provide me a full-stack auth system" — keywords would NOT classify this as complex-task
+        // ("provide" is not in keyword list → quick-answer by keyword fallback)
+        // AI correctly returns complex-task.
+
+        // Call 0: AI classifier → complex-task
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout:
+            '{"class":"complex-task","maxTurns":20,"reason":"full-stack auth requires many steps"}',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+
+        // Call 1: Planning prompt → SPAWN markers
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout:
+            'Planning complete.\n\n' +
+            '[SPAWN:code-edit]{"prompt":"Add auth routes to src/routes/auth.ts","model":"sonnet","maxTurns":15}[/SPAWN]',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 400,
+        });
+
+        // Call 2: Worker execution
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Auth routes created in src/routes/auth.ts.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 500,
+        });
+
+        // Call 3: Synthesis
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Authentication system has been set up. Routes added to src/routes/auth.ts.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 200,
+        });
+
+        const message: InboundMessage = {
+          id: 'msg-ai-complex-integration',
+          source: 'test',
+          sender: '+1234567890',
+          rawContent: '/ai provide me a full-stack auth system',
+          content: 'provide me a full-stack auth system',
+          timestamp: new Date(),
+        };
+
+        const response = await masterManager.processMessage(message);
+
+        // 4 calls: AI classifier, planning, worker, synthesis
+        expect(mockSpawn).toHaveBeenCalledTimes(4);
+
+        // Call 0: AI classifier with haiku
+        const classifierCall = getSpawnCallOpts(0);
+        expect(classifierCall?.model).toBe('haiku');
+        expect(classifierCall?.maxTurns).toBe(1);
+
+        // Call 1: Planning prompt (complex-task → planning flow)
+        const planningCall = getSpawnCallOpts(1);
+        expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
+        expect(planningCall?.prompt).toContain('SPAWN');
+        expect(planningCall?.maxTurns).toBe(5); // MESSAGE_MAX_TURNS_PLANNING
+
+        // Call 2: Worker with code-edit profile tools
+        const workerCall = getSpawnCallOpts(2);
+        expect(workerCall?.prompt).toBe('Add auth routes to src/routes/auth.ts');
+        expect(workerCall?.model).toBe('sonnet');
+        expect(workerCall?.allowedTools).toContain('Edit');
+
+        // Final response is the synthesis
+        expect(response).toBe(
+          'Authentication system has been set up. Routes added to src/routes/auth.ts.',
+        );
+      });
+
+      it('processMessage() falls back to keyword heuristics when AI classifier fails during processing', async () => {
+        // Call 0: AI classifier fails → keyword fallback gives tool-use for "generate"
+        mockSpawn.mockRejectedValueOnce(new Error('AI unavailable'));
+
+        // Call 1: Master processes the task with keyword-classified maxTurns
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'config.json generated.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 200,
+        });
+
+        const message: InboundMessage = {
+          id: 'msg-ai-fallback',
+          source: 'test',
+          sender: '+1234567890',
+          rawContent: '/ai generate a config file',
+          content: 'generate a config file',
+          timestamp: new Date(),
+        };
+
+        const response = await masterManager.processMessage(message);
+
+        // Two calls: (failed) AI classifier + task execution
+        expect(mockSpawn).toHaveBeenCalledTimes(2);
+
+        // Task execution uses keyword-fallback maxTurns for tool-use (10)
+        const taskCall = getSpawnCallOpts(1);
+        expect(taskCall?.maxTurns).toBe(10);
+
+        expect(response).toBe('config.json generated.');
+      });
+    });
+
+    // -----------------------------------------------------------------------
     // (2) processMessage() with a complex task triggers SPAWN markers
     // -----------------------------------------------------------------------
     it('sends a planning prompt (not raw message) for complex tasks', async () => {
