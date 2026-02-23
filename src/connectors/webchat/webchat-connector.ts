@@ -203,6 +203,12 @@ const CHAT_HTML = `<!DOCTYPE html>
       if (event.type === 'synthesizing') {
         return '\uD83D\uDCDD Preparing final response<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
       }
+      if (event.type === 'exploring') {
+        return '\uD83D\uDDFA\uFE0F ' + event.phase + '<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
+      if (event.type === 'exploring-directory') {
+        return '\uD83D\uDCC2 Exploring directories: ' + event.completed + '/' + event.total + (event.directory ? ' (' + event.directory + ')' : '') + '<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>';
+      }
       return null;
     }
 

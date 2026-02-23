@@ -44,6 +44,10 @@ function formatProgressEvent(event: ProgressEvent): string {
       return '📝 Preparing final response...';
     case 'complete':
       return '✅ Done';
+    case 'exploring':
+      return `🗺️ ${event.phase}${event.detail ? ` — ${event.detail}` : ''}...`;
+    case 'exploring-directory':
+      return `📂 Exploring directories: ${event.completed.toString()}/${event.total.toString()}${event.directory ? ` (${event.directory})` : ''}...`;
   }
 }
 

@@ -216,63 +216,116 @@ async function cleanupWorkspace(workspacePath: string): Promise<void> {
  * Simulates successful exploration responses from Claude
  * via the mocked AgentRunner.spawn() method.
  *
- * The first spawn call is the Master session's exploration prompt.
- * The mock simulates the Master writing workspace-map.json to disk
- * (as it would using its Write tool). Exploration is entirely
- * Master-driven — no ExplorationCoordinator fallback.
+ * Exploration uses ExplorationCoordinator which calls spawn() for each phase:
+ * 1. Structure Scan — returns StructureScan JSON
+ * 2. Classification — returns Classification JSON
+ * 3. Directory Dives — returns DirectoryDiveResult JSON per directory
+ * 4. Assembly — returns { summary } JSON
+ *
+ * Message processing uses spawn() for Master session calls and stream() for streaming.
  */
 function setupMockExplorationResponses(workspacePath: string) {
-  // Build the workspace map that the Master session writes during exploration
-  const masterWorkspaceMap = {
+  // Phase responses for ExplorationCoordinator
+  const structureScan = {
     workspacePath,
-    projectName: 'test-project',
-    projectType: 'nodejs-typescript',
-    frameworks: ['express', 'vitest'],
-    structure: {
-      src: { path: 'src', purpose: 'Application source code', fileCount: 2 },
-      tests: { path: 'tests', purpose: 'Test suite', fileCount: 1 },
-      docs: { path: 'docs', purpose: 'Documentation', fileCount: 1 },
-    },
-    keyFiles: [
-      { path: 'index.ts', type: 'entry', purpose: 'Express server entry point' },
-      { path: 'utils.ts', type: 'module', purpose: 'Utility functions' },
-      { path: 'utils.test.ts', type: 'test', purpose: 'Unit tests for utils module' },
-      { path: 'API.md', type: 'documentation', purpose: 'API documentation' },
-    ],
-    entryPoints: [],
-    commands: {
-      dev: 'npm run dev',
-      test: 'npm run test',
-    },
-    dependencies: [
-      { name: 'express', version: '^4.18.0', type: 'runtime' as const },
-      { name: 'vitest', version: '^1.0.0', type: 'dev' as const },
-    ],
-    summary:
-      'A Node.js + TypeScript project using Express. Includes source code in src/, tests in tests/, and API docs.',
-    generatedAt: new Date().toISOString(),
-    schemaVersion: '1.0.0',
+    topLevelFiles: ['package.json', 'tsconfig.json', 'README.md'],
+    topLevelDirs: ['src', 'tests', 'docs'],
+    directoryCounts: { src: 2, tests: 1, docs: 1 },
+    configFiles: ['package.json', 'tsconfig.json'],
+    skippedDirs: ['node_modules', '.git'],
+    totalFiles: 7,
+    scannedAt: new Date().toISOString(),
+    durationMs: 100,
   };
 
-  let callCount = 0;
+  const classification = {
+    projectType: 'nodejs-typescript',
+    projectName: 'test-project',
+    frameworks: ['express', 'vitest'],
+    commands: { dev: 'npm run dev', test: 'npm run test' },
+    dependencies: [
+      { name: 'express', version: '^4.18.0', type: 'runtime' },
+      { name: 'vitest', version: '^1.0.0', type: 'dev' },
+    ],
+    insights: ['TypeScript project with strict mode', 'Uses Vitest for testing'],
+    classifiedAt: new Date().toISOString(),
+    durationMs: 100,
+  };
 
-  mockSpawn.mockImplementation(async (opts: { sessionId?: string; resumeSessionId?: string }) => {
-    callCount++;
+  const directoryDive = {
+    path: 'src',
+    purpose: 'Application source code',
+    keyFiles: [
+      { path: 'src/index.ts', type: 'entry', purpose: 'Express server entry point' },
+      { path: 'src/utils.ts', type: 'module', purpose: 'Utility functions' },
+    ],
+    subdirectories: [],
+    fileCount: 2,
+    insights: ['Uses ESM imports'],
+    exploredAt: new Date().toISOString(),
+    durationMs: 100,
+  };
 
-    // Master-driven exploration: first call with session writes workspace-map.json
-    if (callCount === 1 && (opts.sessionId || opts.resumeSessionId)) {
-      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
-      await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
+  const summaryResult = {
+    summary:
+      'A Node.js + TypeScript project using Express. Includes source code in src/, tests in tests/, and API docs.',
+  };
+
+  // Coordinator calls spawn() with prompts containing phase-specific title lines.
+  // IMPORTANT: Match on the unique title (# Task: ...) to avoid false matches,
+  // since later phases embed earlier results in their prompt text.
+  mockSpawn.mockImplementation(async (opts: { prompt?: string }) => {
+    const prompt = opts.prompt ?? '';
+
+    // Phase 4: Summary (check BEFORE classification — summary prompt is unambiguous)
+    if (prompt.includes('# Task: Generate Workspace Summary')) {
       return {
-        stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
+        stdout: JSON.stringify(summaryResult),
         stderr: '',
         exitCode: 0,
         retryCount: 0,
-        durationMs: 200,
+        durationMs: 100,
       };
     }
 
-    // Fallback for any other spawn calls (e.g., processMessage, re-exploration)
+    // Phase 3: Directory Dive (check BEFORE structure scan — title is unambiguous)
+    if (prompt.includes('# Task: Directory Exploration')) {
+      // Return a dive result with the path from the prompt
+      const dirMatch = prompt.match(/# Task: Directory Exploration — (\w+)/);
+      const dirPath = dirMatch?.[1] ?? 'src';
+      return {
+        stdout: JSON.stringify({ ...directoryDive, path: dirPath }),
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
+      };
+    }
+
+    // Phase 2: Classification (check BEFORE structure scan — classification prompt
+    // embeds "Structure Scan Results" text, so a naive check would match Phase 1)
+    if (prompt.includes('# Task: Project Classification')) {
+      return {
+        stdout: JSON.stringify(classification),
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
+      };
+    }
+
+    // Phase 1: Structure Scan
+    if (prompt.includes('# Task: Workspace Structure Scan')) {
+      return {
+        stdout: JSON.stringify(structureScan),
+        stderr: '',
+        exitCode: 0,
+        retryCount: 0,
+        durationMs: 100,
+      };
+    }
+
+    // Fallback for any other spawn calls (e.g., processMessage, classification)
     return {
       stdout: JSON.stringify({ success: true }),
       stderr: '',
@@ -282,27 +335,8 @@ function setupMockExplorationResponses(workspacePath: string) {
     };
   });
 
-  // Mock streaming for both exploration and messages (AgentRunner.stream() is an async generator).
-  // Exploration uses stream() and the mock writes workspace-map.json on the first call.
-  let streamCallCount = 0;
-  mockStream.mockImplementation(async function* (opts: { prompt?: string }) {
-    streamCallCount++;
-
-    // First stream call is the exploration prompt — write workspace-map.json to simulate Master AI
-    if (streamCallCount === 1 && opts.prompt?.includes('workspace-map.json')) {
-      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
-      await writeFile(mapPath, JSON.stringify(masterWorkspaceMap, null, 2), 'utf-8');
-      yield 'Exploring workspace...';
-      yield '\nWorkspace map written.';
-      return {
-        stdout: 'Exploration complete. Workspace map written to .openbridge/workspace-map.json.',
-        stderr: '',
-        exitCode: 0,
-        retryCount: 0,
-        durationMs: 200,
-      };
-    }
-
+  // Mock streaming for message processing (stream() is an async generator)
+  mockStream.mockImplementation(async function* () {
     yield 'Processing your request...';
     yield '\n\nThe project is a Node.js + TypeScript application using Express.';
     return {
@@ -375,7 +409,7 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const dotFolderPath = join(workspacePath, '.openbridge');
     await expect(access(dotFolderPath)).resolves.toBeUndefined();
 
-    // Verify workspace-map.json (written by Master session)
+    // Verify workspace-map.json (written by ExplorationCoordinator)
     const mapPath = join(dotFolderPath, 'workspace-map.json');
     await expect(access(mapPath)).resolves.toBeUndefined();
 
@@ -409,8 +443,8 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const gitPath = join(dotFolderPath, '.git');
     await expect(access(gitPath)).resolves.toBeUndefined();
 
-    // Verify Master stream was used for exploration (exploration uses stream(), not spawn())
-    expect(mockStream).toHaveBeenCalled();
+    // Verify coordinator used spawn() for multi-agent exploration (not stream())
+    expect(mockSpawn).toHaveBeenCalled();
   }, 15000);
 
   // ---------------------------------------------------------------------------
@@ -513,8 +547,8 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const secondCallArgs = mockStream.mock.calls[mockStream.mock.calls.length - 1];
     expect(secondCallArgs).toBeDefined();
 
-    // Three calls total: 1 for exploration, 2 for user messages
-    expect(mockStream).toHaveBeenCalledTimes(3);
+    // Two stream calls for user messages (exploration uses spawn via coordinator)
+    expect(mockStream).toHaveBeenCalledTimes(2);
   }, 15000);
 
   // ---------------------------------------------------------------------------

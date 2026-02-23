@@ -209,7 +209,8 @@ describe('WebChat connector integration (OB-323)', () => {
     expect(provider.processedMessages[0]?.content).toBe('what is in the project?');
   });
 
-  it('ignores WebSocket messages without the /ai prefix', async () => {
+  it('auto-prepends /ai prefix for WebChat messages without it', async () => {
+    provider.setResponse({ content: 'response to unprefixed message' });
     await bridge.start();
 
     const client = createMockClient();
@@ -218,8 +219,9 @@ describe('WebChat connector integration (OB-323)', () => {
 
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(provider.processedMessages).toHaveLength(0);
-    expect(client.send).not.toHaveBeenCalled();
+    // WebChat is a direct AI connector — prefix is auto-prepended by the bridge
+    expect(provider.processedMessages).toHaveLength(1);
+    expect(provider.processedMessages[0]?.content).toBe('just a chat message');
   });
 
   it('broadcasts response to all connected OPEN clients', async () => {

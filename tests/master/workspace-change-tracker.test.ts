@@ -138,7 +138,7 @@ describe('WorkspaceChangeTracker', () => {
       expect(result.tooLargeForIncremental).toBe(false);
     });
 
-    it('should detect uncommitted changes at same commit', async () => {
+    it('should skip uncommitted changes at same commit (working-tree edits are transient)', async () => {
       await execAsync('git init -b main', { cwd: testWorkspace });
       await execAsync('git config user.email "test@test.com"', { cwd: testWorkspace });
       await execAsync('git config user.name "Test"', { cwd: testWorkspace });
@@ -160,9 +160,12 @@ describe('WorkspaceChangeTracker', () => {
         schemaVersion: '1.0.0',
       };
 
+      // Same HEAD commit → no re-exploration needed, even with uncommitted files.
+      // Uncommitted changes are the developer actively working — they rarely change
+      // project structure. The next commit will trigger incremental exploration.
       const result = await tracker.detectChanges(marker);
-      expect(result.hasChanges).toBe(true);
-      expect(result.changedFiles).toContain('untracked.txt');
+      expect(result.hasChanges).toBe(false);
+      expect(result.summary).toContain('No new commits');
     });
 
     it('should detect deleted files', async () => {

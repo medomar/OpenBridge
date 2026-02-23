@@ -183,31 +183,20 @@ export class WorkspaceChangeTracker {
     const currentHash = await this.getHeadCommitHash();
     const currentBranch = await this.getCurrentBranch();
 
-    // Same commit — check for uncommitted changes only
+    // Same commit — no structural changes worth re-exploring.
+    // Uncommitted working-tree changes are the developer actively editing code;
+    // they rarely affect project type, frameworks, or directory structure, so
+    // we skip re-exploration entirely and let the next commit trigger it.
     if (currentHash === marker.workspaceCommitHash) {
-      const uncommitted = await this.getUncommittedChanges();
-      if (uncommitted.length === 0) {
-        return {
-          hasChanges: false,
-          method: 'git-diff',
-          changedFiles: [],
-          deletedFiles: [],
-          currentCommitHash: currentHash ?? undefined,
-          currentBranch: currentBranch ?? undefined,
-          tooLargeForIncremental: false,
-          summary: 'No changes since last analysis',
-        };
-      }
-      const filtered = this.filterExcludedPaths(uncommitted);
       return {
-        hasChanges: filtered.length > 0,
+        hasChanges: false,
         method: 'git-diff',
-        changedFiles: filtered,
+        changedFiles: [],
         deletedFiles: [],
         currentCommitHash: currentHash ?? undefined,
         currentBranch: currentBranch ?? undefined,
-        tooLargeForIncremental: filtered.length > MAX_INCREMENTAL_FILES,
-        summary: `${filtered.length} uncommitted file(s) changed`,
+        tooLargeForIncremental: false,
+        summary: 'No new commits since last analysis',
       };
     }
 
