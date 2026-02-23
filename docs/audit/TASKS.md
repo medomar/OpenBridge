@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 10 tasks | **In Progress:** 0
+> **Pending:** 9 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-23
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md)
 
@@ -16,13 +16,13 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 
 ## Roadmap
 
-| Phase | Focus                                   | Tasks | Status |
-| :---: | --------------------------------------- | :---: | :----: |
-| 1–24  | Foundation + E2E + Channels             |  153  |   ✅   |
-|  25   | Smart Orchestration (task routing)      |   6   |   ✅   |
-|  26   | Workspace Mapping Reliability           |   4   | ◻ Next |
-|  27   | Connector Hardening (WhatsApp + others) |   3   |   ◻    |
-|  28   | Production Polish                       |   3   |   ◻    |
+| Phase | Focus                                   | Tasks | Status  |
+| :---: | --------------------------------------- | :---: | :-----: |
+| 1–24  | Foundation + E2E + Channels             |  153  |   ✅    |
+|  25   | Smart Orchestration (task routing)      |   6   |   ✅    |
+|  26   | Workspace Mapping Reliability           |   4   | 🔄 Next |
+|  27   | Connector Hardening (WhatsApp + others) |   3   |    ◻    |
+|  28   | Production Polish                       |   3   |    ◻    |
 
 ---
 
@@ -51,7 +51,7 @@ OpenBridge is a **self-governing autonomous AI bridge**. The Master AI receives 
 
 | #   | Task                                                                                                                                                                                                                                                                                                                                                                                       | ID     | Priority |  Status   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 160 | **Verify incremental exploration E2E** — Test the full flow: (1) Start OpenBridge against a workspace → full exploration + marker written. (2) Add a new file to the workspace, restart → incremental update runs, new file appears in map. (3) Restart with no changes → exploration skipped. (4) Delete 250+ files → triggers full re-exploration. Automate this as an integration test. | OB-410 | 🟠 High  | ◻ Pending |
+| 160 | **Verify incremental exploration E2E** — Test the full flow: (1) Start OpenBridge against a workspace → full exploration + marker written. (2) Add a new file to the workspace, restart → incremental update runs, new file appears in map. (3) Restart with no changes → exploration skipped. (4) Delete 250+ files → triggers full re-exploration. Automate this as an integration test. | OB-410 | 🟠 High  |  ✅ Done  |
 | 161 | **Fix tilde (~) in workspacePath** — `~/Desktop/project` doesn't resolve to the full path. In `src/core/config.ts`, expand `~` to `os.homedir()` before validating the path. Add a test.                                                                                                                                                                                                   | OB-411 |  🟡 Med  | ◻ Pending |
 | 162 | **Workspace map freshness indicator** — Add a `lastVerifiedAt` field to `analysis-marker.json`. On each startup, even if no changes detected, update this timestamp. In the Master's system prompt context, include "Map last updated: 2 hours ago" so the Master knows how fresh its knowledge is and can decide to re-explore if stale.                                                  | OB-412 |  🟢 Low  | ◻ Pending |
 | 163 | **Handle workspaces without git** — Non-git workspaces (business files, dropbox folders) use timestamp-based change detection. Verify this path works E2E: create a workspace with no .git, run OpenBridge, add files, verify incremental detection picks them up. Currently `timestamp` fallback has a depth limit of 5 — increase to 10 for deep folder structures.                      | OB-413 |  🟡 Med  | ◻ Pending |
