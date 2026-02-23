@@ -108,6 +108,10 @@ vi.mock('../../src/core/logger.js', () => ({
   })),
 }));
 
+/** Original classifyTask method — captured before any spy is applied */
+// eslint-disable-next-line @typescript-eslint/unbound-method
+const _originalClassifyTask = MasterManager.prototype.classifyTask;
+
 describe('MasterManager', () => {
   let testWorkspace: string;
   let masterManager: MasterManager;
@@ -143,6 +147,27 @@ describe('MasterManager', () => {
 
     // Clear mock call history
     vi.clearAllMocks();
+
+    // By default, make classifyTask use keyword heuristics (no AI call) so that
+    // processMessage tests aren't affected by the classifier consuming spawn mocks.
+    vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(
+      async (content: string) => {
+        const lower = content.toLowerCase();
+        if (
+          ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'].some((kw) =>
+            lower.includes(kw),
+          )
+        )
+          return 'complex-task';
+        if (
+          ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'].some((kw) =>
+            lower.includes(kw),
+          )
+        )
+          return 'tool-use';
+        return 'quick-answer';
+      },
+    );
   });
 
   afterEach(async () => {
@@ -1525,70 +1550,114 @@ describe('MasterManager', () => {
     // (1) classifyTask() correctly classifies 10+ example messages
     // -----------------------------------------------------------------------
     describe('classifyTask()', () => {
-      it('classifies "what is this project?" as quick-answer', () => {
-        expect(masterManager.classifyTask('what is this project?')).toBe('quick-answer');
+      beforeEach(() => {
+        // Restore real classifyTask so we test AI + keyword-fallback behaviour.
+        // Use the original prototype method captured before any spy was applied.
+        MasterManager.prototype.classifyTask = _originalClassifyTask;
+        // AI calls are mocked to reject by default, forcing keyword-heuristic fallback.
+        mockSpawn.mockRejectedValue(new Error('classifier disabled in tests'));
       });
 
-      it('classifies "how does the router work?" as quick-answer', () => {
-        expect(masterManager.classifyTask('how does the router work?')).toBe('quick-answer');
+      it('classifies "what is this project?" as quick-answer', async () => {
+        expect(await masterManager.classifyTask('what is this project?')).toBe('quick-answer');
       });
 
-      it('classifies "explain the bridge architecture" as quick-answer', () => {
-        expect(masterManager.classifyTask('explain the bridge architecture')).toBe('quick-answer');
+      it('classifies "how does the router work?" as quick-answer', async () => {
+        expect(await masterManager.classifyTask('how does the router work?')).toBe('quick-answer');
       });
 
-      it('classifies "list all files in src/" as quick-answer', () => {
-        expect(masterManager.classifyTask('list all files in src/')).toBe('quick-answer');
+      it('classifies "explain the bridge architecture" as quick-answer', async () => {
+        expect(await masterManager.classifyTask('explain the bridge architecture')).toBe(
+          'quick-answer',
+        );
       });
 
-      it('classifies "show me the config schema" as quick-answer', () => {
-        expect(masterManager.classifyTask('show me the config schema')).toBe('quick-answer');
+      it('classifies "list all files in src/" as quick-answer', async () => {
+        expect(await masterManager.classifyTask('list all files in src/')).toBe('quick-answer');
       });
 
-      it('classifies "generate an HTML report" as tool-use', () => {
-        expect(masterManager.classifyTask('generate an HTML report')).toBe('tool-use');
+      it('classifies "show me the config schema" as quick-answer', async () => {
+        expect(await masterManager.classifyTask('show me the config schema')).toBe('quick-answer');
       });
 
-      it('classifies "create a new test file for auth.ts" as tool-use', () => {
-        expect(masterManager.classifyTask('create a new test file for auth.ts')).toBe('tool-use');
+      it('classifies "generate an HTML report" as tool-use', async () => {
+        expect(await masterManager.classifyTask('generate an HTML report')).toBe('tool-use');
       });
 
-      it('classifies "write a README section about configuration" as tool-use', () => {
-        expect(masterManager.classifyTask('write a README section about configuration')).toBe(
+      it('classifies "create a new test file for auth.ts" as tool-use', async () => {
+        expect(await masterManager.classifyTask('create a new test file for auth.ts')).toBe(
           'tool-use',
         );
       });
 
-      it('classifies "fix the bug in queue.ts line 42" as tool-use', () => {
-        expect(masterManager.classifyTask('fix the bug in queue.ts line 42')).toBe('tool-use');
+      it('classifies "write a README section about configuration" as tool-use', async () => {
+        expect(await masterManager.classifyTask('write a README section about configuration')).toBe(
+          'tool-use',
+        );
       });
 
-      it('classifies "make a Dockerfile for this project" as tool-use', () => {
-        expect(masterManager.classifyTask('make a Dockerfile for this project')).toBe('tool-use');
+      it('classifies "fix the bug in queue.ts line 42" as tool-use', async () => {
+        expect(await masterManager.classifyTask('fix the bug in queue.ts line 42')).toBe(
+          'tool-use',
+        );
       });
 
-      it('classifies "implement user authentication" as complex-task', () => {
-        expect(masterManager.classifyTask('implement user authentication')).toBe('complex-task');
+      it('classifies "make a Dockerfile for this project" as tool-use', async () => {
+        expect(await masterManager.classifyTask('make a Dockerfile for this project')).toBe(
+          'tool-use',
+        );
       });
 
-      it('classifies "build a REST API for the dashboard" as complex-task', () => {
-        expect(masterManager.classifyTask('build a REST API for the dashboard')).toBe(
+      it('classifies "implement user authentication" as complex-task', async () => {
+        expect(await masterManager.classifyTask('implement user authentication')).toBe(
           'complex-task',
         );
       });
 
-      it('classifies "refactor the MasterManager to use async generators" as complex-task', () => {
+      it('classifies "build a REST API for the dashboard" as complex-task', async () => {
+        expect(await masterManager.classifyTask('build a REST API for the dashboard')).toBe(
+          'complex-task',
+        );
+      });
+
+      it('classifies "refactor the MasterManager to use async generators" as complex-task', async () => {
         expect(
-          masterManager.classifyTask('refactor the MasterManager to use async generators'),
+          await masterManager.classifyTask('refactor the MasterManager to use async generators'),
         ).toBe('complex-task');
       });
 
-      it('is case-insensitive (IMPLEMENT → complex-task)', () => {
-        expect(masterManager.classifyTask('IMPLEMENT a login flow')).toBe('complex-task');
+      it('is case-insensitive (IMPLEMENT → complex-task)', async () => {
+        expect(await masterManager.classifyTask('IMPLEMENT a login flow')).toBe('complex-task');
       });
 
-      it('is case-insensitive (GENERATE → tool-use)', () => {
-        expect(masterManager.classifyTask('GENERATE a config file')).toBe('tool-use');
+      it('is case-insensitive (GENERATE → tool-use)', async () => {
+        expect(await masterManager.classifyTask('GENERATE a config file')).toBe('tool-use');
+      });
+
+      it('falls back to tool-use when AI returns an unrecognised response', async () => {
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'I cannot determine the category',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+        expect(await masterManager.classifyTask('provide me a HTML Preview')).toBe('tool-use');
+      });
+
+      it('uses AI result when it returns a valid category', async () => {
+        mockSpawn.mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'complex-task',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+        // "provide" is not a keyword — keyword fallback would give quick-answer,
+        // but AI correctly returns complex-task
+        expect(await masterManager.classifyTask('provide me a full-stack web app')).toBe(
+          'complex-task',
+        );
       });
     });
 
