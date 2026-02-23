@@ -156,25 +156,26 @@ The Master decides the model, tool permissions, and turn limits for each worker.
 └── tasks/                            ← task history
 ```
 
-| Layer            | What it does                                                                |
-| ---------------- | --------------------------------------------------------------------------- |
-| **Channels**     | Messaging adapters (WhatsApp, Console)                                      |
-| **Bridge Core**  | Routing, auth, queuing, config, metrics, health, AI discovery               |
-| **Master AI**    | Self-governing agent: task decomposition, worker spawning, self-improvement |
-| **Agent Runner** | Unified CLI executor: tool profiles, model selection, retries, logging      |
-| **Workers**      | Short-lived agents with bounded permissions, spawned per-task               |
+| Layer            | What it does                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| **Channels**     | Messaging adapters (Console, WebChat, WhatsApp, Telegram, Discord)                     |
+| **Bridge Core**  | Routing, auth, queuing, config, metrics, health, AI discovery                          |
+| **Master AI**    | Self-governing agent: task classification, decomposition, worker spawning, improvement |
+| **Agent Runner** | Unified CLI executor: tool profiles, model selection, retries, logging                 |
+| **Workers**      | Short-lived agents with bounded permissions, spawned per-task                          |
 
 ---
 
 ## Quick Start
 
-### Prerequisites
+### The Simplest Path — Console + Claude Code
+
+No WhatsApp required. Use the built-in Console connector to try OpenBridge immediately.
+
+**Prerequisites:**
 
 - Node.js >= 22
-- A WhatsApp account
-- At least one AI CLI tool installed (e.g. [Claude Code](https://docs.anthropic.com/en/docs/claude-code))
-
-### Install
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed (`npm install -g @anthropic-ai/claude-code`)
 
 ```bash
 git clone https://github.com/medomar/OpenBridge.git
@@ -182,7 +183,34 @@ cd OpenBridge
 npm install
 ```
 
-### Configure
+Create `config.json`:
+
+```json
+{
+  "workspacePath": "/absolute/path/to/your/project",
+  "channels": [{ "type": "console", "enabled": true }],
+  "auth": {
+    "whitelist": ["console-user"],
+    "prefix": "/ai"
+  }
+}
+```
+
+Run it:
+
+```bash
+npm run dev
+```
+
+Type a message in the terminal:
+
+```
+/ai what's in this project?
+```
+
+### With WhatsApp
+
+**Prerequisites:** Node.js >= 22, a WhatsApp account, Claude Code installed.
 
 ```bash
 npx openbridge init
@@ -201,10 +229,6 @@ Or create `config.json` manually:
 }
 ```
 
-That's it. Three fields.
-
-### Run
-
 ```bash
 npm run dev
 ```
@@ -214,6 +238,8 @@ Scan the QR code with WhatsApp. Then from your phone:
 ```
 /ai what's in this project?
 ```
+
+See [docs/CONNECTORS.md](docs/CONNECTORS.md) for setup guides for all 5 connectors (Console, WebChat, Telegram, Discord, WhatsApp).
 
 ---
 
@@ -268,17 +294,21 @@ Your Phone                    Your Machine
 
 ## Current Status
 
-| Component             | Status                                                                        |
-| --------------------- | ----------------------------------------------------------------------------- |
-| WhatsApp              | ✅ Stable — auto-reconnect, sessions, chunking, typing                        |
-| Console               | ✅ Stable — E2E verified, `/ai` messages return project-specific responses    |
-| Bridge Core           | ✅ Stable — router, auth, queue, metrics, health, audit                       |
-| AI Discovery          | ✅ Stable — CLI scanner, VS Code scanner, auto-selection                      |
-| Agent Runner          | ✅ Stable — `--allowedTools`, `--max-turns`, `--model`, retries, streaming    |
-| Self-Governing Master | ✅ Stable — persistent session, task decomposition, worker spawning, recovery |
-| Worker Orchestration  | ✅ Stable — parallel workers, registry, depth limiting, task history          |
-| Self-Improvement      | ✅ Stable — prompt library, learnings store, effectiveness tracking           |
-| Telegram/Discord      | ⏳ Planned — Phase 24                                                         |
+| Component               | Status                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| Console                 | ✅ Stable — E2E verified, simplest path to get started                                |
+| WebChat                 | ✅ Stable — localhost:3000 chat UI, markdown rendering, typing indicator              |
+| WhatsApp                | ✅ Stable — auto-reconnect, sessions, chunking, typing, local web cache               |
+| Telegram                | ✅ Stable — grammY, DM + group @mention support                                       |
+| Discord                 | ✅ Stable — discord.js v14, DM + guild channel support                                |
+| Bridge Core             | ✅ Stable — router, auth, queue, metrics, health, audit                               |
+| AI Discovery            | ✅ Stable — CLI scanner, VS Code scanner, auto-selection                              |
+| Agent Runner            | ✅ Stable — `--allowedTools`, `--max-turns`, `--model`, retries, streaming            |
+| Smart Orchestration     | ✅ Stable — task classification (quick/tool-use/complex), auto-delegation, progress   |
+| Self-Governing Master   | ✅ Stable — persistent session, task decomposition, worker spawning, session recovery |
+| Worker Orchestration    | ✅ Stable — parallel workers, registry, depth limiting, task history                  |
+| Incremental Exploration | ✅ Stable — 5-pass exploration with checkpointing, git + timestamp change detection   |
+| Self-Improvement        | ✅ Stable — prompt library, learnings store, effectiveness tracking, idle refinement  |
 
 ---
 
