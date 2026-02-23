@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 8.930/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 8.900
+> **Current Score:** 8.945/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 8.930
 > **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 26 (Phase 30 ◻)
-> **Reason for current state:** OB-605: CI/CD analysis — CI workflow confirmed correct (lint/typecheck/test/build). Release workflow and Dependabot config missing (pre-captured OB-617, OB-618). New fix task: OB-631 (branch protection rules not documented in CONTRIBUTING.md). CI badge URL correct. 1164 tests passing.
+> **Reason for current state:** OB-606: production startup & config analysis — `npm start` missing NODE_ENV=production (pre-captured OB-613), `injectDevConnectors()` correctly gated, `npx openbridge init` generates valid config, WebChat enabled in example (pre-captured OB-619). New fix task: OB-632 (missing config file ENOENT gives no guidance). 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -151,6 +151,7 @@
 | 2026-02-23 | 8.870 |   +0.030    | OB-603: security analysis — empty whitelist silently enables open access in V0 config (OB-626 appended), --dangerously-skip-permissions dead code in legacy executor (OB-627 appended), inbound message length not capped before queueing (OB-628 appended). No hardcoded secrets found. sanitizePrompt() solid. No active --dangerously-skip-permissions usage. SECURITY.md contact/token gaps pre-captured by OB-615. 1164 tests passing.                                                                                                                 |
 | 2026-02-23 | 8.900 |   +0.030    | OB-604: documentation analysis — ARCHITECTURE.md stale "planned" labels + 4-layer description (pre-captured OB-616), CHANGELOG [Unreleased] unversioned (pre-captured OB-614). New fix tasks: OB-629 (CONFIGURATION.md missing connector options for Telegram/Discord/WebChat + V2 whitelist requirement), OB-630 (CONTRIBUTING.md stale commit scopes). Deployment guide actionable, CONNECTORS.md covers all 5 connectors. 1164 tests passing.                                                                                                            |
 | 2026-02-23 | 8.930 |   +0.030    | OB-605: CI/CD analysis — CI workflow correct (lint/typecheck/test/build all jobs present). No release.yml (pre-captured OB-617), no Dependabot (pre-captured OB-618). New fix task: OB-631 (branch protection not documented in CONTRIBUTING.md). CI badge URL points to correct workflow. 1164 tests passing.                                                                                                                                                                                                                                              |
+| 2026-02-23 | 8.945 |   +0.015    | OB-606: production startup & config analysis — `npm start` missing NODE_ENV=production (pre-captured OB-613), `injectDevConnectors()` correctly gated on NODE_ENV, `npx openbridge init` generates valid safe config, WebChat enabled in example (pre-captured OB-619). New fix task: OB-632 (ENOENT on missing config.json gives no actionable guidance). 1164 tests passing.                                                                                                                                                                              |
 
 ---
 
