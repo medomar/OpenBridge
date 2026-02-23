@@ -1,9 +1,9 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.265/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-23 | **Previous Score:** 9.250
-> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 20 (Phase 30 ◻)
-> **Reason for current state:** OB-625: `bridge.ts` shutdown drain timeout — `stop()` now races `queue.drain()` against a configurable `drainTimeoutMs` (default 30s) so the process always exits cleanly. 1164 tests passing.
+> **Current Score:** 9.280/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-23 | **Previous Score:** 9.265
+> **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 19 (Phase 30 ◻)
+> **Reason for current state:** OB-626: `auth.ts` empty whitelist warning — `AuthService` constructor now emits `logger.warn()` when whitelist is empty, converting a silent footgun into an observable configuration choice. 1164 tests passing.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
@@ -168,6 +168,7 @@
 | 2026-02-23 | 9.245 |   +0.015    | OB-623: Fix `.openbridge/` missing from `.gitignore` — added `.openbridge/` under "OpenBridge runtime state" section. Prevents accidental git commits and npm publication of AI session data (master-session.json, prompts/master-system.md). 1164 tests passing.                                                                                                                                                                                                                                                                                           |
 | 2026-02-23 | 9.250 |   +0.005    | OB-624: Fix stale `"description"` in `package.json` — updated from V0 "WhatsApp + Claude Code" copy to reflect current capabilities: self-governing Master AI, 5 connectors, AI tool auto-discovery, zero API keys. 1164 tests passing.                                                                                                                                                                                                                                                                                                                     |
 | 2026-02-23 | 9.265 |   +0.015    | OB-625: Fix shutdown drain timeout — `BridgeOptions.drainTimeoutMs` added (default 30 000ms). `stop()` races `queue.drain()` against a timeout Promise; logs warning and proceeds on timeout instead of hanging indefinitely. 1164 tests passing.                                                                                                                                                                                                                                                                                                           |
+| 2026-02-23 | 9.280 |   +0.015    | OB-626: Fix empty whitelist silent open access — `AuthService` constructor now emits `logger.warn()` when whitelist is empty, converting a silent security footgun into an observable configuration choice. 1164 tests passing.                                                                                                                                                                                                                                                                                                                             |
 
 ---
 
