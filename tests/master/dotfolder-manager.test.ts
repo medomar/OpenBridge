@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -21,9 +22,9 @@ describe('DotFolderManager', () => {
   let manager: DotFolderManager;
 
   beforeEach(async () => {
-    // Create a temporary test workspace
-    testWorkspace = path.join(process.cwd(), 'test-workspace-' + Date.now());
-    await fs.mkdir(testWorkspace, { recursive: true });
+    // Create a unique temp workspace outside the project directory to avoid git race conditions
+    // when parallel tests interact with .git hook files inside the project repo.
+    testWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'openbridge-dfm-test-'));
     manager = new DotFolderManager(testWorkspace);
   });
 
