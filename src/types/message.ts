@@ -1,13 +1,15 @@
 /**
- * A typed progress event emitted during Master AI processing.
+ * A typed progress event emitted during Master AI processing and exploration.
  *
  * Variants:
- * - classifying    — AI is analyzing the incoming message
- * - planning       — Master is decomposing the task into subtasks
- * - spawning       — N worker agents are being created
- * - worker-progress — worker X of N has completed
- * - synthesizing   — Master is combining worker results into a final response
- * - complete       — Processing finished
+ * - classifying         — AI is analyzing the incoming message
+ * - planning            — Master is decomposing the task into subtasks
+ * - spawning            — N worker agents are being created
+ * - worker-progress     — worker X of N has completed
+ * - synthesizing        — Master is combining worker results into a final response
+ * - complete            — Processing finished
+ * - exploring           — Workspace exploration phase transition
+ * - exploring-directory — Per-directory progress during exploration
  */
 export type ProgressEvent =
   | { type: 'classifying' }
@@ -15,7 +17,9 @@ export type ProgressEvent =
   | { type: 'spawning'; workerCount: number }
   | { type: 'worker-progress'; completed: number; total: number; workerName?: string }
   | { type: 'synthesizing' }
-  | { type: 'complete' };
+  | { type: 'complete' }
+  | { type: 'exploring'; phase: string; detail?: string }
+  | { type: 'exploring-directory'; directory: string; completed: number; total: number };
 
 /**
  * A message received from a messaging connector.

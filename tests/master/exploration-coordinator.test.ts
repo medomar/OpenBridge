@@ -353,7 +353,17 @@ describe('ExplorationCoordinator', () => {
       const dotFolder = new DotFolderManager(testWorkspace);
       const savedScan = await dotFolder.readStructureScan();
 
-      expect(savedScan).toEqual(structureScan);
+      // scannedAt and durationMs are overridden by the coordinator with server-side values
+      expect(savedScan).toMatchObject({
+        workspacePath: structureScan.workspacePath,
+        topLevelFiles: structureScan.topLevelFiles,
+        topLevelDirs: structureScan.topLevelDirs,
+        directoryCounts: structureScan.directoryCounts,
+        configFiles: structureScan.configFiles,
+        skippedDirs: structureScan.skippedDirs,
+        totalFiles: structureScan.totalFiles,
+      });
+      expect(savedScan?.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('should handle structure scan failure with non-zero exit code', async () => {
@@ -452,7 +462,16 @@ describe('ExplorationCoordinator', () => {
       const dotFolder = new DotFolderManager(testWorkspace);
       const savedClassification = await dotFolder.readClassification();
 
-      expect(savedClassification).toEqual(classification);
+      // classifiedAt and durationMs are overridden by the coordinator with server-side values
+      expect(savedClassification).toMatchObject({
+        projectType: classification.projectType,
+        projectName: classification.projectName,
+        frameworks: classification.frameworks,
+        commands: classification.commands,
+        dependencies: classification.dependencies,
+        insights: classification.insights,
+      });
+      expect(savedClassification?.classifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it('should fail if structure scan not found', async () => {

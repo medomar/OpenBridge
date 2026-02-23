@@ -78,6 +78,22 @@ export class Router {
   }
 
   /**
+   * Broadcast a progress event to all connected connectors (best-effort).
+   * Used during workspace exploration when there is no specific message sender.
+   */
+  async broadcastProgress(event: ProgressEvent): Promise<void> {
+    for (const [name, connector] of this.connectors) {
+      if (connector.sendProgress) {
+        try {
+          await connector.sendProgress(event, '__system__');
+        } catch (err) {
+          logger.warn({ err, connector: name }, 'broadcastProgress: failed');
+        }
+      }
+    }
+  }
+
+  /**
    * Send a message directly to a user on a specific connector (best-effort).
    * Used by MasterManager to deliver progress updates during worker delegation
    * without going through the full routing flow.

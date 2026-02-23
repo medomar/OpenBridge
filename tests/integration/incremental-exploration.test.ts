@@ -106,17 +106,6 @@ function makeMinimalMap(workspacePath: string): WorkspaceMap {
   };
 }
 
-/** Returns an async-generator mock that yields one chunk then resolves success */
-function makeSuccessStream() {
-  const successResult = { exitCode: 0, stdout: '', stderr: '', durationMs: 100 };
-  return {
-    next: vi
-      .fn()
-      .mockResolvedValueOnce({ done: false, value: 'exploring...' })
-      .mockResolvedValueOnce({ done: true, value: successResult }),
-  };
-}
-
 /** Initialise a git workspace: git init, configure user, create README, commit */
 async function setupGitWorkspace(dir: string): Promise<string> {
   await execAsync('git init -b main', { cwd: dir });
@@ -196,7 +185,34 @@ describe('Incremental Exploration E2E', () => {
   describe('Scenario 1: fresh workspace → full exploration + marker written', () => {
     it('runs full exploration and writes analysis-marker.json with analysisType "full"', async () => {
       // No .openbridge/ exists yet — fresh workspace
-      mockStream.mockReturnValue(makeSuccessStream());
+      // ExplorationCoordinator uses agentRunner.spawn() for each phase
+      mockSpawn.mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          workspacePath: testWorkspace,
+          topLevelFiles: ['README.md'],
+          topLevelDirs: [],
+          directoryCounts: {},
+          configFiles: [],
+          skippedDirs: [],
+          totalFiles: 1,
+          scannedAt: new Date().toISOString(),
+          durationMs: 100,
+          // Classification fields (Phase 2 reuses same mock)
+          projectType: 'unknown',
+          projectName: 'test',
+          frameworks: [],
+          commands: {},
+          dependencies: [],
+          insights: [],
+          classifiedAt: new Date().toISOString(),
+          // Summary fields (Phase 4)
+          summary: 'Test workspace',
+        }),
+        stderr: '',
+        durationMs: 100,
+        retryCount: 0,
+      });
 
       manager = new MasterManager({
         workspacePath: testWorkspace,
@@ -208,9 +224,10 @@ describe('Incremental Exploration E2E', () => {
 
       expect(manager.getState()).toBe('ready');
 
-      // Full exploration should have been driven via agentRunner.stream()
-      expect(mockStream).toHaveBeenCalledTimes(1);
-      expect(mockSpawn).not.toHaveBeenCalled();
+      // Multi-agent exploration uses agentRunner.spawn() via ExplorationCoordinator
+      expect(mockSpawn).toHaveBeenCalled();
+      // stream() is NOT used for exploration anymore
+      expect(mockStream).not.toHaveBeenCalled();
 
       // analysis-marker.json must exist and reflect a full analysis
       const dotFolder = new DotFolderManager(testWorkspace);
@@ -305,8 +322,32 @@ describe('Incremental Exploration E2E', () => {
       );
       await execAsync('git add -A && git commit -m "bulk add 205 files"', { cwd: testWorkspace });
 
-      // Mock stream for the full re-exploration
-      mockStream.mockReturnValue(makeSuccessStream());
+      // ExplorationCoordinator uses agentRunner.spawn() for each phase
+      mockSpawn.mockResolvedValue({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          workspacePath: testWorkspace,
+          topLevelFiles: ['README.md'],
+          topLevelDirs: [],
+          directoryCounts: {},
+          configFiles: [],
+          skippedDirs: [],
+          totalFiles: 206,
+          scannedAt: new Date().toISOString(),
+          durationMs: 100,
+          projectType: 'unknown',
+          projectName: 'test',
+          frameworks: [],
+          commands: {},
+          dependencies: [],
+          insights: [],
+          classifiedAt: new Date().toISOString(),
+          summary: 'Test workspace with bulk files',
+        }),
+        stderr: '',
+        durationMs: 100,
+        retryCount: 0,
+      });
 
       manager = new MasterManager({
         workspacePath: testWorkspace,
@@ -318,9 +359,10 @@ describe('Incremental Exploration E2E', () => {
 
       expect(manager.getState()).toBe('ready');
 
-      // Full re-exploration uses stream (masterDrivenExplore), NOT spawn
-      expect(mockStream).toHaveBeenCalledTimes(1);
-      expect(mockSpawn).not.toHaveBeenCalled();
+      // Full re-exploration uses agentRunner.spawn() via ExplorationCoordinator
+      expect(mockSpawn).toHaveBeenCalled();
+      // stream() is NOT used for exploration anymore
+      expect(mockStream).not.toHaveBeenCalled();
 
       // Marker must be updated to reflect a new full analysis
       const dotFolder = new DotFolderManager(testWorkspace);

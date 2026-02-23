@@ -299,12 +299,6 @@ export function buildArgs(opts: SpawnOptions): string[] {
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
   args.push('--max-turns', String(maxTurns));
 
-  if (opts.allowedTools && opts.allowedTools.length > 0) {
-    for (const tool of opts.allowedTools) {
-      args.push('--allowedTools', tool);
-    }
-  }
-
   if (opts.systemPrompt) {
     args.push('--append-system-prompt', opts.systemPrompt);
   }
@@ -313,7 +307,17 @@ export function buildArgs(opts: SpawnOptions): string[] {
     args.push('--max-budget-usd', String(opts.maxBudgetUsd));
   }
 
+  // Place the prompt BEFORE --allowedTools. Commander.js parses the first
+  // positional argument as the prompt. --allowedTools is variadic (<tools...>)
+  // and would consume a trailing prompt as a tool name when no other option
+  // follows it (e.g. --append-system-prompt).
   args.push(sanitizePrompt(opts.prompt));
+
+  if (opts.allowedTools && opts.allowedTools.length > 0) {
+    for (const tool of opts.allowedTools) {
+      args.push('--allowedTools', tool);
+    }
+  }
 
   return args;
 }

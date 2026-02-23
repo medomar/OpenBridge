@@ -1,10 +1,10 @@
 /**
- * Exploration Coordinator — Utility Library for Incremental Exploration
+ * Exploration Coordinator — Multi-Agent Workspace Exploration
  *
- * Provides a 5-phase incremental exploration workflow as a utility library:
+ * Provides a 5-phase incremental exploration workflow with parallel workers:
  * 1. Structure Scan  (90s) — List files/dirs, count, detect configs
  * 2. Classification  (90s) — Determine project type, frameworks, commands
- * 3. Directory Dives (90s/dir) — Explore each significant directory in batches of 3
+ * 3. Directory Dives (90s/dir) — Explore significant directories in parallel batches
  * 4. Assembly        (60s) — Merge partial results into workspace-map.json
  * 5. Finalization    (no AI) — Create agents.json, git commit, log entry
  *
@@ -12,14 +12,13 @@
  * exploration fully resumable on restart. If interrupted at any point, the
  * coordinator resumes from the last completed phase.
  *
- * **Usage:** This module is a **utility library only** — it is NOT the driver
- * of exploration. The Master AI session drives exploration autonomously via
- * its system prompt. The Master decides how many passes to make, which
- * directories to explore, and what to record. The Master writes results
- * directly to `.openbridge/` using its own tools (Read, Glob, Grep, Write, Edit).
+ * Batch size for directory dives adapts to project complexity:
+ * - Small projects (<100 files): batch of 2
+ * - Medium projects (100–500 files): batch of 3
+ * - Large projects (500+ files): batch of 5
  *
- * This coordinator is available for programmatic use (e.g., testing, scripts)
- * but MasterManager does not use it for production exploration flows.
+ * **Usage:** Called by MasterManager during initial exploration and available
+ * for programmatic use (testing, scripts).
  */
 
 import { DotFolderManager } from './dotfolder-manager.js';
@@ -52,7 +51,17 @@ const logger = createLogger('exploration-coordinator');
 const PHASE_TIMEOUT = 300_000; // 5 minutes per phase (large workspaces need more time)
 const DIRECTORY_DIVE_TIMEOUT = 180_000; // 3 minutes per directory dive
 const MAX_RETRIES = 3;
-const BATCH_SIZE = 3; // Process 3 directories in parallel
+
+/**
+ * Progress callback for exploration phases.
+ * Fired at the start and completion of each phase, and after each directory dive batch.
+ */
+export type ExplorationProgressCallback = (event: {
+  phase: 'structure_scan' | 'classification' | 'directory_dives' | 'assembly' | 'finalization';
+  status: 'starting' | 'completed';
+  detail?: string;
+  directoryProgress?: { completed: number; total: number; currentDir?: string };
+}) => Promise<void>;
 
 export interface ExplorationOptions {
   /** Absolute path to the workspace */
@@ -61,13 +70,17 @@ export interface ExplorationOptions {
   masterTool: DiscoveredTool;
   /** All discovered AI tools (for agents.json) */
   discoveredTools: DiscoveredTool[];
+  /** Optional callback for progress reporting */
+  onProgress?: ExplorationProgressCallback;
+  /** Override batch size for directory dives (default: auto-detected from project size) */
+  batchSize?: number;
 }
 
 /**
- * Utility library for incremental exploration.
+ * Multi-agent workspace exploration coordinator.
  *
- * Available for programmatic use and testing, but production exploration
- * is driven by the Master AI session directly (see MasterManager).
+ * Called by MasterManager during initial workspace exploration.
+ * Also available for programmatic use and testing.
  */
 export class ExplorationCoordinator {
   private readonly workspacePath: string;
@@ -75,6 +88,8 @@ export class ExplorationCoordinator {
   private readonly discoveredTools: DiscoveredTool[];
   private readonly dotFolder: DotFolderManager;
   private readonly agentRunner: AgentRunner;
+  private readonly onProgress?: ExplorationProgressCallback;
+  private readonly batchSizeOverride?: number;
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
@@ -82,6 +97,23 @@ export class ExplorationCoordinator {
     this.discoveredTools = options.discoveredTools;
     this.dotFolder = new DotFolderManager(this.workspacePath);
     this.agentRunner = new AgentRunner();
+    this.onProgress = options.onProgress;
+    this.batchSizeOverride = options.batchSize;
+  }
+
+  /**
+   * Calculate optimal batch size based on project complexity.
+   * Small projects get fewer parallel workers, large projects get more.
+   */
+  private calculateBatchSize(structureScan: StructureScan): number {
+    if (this.batchSizeOverride) return this.batchSizeOverride;
+
+    const totalFiles = structureScan.totalFiles;
+    const dirCount = structureScan.topLevelDirs.length;
+
+    if (totalFiles < 100 && dirCount <= 5) return 2; // Small project
+    if (totalFiles < 500 && dirCount <= 15) return 3; // Medium project
+    return 5; // Large project — maximize parallelism
   }
 
   /**
@@ -126,12 +158,26 @@ export class ExplorationCoordinator {
     }
 
     try {
-      // Execute each phase sequentially
+      // Execute each phase sequentially with progress reporting
+      await this.emitProgress('structure_scan', 'starting');
       await this.executePhase1StructureScan(state);
+      await this.emitProgress('structure_scan', 'completed');
+
+      await this.emitProgress('classification', 'starting');
       await this.executePhase2Classification(state);
+      await this.emitProgress('classification', 'completed');
+
+      await this.emitProgress('directory_dives', 'starting');
       await this.executePhase3DirectoryDives(state);
+      await this.emitProgress('directory_dives', 'completed');
+
+      await this.emitProgress('assembly', 'starting');
       await this.executePhase4Assembly(state);
+      await this.emitProgress('assembly', 'completed');
+
+      await this.emitProgress('finalization', 'starting');
       await this.executePhase5Finalization(state);
+      await this.emitProgress('finalization', 'completed');
 
       // Mark as completed
       state.status = 'completed';
@@ -197,6 +243,11 @@ export class ExplorationCoordinator {
       throw new Error(`Failed to parse structure scan result: ${parsed.error}`);
     }
 
+    // Override scannedAt with a proper ISO 8601 datetime — AI-generated values
+    // often fail Zod's strict .datetime() validation
+    parsed.data.scannedAt = new Date().toISOString();
+    parsed.data.durationMs = elapsed;
+
     await this.dotFolder.writeStructureScan(parsed.data);
     state.phases.structure_scan = 'completed';
     await this.dotFolder.writeExplorationState(state);
@@ -249,6 +300,11 @@ export class ExplorationCoordinator {
       throw new Error(`Failed to parse classification result: ${parsed.error}`);
     }
 
+    // Override classifiedAt with a proper ISO 8601 datetime — AI-generated values
+    // often fail Zod's strict .datetime() validation
+    parsed.data.classifiedAt = new Date().toISOString();
+    parsed.data.durationMs = elapsed;
+
     await this.dotFolder.writeClassification(parsed.data);
     state.phases.classification = 'completed';
     await this.dotFolder.writeExplorationState(state);
@@ -298,12 +354,24 @@ export class ExplorationCoordinator {
       frameworks: classification.frameworks,
     };
 
-    // Process directories in batches
-    const pendingDives = state.directoryDives.filter((dive) => dive.status !== 'completed');
+    // Adaptive batch size based on project complexity
+    const batchSize = this.calculateBatchSize(structureScan);
+    logger.info(
+      { batchSize, totalFiles: structureScan.totalFiles, dirs: significantDirs.length },
+      'Adaptive batch size calculated',
+    );
 
-    for (let i = 0; i < pendingDives.length; i += BATCH_SIZE) {
-      const batch = pendingDives.slice(i, i + BATCH_SIZE);
-      logger.info({ batchStart: i, batchSize: batch.length }, 'Processing directory batch');
+    // Process directories in parallel batches
+    const pendingDives = state.directoryDives.filter((dive) => dive.status !== 'completed');
+    const totalDirs = state.directoryDives.length;
+    let completedSoFar = state.directoryDives.filter((d) => d.status === 'completed').length;
+
+    for (let i = 0; i < pendingDives.length; i += batchSize) {
+      const batch = pendingDives.slice(i, i + batchSize);
+      logger.info(
+        { batchStart: i, batchSize: batch.length, totalDirs },
+        'Processing directory batch',
+      );
 
       const results = await Promise.allSettled(
         batch.map((dive) => this.executeSingleDirectoryDive(dive.path, context, state)),
@@ -320,11 +388,13 @@ export class ExplorationCoordinator {
         if (result.status === 'fulfilled') {
           diveState.status = 'completed';
           diveState.outputFile = `dirs/${dive.path}.json`;
+          completedSoFar++;
         } else {
           diveState.attempts++;
           if (diveState.attempts >= MAX_RETRIES) {
             diveState.status = 'failed';
             diveState.error = String(result.reason);
+            completedSoFar++; // Count failed as "done" for progress
             logger.warn(
               { path: dive.path, error: result.reason },
               'Directory dive failed after retries',
@@ -340,6 +410,13 @@ export class ExplorationCoordinator {
       });
 
       await this.dotFolder.writeExplorationState(state);
+
+      // Emit per-batch directory progress
+      await this.emitProgress('directory_dives', 'starting', undefined, {
+        completed: completedSoFar,
+        total: totalDirs,
+        currentDir: batch[batch.length - 1]?.path,
+      });
     }
 
     // Check if all dives completed or failed
@@ -391,6 +468,11 @@ export class ExplorationCoordinator {
     if (!parsed.success) {
       throw new Error(`Failed to parse directory dive result for ${dirPath}: ${parsed.error}`);
     }
+
+    // Override exploredAt with a proper ISO 8601 datetime — AI-generated values
+    // often fail Zod's strict .datetime() validation
+    parsed.data.exploredAt = new Date().toISOString();
+    parsed.data.durationMs = elapsed;
 
     // Sanitize directory name for filename (replace / with -)
     const safeDirName = dirPath.replace(/\//g, '-');
@@ -613,6 +695,23 @@ export class ExplorationCoordinator {
       gitInitialized: true,
       error: state.error,
     };
+  }
+
+  /**
+   * Emit a progress event via the onProgress callback (if provided).
+   */
+  private async emitProgress(
+    phase: 'structure_scan' | 'classification' | 'directory_dives' | 'assembly' | 'finalization',
+    status: 'starting' | 'completed',
+    detail?: string,
+    directoryProgress?: { completed: number; total: number; currentDir?: string },
+  ): Promise<void> {
+    if (!this.onProgress) return;
+    try {
+      await this.onProgress({ phase, status, detail, directoryProgress });
+    } catch (err) {
+      logger.warn({ err, phase, status }, 'Progress callback failed');
+    }
   }
 
   /**

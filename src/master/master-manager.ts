@@ -1,4 +1,5 @@
 import { DotFolderManager } from './dotfolder-manager.js';
+import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
@@ -104,9 +105,9 @@ const MASTER_MAX_TURNS = 50;
  * tool-use: file generation, single edits, targeted fixes → 10 turns
  * complex-task (planning): forces Master to output SPAWN markers fast → 5 turns
  */
-const MESSAGE_MAX_TURNS_QUICK = 3;
-const MESSAGE_MAX_TURNS_TOOL_USE = 10;
-const MESSAGE_MAX_TURNS_PLANNING = 5;
+const MESSAGE_MAX_TURNS_QUICK = 5;
+const MESSAGE_MAX_TURNS_TOOL_USE = 15;
+const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
 
@@ -1229,11 +1230,39 @@ export class MasterManager {
       };
     }
 
-    // Default: quick-answer for questions, lookups, and unclassified messages
+    // Question/lookup patterns — no file changes needed
+    // Only short messages ending with '?' are treated as quick questions.
+    // Long messages (>80 chars) with '?' are usually complex action requests
+    // phrased as questions (e.g. "can you reorganize the folder structure?").
+    const questionPatterns = [
+      'what is',
+      'what are',
+      'how does',
+      'how do',
+      'explain',
+      'describe',
+      'show me',
+      'list all',
+      'list the',
+      'tell me',
+    ];
+    const trimmed = lower.trim();
+    const isShortQuestion = trimmed.endsWith('?') && trimmed.length <= 80;
+    const hasQuestionKeyword = questionPatterns.some((qp) => lower.includes(qp));
+    if (isShortQuestion || (hasQuestionKeyword && trimmed.length <= 120)) {
+      return {
+        class: 'quick-answer',
+        maxTurns: MESSAGE_MAX_TURNS_QUICK,
+        reason: 'keyword match: quick-answer',
+      };
+    }
+
+    // Default: tool-use for unclassified messages — safer than quick-answer since
+    // most non-question messages require file operations (e.g. "Haifa 2 personne")
     return {
-      class: 'quick-answer',
-      maxTurns: MESSAGE_MAX_TURNS_QUICK,
-      reason: 'keyword fallback: quick-answer',
+      class: 'tool-use',
+      maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+      reason: 'keyword fallback: tool-use',
     };
   }
 
@@ -1248,7 +1277,7 @@ export class MasterManager {
    * than "simple HTML page").
    */
   public async classifyTask(content: string): Promise<ClassificationResult> {
-    const CLASSIFIER_TIMEOUT_MS = 3000;
+    const CLASSIFIER_TIMEOUT_MS = 5000;
 
     // Check in-memory cache first (0ms, avoids AI call for repeated patterns)
     await this.loadClassificationCache();
@@ -1672,141 +1701,178 @@ export class MasterManager {
   }
 
   /**
-   * Master-driven exploration: sends an exploration prompt through the
-   * persistent Master session. The Master uses its own tools to explore
-   * the workspace and write results to `.openbridge/`.
+   * Multi-agent exploration: delegates to ExplorationCoordinator which runs
+   * a 5-phase pipeline with parallel directory dives. Falls back to a
+   * single-agent monolithic approach if the coordinator fails.
    */
   private async masterDrivenExplore(): Promise<void> {
-    logger.info('Executing Master-driven exploration via session');
+    logger.info('Starting multi-agent workspace exploration via ExplorationCoordinator');
 
-    // Log exploration start
     await this.dotFolder.appendLog({
       timestamp: new Date().toISOString(),
       level: 'info',
-      message: 'Starting Master-driven workspace exploration',
+      message: 'Starting multi-agent workspace exploration',
       data: { workspacePath: this.workspacePath },
     });
 
-    const explorationPrompt = this.buildExplorationPrompt();
-    const spawnOpts = this.buildMasterSpawnOptions(explorationPrompt, this.explorationTimeout);
+    try {
+      const coordinator = new ExplorationCoordinator({
+        workspacePath: this.workspacePath,
+        masterTool: this.masterTool,
+        discoveredTools: this.discoveredTools,
+        onProgress: async (event): Promise<void> => {
+          await this.emitExplorationProgress(event);
+        },
+      });
 
-    // Use streaming to provide real-time progress feedback
-    const stream = this.agentRunner.stream(spawnOpts);
-    let lastProgressUpdate = Date.now();
-    const PROGRESS_UPDATE_INTERVAL = 10_000; // Log every 10 seconds
+      const summary = await coordinator.explore();
 
-    // Consume the stream and collect the final result
-    let iterResult = await stream.next();
-    while (!iterResult.done) {
-      const chunk = iterResult.value;
+      // Write agents.json (coordinator writes its own, but ensure consistency)
+      await this.writeAgentsRegistry();
 
-      // Log progress periodically to avoid spam
-      const now = Date.now();
-      if (now - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL) {
-        const progressMessage = this.extractProgressMessage(chunk);
-        if (progressMessage) {
-          logger.info(progressMessage);
-          await this.dotFolder.appendLog({
-            timestamp: new Date().toISOString(),
-            level: 'info',
-            message: progressMessage,
-          });
-        }
-        lastProgressUpdate = now;
+      // Write analysis marker for incremental change detection on next startup
+      const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+      await this.dotFolder.writeAnalysisMarker(fullMarker);
+      this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
+
+      // Load the workspace map into memory for system prompt injection
+      await this.loadExplorationSummary();
+
+      // Cache the map summary
+      const map = await this.dotFolder.readMap();
+      if (map) {
+        this.workspaceMapSummary = this.buildMapSummary(map);
       }
 
-      iterResult = await stream.next();
-    }
-
-    // The final iterResult.value is the AgentResult
-    const result = iterResult.value;
-
-    await this.updateMasterSession();
-
-    if (!result || result.exitCode !== 0) {
-      const errorMessage = `Master-driven exploration failed with exit code ${result?.exitCode ?? 'unknown'}: ${result?.stderr ?? 'no error details'}`;
       await this.dotFolder.appendLog({
         timestamp: new Date().toISOString(),
-        level: 'error',
-        message: errorMessage,
+        level: 'info',
+        message: 'Multi-agent exploration completed',
+        data: {
+          directoriesExplored: summary.directoriesExplored,
+          projectType: summary.projectType,
+          frameworks: summary.frameworks,
+        },
       });
-      throw new Error(errorMessage);
+
+      logger.info(
+        {
+          directoriesExplored: summary.directoriesExplored,
+          projectType: summary.projectType,
+        },
+        'Multi-agent exploration completed successfully',
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        { error: errorMessage },
+        'Multi-agent exploration failed, falling back to monolithic exploration',
+      );
+
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: 'Multi-agent exploration failed, falling back to monolithic exploration',
+        data: { error: errorMessage },
+      });
+
+      await this.monolithicExplore();
     }
-
-    // Write agents.json (Master can't spawn workers, so we do this mechanically)
-    await this.writeAgentsRegistry();
-
-    // Commit exploration results
-    await this.dotFolder.commitChanges('feat(master): Master-driven workspace exploration');
-
-    // Write analysis marker for incremental change detection on next startup
-    const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-    await this.dotFolder.writeAnalysisMarker(fullMarker);
-    this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
-
-    // Log completion
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: 'Master-driven exploration completed',
-      data: { durationMs: result.durationMs },
-    });
-
-    logger.info('Master-driven exploration completed successfully');
-
-    // Build summary from whatever the Master wrote
-    await this.loadExplorationSummary();
   }
 
   /**
-   * Extract a human-readable progress message from a stdout chunk.
-   * Looks for tool calls and file operations to give the user visibility
-   * into what the Master is doing during exploration.
+   * Translate ExplorationCoordinator progress callbacks into ProgressEvents
+   * and broadcast them to all connected connectors.
    */
-  private extractProgressMessage(chunk: string): string | null {
-    // Look for tool usage patterns in the chunk
-    if (chunk.includes('Reading') || chunk.includes('Read:')) {
-      return 'Exploring workspace files...';
-    }
-    if (chunk.includes('Globbing') || chunk.includes('Glob:')) {
-      return 'Scanning directory structure...';
-    }
-    if (chunk.includes('Grepping') || chunk.includes('Grep:')) {
-      return 'Searching for project patterns...';
-    }
-    if (chunk.includes('Writing') || chunk.includes('Write:') || chunk.includes('workspace-map')) {
-      return 'Writing workspace map...';
-    }
-    if (chunk.includes('package.json')) {
-      return 'Analyzing package configuration...';
-    }
-    if (chunk.includes('tsconfig') || chunk.includes('typescript')) {
-      return 'Detecting TypeScript configuration...';
-    }
-    if (chunk.includes('src/') || chunk.includes('lib/')) {
-      return 'Exploring source code structure...';
-    }
-    if (chunk.includes('test') || chunk.includes('spec')) {
-      return 'Analyzing test structure...';
-    }
+  private async emitExplorationProgress(event: {
+    phase: string;
+    status: string;
+    detail?: string;
+    directoryProgress?: { completed: number; total: number; currentDir?: string };
+  }): Promise<void> {
+    const phaseLabels: Record<string, string> = {
+      structure_scan: 'Scanning workspace structure',
+      classification: 'Classifying project type',
+      directory_dives: 'Exploring directories',
+      assembly: 'Assembling workspace map',
+      finalization: 'Finalizing exploration',
+    };
 
-    // Return null if no recognizable pattern found
-    return null;
+    const phaseLabel = phaseLabels[event.phase] ?? event.phase;
+    const statusSuffix = event.status === 'completed' ? ' (done)' : '...';
+
+    logger.info(`${phaseLabel}${statusSuffix}`);
+
+    // Broadcast to connectors if router is available
+    if (this.router) {
+      if (event.directoryProgress) {
+        await this.router.broadcastProgress({
+          type: 'exploring-directory',
+          directory: event.directoryProgress.currentDir ?? '',
+          completed: event.directoryProgress.completed,
+          total: event.directoryProgress.total,
+        });
+      } else {
+        await this.router.broadcastProgress({
+          type: 'exploring',
+          phase: phaseLabel,
+          detail: event.detail,
+        });
+      }
+    }
   }
 
   /**
-   * Build the exploration prompt sent to the Master session.
-   * Instructs the Master to autonomously explore the workspace and write workspace-map.json.
-   * The Master decides its own exploration strategy — no hardcoded phases.
+   * Fallback: single-agent monolithic exploration via streaming.
+   * Used when the multi-agent ExplorationCoordinator fails.
    */
-  private buildExplorationPrompt(): string {
-    return `Explore the workspace at \`${this.workspacePath}\` and create a comprehensive understanding.
+  private async monolithicExplore(): Promise<void> {
+    logger.info('Executing monolithic exploration via single agent');
+
+    const explorationPrompt = `Explore the workspace at \`${this.workspacePath}\` and create a comprehensive understanding.
 
 You are in charge of the exploration strategy. Use your tools (Read, Glob, Grep) to understand the project, then write your findings to \`.openbridge/workspace-map.json\` using the Write tool.
 
 Follow the "Workspace Exploration" section in your system prompt for the schema and recommended strategy. Adapt the depth of exploration to the project's size and complexity.
 
 Work silently — do not output conversational text, just explore and write the map file.`;
+
+    const spawnOpts = this.buildMasterSpawnOptions(
+      explorationPrompt,
+      this.explorationTimeout,
+      MASTER_MAX_TURNS,
+    );
+
+    const stream = this.agentRunner.stream(spawnOpts);
+
+    // Consume the stream
+    let iterResult = await stream.next();
+    while (!iterResult.done) {
+      iterResult = await stream.next();
+    }
+
+    const result = iterResult.value;
+    await this.updateMasterSession();
+
+    if (!result || result.exitCode !== 0) {
+      const errorMessage = `Monolithic exploration failed with exit code ${result?.exitCode ?? 'unknown'}: ${result?.stderr ?? 'no error details'}`;
+      throw new Error(errorMessage);
+    }
+
+    // Write agents.json
+    await this.writeAgentsRegistry();
+
+    // Commit exploration results
+    await this.dotFolder.commitChanges('feat(master): monolithic workspace exploration');
+
+    // Write analysis marker for incremental change detection on next startup
+    const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+    await this.dotFolder.writeAnalysisMarker(fullMarker);
+    this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
+
+    logger.info('Monolithic exploration completed successfully');
+
+    await this.loadExplorationSummary();
   }
 
   /**

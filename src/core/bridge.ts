@@ -287,6 +287,12 @@ export class Bridge {
     };
   }
 
+  /**
+   * Connectors where every message is an AI command (no shared conversation).
+   * Messages from these connectors get the prefix auto-prepended if missing.
+   */
+  private static readonly DIRECT_AI_CONNECTORS = new Set(['webchat', 'console']);
+
   private handleIncomingMessage(incomingMessage: InboundMessage, _connector?: Connector): void {
     // Cap rawContent length before any further processing to protect queue, auth, and prefix checks
     let message = incomingMessage;
@@ -299,6 +305,17 @@ export class Bridge {
         ...incomingMessage,
         rawContent: incomingMessage.rawContent.slice(0, MAX_INBOUND_LENGTH),
       };
+    }
+
+    // Auto-prepend prefix for direct AI connectors (webchat, console) where every
+    // message is an AI command. Shared channels (WhatsApp, Telegram, Discord) still
+    // require the explicit prefix to distinguish AI commands from normal chat.
+    if (
+      Bridge.DIRECT_AI_CONNECTORS.has(message.source) &&
+      !this.auth.hasPrefix(message.rawContent)
+    ) {
+      const prefix = this.auth.commandPrefix;
+      message = { ...message, rawContent: `${prefix} ${message.rawContent}` };
     }
 
     this.metrics.recordReceived();
