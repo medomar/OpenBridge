@@ -11,7 +11,7 @@ export type {
   ConnectorPluginModule,
   ProviderPluginModule,
 } from './registry.js';
-export { createLogger } from './logger.js';
+export { createLogger, setLogLevel } from './logger.js';
 export {
   loadConfig,
   resolveConfigPath,
