@@ -34,6 +34,8 @@ export class WhatsAppConnector implements Connector {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shuttingDown = false;
+  /** Tracks chat IDs that have received a progress status message (to avoid repeat sends). */
+  private readonly progressSent = new Set<string>();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -316,10 +318,27 @@ export class WhatsAppConnector implements Connector {
     }
   }
 
-  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
-    // Basic implementation: log progress event. OB-512 will add WhatsApp-specific rendering.
-    logger.debug({ event }, 'Progress event');
-    return Promise.resolve();
+  async sendProgress(event: ProgressEvent, chatId: string): Promise<void> {
+    if (!this.client || !this.connected) return;
+
+    if (event.type === 'complete') {
+      this.progressSent.delete(chatId);
+      return;
+    }
+
+    // Only send one status message per conversation to avoid spamming the user.
+    // The spawning event is the most informative — it tells the user how many subtasks are running.
+    if (event.type === 'spawning' && !this.progressSent.has(chatId)) {
+      const n = event.workerCount;
+      const text = `🔄 Breaking into ${n.toString()} subtask${n !== 1 ? 's' : ''}...`;
+      try {
+        await this.client.sendMessage(chatId, text);
+        this.progressSent.add(chatId);
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp progress message');
+      }
+    }
+    // All other events are silently skipped — avoid WhatsApp message spam
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
@@ -328,6 +347,7 @@ export class WhatsAppConnector implements Connector {
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    this.progressSent.clear();
 
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);

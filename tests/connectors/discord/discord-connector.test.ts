@@ -48,8 +48,12 @@ vi.mock('discord.js', () => {
     Client: vi.fn().mockImplementation(() => {
       const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
 
+      const mockMessage = {
+        edit: vi.fn().mockResolvedValue({}),
+        delete: vi.fn().mockResolvedValue({}),
+      };
       const mockChannel = {
-        send: vi.fn().mockResolvedValue({}),
+        send: vi.fn().mockResolvedValue(mockMessage),
         isTextBased: vi.fn().mockReturnValue(true),
       };
 
@@ -342,5 +346,84 @@ describe('DiscordConnector', () => {
 
     expect(client.on).toHaveBeenCalledWith('ready', expect.any(Function));
     expect(client.on).toHaveBeenCalledWith('messageCreate', expect.any(Function));
+  });
+
+  describe('sendProgress()', () => {
+    it('should send the first progress event as a new message', async () => {
+      await connector.initialize();
+      latestClient().simulateReady();
+
+      await connector.sendProgress({ type: 'classifying' }, 'chan-100');
+
+      const client = latestClient();
+      expect(client.channels.fetch).toHaveBeenCalledWith('chan-100');
+      const channel = (await client.channels.fetch.mock.results[0]!.value) as {
+        send: ReturnType<typeof vi.fn>;
+      };
+      expect(channel.send).toHaveBeenCalledWith('🔍 Analyzing request...');
+    });
+
+    it('should edit the existing message on subsequent events', async () => {
+      await connector.initialize();
+      latestClient().simulateReady();
+      const client = latestClient();
+
+      await connector.sendProgress({ type: 'classifying' }, 'chan-100');
+      const channel = (await client.channels.fetch.mock.results[0]!.value) as {
+        send: ReturnType<typeof vi.fn>;
+      };
+      const sentMsg = (await channel.send.mock.results[0]!.value) as {
+        edit: ReturnType<typeof vi.fn>;
+      };
+
+      await connector.sendProgress({ type: 'planning' }, 'chan-100');
+
+      // channels.fetch should only be called once (second event reuses stored message)
+      expect(client.channels.fetch).toHaveBeenCalledOnce();
+      expect(sentMsg.edit).toHaveBeenCalledWith('📋 Planning subtasks...');
+    });
+
+    it('should delete the message on complete', async () => {
+      await connector.initialize();
+      latestClient().simulateReady();
+      const client = latestClient();
+
+      await connector.sendProgress({ type: 'synthesizing' }, 'chan-100');
+      const channel = (await client.channels.fetch.mock.results[0]!.value) as {
+        send: ReturnType<typeof vi.fn>;
+      };
+      const sentMsg = (await channel.send.mock.results[0]!.value) as {
+        delete: ReturnType<typeof vi.fn>;
+      };
+
+      await connector.sendProgress({ type: 'complete' }, 'chan-100');
+
+      expect(sentMsg.delete).toHaveBeenCalledOnce();
+    });
+
+    it('should silently skip complete when no progress message was sent', async () => {
+      await connector.initialize();
+      latestClient().simulateReady();
+
+      await expect(
+        connector.sendProgress({ type: 'complete' }, 'chan-100'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should silently skip when disconnected', async () => {
+      await expect(
+        connector.sendProgress({ type: 'classifying' }, 'chan-100'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should not throw when channel fetch fails', async () => {
+      await connector.initialize();
+      latestClient().simulateReady();
+      latestClient().channels.fetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(
+        connector.sendProgress({ type: 'classifying' }, 'chan-bad'),
+      ).resolves.toBeUndefined();
+    });
   });
 });

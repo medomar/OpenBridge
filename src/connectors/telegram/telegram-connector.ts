@@ -16,9 +16,28 @@ interface GrammyBot {
   start: () => Promise<void>;
   stop: () => Promise<void>;
   api: {
-    sendMessage: (chatId: string | number, text: string) => Promise<unknown>;
+    sendMessage: (chatId: string | number, text: string) => Promise<{ message_id: number }>;
     sendChatAction: (chatId: string | number, action: string) => Promise<unknown>;
+    editMessageText: (chatId: string | number, messageId: number, text: string) => Promise<unknown>;
+    deleteMessage: (chatId: string | number, messageId: number) => Promise<unknown>;
   };
+}
+
+function formatProgressEvent(event: ProgressEvent): string {
+  switch (event.type) {
+    case 'classifying':
+      return '🔍 Analyzing request...';
+    case 'planning':
+      return '📋 Planning subtasks...';
+    case 'spawning':
+      return `📋 Breaking into ${event.workerCount.toString()} subtask${event.workerCount !== 1 ? 's' : ''}...`;
+    case 'worker-progress':
+      return `⚙️ ${event.completed.toString()}/${event.total.toString()} workers done${event.workerName ? ` (${event.workerName})` : ''}`;
+    case 'synthesizing':
+      return '📝 Preparing final response...';
+    case 'complete':
+      return '✅ Done';
+  }
 }
 
 interface GrammyContext {
@@ -57,6 +76,8 @@ export class TelegramConnector implements Connector {
   private config: TelegramConfig;
   private connected = false;
   private bot: GrammyBot | null = null;
+  /** Maps chatId → message_id of the in-flight progress message for edit-in-place updates. */
+  private readonly progressMessageIds = new Map<string, number>();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -129,10 +150,30 @@ export class TelegramConnector implements Connector {
     await this.bot.api.sendChatAction(chatId, 'typing');
   }
 
-  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
-    // Basic implementation: log progress event. OB-512 will add Telegram-specific rendering.
-    logger.debug({ event }, 'Progress event');
-    return Promise.resolve();
+  async sendProgress(event: ProgressEvent, chatId: string): Promise<void> {
+    if (!this.bot || !this.connected) return;
+
+    const existingId = this.progressMessageIds.get(chatId);
+
+    try {
+      if (event.type === 'complete') {
+        if (existingId !== undefined) {
+          await this.bot.api.deleteMessage(chatId, existingId);
+          this.progressMessageIds.delete(chatId);
+        }
+        return;
+      }
+
+      const text = formatProgressEvent(event);
+      if (existingId !== undefined) {
+        await this.bot.api.editMessageText(chatId, existingId, text);
+      } else {
+        const result = await this.bot.api.sendMessage(chatId, text);
+        this.progressMessageIds.set(chatId, result.message_id);
+      }
+    } catch (err: unknown) {
+      logger.debug({ chatId, err }, 'Failed to send/edit Telegram progress message');
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
@@ -140,6 +181,7 @@ export class TelegramConnector implements Connector {
   }
 
   async shutdown(): Promise<void> {
+    this.progressMessageIds.clear();
     if (this.bot) {
       await this.bot.stop();
       this.bot = null;

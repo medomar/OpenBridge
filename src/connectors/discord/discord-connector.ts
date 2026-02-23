@@ -20,9 +20,31 @@ interface DiscordClient {
   };
 }
 
+interface DiscordProgressMessage {
+  edit: (content: string) => Promise<unknown>;
+  delete: () => Promise<unknown>;
+}
+
 interface DiscordTextChannel {
-  send: (content: string) => Promise<unknown>;
+  send: (content: string) => Promise<DiscordProgressMessage>;
   isTextBased: () => boolean;
+}
+
+function formatProgressEvent(event: ProgressEvent): string {
+  switch (event.type) {
+    case 'classifying':
+      return '🔍 Analyzing request...';
+    case 'planning':
+      return '📋 Planning subtasks...';
+    case 'spawning':
+      return `📋 Breaking into ${event.workerCount.toString()} subtask${event.workerCount !== 1 ? 's' : ''}...`;
+    case 'worker-progress':
+      return `⚙️ ${event.completed.toString()}/${event.total.toString()} workers done${event.workerName ? ` (${event.workerName})` : ''}`;
+    case 'synthesizing':
+      return '📝 Preparing final response...';
+    case 'complete':
+      return '✅ Done';
+  }
 }
 
 interface DiscordMessage {
@@ -65,6 +87,8 @@ export class DiscordConnector implements Connector {
   private config: DiscordConfig;
   private connected = false;
   private client: DiscordClient | null = null;
+  /** Maps channelId → in-flight progress message for edit-in-place updates. */
+  private readonly progressMessages = new Map<string, DiscordProgressMessage>();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -147,10 +171,33 @@ export class DiscordConnector implements Connector {
     return Promise.resolve();
   }
 
-  sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
-    // Basic implementation: log progress event. OB-512 will add Discord-specific rendering.
-    logger.debug({ event }, 'Progress event');
-    return Promise.resolve();
+  async sendProgress(event: ProgressEvent, chatId: string): Promise<void> {
+    if (!this.client || !this.connected) return;
+
+    const existing = this.progressMessages.get(chatId);
+
+    try {
+      if (event.type === 'complete') {
+        if (existing) {
+          await existing.delete();
+          this.progressMessages.delete(chatId);
+        }
+        return;
+      }
+
+      const text = formatProgressEvent(event);
+      if (existing) {
+        await existing.edit(text);
+      } else {
+        const channel = await this.client.channels.fetch(chatId);
+        if (channel) {
+          const msg = await channel.send(text);
+          this.progressMessages.set(chatId, msg);
+        }
+      }
+    } catch (err: unknown) {
+      logger.debug({ chatId, err }, 'Failed to send/edit Discord progress message');
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
@@ -158,6 +205,7 @@ export class DiscordConnector implements Connector {
   }
 
   shutdown(): Promise<void> {
+    this.progressMessages.clear();
     if (this.client) {
       this.client.destroy();
       this.client = null;

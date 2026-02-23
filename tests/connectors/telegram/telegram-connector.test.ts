@@ -16,6 +16,8 @@ interface MockBotInstance {
   api: {
     sendMessage: ReturnType<typeof vi.fn>;
     sendChatAction: ReturnType<typeof vi.fn>;
+    editMessageText: ReturnType<typeof vi.fn>;
+    deleteMessage: ReturnType<typeof vi.fn>;
   };
   on: ReturnType<typeof vi.fn>;
   start: ReturnType<typeof vi.fn>;
@@ -35,8 +37,10 @@ vi.mock('grammy', () => {
         startCalled: false,
         stopCalled: false,
         api: {
-          sendMessage: vi.fn().mockResolvedValue({}),
+          sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
           sendChatAction: vi.fn().mockResolvedValue({}),
+          editMessageText: vi.fn().mockResolvedValue({}),
+          deleteMessage: vi.fn().mockResolvedValue({}),
         },
         on: vi.fn((event: string, handler: TextHandler) => {
           if (!handlers.has(event)) handlers.set(event, []);
@@ -323,5 +327,65 @@ describe('TelegramConnector', () => {
   it('should accept optional botUsername config', () => {
     const c = new TelegramConnector({ token: 'tok', botUsername: 'MyBot' });
     expect(c.name).toBe('telegram');
+  });
+
+  describe('sendProgress()', () => {
+    it('should send the first progress event as a new message', async () => {
+      await connector.initialize();
+      const bot = latestBot();
+      bot.api.sendMessage.mockResolvedValueOnce({ message_id: 42 });
+
+      await connector.sendProgress({ type: 'classifying' }, '12345');
+
+      expect(bot.api.sendMessage).toHaveBeenCalledWith('12345', '🔍 Analyzing request...');
+    });
+
+    it('should edit the existing message on subsequent progress events', async () => {
+      await connector.initialize();
+      const bot = latestBot();
+      bot.api.sendMessage.mockResolvedValueOnce({ message_id: 99 });
+
+      await connector.sendProgress({ type: 'classifying' }, '12345');
+      await connector.sendProgress({ type: 'planning' }, '12345');
+
+      expect(bot.api.sendMessage).toHaveBeenCalledOnce();
+      expect(bot.api.editMessageText).toHaveBeenCalledWith('12345', 99, '📋 Planning subtasks...');
+    });
+
+    it('should delete the progress message on complete', async () => {
+      await connector.initialize();
+      const bot = latestBot();
+      bot.api.sendMessage.mockResolvedValueOnce({ message_id: 55 });
+
+      await connector.sendProgress({ type: 'synthesizing' }, '12345');
+      await connector.sendProgress({ type: 'complete' }, '12345');
+
+      expect(bot.api.deleteMessage).toHaveBeenCalledWith('12345', 55);
+    });
+
+    it('should silently skip complete when no progress message was sent', async () => {
+      await connector.initialize();
+      const bot = latestBot();
+
+      await connector.sendProgress({ type: 'complete' }, '12345');
+
+      expect(bot.api.deleteMessage).not.toHaveBeenCalled();
+    });
+
+    it('should silently skip when disconnected', async () => {
+      await expect(
+        connector.sendProgress({ type: 'classifying' }, '12345'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should not throw when API call fails', async () => {
+      await connector.initialize();
+      const bot = latestBot();
+      bot.api.sendMessage.mockRejectedValueOnce(new Error('API error'));
+
+      await expect(
+        connector.sendProgress({ type: 'classifying' }, '12345'),
+      ).resolves.toBeUndefined();
+    });
   });
 });
