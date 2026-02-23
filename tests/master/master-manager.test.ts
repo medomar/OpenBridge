@@ -1506,4 +1506,287 @@ describe('MasterManager', () => {
       expect(workerCall?.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
     });
   });
+
+  describe('Task Classification + Auto-Delegation (OB-405)', () => {
+    beforeEach(async () => {
+      mockSpawn.mockReset();
+      mockStream.mockReset();
+
+      masterManager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await masterManager.start();
+    });
+
+    // -----------------------------------------------------------------------
+    // (1) classifyTask() correctly classifies 10+ example messages
+    // -----------------------------------------------------------------------
+    describe('classifyTask()', () => {
+      it('classifies "what is this project?" as quick-answer', () => {
+        expect(masterManager.classifyTask('what is this project?')).toBe('quick-answer');
+      });
+
+      it('classifies "how does the router work?" as quick-answer', () => {
+        expect(masterManager.classifyTask('how does the router work?')).toBe('quick-answer');
+      });
+
+      it('classifies "explain the bridge architecture" as quick-answer', () => {
+        expect(masterManager.classifyTask('explain the bridge architecture')).toBe('quick-answer');
+      });
+
+      it('classifies "list all files in src/" as quick-answer', () => {
+        expect(masterManager.classifyTask('list all files in src/')).toBe('quick-answer');
+      });
+
+      it('classifies "show me the config schema" as quick-answer', () => {
+        expect(masterManager.classifyTask('show me the config schema')).toBe('quick-answer');
+      });
+
+      it('classifies "generate an HTML report" as tool-use', () => {
+        expect(masterManager.classifyTask('generate an HTML report')).toBe('tool-use');
+      });
+
+      it('classifies "create a new test file for auth.ts" as tool-use', () => {
+        expect(masterManager.classifyTask('create a new test file for auth.ts')).toBe('tool-use');
+      });
+
+      it('classifies "write a README section about configuration" as tool-use', () => {
+        expect(masterManager.classifyTask('write a README section about configuration')).toBe(
+          'tool-use',
+        );
+      });
+
+      it('classifies "fix the bug in queue.ts line 42" as tool-use', () => {
+        expect(masterManager.classifyTask('fix the bug in queue.ts line 42')).toBe('tool-use');
+      });
+
+      it('classifies "make a Dockerfile for this project" as tool-use', () => {
+        expect(masterManager.classifyTask('make a Dockerfile for this project')).toBe('tool-use');
+      });
+
+      it('classifies "implement user authentication" as complex-task', () => {
+        expect(masterManager.classifyTask('implement user authentication')).toBe('complex-task');
+      });
+
+      it('classifies "build a REST API for the dashboard" as complex-task', () => {
+        expect(masterManager.classifyTask('build a REST API for the dashboard')).toBe(
+          'complex-task',
+        );
+      });
+
+      it('classifies "refactor the MasterManager to use async generators" as complex-task', () => {
+        expect(
+          masterManager.classifyTask('refactor the MasterManager to use async generators'),
+        ).toBe('complex-task');
+      });
+
+      it('is case-insensitive (IMPLEMENT → complex-task)', () => {
+        expect(masterManager.classifyTask('IMPLEMENT a login flow')).toBe('complex-task');
+      });
+
+      it('is case-insensitive (GENERATE → tool-use)', () => {
+        expect(masterManager.classifyTask('GENERATE a config file')).toBe('tool-use');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // (2) processMessage() with a complex task triggers SPAWN markers
+    // -----------------------------------------------------------------------
+    it('sends a planning prompt (not raw message) for complex tasks', async () => {
+      mockSpawn.mockResolvedValue({
+        exitCode: 0,
+        stdout: 'No tasks to delegate right now.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-complex',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement oauth login',
+        content: 'implement oauth login',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // The first spawn call should contain the planning prompt wrapper, not the raw message
+      const masterCall = getSpawnCallOpts(0);
+      expect(masterCall?.prompt).toContain('The user asked:');
+      expect(masterCall?.prompt).toContain('implement oauth login');
+      expect(masterCall?.prompt).toContain('SPAWN');
+      // Planning prompt uses MESSAGE_MAX_TURNS_PLANNING = 5
+      expect(masterCall?.maxTurns).toBe(5);
+    });
+
+    it('complex task triggers worker spawning when Master returns SPAWN markers', async () => {
+      const spawnMarkerResponse =
+        `Planning complete.\n\n` +
+        `[SPAWN:code-edit]{"prompt":"Add OAuth routes to src/routes/auth.ts","model":"sonnet","maxTurns":15}[/SPAWN]`;
+
+      // Call 1: Master planning → returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: spawnMarkerResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 400,
+      });
+
+      // Call 2: Worker executes the subtask
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'OAuth routes added successfully.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      // Call 3: Synthesis — Master summarises worker results
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'OAuth login has been implemented. Routes added to src/routes/auth.ts.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-complex-spawn',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement oauth login',
+        content: 'implement oauth login',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // Three calls: planning, worker, synthesis
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
+
+      // Worker was spawned with correct options from the SPAWN marker
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.prompt).toBe('Add OAuth routes to src/routes/auth.ts');
+      expect(workerCall?.model).toBe('sonnet');
+      // code-edit profile → Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*)
+      expect(workerCall?.allowedTools).toContain('Edit');
+      expect(workerCall?.allowedTools).toContain('Write');
+
+      // Final response is the Master's synthesis
+      expect(response).toBe(
+        'OAuth login has been implemented. Routes added to src/routes/auth.ts.',
+      );
+    });
+
+    // -----------------------------------------------------------------------
+    // (3) Worker results are fed back and synthesized
+    // -----------------------------------------------------------------------
+    it('injects worker results into the feedback prompt for synthesis', async () => {
+      const spawnMarkerResponse = `[SPAWN:read-only]{"prompt":"List key files","model":"haiku","maxTurns":5}[/SPAWN]`;
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: spawnMarkerResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Key files: src/index.ts, src/core/bridge.ts',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Capture the synthesis call
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Here are the key files in the project.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 150,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-synthesis',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai list key files',
+        content: 'list key files',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // The synthesis call (3rd spawn) must include the worker's output
+      const synthesisCall = getSpawnCallOpts(2);
+      expect(synthesisCall?.prompt).toContain('Key files: src/index.ts, src/core/bridge.ts');
+      // Synthesis uses MESSAGE_MAX_TURNS_SYNTHESIS = 5
+      expect(synthesisCall?.maxTurns).toBe(5);
+    });
+
+    // -----------------------------------------------------------------------
+    // (4) Quick-answer messages complete in ≤ 3 turns
+    // -----------------------------------------------------------------------
+    it('quick-answer messages use maxTurns=3', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'TypeScript is a typed superset of JavaScript.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-quick',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what is TypeScript?',
+        content: 'what is TypeScript?',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // Only one spawn call — no workers, no synthesis
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      expect(response).toBe('TypeScript is a typed superset of JavaScript.');
+
+      // maxTurns must be the quick-answer budget (3)
+      const masterCall = getSpawnCallOpts(0);
+      expect(masterCall?.maxTurns).toBe(3);
+    });
+
+    it('tool-use messages use maxTurns=10 (not 3 or 5)', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'File created.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-tool-use',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai generate a config file',
+        content: 'generate a config file',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      const masterCall = getSpawnCallOpts(0);
+      expect(masterCall?.maxTurns).toBe(10);
+    });
+  });
 });
