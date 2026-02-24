@@ -406,7 +406,6 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
-      vi.useRealTimers();
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
