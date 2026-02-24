@@ -51,6 +51,7 @@ import type {
   ClassificationCache,
   ExplorationState,
   WorkspaceAnalysisMarker,
+  LearningEntry,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -264,6 +265,8 @@ export interface MasterManagerOptions {
   skipAutoExploration?: boolean;
   /** MemoryManager instance — when provided, enables SQLite-backed persistence (OB-711 will wire reads/writes) */
   memory?: MemoryManager;
+  /** Base delay for worker-level retry backoff in milliseconds (default: 5000) */
+  workerRetryDelayMs?: number;
 }
 
 /**
@@ -298,6 +301,7 @@ export class MasterManager {
   readonly memory: MemoryManager | null;
   /** Sub-master manager — null when no root DB is available (OB-755) */
   private subMasterManager: SubMasterManager | null = null;
+  private readonly workerRetryDelayMs: number;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -327,6 +331,8 @@ export class MasterManager {
   private workspaceMapSummary: string | null = null;
   /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
   private mapLastVerifiedAt: string | null = null;
+  /** Cached summary of past learnings for injection into Master system prompt */
+  private learningsSummary: string | null = null;
   /** In-memory classification cache — normalized key → cached result + feedback */
   private readonly classificationCache = new Map<string, ClassificationCacheEntry>();
   /** Whether the classification cache has been loaded from disk */
@@ -345,6 +351,7 @@ export class MasterManager {
     this.agentRunner = new AgentRunner();
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
+    this.workerRetryDelayMs = options.workerRetryDelayMs ?? 5000;
 
     // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
     if (this.memory) {
@@ -798,6 +805,20 @@ export class MasterManager {
       logger.info('Loaded Master system prompt');
     }
 
+    // Load learnings and build summary for system prompt injection
+    try {
+      const learnings = await this.dotFolder.readLearnings();
+      if (learnings && learnings.entries.length > 0) {
+        this.learningsSummary = this.buildLearningsSummary(learnings.entries);
+        logger.info(
+          { entryCount: learnings.entries.length, summaryLength: this.learningsSummary?.length },
+          'Loaded learnings summary for Master context',
+        );
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Failed to load learnings — continuing without history');
+    }
+
     // Try to load existing session
     const existing = await this.loadMasterSessionFromStore();
 
@@ -946,6 +967,12 @@ export class MasterManager {
       }
     }
 
+    // Inject learnings summary so Master can learn from past task outcomes
+    if (this.learningsSummary) {
+      opts.systemPrompt =
+        (opts.systemPrompt ?? '') + '\n\n## Learnings from Past Tasks\n\n' + this.learningsSummary;
+    }
+
     return opts;
   }
 
@@ -977,6 +1004,87 @@ export class MasterManager {
       parts.push(`Full workspace map available at: ${this.explorationSummary.mapPath}`);
     }
     return parts.length > 0 ? parts.join('\n') : null;
+  }
+
+  /**
+   * Build a concise summary of past learnings for system prompt injection.
+   * Groups the most recent entries by task type and computes stats:
+   * success rate, best model, best profile, avg duration.
+   * Capped at ~2000 chars to avoid prompt bloat.
+   */
+  private buildLearningsSummary(entries: LearningEntry[]): string | null {
+    // Use only the most recent 50 entries to avoid stale data
+    const recent = entries.slice(-50);
+    if (recent.length === 0) return null;
+
+    // Group by task type
+    const byType = new Map<string, LearningEntry[]>();
+    for (const entry of recent) {
+      const group = byType.get(entry.taskType) ?? [];
+      group.push(entry);
+      byType.set(entry.taskType, group);
+    }
+
+    const lines: string[] = [
+      `Based on ${recent.length} recent task executions:`,
+      '',
+    ];
+
+    for (const [taskType, group] of byType) {
+      if (group.length < 3) continue; // Not enough data to summarize
+
+      const successes = group.filter((e) => e.success);
+      const successRate = ((successes.length / group.length) * 100).toFixed(0);
+      const avgDuration = Math.round(
+        group.reduce((sum, e) => sum + e.durationMs, 0) / group.length,
+      );
+
+      // Find best model (highest success rate with 2+ uses)
+      const modelStats = new Map<string, { total: number; success: number }>();
+      for (const e of group) {
+        const model = e.modelUsed ?? 'unknown';
+        const stats = modelStats.get(model) ?? { total: 0, success: 0 };
+        stats.total++;
+        if (e.success) stats.success++;
+        modelStats.set(model, stats);
+      }
+      const bestModel = [...modelStats.entries()]
+        .filter(([, s]) => s.total >= 2)
+        .sort((a, b) => b[1].success / b[1].total - a[1].success / a[1].total)[0];
+
+      // Find best profile
+      const profileStats = new Map<string, { total: number; success: number }>();
+      for (const e of group) {
+        const profile = e.profileUsed ?? 'unknown';
+        const stats = profileStats.get(profile) ?? { total: 0, success: 0 };
+        stats.total++;
+        if (e.success) stats.success++;
+        profileStats.set(profile, stats);
+      }
+      const bestProfile = [...profileStats.entries()]
+        .filter(([, s]) => s.total >= 2)
+        .sort((a, b) => b[1].success / b[1].total - a[1].success / a[1].total)[0];
+
+      let line = `- **${taskType}**: ${successRate}% success (${group.length} tasks, avg ${avgDuration}ms)`;
+      if (bestModel) {
+        const modelRate = ((bestModel[1].success / bestModel[1].total) * 100).toFixed(0);
+        line += ` — best model: ${bestModel[0]} (${modelRate}%)`;
+      }
+      if (bestProfile) {
+        line += ` — best profile: ${bestProfile[0]}`;
+      }
+      lines.push(line);
+    }
+
+    // If no task types had enough data, return null
+    if (lines.length <= 2) return null;
+
+    const summary = lines.join('\n');
+    // Cap at ~2000 chars
+    if (summary.length > 2000) {
+      return summary.slice(0, 1997) + '...';
+    }
+    return summary;
   }
 
   /**
@@ -3586,6 +3694,9 @@ Work silently — do not output conversational text, just explore and write the 
         });
       }
 
+      // Task 0: Detect degraded prompts (rewrites that made things worse) and rollback
+      await this.rollbackDegradedPrompts();
+
       // Task 1: Identify and rewrite low-performing prompts
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
       if (lowPerformingPrompts.length > 0) {
@@ -3718,6 +3829,15 @@ ${currentContent}
         return;
       }
 
+      // Store the previous version content for rollback before overwriting
+      const manifest = await this.dotFolder.readPromptManifest();
+      const existingEntry = manifest?.prompts[prompt.id];
+      if (manifest && existingEntry) {
+        existingEntry.previousVersion = currentContent;
+        manifest.updatedAt = new Date().toISOString();
+        await this.dotFolder.writePromptManifest(manifest);
+      }
+
       // Update the prompt — write to DB (primary) or file (fallback)
       if (this.memory) {
         await this.memory.createPromptVersion(prompt.id, rewrittenContent);
@@ -3732,6 +3852,69 @@ ${currentContent}
       logger.info({ promptId: prompt.id }, 'Successfully rewrote prompt');
     } catch (error) {
       logger.error({ err: error, promptId: prompt.id }, 'Failed to rewrite prompt (non-blocking)');
+    }
+  }
+
+  /**
+   * Detect prompts where a recent rewrite made performance worse, and rollback
+   * to the previous version. A prompt is "degraded" when:
+   * - It has a previousVersion stored (was rewritten)
+   * - It has a previousSuccessRate recorded
+   * - Its current successRate < previousSuccessRate
+   * - It has been used 5+ times since the rewrite (enough signal)
+   */
+  private async rollbackDegradedPrompts(): Promise<void> {
+    const manifest = await this.dotFolder.readPromptManifest();
+    if (!manifest) return;
+
+    for (const prompt of Object.values(manifest.prompts)) {
+      if (
+        prompt.previousVersion &&
+        prompt.previousSuccessRate !== undefined &&
+        prompt.usageCount >= 5 &&
+        (prompt.successRate ?? 0) < prompt.previousSuccessRate
+      ) {
+        logger.warn(
+          {
+            promptId: prompt.id,
+            currentRate: prompt.successRate,
+            previousRate: prompt.previousSuccessRate,
+          },
+          'Degraded prompt detected — rolling back to previous version',
+        );
+
+        try {
+          const promptPath = path.join(
+            this.dotFolder.getDotFolderPath(),
+            'prompts',
+            prompt.filePath,
+          );
+
+          // Restore the previous version content
+          await fs.writeFile(promptPath, prompt.previousVersion, 'utf-8');
+
+          // Restore previous success rate and clear rollback fields
+          prompt.successRate = prompt.previousSuccessRate;
+          prompt.usageCount = 0;
+          prompt.successCount = 0;
+          prompt.previousVersion = undefined;
+          prompt.previousSuccessRate = undefined;
+          prompt.updatedAt = new Date().toISOString();
+
+          await this.dotFolder.writePromptManifest(manifest);
+
+          await this.dotFolder.commitChanges(
+            `fix(master): revert degraded prompt ${prompt.id}`,
+          );
+
+          logger.info({ promptId: prompt.id }, 'Successfully rolled back degraded prompt');
+        } catch (error) {
+          logger.error(
+            { err: error, promptId: prompt.id },
+            'Failed to rollback degraded prompt',
+          );
+        }
+      }
     }
   }
 
@@ -3990,14 +4173,25 @@ ${currentContent}
       try {
         const workerId = this.workerRegistry.addWorker(manifest);
         workerIds.push(workerId);
-      } catch (error) {
-        // Max concurrency reached — log and skip this worker
-        logger.warn(
-          { error: error instanceof Error ? error.message : String(error) },
-          'Failed to register worker (concurrency limit reached)',
+      } catch {
+        // Max concurrency reached — wait for a slot to free up (backpressure)
+        logger.info(
+          { runningCount: this.workerRegistry.getRunningCount() },
+          'Concurrency limit reached — waiting for a worker slot',
         );
-        // Add a placeholder so indices match
-        workerIds.push('');
+        try {
+          await this.workerRegistry.waitForSlot();
+          // Slot freed — retry registration
+          const workerId = this.workerRegistry.addWorker(manifest);
+          workerIds.push(workerId);
+        } catch (waitError) {
+          // Timeout waiting for slot — skip this worker
+          logger.warn(
+            { error: waitError instanceof Error ? waitError.message : String(waitError) },
+            'Timed out waiting for worker slot — skipping worker',
+          );
+          workerIds.push('');
+        }
       }
     }
 
@@ -4270,29 +4464,80 @@ ${currentContent}
         }
       }
 
-      const result = await this.agentRunner.spawn(spawnOpts);
+      // Worker-level retry with exponential backoff.
+      // Retries on transient failures (non-zero exit) but NOT on:
+      // - Timeout kills (SIGTERM=143, SIGKILL=137)
+      // - Context overflow / dead session patterns
+      const maxWorkerRetries = body.retries ?? 0;
+      let workerRetryCount = 0;
+      let result: AgentResult;
 
-      // Update registry based on result
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        result = await this.agentRunner.spawn(spawnOpts);
+
+        if (result.exitCode === 0) {
+          break; // Success — no retry needed
+        }
+
+        // Check if this failure is non-retryable
+        const isTimeout = result.exitCode === 143 || result.exitCode === 137;
+        const isDeadSession =
+          result.exitCode === 1 &&
+          SESSION_DEAD_PATTERNS.some((p) => result.stderr.toLowerCase().includes(p));
+
+        if (isTimeout || isDeadSession) {
+          // Non-retryable failure — break immediately
+          if (isTimeout) {
+            logger.warn(
+              {
+                workerId,
+                exitCode: result.exitCode,
+                timeout: body.timeout,
+                durationMs: result.durationMs,
+              },
+              'Worker terminated due to timeout (non-retryable)',
+            );
+          }
+          break;
+        }
+
+        // Check if we have retries left
+        if (workerRetryCount >= maxWorkerRetries) {
+          break; // Exhausted retries
+        }
+
+        // Retryable failure — apply exponential backoff and retry
+        workerRetryCount++;
+        const delay = this.workerRetryDelayMs * Math.pow(2, workerRetryCount - 1);
+        logger.info(
+          {
+            workerId,
+            workerRetry: workerRetryCount,
+            maxWorkerRetries,
+            exitCode: result.exitCode,
+            delayMs: delay,
+            stderrPreview: result.stderr.slice(0, 150),
+          },
+          'Worker failed with retryable error — retrying after backoff',
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+
+      // Update worker record with retry count
+      const workerRecord = this.workerRegistry.getWorker(workerId);
+      if (workerRecord) {
+        workerRecord.workerRetries = workerRetryCount;
+      }
+
+      // Update registry based on final result
       if (result.exitCode === 0) {
         this.workerRegistry.markCompleted(workerId, result);
       } else {
-        // Check if this is a timeout failure (SIGTERM = 143, SIGKILL = 137)
         const isTimeout = result.exitCode === 143 || result.exitCode === 137;
         const errorMessage = isTimeout
           ? `Worker timeout: process terminated after ${body.timeout ?? 'default'}ms (exit code ${result.exitCode})`
           : `Exit code ${result.exitCode}: ${result.stderr.slice(0, 200)}`;
-
-        if (isTimeout) {
-          logger.warn(
-            {
-              workerId,
-              exitCode: result.exitCode,
-              timeout: body.timeout,
-              durationMs: result.durationMs,
-            },
-            'Worker terminated due to timeout',
-          );
-        }
 
         this.workerRegistry.markFailed(workerId, result, errorMessage);
       }
@@ -4310,6 +4555,7 @@ ${currentContent}
         ...taskRecord.metadata,
         exitCode: result.exitCode,
         retryCount: result.retryCount,
+        workerRetries: workerRetryCount,
         modelUsed: result.model,
         modelFallbacks: result.modelFallbacks,
         resolvedTools: spawnOpts.allowedTools,

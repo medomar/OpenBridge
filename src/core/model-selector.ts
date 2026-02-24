@@ -15,6 +15,7 @@
 import type { ModelAlias } from './agent-runner.js';
 import type { TaskManifest } from '../types/agent.js';
 import type { MemoryManager } from '../memory/index.js';
+import type { LearningEntry } from '../types/master.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('model-selector');
@@ -163,16 +164,70 @@ export async function getRecommendedModel(
 }
 
 /**
+ * Recommend a model based on historical learnings for a specific task type.
+ * Requires 5+ entries for the task type and 3+ uses per model to be statistically meaningful.
+ * Returns null if insufficient data — caller should fall back to heuristics.
+ */
+export function recommendFromLearnings(
+  taskType: string,
+  learnings: LearningEntry[],
+): ModelRecommendation | null {
+  const filtered = learnings.filter((e) => e.taskType === taskType && e.modelUsed);
+  if (filtered.length < 5) return null;
+
+  // Group by model and compute success rate
+  const modelStats = new Map<string, { total: number; success: number }>();
+  for (const entry of filtered) {
+    const model = entry.modelUsed!;
+    const stats = modelStats.get(model) ?? { total: 0, success: 0 };
+    stats.total++;
+    if (entry.success) stats.success++;
+    modelStats.set(model, stats);
+  }
+
+  // Find the model with the highest success rate (min 3 uses)
+  let bestModel: string | null = null;
+  let bestRate = -1;
+  for (const [model, stats] of modelStats) {
+    if (stats.total < 3) continue;
+    const rate = stats.success / stats.total;
+    if (rate > bestRate) {
+      bestRate = rate;
+      bestModel = model;
+    }
+  }
+
+  if (!bestModel) return null;
+
+  const stats = modelStats.get(bestModel)!;
+  const pct = ((stats.success / stats.total) * 100).toFixed(0);
+
+  logger.debug(
+    { taskType, model: bestModel, successRate: pct, sampleSize: stats.total },
+    'Model recommended from learnings',
+  );
+
+  return {
+    model: bestModel as ModelAlias,
+    reason: `historical performance for "${taskType}" tasks: ${pct}% success (${stats.total} samples)`,
+  };
+}
+
+/**
  * Recommend a model for a TaskManifest.
  *
  * Priority:
  * 1. If `manifest.model` is set, return it as-is (explicit override wins)
- * 2. If `manifest.profile` is set, use profile-based recommendation
- * 3. Fall back to description-based recommendation using the prompt
+ * 2. If learnings data is available, use data-driven recommendation
+ * 3. If `manifest.profile` is set, use profile-based recommendation
+ * 4. Fall back to description-based recommendation using the prompt
  *
  * Returns a ModelRecommendation. The caller decides whether to use it.
  */
-export function recommendModel(manifest: TaskManifest): ModelRecommendation {
+export function recommendModel(
+  manifest: TaskManifest,
+  options?: { learnings?: LearningEntry[]; taskType?: string },
+): ModelRecommendation {
   // Explicit model override — respect the caller's choice
   if (manifest.model) {
     logger.debug({ model: manifest.model }, 'Model explicitly set in manifest — using as-is');
@@ -180,6 +235,12 @@ export function recommendModel(manifest: TaskManifest): ModelRecommendation {
       model: manifest.model as ModelAlias,
       reason: 'explicitly set in manifest',
     };
+  }
+
+  // Data-driven recommendation from learnings
+  if (options?.learnings && options.taskType) {
+    const rec = recommendFromLearnings(options.taskType, options.learnings);
+    if (rec) return rec;
   }
 
   // Profile-based recommendation
