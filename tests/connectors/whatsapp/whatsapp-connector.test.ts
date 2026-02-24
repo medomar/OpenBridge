@@ -381,13 +381,13 @@ describe('WhatsAppConnector', () => {
     });
 
     it('resets reconnect attempt counter on successful reconnect', async () => {
-      // Use 0ms delay so the reconnect fires immediately when timers advance
+      vi.useRealTimers(); // Avoid fake-timer microtask deadlocks on CI runners
       const connector = buildConnector({
         reconnect: {
           enabled: true,
           maxAttempts: 5,
-          initialDelayMs: 0,
-          maxDelayMs: 0,
+          initialDelayMs: 1,
+          maxDelayMs: 1,
           backoffFactor: 1,
         },
       });
@@ -397,13 +397,11 @@ describe('WhatsAppConnector', () => {
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
 
-      // Disconnect — schedules reconnect with 0ms delay
+      // Disconnect — schedules reconnect with 1ms delay
       mockClientInstance._trigger('disconnected', 'reason');
 
-      // Advance timers to fire the 0ms reconnect setTimeout.
-      // The async callback is awaited by advanceTimersByTimeAsync, so
-      // createAndStartClient() fully completes before this resolves.
-      await vi.advanceTimersByTimeAsync(1);
+      // Wait for the reconnect timer to fire and createAndStartClient() to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
@@ -417,6 +415,7 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
+      vi.useRealTimers(); // Avoid fake-timer microtask delays on CI runners
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
