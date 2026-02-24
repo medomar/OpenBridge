@@ -78,6 +78,28 @@ export const WorkersRegistrySchema = z.object({
 
 export type WorkersRegistry = z.infer<typeof WorkersRegistrySchema>;
 
+// ── Worker Stats ────────────────────────────────────────────────
+
+/** Breakdown stats for a profile or model */
+const WorkerGroupStatsSchema = z.object({
+  total: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+  avgDurationMs: z.number().nonnegative(),
+});
+
+/** Aggregated worker statistics */
+export const WorkerStatsSchema = z.object({
+  totalWorkers: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+  avgDurationMs: z.number().nonnegative(),
+  byProfile: z.record(z.string(), WorkerGroupStatsSchema),
+  byModel: z.record(z.string(), WorkerGroupStatsSchema),
+});
+
+export type WorkerStats = z.infer<typeof WorkerStatsSchema>;
+
 // ── Worker Registry ─────────────────────────────────────────────
 
 /**
@@ -332,6 +354,82 @@ export class WorkerRegistry {
    */
   public clear(): void {
     this.workers.clear();
+  }
+
+  /**
+   * Compute aggregated statistics across all workers in the registry.
+   * Breaks down by status, profile, and model.
+   */
+  public getAggregatedStats(): WorkerStats {
+    const workers = this.getAllWorkers();
+    const completed = workers.filter((w) => w.status === 'completed');
+    const failed = workers.filter((w) => w.status === 'failed');
+    const cancelled = workers.filter((w) => w.status === 'cancelled');
+
+    // Average duration across completed + failed (those with results)
+    const withDuration = workers.filter((w) => w.result?.durationMs !== undefined);
+    const avgDurationMs =
+      withDuration.length > 0
+        ? withDuration.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDuration.length
+        : 0;
+
+    // Group by profile
+    const byProfile: Record<string, { total: number; successRate: number; avgDurationMs: number }> =
+      {};
+    const profileGroups = new Map<string, WorkerRecord[]>();
+    for (const w of workers) {
+      const profile = w.taskManifest.profile ?? 'unknown';
+      const group = profileGroups.get(profile) ?? [];
+      group.push(w);
+      profileGroups.set(profile, group);
+    }
+    for (const [profile, group] of profileGroups) {
+      const successes = group.filter((w) => w.status === 'completed').length;
+      const withDur = group.filter((w) => w.result?.durationMs !== undefined);
+      const avgDur =
+        withDur.length > 0
+          ? withDur.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDur.length
+          : 0;
+      byProfile[profile] = {
+        total: group.length,
+        successRate: group.length > 0 ? successes / group.length : 0,
+        avgDurationMs: Math.round(avgDur),
+      };
+    }
+
+    // Group by model
+    const byModel: Record<string, { total: number; successRate: number; avgDurationMs: number }> =
+      {};
+    const modelGroups = new Map<string, WorkerRecord[]>();
+    for (const w of workers) {
+      const model = w.taskManifest.model ?? w.result?.model ?? 'unknown';
+      const group = modelGroups.get(model) ?? [];
+      group.push(w);
+      modelGroups.set(model, group);
+    }
+    for (const [model, group] of modelGroups) {
+      const successes = group.filter((w) => w.status === 'completed').length;
+      const withDur = group.filter((w) => w.result?.durationMs !== undefined);
+      const avgDur =
+        withDur.length > 0
+          ? withDur.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDur.length
+          : 0;
+      byModel[model] = {
+        total: group.length,
+        successRate: group.length > 0 ? successes / group.length : 0,
+        avgDurationMs: Math.round(avgDur),
+      };
+    }
+
+    return {
+      totalWorkers: workers.length,
+      completed: completed.length,
+      failed: failed.length,
+      cancelled: cancelled.length,
+      avgDurationMs: Math.round(avgDurationMs),
+      byProfile,
+      byModel,
+    };
   }
 
   /**

@@ -4231,6 +4231,10 @@ ${currentContent}
     // Persist registry after all workers complete
     await this.persistWorkerRegistry();
 
+    // Log aggregated worker batch stats for observability
+    const stats = this.workerRegistry.getAggregatedStats();
+    logger.info(stats, 'Worker batch stats');
+
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt } = formatWorkerBatch(settled, markers);
     return feedbackPrompt;
