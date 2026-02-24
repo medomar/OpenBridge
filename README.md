@@ -314,17 +314,19 @@ Your Phone                    Your Machine
 
 ## Documentation
 
-| Guide                                              | Description                         |
-| -------------------------------------------------- | ----------------------------------- |
-| [Project Overview](OVERVIEW.md)                    | Vision, architecture, roadmap       |
-| [Architecture](docs/ARCHITECTURE.md)               | System design, message flow, layers |
-| [Configuration Guide](docs/CONFIGURATION.md)       | All config options explained        |
-| [Use Cases](docs/USE_CASES.md)                     | Examples for every industry         |
-| [API Reference](docs/API_REFERENCE.md)             | Interfaces, types, module APIs      |
-| [Writing a Connector](docs/WRITING_A_CONNECTOR.md) | How to add a new messaging channel  |
-| [Writing a Provider](docs/WRITING_A_PROVIDER.md)   | How to add a new AI backend         |
-| [Deployment Guide](docs/DEPLOYMENT.md)             | Docker, PM2, systemd setup          |
-| [Troubleshooting](docs/TROUBLESHOOTING.md)         | Common issues and solutions         |
+| Guide                                              | Description                            |
+| -------------------------------------------------- | -------------------------------------- |
+| [Documentation Hub](docs/README.md)                | All docs in one place                  |
+| [Project Overview](OVERVIEW.md)                    | Vision, architecture, roadmap          |
+| [Architecture](docs/ARCHITECTURE.md)               | System design, message flow, layers    |
+| [Configuration Guide](docs/CONFIGURATION.md)       | All config options explained           |
+| [Roadmap](docs/ROADMAP.md)                         | Future features and version milestones |
+| [Use Cases](docs/USE_CASES.md)                     | Examples for every industry            |
+| [API Reference](docs/API_REFERENCE.md)             | Interfaces, types, module APIs         |
+| [Writing a Connector](docs/WRITING_A_CONNECTOR.md) | How to add a new messaging channel     |
+| [Writing a Provider](docs/WRITING_A_PROVIDER.md)   | How to add a new AI backend            |
+| [Deployment Guide](docs/DEPLOYMENT.md)             | Docker, PM2, systemd setup             |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)         | Common issues and solutions            |
 
 ---
 

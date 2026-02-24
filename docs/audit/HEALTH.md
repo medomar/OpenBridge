@@ -3,7 +3,7 @@
 > **Current Score:** 9.555/10 | **Target:** 9.5/10
 > **Last Audit:** 2026-02-23 | **Previous Score:** 9.525
 > **Open Findings:** 0 (0 critical, 0 high, 0 medium) | **Pending Tasks:** 0 (Phase 30 ✅)
-> **Reason for current state:** OB-622: v0.0.1 release prepared — CHANGELOG [0.0.1] section expanded to cover Phases 16-30, release notes created at docs/release-notes-v0.0.1.md, git tag v0.0.1 created locally. All 1218 tests passing. Phase 30 complete ✅.
+> **Reason for current state:** OB-622: v0.0.1 release prepared — CHANGELOG [0.0.1] section expanded to cover Phases 16-30, release notes created at docs/releases/release-notes-v0.0.1.md, git tag v0.0.1 created locally. All 1218 tests passing. Phase 30 complete ✅.
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V1 tasks](archive/v1/TASKS-v1.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [MVP health](archive/v3/HEALTH-v3-mvp.md)
 
 ---
