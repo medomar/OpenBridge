@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 // --------------------------------------------------------------------------
+// Mock node:fs/promises — removeStaleLock() calls readlink/unlink which do
+// real filesystem I/O.  Under fake timers on CI runners this can deadlock.
+// --------------------------------------------------------------------------
+vi.mock('node:fs/promises', async () => {
+  return {
+    readlink: vi.fn(async () => {
+      throw new Error('ENOENT');
+    }),
+    unlink: vi.fn(async () => {}),
+  };
+});
+
+// --------------------------------------------------------------------------
 // Mock whatsapp-web.js
 // The connector uses a dynamic import, so we mock the module here.
 // --------------------------------------------------------------------------
