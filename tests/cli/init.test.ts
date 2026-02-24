@@ -231,7 +231,7 @@ describe('runInit', () => {
 
   it('should abort on invalid connector', async () => {
     const { input, output } = createLineFeeder([
-      'telegram', // invalid connector
+      'slack', // invalid connector
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -267,6 +267,62 @@ describe('runInit', () => {
     expect(config).toHaveProperty('workspacePath', '/home/user/project');
     expect(config).toHaveProperty('channels');
     expect(config).toHaveProperty('auth');
+  });
+
+  it('should generate config for telegram connector with bot token', async () => {
+    const { input, output } = createLineFeeder([
+      'telegram', // connector
+      '/home/user/project', // workspace path
+      '123456:ABC-DEF', // bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    expect(channels[0]?.type).toBe('telegram');
+    expect(channels[0]?.botToken).toBe('123456:ABC-DEF');
+  });
+
+  it('should abort if telegram bot token is empty', async () => {
+    const { input, output } = createLineFeeder([
+      'telegram', // connector
+      '/home/user/project', // workspace path
+      '', // empty bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('bot token is required');
+  });
+
+  it('should generate config for discord connector with bot token', async () => {
+    const { input, output } = createLineFeeder([
+      'discord', // connector
+      '/home/user/project', // workspace path
+      'MTk4NjIy.discord-token', // bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    expect(channels[0]?.type).toBe('discord');
+    expect(channels[0]?.botToken).toBe('MTk4NjIy.discord-token');
+  });
+
+  it('should abort if discord bot token is empty', async () => {
+    const { input, output } = createLineFeeder([
+      'discord', // connector
+      '/home/user/project', // workspace path
+      '', // empty bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('bot token is required');
   });
 
   it('should show updated success message with both start options', async () => {

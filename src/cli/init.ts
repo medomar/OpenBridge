@@ -17,7 +17,7 @@ interface Answers {
   prefix?: string;
 }
 
-const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat'] as const;
+const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
 
 function ask(rl: ReadlineInterface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -69,12 +69,14 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     // Question 1: Connector selection
     const connectorAnswer = await ask(
       rl,
-      '  Connector type (console/whatsapp/webchat) [default: console]: ',
+      '  Connector type (console/whatsapp/webchat/telegram/discord) [default: console]: ',
     );
     const connector = connectorAnswer || 'console';
 
     if (!(VALID_CONNECTORS as readonly string[]).includes(connector)) {
-      write(`  Error: invalid connector "${connector}". Choose console, whatsapp, or webchat.\n`);
+      write(
+        `  Error: invalid connector "${connector}". Choose console, whatsapp, webchat, telegram, or discord.\n`,
+      );
       return;
     }
 
@@ -108,6 +110,24 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       const prefix = prefixAnswer || '/ai';
 
       config = buildConfig({ connector, workspacePath, whitelist, prefix });
+    } else if (connector === 'telegram') {
+      const botToken = await ask(rl, '  Telegram bot token (from @BotFather): ');
+      if (!botToken) {
+        write('  Error: bot token is required for Telegram.\n');
+        return;
+      }
+      config = buildConfig({ connector, workspacePath });
+      const telegramChannels = config['channels'] as Record<string, unknown>[];
+      telegramChannels[0]!['botToken'] = botToken;
+    } else if (connector === 'discord') {
+      const botToken = await ask(rl, '  Discord bot token (from Developer Portal): ');
+      if (!botToken) {
+        write('  Error: bot token is required for Discord.\n');
+        return;
+      }
+      config = buildConfig({ connector, workspacePath });
+      const discordChannels = config['channels'] as Record<string, unknown>[];
+      discordChannels[0]!['botToken'] = botToken;
     } else {
       config = buildConfig({ connector, workspacePath });
     }

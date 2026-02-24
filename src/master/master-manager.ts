@@ -101,9 +101,9 @@ const MASTER_MAX_TURNS = 50;
 
 /**
  * Max turns for message processing — varies by task classification.
- * quick-answer: questions, lookups, explanations → 3 turns
- * tool-use: file generation, single edits, targeted fixes → 10 turns
- * complex-task (planning): forces Master to output SPAWN markers fast → 5 turns
+ * quick-answer: questions, lookups, explanations → 5 turns
+ * tool-use: file generation, single edits, targeted fixes → 15 turns
+ * complex-task (planning): forces Master to output SPAWN markers → 25 turns
  */
 const MESSAGE_MAX_TURNS_QUICK = 5;
 const MESSAGE_MAX_TURNS_TOOL_USE = 15;
@@ -2119,7 +2119,7 @@ Work silently — do not output conversational text, just explore and write the 
       // SPAWN markers within a small turn budget instead of attempting execution itself.
       const promptToSend =
         taskClass === 'complex-task' ? this.buildPlanningPrompt(message.content) : message.content;
-      // complex-task always uses planning turns (5); otherwise use AI-suggested budget
+      // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
 
@@ -2357,7 +2357,7 @@ Work silently — do not output conversational text, just explore and write the 
         streamTaskClass === 'complex-task'
           ? this.buildPlanningPrompt(message.content)
           : message.content;
-      // complex-task always uses planning turns (5); otherwise use AI-suggested budget
+      // complex-task always uses planning turns; otherwise use AI-suggested budget
       const streamMaxTurns =
         streamTaskClass === 'complex-task'
           ? MESSAGE_MAX_TURNS_PLANNING

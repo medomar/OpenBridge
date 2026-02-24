@@ -1904,7 +1904,7 @@ describe('MasterManager', () => {
         const planningCall = getSpawnCallOpts(1);
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
-        expect(planningCall?.maxTurns).toBe(5); // MESSAGE_MAX_TURNS_PLANNING
+        expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -1945,9 +1945,9 @@ describe('MasterManager', () => {
         // Two calls: (failed) AI classifier + task execution
         expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-        // Task execution uses keyword-fallback maxTurns for tool-use (10)
+        // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
-        expect(taskCall?.maxTurns).toBe(10);
+        expect(taskCall?.maxTurns).toBe(15);
 
         expect(response).toBe('config.json generated.');
       });
@@ -1981,8 +1981,8 @@ describe('MasterManager', () => {
       expect(masterCall?.prompt).toContain('The user asked:');
       expect(masterCall?.prompt).toContain('implement oauth login');
       expect(masterCall?.prompt).toContain('SPAWN');
-      // Planning prompt uses MESSAGE_MAX_TURNS_PLANNING = 5
-      expect(masterCall?.maxTurns).toBe(5);
+      // Planning prompt uses MESSAGE_MAX_TURNS_PLANNING = 25
+      expect(masterCall?.maxTurns).toBe(25);
     });
 
     it('complex task triggers worker spawning when Master returns SPAWN markers', async () => {
