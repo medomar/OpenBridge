@@ -919,6 +919,7 @@ export class MasterManager {
       masterToolName: this.masterTool.name,
       discoveredTools: this.discoveredTools,
       customProfiles,
+      modelRegistry: this.modelRegistry,
     });
 
     try {
