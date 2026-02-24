@@ -206,6 +206,15 @@ Deep dive: [Architecture](docs/ARCHITECTURE.md) | [Project Overview](OVERVIEW.md
 
 ---
 
+## Contributors
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/medomar"><img src="https://avatars.githubusercontent.com/u/20699993?v=4" width="80px;" alt=""/><br /><sub><b>Sayadi Med Omar</b></sub></a><br />Founder &amp; Lead Developer</td>
+    <td align="center"><a href="https://github.com/shtayner"><img src="https://avatars.githubusercontent.com/u/24533234?v=4" width="80px;" alt=""/><br /><sub><b>Haifa BEN LETAIFA</b></sub></a><br />Founder &amp; Lead Developer</td>
+  </tr>
+</table>
+
 ## Contributing
 
 We welcome contributions! Whether it's a new connector, AI tool integration, bug fix, or documentation improvement — see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
