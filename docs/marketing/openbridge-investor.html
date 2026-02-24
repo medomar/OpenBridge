@@ -1,1469 +1,1675 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenBridge — Investor Overview</title>
-  <style>
-    :root {
-      --bg: #0a0e1a;
-      --surface: #131a2b;
-      --surface-alt: #1a2340;
-      --border: #1e2d4a;
-      --text: #e2e8f0;
-      --text-muted: #8b9dc3;
-      --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.15);
-      --green: #4ade80;
-      --green-dim: rgba(74, 222, 128, 0.1);
-      --orange: #fb923c;
-      --purple: #a78bfa;
-      --purple-dim: rgba(167, 139, 250, 0.1);
-      --pink: #f472b6;
-      --gold: #fbbf24;
-      --gold-dim: rgba(251, 191, 36, 0.1);
-      --red: #f87171;
-    }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.7;
-      overflow-x: hidden;
-    }
-
-    /* ── Navigation ─────────────────────────── */
-    nav {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 100;
-      background: rgba(10, 14, 26, 0.85);
-      backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-      padding: 0 32px;
-    }
-
-    nav .nav-inner {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 64px;
-    }
-
-    nav .logo {
-      font-size: 1.3rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-    }
-
-    nav .logo span { color: var(--accent); }
-
-    nav .nav-links {
-      display: flex;
-      gap: 28px;
-      list-style: none;
-    }
-
-    nav .nav-links a {
-      color: var(--text-muted);
-      text-decoration: none;
-      font-size: 0.88rem;
-      font-weight: 500;
-      transition: color 0.2s;
-    }
-
-    nav .nav-links a:hover { color: var(--accent); }
-
-    /* ── Hero ────────────────────────────────── */
-    .hero {
-      text-align: center;
-      padding: 160px 24px 100px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: -300px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 1200px;
-      height: 1200px;
-      background: radial-gradient(circle, rgba(56,189,248,0.06) 0%, rgba(167,139,250,0.03) 40%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--border), transparent);
-    }
-
-    .hero .pre-title {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 20px;
-      border-radius: 999px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--gold);
-      margin-bottom: 28px;
-    }
-
-    .hero h1 {
-      font-size: 4rem;
-      font-weight: 800;
-      letter-spacing: -2px;
-      line-height: 1.1;
-      margin-bottom: 20px;
-      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero h1 em {
-      font-style: normal;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero .subtitle {
-      font-size: 1.3rem;
-      color: var(--text-muted);
-      max-width: 700px;
-      margin: 0 auto 40px;
-      line-height: 1.6;
-    }
-
-    .hero-stats {
-      display: flex;
-      justify-content: center;
-      gap: 48px;
-      flex-wrap: wrap;
-    }
-
-    .hero-stat {
-      text-align: center;
-    }
-
-    .hero-stat .num {
-      font-size: 2.5rem;
-      font-weight: 800;
-      color: #fff;
-      display: block;
-      line-height: 1.2;
-    }
-
-    .hero-stat .num span { color: var(--accent); }
-
-    .hero-stat .label {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      font-weight: 600;
-    }
-
-    /* ── Containers ──────────────────────────── */
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    section {
-      padding: 80px 0;
-      position: relative;
-    }
-
-    section::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 80%;
-      max-width: 900px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--border), transparent);
-    }
-
-    section:last-of-type::after { display: none; }
-
-    .section-tag {
-      display: inline-block;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 3px;
-      color: var(--accent);
-      margin-bottom: 12px;
-    }
-
-    h2 {
-      font-size: 2.5rem;
-      font-weight: 800;
-      letter-spacing: -1px;
-      color: #fff;
-      margin-bottom: 16px;
-      line-height: 1.2;
-    }
-
-    p.lead {
-      color: var(--text-muted);
-      font-size: 1.1rem;
-      max-width: 680px;
-      margin-bottom: 48px;
-    }
-
-    /* ── Problem Section ────────────────────── */
-    .problem-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 28px;
-    }
-
-    .pain-point {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-      transition: border-color 0.3s;
-    }
-
-    .pain-point:hover { border-color: rgba(248, 113, 113, 0.3); }
-
-    .pain-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: rgba(248, 113, 113, 0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.2rem;
-      flex-shrink: 0;
-    }
-
-    .pain-point h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 6px;
-    }
-
-    .pain-point p {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Solution Section ───────────────────── */
-    .solution-visual {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 24px;
-      margin-bottom: 48px;
-    }
-
-    .sol-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px 24px;
-      text-align: center;
-      transition: all 0.3s;
-    }
-
-    .sol-card:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      transform: translateY(-4px);
-    }
-
-    .sol-icon {
-      width: 64px;
-      height: 64px;
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.8rem;
-      margin: 0 auto 16px;
-    }
-
-    .sol-card:nth-child(1) .sol-icon { background: var(--accent-glow); }
-    .sol-card:nth-child(2) .sol-icon { background: var(--purple-dim); }
-    .sol-card:nth-child(3) .sol-icon { background: var(--green-dim); }
-
-    .sol-card h3 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 8px;
-    }
-
-    .sol-card p {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── How It Works (simplified) ──────────── */
-    .how-flow {
-      display: flex;
-      align-items: flex-start;
-      gap: 0;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    .how-step {
-      flex: 1;
-      min-width: 200px;
-      max-width: 280px;
-      text-align: center;
-      padding: 0 16px;
-      position: relative;
-    }
-
-    .how-step::after {
-      content: '';
-      position: absolute;
-      top: 28px;
-      right: -8px;
-      width: 16px;
-      height: 2px;
-      background: var(--border);
-    }
-
-    .how-step:last-child::after { display: none; }
-
-    .how-num {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--purple));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.3rem;
-      font-weight: 800;
-      color: #fff;
-      margin: 0 auto 16px;
-    }
-
-    .how-step h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 8px;
-    }
-
-    .how-step p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Chat Demo ──────────────────────────── */
-    .demo-wrapper {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 32px;
-      max-width: 560px;
-      margin: 0 auto;
-    }
-
-    .demo-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 24px;
-    }
-
-    .demo-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--purple));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.1rem;
-    }
-
-    .demo-name {
-      font-weight: 700;
-      font-size: 0.95rem;
-      color: #fff;
-    }
-
-    .demo-status {
-      font-size: 0.78rem;
-      color: var(--green);
-    }
-
-    .chat-messages {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .msg {
-      padding: 12px 16px;
-      border-radius: 16px;
-      font-size: 0.9rem;
-      line-height: 1.5;
-      max-width: 88%;
-      animation: fadeIn 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .msg.user {
-      background: #005c4b;
-      color: #d1fae5;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
-    }
-
-    .msg.ai {
-      background: var(--surface-alt);
-      color: var(--text);
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
-    }
-
-    .msg.ai .progress {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      font-style: italic;
-      display: block;
-      margin-top: 6px;
-    }
-
-    /* ── Market Opportunity ──────────────────── */
-    .market-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    .market-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px;
-    }
-
-    .market-card .market-num {
-      font-size: 2.8rem;
-      font-weight: 800;
-      line-height: 1;
-      margin-bottom: 4px;
-    }
-
-    .market-card:nth-child(1) .market-num { color: var(--accent); }
-    .market-card:nth-child(2) .market-num { color: var(--green); }
-    .market-card:nth-child(3) .market-num { color: var(--purple); }
-    .market-card:nth-child(4) .market-num { color: var(--gold); }
-
-    .market-card .market-label {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 8px;
-    }
-
-    .market-card p {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Competitive Advantages ──────────────── */
-    .advantages {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 20px;
-    }
-
-    .advantage {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 28px;
-      transition: all 0.3s;
-    }
-
-    .advantage:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      transform: translateY(-2px);
-    }
-
-    .advantage .adv-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      background: var(--accent-glow);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.3rem;
-      margin-bottom: 16px;
-    }
-
-    .advantage h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 8px;
-    }
-
-    .advantage p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Business Model ─────────────────────── */
-    .biz-tracks {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 24px;
-    }
-
-    .biz-track {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 32px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .biz-track::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-    }
-
-    .biz-track:nth-child(1)::before { background: linear-gradient(90deg, var(--accent), var(--purple)); }
-    .biz-track:nth-child(2)::before { background: linear-gradient(90deg, var(--green), var(--accent)); }
-    .biz-track:nth-child(3)::before { background: linear-gradient(90deg, var(--gold), var(--orange)); }
-
-    .biz-track .track-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
-
-    .biz-track h3 {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 12px;
-    }
-
-    .biz-track p {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-      margin-bottom: 16px;
-    }
-
-    .biz-track ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .biz-track li {
-      padding: 6px 0;
-      padding-left: 20px;
-      position: relative;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-    }
-
-    .biz-track li::before {
-      content: '>';
-      position: absolute;
-      left: 0;
-      color: var(--accent);
-      font-weight: 700;
-    }
-
-    /* ── Traction Section ───────────────────── */
-    .traction-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    .traction-item {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 28px;
-      display: flex;
-      gap: 20px;
-      align-items: flex-start;
-    }
-
-    .traction-check {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: var(--green-dim);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      color: var(--green);
-      font-weight: 700;
-      font-size: 1rem;
-    }
-
-    .traction-item h3 {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 4px;
-    }
-
-    .traction-item p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-    }
-
-    /* ── Use Cases ──────────────────────────── */
-    .use-cases {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    .use-case {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-      transition: border-color 0.3s;
-    }
-
-    .use-case:hover { border-color: rgba(167, 139, 250, 0.3); }
-
-    .use-case .uc-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .use-case .uc-icon {
-      font-size: 1.5rem;
-    }
-
-    .use-case h3 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .use-case .uc-example {
-      background: rgba(0,0,0,0.3);
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin-top: 12px;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      font-size: 0.8rem;
-      color: var(--green);
-      line-height: 1.6;
-    }
-
-    .use-case p {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* ── Channel showcase ───────────────────── */
-    .channels-row {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-top: 24px;
-    }
-
-    .channel-badge {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 14px 24px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      transition: border-color 0.3s;
-    }
-
-    .channel-badge:hover { border-color: var(--accent); }
-
-    .channel-badge .ch-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--green);
-    }
-
-    .channel-badge .ch-name {
-      font-weight: 600;
-      font-size: 0.95rem;
-      color: #fff;
-    }
-
-    .channel-badge .ch-lib {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-
-    /* ── Roadmap ─────────────────────────────── */
-    .roadmap {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 24px;
-    }
-
-    .roadmap-phase {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px;
-    }
-
-    .roadmap-phase .phase-tag {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 6px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 12px;
-    }
-
-    .phase-tag.done { background: var(--green-dim); color: var(--green); }
-    .phase-tag.current { background: var(--accent-glow); color: var(--accent); }
-    .phase-tag.next { background: var(--purple-dim); color: var(--purple); }
-
-    .roadmap-phase h3 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 12px;
-    }
-
-    .roadmap-phase ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .roadmap-phase li {
-      padding: 5px 0;
-      padding-left: 20px;
-      position: relative;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-    }
-
-    .roadmap-phase li::before {
-      position: absolute;
-      left: 0;
-      font-size: 0.85rem;
-    }
-
-    .phase-tag.done + h3 + ul li::before { content: '\2713'; color: var(--green); }
-    .phase-tag.current + h3 + ul li::before { content: '\25CB'; color: var(--accent); }
-    .phase-tag.next + h3 + ul li::before { content: '\25CB'; color: var(--purple); }
-
-    /* ── CTA Section ─────────────────────────── */
-    .cta-section {
-      text-align: center;
-      padding: 100px 24px;
-      position: relative;
-    }
-
-    .cta-section::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 800px;
-      height: 400px;
-      background: radial-gradient(circle, rgba(56,189,248,0.05) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .cta-section h2 {
-      font-size: 2.8rem;
-      margin-bottom: 16px;
-    }
-
-    .cta-section p {
-      font-size: 1.15rem;
-      color: var(--text-muted);
-      max-width: 600px;
-      margin: 0 auto 40px;
-    }
-
-    .cta-buttons {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .cta-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 16px 32px;
-      border-radius: 12px;
-      font-size: 1rem;
-      font-weight: 700;
-      text-decoration: none;
-      transition: all 0.3s;
-    }
-
-    .cta-btn.primary {
-      background: linear-gradient(135deg, var(--accent), var(--purple));
-      color: #fff;
-    }
-
-    .cta-btn.primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 40px rgba(56, 189, 248, 0.25);
-    }
-
-    .cta-btn.secondary {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
-
-    .cta-btn.secondary:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
-    }
-
-    /* ── Footer ──────────────────────────────── */
-    footer {
-      text-align: center;
-      padding: 40px 24px;
-      border-top: 1px solid var(--border);
-    }
-
-    footer p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-    }
-
-    footer .license {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 8px;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
-    /* ── Responsive ──────────────────────────── */
-    @media (max-width: 900px) {
-      .problem-grid,
-      .market-cards,
-      .traction-grid,
-      .use-cases { grid-template-columns: 1fr; }
-
-      .solution-visual,
-      .advantages,
-      .biz-tracks,
-      .roadmap { grid-template-columns: 1fr; }
-
-      .hero h1 { font-size: 2.5rem; }
-      .hero .subtitle { font-size: 1.05rem; }
-      h2 { font-size: 1.8rem; }
-      .hero-stats { gap: 28px; }
-      .hero-stat .num { font-size: 2rem; }
-
-      nav .nav-links { display: none; }
-    }
-
-    @media (max-width: 640px) {
-      .hero { padding: 120px 16px 60px; }
-      .hero h1 { font-size: 2rem; }
-      .how-flow { flex-direction: column; align-items: center; }
-      .how-step::after { display: none; }
-      .cta-section h2 { font-size: 2rem; }
-    }
-  </style>
-</head>
-<body>
-
-  <!-- ═══════════ NAV ═══════════ -->
-  <nav>
-    <div class="nav-inner">
-      <div class="logo"><span>Open</span>Bridge</div>
-      <ul class="nav-links">
-        <a href="#problem">Problem</a>
-        <a href="#solution">Solution</a>
-        <a href="#demo">Demo</a>
-        <a href="#market">Market</a>
-        <a href="#model">Business Model</a>
-        <a href="#traction">Traction</a>
-        <a href="#roadmap">Roadmap</a>
-      </ul>
-    </div>
-  </nav>
-
-  <!-- ═══════════ HERO ═══════════ -->
-  <header class="hero">
-    <div class="pre-title">Investor Overview &mdash; February 2026</div>
-    <h1>Your AI tools,<br>one <em>message</em> away.</h1>
-    <p class="subtitle">
-      OpenBridge is the open-source bridge that connects your messaging apps to a self-governing AI agent on your machine &mdash; zero API keys, zero extra cost.
-    </p>
-    <div class="hero-stats">
-      <div class="hero-stat">
-        <span class="num">5</span>
-        <span class="label">Channels Live</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenBridge — Investor Overview</title>
+    <style>
+      :root {
+        --bg: #0a0e1a;
+        --surface: #131a2b;
+        --surface-alt: #1a2340;
+        --border: #1e2d4a;
+        --text: #e2e8f0;
+        --text-muted: #8b9dc3;
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.15);
+        --green: #4ade80;
+        --green-dim: rgba(74, 222, 128, 0.1);
+        --orange: #fb923c;
+        --purple: #a78bfa;
+        --purple-dim: rgba(167, 139, 250, 0.1);
+        --pink: #f472b6;
+        --gold: #fbbf24;
+        --gold-dim: rgba(251, 191, 36, 0.1);
+        --red: #f87171;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+        overflow-x: hidden;
+      }
+
+      /* ── Navigation ─────────────────────────── */
+      nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(10, 14, 26, 0.85);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--border);
+        padding: 0 32px;
+      }
+
+      nav .nav-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+
+      nav .logo {
+        font-size: 1.3rem;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+      }
+
+      nav .logo span {
+        color: var(--accent);
+      }
+
+      nav .nav-links {
+        display: flex;
+        gap: 28px;
+        list-style: none;
+      }
+
+      nav .nav-links a {
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 0.88rem;
+        font-weight: 500;
+        transition: color 0.2s;
+      }
+
+      nav .nav-links a:hover {
+        color: var(--accent);
+      }
+
+      /* ── Hero ────────────────────────────────── */
+      .hero {
+        text-align: center;
+        padding: 160px 24px 100px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::before {
+        content: '';
+        position: absolute;
+        top: -300px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 1200px;
+        height: 1200px;
+        background: radial-gradient(
+          circle,
+          rgba(56, 189, 248, 0.06) 0%,
+          rgba(167, 139, 250, 0.03) 40%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+
+      .hero::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border), transparent);
+      }
+
+      .hero .pre-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 20px;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--gold);
+        margin-bottom: 28px;
+      }
+
+      .hero h1 {
+        font-size: 4rem;
+        font-weight: 800;
+        letter-spacing: -2px;
+        line-height: 1.1;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .hero h1 em {
+        font-style: normal;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .hero .subtitle {
+        font-size: 1.3rem;
+        color: var(--text-muted);
+        max-width: 700px;
+        margin: 0 auto 40px;
+        line-height: 1.6;
+      }
+
+      .hero-stats {
+        display: flex;
+        justify-content: center;
+        gap: 48px;
+        flex-wrap: wrap;
+      }
+
+      .hero-stat {
+        text-align: center;
+      }
+
+      .hero-stat .num {
+        font-size: 2.5rem;
+        font-weight: 800;
+        color: #fff;
+        display: block;
+        line-height: 1.2;
+      }
+
+      .hero-stat .num span {
+        color: var(--accent);
+      }
+
+      .hero-stat .label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 600;
+      }
+
+      /* ── Containers ──────────────────────────── */
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      section {
+        padding: 80px 0;
+        position: relative;
+      }
+
+      section::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80%;
+        max-width: 900px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border), transparent);
+      }
+
+      section:last-of-type::after {
+        display: none;
+      }
+
+      .section-tag {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        color: var(--accent);
+        margin-bottom: 12px;
+      }
+
+      h2 {
+        font-size: 2.5rem;
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: #fff;
+        margin-bottom: 16px;
+        line-height: 1.2;
+      }
+
+      p.lead {
+        color: var(--text-muted);
+        font-size: 1.1rem;
+        max-width: 680px;
+        margin-bottom: 48px;
+      }
+
+      /* ── Problem Section ────────────────────── */
+      .problem-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+
+      .pain-point {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        transition: border-color 0.3s;
+      }
+
+      .pain-point:hover {
+        border-color: rgba(248, 113, 113, 0.3);
+      }
+
+      .pain-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: rgba(248, 113, 113, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+      }
+
+      .pain-point h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 6px;
+      }
+
+      .pain-point p {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── Solution Section ───────────────────── */
+      .solution-visual {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 48px;
+      }
+
+      .sol-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px 24px;
+        text-align: center;
+        transition: all 0.3s;
+      }
+
+      .sol-card:hover {
+        border-color: rgba(56, 189, 248, 0.3);
+        transform: translateY(-4px);
+      }
+
+      .sol-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        margin: 0 auto 16px;
+      }
+
+      .sol-card:nth-child(1) .sol-icon {
+        background: var(--accent-glow);
+      }
+      .sol-card:nth-child(2) .sol-icon {
+        background: var(--purple-dim);
+      }
+      .sol-card:nth-child(3) .sol-icon {
+        background: var(--green-dim);
+      }
+
+      .sol-card h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 8px;
+      }
+
+      .sol-card p {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── How It Works (simplified) ──────────── */
+      .how-flow {
+        display: flex;
+        align-items: flex-start;
+        gap: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .how-step {
+        flex: 1;
+        min-width: 200px;
+        max-width: 280px;
+        text-align: center;
+        padding: 0 16px;
+        position: relative;
+      }
+
+      .how-step::after {
+        content: '';
+        position: absolute;
+        top: 28px;
+        right: -8px;
+        width: 16px;
+        height: 2px;
+        background: var(--border);
+      }
+
+      .how-step:last-child::after {
+        display: none;
+      }
+
+      .how-num {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), var(--purple));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: #fff;
+        margin: 0 auto 16px;
+      }
+
+      .how-step h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 8px;
+      }
+
+      .how-step p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── Chat Demo ──────────────────────────── */
+      .demo-wrapper {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 32px;
+        max-width: 560px;
+        margin: 0 auto;
+      }
+
+      .demo-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 24px;
+      }
+
+      .demo-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), var(--purple));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+      }
+
+      .demo-name {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #fff;
+      }
+
+      .demo-status {
+        font-size: 0.78rem;
+        color: var(--green);
+      }
+
+      .chat-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .msg {
+        padding: 12px 16px;
+        border-radius: 16px;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        max-width: 88%;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .msg.user {
+        background: #005c4b;
+        color: #d1fae5;
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+      }
+
+      .msg.ai {
+        background: var(--surface-alt);
+        color: var(--text);
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+      }
+
+      .msg.ai .progress {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-style: italic;
+        display: block;
+        margin-top: 6px;
+      }
+
+      /* ── Market Opportunity ──────────────────── */
+      .market-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .market-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px;
+      }
+
+      .market-card .market-num {
+        font-size: 2.8rem;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 4px;
+      }
+
+      .market-card:nth-child(1) .market-num {
+        color: var(--accent);
+      }
+      .market-card:nth-child(2) .market-num {
+        color: var(--green);
+      }
+      .market-card:nth-child(3) .market-num {
+        color: var(--purple);
+      }
+      .market-card:nth-child(4) .market-num {
+        color: var(--gold);
+      }
+
+      .market-card .market-label {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 8px;
+      }
+
+      .market-card p {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── Competitive Advantages ──────────────── */
+      .advantages {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 20px;
+      }
+
+      .advantage {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 28px;
+        transition: all 0.3s;
+      }
+
+      .advantage:hover {
+        border-color: rgba(56, 189, 248, 0.3);
+        transform: translateY(-2px);
+      }
+
+      .advantage .adv-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: var(--accent-glow);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        margin-bottom: 16px;
+      }
+
+      .advantage h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 8px;
+      }
+
+      .advantage p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── Business Model ─────────────────────── */
+      .biz-tracks {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 24px;
+      }
+
+      .biz-track {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .biz-track::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+
+      .biz-track:nth-child(1)::before {
+        background: linear-gradient(90deg, var(--accent), var(--purple));
+      }
+      .biz-track:nth-child(2)::before {
+        background: linear-gradient(90deg, var(--green), var(--accent));
+      }
+      .biz-track:nth-child(3)::before {
+        background: linear-gradient(90deg, var(--gold), var(--orange));
+      }
+
+      .biz-track .track-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .biz-track h3 {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 12px;
+      }
+
+      .biz-track p {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+        margin-bottom: 16px;
+      }
+
+      .biz-track ul {
+        list-style: none;
+        padding: 0;
+      }
+
+      .biz-track li {
+        padding: 6px 0;
+        padding-left: 20px;
+        position: relative;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .biz-track li::before {
+        content: '>';
+        position: absolute;
+        left: 0;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      /* ── Traction Section ───────────────────── */
+      .traction-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .traction-item {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 28px;
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+
+      .traction-check {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--green-dim);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: var(--green);
+        font-weight: 700;
+        font-size: 1rem;
+      }
+
+      .traction-item h3 {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+
+      .traction-item p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      /* ── Use Cases ──────────────────────────── */
+      .use-cases {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .use-case {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+        transition: border-color 0.3s;
+      }
+
+      .use-case:hover {
+        border-color: rgba(167, 139, 250, 0.3);
+      }
+
+      .use-case .uc-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .use-case .uc-icon {
+        font-size: 1.5rem;
+      }
+
+      .use-case h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+      }
+
+      .use-case .uc-example {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-top: 12px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 0.8rem;
+        color: var(--green);
+        line-height: 1.6;
+      }
+
+      .use-case p {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* ── Channel showcase ───────────────────── */
+      .channels-row {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 24px;
+      }
+
+      .channel-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        transition: border-color 0.3s;
+      }
+
+      .channel-badge:hover {
+        border-color: var(--accent);
+      }
+
+      .channel-badge .ch-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .channel-badge .ch-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #fff;
+      }
+
+      .channel-badge .ch-lib {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+
+      /* ── Roadmap ─────────────────────────────── */
+      .roadmap {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 24px;
+      }
+
+      .roadmap-phase {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px;
+      }
+
+      .roadmap-phase .phase-tag {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 12px;
+      }
+
+      .phase-tag.done {
+        background: var(--green-dim);
+        color: var(--green);
+      }
+      .phase-tag.current {
+        background: var(--accent-glow);
+        color: var(--accent);
+      }
+      .phase-tag.next {
+        background: var(--purple-dim);
+        color: var(--purple);
+      }
+
+      .roadmap-phase h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 12px;
+      }
+
+      .roadmap-phase ul {
+        list-style: none;
+        padding: 0;
+      }
+
+      .roadmap-phase li {
+        padding: 5px 0;
+        padding-left: 20px;
+        position: relative;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .roadmap-phase li::before {
+        position: absolute;
+        left: 0;
+        font-size: 0.85rem;
+      }
+
+      .phase-tag.done + h3 + ul li::before {
+        content: '\2713';
+        color: var(--green);
+      }
+      .phase-tag.current + h3 + ul li::before {
+        content: '\25CB';
+        color: var(--accent);
+      }
+      .phase-tag.next + h3 + ul li::before {
+        content: '\25CB';
+        color: var(--purple);
+      }
+
+      /* ── CTA Section ─────────────────────────── */
+      .cta-section {
+        text-align: center;
+        padding: 100px 24px;
+        position: relative;
+      }
+
+      .cta-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 800px;
+        height: 400px;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.05) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      .cta-section h2 {
+        font-size: 2.8rem;
+        margin-bottom: 16px;
+      }
+
+      .cta-section p {
+        font-size: 1.15rem;
+        color: var(--text-muted);
+        max-width: 600px;
+        margin: 0 auto 40px;
+      }
+
+      .cta-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .cta-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 32px;
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 700;
+        text-decoration: none;
+        transition: all 0.3s;
+      }
+
+      .cta-btn.primary {
+        background: linear-gradient(135deg, var(--accent), var(--purple));
+        color: #fff;
+      }
+
+      .cta-btn.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(56, 189, 248, 0.25);
+      }
+
+      .cta-btn.secondary {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      .cta-btn.secondary:hover {
+        border-color: var(--accent);
+        transform: translateY(-2px);
+      }
+
+      /* ── Footer ──────────────────────────────── */
+      footer {
+        text-align: center;
+        padding: 40px 24px;
+        border-top: 1px solid var(--border);
+      }
+
+      footer p {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      footer .license {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
+
+      /* ── Responsive ──────────────────────────── */
+      @media (max-width: 900px) {
+        .problem-grid,
+        .market-cards,
+        .traction-grid,
+        .use-cases {
+          grid-template-columns: 1fr;
+        }
+
+        .solution-visual,
+        .advantages,
+        .biz-tracks,
+        .roadmap {
+          grid-template-columns: 1fr;
+        }
+
+        .hero h1 {
+          font-size: 2.5rem;
+        }
+        .hero .subtitle {
+          font-size: 1.05rem;
+        }
+        h2 {
+          font-size: 1.8rem;
+        }
+        .hero-stats {
+          gap: 28px;
+        }
+        .hero-stat .num {
+          font-size: 2rem;
+        }
+
+        nav .nav-links {
+          display: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .hero {
+          padding: 120px 16px 60px;
+        }
+        .hero h1 {
+          font-size: 2rem;
+        }
+        .how-flow {
+          flex-direction: column;
+          align-items: center;
+        }
+        .how-step::after {
+          display: none;
+        }
+        .cta-section h2 {
+          font-size: 2rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══════════ NAV ═══════════ -->
+    <nav>
+      <div class="nav-inner">
+        <div class="logo"><span>Open</span>Bridge</div>
+        <ul class="nav-links">
+          <a href="#problem">Problem</a>
+          <a href="#solution">Solution</a>
+          <a href="#demo">Demo</a>
+          <a href="#market">Market</a>
+          <a href="#model">Business Model</a>
+          <a href="#traction">Traction</a>
+          <a href="#roadmap">Roadmap</a>
+        </ul>
       </div>
-      <div class="hero-stat">
-        <span class="num">14<span>/</span>14</span>
-        <span class="label">Components Stable</span>
-      </div>
-      <div class="hero-stat">
-        <span class="num">207<span>+</span></span>
-        <span class="label">Tasks Completed</span>
-      </div>
-      <div class="hero-stat">
-        <span class="num">0</span>
-        <span class="label">API Keys Required</span>
-      </div>
-    </div>
-  </header>
+    </nav>
 
-  <!-- ═══════════ PROBLEM ═══════════ -->
-  <section id="problem">
-    <div class="container">
-      <span class="section-tag">The Problem</span>
-      <h2>AI tools are powerful<br>but locked in your terminal</h2>
-      <p class="lead">
-        Millions of developers pay for AI coding tools. But using them requires sitting at your desk, copy-pasting context, and starting fresh every session.
+    <!-- ═══════════ HERO ═══════════ -->
+    <header class="hero">
+      <div class="pre-title">Investor Overview &mdash; February 2026</div>
+      <h1>Your AI tools,<br />one <em>message</em> away.</h1>
+      <p class="subtitle">
+        OpenBridge is the open-source bridge that connects your messaging apps to a self-governing
+        AI agent on your machine &mdash; zero API keys, zero extra cost.
       </p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="num">5</span>
+          <span class="label">Channels Live</span>
+        </div>
+        <div class="hero-stat">
+          <span class="num">14<span>/</span>14</span>
+          <span class="label">Components Stable</span>
+        </div>
+        <div class="hero-stat">
+          <span class="num">207<span>+</span></span>
+          <span class="label">Tasks Completed</span>
+        </div>
+        <div class="hero-stat">
+          <span class="num">0</span>
+          <span class="label">API Keys Required</span>
+        </div>
+      </div>
+    </header>
 
-      <div class="problem-grid">
-        <div class="pain-point">
-          <div class="pain-icon">&#x1f4bb;</div>
-          <div>
-            <h3>Desk-Locked</h3>
-            <p>AI tools only work when you're at your computer. You can't trigger work from your phone, commute, or meeting.</p>
+    <!-- ═══════════ PROBLEM ═══════════ -->
+    <section id="problem">
+      <div class="container">
+        <span class="section-tag">The Problem</span>
+        <h2>AI tools are powerful<br />but locked in your terminal</h2>
+        <p class="lead">
+          Millions of developers pay for AI coding tools. But using them requires sitting at your
+          desk, copy-pasting context, and starting fresh every session.
+        </p>
+
+        <div class="problem-grid">
+          <div class="pain-point">
+            <div class="pain-icon">&#x1f4bb;</div>
+            <div>
+              <h3>Desk-Locked</h3>
+              <p>
+                AI tools only work when you're at your computer. You can't trigger work from your
+                phone, commute, or meeting.
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="pain-point">
-          <div class="pain-icon">&#x1f9e0;</div>
-          <div>
-            <h3>No Persistent Memory</h3>
-            <p>Every session starts from scratch. The AI doesn't remember your project structure, past decisions, or what worked before.</p>
+          <div class="pain-point">
+            <div class="pain-icon">&#x1f9e0;</div>
+            <div>
+              <h3>No Persistent Memory</h3>
+              <p>
+                Every session starts from scratch. The AI doesn't remember your project structure,
+                past decisions, or what worked before.
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="pain-point">
-          <div class="pain-icon">&#x1f50c;</div>
-          <div>
-            <h3>Isolated Tools</h3>
-            <p>Claude Code, Codex, Aider &mdash; each runs alone. No coordination between tools, no shared intelligence.</p>
+          <div class="pain-point">
+            <div class="pain-icon">&#x1f50c;</div>
+            <div>
+              <h3>Isolated Tools</h3>
+              <p>
+                Claude Code, Codex, Aider &mdash; each runs alone. No coordination between tools, no
+                shared intelligence.
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="pain-point">
-          <div class="pain-icon">&#x2699;&#xfe0f;</div>
-          <div>
-            <h3>Manual Orchestration</h3>
-            <p>You are the orchestrator. You decide what to run, where, and how. The AI can't self-govern complex tasks.</p>
+          <div class="pain-point">
+            <div class="pain-icon">&#x2699;&#xfe0f;</div>
+            <div>
+              <h3>Manual Orchestration</h3>
+              <p>
+                You are the orchestrator. You decide what to run, where, and how. The AI can't
+                self-govern complex tasks.
+              </p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════ SOLUTION ═══════════ -->
-  <section id="solution">
-    <div class="container">
-      <span class="section-tag">The Solution</span>
-      <h2>An autonomous bridge between<br>you and your AI tools</h2>
-      <p class="lead">
-        OpenBridge auto-discovers the AI tools on your machine, launches a self-governing Master AI that understands your project, and lets you interact from any messaging platform.
+    <!-- ═══════════ SOLUTION ═══════════ -->
+    <section id="solution">
+      <div class="container">
+        <span class="section-tag">The Solution</span>
+        <h2>An autonomous bridge between<br />you and your AI tools</h2>
+        <p class="lead">
+          OpenBridge auto-discovers the AI tools on your machine, launches a self-governing Master
+          AI that understands your project, and lets you interact from any messaging platform.
+        </p>
+
+        <div class="solution-visual">
+          <div class="sol-card">
+            <div class="sol-icon">&#x1f4f1;</div>
+            <h3>Message From Anywhere</h3>
+            <p>
+              WhatsApp, Telegram, Discord, or a browser. Send a message, get AI-powered results in
+              your project.
+            </p>
+          </div>
+          <div class="sol-card">
+            <div class="sol-icon">&#x1f916;</div>
+            <h3>Self-Governing AI</h3>
+            <p>
+              The Master AI picks the model, tools, and strategy per task. It decomposes complex
+              work into bounded worker agents.
+            </p>
+          </div>
+          <div class="sol-card">
+            <div class="sol-icon">&#x1f4be;</div>
+            <h3>Persistent Brain</h3>
+            <p>
+              Everything the AI learns lives in <code>.openbridge/</code> &mdash; git-tracked,
+              versioned, and survives across sessions.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ HOW IT WORKS ═══════════ -->
+    <section>
+      <div class="container">
+        <span class="section-tag">How It Works</span>
+        <h2>Three steps, zero complexity</h2>
+        <p class="lead">Users configure three fields. Everything else is automatic.</p>
+
+        <div class="how-flow">
+          <div class="how-step">
+            <div class="how-num">1</div>
+            <h3>Configure</h3>
+            <p>
+              Set your workspace path, pick a messaging channel, add your phone to the whitelist.
+              One command: <code>npx openbridge init</code>
+            </p>
+          </div>
+          <div class="how-step">
+            <div class="how-num">2</div>
+            <h3>Discover</h3>
+            <p>
+              OpenBridge scans your machine for AI tools, ranks them by capability, picks the best
+              as Master, and silently explores your project.
+            </p>
+          </div>
+          <div class="how-step">
+            <div class="how-num">3</div>
+            <h3>Interact</h3>
+            <p>
+              Send messages from your phone. The Master AI answers questions, spawns workers to
+              write code, run tests, and commit changes.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ DEMO ═══════════ -->
+    <section id="demo">
+      <div class="container">
+        <span class="section-tag">Live Demo</span>
+        <h2>Real conversations,<br />real results</h2>
+        <p class="lead">
+          This is what it looks like to interact with the Master AI from your phone.
+        </p>
+
+        <div class="demo-wrapper">
+          <div class="demo-header">
+            <div class="demo-avatar">&#x1f916;</div>
+            <div>
+              <div class="demo-name">OpenBridge Master AI</div>
+              <div class="demo-status">online &mdash; exploring your-project</div>
+            </div>
+          </div>
+          <div class="chat-messages">
+            <div class="msg user">/ai what's in this project?</div>
+            <div class="msg ai">
+              A Node.js REST API (Express + TypeScript) with 12 routes, PostgreSQL via Prisma, JWT
+              auth, React frontend in /client, and 47 tests at 89% coverage. Currently on branch
+              feature/auth.
+            </div>
+            <div class="msg user">/ai add input validation to login</div>
+            <div class="msg ai">
+              Done. Added Zod validation to POST /auth/login &mdash; validates email format and
+              password length &ge; 8.
+              <span class="progress"
+                >Worker 1 (sonnet): modified 2 files &bull; Worker 2 (haiku): all 49 tests
+                pass</span
+              >
+            </div>
+            <div class="msg user">/ai which invoices are overdue?</div>
+            <div class="msg ai">
+              3 invoices overdue: Client A ($1,200 &mdash; 12 days), Client B ($850 &mdash; 7 days),
+              Client C ($2,400 &mdash; 3 days). Total: $4,450.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ USE CASES ═══════════ -->
+    <section>
+      <div class="container">
+        <span class="section-tag">Use Cases</span>
+        <h2>Built for developers.<br />Works for everyone.</h2>
+        <p class="lead">
+          Any workspace with files is an OpenBridge workspace. Code, spreadsheets, documents &mdash;
+          the AI adapts.
+        </p>
+
+        <div class="use-cases">
+          <div class="use-case">
+            <div class="uc-header">
+              <span class="uc-icon">&#x1f468;&#x200d;&#x1f4bb;</span>
+              <h3>Solo Developers</h3>
+            </div>
+            <p>
+              Manage projects from your phone. Ask questions, trigger builds, fix bugs &mdash; from
+              anywhere.
+            </p>
+            <div class="uc-example">/ai run tests and fix any failures</div>
+          </div>
+          <div class="use-case">
+            <div class="uc-header">
+              <span class="uc-icon">&#x1f3e2;</span>
+              <h3>Engineering Teams</h3>
+            </div>
+            <p>
+              Each team member gets a bridge to the team's codebase. Review code, check status,
+              deploy &mdash; from messaging.
+            </p>
+            <div class="uc-example">/ai what changed on develop since Friday?</div>
+          </div>
+          <div class="use-case">
+            <div class="uc-header">
+              <span class="uc-icon">&#x2615;</span>
+              <h3>Small Businesses</h3>
+            </div>
+            <p>
+              Point at a folder of spreadsheets. Ask about inventory, sales, schedules &mdash; no
+              code required.
+            </p>
+            <div class="uc-example">/ai what ingredients are running low?</div>
+          </div>
+          <div class="use-case">
+            <div class="uc-header">
+              <span class="uc-icon">&#x1f4bc;</span>
+              <h3>Consultants &amp; Agencies</h3>
+            </div>
+            <p>
+              Set up OpenBridge for clients. Offer AI-powered workspace management as a service.
+            </p>
+            <div class="uc-example">/ai generate this month's client report</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ CHANNELS ═══════════ -->
+    <section>
+      <div class="container" style="text-align: center">
+        <span class="section-tag">Channels</span>
+        <h2>5 messaging platforms. One bridge.</h2>
+        <p class="lead" style="margin-left: auto; margin-right: auto">
+          Each channel is a plugin. Adding a new one means implementing a single interface.
+        </p>
+
+        <div class="channels-row">
+          <div class="channel-badge">
+            <span class="ch-dot"></span>
+            <div>
+              <div class="ch-name">Console</div>
+              <div class="ch-lib">Built-in (stdin)</div>
+            </div>
+          </div>
+          <div class="channel-badge">
+            <span class="ch-dot"></span>
+            <div>
+              <div class="ch-name">WebChat</div>
+              <div class="ch-lib">Built-in (WebSocket)</div>
+            </div>
+          </div>
+          <div class="channel-badge">
+            <span class="ch-dot"></span>
+            <div>
+              <div class="ch-name">WhatsApp</div>
+              <div class="ch-lib">whatsapp-web.js</div>
+            </div>
+          </div>
+          <div class="channel-badge">
+            <span class="ch-dot"></span>
+            <div>
+              <div class="ch-name">Telegram</div>
+              <div class="ch-lib">grammY</div>
+            </div>
+          </div>
+          <div class="channel-badge">
+            <span class="ch-dot"></span>
+            <div>
+              <div class="ch-name">Discord</div>
+              <div class="ch-lib">discord.js v14</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ MARKET ═══════════ -->
+    <section id="market">
+      <div class="container">
+        <span class="section-tag">Market Opportunity</span>
+        <h2>AI agent infrastructure<br />is the next platform</h2>
+        <p class="lead">
+          The developer tools market is shifting from copilots to autonomous agents. OpenBridge sits
+          at the intersection of AI agents, messaging, and developer productivity.
+        </p>
+
+        <div class="market-cards">
+          <div class="market-card">
+            <div class="market-num">$32B</div>
+            <div class="market-label">AI Developer Tools Market (2026)</div>
+            <p>
+              The AI-assisted coding market is growing at 25%+ CAGR. Every developer will have AI
+              tools &mdash; they need infrastructure to orchestrate them.
+            </p>
+          </div>
+          <div class="market-card">
+            <div class="market-num">28M+</div>
+            <div class="market-label">Developers Using AI Tools</div>
+            <p>
+              GitHub Copilot alone has 1.8M+ paid users. Claude Code, Codex, Cursor, and Aider are
+              adding millions more. All potential OpenBridge users.
+            </p>
+          </div>
+          <div class="market-card">
+            <div class="market-num">3B+</div>
+            <div class="market-label">Messaging App Users</div>
+            <p>
+              WhatsApp (2B+), Telegram (900M+), Discord (200M+). OpenBridge turns these into AI
+              control planes.
+            </p>
+          </div>
+          <div class="market-card">
+            <div class="market-num">$0</div>
+            <div class="market-label">Per-Request Cost to Users</div>
+            <p>
+              Users bring their own AI subscriptions. OpenBridge adds orchestration and
+              accessibility &mdash; no usage-based pricing barrier.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ COMPETITIVE ADVANTAGES ═══════════ -->
+    <section>
+      <div class="container">
+        <span class="section-tag">Why Us</span>
+        <h2>Built-in moats that compound</h2>
+        <p class="lead">
+          Every design decision in OpenBridge creates compounding advantages that are hard to
+          replicate.
+        </p>
+
+        <div class="advantages">
+          <div class="advantage">
+            <div class="adv-icon">&#x1f512;</div>
+            <h3>Zero API Keys</h3>
+            <p>
+              Uses AI tools already on the user's machine. No vendor lock-in, no per-request fees,
+              no data leaving the machine.
+            </p>
+          </div>
+          <div class="advantage">
+            <div class="adv-icon">&#x1f9e0;</div>
+            <h3>Self-Governing Agent</h3>
+            <p>
+              The Master AI decides strategy per task. Not a chatbot wrapper &mdash; a genuine
+              autonomous agent with persistent memory.
+            </p>
+          </div>
+          <div class="advantage">
+            <div class="adv-icon">&#x1f50c;</div>
+            <h3>Plugin Architecture</h3>
+            <p>
+              Adding a new messaging channel or AI tool is a single interface implementation.
+              Community can extend without forking.
+            </p>
+          </div>
+          <div class="advantage">
+            <div class="adv-icon">&#x1f6e1;&#xfe0f;</div>
+            <h3>Security by Design</h3>
+            <p>
+              Workers are bounded with restricted tool profiles and turn limits. No
+              <code>--dangerously-skip-permissions</code>. Whitelist-only access.
+            </p>
+          </div>
+          <div class="advantage">
+            <div class="adv-icon">&#x1f4c8;</div>
+            <h3>Self-Improvement Loop</h3>
+            <p>
+              The AI tracks what prompts and models work best, refines its own strategies, and
+              creates custom tool profiles.
+            </p>
+          </div>
+          <div class="advantage">
+            <div class="adv-icon">&#x1f310;</div>
+            <h3>Open Source (Apache 2.0)</h3>
+            <p>
+              Community-driven adoption. Developers trust open-source tools for their codebase. The
+              moat is in the ecosystem, not the code.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ BUSINESS MODEL ═══════════ -->
+    <section id="model">
+      <div class="container">
+        <span class="section-tag">Business Model</span>
+        <h2>Open core with premium layers</h2>
+        <p class="lead">
+          The bridge is free and open source. Revenue comes from the ecosystem built on top of it.
+        </p>
+
+        <div class="biz-tracks">
+          <div class="biz-track">
+            <div class="track-label">Track 1</div>
+            <h3>OpenBridge Cloud</h3>
+            <p>
+              Managed hosting &mdash; run the bridge without maintaining infrastructure. Always-on,
+              no terminal required.
+            </p>
+            <ul>
+              <li>Hosted bridge instances</li>
+              <li>Team management dashboard</li>
+              <li>Usage analytics + monitoring</li>
+              <li>SLA + priority support</li>
+            </ul>
+          </div>
+          <div class="biz-track">
+            <div class="track-label">Track 2</div>
+            <h3>Professional Services</h3>
+            <p>Setup and customization for businesses who want AI-powered workspace management.</p>
+            <ul>
+              <li>Custom connector development</li>
+              <li>Workspace configuration + tuning</li>
+              <li>Integration with existing systems</li>
+              <li>Training + onboarding</li>
+            </ul>
+          </div>
+          <div class="biz-track">
+            <div class="track-label">Track 3</div>
+            <h3>Enterprise Edition</h3>
+            <p>
+              Advanced features for larger teams: SSO, audit trails, compliance, multi-workspace
+              orchestration.
+            </p>
+            <ul>
+              <li>SSO / SAML integration</li>
+              <li>Advanced audit + compliance</li>
+              <li>Multi-workspace management</li>
+              <li>Priority support + SLA</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ TRACTION ═══════════ -->
+    <section id="traction">
+      <div class="container">
+        <span class="section-tag">Traction</span>
+        <h2>Built, tested, and working</h2>
+        <p class="lead">
+          OpenBridge is not a concept deck. Every component has been built, tested, and verified.
+        </p>
+
+        <div class="traction-grid">
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>14/14 Components Stable</h3>
+              <p>
+                Every system component &mdash; from connectors to the Master AI &mdash; has reached
+                stable status with full test coverage.
+              </p>
+            </div>
+          </div>
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>207+ Tasks Across 30 Phases</h3>
+              <p>
+                Systematic development across 30 tracked phases with documented audit trail,
+                findings, and health scoring.
+              </p>
+            </div>
+          </div>
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>5 Live Messaging Channels</h3>
+              <p>
+                Console, WebChat, WhatsApp, Telegram, and Discord all operational with E2E
+                verification.
+              </p>
+            </div>
+          </div>
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>Full CI/CD Pipeline</h3>
+              <p>
+                GitHub Actions CI, lint + typecheck + test + build, conventional commits, npm
+                package publishing (v0.0.1).
+              </p>
+            </div>
+          </div>
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>Self-Governing Master AI</h3>
+              <p>
+                Persistent session, task decomposition, worker spawning, exploration with
+                checkpointing, and self-improvement &mdash; all functional.
+              </p>
+            </div>
+          </div>
+          <div class="traction-item">
+            <div class="traction-check">&#x2713;</div>
+            <div>
+              <h3>npm Package Published</h3>
+              <p>
+                v0.0.1 published with <code>npx openbridge init</code> CLI, smoke tested from
+                tarball install.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ ROADMAP ═══════════ -->
+    <section id="roadmap">
+      <div class="container">
+        <span class="section-tag">Roadmap</span>
+        <h2>Where we're going</h2>
+        <p class="lead">
+          Foundation is complete. Next: scale adoption and build premium offerings.
+        </p>
+
+        <div class="roadmap">
+          <div class="roadmap-phase">
+            <span class="phase-tag done">Completed</span>
+            <h3>Foundation (v0.0.1)</h3>
+            <ul>
+              <li>5 messaging connectors</li>
+              <li>Self-governing Master AI</li>
+              <li>Agent Runner + tool profiles</li>
+              <li>5-pass incremental exploration</li>
+              <li>Session continuity</li>
+              <li>Self-improvement engine</li>
+              <li>CI/CD + npm publish</li>
+            </ul>
+          </div>
+          <div class="roadmap-phase">
+            <span class="phase-tag current">In Progress</span>
+            <h3>Growth (v0.1.0)</h3>
+            <ul>
+              <li>Vector memory for semantic search</li>
+              <li>Skill creator (Master generates reusable skills)</li>
+              <li>Multi-workspace support</li>
+              <li>Community plugin marketplace</li>
+              <li>Docker / PM2 deployment guides</li>
+            </ul>
+          </div>
+          <div class="roadmap-phase">
+            <span class="phase-tag next">Planned</span>
+            <h3>Scale (v1.0.0)</h3>
+            <ul>
+              <li>OpenBridge Cloud (managed hosting)</li>
+              <li>Team management dashboard</li>
+              <li>Enterprise features (SSO, audit)</li>
+              <li>API for third-party integrations</li>
+              <li>Mobile companion app</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ CTA ═══════════ -->
+    <section class="cta-section">
+      <h2>Let's build the future<br />of AI orchestration.</h2>
+      <p>
+        OpenBridge is operational, open source, and ready for the next stage. We're looking for
+        partners who see the opportunity.
       </p>
-
-      <div class="solution-visual">
-        <div class="sol-card">
-          <div class="sol-icon">&#x1f4f1;</div>
-          <h3>Message From Anywhere</h3>
-          <p>WhatsApp, Telegram, Discord, or a browser. Send a message, get AI-powered results in your project.</p>
-        </div>
-        <div class="sol-card">
-          <div class="sol-icon">&#x1f916;</div>
-          <h3>Self-Governing AI</h3>
-          <p>The Master AI picks the model, tools, and strategy per task. It decomposes complex work into bounded worker agents.</p>
-        </div>
-        <div class="sol-card">
-          <div class="sol-icon">&#x1f4be;</div>
-          <h3>Persistent Brain</h3>
-          <p>Everything the AI learns lives in <code>.openbridge/</code> &mdash; git-tracked, versioned, and survives across sessions.</p>
-        </div>
+      <div class="cta-buttons">
+        <a class="cta-btn primary" href="mailto:contact@openbridge.dev">Get In Touch</a>
+        <a class="cta-btn secondary" href="https://github.com/medomar/OpenBridge">View on GitHub</a>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ═══════════ HOW IT WORKS ═══════════ -->
-  <section>
-    <div class="container">
-      <span class="section-tag">How It Works</span>
-      <h2>Three steps, zero complexity</h2>
-      <p class="lead">
-        Users configure three fields. Everything else is automatic.
-      </p>
-
-      <div class="how-flow">
-        <div class="how-step">
-          <div class="how-num">1</div>
-          <h3>Configure</h3>
-          <p>Set your workspace path, pick a messaging channel, add your phone to the whitelist. One command: <code>npx openbridge init</code></p>
-        </div>
-        <div class="how-step">
-          <div class="how-num">2</div>
-          <h3>Discover</h3>
-          <p>OpenBridge scans your machine for AI tools, ranks them by capability, picks the best as Master, and silently explores your project.</p>
-        </div>
-        <div class="how-step">
-          <div class="how-num">3</div>
-          <h3>Interact</h3>
-          <p>Send messages from your phone. The Master AI answers questions, spawns workers to write code, run tests, and commit changes.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ DEMO ═══════════ -->
-  <section id="demo">
-    <div class="container">
-      <span class="section-tag">Live Demo</span>
-      <h2>Real conversations,<br>real results</h2>
-      <p class="lead">
-        This is what it looks like to interact with the Master AI from your phone.
-      </p>
-
-      <div class="demo-wrapper">
-        <div class="demo-header">
-          <div class="demo-avatar">&#x1f916;</div>
-          <div>
-            <div class="demo-name">OpenBridge Master AI</div>
-            <div class="demo-status">online &mdash; exploring your-project</div>
-          </div>
-        </div>
-        <div class="chat-messages">
-          <div class="msg user">/ai what's in this project?</div>
-          <div class="msg ai">
-            A Node.js REST API (Express + TypeScript) with 12 routes, PostgreSQL via Prisma, JWT auth, React frontend in /client, and 47 tests at 89% coverage. Currently on branch feature/auth.
-          </div>
-          <div class="msg user">/ai add input validation to login</div>
-          <div class="msg ai">
-            Done. Added Zod validation to POST /auth/login &mdash; validates email format and password length &ge; 8.
-            <span class="progress">Worker 1 (sonnet): modified 2 files &bull; Worker 2 (haiku): all 49 tests pass</span>
-          </div>
-          <div class="msg user">/ai which invoices are overdue?</div>
-          <div class="msg ai">
-            3 invoices overdue: Client A ($1,200 &mdash; 12 days), Client B ($850 &mdash; 7 days), Client C ($2,400 &mdash; 3 days). Total: $4,450.
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ USE CASES ═══════════ -->
-  <section>
-    <div class="container">
-      <span class="section-tag">Use Cases</span>
-      <h2>Built for developers.<br>Works for everyone.</h2>
-      <p class="lead">
-        Any workspace with files is an OpenBridge workspace. Code, spreadsheets, documents &mdash; the AI adapts.
-      </p>
-
-      <div class="use-cases">
-        <div class="use-case">
-          <div class="uc-header">
-            <span class="uc-icon">&#x1f468;&#x200d;&#x1f4bb;</span>
-            <h3>Solo Developers</h3>
-          </div>
-          <p>Manage projects from your phone. Ask questions, trigger builds, fix bugs &mdash; from anywhere.</p>
-          <div class="uc-example">/ai run tests and fix any failures</div>
-        </div>
-        <div class="use-case">
-          <div class="uc-header">
-            <span class="uc-icon">&#x1f3e2;</span>
-            <h3>Engineering Teams</h3>
-          </div>
-          <p>Each team member gets a bridge to the team's codebase. Review code, check status, deploy &mdash; from messaging.</p>
-          <div class="uc-example">/ai what changed on develop since Friday?</div>
-        </div>
-        <div class="use-case">
-          <div class="uc-header">
-            <span class="uc-icon">&#x2615;</span>
-            <h3>Small Businesses</h3>
-          </div>
-          <p>Point at a folder of spreadsheets. Ask about inventory, sales, schedules &mdash; no code required.</p>
-          <div class="uc-example">/ai what ingredients are running low?</div>
-        </div>
-        <div class="use-case">
-          <div class="uc-header">
-            <span class="uc-icon">&#x1f4bc;</span>
-            <h3>Consultants &amp; Agencies</h3>
-          </div>
-          <p>Set up OpenBridge for clients. Offer AI-powered workspace management as a service.</p>
-          <div class="uc-example">/ai generate this month's client report</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ CHANNELS ═══════════ -->
-  <section>
-    <div class="container" style="text-align: center;">
-      <span class="section-tag">Channels</span>
-      <h2>5 messaging platforms. One bridge.</h2>
-      <p class="lead" style="margin-left: auto; margin-right: auto;">
-        Each channel is a plugin. Adding a new one means implementing a single interface.
-      </p>
-
-      <div class="channels-row">
-        <div class="channel-badge">
-          <span class="ch-dot"></span>
-          <div>
-            <div class="ch-name">Console</div>
-            <div class="ch-lib">Built-in (stdin)</div>
-          </div>
-        </div>
-        <div class="channel-badge">
-          <span class="ch-dot"></span>
-          <div>
-            <div class="ch-name">WebChat</div>
-            <div class="ch-lib">Built-in (WebSocket)</div>
-          </div>
-        </div>
-        <div class="channel-badge">
-          <span class="ch-dot"></span>
-          <div>
-            <div class="ch-name">WhatsApp</div>
-            <div class="ch-lib">whatsapp-web.js</div>
-          </div>
-        </div>
-        <div class="channel-badge">
-          <span class="ch-dot"></span>
-          <div>
-            <div class="ch-name">Telegram</div>
-            <div class="ch-lib">grammY</div>
-          </div>
-        </div>
-        <div class="channel-badge">
-          <span class="ch-dot"></span>
-          <div>
-            <div class="ch-name">Discord</div>
-            <div class="ch-lib">discord.js v14</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ MARKET ═══════════ -->
-  <section id="market">
-    <div class="container">
-      <span class="section-tag">Market Opportunity</span>
-      <h2>AI agent infrastructure<br>is the next platform</h2>
-      <p class="lead">
-        The developer tools market is shifting from copilots to autonomous agents. OpenBridge sits at the intersection of AI agents, messaging, and developer productivity.
-      </p>
-
-      <div class="market-cards">
-        <div class="market-card">
-          <div class="market-num">$32B</div>
-          <div class="market-label">AI Developer Tools Market (2026)</div>
-          <p>The AI-assisted coding market is growing at 25%+ CAGR. Every developer will have AI tools &mdash; they need infrastructure to orchestrate them.</p>
-        </div>
-        <div class="market-card">
-          <div class="market-num">28M+</div>
-          <div class="market-label">Developers Using AI Tools</div>
-          <p>GitHub Copilot alone has 1.8M+ paid users. Claude Code, Codex, Cursor, and Aider are adding millions more. All potential OpenBridge users.</p>
-        </div>
-        <div class="market-card">
-          <div class="market-num">3B+</div>
-          <div class="market-label">Messaging App Users</div>
-          <p>WhatsApp (2B+), Telegram (900M+), Discord (200M+). OpenBridge turns these into AI control planes.</p>
-        </div>
-        <div class="market-card">
-          <div class="market-num">$0</div>
-          <div class="market-label">Per-Request Cost to Users</div>
-          <p>Users bring their own AI subscriptions. OpenBridge adds orchestration and accessibility &mdash; no usage-based pricing barrier.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ COMPETITIVE ADVANTAGES ═══════════ -->
-  <section>
-    <div class="container">
-      <span class="section-tag">Why Us</span>
-      <h2>Built-in moats that compound</h2>
-      <p class="lead">
-        Every design decision in OpenBridge creates compounding advantages that are hard to replicate.
-      </p>
-
-      <div class="advantages">
-        <div class="advantage">
-          <div class="adv-icon">&#x1f512;</div>
-          <h3>Zero API Keys</h3>
-          <p>Uses AI tools already on the user's machine. No vendor lock-in, no per-request fees, no data leaving the machine.</p>
-        </div>
-        <div class="advantage">
-          <div class="adv-icon">&#x1f9e0;</div>
-          <h3>Self-Governing Agent</h3>
-          <p>The Master AI decides strategy per task. Not a chatbot wrapper &mdash; a genuine autonomous agent with persistent memory.</p>
-        </div>
-        <div class="advantage">
-          <div class="adv-icon">&#x1f50c;</div>
-          <h3>Plugin Architecture</h3>
-          <p>Adding a new messaging channel or AI tool is a single interface implementation. Community can extend without forking.</p>
-        </div>
-        <div class="advantage">
-          <div class="adv-icon">&#x1f6e1;&#xfe0f;</div>
-          <h3>Security by Design</h3>
-          <p>Workers are bounded with restricted tool profiles and turn limits. No <code>--dangerously-skip-permissions</code>. Whitelist-only access.</p>
-        </div>
-        <div class="advantage">
-          <div class="adv-icon">&#x1f4c8;</div>
-          <h3>Self-Improvement Loop</h3>
-          <p>The AI tracks what prompts and models work best, refines its own strategies, and creates custom tool profiles.</p>
-        </div>
-        <div class="advantage">
-          <div class="adv-icon">&#x1f310;</div>
-          <h3>Open Source (Apache 2.0)</h3>
-          <p>Community-driven adoption. Developers trust open-source tools for their codebase. The moat is in the ecosystem, not the code.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ BUSINESS MODEL ═══════════ -->
-  <section id="model">
-    <div class="container">
-      <span class="section-tag">Business Model</span>
-      <h2>Open core with premium layers</h2>
-      <p class="lead">
-        The bridge is free and open source. Revenue comes from the ecosystem built on top of it.
-      </p>
-
-      <div class="biz-tracks">
-        <div class="biz-track">
-          <div class="track-label">Track 1</div>
-          <h3>OpenBridge Cloud</h3>
-          <p>Managed hosting &mdash; run the bridge without maintaining infrastructure. Always-on, no terminal required.</p>
-          <ul>
-            <li>Hosted bridge instances</li>
-            <li>Team management dashboard</li>
-            <li>Usage analytics + monitoring</li>
-            <li>SLA + priority support</li>
-          </ul>
-        </div>
-        <div class="biz-track">
-          <div class="track-label">Track 2</div>
-          <h3>Professional Services</h3>
-          <p>Setup and customization for businesses who want AI-powered workspace management.</p>
-          <ul>
-            <li>Custom connector development</li>
-            <li>Workspace configuration + tuning</li>
-            <li>Integration with existing systems</li>
-            <li>Training + onboarding</li>
-          </ul>
-        </div>
-        <div class="biz-track">
-          <div class="track-label">Track 3</div>
-          <h3>Enterprise Edition</h3>
-          <p>Advanced features for larger teams: SSO, audit trails, compliance, multi-workspace orchestration.</p>
-          <ul>
-            <li>SSO / SAML integration</li>
-            <li>Advanced audit + compliance</li>
-            <li>Multi-workspace management</li>
-            <li>Priority support + SLA</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ TRACTION ═══════════ -->
-  <section id="traction">
-    <div class="container">
-      <span class="section-tag">Traction</span>
-      <h2>Built, tested, and working</h2>
-      <p class="lead">
-        OpenBridge is not a concept deck. Every component has been built, tested, and verified.
-      </p>
-
-      <div class="traction-grid">
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>14/14 Components Stable</h3>
-            <p>Every system component &mdash; from connectors to the Master AI &mdash; has reached stable status with full test coverage.</p>
-          </div>
-        </div>
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>207+ Tasks Across 30 Phases</h3>
-            <p>Systematic development across 30 tracked phases with documented audit trail, findings, and health scoring.</p>
-          </div>
-        </div>
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>5 Live Messaging Channels</h3>
-            <p>Console, WebChat, WhatsApp, Telegram, and Discord all operational with E2E verification.</p>
-          </div>
-        </div>
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>Full CI/CD Pipeline</h3>
-            <p>GitHub Actions CI, lint + typecheck + test + build, conventional commits, npm package publishing (v0.0.1).</p>
-          </div>
-        </div>
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>Self-Governing Master AI</h3>
-            <p>Persistent session, task decomposition, worker spawning, exploration with checkpointing, and self-improvement &mdash; all functional.</p>
-          </div>
-        </div>
-        <div class="traction-item">
-          <div class="traction-check">&#x2713;</div>
-          <div>
-            <h3>npm Package Published</h3>
-            <p>v0.0.1 published with <code>npx openbridge init</code> CLI, smoke tested from tarball install.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ ROADMAP ═══════════ -->
-  <section id="roadmap">
-    <div class="container">
-      <span class="section-tag">Roadmap</span>
-      <h2>Where we're going</h2>
-      <p class="lead">
-        Foundation is complete. Next: scale adoption and build premium offerings.
-      </p>
-
-      <div class="roadmap">
-        <div class="roadmap-phase">
-          <span class="phase-tag done">Completed</span>
-          <h3>Foundation (v0.0.1)</h3>
-          <ul>
-            <li>5 messaging connectors</li>
-            <li>Self-governing Master AI</li>
-            <li>Agent Runner + tool profiles</li>
-            <li>5-pass incremental exploration</li>
-            <li>Session continuity</li>
-            <li>Self-improvement engine</li>
-            <li>CI/CD + npm publish</li>
-          </ul>
-        </div>
-        <div class="roadmap-phase">
-          <span class="phase-tag current">In Progress</span>
-          <h3>Growth (v0.1.0)</h3>
-          <ul>
-            <li>Vector memory for semantic search</li>
-            <li>Skill creator (Master generates reusable skills)</li>
-            <li>Multi-workspace support</li>
-            <li>Community plugin marketplace</li>
-            <li>Docker / PM2 deployment guides</li>
-          </ul>
-        </div>
-        <div class="roadmap-phase">
-          <span class="phase-tag next">Planned</span>
-          <h3>Scale (v1.0.0)</h3>
-          <ul>
-            <li>OpenBridge Cloud (managed hosting)</li>
-            <li>Team management dashboard</li>
-            <li>Enterprise features (SSO, audit)</li>
-            <li>API for third-party integrations</li>
-            <li>Mobile companion app</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════ CTA ═══════════ -->
-  <section class="cta-section">
-    <h2>Let's build the future<br>of AI orchestration.</h2>
-    <p>
-      OpenBridge is operational, open source, and ready for the next stage. We're looking for partners who see the opportunity.
-    </p>
-    <div class="cta-buttons">
-      <a class="cta-btn primary" href="mailto:contact@openbridge.dev">Get In Touch</a>
-      <a class="cta-btn secondary" href="https://github.com/medomar/OpenBridge">View on GitHub</a>
-    </div>
-  </section>
-
-  <!-- ═══════════ FOOTER ═══════════ -->
-  <footer>
-    <p><strong>OpenBridge</strong> &mdash; Your AI, one message away.</p>
-    <div class="license">Open Source &middot; Apache 2.0 &middot; 2026</div>
-  </footer>
-
-</body>
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+      <p><strong>OpenBridge</strong> &mdash; Your AI, one message away.</p>
+      <div class="license">Open Source &middot; Apache 2.0 &middot; 2026</div>
+    </footer>
+  </body>
 </html>
