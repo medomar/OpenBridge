@@ -612,4 +612,125 @@ describe('WorkerRegistry', () => {
       }
     });
   });
+
+  // ── getAggregatedStats ──────────────────────────────────────────
+
+  describe('getAggregatedStats', () => {
+    it('returns zeroes for empty registry', () => {
+      const stats = registry.getAggregatedStats();
+      expect(stats.totalWorkers).toBe(0);
+      expect(stats.completed).toBe(0);
+      expect(stats.failed).toBe(0);
+      expect(stats.cancelled).toBe(0);
+      expect(stats.avgDurationMs).toBe(0);
+      expect(Object.keys(stats.byProfile)).toHaveLength(0);
+      expect(Object.keys(stats.byModel)).toHaveLength(0);
+    });
+
+    it('counts statuses correctly with mixed workers', () => {
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, sampleResult);
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1, durationMs: 3000 }, 'some error');
+
+      const w3 = registry.addWorker(sampleManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCancelled(w3, 'timeout');
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.totalWorkers).toBe(3);
+      expect(stats.completed).toBe(1);
+      expect(stats.failed).toBe(1);
+      expect(stats.cancelled).toBe(1);
+    });
+
+    it('computes average duration from workers with results', () => {
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 4000 });
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markCompleted(w2, { ...sampleResult, durationMs: 6000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.avgDurationMs).toBe(5000); // (4000 + 6000) / 2
+    });
+
+    it('breaks down by profile correctly', () => {
+      const readOnlyManifest: TaskManifest = {
+        ...sampleManifest,
+        profile: 'read-only',
+      };
+      const codeEditManifest: TaskManifest = {
+        ...sampleManifest,
+        profile: 'code-edit',
+      };
+
+      const w1 = registry.addWorker(readOnlyManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 2000 });
+
+      const w2 = registry.addWorker(readOnlyManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1, durationMs: 3000 });
+
+      const w3 = registry.addWorker(codeEditManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCompleted(w3, { ...sampleResult, durationMs: 8000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byProfile['read-only'].total).toBe(2);
+      expect(stats.byProfile['read-only'].successRate).toBe(0.5); // 1/2
+      expect(stats.byProfile['read-only'].avgDurationMs).toBe(2500); // (2000+3000)/2
+      expect(stats.byProfile['code-edit'].total).toBe(1);
+      expect(stats.byProfile['code-edit'].successRate).toBe(1); // 1/1
+      expect(stats.byProfile['code-edit'].avgDurationMs).toBe(8000);
+    });
+
+    it('breaks down by model correctly', () => {
+      const haikuManifest: TaskManifest = { ...sampleManifest, model: 'haiku' };
+      const sonnetManifest: TaskManifest = { ...sampleManifest, model: 'sonnet' };
+
+      const w1 = registry.addWorker(haikuManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 1000 });
+
+      const w2 = registry.addWorker(haikuManifest);
+      registry.markRunning(w2, 1002);
+      registry.markCompleted(w2, { ...sampleResult, durationMs: 3000 });
+
+      const w3 = registry.addWorker(sonnetManifest);
+      registry.markRunning(w3, 1003);
+      registry.markFailed(w3, { ...sampleResult, exitCode: 1, durationMs: 5000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byModel['haiku'].total).toBe(2);
+      expect(stats.byModel['haiku'].successRate).toBe(1); // 2/2
+      expect(stats.byModel['haiku'].avgDurationMs).toBe(2000); // (1000+3000)/2
+      expect(stats.byModel['sonnet'].total).toBe(1);
+      expect(stats.byModel['sonnet'].successRate).toBe(0); // 0/1
+      expect(stats.byModel['sonnet'].avgDurationMs).toBe(5000);
+    });
+
+    it('uses "unknown" for workers without profile or model', () => {
+      const bareManifest: TaskManifest = {
+        prompt: 'Bare task',
+        workspacePath: '/test/workspace',
+      };
+
+      const w1 = registry.addWorker(bareManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, model: undefined, durationMs: 1000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byProfile['unknown']).toBeDefined();
+      expect(stats.byProfile['unknown'].total).toBe(1);
+      expect(stats.byModel['unknown']).toBeDefined();
+      expect(stats.byModel['unknown'].total).toBe(1);
+    });
+  });
 });
