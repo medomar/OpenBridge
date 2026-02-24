@@ -392,16 +392,18 @@ describe('WhatsAppConnector', () => {
         },
       });
       await connector.initialize();
+      const firstClient = mockClientInstance;
 
       // First successful connection
-      mockClientInstance._trigger('ready');
+      firstClient._trigger('ready');
       expect(connector.isConnected()).toBe(true);
 
       // Disconnect — schedules reconnect with 5ms delay
-      mockClientInstance._trigger('disconnected', 'reason');
+      firstClient._trigger('disconnected', 'reason');
 
-      // Wait for the reconnect timer to fire and createAndStartClient() to complete
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      // Wait for reconnect: setTimeout(5ms) + destroy() + createAndStartClient()
+      // Use generous wait to handle slow CI runners
+      await new Promise<void>((resolve) => setTimeout(resolve, 2000));
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
