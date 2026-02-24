@@ -50,6 +50,12 @@ export class AuthService {
       },
       'Auth service initialized',
     );
+
+    if (this.whitelist.size === 0) {
+      logger.warn(
+        'Auth whitelist is empty — ALL senders are authorized. To restrict access, add phone numbers to auth.whitelist in config.json.',
+      );
+    }
   }
 
   /** Check if a sender is allowed to use the bridge */

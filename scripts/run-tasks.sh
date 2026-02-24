@@ -1,26 +1,31 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
 # run-tasks.sh
-# Repeatedly launches Claude Code agents to execute pending tasks
-# from a configurable task list. Generic enough to use in any project.
+# Automated task runner — spawns Claude Code agents to execute
+# pending tasks from a task list, one at a time.
 #
 # Usage:
 #   ./scripts/run-tasks.sh                          # Run all pending tasks
-#   ./scripts/run-tasks.sh --phase 1                # Phase 1 only
-#   ./scripts/run-tasks.sh --parallel 3             # 3 agents in parallel
-#   ./scripts/run-tasks.sh --model opus             # Use a specific model
-#   ./scripts/run-tasks.sh --tasks path/TASKS.md    # Custom task file
+#   ./scripts/run-tasks.sh OB-302                   # Run one specific task
+#   ./scripts/run-tasks.sh --phase 22               # Phase 22 only
+#   ./scripts/run-tasks.sh --caffeinate             # Prevent macOS sleep
 #   ./scripts/run-tasks.sh --help                   # Show all options
 # ─────────────────────────────────────────────────────────────────
 
 set -uo pipefail
+
+# ── Caffeinate (must be first arg) ───────────────────────────────
+if [[ "${1:-}" == "--caffeinate" ]]; then
+  shift
+  exec caffeinate -s "$0" "$@"
+fi
 
 # ── Defaults ─────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Paths (all configurable)
+# Paths (all relative to project root unless absolute)
 TASKS_FILE="docs/audit/TASKS.md"
 FINDINGS_FILE="docs/audit/FINDINGS.md"
 HEALTH_FILE="docs/audit/HEALTH.md"
@@ -29,15 +34,16 @@ PROMPT_FILE="$SCRIPT_DIR/prompts/execute-task.md"
 LOG_DIR="logs/task-runs"
 
 # Execution
-MODEL=""                          # Empty = use default model
-PARALLEL=1                        # Number of concurrent agents
-MAX_TURNS=""                      # Empty = unlimited turns per iteration
+MODEL="sonnet"
+MAX_BUDGET=5                      # USD per agent
 MAX_CONSECUTIVE_FAILURES=3        # Stop after N consecutive failures
+MAX_TASK_FAILURES=3               # Skip a task after N total failures
 SLEEP_BETWEEN=5                   # Seconds between iterations
-SLEEP_ON_RETRY=10                 # Seconds before retrying a failed task
+SLEEP_ON_RETRY=10                 # Seconds before retrying after failure
 PHASE_FILTER="none"               # "none" = all phases
+TASK_OVERRIDE=""                  # Empty = loop mode, "OB-xxx" = single task
 
-# Tool permissions
+# Tool permissions (defined once)
 ALLOWED_TOOLS=(
   "Read Edit Write Glob Grep"
   "Bash(git:*)"
@@ -49,182 +55,256 @@ ALLOWED_TOOLS=(
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [OPTIONS]
+Usage: $(basename "$0") [TASK_ID] [OPTIONS]
 
-Launches Claude Code agents in a loop to execute pending tasks.
-Configurable for any project — just point to your task list.
+Spawns Claude Code agents to execute pending tasks from a task list.
+If TASK_ID is given, runs only that task and exits.
+Otherwise, loops through all pending tasks sequentially.
+
+Arguments:
+  TASK_ID               Optional. Run a specific task (e.g., OB-302)
 
 Paths:
-  --tasks FILE        Task list file, relative to project root (default: $TASKS_FILE)
-  --findings FILE     Findings file (default: $FINDINGS_FILE)
-  --health FILE       Health score file (default: $HEALTH_FILE)
-  --pointer FILE      Pointer file for tracking progress (default: $POINTER_FILE)
-  --prompt FILE       Prompt template, absolute or relative to scripts/ (default: prompts/execute-task.md)
-  --log-dir DIR       Log directory, relative to project root (default: $LOG_DIR)
-  --project DIR       Project root directory (default: auto-detected from script location)
+  --tasks FILE          Task list file (default: $TASKS_FILE)
+  --findings FILE       Findings file (default: $FINDINGS_FILE)
+  --health FILE         Health score file (default: $HEALTH_FILE)
+  --pointer FILE        Pointer file (default: $POINTER_FILE)
+  --prompt FILE         Prompt template (default: prompts/execute-task.md)
+  --log-dir DIR         Log directory (default: $LOG_DIR)
+  --project DIR         Project root (default: auto-detected)
 
 Execution:
-  --phase N           Only execute tasks from Phase N
-  --model MODEL       Claude model to use (e.g., opus, sonnet, haiku)
-  --parallel N        Number of concurrent agents (default: $PARALLEL)
-  --max-turns N       Max turns per agent iteration (default: unlimited)
-  --retries N         Max consecutive failures before stopping (default: $MAX_CONSECUTIVE_FAILURES)
-  --sleep N           Seconds between iterations (default: $SLEEP_BETWEEN)
-  --sleep-retry N     Seconds before retrying a failed task (default: $SLEEP_ON_RETRY)
+  --phase N             Only run tasks from Phase N
+  --model MODEL         Claude model (default: $MODEL)
+  --budget N            Per-agent budget in USD (default: $MAX_BUDGET)
+  --max-task-failures N Skip task after N failures (default: $MAX_TASK_FAILURES)
+  --retries N           Stop after N consecutive failures (default: $MAX_CONSECUTIVE_FAILURES)
 
 Other:
-  --help              Show this message
+  --caffeinate          Prevent macOS sleep (must be first argument)
+  --reset-failures      Clear failure tracking and skipped tasks
+  --help                Show this message
 
 Examples:
-  ./scripts/run-tasks.sh                                    # Run all pending
-  ./scripts/run-tasks.sh --phase 1 --model sonnet           # Phase 1, Sonnet model
-  ./scripts/run-tasks.sh --parallel 3 --phase 2             # 3 agents on Phase 2
-  ./scripts/run-tasks.sh --tasks my-project/TASKS.md        # Custom task file
+  ./scripts/run-tasks.sh                          # Run all pending
+  ./scripts/run-tasks.sh OB-302                   # Run one task
+  ./scripts/run-tasks.sh --phase 22 --model opus  # Phase 22, Opus
+  ./scripts/run-tasks.sh --caffeinate             # Overnight run
+  ./scripts/run-tasks.sh --reset-failures         # Clear skip list
 EOF
   exit 0
 }
 
 # ── Parse Args ───────────────────────────────────────────────────
 
+RESET_FAILURES=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tasks)        TASKS_FILE="$2"; shift 2 ;;
-    --findings)     FINDINGS_FILE="$2"; shift 2 ;;
-    --health)       HEALTH_FILE="$2"; shift 2 ;;
-    --pointer)      POINTER_FILE="$2"; shift 2 ;;
-    --prompt)       PROMPT_FILE="$2"; shift 2 ;;
-    --log-dir)      LOG_DIR="$2"; shift 2 ;;
-    --project)      PROJECT_DIR="$2"; shift 2 ;;
-    --phase)        PHASE_FILTER="$2"; shift 2 ;;
-    --model)        MODEL="$2"; shift 2 ;;
-    --parallel)     PARALLEL="$2"; shift 2 ;;
-    --max-turns)    MAX_TURNS="$2"; shift 2 ;;
-    --retries)      MAX_CONSECUTIVE_FAILURES="$2"; shift 2 ;;
-    --sleep)        SLEEP_BETWEEN="$2"; shift 2 ;;
-    --sleep-retry)  SLEEP_ON_RETRY="$2"; shift 2 ;;
-    --help)         usage ;;
-    *)              echo "Unknown option: $1"; echo ""; usage ;;
+    --tasks)              TASKS_FILE="$2"; shift 2 ;;
+    --findings)           FINDINGS_FILE="$2"; shift 2 ;;
+    --health)             HEALTH_FILE="$2"; shift 2 ;;
+    --pointer)            POINTER_FILE="$2"; shift 2 ;;
+    --prompt)             PROMPT_FILE="$2"; shift 2 ;;
+    --log-dir)            LOG_DIR="$2"; shift 2 ;;
+    --project)            PROJECT_DIR="$2"; shift 2 ;;
+    --phase)              PHASE_FILTER="$2"; shift 2 ;;
+    --model)              MODEL="$2"; shift 2 ;;
+    --budget)             MAX_BUDGET="$2"; shift 2 ;;
+    --max-task-failures)  MAX_TASK_FAILURES="$2"; shift 2 ;;
+    --retries)            MAX_CONSECUTIVE_FAILURES="$2"; shift 2 ;;
+    --reset-failures)     RESET_FAILURES=true; shift ;;
+    --help)               usage ;;
+    -*)                   echo "Unknown option: $1"; echo ""; usage ;;
+    *)                    TASK_OVERRIDE="$1"; shift ;;
   esac
 done
 
-# Resolve relative paths against project root
-TASKS_PATH="$PROJECT_DIR/$TASKS_FILE"
-FINDINGS_PATH="$PROJECT_DIR/$FINDINGS_FILE"
-HEALTH_PATH="$PROJECT_DIR/$HEALTH_FILE"
-POINTER_PATH="$PROJECT_DIR/$POINTER_FILE"
-LOG_PATH="$PROJECT_DIR/$LOG_DIR"
-COUNTER_FILE="$LOG_PATH/.iteration_counter"
-
 # ── Find Claude CLI ──────────────────────────────────────────────
 
-if [ -f "$HOME/.zshrc" ]; then
-  source "$HOME/.zshrc" 2>/dev/null || true
-elif [ -f "$HOME/.bashrc" ]; then
-  source "$HOME/.bashrc" 2>/dev/null || true
-fi
+find_claude_cli() {
+  if [ -f "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc" 2>/dev/null || true
+  elif [ -f "$HOME/.bashrc" ]; then
+    source "$HOME/.bashrc" 2>/dev/null || true
+  fi
 
-if ! command -v claude &>/dev/null; then
-  for dir in "$HOME/.local/bin" "$HOME/.npm-global/bin" "/usr/local/bin" "/opt/homebrew/bin"; do
-    if [ -x "$dir/claude" ]; then
-      export PATH="$dir:$PATH"
-      break
-    fi
-  done
-fi
+  if ! command -v claude &>/dev/null; then
+    for dir in "$HOME/.local/bin" "$HOME/.npm-global/bin" "/usr/local/bin" "/opt/homebrew/bin"; do
+      if [ -x "$dir/claude" ]; then
+        export PATH="$dir:$PATH"
+        break
+      fi
+    done
+  fi
 
-if ! command -v claude &>/dev/null; then
-  echo "ERROR: 'claude' command not found."
-  echo "Install Claude Code CLI or add it to your PATH."
-  exit 1
-fi
+  if ! command -v claude &>/dev/null; then
+    echo "ERROR: 'claude' command not found."
+    echo "Install Claude Code CLI or add it to your PATH."
+    exit 1
+  fi
+}
 
-# ── Validate ─────────────────────────────────────────────────────
+find_claude_cli
 
+# ── Setup ────────────────────────────────────────────────────────
+
+TASKS_PATH="$PROJECT_DIR/$TASKS_FILE"
+LOG_PATH="$PROJECT_DIR/$LOG_DIR"
+POINTER_PATH="$PROJECT_DIR/$POINTER_FILE"
+STATE_FILE="$LOG_PATH/.run_state.json"
+TASK_FAILURES_FILE="$LOG_PATH/.task_failures.json"
+SKIPPED_FILE="$LOG_PATH/.skipped_tasks"
+
+# Validate
 if [ ! -f "$PROMPT_FILE" ]; then
   echo "ERROR: Prompt file not found: $PROMPT_FILE"
   exit 1
 fi
-
 if [ ! -f "$TASKS_PATH" ]; then
   echo "ERROR: Tasks file not found: $TASKS_PATH"
   exit 1
 fi
 
-if [ "$PARALLEL" -lt 1 ] 2>/dev/null; then
-  echo "ERROR: --parallel must be a positive integer."
+mkdir -p "$LOG_PATH"
+
+if [[ ! -f "$TASK_FAILURES_FILE" ]]; then
+  echo '{}' > "$TASK_FAILURES_FILE"
+fi
+
+# Handle --reset-failures
+if [[ "$RESET_FAILURES" == "true" ]]; then
+  rm -f "$TASK_FAILURES_FILE" "$SKIPPED_FILE"
+  echo '{}' > "$TASK_FAILURES_FILE"
+  echo "Failure tracking and skip list cleared."
+fi
+
+# ── Load Prompt Template ─────────────────────────────────────────
+
+# Extract prompt between ```` fences
+PROMPT_TEMPLATE=$(sed -n '/^````$/,/^````$/{ /^````$/d; p; }' "$PROMPT_FILE")
+if [[ -z "$PROMPT_TEMPLATE" ]]; then
+  echo "ERROR: Could not extract prompt from $PROMPT_FILE"
+  echo "  Wrap the prompt content in \`\`\`\` fences."
   exit 1
 fi
 
-# ── Setup ────────────────────────────────────────────────────────
+# Inject static template variables (TASK_ID is injected per-iteration)
+PROMPT_TEMPLATE=$(echo "$PROMPT_TEMPLATE" | sed \
+  -e "s|{{TASKS_FILE}}|$TASKS_FILE|g" \
+  -e "s|{{FINDINGS_FILE}}|$FINDINGS_FILE|g" \
+  -e "s|{{HEALTH_FILE}}|$HEALTH_FILE|g" \
+  -e "s|{{POINTER_FILE}}|$POINTER_FILE|g" \
+  -e "s|{{PHASE}}|$PHASE_FILTER|g")
 
-mkdir -p "$LOG_PATH"
+# ── Output Validation ────────────────────────────────────────────
 
-# Extract prompt content between ```` fences
-PROMPT_TEMPLATE_RAW=$(sed -n '/^````$/,/^````$/{ /^````$/d; p; }' "$PROMPT_FILE")
+FAILURE_REASON=""
 
-# Inject static configuration into prompt (TASK_ID is injected per-agent)
-PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{PHASE\}\}/$PHASE_FILTER}"
-PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{TASKS_FILE\}\}/$TASKS_FILE}"
-PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{FINDINGS_FILE\}\}/$FINDINGS_FILE}"
-PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{HEALTH_FILE\}\}/$HEALTH_FILE}"
-PROMPT_TEMPLATE_RAW="${PROMPT_TEMPLATE_RAW//\{\{POINTER_FILE\}\}/$POINTER_FILE}"
+validate_output() {
+  local log_file="$1"
+  FAILURE_REASON=""
 
-# Build claude command flags
-CLAUDE_FLAGS=(--print)
-if [[ -n "$MODEL" ]]; then
-  CLAUDE_FLAGS+=(--model "$MODEL")
-fi
-if [[ -n "$MAX_TURNS" ]]; then
-  CLAUDE_FLAGS+=(--max-turns "$MAX_TURNS")
-fi
-for tool in "${ALLOWED_TOOLS[@]}"; do
-  CLAUDE_FLAGS+=(--allowedTools "$tool")
-done
+  if [[ ! -f "$log_file" || ! -s "$log_file" ]]; then
+    FAILURE_REASON="empty or missing output"
+    return 1
+  fi
 
-# ── Get Pending Tasks ───────────────────────────────────────────
-# Parses TASKS.md to find pending task IDs, respecting phase filter.
-# Returns one task ID per line.
+  local size
+  size=$(wc -c < "$log_file" | tr -d ' ')
 
-get_pending_tasks() {
-  local tasks_file="$1"
-  local phase="$2"
-  local max_count="${3:-0}"  # 0 = unlimited
+  if [[ "$size" -lt 50 ]]; then
+    FAILURE_REASON="tiny output (${size} bytes — likely a crash)"
+    return 1
+  fi
 
-  if [[ "$phase" != "none" ]]; then
-    # Extract only the section for the specified phase
-    # Match from "## Phase N" until the next "## Phase" or "## Status" or end of file
-    sed -n "/^## Phase $phase/,/^## Phase \|^## Status/p" "$tasks_file" \
-      | grep '◻ Pending' \
-      | grep -oE 'OB-[0-9]+' \
-      | head -${max_count:-999}
+  if grep -qi "TIMEOUT: Agent killed" "$log_file"; then
+    FAILURE_REASON="timeout exceeded"
+    return 1
+  fi
+
+  if [[ "$size" -lt 200 ]] && head -1 "$log_file" | grep -qi "^Error:"; then
+    FAILURE_REASON="CLI error: $(head -1 "$log_file")"
+    return 1
+  fi
+
+  return 0
+}
+
+# ── Failure Tracking ─────────────────────────────────────────────
+
+record_task_failure() {
+  local task_id="$1"
+  local reason="$2"
+  local timestamp
+  timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  TASK_ID="$task_id" TIMESTAMP="$timestamp" REASON="$reason" \
+  FAILURES_FILE="$TASK_FAILURES_FILE" \
+  python3 -c "
+import json, os
+fpath = os.environ['FAILURES_FILE']
+task_id = os.environ['TASK_ID']
+timestamp = os.environ['TIMESTAMP']
+reason = os.environ['REASON']
+try:
+    with open(fpath, 'r') as f:
+        data = json.load(f)
+except:
+    data = {}
+task = data.get(task_id, {'count': 0, 'attempts': []})
+task['count'] = task['count'] + 1
+task['attempts'].append({'timestamp': timestamp, 'reason': reason})
+task['attempts'] = task['attempts'][-10:]
+data[task_id] = task
+with open(fpath, 'w') as f:
+    json.dump(data, f, indent=2)
+print(task['count'])
+" 2>/dev/null || echo "1"
+}
+
+get_task_failure_count() {
+  local task_id="$1"
+  if [[ -f "$TASK_FAILURES_FILE" ]]; then
+    TASK_ID="$task_id" FAILURES_FILE="$TASK_FAILURES_FILE" \
+    python3 -c "
+import json, os
+try:
+    with open(os.environ['FAILURES_FILE'], 'r') as f:
+        data = json.load(f)
+    print(data.get(os.environ['TASK_ID'], {}).get('count', 0))
+except:
+    print(0)
+" 2>/dev/null || echo "0"
   else
-    # All phases
-    grep '◻ Pending' "$tasks_file" \
-      | grep -oE 'OB-[0-9]+' \
-      | head -${max_count:-999}
+    echo "0"
   fi
 }
 
-# Build prompt for a specific task ID
-build_prompt() {
+skip_task() {
   local task_id="$1"
-  echo "${PROMPT_TEMPLATE_RAW//\{\{TASK_ID\}\}/$task_id}"
+  local reason="$2"
+  echo "$task_id|$(date -u +%Y-%m-%dT%H:%M:%SZ)|$reason" >> "$SKIPPED_FILE"
+  echo "  SKIPPED: $task_id — $reason"
 }
 
-# Persistent iteration counter
-if [ -f "$COUNTER_FILE" ]; then
-  ITERATION=$(cat "$COUNTER_FILE")
-else
-  ITERATION=0
-fi
-
-CONSECUTIVE_FAILURES=0
-STATE_FILE="$LOG_PATH/.run_state.json"
+is_task_skipped() {
+  local task_id="$1"
+  [[ -f "$SKIPPED_FILE" ]] && grep -q "^${task_id}|" "$SKIPPED_FILE"
+}
 
 # ── State Tracking ───────────────────────────────────────────────
 
+ITERATION=0
+CONSECUTIVE_FAILURES=0
+RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 write_state() {
   local status="$1"
+  local skipped_count=0
+  if [[ -f "$SKIPPED_FILE" ]]; then
+    skipped_count=$(wc -l < "$SKIPPED_FILE" 2>/dev/null | tr -d ' ')
+  fi
   cat > "$STATE_FILE" <<STATEEOF
 {
   "status": "$status",
@@ -232,10 +312,11 @@ write_state() {
   "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "iteration": $ITERATION,
   "phase": "$PHASE_FILTER",
-  "model": "${MODEL:-default}",
-  "parallel": $PARALLEL,
-  "max_turns": "${MAX_TURNS:-unlimited}",
+  "model": "$MODEL",
+  "budget": "$MAX_BUDGET",
   "consecutive_failures": $CONSECUTIVE_FAILURES,
+  "skipped_tasks": $skipped_count,
+  "max_task_failures": $MAX_TASK_FAILURES,
   "project": "$PROJECT_DIR",
   "tasks_file": "$TASKS_FILE",
   "pid": $$
@@ -243,53 +324,130 @@ write_state() {
 STATEEOF
 }
 
-RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-write_state "running"
+trap 'write_state "stopped"' EXIT
 
-# Clean up state on exit
-trap 'write_state "stopped"; echo ""; echo "Task runner stopped."' EXIT
+# ── Task Scanning ────────────────────────────────────────────────
 
-# ── Run Single Agent ─────────────────────────────────────────────
+get_pending_tasks() {
+  local tasks_file="$1"
+  local phase="$2"
+
+  local raw_tasks
+  if [[ "$phase" != "none" ]]; then
+    raw_tasks=$(sed -n "/^## Phase $phase/,/^## Phase \|^## Status\|^---$/p" "$tasks_file" \
+      | grep -i 'Pending' \
+      | grep -oE 'OB-[0-9]+')
+  else
+    raw_tasks=$(grep -i 'Pending' "$tasks_file" \
+      | grep -v '^>' \
+      | grep -oE 'OB-[0-9]+')
+  fi
+
+  local result=""
+  while IFS= read -r task_id; do
+    [[ -z "$task_id" ]] && continue
+    is_task_skipped "$task_id" && continue
+    if [[ -n "$result" ]]; then
+      result="${result}"$'\n'"${task_id}"
+    else
+      result="${task_id}"
+    fi
+  done <<< "$raw_tasks"
+
+  echo "$result"
+}
+
+build_prompt() {
+  local task_id="$1"
+  printf '%s' "$PROMPT_TEMPLATE" | sed "s|{{TASK_ID}}|${task_id}|g"
+}
+
+# ── Agent Execution ──────────────────────────────────────────────
 
 run_agent() {
-  local agent_id="$1"
+  local task_id="$1"
   local log_file="$2"
-  local prompt="$3"
 
-  cd "$PROJECT_DIR" && \
-  claude "${CLAUDE_FLAGS[@]}" \
-    -p "$prompt" \
-    2>&1 | tee "$log_file"
+  local prompt
+  prompt=$(build_prompt "$task_id")
 
+  local flags=(--print --model "$MODEL" --max-budget-usd "$MAX_BUDGET")
+  for tool in "${ALLOWED_TOOLS[@]}"; do
+    flags+=(--allowedTools "$tool")
+  done
+
+  cd "$PROJECT_DIR"
+  claude "${flags[@]}" -p "$prompt" 2>&1 | tee "$log_file"
   return ${PIPESTATUS[0]}
 }
 
-# ── Banner ───────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════
+#  SINGLE-TASK MODE
+# ══════════════════════════════════════════════════════════════════
 
-PARALLEL_MODE="sequential"
-if [ "$PARALLEL" -gt 1 ]; then
-  PARALLEL_MODE="distributed ($PARALLEL agents on $PARALLEL tasks)"
+if [[ -n "$TASK_OVERRIDE" ]]; then
+  TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+  LOG_FILE="$LOG_PATH/single_${TASK_OVERRIDE}_${TIMESTAMP}.log"
+
+  echo ""
+  echo "════════════════════════════════════════════════════════════"
+  echo "  Task Runner — Single Task"
+  echo "════════════════════════════════════════════════════════════"
+  echo "  Task:    $TASK_OVERRIDE"
+  echo "  Model:   $MODEL"
+  echo "  Budget:  \$$MAX_BUDGET"
+  echo "  Log:     $LOG_FILE"
+  echo "════════════════════════════════════════════════════════════"
+  echo ""
+
+  write_state "running"
+  run_agent "$TASK_OVERRIDE" "$LOG_FILE"
+  EXIT_CODE=$?
+
+  echo ""
+  echo "────────────────────────────────────────────────────────────"
+  if [[ "$EXIT_CODE" -eq 0 ]] && validate_output "$LOG_FILE"; then
+    write_state "completed"
+    echo "  Task $TASK_OVERRIDE completed successfully."
+  else
+    write_state "failed"
+    echo "  Task $TASK_OVERRIDE failed (exit $EXIT_CODE).${FAILURE_REASON:+ Reason: $FAILURE_REASON}"
+    echo "  Log: $LOG_FILE"
+  fi
+  echo "────────────────────────────────────────────────────────────"
+
+  exit "$EXIT_CODE"
 fi
 
+# ══════════════════════════════════════════════════════════════════
+#  LOOP MODE
+# ══════════════════════════════════════════════════════════════════
+
 echo ""
-echo "╔═════════════════════════════════════════════════════════════╗"
-echo "║            Automated Task Runner                           ║"
-echo "╠═════════════════════════════════════════════════════════════╣"
-echo "║  Project:   $PROJECT_DIR"
-echo "║  Tasks:     $TASKS_FILE"
-echo "║  Phase:     ${PHASE_FILTER}"
-echo "║  Model:     ${MODEL:-default}"
-echo "║  Mode:      $PARALLEL_MODE"
-echo "║  Max turns: ${MAX_TURNS:-unlimited}"
-echo "║  Retries:   $MAX_CONSECUTIVE_FAILURES max consecutive"
-echo "╚═════════════════════════════════════════════════════════════╝"
+echo "════════════════════════════════════════════════════════════"
+echo "  Task Runner"
+echo "════════════════════════════════════════════════════════════"
+echo "  Project:  $PROJECT_DIR"
+echo "  Tasks:    $TASKS_FILE"
+echo "  Phase:    $PHASE_FILTER"
+echo "  Model:    $MODEL"
+echo "  Budget:   \$$MAX_BUDGET/agent"
+echo "  Retries:  $MAX_CONSECUTIVE_FAILURES consecutive"
+echo "  Skip at:  $MAX_TASK_FAILURES failures/task"
+echo "════════════════════════════════════════════════════════════"
 echo ""
 
-# ── Main Loop ────────────────────────────────────────────────────
+# Show previously skipped tasks
+if [[ -f "$SKIPPED_FILE" && -s "$SKIPPED_FILE" ]]; then
+  echo "  Previously skipped:"
+  while IFS='|' read -r tid ts reason; do
+    echo "    - $tid: $reason"
+  done < "$SKIPPED_FILE"
+  echo ""
+fi
 
 while true; do
   ITERATION=$((ITERATION + 1))
-  echo "$ITERATION" > "$COUNTER_FILE"
   write_state "running"
   TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
@@ -297,114 +455,92 @@ while true; do
   echo "  Iteration #$ITERATION — $(date)"
   echo "═══════════════════════════════════════════════════════════"
 
-  # Check pointer file for DONE signal
-  if [ -f "$POINTER_PATH" ]; then
-    POINTER_CONTENT=$(cat "$POINTER_PATH")
-    if echo "$POINTER_CONTENT" | grep -qi "^DONE$"; then
-      write_state "completed"
-      echo "All tasks are complete. Exiting loop."
-      exit 0
-    fi
+  # Check pointer for DONE
+  if [ -f "$POINTER_PATH" ] && grep -qi "^DONE$" "$POINTER_PATH"; then
+    write_state "completed"
+    echo "  All tasks complete."
+    exit 0
   fi
 
-  # Scan TASKS.md for pending tasks
-  PENDING_TASKS=$(get_pending_tasks "$TASKS_PATH" "$PHASE_FILTER" "$PARALLEL")
+  # Scan for pending tasks
+  PENDING_TASKS=$(get_pending_tasks "$TASKS_PATH" "$PHASE_FILTER")
   PENDING_COUNT=$(echo "$PENDING_TASKS" | grep -c 'OB-' || echo "0")
 
   if [ "$PENDING_COUNT" -eq 0 ]; then
     write_state "completed"
     echo "DONE" > "$POINTER_PATH"
-    echo "No pending tasks found. All done!"
+    echo "  No pending tasks (all done or skipped)."
+    if [[ -f "$SKIPPED_FILE" && -s "$SKIPPED_FILE" ]]; then
+      echo ""
+      echo "  Skipped tasks:"
+      while IFS='|' read -r tid ts reason; do
+        echo "    - $tid: $reason"
+      done < "$SKIPPED_FILE"
+    fi
     exit 0
   fi
 
-  if [ "$PARALLEL" -eq 1 ]; then
-    # ── Sequential mode ──────────────────────────────────────────
-    TASK_ID=$(echo "$PENDING_TASKS" | head -1)
-    LOG_FILE="$LOG_PATH/run_${ITERATION}_${TASK_ID}_${TIMESTAMP}.log"
-    AGENT_PROMPT=$(build_prompt "$TASK_ID")
+  # Pick the first pending task
+  TASK_ID=$(echo "$PENDING_TASKS" | head -1)
+  echo "  Task:    $TASK_ID"
+  echo "  Pending: $PENDING_COUNT total"
 
-    echo "Task:   $TASK_ID"
-    echo "Log:    $LOG_FILE"
-    echo "───────────────────────────────────────────────────────────"
-
-    run_agent 1 "$LOG_FILE" "$AGENT_PROMPT"
-    EXIT_CODE=$?
-
-  else
-    # ── Distributed parallel mode ─────────────────────────────────
-    # Each agent gets a UNIQUE task from the pending list
-    AGENT_COUNT=$((PENDING_COUNT < PARALLEL ? PENDING_COUNT : PARALLEL))
-    echo "Distributing $AGENT_COUNT task(s) across $AGENT_COUNT agent(s)..."
-    echo ""
-
-    PIDS=()
-    LOG_FILES=()
-    AGENT_TASKS=()
-    AGENT_IDX=1
-
-    while IFS= read -r TASK_ID; do
-      if [ "$AGENT_IDX" -gt "$PARALLEL" ]; then
-        break
-      fi
-
-      LOG_FILE="$LOG_PATH/run_${ITERATION}_agent${AGENT_IDX}_${TASK_ID}_${TIMESTAMP}.log"
-      LOG_FILES+=("$LOG_FILE")
-      AGENT_TASKS+=("$TASK_ID")
-      AGENT_PROMPT=$(build_prompt "$TASK_ID")
-
-      echo "  Agent #$AGENT_IDX → $TASK_ID  ($LOG_FILE)"
-
-      run_agent "$AGENT_IDX" "$LOG_FILE" "$AGENT_PROMPT" &
-      PIDS+=($!)
-
-      AGENT_IDX=$((AGENT_IDX + 1))
-    done <<< "$PENDING_TASKS"
-
-    echo ""
-    echo "───────────────────────────────────────────────────────────"
-
-    # Wait for all agents and collect exit codes
-    EXIT_CODE=0
-    for i in "${!PIDS[@]}"; do
-      wait "${PIDS[$i]}" || EXIT_CODE=1
-      echo "  Agent #$((i + 1)) finished — ${AGENT_TASKS[$i]} (PID ${PIDS[$i]})"
-    done
+  # Show per-task failure history
+  TASK_FAIL_COUNT=$(get_task_failure_count "$TASK_ID")
+  if [[ "$TASK_FAIL_COUNT" -gt 0 ]]; then
+    echo "  History: $TASK_FAIL_COUNT previous failure(s)"
   fi
+
+  LOG_FILE="$LOG_PATH/run_${ITERATION}_${TASK_ID}_${TIMESTAMP}.log"
+  echo "  Log:     $LOG_FILE"
+  echo "───────────────────────────────────────────────────────────"
+
+  # Run the agent
+  run_agent "$TASK_ID" "$LOG_FILE"
+  EXIT_CODE=$?
 
   echo ""
   echo "───────────────────────────────────────────────────────────"
-  echo "Iteration #$ITERATION exited with code: $EXIT_CODE"
+  echo "  Exit code: $EXIT_CODE"
 
-  # Track consecutive failures
-  if [ "$EXIT_CODE" -ne 0 ]; then
+  # Validate result
+  if [[ "$EXIT_CODE" -eq 0 ]] && validate_output "$LOG_FILE"; then
+    # Success
+    CONSECUTIVE_FAILURES=0
+    echo "  SUCCESS: $TASK_ID"
+  else
+    # Failure
     CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
-    echo "WARNING: Iteration failed. Retry $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES."
+    REASON="${FAILURE_REASON:-exit code $EXIT_CODE}"
+    FAIL_COUNT=$(record_task_failure "$TASK_ID" "$REASON")
+    echo "  FAILED: $TASK_ID — $REASON (failure #$FAIL_COUNT)"
 
-    if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+    # Skip task if it keeps failing
+    if [[ "$FAIL_COUNT" -ge "$MAX_TASK_FAILURES" ]] && ! is_task_skipped "$TASK_ID"; then
+      skip_task "$TASK_ID" "$REASON ($FAIL_COUNT failures)"
+    fi
+
+    # Bail on consecutive failures
+    if [[ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]]; then
       write_state "failed"
-      echo "ERROR: $MAX_CONSECUTIVE_FAILURES consecutive failures. Stopping."
-      echo "Check log files in: $LOG_PATH"
+      echo ""
+      echo "  ERROR: $MAX_CONSECUTIVE_FAILURES consecutive failures. Stopping."
+      echo "  Check logs: $LOG_PATH"
       exit 1
     fi
 
-    echo "Retrying in ${SLEEP_ON_RETRY}s... (Ctrl+C to stop)"
+    echo "  Retrying in ${SLEEP_ON_RETRY}s... (Ctrl+C to stop)"
     sleep "$SLEEP_ON_RETRY"
     continue
-  else
-    CONSECUTIVE_FAILURES=0
   fi
 
-  # Check if all tasks are now complete
-  REMAINING=$(get_pending_tasks "$TASKS_PATH" "$PHASE_FILTER" 1)
-  if [ -z "$REMAINING" ]; then
+  # Check if done after successful run
+  if [ -f "$POINTER_PATH" ] && grep -qi "^DONE$" "$POINTER_PATH"; then
     write_state "completed"
-    echo "DONE" > "$POINTER_PATH"
-    echo ""
-    echo "All tasks complete after iteration #$ITERATION."
+    echo "  All tasks complete after iteration #$ITERATION."
     exit 0
   fi
 
-  echo "Next iteration in ${SLEEP_BETWEEN}s... (Ctrl+C to stop)"
+  echo "  Next iteration in ${SLEEP_BETWEEN}s... (Ctrl+C to stop)"
   sleep "$SLEEP_BETWEEN"
 done

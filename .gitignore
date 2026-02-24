@@ -43,6 +43,9 @@ npm-debug.log*
 .wwebjs_auth/
 .wwebjs_cache/
 
+# npm pack artifacts
+*.tgz
+
 # Runtime data
 pids/
 *.pid
@@ -57,5 +60,14 @@ config.json
 config.local.json
 config.production.json
 
+# OpenBridge runtime state (generated when running against itself)
+.openbridge/
+
 # Script runtime state
 docs/audit/.current_task
+
+# Test workspaces (created by integration tests)
+test-workspace-*/
+
+# Smoke test directory (created by OB-621 fresh install verification)
+ob-smoke-test/

@@ -26,9 +26,10 @@ PHASE_FILTER: {{PHASE}}
 - Otherwise, find the first task with status "◻ Pending" in the task list, starting from Phase 1.
 - If no pending tasks remain, write "DONE" to `{{POINTER_FILE}}` and stop.
 
-Read the matching finding in the findings file to understand what needs to be fixed.
+If the task ID has a matching finding in the findings file, read it for additional context.
+If no matching finding exists, use the task description from the task list — it contains everything you need.
 
-## Step 3: Implement the Fix
+## Step 3: Implement the Task
 
 Implement the task. Follow these rules:
 - Read existing code before modifying it.
@@ -59,19 +60,18 @@ If any command fails, fix the issue before proceeding. Do not skip verification.
   - Update the phase row in the Task Summary table
   - If all tasks in a phase are done, change phase status from `◻` to `✅`
 
-### 5b. Update `{{FINDINGS_FILE}}`
-- Find the matching finding by ID
-- Change its status from open (🟠/🟡/🟢) to `✅ Fixed`
-- Update the summary tables at the top:
-  - Decrement "Open" count for the severity, increment "Fixed" count
-  - Decrement "Open" count for the category, increment "Fixed" count
+### 5b. Update `{{FINDINGS_FILE}}` (only if a matching finding exists)
+- Find the matching finding by ID in the findings file
+- If a matching finding exists:
+  - Change its status from open (🟠/🟡/🟢) to `✅ Fixed`
+  - Update the summary tables at the top
+- If no matching finding exists, skip this step
 
 ### 5c. Update `{{HEALTH_FILE}}`
-- Apply the score impact based on severity:
-  - Critical fixed: +0.15
-  - High fixed: +0.03
-  - Medium fixed: +0.015
-  - Low fixed: +0.005
+- Apply the score impact based on the task's priority in TASKS.md:
+  - 🟠 High task completed: +0.03
+  - 🟡 Med task completed: +0.015
+  - 🟢 Low task completed: +0.005
 - Update the "Current Score" in the header
 - Add a new row to the "Score Change History" table
 - Update the "Open Issues Summary" line
@@ -81,7 +81,7 @@ If any command fails, fix the issue before proceeding. Do not skip verification.
 Create a single conventional commit for all changes:
 - Format: `feat(scope): short description` or `fix(scope): short description`
 - Use a scope that matches the area of code changed
-- Include the finding ID in the commit body: `Resolves <ID>`
+- Include the task ID in the commit body: `Resolves <TASK_ID>`
 - Stage only the files you changed (not `git add .`)
 
 ## Step 7: Update Pointer

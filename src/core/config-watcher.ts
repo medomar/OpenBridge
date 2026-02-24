@@ -1,8 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { AppConfigSchema } from '../types/config.js';
 import type { AppConfig } from '../types/config.js';
+import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('config-watcher');
@@ -68,9 +67,7 @@ export class ConfigWatcher {
 
   private async reload(): Promise<void> {
     try {
-      const raw = await readFile(this.configPath, 'utf-8');
-      const parsed: unknown = JSON.parse(raw);
-      const config = AppConfigSchema.parse(parsed);
+      const config = await loadConfig(this.configPath);
 
       logger.info('Config file reloaded successfully');
 

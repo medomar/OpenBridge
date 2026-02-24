@@ -1,7 +1,9 @@
 import { access } from 'node:fs/promises';
-import type { WorkspaceConfig } from '../types/config.js';
-import { resolveTilde } from '../providers/claude-code/claude-code-config.js';
-import { createLogger } from './logger.js';
+import type { WorkspaceConfig } from '../../types/config.js';
+import type { WorkspaceMap } from '../../types/workspace-map.js';
+import { scanWorkspace } from '../knowledge/workspace-scanner.js';
+import { resolveTilde } from '../../providers/claude-code/claude-code-config.js';
+import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('workspace-manager');
 
@@ -12,6 +14,7 @@ export interface WorkspaceParseResult {
 
 export class WorkspaceManager {
   private readonly workspaces = new Map<string, string>();
+  private readonly workspaceMaps = new Map<string, WorkspaceMap>();
   private readonly defaultWorkspace: string | undefined;
 
   constructor(workspaces: WorkspaceConfig[], defaultWorkspace?: string) {
@@ -37,6 +40,46 @@ export class WorkspaceManager {
         throw new Error(`Workspace "${name}" path does not exist or is not accessible: ${wsPath}`);
       });
     }
+  }
+
+  /**
+   * Load workspace maps for all configured workspaces.
+   * Scans each workspace directory for an `openbridge.map.json` (or OpenAPI/Postman spec).
+   * Workspaces without a map file are silently skipped — they remain usable but without API knowledge.
+   */
+  async loadMaps(): Promise<void> {
+    for (const [name, wsPath] of this.workspaces) {
+      const result = await scanWorkspace(wsPath);
+      if (result.success && result.map) {
+        this.workspaceMaps.set(name, result.map);
+        logger.info(
+          { workspace: name, endpoints: result.map.endpoints.length, source: result.map.source },
+          'Workspace map loaded',
+        );
+      } else {
+        logger.debug(
+          { workspace: name, error: result.error },
+          'No workspace map found (workspace will operate without API knowledge)',
+        );
+      }
+    }
+  }
+
+  /** Get the workspace map for a named workspace, or undefined if none loaded. */
+  getMap(name: string): WorkspaceMap | undefined {
+    return this.workspaceMaps.get(name);
+  }
+
+  /** Resolve a workspace name and return its map. Falls back to defaultWorkspace if name is undefined. */
+  resolveMap(name: string | undefined): WorkspaceMap | undefined {
+    const resolvedName = name ?? this.defaultWorkspace;
+    if (!resolvedName) return undefined;
+    return this.workspaceMaps.get(resolvedName);
+  }
+
+  /** Get all loaded workspace maps as a name→map record. */
+  getAllMaps(): ReadonlyMap<string, WorkspaceMap> {
+    return this.workspaceMaps;
   }
 
   /**

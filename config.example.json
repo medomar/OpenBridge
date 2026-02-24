@@ -1,55 +1,38 @@
 {
-  "connectors": [
+  "workspacePath": "/absolute/path/to/your/project",
+  "channels": [
+    {
+      "type": "console",
+      "enabled": true
+    },
     {
       "type": "whatsapp",
-      "enabled": true,
-      "options": {
-        "sessionName": "openbridge-default",
-        "sessionPath": ".wwebjs_auth"
-      }
-    }
-  ],
-  "providers": [
+      "enabled": false
+    },
     {
-      "type": "claude-code",
-      "enabled": true,
+      "type": "telegram",
+      "enabled": false,
       "options": {
-        "workspacePath": "~/projects/my-project",
-        "maxTokens": 4096
+        "token": "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+      }
+    },
+    {
+      "type": "discord",
+      "enabled": false,
+      "options": {
+        "token": "YOUR_DISCORD_BOT_TOKEN_HERE"
+      }
+    },
+    {
+      "type": "webchat",
+      "enabled": false,
+      "options": {
+        "port": 3000
       }
     }
   ],
-  "defaultProvider": "claude-code",
-  "workspaces": [
-    { "name": "my-project", "path": "~/projects/my-project" },
-    { "name": "backend", "path": "~/projects/backend" }
-  ],
-  "defaultWorkspace": "my-project",
   "auth": {
     "whitelist": ["+1234567890"],
-    "prefix": "/ai",
-    "rateLimit": {
-      "enabled": true,
-      "maxMessages": 10,
-      "windowMs": 60000
-    },
-    "commandFilter": {
-      "denyPatterns": ["rm\\s+-rf", "drop\\s+table", "format\\s+disk"],
-      "allowPatterns": [],
-      "denyMessage": "That command is not allowed."
-    }
-  },
-  "queue": {
-    "maxRetries": 3,
-    "retryDelayMs": 1000
-  },
-  "audit": {
-    "enabled": false,
-    "logPath": "audit.log"
-  },
-  "health": {
-    "enabled": false,
-    "port": 8080
-  },
-  "logLevel": "info"
+    "prefix": "/ai"
+  }
 }

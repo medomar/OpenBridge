@@ -1,9 +1,11 @@
 import type { AIProvider, ProviderResult } from '../types/provider.js';
-import type { InboundMessage, OutboundMessage } from '../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { RouterConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
 import type { MetricsCollector } from './metrics.js';
+import type { AgentOrchestrator } from './agent-orchestrator.js';
+import type { MasterManager } from '../master/master-manager.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -23,6 +25,8 @@ export class Router {
   private readonly progressIntervalMs: number;
   private readonly auditLogger?: AuditLogger;
   private readonly metrics?: MetricsCollector;
+  private orchestrator?: AgentOrchestrator;
+  private master?: MasterManager;
 
   constructor(
     defaultProvider: string,
@@ -36,6 +40,18 @@ export class Router {
     this.metrics = metrics;
   }
 
+  /** Set the agent orchestrator — when set, messages route through it instead of directly to a provider */
+  setOrchestrator(orchestrator: AgentOrchestrator): void {
+    this.orchestrator = orchestrator;
+    logger.info('Router configured to use Agent Orchestrator');
+  }
+
+  /** Set the Master AI — when set, all messages route through it (priority over orchestrator/provider) */
+  setMaster(master: MasterManager): void {
+    this.master = master;
+    logger.info('Router configured to use Master AI');
+  }
+
   /** Register an active connector */
   addConnector(connector: Connector): void {
     this.connectors.set(connector.name, connector);
@@ -46,12 +62,71 @@ export class Router {
     this.providers.set(provider.name, provider);
   }
 
+  /**
+   * Send a progress event to a specific connector (best-effort).
+   * Used by MasterManager to emit typed ProgressEvents to the right connector
+   * without going through the full routing flow.
+   */
+  async sendProgress(source: string, recipient: string, event: ProgressEvent): Promise<void> {
+    const connector = this.connectors.get(source);
+    if (!connector?.sendProgress) return;
+    try {
+      await connector.sendProgress(event, recipient);
+    } catch (err) {
+      logger.warn({ err, source, recipient }, 'sendProgress: failed to send progress event');
+    }
+  }
+
+  /**
+   * Broadcast a progress event to all connected connectors (best-effort).
+   * Used during workspace exploration when there is no specific message sender.
+   */
+  async broadcastProgress(event: ProgressEvent): Promise<void> {
+    for (const [name, connector] of this.connectors) {
+      if (connector.sendProgress) {
+        try {
+          await connector.sendProgress(event, '__system__');
+        } catch (err) {
+          logger.warn({ err, connector: name }, 'broadcastProgress: failed');
+        }
+      }
+    }
+  }
+
+  /**
+   * Send a message directly to a user on a specific connector (best-effort).
+   * Used by MasterManager to deliver progress updates during worker delegation
+   * without going through the full routing flow.
+   */
+  async sendDirect(
+    source: string,
+    recipient: string,
+    content: string,
+    replyTo?: string,
+  ): Promise<void> {
+    const connector = this.connectors.get(source);
+    if (!connector) {
+      logger.warn({ source }, 'sendDirect: connector not found');
+      return;
+    }
+    const msg: OutboundMessage = { target: source, recipient, content, replyTo };
+    try {
+      await connector.sendMessage(msg);
+    } catch (err) {
+      logger.warn({ err, source, recipient }, 'sendDirect: failed to send message');
+    }
+  }
+
   /** Route an inbound message to the appropriate provider and send the response back */
   async route(message: InboundMessage): Promise<void> {
-    const provider = this.providers.get(this.defaultProviderName);
-    if (!provider) {
-      logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
-      return;
+    // Validate routing target exists
+    // Priority: Master → Orchestrator → Direct Provider
+    if (!this.master && !this.orchestrator) {
+      const provider = this.providers.get(this.defaultProviderName);
+      if (!provider) {
+        logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
+        return;
+      }
     }
 
     const connector = this.connectors.get(message.source);
@@ -60,8 +135,15 @@ export class Router {
       return;
     }
 
+    const useMaster = !!this.master;
+    const useOrchestrator = !useMaster && !!this.orchestrator;
     logger.info(
-      { messageId: message.id, provider: provider.name, source: message.source },
+      {
+        messageId: message.id,
+        provider: this.defaultProviderName,
+        source: message.source,
+        routedVia: useMaster ? 'master' : useOrchestrator ? 'orchestrator' : 'direct',
+      },
       'Routing message',
     );
 
@@ -82,15 +164,25 @@ export class Router {
     // Start progress updates
     const stopProgress = this.startProgressUpdates(connector, message);
 
-    // Process with AI provider — prefer streaming to avoid timeout on long responses
+    // Process message — through Master, orchestrator, or directly via provider
     let result: ProviderResult;
     const startTime = Date.now();
 
     try {
-      if (provider.streamMessage) {
-        result = await this.consumeStream(provider.streamMessage(message));
+      if (this.master) {
+        // Route through Master AI
+        const response = await this.master.processMessage(message);
+        result = { content: response };
+      } else if (this.orchestrator) {
+        const orchestratorResult = await this.orchestrator.process(message);
+        result = orchestratorResult.result;
       } else {
-        result = await provider.processMessage(message);
+        const provider = this.providers.get(this.defaultProviderName)!;
+        if (provider.streamMessage) {
+          result = await this.consumeStream(provider.streamMessage(message));
+        } else {
+          result = await provider.processMessage(message);
+        }
       }
     } catch (error) {
       stopProgress();

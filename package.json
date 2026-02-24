@@ -1,10 +1,23 @@
 {
   "name": "openbridge",
-  "version": "0.1.0",
-  "description": "Modular bridge connecting messaging platforms to AI providers. WhatsApp + Claude Code in V0.",
+  "version": "0.0.1",
+  "description": "Autonomous AI bridge — connects messaging platforms to your installed AI tools (Claude Code, Codex, Aider). Self-governing Master AI explores your workspace and executes tasks. Zero API keys. Zero extra cost.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "config.example.json",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "bin": {
     "openbridge": "dist/cli/index.js"
   },
@@ -35,7 +48,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "NODE_ENV=production node dist/index.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -49,22 +62,26 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
+    "discord.js": "^14.25.1",
+    "grammy": "^1.40.0",
     "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.26.0",
+    "ws": "^8.19.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.0",
     "@commitlint/config-conventional": "^19.6.0",
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",
     "globals": "^15.14.0",
     "husky": "^9.1.0",
     "lint-staged": "^15.3.0",
+    "pino-pretty": "^13.0.0",
     "prettier": "^3.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

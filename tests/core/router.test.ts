@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Router } from '../../src/core/router.js';
+import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
+import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { MasterManager } from '../../src/master/master-manager.js';
 
 function createMessage(): InboundMessage {
   return {
@@ -206,5 +209,358 @@ describe('Router', () => {
 
     resolveProcess({ content: 'Done' });
     await routePromise;
+  });
+
+  describe('with Agent Orchestrator', () => {
+    it('should route through orchestrator when set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Orchestrated response' });
+      // Disable streaming so orchestrator uses processMessage
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Provider was called through the orchestrator
+      expect(provider.processedMessages).toHaveLength(1);
+      expect(provider.processedMessages[0]?.content).toBe('hello');
+
+      // ack + response
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toBe('Orchestrated response');
+    });
+
+    it('should still send typing indicator when using orchestrator', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.typingIndicators).toHaveLength(1);
+    });
+
+    it('should propagate orchestrator errors', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Create orchestrator without registering the provider — this will cause an error
+      const orchestrator = new AgentOrchestrator('nonexistent');
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await expect(router.route(createMessage())).rejects.toThrow(
+        'Provider "nonexistent" not registered with orchestrator',
+      );
+    });
+
+    it('should not require direct providers when orchestrator is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'via orchestrator' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      // Only register connector and orchestrator — no direct addProvider call
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('via orchestrator');
+    });
+  });
+
+  describe('with Master AI', () => {
+    function createMockMaster() {
+      const mockProcessMessage = vi.fn(async (message: InboundMessage) => {
+        return `Master AI response to: ${message.content}`;
+      });
+      const mockGetState = vi.fn(() => 'ready' as const);
+
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: mockGetState,
+      } as unknown as MasterManager;
+
+      return { master, mockProcessMessage, mockGetState };
+    }
+
+    it('should route through Master when set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master processMessage was called
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(mockProcessMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'hello' }),
+      );
+
+      // ack + response
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should prioritize Master over orchestrator', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Provider response' });
+      provider.streamMessage = undefined;
+
+      const orchestrator = new AgentOrchestrator('mock');
+      orchestrator.addProvider(provider);
+
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setOrchestrator(orchestrator);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master was called, not orchestrator/provider
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(provider.processedMessages).toHaveLength(0);
+
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should prioritize Master over direct provider', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Provider response' });
+
+      const { master, mockProcessMessage } = createMockMaster();
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      // Master was called, not provider
+      expect(mockProcessMessage).toHaveBeenCalledTimes(1);
+      expect(provider.processedMessages).toHaveLength(0);
+
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should send typing indicator when using Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.typingIndicators).toHaveLength(1);
+      expect(connector.typingIndicators[0]).toBe('+1234567890');
+    });
+
+    it('should not require provider when Master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMaster();
+
+      // Only register connector and master — no provider
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await router.route(createMessage());
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('Master AI response to: hello');
+    });
+
+    it('should handle Master errors gracefully', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Create master with error-throwing processMessage
+      const mockProcessMessage = vi.fn().mockRejectedValueOnce(new Error('Master AI failed'));
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: vi.fn(() => 'ready' as const),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+
+      await connector.initialize();
+      await expect(router.route(createMessage())).rejects.toThrow('Master AI failed');
+    });
+  });
+
+  describe('sendProgress (OB-513)', () => {
+    it('should call connector sendProgress when connector supports it', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      await connector.initialize();
+
+      await router.sendProgress('mock', '+1234567890', { type: 'classifying' });
+
+      expect(connector.progressEvents).toHaveLength(1);
+      expect(connector.progressEvents[0]?.event).toEqual({ type: 'classifying' });
+      expect(connector.progressEvents[0]?.chatId).toBe('+1234567890');
+    });
+
+    it('should pass the full event payload to the connector', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      await connector.initialize();
+
+      await router.sendProgress('mock', '+1234567890', {
+        type: 'spawning',
+        workerCount: 3,
+      });
+
+      expect(connector.progressEvents[0]?.event).toEqual({ type: 'spawning', workerCount: 3 });
+    });
+
+    it('should be a no-op when connector is not found', async () => {
+      const router = new Router('mock');
+      // No connector added
+      await expect(
+        router.sendProgress('unknown', '+1234567890', { type: 'classifying' }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('defaultProvider getter (OB-635)', () => {
+    it('should return the configured default provider name', () => {
+      const router = new Router('claude');
+      expect(router.defaultProvider).toBe('claude');
+    });
+  });
+
+  describe('route() — connector not found (OB-635)', () => {
+    it('should return early without throwing when source connector is not registered', async () => {
+      const router = new Router('mock');
+      const provider = new MockProvider();
+      router.addProvider(provider);
+      // No connector added for source 'unknown'
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'unknown',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      // Should resolve without throwing (early return after logging error)
+      await expect(router.route(message)).resolves.toBeUndefined();
+
+      // Provider was NOT called because routing short-circuited
+      expect(provider.processedMessages).toHaveLength(0);
+    });
+  });
+
+  describe('ProviderError handling (OB-635)', () => {
+    it('should send a user-friendly error message and rethrow for permanent ProviderError', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('auth failed', 'permanent', 1));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('auth failed');
+
+      // Should have sent ack + error message
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+      expect(connector.sentMessages[1]?.content).toContain('Request failed');
+    });
+
+    it('should send a timeout message for ProviderError with exit code 124', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('timed out', 'transient', 124));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('timed out');
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('timed out');
+    });
+
+    it('should send a transient error message for transient ProviderError', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+
+      provider.processMessage = vi
+        .fn()
+        .mockRejectedValue(new ProviderError('rate limit exceeded', 'transient', 429));
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await expect(router.route(createMessage())).rejects.toThrow('rate limit exceeded');
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('temporarily unavailable');
+    });
   });
 });
