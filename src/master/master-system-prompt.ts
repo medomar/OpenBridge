@@ -16,6 +16,7 @@
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { ToolProfile } from '../types/agent.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
+import type { ModelRegistry } from '../core/model-registry.js';
 
 export interface MasterSystemPromptContext {
   /** Absolute path to the target workspace */
@@ -26,6 +27,8 @@ export interface MasterSystemPromptContext {
   discoveredTools: DiscoveredTool[];
   /** Custom profiles from .openbridge/profiles.json (if any) */
   customProfiles?: Record<string, ToolProfile>;
+  /** Model registry for provider-agnostic model resolution */
+  modelRegistry?: ModelRegistry;
 }
 
 /**
@@ -97,6 +100,11 @@ export function formatLearnedPatternsSection(data: LearnedPatternsData): string 
 export function generateMasterSystemPrompt(context: MasterSystemPromptContext): string {
   const profilesSection = formatProfiles(context.customProfiles);
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
+
+  // Resolve model names from registry (defaults to Claude aliases if no registry)
+  const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
+  const balancedModel = context.modelRegistry?.resolve('balanced')?.id ?? 'sonnet';
+  const powerfulModel = context.modelRegistry?.resolve('powerful')?.id ?? 'opus';
 
   return `# Master AI — System Prompt
 
@@ -186,7 +194,7 @@ Write \`workspace-map.json\` with this structure:
 When you need workers to execute tasks, use SPAWN markers. Each marker specifies a tool profile and a JSON manifest describing the worker:
 
 \`\`\`
-[SPAWN:profile-name]{"prompt":"Your detailed instructions for the worker","model":"haiku","maxTurns":10}[/SPAWN]
+[SPAWN:profile-name]{"prompt":"Your detailed instructions for the worker","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
 
 ### SPAWN Marker Format
@@ -194,7 +202,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 - **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`full-access\`, or a custom profile
 - **JSON body fields**:
   - \`prompt\` (required): Detailed instructions for the worker
-  - \`model\` (optional): \`haiku\` (fast, mechanical), \`sonnet\` (balanced), \`opus\` (complex reasoning)
+  - \`model\` (optional): \`${fastModel}\` (fast, mechanical), \`${balancedModel}\` (balanced), \`${powerfulModel}\` (complex reasoning)
   - \`maxTurns\` (optional): Maximum agentic turns (default: 25)
   - \`timeout\` (optional): Timeout in milliseconds
   - \`retries\` (optional): Number of retry attempts on failure
@@ -203,26 +211,26 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 
 **Read-only exploration task (fast, cheap):**
 \`\`\`
-[SPAWN:read-only]{"prompt":"List all test files in the project and summarize the testing patterns used","model":"haiku","maxTurns":10}[/SPAWN]
+[SPAWN:read-only]{"prompt":"List all test files in the project and summarize the testing patterns used","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
 
 **Code modification task:**
 \`\`\`
-[SPAWN:code-edit]{"prompt":"Add input validation to the createUser function in src/api/users.ts. Validate email format and password length >= 8","model":"sonnet","maxTurns":15}[/SPAWN]
+[SPAWN:code-edit]{"prompt":"Add input validation to the createUser function in src/api/users.ts. Validate email format and password length >= 8","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
 **Multiple workers in parallel:**
 \`\`\`
-[SPAWN:read-only]{"prompt":"Analyze the database schema and list all tables with their relationships","model":"haiku","maxTurns":10}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Analyze the database schema and list all tables with their relationships","model":"${fastModel}","maxTurns":10}[/SPAWN]
 
-[SPAWN:read-only]{"prompt":"Read the API routes and list all endpoints with their HTTP methods","model":"haiku","maxTurns":10}[/SPAWN]
+[SPAWN:read-only]{"prompt":"Read the API routes and list all endpoints with their HTTP methods","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
 
 ### Guidelines
 
-- Use \`read-only\` + \`haiku\` for information gathering (cheapest, fastest)
-- Use \`code-edit\` + \`sonnet\` for code modifications (balanced)
-- Use \`full-access\` + \`opus\` only for complex multi-step tasks (expensive)
+- Use \`read-only\` + \`${fastModel}\` for information gathering (cheapest, fastest)
+- Use \`code-edit\` + \`${balancedModel}\` for code modifications (balanced)
+- Use \`full-access\` + \`${powerfulModel}\` only for complex multi-step tasks (expensive)
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
