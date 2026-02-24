@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 // --------------------------------------------------------------------------
+// No need to mock node:fs/promises — we stub removeStaleLock() on the
+// WhatsAppConnector prototype instead.  See beforeEach below.
+// --------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------
 // Mock whatsapp-web.js
 // The connector uses a dynamic import, so we mock the module here.
 // --------------------------------------------------------------------------
@@ -26,6 +31,12 @@ const createdClients: MockClientInstance[] = [];
 // Convenience accessor — always points to the most recently created client
 let mockClientInstance: MockClientInstance;
 
+// Options passed to the Client constructor (captured per test)
+const capturedClientOptions: unknown[] = [];
+
+// Controls how many times initialize() fails before succeeding (0 = never fail)
+let initializeFailCount = 0;
+
 vi.mock('whatsapp-web.js', () => {
   class MockClient {
     private handlers: Map<string, ((...args: unknown[]) => void)[]> = new Map();
@@ -37,7 +48,12 @@ vi.mock('whatsapp-web.js', () => {
       this.handlers.get(event)!.push(handler);
     });
 
-    initialize = vi.fn(async () => {});
+    initialize = vi.fn(async () => {
+      if (initializeFailCount > 0) {
+        initializeFailCount--;
+        throw new Error('ProtocolError: Execution context was destroyed');
+      }
+    });
     sendMessage = vi.fn(async () => {});
     getChatById = vi.fn(async () => ({ sendStateTyping: vi.fn(async () => {}) }));
     destroy = vi.fn(async () => {});
@@ -52,7 +68,8 @@ vi.mock('whatsapp-web.js', () => {
 
   class LocalAuth {}
 
-  const ClientConstructor = vi.fn(function (this: MockClientInstance) {
+  const ClientConstructor = vi.fn(function (this: MockClientInstance, options: unknown) {
+    capturedClientOptions.push(options);
     const instance = new MockClient() as unknown as MockClientInstance;
     createdClients.push(instance);
     mockClientInstance = instance;
@@ -90,7 +107,15 @@ describe('WhatsAppConnector', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.clearAllTimers();
+    // Stub removeStaleLock — it does real filesystem I/O (readlink/unlink) that
+    // can deadlock under fake timers or on CI runners.
+    vi.spyOn(
+      WhatsAppConnector.prototype as unknown as { removeStaleLock: () => Promise<void> },
+      'removeStaleLock',
+    ).mockResolvedValue(undefined);
     createdClients.length = 0;
+    capturedClientOptions.length = 0;
+    initializeFailCount = 0;
   });
 
   afterEach(() => {
@@ -356,13 +381,13 @@ describe('WhatsAppConnector', () => {
     });
 
     it('resets reconnect attempt counter on successful reconnect', async () => {
-      // Use 0ms delay so the reconnect fires immediately when timers advance
+      vi.useRealTimers(); // Avoid fake-timer microtask deadlocks on CI runners
       const connector = buildConnector({
         reconnect: {
           enabled: true,
           maxAttempts: 5,
-          initialDelayMs: 0,
-          maxDelayMs: 0,
+          initialDelayMs: 1,
+          maxDelayMs: 1,
           backoffFactor: 1,
         },
       });
@@ -372,11 +397,11 @@ describe('WhatsAppConnector', () => {
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
 
-      // Disconnect — schedules reconnect with 0ms delay
+      // Disconnect — schedules reconnect with 1ms delay
       mockClientInstance._trigger('disconnected', 'reason');
 
-      // Advance timers to fire the 0ms reconnect setTimeout, then flush promises
-      await vi.advanceTimersByTimeAsync(1);
+      // Wait for the reconnect timer to fire and createAndStartClient() to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
@@ -390,7 +415,7 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
-      vi.useRealTimers();
+      vi.useRealTimers(); // Avoid fake-timer microtask delays on CI runners
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
@@ -441,6 +466,179 @@ describe('WhatsAppConnector', () => {
 
       expect(listener1).toHaveBeenCalledOnce();
       expect(listener2).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // OB-420: WhatsApp stability improvements
+  // -----------------------------------------------------------------------
+
+  describe('stability improvements (OB-420)', () => {
+    it('uses local webVersionCache to avoid remote fetch failures', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+
+      const options = capturedClientOptions[0] as { webVersionCache: { type: string } };
+      expect(options.webVersionCache.type).toBe('local');
+    });
+
+    it('retries client.initialize() on ProtocolError and succeeds on 2nd attempt', async () => {
+      vi.useRealTimers(); // Need real async for retry backoff
+      // Fail once, succeed on 2nd attempt
+      initializeFailCount = 1;
+      const connector = buildConnector({
+        // 1ms delay so retries are fast but real-timer-compatible
+        reconnect: { initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 1 },
+      });
+
+      await connector.initialize();
+
+      expect(mockClientInstance.initialize).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws after exhausting all 3 initialize() retry attempts', async () => {
+      vi.useRealTimers(); // Need real async for retry backoff
+      // Fail all 3 attempts
+      initializeFailCount = 3;
+      const connector = buildConnector({
+        reconnect: { initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 1 },
+      });
+
+      await expect(connector.initialize()).rejects.toThrow('ProtocolError');
+
+      expect(mockClientInstance.initialize).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not double-schedule reconnect when disconnected event fires twice', async () => {
+      vi.useRealTimers(); // Need real async for the reconnect timer to fire and complete
+      const connector = buildConnector({
+        reconnect: {
+          enabled: true,
+          maxAttempts: 5,
+          initialDelayMs: 5,
+          maxDelayMs: 5,
+          backoffFactor: 1,
+        },
+      });
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Fire disconnected twice in the same tick — second call should be skipped by guard
+      mockClientInstance._trigger('disconnected', 'reason 1');
+      mockClientInstance._trigger('disconnected', 'reason 2');
+
+      // Wait for the single reconnect timer to fire and createAndStartClient() to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      expect(createdClients.length).toBe(2); // original + exactly one reconnect
+    });
+
+    it('logs ProtocolError as post-ready when error fires after ready', async () => {
+      vi.useRealTimers(); // Need real async for the reconnect timer to complete
+      const errorListener = vi.fn();
+      const connector = buildConnector({
+        reconnect: {
+          enabled: true,
+          maxAttempts: 5,
+          initialDelayMs: 5,
+          maxDelayMs: 5,
+          backoffFactor: 1,
+        },
+      });
+      connector.on('error', errorListener);
+
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      expect(connector.isConnected()).toBe(true);
+
+      // Fire error event post-ready — should trigger reconnect
+      mockClientInstance._trigger(
+        'error',
+        new Error('ProtocolError: Execution context was destroyed'),
+      );
+
+      expect(errorListener).toHaveBeenCalledOnce();
+      expect(connector.isConnected()).toBe(false);
+      // Reconnect should be scheduled — wait for it to complete
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      expect(createdClients.length).toBe(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendProgress()
+  // -----------------------------------------------------------------------
+
+  describe('sendProgress()', () => {
+    it('sends a single message on spawning event', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 3 }, '+1234567890@c.us');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledWith(
+        '+1234567890@c.us',
+        '🔄 Breaking into 3 subtasks...',
+      );
+    });
+
+    it('sends "1 subtask" (singular) when workerCount is 1', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 1 }, '+1234567890@c.us');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledWith(
+        '+1234567890@c.us',
+        '🔄 Breaking into 1 subtask...',
+      );
+    });
+
+    it('does not send a second spawning message if one was already sent', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('silently skips non-spawning events (no message spam)', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'classifying' }, chatId);
+      await connector.sendProgress({ type: 'planning' }, chatId);
+      await connector.sendProgress({ type: 'synthesizing' }, chatId);
+
+      expect(mockClientInstance.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('clears sent state on complete so a new progress can be sent', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+      const chatId = '+1234567890@c.us';
+
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, chatId);
+      await connector.sendProgress({ type: 'complete' }, chatId);
+      // After complete, a new spawning event should send again
+      await connector.sendProgress({ type: 'spawning', workerCount: 1 }, chatId);
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('silently skips when disconnected', async () => {
+      const connector = buildConnector();
+      // Not initialized — not connected
+      await connector.sendProgress({ type: 'spawning', workerCount: 2 }, '+1234567890@c.us');
+      // No mock client yet — should not throw
     });
   });
 });

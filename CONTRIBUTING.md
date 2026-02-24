@@ -38,6 +38,21 @@ npm run dev          # Start in development mode with hot reload
 
 Always branch from `develop`, not `main`.
 
+## Branch Protection
+
+The `main` and `develop` branches are protected. Maintainers should configure the following settings in **GitHub → Settings → Branches → Branch protection rules**:
+
+| Rule                              |            `main`            |          `develop`           |
+| --------------------------------- | :--------------------------: | :--------------------------: |
+| Require pull request before merge |              ✅              |              ✅              |
+| Required approving reviews        |              1               |              1               |
+| Require status checks to pass     |              ✅              |              ✅              |
+| Required status checks            | lint, typecheck, test, build | lint, typecheck, test, build |
+| Restrict direct pushes            |              ✅              |              ✅              |
+| Allow force pushes                |              ❌              |              ❌              |
+
+All changes to `main` and `develop` must go through a pull request. Direct commits and force-pushes are not permitted. If your push is rejected, open a PR from your feature branch instead.
+
 ## Commit Convention
 
 We use [Conventional Commits](https://www.conventionalcommits.org/). Commits are
@@ -47,7 +62,7 @@ Format: `<type>(<scope>): <description>`
 
 **Types**: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
 
-**Scopes**: core, whatsapp, claude, connector, provider, config, deps
+**Scopes**: core, whatsapp, claude, connector, provider, config, discovery, master, runner, deps, ci, docs
 
 Examples:
 
@@ -72,6 +87,36 @@ docs(readme): add installation instructions
 - ESLint + Prettier enforced via pre-commit hooks
 - Prefer explicit types over `any`
 - Use interfaces for plugin contracts (connectors, providers)
+
+## Release Process
+
+Releases are automated via the `.github/workflows/release.yml` workflow. When a version tag is pushed to `main`, the workflow runs the full CI pipeline (lint → typecheck → test → build) and then publishes to npm and creates a GitHub Release.
+
+### Repository Secrets
+
+Maintainers must configure the following secret in the GitHub repository settings before releases can be published:
+
+| Secret      | Description                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NPM_TOKEN` | An npm automation token with publish access to the `openbridge` package. Generate at npmjs.com → Access Tokens → Generate New Token → Automation. |
+
+### Tagging a Release
+
+```bash
+# Ensure you are on main and up to date
+git checkout main && git pull
+
+# Create and push the version tag (triggers the release workflow)
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+The workflow will:
+
+1. Run lint, type check, and tests
+2. Build `dist/`
+3. Publish to npm (`npm publish --provenance --access public`)
+4. Create a GitHub Release with changelog notes extracted from `CHANGELOG.md`
 
 ## Adding a Connector
 

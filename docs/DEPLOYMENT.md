@@ -10,7 +10,7 @@ All deployment methods require:
 
 - **Node.js >= 22** (for non-Docker setups)
 - **Chromium/Chrome** — required by `whatsapp-web.js` for headless WhatsApp
-- **Claude CLI** (`claude`) — must be installed and authenticated on the host
+- **At least one AI CLI tool** (e.g. `claude`, `codex`, `aider`) — must be installed and authenticated on the host
 - A valid `config.json` (see [CONFIGURATION.md](./CONFIGURATION.md))
 
 ---
@@ -88,7 +88,7 @@ docker run -d \
 - **Build first**: The Docker image uses pre-compiled `dist/` output. Run `npm run build` before `docker build`.
 - **Session volume**: Mount `.wwebjs_auth` as a volume so WhatsApp sessions survive container restarts.
 - **Config mount**: Mount your `config.json` as read-only. Never bake secrets into the image.
-- **Health check port**: Expose port 8080 if `health.enabled` is `true` in your config.
+- **AI CLI tools**: The AI CLI (e.g. `claude`) must be available inside the container. For Docker, you may need to install it in the image or mount the host binary.
 - **QR code**: On first run, view logs with `docker logs -f openbridge` to scan the WhatsApp QR code.
 
 ### Docker Compose
@@ -140,16 +140,13 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
       },
-      // Restart on crash
       autorestart: true,
       max_restarts: 10,
       min_uptime: '10s',
-      // Log files
       error_file: 'logs/error.log',
       out_file: 'logs/out.log',
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      // Watch for config changes (optional)
       watch: false,
     },
   ],
@@ -159,31 +156,22 @@ module.exports = {
 ### Start with PM2
 
 ```bash
-# Build first
 npm run build
-
-# Start the process
 pm2 start ecosystem.config.cjs
-
-# Check status
 pm2 status
-
-# View logs
 pm2 logs openbridge
-
-# Auto-start on system boot
-pm2 startup
+pm2 startup   # Auto-start on system boot
 pm2 save
 ```
 
 ### Common PM2 commands
 
 ```bash
-pm2 restart openbridge    # Restart the process
-pm2 stop openbridge       # Stop without removing
-pm2 delete openbridge     # Stop and remove from PM2
-pm2 monit                 # Real-time monitoring dashboard
-pm2 logs openbridge --lines 100   # View recent logs
+pm2 restart openbridge
+pm2 stop openbridge
+pm2 delete openbridge
+pm2 monit
+pm2 logs openbridge --lines 100
 ```
 
 ---
@@ -215,10 +203,8 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=openbridge
 
-# Environment
 Environment=NODE_ENV=production
 
-# Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/opt/openbridge/.wwebjs_auth /opt/openbridge/logs
@@ -230,16 +216,12 @@ WantedBy=multi-user.target
 ### Setup
 
 ```bash
-# Create a dedicated user
 sudo useradd --system --home /opt/openbridge --shell /usr/sbin/nologin openbridge
-
-# Copy project files
 sudo mkdir -p /opt/openbridge
 sudo cp -r dist/ package.json package-lock.json config.json /opt/openbridge/
 cd /opt/openbridge && sudo npm ci --omit=dev
 sudo chown -R openbridge:openbridge /opt/openbridge
 
-# Enable and start
 sudo systemctl daemon-reload
 sudo systemctl enable openbridge
 sudo systemctl start openbridge
@@ -248,17 +230,17 @@ sudo systemctl start openbridge
 ### Common systemd commands
 
 ```bash
-sudo systemctl status openbridge    # Check status
-sudo journalctl -u openbridge -f    # Follow logs
-sudo systemctl restart openbridge   # Restart
-sudo systemctl stop openbridge      # Stop
+sudo systemctl status openbridge
+sudo journalctl -u openbridge -f
+sudo systemctl restart openbridge
+sudo systemctl stop openbridge
 ```
 
 ---
 
 ## Health Check
 
-Enable the health check endpoint in `config.json` to monitor bridge status:
+Enable the health check endpoint in `config.json`:
 
 ```json
 {
@@ -275,7 +257,7 @@ Test it:
 curl http://localhost:8080/
 ```
 
-Returns JSON with connector, provider, and queue status. HTTP 200 = healthy, 503 = unhealthy.
+Returns JSON with connector and queue status. HTTP 200 = healthy, 503 = unhealthy.
 
 ---
 
@@ -289,4 +271,5 @@ Returns JSON with connector, provider, and queue status. HTTP 200 = healthy, 503
 - [ ] Enable health checks for external monitoring
 - [ ] Set `logLevel` to `"info"` or `"warn"` in production
 - [ ] Ensure Chromium is installed (required by `whatsapp-web.js`)
-- [ ] Ensure the Claude CLI is installed and authenticated
+- [ ] Ensure at least one AI CLI tool is installed and authenticated
+- [ ] Use `npm run dev` (not `dev:watch`) to avoid process kills during AI execution

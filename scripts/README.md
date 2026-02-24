@@ -7,14 +7,13 @@ Designed to be reusable across any project — just point to your task list.
 
 ## Scripts
 
-| Script                    | Purpose                                                      |
-| ------------------------- | ------------------------------------------------------------ |
-| `run-tasks.sh`            | Loop through all pending tasks (sequential or parallel)      |
-| `run-single-task.sh`      | Execute one specific task by ID                              |
-| `status.sh`               | Live dashboard — running agents, task progress, health score |
-| `logs.sh`                 | View, tail, search, and manage agent logs                    |
-| `stop.sh`                 | Gracefully stop running agents                               |
-| `prompts/execute-task.md` | Agent prompt template (what Claude does each iteration)      |
+| Script                    | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `run-tasks.sh`            | Execute pending tasks (loop or single-task mode) |
+| `status.sh`               | Live dashboard — agents, progress, failures      |
+| `logs.sh`                 | View, tail, search, and manage agent logs        |
+| `stop.sh`                 | Gracefully stop running agents                   |
+| `prompts/execute-task.md` | Worker prompt template (what each agent does)    |
 
 ---
 
@@ -31,11 +30,14 @@ Designed to be reusable across any project — just point to your task list.
 # Run all pending tasks sequentially
 ./scripts/run-tasks.sh
 
-# Run Phase 1 with 5 parallel agents using Sonnet
-./scripts/run-tasks.sh --phase 1 --parallel 5 --model sonnet
+# Run a single specific task
+./scripts/run-tasks.sh OB-302
 
-# Run a single task
-./scripts/run-single-task.sh OB-003
+# Run Phase 22 tasks with Opus model
+./scripts/run-tasks.sh --phase 22 --model opus
+
+# Overnight run, prevent macOS sleep
+./scripts/run-tasks.sh --caffeinate
 
 # Monitor progress (in another terminal)
 ./scripts/status.sh --watch
@@ -49,19 +51,29 @@ Designed to be reusable across any project — just point to your task list.
 
 ---
 
+## Failure Tracking & Skip Mechanism
+
+The runner tracks failures per-task and automatically skips persistently failing tasks:
+
+- **Per-task failure count** — stored in `logs/task-runs/.task_failures.json`
+- **Auto-skip** — after `--max-task-failures` (default: 3) failures on the same task, it's skipped
+- **Skip log** — skipped tasks recorded in `logs/task-runs/.skipped_tasks` with timestamp and reason
+- **Reset** — use `--reset-failures` to clear the skip list and start fresh
+
+This prevents the runner from looping forever on a task that keeps failing.
+
+---
+
 ## Monitoring & Operations
 
 ### Check status
 
 ```bash
-# Full dashboard (agents, tasks, logs)
+# Full dashboard (agents, tasks, failures, logs)
 ./scripts/status.sh
 
 # Auto-refresh every 5 seconds
 ./scripts/status.sh --watch
-
-# Auto-refresh every 10 seconds
-./scripts/status.sh --watch 10
 
 # Only show running agents
 ./scripts/status.sh --agents
@@ -82,15 +94,8 @@ Designed to be reusable across any project — just point to your task list.
 # Follow the 3 most recent logs
 ./scripts/logs.sh --tail 3
 
-# Follow all logs from the current iteration
-./scripts/logs.sh --tail-all
-
-# View a specific log (partial name match)
-./scripts/logs.sh --view agent2
-
 # Search all logs for a pattern
 ./scripts/logs.sh --grep "OB-003"
-./scripts/logs.sh --grep "error"
 
 # One-line summary per log
 ./scripts/logs.sh --summary
@@ -132,23 +137,22 @@ Designed to be reusable across any project — just point to your task list.
 
 #### Execution options
 
-| Option            | Default   | Description                              |
-| ----------------- | --------- | ---------------------------------------- |
-| `--phase N`       | all       | Limit to Phase N                         |
-| `--model MODEL`   | default   | Claude model (`opus`, `sonnet`, `haiku`) |
-| `--parallel N`    | `1`       | Number of concurrent agents              |
-| `--max-turns N`   | unlimited | Max turns per agent iteration            |
-| `--retries N`     | `3`       | Max consecutive failures before stopping |
-| `--sleep N`       | `5`       | Seconds between iterations               |
-| `--sleep-retry N` | `10`      | Seconds before retrying a failed task    |
+| Option                  | Default  | Description                              |
+| ----------------------- | -------- | ---------------------------------------- |
+| `TASK_ID` (positional)  | —        | Run a specific task (e.g., `OB-302`)     |
+| `--phase N`             | all      | Limit to Phase N                         |
+| `--model MODEL`         | `sonnet` | Claude model (`opus`, `sonnet`, `haiku`) |
+| `--budget N`            | `5`      | Per-agent budget in USD                  |
+| `--max-task-failures N` | `3`      | Skip a task after N total failures       |
+| `--retries N`           | `3`      | Max consecutive failures before stopping |
 
-### `run-single-task.sh`
+#### Other options
 
-Same path and model options as `run-tasks.sh`, plus:
-
-| Argument  | Description                                    |
-| --------- | ---------------------------------------------- |
-| `TASK_ID` | Required. The task to execute (e.g., `OB-003`) |
+| Option             | Description                             |
+| ------------------ | --------------------------------------- |
+| `--caffeinate`     | Prevent macOS sleep (must be first arg) |
+| `--reset-failures` | Clear failure tracking and skip list    |
+| `--help`           | Show all options                        |
 
 ### `status.sh`
 
@@ -183,62 +187,37 @@ Same path and model options as `run-tasks.sh`, plus:
 
 1. Script reads the prompt template from `prompts/execute-task.md`
 2. Injects configuration (file paths, phase filter, task ID) into template variables
-3. Launches `claude --print` with restricted tool access
+3. Launches `claude --print` with `--max-budget-usd` and restricted tool access
 4. The agent reads the task list, finds the next pending task
 5. Implements the fix, runs verification (`lint`, `typecheck`, `test`, `build`)
 6. Updates audit docs (tasks, findings, health score)
 7. Creates a conventional commit
 8. Writes the next task ID to the pointer file
-9. Loop continues until all tasks are done or failures exceed retry limit
-
-### Parallel mode (distributed)
-
-When `--parallel N` is set (N > 1), the runner uses **true distributed parallelism**:
-
-1. Scans `TASKS.md` for pending tasks (respecting `--phase` filter)
-2. Picks the next N pending tasks (e.g., OB-006, OB-007, OB-008, OB-009, OB-010)
-3. Assigns **each agent a unique task** via the `{{TASK_ID}}` template variable
-4. Launches all N agents simultaneously, each working on its own task
-5. Waits for all agents to finish, then starts the next batch
-
-```
-Iteration #1:
-  Agent #1 → OB-006
-  Agent #2 → OB-007
-  Agent #3 → OB-008
-  Agent #4 → OB-009
-  Agent #5 → OB-010
-
-Iteration #2:
-  Agent #1 → OB-011
-  Agent #2 → OB-012
-  ...
-```
-
-If fewer pending tasks remain than the parallel count, only that many agents are launched (e.g., 2 tasks left with `--parallel 5` → only 2 agents).
-
-**Note:** Parallel mode works best when tasks don't modify the same files. For tasks that touch shared code, use sequential mode (`--parallel 1`).
+9. Validates output (checks for empty logs, crashes, tiny output)
+10. Loop continues until all tasks are done or failures exceed retry limit
 
 ### State tracking
 
 The runner writes a JSON state file at `logs/task-runs/.run_state.json` that tracks:
 
 - Current status (`running`, `completed`, `failed`, `stopped`)
-- Start time, iteration count, phase, model, parallel count
+- Start time, iteration count, phase, model, budget
 - Process PID for monitoring
 
-This state file is used by `status.sh` and `stop.sh` to show run context and cleanly shut down. It persists across restarts so you always know the last state.
+This state file is used by `status.sh` and `stop.sh`.
 
 ---
 
 ## Safety Guards
 
 - **Tool restrictions**: Agent can only Read, Edit, Write, Glob, Grep, and run git/npm/npx via Bash
+- **Budget cap**: `$5/agent` default — prevents runaway sessions
 - **Retry limit**: 3 consecutive failures stops the loop (configurable)
+- **Per-task failure limit**: Tasks auto-skip after 3 failures (configurable)
+- **Output validation**: Catches empty logs, crashes, and tiny output
 - **Verification required**: Lint, typecheck, test, and build must pass before a task is marked done
 - **Scoped access**: Agent works only within the project directory
-- **Max turns**: Optionally limit agent turns per iteration to prevent runaway sessions
-- **State tracking**: Run state persisted to JSON — resume from last known state after crashes
+- **State tracking**: Run state persisted to JSON for monitoring and clean shutdown
 
 ---
 
@@ -248,19 +227,30 @@ All runtime files are in `logs/task-runs/` (gitignored):
 
 ```
 logs/task-runs/
-├── .iteration_counter                              # Persistent counter (survives restarts)
 ├── .run_state.json                                 # Current run state (used by status/stop)
-├── run_1_OB-006_20260219_143012.log                # Sequential: iteration_taskID_timestamp
-├── run_2_agent1_OB-007_20260219_143512.log         # Parallel: iteration_agent_taskID_timestamp
-├── run_2_agent2_OB-008_20260219_143512.log
-└── single_OB-003_20260219_150000.log               # Single task runner logs
+├── .task_failures.json                             # Per-task failure counts (auto-skip tracking)
+├── .skipped_tasks                                  # Skipped task log (task_id|timestamp|reason)
+├── run_1_OB-302_20260222_143012.log                # Loop mode: iteration_taskID_timestamp
+└── single_OB-302_20260222_150000.log               # Single task mode
+```
+
+### Clearing state
+
+```bash
+# Clear failure tracking and skipped tasks
+./scripts/run-tasks.sh --reset-failures
+
+# Clear everything (logs + state)
+./scripts/logs.sh --clean
 ```
 
 ---
 
-## Customizing the Prompt
+## Customizing Prompts
 
-Edit `prompts/execute-task.md` to change agent behavior. The prompt is extracted between backtick fences. Template variables injected by the scripts:
+### Worker prompt: `prompts/execute-task.md`
+
+Edit to change what each agent does per task. The prompt is extracted between ```` fences. Template variables injected by the script:
 
 | Variable            | Replaced by                |
 | ------------------- | -------------------------- |

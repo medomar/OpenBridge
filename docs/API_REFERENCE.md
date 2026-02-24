@@ -14,6 +14,12 @@ This document covers every public interface, class, and configuration schema in 
   - [ConnectorEvents](#connectorevents)
   - [AIProvider](#aiprovider)
   - [ProviderResult](#providerresult)
+- [Discovery Types](#discovery-types)
+  - [DiscoveredTool](#discoveredtool)
+  - [ScanResult](#scanresult)
+- [Master AI Types](#master-ai-types)
+  - [MasterState](#masterstate)
+  - [ExplorationSummary](#explorationsummary)
 - [Core Classes](#core-classes)
   - [Bridge](#bridge)
   - [Router](#router)
@@ -21,7 +27,6 @@ This document covers every public interface, class, and configuration schema in 
   - [MessageQueue](#messagequeue)
   - [PluginRegistry](#pluginregistry)
   - [RateLimiter](#ratelimiter)
-  - [WorkspaceManager](#workspacemanager)
   - [ConfigWatcher](#configwatcher)
   - [AuditLogger](#auditlogger)
   - [HealthServer](#healthserver)
@@ -31,21 +36,19 @@ This document covers every public interface, class, and configuration schema in 
   - [ProviderError](#providererror)
   - [classifyError()](#classifyerror)
 - [Configuration Schemas](#configuration-schemas)
-  - [AppConfig](#appconfig)
-  - [ConnectorConfig](#connectorconfig)
-  - [ProviderConfig](#providerconfig)
+  - [AppConfigV2 (current)](#appconfigv2-current)
+  - [AppConfig (V0 legacy)](#appconfig-v0-legacy)
   - [AuthConfig](#authconfig)
   - [RateLimitConfig](#ratelimitconfig)
   - [CommandFilterConfig](#commandfilterconfig)
   - [QueueConfig](#queueconfig)
   - [RouterConfig](#routerconfig)
-  - [WorkspaceConfig](#workspaceconfig)
   - [AuditConfig](#auditconfig)
   - [HealthConfig](#healthconfig)
   - [MetricsConfig](#metricsconfig)
 - [Utility Functions](#utility-functions)
   - [loadConfig()](#loadconfig)
-  - [resolveConfigPath()](#resolveconfigpath)
+  - [scanForAITools()](#scanforaitools)
   - [createLogger()](#createlogger)
 - [HTTP Endpoints](#http-endpoints)
   - [Health Check](#health-check-endpoint)
@@ -119,11 +122,11 @@ Events emitted by a connector, consumed via `connector.on(event, listener)`.
 
 _Source: `src/types/provider.ts`_
 
-Interface that every AI provider must implement.
+Interface for AI providers. In V0, providers are manually registered. In V2, the Master AI uses the generalized executor to run any discovered CLI tool.
 
 | Member             | Type                                                                  | Description                                                       |
 | ------------------ | --------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `name`             | `readonly string`                                                     | Unique identifier (e.g. `'claude-code'`, `'openai'`)              |
+| `name`             | `readonly string`                                                     | Unique identifier (e.g. `'claude-code'`)                          |
 | `initialize()`     | `() => Promise<void>`                                                 | Validate credentials, warm up                                     |
 | `processMessage()` | `(message: InboundMessage) => Promise<ProviderResult>`                | Process a message and return the AI response                      |
 | `streamMessage?()` | `(message: InboundMessage) => AsyncGenerator<string, ProviderResult>` | Stream response chunks (optional, falls back to `processMessage`) |
@@ -149,50 +152,93 @@ Result returned by an AI provider after processing.
 
 ---
 
+## Discovery Types
+
+_Source: `src/types/discovery.ts`_
+
+### DiscoveredTool
+
+An AI tool found on the machine during startup scan.
+
+| Property       | Type       | Description                                                                       |
+| -------------- | ---------- | --------------------------------------------------------------------------------- |
+| `name`         | `string`   | Tool identifier (`'claude'`, `'codex'`, `'aider'`, etc.)                          |
+| `path`         | `string`   | Absolute path to the CLI binary                                                   |
+| `version?`     | `string`   | Version string (from `--version`)                                                 |
+| `capabilities` | `string[]` | List of capabilities (e.g. `['code-generation', 'file-editing', 'conversation']`) |
+| `role`         | `string`   | `'master'` or `'delegate'`                                                        |
+| `available`    | `boolean`  | Whether the tool was found and is usable                                          |
+
+### ScanResult
+
+Result of the full AI tool discovery scan.
+
+| Property         | Type                     | Description                           |
+| ---------------- | ------------------------ | ------------------------------------- |
+| `tools`          | `DiscoveredTool[]`       | All discovered tools                  |
+| `master`         | `DiscoveredTool \| null` | The tool selected as Master           |
+| `scanDurationMs` | `number`                 | How long the scan took (milliseconds) |
+
+---
+
+## Master AI Types
+
+_Source: `src/types/master.ts`_
+
+### MasterState
+
+The lifecycle state of the Master AI.
+
+```typescript
+type MasterState = 'idle' | 'exploring' | 'ready' | 'error';
+```
+
+### ExplorationSummary
+
+Summary of the Master AI's workspace exploration.
+
+| Property      | Type       | Description                                |
+| ------------- | ---------- | ------------------------------------------ |
+| `name`        | `string`   | Project name (from package.json or folder) |
+| `description` | `string`   | Brief project description                  |
+| `languages`   | `string[]` | Detected languages                         |
+| `frameworks`  | `string[]` | Detected frameworks                        |
+| `exploredAt`  | `string`   | ISO 8601 timestamp of exploration          |
+
+---
+
 ## Core Classes
 
 ### Bridge
 
 _Source: `src/core/bridge.ts`_
 
-Main orchestrator that wires connectors, providers, auth, queue, and all subsystems together.
+Main orchestrator that wires connectors, auth, queue, Master AI, and all subsystems together.
 
 ```typescript
 import { Bridge } from './core/bridge.js';
 
 const bridge = new Bridge(config, { configPath: './config.json' });
 
-// Register plugins before starting
+// Register connectors before starting
 const registry = bridge.getRegistry();
 registry.registerConnector('whatsapp', whatsappFactory);
-registry.registerProvider('claude-code', claudeCodeFactory);
+
+// In V2: Master AI is set after discovery
+bridge.setMaster(masterManager);
 
 await bridge.start();
-
-// Later, graceful shutdown
 await bridge.stop();
 ```
-
-**Constructor:**
-
-| Parameter  | Type            | Description                           |
-| ---------- | --------------- | ------------------------------------- |
-| `config`   | `AppConfig`     | Validated application configuration   |
-| `options?` | `BridgeOptions` | Optional settings (e.g. `configPath`) |
-
-**BridgeOptions:**
-
-| Property      | Type     | Description                                |
-| ------------- | -------- | ------------------------------------------ |
-| `configPath?` | `string` | Path to `config.json` (enables hot-reload) |
 
 **Methods:**
 
 | Method          | Returns          | Description                                        |
 | --------------- | ---------------- | -------------------------------------------------- |
 | `getRegistry()` | `PluginRegistry` | Access the plugin registry for registering plugins |
+| `setMaster()`   | `void`           | Wire a MasterManager into the router               |
 | `start()`       | `Promise<void>`  | Initialize all plugins, start processing           |
-| `stop()`        | `Promise<void>`  | Drain queue, shut down all plugins gracefully      |
+| `stop()`        | `Promise<void>`  | Drain queue, shut down Master + plugins gracefully |
 
 ---
 
@@ -200,30 +246,18 @@ await bridge.stop();
 
 _Source: `src/core/router.ts`_
 
-Routes inbound messages to the appropriate AI provider and sends responses back through the originating connector.
-
-**Constructor:**
-
-| Parameter         | Type               | Description                     |
-| ----------------- | ------------------ | ------------------------------- |
-| `defaultProvider` | `string`           | Name of the default AI provider |
-| `config?`         | `RouterConfig`     | Router configuration            |
-| `auditLogger?`    | `AuditLogger`      | Optional audit logger           |
-| `metrics?`        | `MetricsCollector` | Optional metrics collector      |
+Routes inbound messages to the Master AI (V2) or directly to a provider (V0), and sends responses back through the originating connector.
 
 **Methods:**
 
-| Method                    | Returns         | Description                               |
-| ------------------------- | --------------- | ----------------------------------------- |
-| `addConnector(connector)` | `void`          | Register an active connector              |
-| `addProvider(provider)`   | `void`          | Register an active provider               |
-| `route(message)`          | `Promise<void>` | Route a message through the full pipeline |
+| Method                    | Returns         | Description                                  |
+| ------------------------- | --------------- | -------------------------------------------- |
+| `addConnector(connector)` | `void`          | Register an active connector                 |
+| `addProvider(provider)`   | `void`          | Register an active provider (V0)             |
+| `setMaster(master)`       | `void`          | Set the Master AI for routing (V2, priority) |
+| `route(message)`          | `Promise<void>` | Route a message through the full pipeline    |
 
-**Properties:**
-
-| Property          | Type     | Description                   |
-| ----------------- | -------- | ----------------------------- |
-| `defaultProvider` | `string` | Current default provider name |
+**Routing priority:** Master AI > direct provider (V0 fallback).
 
 ---
 
@@ -232,12 +266,6 @@ Routes inbound messages to the appropriate AI provider and sends responses back 
 _Source: `src/core/auth.ts`_
 
 Handles sender authorization, prefix detection, prefix stripping, and command filtering.
-
-**Constructor:**
-
-| Parameter | Type         | Description        |
-| --------- | ------------ | ------------------ |
-| `config`  | `AuthConfig` | Auth configuration |
 
 **Methods:**
 
@@ -249,19 +277,6 @@ Handles sender authorization, prefix detection, prefix stripping, and command fi
 | `filterCommand(command)` | `CommandFilterResult` | Check command against allow/deny pattern lists     |
 | `updateConfig(config)`   | `void`                | Hot-reload auth configuration                      |
 
-**CommandFilterResult:**
-
-| Property  | Type      | Description                    |
-| --------- | --------- | ------------------------------ |
-| `allowed` | `boolean` | Whether the command is allowed |
-| `reason?` | `string`  | Denial reason (if blocked)     |
-
-**Properties:**
-
-| Property        | Type     | Description               |
-| --------------- | -------- | ------------------------- |
-| `commandPrefix` | `string` | Current configured prefix |
-
 ---
 
 ### MessageQueue
@@ -269,13 +284,6 @@ Handles sender authorization, prefix detection, prefix stripping, and command fi
 _Source: `src/core/queue.ts`_
 
 Per-user message queue. Each sender gets its own sequential queue so one slow response does not block messages from other users.
-
-**Constructor:**
-
-| Parameter  | Type                   | Description                |
-| ---------- | ---------------------- | -------------------------- |
-| `config?`  | `Partial<QueueConfig>` | Queue configuration        |
-| `metrics?` | `MetricsCollector`     | Optional metrics collector |
 
 **Methods:**
 
@@ -288,21 +296,11 @@ Per-user message queue. Each sender gets its own sequential queue so one slow re
 
 **Properties:**
 
-| Property         | Type                            | Description                            |
-| ---------------- | ------------------------------- | -------------------------------------- |
-| `size`           | `number`                        | Total queued messages across all users |
-| `isProcessing`   | `boolean`                       | Whether any user queue is active       |
-| `deadLetters`    | `ReadonlyArray<DeadLetterItem>` | Snapshot of dead letter queue          |
-| `deadLetterSize` | `number`                        | Number of dead letter items            |
-
-**DeadLetterItem:**
-
-| Property   | Type             | Description                         |
-| ---------- | ---------------- | ----------------------------------- |
-| `message`  | `InboundMessage` | The failed message                  |
-| `error`    | `string`         | Error description                   |
-| `attempts` | `number`         | Number of attempts before failure   |
-| `failedAt` | `Date`           | When the message permanently failed |
+| Property         | Type      | Description                            |
+| ---------------- | --------- | -------------------------------------- |
+| `size`           | `number`  | Total queued messages across all users |
+| `isProcessing`   | `boolean` | Whether any user queue is active       |
+| `deadLetterSize` | `number`  | Number of dead letter items            |
 
 ---
 
@@ -310,47 +308,15 @@ Per-user message queue. Each sender gets its own sequential queue so one slow re
 
 _Source: `src/core/registry.ts`_
 
-Factory registry for connectors and providers. Supports both manual registration and auto-discovery.
+Factory registry for connectors. Supports both manual registration and auto-discovery.
 
 **Methods:**
 
-| Method                             | Returns         | Description                                      |
-| ---------------------------------- | --------------- | ------------------------------------------------ |
-| `registerConnector(type, factory)` | `void`          | Register a connector factory by type name        |
-| `registerProvider(type, factory)`  | `void`          | Register a provider factory by type name         |
-| `createConnector(type, options)`   | `Connector`     | Create a connector instance from config          |
-| `createProvider(type, options)`    | `AIProvider`    | Create a provider instance from config           |
-| `discoverPlugins(srcDir)`          | `Promise<void>` | Auto-discover plugins in connector/provider dirs |
-
-**Properties:**
-
-| Property              | Type       | Description                     |
-| --------------------- | ---------- | ------------------------------- |
-| `availableConnectors` | `string[]` | Registered connector type names |
-| `availableProviders`  | `string[]` | Registered provider type names  |
-
-**Factory Types:**
-
-```typescript
-type ConnectorFactory = (options: Record<string, unknown>) => Connector;
-type ProviderFactory = (options: Record<string, unknown>) => AIProvider;
-```
-
-**Auto-Discovery Plugin Modules:**
-
-Connector plugins must export:
-
-```typescript
-export const pluginName: string;
-export const connectorFactory: ConnectorFactory;
-```
-
-Provider plugins must export:
-
-```typescript
-export const pluginName: string;
-export const providerFactory: ProviderFactory;
-```
+| Method                             | Returns         | Description                               |
+| ---------------------------------- | --------------- | ----------------------------------------- |
+| `registerConnector(type, factory)` | `void`          | Register a connector factory by type name |
+| `createConnector(type, options)`   | `Connector`     | Create a connector instance from config   |
+| `discoverPlugins(srcDir)`          | `Promise<void>` | Auto-discover plugins in connector dirs   |
 
 ---
 
@@ -359,12 +325,6 @@ export const providerFactory: ProviderFactory;
 _Source: `src/core/rate-limiter.ts`_
 
 Sliding-window rate limiter. Tracks per-sender message timestamps and rejects messages that exceed the configured threshold.
-
-**Constructor:**
-
-| Parameter | Type              | Description              |
-| --------- | ----------------- | ------------------------ |
-| `config`  | `RateLimitConfig` | Rate limit configuration |
 
 **Methods:**
 
@@ -375,57 +335,11 @@ Sliding-window rate limiter. Tracks per-sender message timestamps and rejects me
 
 ---
 
-### WorkspaceManager
-
-_Source: `src/core/workspace-manager.ts`_
-
-Manages multiple workspace paths. Parses `@workspace-name` syntax from messages and resolves workspace paths.
-
-**Constructor:**
-
-| Parameter           | Type                | Description                       |
-| ------------------- | ------------------- | --------------------------------- |
-| `workspaces`        | `WorkspaceConfig[]` | List of workspace name/path pairs |
-| `defaultWorkspace?` | `string`            | Name of the default workspace     |
-
-**Methods:**
-
-| Method                    | Returns                                 | Description                                 |
-| ------------------------- | --------------------------------------- | ------------------------------------------- |
-| `validatePaths()`         | `Promise<void>`                         | Validate all workspace paths exist on disk  |
-| `parseWorkspace(content)` | `WorkspaceParseResult`                  | Parse `@name command` syntax from content   |
-| `resolve(name)`           | `string \| undefined`                   | Resolve workspace name to its file path     |
-| `listWorkspaces()`        | `Array<{ name: string; path: string }>` | List all available workspaces               |
-| `formatList()`            | `string`                                | Format workspace list as user-friendly text |
-
-**Properties:**
-
-| Property      | Type                  | Description                             |
-| ------------- | --------------------- | --------------------------------------- |
-| `enabled`     | `boolean`             | `true` if any workspaces are configured |
-| `defaultName` | `string \| undefined` | Default workspace name                  |
-
-**WorkspaceParseResult:**
-
-| Property    | Type                  | Description                        |
-| ----------- | --------------------- | ---------------------------------- |
-| `workspace` | `string \| undefined` | Parsed workspace name (if present) |
-| `content`   | `string`              | Remaining message content          |
-
----
-
 ### ConfigWatcher
 
 _Source: `src/core/config-watcher.ts`_
 
 Watches `config.json` for file changes and triggers hot-reload handlers with debouncing.
-
-**Constructor:**
-
-| Parameter     | Type     | Default | Description                      |
-| ------------- | -------- | ------- | -------------------------------- |
-| `configPath`  | `string` | —       | Absolute or relative config path |
-| `debounceMs?` | `number` | `500`   | Debounce delay for rapid changes |
 
 **Methods:**
 
@@ -435,12 +349,6 @@ Watches `config.json` for file changes and triggers hot-reload handlers with deb
 | `start()`           | `void`  | Start watching the config file   |
 | `stop()`            | `void`  | Stop watching                    |
 
-**Properties:**
-
-| Property     | Type      | Description                   |
-| ------------ | --------- | ----------------------------- |
-| `isWatching` | `boolean` | Whether the watcher is active |
-
 ---
 
 ### AuditLogger
@@ -448,12 +356,6 @@ Watches `config.json` for file changes and triggers hot-reload handlers with deb
 _Source: `src/core/audit-logger.ts`_
 
 Persists message events as JSONL (one JSON object per line) to a configurable log file.
-
-**Constructor:**
-
-| Parameter | Type          | Description         |
-| --------- | ------------- | ------------------- |
-| `config`  | `AuditConfig` | Audit configuration |
 
 **Methods:**
 
@@ -465,22 +367,6 @@ Persists message events as JSONL (one JSON object per line) to a configurable lo
 | `logRateLimited(sender)`     | `Promise<void>` | Log a rate limit event        |
 | `logError(messageId, error)` | `Promise<void>` | Log a processing error        |
 
-**AuditEntry** (written to the log file):
-
-| Property         | Type                      | Description            |
-| ---------------- | ------------------------- | ---------------------- |
-| `timestamp`      | `string`                  | ISO 8601 timestamp     |
-| `event`          | `AuditEventType`          | Event type             |
-| `messageId?`     | `string`                  | Associated message ID  |
-| `sender?`        | `string`                  | Sender identifier      |
-| `source?`        | `string`                  | Connector name         |
-| `recipient?`     | `string`                  | Recipient identifier   |
-| `contentLength?` | `number`                  | Message content length |
-| `error?`         | `string`                  | Error description      |
-| `metadata?`      | `Record<string, unknown>` | Additional metadata    |
-
-**AuditEventType:** `'inbound' | 'outbound' | 'auth_denied' | 'rate_limited' | 'error'`
-
 ---
 
 ### HealthServer
@@ -488,12 +374,6 @@ Persists message events as JSONL (one JSON object per line) to a configurable lo
 _Source: `src/core/health.ts`_
 
 HTTP server exposing bridge health status as JSON.
-
-**Constructor:**
-
-| Parameter | Type                    | Description         |
-| --------- | ----------------------- | ------------------- |
-| `config?` | `Partial<HealthConfig>` | Health check config |
 
 **Methods:**
 
@@ -505,21 +385,13 @@ HTTP server exposing bridge health status as JSON.
 
 **HealthStatus** (response shape):
 
-| Property     | Type                                     | Description                                             |
-| ------------ | ---------------------------------------- | ------------------------------------------------------- |
-| `status`     | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status                                   |
-| `uptime`     | `number`                                 | Seconds since bridge started                            |
-| `timestamp`  | `string`                                 | ISO 8601 timestamp                                      |
-| `connectors` | `ComponentStatus[]`                      | Status of each connector                                |
-| `providers`  | `ComponentStatus[]`                      | Status of each provider                                 |
-| `queue`      | `object`                                 | Queue state (`pending`, `processing`, `deadLetterSize`) |
-
-**ComponentStatus:**
-
-| Property | Type                                     | Description      |
-| -------- | ---------------------------------------- | ---------------- |
-| `name`   | `string`                                 | Component name   |
-| `status` | `'healthy' \| 'degraded' \| 'unhealthy'` | Component status |
+| Property     | Type                                     | Description                  |
+| ------------ | ---------------------------------------- | ---------------------------- |
+| `status`     | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status        |
+| `uptime`     | `number`                                 | Seconds since bridge started |
+| `timestamp`  | `string`                                 | ISO 8601 timestamp           |
+| `connectors` | `ComponentStatus[]`                      | Status of each connector     |
+| `queue`      | `object`                                 | Queue state                  |
 
 ---
 
@@ -534,61 +406,15 @@ In-memory metrics collector. Tracks message counts, latency, and error rates.
 | Method                      | Returns           | Description                             |
 | --------------------------- | ----------------- | --------------------------------------- |
 | `recordReceived()`          | `void`            | Increment received message counter      |
-| `recordAuthorized()`        | `void`            | Increment authorized message counter    |
-| `recordRateLimited()`       | `void`            | Increment rate-limited counter          |
-| `recordCommandBlocked()`    | `void`            | Increment command-blocked counter       |
 | `recordProcessed(duration)` | `void`            | Record a successfully processed message |
 | `recordFailed(kind)`        | `void`            | Record a failed message by error kind   |
-| `recordEnqueued()`          | `void`            | Increment enqueued counter              |
-| `recordRetry()`             | `void`            | Increment retry counter                 |
-| `recordDeadLettered()`      | `void`            | Increment dead-lettered counter         |
 | `snapshot()`                | `MetricsSnapshot` | Return a point-in-time metrics snapshot |
-
-**MetricsSnapshot:**
-
-```typescript
-interface MetricsSnapshot {
-  uptime: number;
-  timestamp: string;
-  messages: {
-    received: number;
-    authorized: number;
-    rateLimited: number;
-    commandBlocked: number;
-    processed: number;
-    failed: number;
-  };
-  latency: {
-    count: number;
-    totalMs: number;
-    avgMs: number;
-    minMs: number;
-    maxMs: number;
-  };
-  queue: {
-    enqueued: number;
-    retries: number;
-    deadLettered: number;
-  };
-  errors: {
-    total: number;
-    transient: number;
-    permanent: number;
-  };
-}
-```
 
 ### MetricsServer
 
 _Source: `src/core/metrics.ts`_
 
-HTTP server that exposes collected metrics as JSON. Same pattern as `HealthServer`.
-
-**Constructor:**
-
-| Parameter | Type                     | Description    |
-| --------- | ------------------------ | -------------- |
-| `config?` | `Partial<MetricsConfig>` | Metrics config |
+HTTP server that exposes collected metrics as JSON.
 
 **Methods:**
 
@@ -608,13 +434,6 @@ _Source: `src/providers/claude-code/provider-error.ts`_
 
 Custom error class for classified provider failures.
 
-```typescript
-class ProviderError extends Error {
-  readonly kind: ErrorKind; // 'transient' | 'permanent'
-  readonly exitCode: number;
-}
-```
-
 | Property   | Type        | Description                                |
 | ---------- | ----------- | ------------------------------------------ |
 | `kind`     | `ErrorKind` | `'transient'` (retryable) or `'permanent'` |
@@ -627,7 +446,7 @@ class ProviderError extends Error {
 function classifyError(exitCode: number, stderr: string): ErrorKind;
 ```
 
-Classifies a CLI execution failure as transient or permanent using heuristics:
+Classifies a CLI execution failure as transient or permanent:
 
 1. Exit code 124 (timeout) -> transient
 2. stderr matches transient patterns (timeout, rate limit, network errors) -> transient
@@ -640,51 +459,58 @@ Classifies a CLI execution failure as transient or permanent using heuristics:
 
 _Source: `src/types/config.ts`_
 
-All configuration is validated at startup using [Zod](https://zod.dev) schemas. Invalid config causes a clear validation error before the bridge starts.
+All configuration is validated at startup using [Zod](https://zod.dev) schemas. The config loader tries V2 first, then falls back to V0.
 
-### AppConfig
+### AppConfigV2 (current)
 
-Root configuration object. Loaded from `config.json`.
+The simplified config format. Three required fields.
 
-| Property            | Type                | Default   | Description                                    |
-| ------------------- | ------------------- | --------- | ---------------------------------------------- |
-| `connectors`        | `ConnectorConfig[]` | —         | At least one connector (required)              |
-| `providers`         | `ProviderConfig[]`  | —         | At least one provider (required)               |
-| `defaultProvider`   | `string`            | —         | Name of the default provider                   |
-| `workspaces?`       | `WorkspaceConfig[]` | `[]`      | Multi-workspace definitions                    |
-| `defaultWorkspace?` | `string`            | —         | Default workspace name                         |
-| `auth`              | `AuthConfig`        | —         | Authentication configuration                   |
-| `queue?`            | `QueueConfig`       | see below | Queue retry configuration                      |
-| `router?`           | `RouterConfig`      | see below | Router configuration                           |
-| `audit?`            | `AuditConfig`       | see below | Audit logging configuration                    |
-| `health?`           | `HealthConfig`      | see below | Health check endpoint config                   |
-| `metrics?`          | `MetricsConfig`     | see below | Metrics endpoint configuration                 |
-| `logLevel?`         | `string`            | `'info'`  | One of: trace, debug, info, warn, error, fatal |
+| Property        | Type     | Default   | Description                                    |
+| --------------- | -------- | --------- | ---------------------------------------------- |
+| `workspacePath` | `string` | —         | Absolute path to the target project (required) |
+| `channels`      | `array`  | —         | At least one channel config (required)         |
+| `auth`          | `object` | —         | Authentication settings (required)             |
+| `master?`       | `object` | `{}`      | Override auto-detected Master AI settings      |
+| `queue?`        | `object` | see below | Queue retry configuration                      |
+| `router?`       | `object` | see below | Router configuration                           |
+| `audit?`        | `object` | see below | Audit logging configuration                    |
+| `health?`       | `object` | see below | Health check endpoint config                   |
+| `metrics?`      | `object` | see below | Metrics endpoint configuration                 |
+| `logLevel?`     | `string` | `'info'`  | One of: trace, debug, info, warn, error, fatal |
 
-### ConnectorConfig
+**Channel config:**
 
-| Property   | Type                      | Default | Description                        |
-| ---------- | ------------------------- | ------- | ---------------------------------- |
-| `type`     | `string`                  | —       | Connector type (e.g. `'whatsapp'`) |
-| `enabled?` | `boolean`                 | `true`  | Whether this connector is active   |
-| `options?` | `Record<string, unknown>` | `{}`    | Connector-specific options         |
+| Property   | Type                      | Default | Description                              |
+| ---------- | ------------------------- | ------- | ---------------------------------------- |
+| `type`     | `string`                  | —       | Channel type (`'whatsapp'`, `'console'`) |
+| `enabled?` | `boolean`                 | `true`  | Whether this channel is active           |
+| `options?` | `Record<string, unknown>` | `{}`    | Channel-specific options                 |
 
-### ProviderConfig
+### AppConfig (V0 legacy)
 
-| Property   | Type                      | Default | Description                          |
-| ---------- | ------------------------- | ------- | ------------------------------------ |
-| `type`     | `string`                  | —       | Provider type (e.g. `'claude-code'`) |
-| `enabled?` | `boolean`                 | `true`  | Whether this provider is active      |
-| `options?` | `Record<string, unknown>` | `{}`    | Provider-specific options            |
+The original config format. Still fully supported — auto-detected by the config loader.
+
+| Property          | Type                | Default   | Description                       |
+| ----------------- | ------------------- | --------- | --------------------------------- |
+| `connectors`      | `ConnectorConfig[]` | —         | At least one connector (required) |
+| `providers`       | `ProviderConfig[]`  | —         | At least one provider (required)  |
+| `defaultProvider` | `string`            | —         | Name of the default provider      |
+| `auth`            | `AuthConfig`        | —         | Authentication configuration      |
+| `queue?`          | `QueueConfig`       | see below | Queue retry configuration         |
+| `router?`         | `RouterConfig`      | see below | Router configuration              |
+| `audit?`          | `AuditConfig`       | see below | Audit logging configuration       |
+| `health?`         | `HealthConfig`      | see below | Health check endpoint config      |
+| `metrics?`        | `MetricsConfig`     | see below | Metrics endpoint configuration    |
+| `logLevel?`       | `string`            | `'info'`  | Log level                         |
 
 ### AuthConfig
 
-| Property         | Type                  | Default   | Description                       |
-| ---------------- | --------------------- | --------- | --------------------------------- |
-| `whitelist?`     | `string[]`            | `[]`      | Allowed sender identifiers        |
-| `prefix?`        | `string`              | `'/ai'`   | Message prefix to trigger the bot |
-| `rateLimit?`     | `RateLimitConfig`     | see below | Rate limit settings               |
-| `commandFilter?` | `CommandFilterConfig` | see below | Command allow/deny lists          |
+| Property         | Type                  | Default | Description                       |
+| ---------------- | --------------------- | ------- | --------------------------------- |
+| `whitelist?`     | `string[]`            | `[]`    | Allowed sender identifiers        |
+| `prefix?`        | `string`              | `'/ai'` | Message prefix to trigger the bot |
+| `rateLimit?`     | `RateLimitConfig`     | `{}`    | Rate limit settings               |
+| `commandFilter?` | `CommandFilterConfig` | `{}`    | Command allow/deny lists          |
 
 ### RateLimitConfig
 
@@ -714,13 +540,6 @@ Root configuration object. Loaded from `config.json`.
 | Property              | Type     | Default | Description                                   |
 | --------------------- | -------- | ------- | --------------------------------------------- |
 | `progressIntervalMs?` | `number` | `15000` | Interval for progress update messages (in ms) |
-
-### WorkspaceConfig
-
-| Property | Type     | Description                       |
-| -------- | -------- | --------------------------------- |
-| `name`   | `string` | Workspace identifier (min 1 char) |
-| `path`   | `string` | Absolute path to the workspace    |
 
 ### AuditConfig
 
@@ -752,20 +571,20 @@ Root configuration object. Loaded from `config.json`.
 _Source: `src/core/config.ts`_
 
 ```typescript
-function loadConfig(configPath?: string): Promise<AppConfig>;
+function loadConfig(configPath?: string): Promise<AppConfig | AppConfigV2>;
 ```
 
-Reads and validates `config.json`. Falls back to `CONFIG_PATH` env var, then `./config.json`.
+Reads and validates `config.json`. Tries V2 schema first, falls back to V0. Falls back to `CONFIG_PATH` env var, then `./config.json`.
 
-### resolveConfigPath()
+### scanForAITools()
 
-_Source: `src/core/config.ts`_
+_Source: `src/discovery/index.ts`_
 
 ```typescript
-function resolveConfigPath(configPath?: string): string;
+function scanForAITools(): Promise<ScanResult>;
 ```
 
-Resolves the config file path. Priority: argument > `CONFIG_PATH` env var > `./config.json`.
+Scans the machine for AI CLI tools and VS Code AI extensions. Returns all discovered tools with the recommended Master.
 
 ### createLogger()
 
@@ -785,17 +604,16 @@ Creates a [Pino](https://getpino.io) logger instance. Uses `pino-pretty` in non-
 
 Enabled via `health.enabled: true` in config. Default port: `8080`.
 
-**Request:** `GET /` (any path)
+**Request:** `GET /`
 
-**Response (200 — healthy/degraded):**
+**Response (200 — healthy):**
 
 ```json
 {
   "status": "healthy",
   "uptime": 3600,
-  "timestamp": "2026-01-15T10:30:00.000Z",
+  "timestamp": "2026-02-20T10:30:00.000Z",
   "connectors": [{ "name": "whatsapp", "status": "healthy" }],
-  "providers": [{ "name": "claude-code", "status": "healthy" }],
   "queue": { "pending": 0, "processing": false, "deadLetterSize": 0 }
 }
 ```
@@ -806,14 +624,14 @@ Enabled via `health.enabled: true` in config. Default port: `8080`.
 
 Enabled via `metrics.enabled: true` in config. Default port: `9090`.
 
-**Request:** `GET /` (any path)
+**Request:** `GET /`
 
 **Response (200):**
 
 ```json
 {
   "uptime": 3600,
-  "timestamp": "2026-01-15T10:30:00.000Z",
+  "timestamp": "2026-02-20T10:30:00.000Z",
   "messages": {
     "received": 150,
     "authorized": 140,

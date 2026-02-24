@@ -11,7 +11,8 @@
 | Bridge won't start                   | [Startup Errors](#startup-errors)             |
 | QR code won't scan / session expired | [WhatsApp Issues](#whatsapp-issues)           |
 | Messages not being processed         | [Message Flow Issues](#message-flow-issues)   |
-| AI responses failing                 | [Claude Code Issues](#claude-code-issues)     |
+| AI responses failing                 | [AI Tool Issues](#ai-tool-issues)             |
+| No AI tools discovered               | [Discovery Issues](#discovery-issues)         |
 | Config changes not taking effect     | [Configuration Issues](#configuration-issues) |
 | Health check returning 503           | [Monitoring Issues](#monitoring-issues)       |
 
@@ -31,9 +32,11 @@ The bridge logs this when initialization fails. Check the accompanying error mes
    ENOENT: no such file or directory, open './config.json'
    ```
 
-   Fix: Copy the example config and edit it.
+   Fix: Create a config file.
 
    ```bash
+   npx openbridge init
+   # Or copy the example:
    cp config.example.json config.json
    ```
 
@@ -42,21 +45,12 @@ The bridge logs this when initialization fails. Check the accompanying error mes
    Zod validation errors look like:
 
    ```
-   ZodError: [{ "code": "too_small", "minimum": 1, "path": ["connectors"] }]
+   ZodError: [{ "code": "too_small", "minimum": 1, "path": ["channels"] }]
    ```
 
-   Fix: Ensure `config.json` has at least one connector and one provider. See `config.example.json` for the expected structure.
+   Fix: Ensure your config matches V2 format (3 required fields) or V0 format. See [CONFIGURATION.md](./CONFIGURATION.md).
 
-3. **Unknown connector or provider type**
-
-   ```
-   Unknown connector type: "slack". Available: whatsapp
-   Unknown provider type: "gpt-4". Available: claude-code
-   ```
-
-   Fix: V0 only supports `"whatsapp"` as a connector type and `"claude-code"` as a provider type. Check for typos (type values are case-sensitive).
-
-4. **workspacePath does not exist**
+3. **workspacePath does not exist**
 
    ```
    workspacePath does not exist or is not accessible: /path/to/workspace
@@ -68,13 +62,51 @@ The bridge logs this when initialization fails. Check the accompanying error mes
    "workspacePath": "/Users/you/Desktop/my-project"
    ```
 
-5. **Node.js version too old**
+4. **Node.js version too old**
 
    OpenBridge requires Node.js >= 22 (ESM support). Older versions may produce syntax errors or module resolution failures.
 
    ```bash
    node --version   # Must be v22.x or higher
    ```
+
+---
+
+## Discovery Issues
+
+### No AI tools found
+
+```
+No AI tools discovered on this machine
+```
+
+OpenBridge scans for known CLI tools (`claude`, `codex`, `aider`, `cursor`, `cody`) using `which`. If none are found, the bridge cannot start in V2 mode.
+
+Fix:
+
+```bash
+# Check if any AI CLI is installed
+which claude
+which codex
+which aider
+
+# Install one (e.g. Claude Code)
+npm install -g @anthropic-ai/claude-code
+```
+
+### Wrong tool selected as Master
+
+The discovery module picks the highest-priority available tool as Master. Priority: claude > codex > aider > cursor > cody.
+
+Fix: Override in `config.json`:
+
+```json
+{
+  "master": {
+    "tool": "codex"
+  }
+}
+```
 
 ---
 
@@ -100,117 +132,68 @@ rm -rf .wwebjs_auth/
 npm run dev
 ```
 
-If you configured a custom `sessionPath`, delete that directory instead.
-
 ### `WhatsApp disconnected` / `WhatsApp reconnect: max attempts reached`
 
-The WhatsApp connection dropped and auto-reconnect either kicked in or was exhausted.
-
-**During reconnection** the bridge logs attempts with exponential backoff:
-
-```
-WhatsApp reconnect attempt 1/10, delay: 2000ms
-WhatsApp reconnect attempt 2/10, delay: 4000ms
-...
-```
-
-If all attempts fail:
-
-```
-WhatsApp reconnect: max attempts reached, giving up
-```
+The WhatsApp connection dropped and auto-reconnect was exhausted.
 
 Fix:
 
 1. Check that your phone has an internet connection and WhatsApp is open.
 2. Verify the linked device still appears in WhatsApp settings.
 3. Restart the bridge. If the session is invalid, delete `.wwebjs_auth/` and re-scan.
-4. To allow more reconnection attempts, increase `reconnect.maxAttempts` in your connector config.
-
-### `WhatsApp connector is not connected`
-
-The router tried to send a message before the WhatsApp client was ready.
-
-Fix: Wait for the `WhatsApp client ready` log message before sending messages. If it never appears, check the QR code / authentication steps above.
 
 ### `Failed to send typing indicator`
 
-This is a non-critical warning. The typing indicator is best-effort — message processing continues normally even if this fails.
+This is a non-critical warning. The typing indicator is best-effort — message processing continues normally.
 
 ---
 
-## Claude Code Issues
+## AI Tool Issues
 
-### Claude CLI not found
+### AI CLI not found
 
-If you see `ENOENT` errors or "command not found" when the provider tries to run `claude`:
+If you see `ENOENT` errors or "command not found" when the Master AI tries to run:
 
 ```bash
-# Check if Claude CLI is installed
+# Check if the AI CLI is installed and in PATH
 which claude
 
 # If not found, install it
 npm install -g @anthropic-ai/claude-code
 ```
 
-Make sure the `claude` binary is in your system `PATH`. If you installed it locally, the bridge may not find it.
+Make sure the binary is in your system `PATH`.
 
 ### Execution timeout
 
 The default timeout is 120 seconds (2 minutes). Complex prompts or large workspaces can exceed this.
 
 ```
-Claude Code execution error: timeout
+AI execution error: timeout
 ```
 
-Fix: Increase the timeout in `config.json`:
-
-```json
-{
-  "providers": [
-    {
-      "type": "claude-code",
-      "options": {
-        "timeout": 300000
-      }
-    }
-  ]
-}
-```
-
-You can also reduce processing time by:
-
-- Simplifying the prompt
-- Excluding large directories (e.g., `node_modules`) from the workspace
+Fix: Simplify the prompt, or increase the timeout in your Master AI configuration.
 
 ### `invalid api key` / `authentication failed`
 
-The Claude CLI is not authenticated or the API key has expired.
+The AI CLI is not authenticated or the API key has expired.
 
-Fix: Run `claude` directly in your terminal to verify authentication:
+Fix: Run the AI CLI directly in your terminal to verify authentication:
 
 ```bash
 claude --print "hello"
 ```
 
-If this fails, re-authenticate following the Claude CLI documentation.
+If this fails, re-authenticate following the tool's documentation.
 
 ### Transient vs. permanent errors
 
-The provider classifies errors automatically:
+The executor classifies errors automatically:
 
-- **Transient** (retried automatically): timeouts, `429 Too Many Requests`, `503 Service Unavailable`, network errors (`ECONNRESET`, `ETIMEDOUT`)
-- **Permanent** (not retried): invalid API key, permission denied, `400 Bad Request`, `ENOENT`
+- **Transient** (retried automatically): timeouts, `429 Too Many Requests`, `503 Service Unavailable`, network errors
+- **Permanent** (not retried): invalid API key, permission denied, `400 Bad Request`
 
-If a message fails with a transient error, the queue retries it (up to `queue.maxRetries` times). Permanent errors skip retries and are sent to the dead letter queue.
-
-### Prompt truncated warning
-
-```
-Prompt truncated to maximum allowed length (original: 40000, truncated: 32768)
-```
-
-Prompts longer than 32,768 characters are silently truncated. Keep prompts under this limit.
+If a message fails with a transient error, the queue retries it (up to `queue.maxRetries` times). Permanent errors are sent to the dead letter queue.
 
 ---
 
@@ -235,12 +218,10 @@ Several things can cause messages to be dropped without a response:
 3. **Rate limited**
 
    ```
-   Rate limit exceeded (sender: +1234567890, count: 11, maxMessages: 10)
+   Rate limit exceeded (sender: +1234567890)
    ```
 
-   The sender exceeded the message limit for the current time window. No error is sent back to the user.
-
-   Fix: Adjust `auth.rateLimit.maxMessages` and `auth.rateLimit.windowMs`, or disable rate limiting:
+   Fix: Adjust `auth.rateLimit.maxMessages` and `auth.rateLimit.windowMs`, or disable:
 
    ```json
    "rateLimit": { "enabled": false }
@@ -248,43 +229,25 @@ Several things can cause messages to be dropped without a response:
 
 4. **Command blocked**
 
-   ```
-   Command blocked by deny pattern (command: rm -rf /, pattern: rm\s+-rf)
-   ```
-
    The message matched a deny pattern in `auth.commandFilter.denyPatterns`.
 
-   Fix: Review the deny patterns in your config. The user receives the configured `denyMessage` (default: "That command is not allowed.").
+5. **Master AI not ready**
 
-### `Default provider not found`
-
-```
-Default provider not found (provider: claude-code)
-```
-
-The `defaultProvider` in config doesn't match any registered provider's type.
-
-Fix: Ensure `defaultProvider` matches one of the provider `type` values in the `providers` array.
+   If the Master AI is still exploring the workspace, messages may be queued until exploration completes.
 
 ### Messages stuck in queue
 
 If messages are accepted but never get a response:
 
-1. Check logs for provider errors (Claude CLI issues, timeouts).
-2. Check the health endpoint for queue status: `curl http://localhost:8080/`
+1. Check logs for AI tool errors (timeouts, auth failures).
+2. Check the health endpoint: `curl http://localhost:8080/`
 3. Look at `queue.deadLetterSize` — if it's growing, messages are failing permanently.
 
-### Dead letter queue
+### "Working on it..." but no response
 
-Messages that fail all retry attempts are moved to the dead letter queue (DLQ). They stay in memory until the bridge restarts.
+The `dev:watch` script can kill the Node process during AI execution, preventing the response from being sent.
 
-To check DLQ size via the health endpoint:
-
-```bash
-curl -s http://localhost:8080/ | jq '.queue.deadLetterSize'
-```
-
-There is no API to replay or flush the DLQ. Restart the bridge to clear it.
+Fix: Use `npm run dev` (no watch) instead of `npm run dev:watch` when testing AI responses.
 
 ---
 
@@ -292,19 +255,13 @@ There is no API to replay or flush the DLQ. Restart the bridge to clear it.
 
 ### Config hot-reload not working
 
-The bridge watches `config.json` for changes and auto-applies updates to auth settings (whitelist, rate limits, command filters) without a restart.
+The bridge watches `config.json` and auto-applies updates to auth settings (whitelist, rate limits, command filters) without a restart.
 
-If hot-reload isn't working:
-
-```
-Config file watcher error
-```
-
-Fix: Check file permissions on `config.json`. On some systems, the file watcher may not work with network-mounted or symlinked files.
+If hot-reload isn't working, check file permissions on `config.json`.
 
 ### `Failed to reload config file — keeping current config`
 
-The updated `config.json` has a JSON syntax error or fails Zod validation. The bridge keeps running with the previous config.
+The updated `config.json` has a JSON syntax error or fails Zod validation.
 
 Fix: Validate your JSON:
 
@@ -316,9 +273,9 @@ node -e "console.log(JSON.parse(require('fs').readFileSync('config.json','utf8')
 
 Config hot-reload only applies to auth settings. Changes to these require a full restart:
 
-- Connectors (adding/removing)
-- Providers (adding/removing, workspacePath)
-- Queue settings (maxRetries, retryDelayMs)
+- Channels (adding/removing)
+- Workspace path
+- Queue settings
 - Health check / metrics ports
 - Log level
 
@@ -328,15 +285,11 @@ Config hot-reload only applies to auth settings. Changes to these require a full
 
 ### Health check returning 503
 
-```json
-{ "status": "unhealthy", "error": "Not initialized" }
-```
-
 The health endpoint returns 503 when at least one connector is disconnected.
 
-Fix: Check WhatsApp connection status in the logs. If the connector is reconnecting, wait for it to finish. If it failed, see [WhatsApp Issues](#whatsapp-issues).
+Fix: Check WhatsApp connection status in the logs. See [WhatsApp Issues](#whatsapp-issues).
 
-### `Health check server error` / `EADDRINUSE`
+### `EADDRINUSE`
 
 ```
 EADDRINUSE: address already in use :::8080
@@ -353,31 +306,17 @@ lsof -i :8080
 # Either kill the process or change the port in config.json
 ```
 
-```json
-"health": { "enabled": true, "port": 9090 }
-```
-
-### `Metrics server error`
-
-Same as above but for the metrics port. Default is 9090.
-
-Fix: Change `metrics.port` in config or free the port.
-
 ---
 
 ## Logging & Debugging
 
 ### Increase log verbosity
 
-Set `logLevel` in `config.json` to get more detail:
-
 ```json
 "logLevel": "debug"
 ```
 
 Available levels (most to least verbose): `trace`, `debug`, `info`, `warn`, `error`, `fatal`.
-
-For production, use `info` or `warn`. For troubleshooting, use `debug` or `trace`.
 
 ### Reading logs
 
@@ -393,30 +332,17 @@ For production (JSON logs), pipe through pino-pretty:
 node dist/index.js | npx pino-pretty
 ```
 
-### Audit log
-
-If audit logging is enabled (`audit.enabled: true`), message history is written to the configured `audit.logPath` (default: `audit.log`) in JSONL format.
-
-```
-Failed to write audit log entry
-```
-
-If you see this error, check that the audit log path is writable and the disk has free space.
-
 ---
 
 ## Environment Checklist
 
-Run through this list when setting up OpenBridge for the first time:
-
-| Requirement            | Check command                             | Expected                |
-| ---------------------- | ----------------------------------------- | ----------------------- |
-| Node.js >= 22          | `node --version`                          | `v22.x.x` or higher     |
-| npm >= 10              | `npm --version`                           | `10.x.x` or higher      |
-| Claude CLI installed   | `which claude`                            | Path to `claude` binary |
-| Claude CLI works       | `claude --print "test"`                   | AI response in terminal |
-| Chromium installed     | `which chromium \|\| which google-chrome` | Path to browser         |
-| config.json exists     | `ls config.json`                          | File listed             |
-| workspacePath exists   | `ls <your-workspace-path>`                | Directory contents      |
-| Health port available  | `lsof -i :8080`                           | No output (port free)   |
-| Metrics port available | `lsof -i :9090`                           | No output (port free)   |
+| Requirement           | Check command                             | Expected                |
+| --------------------- | ----------------------------------------- | ----------------------- |
+| Node.js >= 22         | `node --version`                          | `v22.x.x` or higher     |
+| npm >= 10             | `npm --version`                           | `10.x.x` or higher      |
+| At least one AI CLI   | `which claude \|\| which codex`           | Path to binary          |
+| AI CLI works          | `claude --print "test"`                   | AI response in terminal |
+| Chromium installed    | `which chromium \|\| which google-chrome` | Path to browser         |
+| config.json exists    | `ls config.json`                          | File listed             |
+| workspacePath exists  | `ls <your-workspace-path>`                | Directory contents      |
+| Health port available | `lsof -i :8080`                           | No output (port free)   |

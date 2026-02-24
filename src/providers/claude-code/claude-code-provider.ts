@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import type { AIProvider, ProviderResult } from '../../types/provider.js';
+import type { AIProvider, ProviderResult, ProviderContext } from '../../types/provider.js';
 import type { InboundMessage } from '../../types/message.js';
 import { ClaudeCodeConfigSchema } from './claude-code-config.js';
 import type { ClaudeCodeConfig } from './claude-code-config.js';
@@ -29,7 +29,10 @@ export class ClaudeCodeProvider implements AIProvider {
     logger.info({ workspace: this.config.workspacePath }, 'Claude Code provider initialized');
   }
 
-  async processMessage(message: InboundMessage): Promise<ProviderResult> {
+  async processMessage(
+    message: InboundMessage,
+    _context?: ProviderContext,
+  ): Promise<ProviderResult> {
     const startTime = Date.now();
     const workspacePath = this.resolveWorkspace(message);
     const sessionKey = this.sessionKey(message.sender, workspacePath);
@@ -74,7 +77,10 @@ export class ClaudeCodeProvider implements AIProvider {
     };
   }
 
-  async *streamMessage(message: InboundMessage): AsyncGenerator<string, ProviderResult> {
+  async *streamMessage(
+    message: InboundMessage,
+    _context?: ProviderContext,
+  ): AsyncGenerator<string, ProviderResult> {
     const startTime = Date.now();
     const workspacePath = this.resolveWorkspace(message);
     const sessionKey = this.sessionKey(message.sender, workspacePath);

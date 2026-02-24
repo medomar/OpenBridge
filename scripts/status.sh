@@ -204,12 +204,12 @@ ${grandchild_lines}"
   if [[ -f "$STATE_PATH" ]]; then
     echo ""
     echo "  Run state:"
-    local started_at iteration phase model parallel status consecutive_failures
+    local started_at iteration phase model budget status consecutive_failures
     started_at=$(json_val "started_at" "$STATE_PATH")
     iteration=$(json_val "iteration" "$STATE_PATH")
     phase=$(json_val "phase" "$STATE_PATH")
     model=$(json_val "model" "$STATE_PATH")
-    parallel=$(json_val "parallel" "$STATE_PATH")
+    budget=$(json_val "budget" "$STATE_PATH")
     status=$(json_val "status" "$STATE_PATH")
     consecutive_failures=$(json_val "consecutive_failures" "$STATE_PATH")
     echo "    Status:     ${status:-unknown}"
@@ -217,8 +217,19 @@ ${grandchild_lines}"
     echo "    Iteration:  ${iteration:-?}"
     echo "    Phase:      ${phase:-all}"
     echo "    Model:      ${model:-default}"
-    echo "    Parallel:   ${parallel:-1}"
+    echo "    Budget:     \$${budget:-5}/agent"
     echo "    Failures:   ${consecutive_failures:-0} consecutive"
+
+    # Show skip info if available
+    local skipped max_task_failures
+    skipped=$(json_val "skipped_tasks" "$STATE_PATH")
+    max_task_failures=$(json_val "max_task_failures" "$STATE_PATH")
+    if [[ -n "$skipped" && "$skipped" != "0" ]]; then
+      echo "    Skipped:    ${skipped} task(s)"
+    fi
+    if [[ -n "$max_task_failures" ]]; then
+      echo "    Skip after: ${max_task_failures} failures per task"
+    fi
   fi
 }
 
@@ -311,6 +322,41 @@ show_tasks() {
     fi
     phase_num=$((phase_num + 1))
   done
+
+  # Show skipped tasks
+  local skipped_file="$LOG_PATH/.skipped_tasks"
+  if [[ -f "$skipped_file" && -s "$skipped_file" ]]; then
+    local skip_count
+    skip_count=$(wc -l < "$skipped_file" | tr -d ' ')
+    echo ""
+    echo "  Skipped tasks ($skip_count):"
+    while IFS='|' read -r task_id timestamp reason; do
+      echo "    - $task_id: $reason"
+    done < "$skipped_file"
+  fi
+
+  # Show failure counts for tasks that have failed but not yet skipped
+  local failures_file="$LOG_PATH/.task_failures.json"
+  if [[ -f "$failures_file" ]] && command -v python3 &>/dev/null; then
+    local failure_summary
+    failure_summary=$(python3 -c "
+import json
+try:
+    with open('$failures_file', 'r') as f:
+        data = json.load(f)
+    for tid, info in sorted(data.items()):
+        count = info.get('count', 0)
+        if count > 0:
+            print(f'    {tid}: {count} failure(s)')
+except:
+    pass
+" 2>/dev/null)
+    if [[ -n "$failure_summary" ]]; then
+      echo ""
+      echo "  Task failure counts:"
+      echo "$failure_summary"
+    fi
+  fi
 }
 
 show_logs() {
@@ -358,6 +404,10 @@ show_logs() {
     # Determine status from log content
     if [[ ! -s "$log_file" ]]; then
       status_indicator="⚠ empty"
+    elif grep -qi "Reached max turns" "$log_file" 2>/dev/null; then
+      status_indicator="⚠ max-turns"
+    elif grep -qi "TIMEOUT: Agent killed" "$log_file" 2>/dev/null; then
+      status_indicator="⚠ timeout"
     elif tail -5 "$log_file" 2>/dev/null | grep -qi "error\|failed\|exception"; then
       status_indicator="❌ error"
     elif tail -5 "$log_file" 2>/dev/null | grep -qi "completed\|success\|done"; then

@@ -11,14 +11,13 @@ export interface InitOptions {
 }
 
 interface Answers {
+  connector: string;
   workspacePath: string;
-  whitelist: string[];
-  prefix: string;
-  sessionName: string;
-  logLevel: string;
-  rateLimit: boolean;
-  healthCheck: boolean;
+  whitelist?: string[];
+  prefix?: string;
 }
+
+const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
 
 function ask(rl: ReadlineInterface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -29,47 +28,19 @@ function ask(rl: ReadlineInterface, question: string): Promise<string> {
 }
 
 export function buildConfig(answers: Answers): Record<string, unknown> {
-  return {
-    connectors: [
-      {
-        type: 'whatsapp',
-        enabled: true,
-        options: {
-          sessionName: answers.sessionName,
-          sessionPath: '.wwebjs_auth',
-        },
-      },
-    ],
-    providers: [
-      {
-        type: 'claude-code',
-        enabled: true,
-        options: {
-          workspacePath: answers.workspacePath,
-          maxTokens: 4096,
-        },
-      },
-    ],
-    defaultProvider: 'claude-code',
-    auth: {
-      whitelist: answers.whitelist,
-      prefix: answers.prefix,
-      rateLimit: {
-        enabled: answers.rateLimit,
-        maxMessages: 10,
-        windowMs: 60000,
-      },
-    },
-    queue: {
-      maxRetries: 3,
-      retryDelayMs: 1000,
-    },
-    health: {
-      enabled: answers.healthCheck,
-      port: 8080,
-    },
-    logLevel: answers.logLevel,
+  const config: Record<string, unknown> = {
+    workspacePath: answers.workspacePath,
+    channels: [{ type: answers.connector, enabled: true }],
   };
+
+  if (answers.whitelist !== undefined) {
+    config['auth'] = {
+      whitelist: answers.whitelist,
+      prefix: answers.prefix ?? '/ai',
+    };
+  }
+
+  return config;
 }
 
 export async function runInit(options: InitOptions = {}): Promise<void> {
@@ -95,61 +66,78 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Workspace path
+    // Question 1: Connector selection
+    const connectorAnswer = await ask(
+      rl,
+      '  Connector type (console/whatsapp/webchat/telegram/discord) [default: console]: ',
+    );
+    const connector = connectorAnswer || 'console';
+
+    if (!(VALID_CONNECTORS as readonly string[]).includes(connector)) {
+      write(
+        `  Error: invalid connector "${connector}". Choose console, whatsapp, webchat, telegram, or discord.\n`,
+      );
+      return;
+    }
+
+    // Question 2: Workspace path
     const workspacePath = await ask(rl, '  Workspace path (absolute path to your project): ');
     if (!workspacePath) {
       write('  Error: workspace path is required.\n');
       return;
     }
 
-    // Whitelist
-    const whitelistRaw = await ask(
-      rl,
-      '  Phone whitelist (comma-separated, e.g. +1234567890,+0987654321): ',
-    );
-    const whitelist = whitelistRaw
-      .split(',')
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0);
+    let config: Record<string, unknown>;
 
-    // Prefix
-    const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');
-    const prefix = prefixAnswer || '/ai';
+    if (connector === 'whatsapp') {
+      // Question 3: Phone whitelist (WhatsApp only)
+      const whitelistRaw = await ask(
+        rl,
+        '  Phone whitelist (comma-separated, e.g. +1234567890,+0987654321): ',
+      );
+      const whitelist = whitelistRaw
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0);
 
-    // Session name
-    const sessionAnswer = await ask(rl, '  WhatsApp session name (default: openbridge-default): ');
-    const sessionName = sessionAnswer || 'openbridge-default';
+      if (whitelist.length === 0) {
+        write('  Error: at least one phone number is required.\n');
+        return;
+      }
 
-    // Log level
-    const logLevelAnswer = await ask(
-      rl,
-      '  Log level (trace/debug/info/warn/error, default: info): ',
-    );
-    const validLevels = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
-    const logLevel = validLevels.includes(logLevelAnswer) ? logLevelAnswer : 'info';
+      // Question 4: Command prefix (WhatsApp only)
+      const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');
+      const prefix = prefixAnswer || '/ai';
 
-    // Rate limiting
-    const rateLimitAnswer = await ask(rl, '  Enable rate limiting? (Y/n): ');
-    const rateLimit = rateLimitAnswer.toLowerCase() !== 'n';
-
-    // Health check
-    const healthAnswer = await ask(rl, '  Enable health check endpoint? (y/N): ');
-    const healthCheck = healthAnswer.toLowerCase() === 'y';
-
-    const config = buildConfig({
-      workspacePath,
-      whitelist,
-      prefix,
-      sessionName,
-      logLevel,
-      rateLimit,
-      healthCheck,
-    });
+      config = buildConfig({ connector, workspacePath, whitelist, prefix });
+    } else if (connector === 'telegram') {
+      const botToken = await ask(rl, '  Telegram bot token (from @BotFather): ');
+      if (!botToken) {
+        write('  Error: bot token is required for Telegram.\n');
+        return;
+      }
+      config = buildConfig({ connector, workspacePath });
+      const telegramChannels = config['channels'] as Record<string, unknown>[];
+      telegramChannels[0]!['botToken'] = botToken;
+    } else if (connector === 'discord') {
+      const botToken = await ask(rl, '  Discord bot token (from Developer Portal): ');
+      if (!botToken) {
+        write('  Error: bot token is required for Discord.\n');
+        return;
+      }
+      config = buildConfig({ connector, workspacePath });
+      const discordChannels = config['channels'] as Record<string, unknown>[];
+      discordChannels[0]!['botToken'] = botToken;
+    } else {
+      config = buildConfig({ connector, workspacePath });
+    }
 
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 
     write(`\n  Config written to ${outputPath}\n`);
-    write('  Run `npm run dev` to start OpenBridge.\n\n');
+    write('  To start OpenBridge:\n');
+    write('    - Cloned from repo:    npm run dev\n');
+    write('    - Installed via npm:   node dist/index.js\n\n');
   } finally {
     rl.close();
   }

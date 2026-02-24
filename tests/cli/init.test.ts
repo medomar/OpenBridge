@@ -53,62 +53,66 @@ function createLineFeeder(lines: string[]): {
 }
 
 describe('buildConfig', () => {
-  it('should build a valid config object from answers', () => {
+  it('should build a whatsapp config with auth', () => {
     const config = buildConfig({
+      connector: 'whatsapp',
       workspacePath: '/home/user/project',
       whitelist: ['+1234567890'],
       prefix: '/ai',
-      sessionName: 'my-session',
-      logLevel: 'debug',
-      rateLimit: true,
-      healthCheck: false,
     });
 
     expect(config).toEqual({
-      connectors: [
-        {
-          type: 'whatsapp',
-          enabled: true,
-          options: { sessionName: 'my-session', sessionPath: '.wwebjs_auth' },
-        },
-      ],
-      providers: [
-        {
-          type: 'claude-code',
-          enabled: true,
-          options: { workspacePath: '/home/user/project', maxTokens: 4096 },
-        },
-      ],
-      defaultProvider: 'claude-code',
+      workspacePath: '/home/user/project',
+      channels: [{ type: 'whatsapp', enabled: true }],
       auth: {
         whitelist: ['+1234567890'],
         prefix: '/ai',
-        rateLimit: { enabled: true, maxMessages: 10, windowMs: 60000 },
       },
-      queue: { maxRetries: 3, retryDelayMs: 1000 },
-      health: { enabled: false, port: 8080 },
-      logLevel: 'debug',
     });
+  });
+
+  it('should build a console config without auth', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).toEqual({
+      workspacePath: '/home/user/project',
+      channels: [{ type: 'console', enabled: true }],
+    });
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should build a webchat config without auth', () => {
+    const config = buildConfig({
+      connector: 'webchat',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).toEqual({
+      workspacePath: '/home/user/project',
+      channels: [{ type: 'webchat', enabled: true }],
+    });
+    expect(config).not.toHaveProperty('auth');
   });
 
   it('should support multiple whitelist numbers', () => {
     const config = buildConfig({
+      connector: 'whatsapp',
       workspacePath: '/tmp/test',
       whitelist: ['+111', '+222', '+333'],
       prefix: '/bot',
-      sessionName: 'openbridge-default',
-      logLevel: 'info',
-      rateLimit: false,
-      healthCheck: true,
     });
 
-    expect(config.auth).toEqual(
-      expect.objectContaining({
+    expect(config).toEqual({
+      workspacePath: '/tmp/test',
+      channels: [{ type: 'whatsapp', enabled: true }],
+      auth: {
         whitelist: ['+111', '+222', '+333'],
         prefix: '/bot',
-      }),
-    );
-    expect(config.health).toEqual({ enabled: true, port: 8080 });
+      },
+    });
   });
 });
 
@@ -129,56 +133,110 @@ describe('runInit', () => {
     }
   });
 
-  it('should generate a config file from interactive input', async () => {
+  it('should generate a whatsapp config from interactive input', async () => {
     const { input, output } = createLineFeeder([
+      'whatsapp', // connector
       '/home/user/my-project', // workspace path
       '+1234567890', // whitelist
       '/ai', // prefix
-      'test-session', // session name
-      'info', // log level
-      'Y', // rate limiting
-      'n', // health check
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
     const raw = await readFile(testConfigPath, 'utf-8');
     const config = JSON.parse(raw) as Record<string, unknown>;
-    expect(config).toHaveProperty('connectors');
-    expect(config).toHaveProperty('providers');
-    expect(config).toHaveProperty('defaultProvider', 'claude-code');
+    expect(config).toHaveProperty('workspacePath', '/home/user/my-project');
+    expect(config).toHaveProperty('channels');
+    expect(config).toHaveProperty('auth');
 
-    const providers = config['providers'] as Array<{ options: { workspacePath: string } }>;
-    expect(providers[0]?.options.workspacePath).toBe('/home/user/my-project');
+    const channels = config['channels'] as Array<{ type: string; enabled: boolean }>;
+    expect(channels[0]?.type).toBe('whatsapp');
+    expect(channels[0]?.enabled).toBe(true);
+
+    const auth = config['auth'] as { whitelist: string[]; prefix: string };
+    expect(auth.whitelist).toEqual(['+1234567890']);
+    expect(auth.prefix).toBe('/ai');
   });
 
-  it('should apply defaults when user presses enter', async () => {
+  it('should generate a console config without auth', async () => {
     const { input, output } = createLineFeeder([
-      '/home/user/project', // workspace path (required)
-      '+555', // whitelist
-      '', // prefix — default /ai
-      '', // session name — default openbridge-default
-      '', // log level — default info
-      '', // rate limiting — default Y
-      '', // health check — default N
+      'console', // connector
+      '/home/user/my-project', // workspace path
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
     const raw = await readFile(testConfigPath, 'utf-8');
     const config = JSON.parse(raw) as Record<string, unknown>;
-    const auth = config['auth'] as { prefix: string; rateLimit: { enabled: boolean } };
+    expect(config).toHaveProperty('workspacePath', '/home/user/my-project');
+
+    const channels = config['channels'] as Array<{ type: string }>;
+    expect(channels[0]?.type).toBe('console');
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should default to console when connector answer is empty', async () => {
+    const { input, output } = createLineFeeder([
+      '', // empty = default console
+      '/home/user/project', // workspace path
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string }>;
+    expect(channels[0]?.type).toBe('console');
+    expect(config).not.toHaveProperty('auth');
+  });
+
+  it('should apply prefix default when user presses enter', async () => {
+    const { input, output } = createLineFeeder([
+      'whatsapp', // connector
+      '/home/user/project', // workspace path
+      '+555', // whitelist
+      '', // prefix — default /ai
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const auth = config['auth'] as { prefix: string };
     expect(auth.prefix).toBe('/ai');
-    expect(auth.rateLimit.enabled).toBe(true);
-    expect(config['logLevel']).toBe('info');
   });
 
   it('should abort if workspace path is empty', async () => {
-    const { input, output } = createLineFeeder(['']);
+    const { input, output } = createLineFeeder([
+      '', // connector (default console)
+      '', // empty workspace path
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
     expect(output.data).toContain('workspace path is required');
+  });
+
+  it('should abort if whitelist is empty', async () => {
+    const { input, output } = createLineFeeder([
+      'whatsapp', // connector
+      '/home/user/project', // workspace path
+      '', // empty whitelist
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('at least one phone number is required');
+  });
+
+  it('should abort on invalid connector', async () => {
+    const { input, output } = createLineFeeder([
+      'slack', // invalid connector
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('invalid connector');
   });
 
   it('should abort if user declines overwrite', async () => {
@@ -196,19 +254,83 @@ describe('runInit', () => {
 
     const { input, output } = createLineFeeder([
       'y', // confirm overwrite
+      'whatsapp', // connector
       '/home/user/project', // workspace path
       '+1234567890', // whitelist
       '', // prefix
-      '', // session name
-      '', // log level
-      '', // rate limiting
-      '', // health check
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
     const raw = await readFile(testConfigPath, 'utf-8');
     const config = JSON.parse(raw) as Record<string, unknown>;
-    expect(config).toHaveProperty('defaultProvider', 'claude-code');
+    expect(config).toHaveProperty('workspacePath', '/home/user/project');
+    expect(config).toHaveProperty('channels');
+    expect(config).toHaveProperty('auth');
+  });
+
+  it('should generate config for telegram connector with bot token', async () => {
+    const { input, output } = createLineFeeder([
+      'telegram', // connector
+      '/home/user/project', // workspace path
+      '123456:ABC-DEF', // bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    expect(channels[0]?.type).toBe('telegram');
+    expect(channels[0]?.botToken).toBe('123456:ABC-DEF');
+  });
+
+  it('should abort if telegram bot token is empty', async () => {
+    const { input, output } = createLineFeeder([
+      'telegram', // connector
+      '/home/user/project', // workspace path
+      '', // empty bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('bot token is required');
+  });
+
+  it('should generate config for discord connector with bot token', async () => {
+    const { input, output } = createLineFeeder([
+      'discord', // connector
+      '/home/user/project', // workspace path
+      'MTk4NjIy.discord-token', // bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    expect(channels[0]?.type).toBe('discord');
+    expect(channels[0]?.botToken).toBe('MTk4NjIy.discord-token');
+  });
+
+  it('should abort if discord bot token is empty', async () => {
+    const { input, output } = createLineFeeder([
+      'discord', // connector
+      '/home/user/project', // workspace path
+      '', // empty bot token
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('bot token is required');
+  });
+
+  it('should show updated success message with both start options', async () => {
+    const { input, output } = createLineFeeder(['console', '/home/user/project']);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('npm run dev');
+    expect(output.data).toContain('node dist/index.js');
   });
 });

@@ -1,0 +1,208 @@
+{
+  "version": "1.0",
+  "name": "my-store-api",
+  "description": "E-commerce store REST API — products, orders, and customers",
+  "baseUrl": "https://api.mystore.com/v1",
+  "source": "manual",
+  "auth": {
+    "type": "bearer",
+    "envVar": "STORE_API_TOKEN"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+  },
+  "endpoints": [
+    {
+      "id": "list-products",
+      "name": "List Products",
+      "description": "List all products with optional filtering and pagination",
+      "method": "GET",
+      "path": "/products",
+      "parameters": [
+        {
+          "name": "page",
+          "in": "query",
+          "type": "number",
+          "description": "Page number (1-based)"
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "type": "number",
+          "description": "Items per page (max 100)"
+        },
+        {
+          "name": "category",
+          "in": "query",
+          "type": "string",
+          "description": "Filter by category slug"
+        }
+      ],
+      "response": {
+        "contentType": "application/json",
+        "schema": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "price": { "type": "number" },
+                "category": { "type": "string" }
+              }
+            }
+          },
+          "total": { "type": "number" },
+          "page": { "type": "number" }
+        },
+        "example": {
+          "items": [{ "id": "prod_1", "name": "Widget", "price": 9.99, "category": "gadgets" }],
+          "total": 42,
+          "page": 1
+        }
+      },
+      "tags": ["products", "read"]
+    },
+    {
+      "id": "create-product",
+      "name": "Create Product",
+      "description": "Create a new product in the catalog",
+      "method": "POST",
+      "path": "/products",
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "name": { "type": "string", "required": true, "description": "Product name" },
+          "price": { "type": "number", "required": true, "description": "Price in USD" },
+          "category": { "type": "string", "description": "Category slug" },
+          "description": { "type": "string", "description": "Product description" },
+          "stock": { "type": "number", "description": "Initial stock quantity" }
+        },
+        "example": {
+          "name": "Super Widget",
+          "price": 19.99,
+          "category": "gadgets",
+          "description": "A premium widget",
+          "stock": 100
+        }
+      },
+      "response": {
+        "contentType": "application/json",
+        "schema": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": "number" },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "tags": ["products", "write"]
+    },
+    {
+      "id": "get-product",
+      "name": "Get Product",
+      "description": "Get a single product by ID",
+      "method": "GET",
+      "path": "/products/:id",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Product ID"
+        }
+      ],
+      "tags": ["products", "read"]
+    },
+    {
+      "id": "update-product",
+      "name": "Update Product",
+      "description": "Update an existing product",
+      "method": "PATCH",
+      "path": "/products/:id",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Product ID"
+        }
+      ],
+      "requestBody": {
+        "contentType": "application/json",
+        "schema": {
+          "name": { "type": "string", "description": "Product name" },
+          "price": { "type": "number", "description": "Price in USD" },
+          "stock": { "type": "number", "description": "Stock quantity" }
+        }
+      },
+      "tags": ["products", "write"]
+    },
+    {
+      "id": "delete-product",
+      "name": "Delete Product",
+      "description": "Delete a product by ID",
+      "method": "DELETE",
+      "path": "/products/:id",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Product ID"
+        }
+      ],
+      "tags": ["products", "write"]
+    },
+    {
+      "id": "list-orders",
+      "name": "List Orders",
+      "description": "List orders with optional status filter",
+      "method": "GET",
+      "path": "/orders",
+      "parameters": [
+        {
+          "name": "status",
+          "in": "query",
+          "type": "string",
+          "description": "Filter by status: pending, shipped, delivered, cancelled"
+        }
+      ],
+      "tags": ["orders", "read"]
+    },
+    {
+      "id": "get-order",
+      "name": "Get Order",
+      "description": "Get order details by ID",
+      "method": "GET",
+      "path": "/orders/:id",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Order ID"
+        }
+      ],
+      "tags": ["orders", "read"]
+    },
+    {
+      "id": "health-check",
+      "name": "Health Check",
+      "description": "Public health check endpoint (no auth required)",
+      "method": "GET",
+      "path": "/health",
+      "auth": { "type": "none" },
+      "tags": ["system"]
+    }
+  ],
+  "metadata": {
+    "generatedAt": "2026-02-20T00:00:00Z",
+    "generatedBy": "manual"
+  }
+}

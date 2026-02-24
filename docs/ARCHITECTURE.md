@@ -1,117 +1,624 @@
 # OpenBridge — Architecture
 
-> **Last Updated:** 2026-02-19
+> **Last Updated:** 2026-02-23
 
 ---
 
-## System Design
+## Overview
 
-OpenBridge is a 3-layer plugin architecture:
+OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
 
 ```
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   CONNECTORS     │      │    BRIDGE CORE    │      │   AI PROVIDERS   │
-│  (Messaging In)  │─────▶│                  │─────▶│   (AI Out)       │
-│                  │◀─────│  Router / Auth /  │◀─────│                  │
-│  ✅ WhatsApp     │      │  Queue / Config   │      │  ✅ Claude Code  │
-│  ◻ Slack         │      │                  │      │  ◻ OpenAI API    │
-│  ◻ Telegram      │      └──────────────────┘      │  ◻ Gemini        │
-│  ◻ iMessage      │                                 │  ◻ Local LLMs    │
-└──────────────────┘                                 └──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        CHANNELS                                   │
+│  WhatsApp · Console · WebChat · Telegram · Discord                │
+│  Connectors translate between messaging APIs and OpenBridge       │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      BRIDGE CORE                                  │
+│  Router · Auth · Queue · Config · Registry · Health · Metrics     │
+│  Message routing, authentication, rate limiting, plugin system    │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    AI DISCOVERY                                    │
+│  Tool Scanner · VS Code Scanner · Auto-Selection                  │
+│  Discovers AI CLIs on machine, ranks by capability, picks Master  │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     AGENT RUNNER                                   │
+│  AgentRunner · Model Selector · Tool Profiles                     │
+│  Unified CLI executor: --allowedTools, --max-turns, --model,      │
+│  retries, disk logging, model fallback, worker orchestration      │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     MASTER AI                                      │
+│  Master Manager · Worker Registry · Exploration Coordinator       │
+│  Self-governing Master, AI task classification, auto-delegation   │
+│  via SPAWN markers, worker orchestration, session continuity,     │
+│  self-improvement, git-tracked knowledge in .openbridge/          │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### Layer 1: Connectors
+---
 
-Each connector implements `src/types/connector.ts`:
+## Layer 1: Channels (Connectors)
+
+Messaging platform adapters. Each implements the `Connector` interface from `src/types/connector.ts`.
+
+### Connector Interface
 
 ```typescript
 interface Connector {
   name: string;
   initialize(): Promise<void>;
+  shutdown(): Promise<void>;
   sendMessage(message: OutboundMessage): Promise<void>;
-  on(event, listener): void;
-  shutdown(): Promise<void>;
+  sendTypingIndicator?(recipient: string): Promise<void>;
   isConnected(): boolean;
+  on(event: 'message', handler: (msg: InboundMessage) => void): void;
+  on(event: 'ready' | 'error' | 'disconnected', handler: Function): void;
 }
 ```
 
-Connectors translate between a messaging platform's native API and OpenBridge's internal `InboundMessage`/`OutboundMessage` types.
+### Implemented Connectors
 
-### Layer 2: Bridge Core
+| Connector | Directory                  | Library           | Features                                                                                               |
+| --------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Console   | `src/connectors/console/`  | built-in (stdin)  | Rapid local testing without any external service dependency                                            |
+| WebChat   | `src/connectors/webchat/`  | built-in (ws)     | Browser chat UI on localhost, markdown rendering, live progress bar, Thinking animation                |
+| WhatsApp  | `src/connectors/whatsapp/` | `whatsapp-web.js` | QR auth, session persistence, auto-reconnect, message chunking, typing indicators, markdown formatting |
+| Telegram  | `src/connectors/telegram/` | `grammy`          | DM and group @mention support, in-place progress editing via editMessageText                           |
+| Discord   | `src/connectors/discord/`  | `discord.js` v14  | DM and guild channel support, bot message filtering, in-place progress editing                         |
 
-Located in `src/core/`. Responsible for:
+### WhatsApp Connector Details
 
-| Component      | File          | Purpose                                               |
-| -------------- | ------------- | ----------------------------------------------------- |
-| Bridge         | `bridge.ts`   | Orchestrator — wires everything together              |
-| Router         | `router.ts`   | Routes messages from connector → provider → connector |
-| AuthService    | `auth.ts`     | Phone whitelist + command prefix                      |
-| MessageQueue   | `queue.ts`    | Sequential processing (prevents race conditions)      |
-| PluginRegistry | `registry.ts` | Registers connector/provider factories                |
-| Config         | `config.ts`   | Loads and validates `config.json` via Zod             |
-| Logger         | `logger.ts`   | Pino structured logging                               |
-
-### Layer 3: AI Providers
-
-Each provider implements `src/types/provider.ts`:
-
-```typescript
-interface AIProvider {
-  name: string;
-  initialize(): Promise<void>;
-  processMessage(message: InboundMessage): Promise<ProviderResult>;
-  isAvailable(): Promise<boolean>;
-  shutdown(): Promise<void>;
-}
-```
-
-Providers take a cleaned message and return a response. The Claude Code provider runs `claude --print "<message>"` as a child process inside the target workspace.
+- **Auto-reconnect** with exponential backoff (1s → 2s → 4s → ... → 60s max)
+- **Session persistence** via `LocalAuth` strategy — survives restarts without re-scanning QR
+- **Message chunking** — splits responses > 4096 chars into multiple messages
+- **Typing indicator** — shows "typing..." while AI processes
+- **Markdown conversion** — converts AI markdown to WhatsApp formatting (bold, italic, code)
 
 ---
 
-## Message Flow
+## Layer 2: Bridge Core
+
+The engine that wires everything together. Lives in `src/core/`.
+
+### Components
+
+| Component          | File                | Purpose                                                                          |
+| ------------------ | ------------------- | -------------------------------------------------------------------------------- |
+| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI          |
+| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates |
+| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                  |
+| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue            |
+| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                  |
+| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats            |
+| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                     |
+| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                      |
+| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                  |
+| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                     |
+| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                            |
+| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                            |
+
+### Message Flow (V2 with Master AI)
 
 ```
-1. WhatsApp connector receives raw message
-2. Connector emits 'message' event with InboundMessage
-3. Bridge.handleIncomingMessage():
-   a. AuthService.isAuthorized(sender) → whitelist check
-   b. AuthService.hasPrefix(content) → prefix check
-   c. AuthService.stripPrefix(content) → clean message
-4. MessageQueue.enqueue(cleanedMessage)
-5. Queue processes sequentially:
-   a. Router.route(message)
-   b. Router sends "Working on it..." ack
-   c. Provider.processMessage(message) → AI response
-   d. Router sends response back via connector
+1. WhatsApp message arrives
+   │
+2. connector.on('message') → bridge.handleIncomingMessage()
+   │
+3. Auth checks:
+   ├─ Is sender whitelisted?       → reject if not
+   ├─ Does message have /ai prefix? → ignore if not
+   ├─ Is sender rate-limited?       → drop if exceeded
+   └─ Is command allowed?           → block if denied
+   │
+4. queue.enqueue(message)
+   │
+5. Queue processes per-user sequentially:
+   │
+6. router.route(message)
+   ├─ Send "Working on it..." ack to user
+   ├─ Start progress timer (every 15s)
+   ├─ Route to Master AI:
+   │   └─ master.processMessage(message) → ProviderResult
+   │       ├─ Session continuity: --resume <session-id> for existing conversation
+   │       ├─ New session: --session-id <uuid> for first message from sender
+   │       └─ Timeout: 30-minute TTL per session
+   ├─ Stop progress timer
+   └─ Send result back to user via connector
+   │
+7. Audit log + metrics recorded
 ```
+
+### Message Flow (V0 legacy — direct provider)
+
+```
+Same as above but step 6 routes directly to an AIProvider instead of Master AI.
+Router checks: master → orchestrator → direct provider (in priority order).
+```
+
+---
+
+## Layer 3: AI Discovery
+
+Auto-detects AI tools on the machine at startup. Lives in `src/discovery/`.
+
+### How Discovery Works
+
+```
+1. CLI Scanner:
+   - For each known AI tool (claude, codex, aider, cursor, cody):
+     - Run `which <command>` to check if installed
+     - If found: capture path, run `<tool> --version`
+     - Record capabilities (code-gen, file-editing, conversation, tool-use)
+   - Rank by priority (claude > codex > aider > cursor > cody)
+
+2. VS Code Scanner:
+   - Read ~/.vscode/extensions/ directory
+   - Check for known AI extensions (Copilot, Cody, Continue)
+   - Record as available (informational, not used for CLI delegation)
+
+3. Selection:
+   - Pick highest-priority available CLI tool as Master
+   - Register all others as potential delegates
+   - Return ScanResult { tools, master, scanDurationMs }
+```
+
+### Discovery Types
+
+```typescript
+interface DiscoveredTool {
+  name: string; // 'claude', 'codex', 'aider'
+  path: string; // '/usr/local/bin/claude'
+  version?: string; // '1.2.3'
+  capabilities: string[]; // ['code-generation', 'file-editing', 'conversation']
+  role: 'master' | 'delegate';
+  available: boolean;
+}
+
+interface ScanResult {
+  tools: DiscoveredTool[];
+  master: DiscoveredTool | null;
+  scanDurationMs: number;
+}
+```
+
+### Known AI Tools Registry
+
+| Tool   | Command  | Priority | Capabilities                                   |
+| ------ | -------- | :------: | ---------------------------------------------- |
+| Claude | `claude` |    1     | code-gen, file-editing, conversation, tool-use |
+| Codex  | `codex`  |    2     | code-gen, file-editing                         |
+| Aider  | `aider`  |    3     | code-gen, file-editing                         |
+| Cursor | `cursor` |    4     | code-gen, file-editing                         |
+| Cody   | `cody`   |    5     | code-gen, conversation                         |
+
+---
+
+## Layer 4: Master AI
+
+The autonomous agent that knows your project. Lives in `src/master/`.
+
+### Master Manager
+
+The central component that manages the Master AI lifecycle and session continuity:
+
+```
+States:  idle → exploring → ready → error
+
+Lifecycle:
+  1. startExploration() fires on startup
+  2. Delegates to ExplorationCoordinator.explore()
+  3. State transitions to 'ready' when all 5 passes complete
+  4. processMessage(msg) handles user requests with session continuity
+
+Session Continuity:
+  - Maps sender → sessionId with 30-minute TTL
+  - First message from sender: creates new session with --session-id <uuid>
+  - Subsequent messages: resumes with --resume <session-id>
+  - Preserves context across multi-turn conversations
+  - Cleans up expired sessions automatically
+```
+
+### Incremental Exploration Architecture
+
+The exploration is split into **5 short passes** to avoid timeouts on large projects. Each pass is independently checkpointed and resumable.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  INCREMENTAL 5-PASS EXPLORATION                  │
+└─────────────────────────────────────────────────────────────────┘
+
+Pass 1: Structure Scan (90s timeout)
+  ├─ List top-level files/dirs
+  ├─ Count files per directory
+  ├─ Detect config files (package.json, tsconfig.json, etc.)
+  ├─ Skip: node_modules, .git, dist, build
+  └─ Output: exploration/structure-scan.json
+
+Pass 2: Classification (90s timeout)
+  ├─ Read config files from Pass 1
+  ├─ Detect project type (Node.js, Python, Go, etc.)
+  ├─ Identify frameworks (Express, React, Django, etc.)
+  ├─ Extract dependencies and scripts
+  └─ Output: exploration/classification.json
+
+Pass 3: Directory Dives (90s timeout per directory, batched)
+  ├─ For each significant directory (src, tests, docs, etc.):
+  │   ├─ Explore contents (purpose, key files, subdirs)
+  │   └─ Output: exploration/dirs/<dirname>.json
+  ├─ Process in batches of 3 via Promise.allSettled()
+  ├─ Retry failed dives up to 3 times with backoff
+  └─ Checkpoint after each batch
+
+Pass 4: Assembly (60s timeout)
+  ├─ Merge partial results from Passes 1-3
+  ├─ Generate human-readable summary field
+  └─ Output: workspace-map.json (final assembled map)
+
+Pass 5: Finalization (no AI call, pure code)
+  ├─ Create agents.json (discovered tools + roles)
+  ├─ Git commit all files in .openbridge/
+  └─ Write log entry to exploration.log
+```
+
+**Resumability:** The `exploration-state.json` file tracks which passes are complete. On restart, the coordinator loads this file and skips completed phases.
+
+```json
+{
+  "currentPhase": "directory_dives",
+  "status": "in_progress",
+  "startedAt": "2026-02-21T10:00:00.000Z",
+  "phases": {
+    "structure_scan": "completed",
+    "classification": "completed",
+    "directory_dives": "in_progress",
+    "assembly": "pending",
+    "finalization": "pending"
+  },
+  "directoryDives": [
+    { "path": "src", "status": "completed", "outputFile": "dirs/src.json" },
+    { "path": "tests", "status": "pending" },
+    { "path": "docs", "status": "failed", "attempts": 1 }
+  ],
+  "totalCalls": 5,
+  "totalAITimeMs": 45000
+}
+```
+
+### `.openbridge/` Folder Specification
+
+Created by the Master AI inside the target workspace. This is the AI's persistent knowledge base.
+
+```
+target-project/
+├── src/
+├── package.json
+├── ...
+└── .openbridge/                 ← Created by Master AI
+    ├── .git/                    ← Local git repo (Master's changes only)
+    │   ├── HEAD
+    │   ├── objects/
+    │   └── refs/
+    ├── exploration/             ← Incremental exploration state (Phase 11)
+    │   ├── exploration-state.json  ← Single source of truth for resumability
+    │   │   {
+    │   │     "currentPhase": "assembly",
+    │   │     "status": "in_progress",
+    │   │     "startedAt": "2026-02-21T10:00:00.000Z",
+    │   │     "phases": {
+    │   │       "structure_scan": "completed",
+    │   │       "classification": "completed",
+    │   │       "directory_dives": "completed",
+    │   │       "assembly": "in_progress",
+    │   │       "finalization": "pending"
+    │   │     },
+    │   │     "directoryDives": [...],
+    │   │     "totalCalls": 12,
+    │   │     "totalAITimeMs": 108000
+    │   │   }
+    │   ├── structure-scan.json     ← Pass 1 output
+    │   │   {
+    │   │     "topLevelFiles": ["package.json", "README.md", ...],
+    │   │     "directories": [
+    │   │       { "path": "src", "fileCount": 42 },
+    │   │       { "path": "tests", "fileCount": 18 }
+    │   │     ],
+    │   │     "configFiles": ["package.json", "tsconfig.json", ...]
+    │   │   }
+    │   ├── classification.json     ← Pass 2 output
+    │   │   {
+    │   │     "projectType": "Node.js",
+    │   │     "languages": ["typescript"],
+    │   │     "frameworks": ["express"],
+    │   │     "dependencies": { "express": "^4.18.0", ... },
+    │   │     "scripts": { "dev": "tsx src/index.ts", ... }
+    │   │   }
+    │   └── dirs/                   ← Pass 3 outputs (one per directory)
+    │       ├── src.json
+    │       │   {
+    │       │     "path": "src",
+    │       │     "purpose": "Main application source code",
+    │       │     "keyFiles": ["index.ts", "server.ts", ...],
+    │       │     "subdirs": ["routes", "middleware", "services"]
+    │       │   }
+    │       ├── tests.json
+    │       └── docs.json
+    ├── workspace-map.json       ← Final assembled map (Pass 4)
+    │   {
+    │     "name": "my-project",
+    │     "description": "Node.js REST API with Express and TypeScript",
+    │     "summary": "A production-ready API server with 12 routes...",
+    │     "languages": ["typescript"],
+    │     "frameworks": ["express", "prisma"],
+    │     "structure": {
+    │       "src": { "purpose": "Main application source", ... },
+    │       "tests": { "purpose": "Vitest test suite", ... }
+    │     },
+    │     "exploredAt": "2026-02-21T10:05:30.000Z"
+    │   }
+    ├── exploration.log          ← Timestamped scan history
+    │   2026-02-21T10:00:00Z | Exploration started
+    │   2026-02-21T10:01:30Z | Pass 1 (structure_scan) completed in 90s
+    │   2026-02-21T10:03:00Z | Pass 2 (classification) completed in 90s
+    │   ...
+    ├── agents.json              ← Discovered AI tools + their roles (Pass 5)
+    │   {
+    │     "master": { "name": "claude", "path": "/usr/local/bin/claude" },
+    │     "delegates": [
+    │       { "name": "codex", "path": "/usr/local/bin/codex" }
+    │     ]
+    │   }
+    └── tasks/                   ← Task history (one JSON per task)
+        ├── task-001.json
+        │   {
+        │     "id": "task-001",
+        │     "description": "Run tests and fix failures",
+        │     "status": "completed",
+        │     "startedAt": "...",
+        │     "completedAt": "...",
+        │     "result": "47/47 tests passing"
+        │   }
+        └── task-002.json
+```
+
+### Exploration Components
+
+| Module                     | File                         | Purpose                                                                                       |
+| -------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
+| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress |
+| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)         |
+| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)         |
+| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD operations, exploration state management, git operations                  |
+| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                               |
+
+### Delegation
+
+When the Master needs help from another AI tool:
+
+```
+1. Master's response contains a delegation marker:
+   [DELEGATE:codex] Refactor the auth module to use JWT
+
+2. Master Manager intercepts the marker
+
+3. DelegationCoordinator spawns the delegate CLI:
+   codex --print "Refactor the auth module to use JWT"
+   (using the generalized executor from claude-code-executor.ts)
+
+4. Delegate's result is fed back to Master's session
+
+5. Task recorded in .openbridge/tasks/ and committed to git
+```
+
+**Delegation features:**
+
+- Concurrent delegation limit (max 3 at once)
+- Timeout handling per delegate (default 120s)
+- Result aggregation and error handling
+- Git commit per completed task
+
+### Generalized CLI Executor
+
+The `claude-code-executor.ts` module supports any CLI tool via the `command` option:
+
+```typescript
+// Run claude (default)
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000 });
+
+// Run codex
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'codex' });
+
+// Run aider
+await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'aider' });
+```
+
+Features: streaming via async generator, session support (`--session-id`, `--resume`), prompt sanitization, graceful shutdown guard (active child processes tracked and waited for during SIGTERM/SIGINT).
 
 ---
 
 ## Configuration Model
 
-Validated by Zod schemas in `src/types/config.ts`:
+### V2 Config (new — simplified)
 
 ```json
 {
-  "connectors": [{ "type": "whatsapp", "enabled": true, "options": {} }],
-  "providers": [{ "type": "claude-code", "enabled": true, "options": {} }],
-  "defaultProvider": "claude-code",
-  "auth": { "whitelist": ["+XXX"], "prefix": "/ai" },
-  "logLevel": "info"
+  "workspacePath": "/path/to/your/project",
+  "channels": [{ "type": "whatsapp", "enabled": true }],
+  "auth": {
+    "whitelist": ["+1234567890"],
+    "prefix": "/ai"
+  }
 }
 ```
 
-The `workspacePath` in provider options points to the **target project**, not OpenBridge. This is the folder where the AI has access.
+Three fields. AI tools are auto-discovered, Master is auto-selected.
+
+### V0 Config (legacy — still supported)
+
+```json
+{
+  "connectors": [{ "type": "whatsapp", "enabled": true }],
+  "providers": [{ "type": "claude-code", "enabled": true, "options": { "workspacePath": "..." } }],
+  "defaultProvider": "claude-code",
+  "auth": { "whitelist": [...], "prefix": "/ai" }
+}
+```
+
+The config loader auto-detects the format and runs the appropriate startup flow.
+
+---
+
+## Startup Sequence
+
+### V2 Flow (with discovery + Master)
+
+```
+1. loadConfig()                    → detect V2 format
+2. scanForAITools()                → discover claude, codex, etc.
+3. new Bridge(config)              → create bridge with auth, queue, router
+4. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
+5. bridge.start()                  → initialize connectors, health, metrics
+6. new MasterManager(tool, path)   → create Master with discovered tool
+7. bridge.setMaster(master)        → wire Master into router
+8. master.startExploration()       → fire-and-forget incremental exploration
+   ├─ ExplorationCoordinator.explore()
+   ├─ Load exploration-state.json (if exists)
+   ├─ Skip completed phases
+   ├─ Execute remaining passes
+   ├─ Checkpoint after each pass
+   └─ State transitions: idle → exploring → ready
+9. Ready — waiting for messages with full project context
+```
+
+### V0 Flow (legacy — direct provider)
+
+```
+1. loadConfig()                    → detect V0 format
+2. new Bridge(config)              → create bridge
+3. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
+4. registerBuiltInProviders()      → register Claude Code provider
+5. bridge.start()                  → initialize connectors + providers
+6. Ready — messages route directly to provider
+```
+
+---
+
+## Resilient Startup
+
+On restart, the Master AI reuses valid state and resumes incomplete exploration:
+
+```
+Scenario 1: Valid .openbridge/ exists
+  → Skip exploration, load workspace-map.json
+  → State: ready immediately
+
+Scenario 2: Incomplete exploration (exploration-state.json exists)
+  → Load exploration-state.json
+  → Resume from last completed phase
+  → Continue with remaining passes
+  → State: exploring → ready
+
+Scenario 3: Corrupted or missing workspace-map.json
+  → Delete exploration/ folder
+  → Start fresh 5-pass exploration
+  → State: exploring → ready
+
+Scenario 4: First run (no .openbridge/)
+  → Create .openbridge/ folder
+  → Start 5-pass exploration
+  → State: exploring → ready
+```
 
 ---
 
 ## Key Design Decisions
 
-| Decision              | Choice                                         | Rationale                                                 |
-| --------------------- | ---------------------------------------------- | --------------------------------------------------------- |
-| Workspace-scoped AI   | AI only has access to the configured workspace | Security boundary — not full machine                      |
-| Sequential queue      | Messages processed one at a time               | Prevents concurrent Claude Code sessions from conflicting |
-| Plugin registry       | Factory pattern for connectors/providers       | New plugins register without modifying core code          |
-| Zod validation        | Runtime config validation                      | Fail fast on bad config, TypeScript type inference        |
-| ESM + Node 16 modules | Modern module system                           | Native ESM, better tree-shaking                           |
+1. **Incremental exploration, not monolithic.** The old architecture used a single giant AI call that timed out on real projects. The new 5-pass strategy breaks exploration into short, checkpointed phases that never timeout.
+
+2. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI focused prompts and let it figure out the project. This is simpler and more powerful.
+
+3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. It has its own git repo so changes are tracked without polluting the project's git history.
+
+4. **Session continuity enables multi-turn conversations.** The Master tracks sessions per sender with 30-minute TTL. First message creates a session, subsequent messages resume it. This enables natural business conversations: "which invoices are overdue?" → "send reminders to those clients".
+
+5. **Discovery runs once at startup.** We don't continuously scan for tools. Restart to re-discover.
+
+6. **V0 config stays supported.** Auto-detect config version, run the appropriate flow. No breaking changes.
+
+7. **The executor is generalized, not rewritten.** The existing `claude-code-executor.ts` handles spawning, streaming, sanitization, sessions, and graceful shutdown. Adding `command` option was a one-line change.
+
+8. **Dead code is archived, not deleted.** Old knowledge/ and orchestrator/ modules are in `src/_archived/` — out of the compile path but preserved in git.
+
+---
+
+## Directory Structure
+
+```
+src/
+├── index.ts                    ← Entry point (V0 + V2 startup flows)
+├── cli/
+│   ├── index.ts                ← CLI dispatcher
+│   └── init.ts                 ← Config generator (3 questions for V2)
+├── types/
+│   ├── connector.ts            ← Connector interface
+│   ├── provider.ts             ← AIProvider interface + ProviderContext
+│   ├── message.ts              ← InboundMessage / OutboundMessage
+│   ├── config.ts               ← AppConfigSchema (V0) + AppConfigV2Schema
+│   ├── common.ts               ← Shared types
+│   ├── agent.ts                ← Agent / TaskAgent types (reused)
+│   ├── discovery.ts            ← DiscoveredTool, ScanResult schemas
+│   └── master.ts               ← MasterState, ExplorationSummary, exploration schemas
+├── core/
+│   ├── bridge.ts               ← Main orchestrator (setMaster + lifecycle)
+│   ├── router.ts               ← Message routing (Master → provider fallback)
+│   ├── auth.ts                 ← Whitelist + prefix + command filters
+│   ├── queue.ts                ← Per-user queues + retry + DLQ
+│   ├── registry.ts             ← Plugin registry (auto-discovery)
+│   ├── config.ts               ← Config loader (V2 detection + V0 fallback)
+│   ├── config-watcher.ts       ← Config hot-reload
+│   ├── agent-runner.ts         ← Unified CLI executor (--allowedTools, --max-turns, --model, retries)
+│   ├── model-selector.ts       ← Model recommendation per task type + profile
+│   ├── health.ts               ← Health check endpoint
+│   ├── metrics.ts              ← Metrics collection
+│   ├── audit-logger.ts         ← Audit trail
+│   ├── rate-limiter.ts         ← Per-user rate limiting
+│   └── logger.ts               ← Pino logger
+├── connectors/
+│   ├── index.ts                ← Connector registry
+│   ├── console/                ← Console connector (reference impl)
+│   ├── webchat/                ← WebChat connector (browser UI)
+│   ├── whatsapp/               ← WhatsApp connector
+│   ├── telegram/               ← Telegram connector (grammY)
+│   └── discord/                ← Discord connector (discord.js v14)
+├── providers/
+│   ├── index.ts                ← Provider registry
+│   └── claude-code/            ← Claude Code CLI provider (V0)
+│       ├── claude-code-provider.ts
+│       ├── claude-code-config.ts
+│       ├── session-manager.ts
+│       └── provider-error.ts
+├── discovery/
+│   ├── index.ts                ← scanForAITools() export
+│   ├── tool-scanner.ts         ← CLI tool detection (which)
+│   └── vscode-scanner.ts       ← VS Code extension detection
+└── master/
+    ├── index.ts                ← Module exports
+    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions
+    ├── worker-registry.ts      ← Active worker tracking + concurrency limits
+    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + git operations
+    ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
+    ├── exploration-prompts.ts  ← Pass-specific prompt generators
+    ├── result-parser.ts        ← Robust JSON extraction with fallbacks
+    └── delegation.ts           ← Multi-AI task delegation
+```

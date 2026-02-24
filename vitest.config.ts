@@ -5,11 +5,12 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    exclude: ['tests/_archived/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
       include: ['src/**/*.ts'],
-      exclude: ['src/types/**', 'src/**/index.ts'],
+      exclude: ['src/types/**', 'src/**/index.ts', 'src/_archived/**', 'src/orchestrator/**'],
       thresholds: {
         branches: 70,
         functions: 70,

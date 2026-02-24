@@ -159,6 +159,29 @@ describe('ConsoleConnector', () => {
     expect(stdoutSpy).not.toHaveBeenCalled();
   });
 
+  it('should overwrite the current line for progress events', async () => {
+    await connector.initialize();
+    await connector.sendProgress({ type: 'classifying' }, 'console-user');
+    expect(stdoutSpy).toHaveBeenCalledWith('\r[Analyzing request...]');
+  });
+
+  it('should overwrite line for spawning progress event', async () => {
+    await connector.initialize();
+    await connector.sendProgress({ type: 'spawning', workerCount: 3 }, 'console-user');
+    expect(stdoutSpy).toHaveBeenCalledWith('\r[Spawning 3 workers...]');
+  });
+
+  it('should clear the status line on complete', async () => {
+    await connector.initialize();
+    await connector.sendProgress({ type: 'complete' }, 'console-user');
+    expect(stdoutSpy).toHaveBeenCalledWith('\r\x1b[K');
+  });
+
+  it('should silently skip progress when disconnected', async () => {
+    await connector.sendProgress({ type: 'classifying' }, 'console-user');
+    expect(stdoutSpy).not.toHaveBeenCalled();
+  });
+
   it('should emit disconnected when stdin closes', async () => {
     const disconnectedHandler = vi.fn();
     connector.on('disconnected', disconnectedHandler);

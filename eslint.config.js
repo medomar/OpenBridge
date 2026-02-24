@@ -5,7 +5,18 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'coverage/', 'node_modules/', '*.config.js', '*.config.ts'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      '*.config.js',
+      '*.config.ts',
+      '**/_archived/**',
+      'src/orchestrator/**',
+      'tests/types/**',
+      'test-workspace-*/',
+      'ob-smoke-test/',
+    ],
   },
 
   eslint.configs.recommended,

@@ -1,10 +1,12 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { OutboundMessage } from '../../types/message.js';
+import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
+import { unlink, readlink } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const logger = createLogger('whatsapp');
 
@@ -32,6 +34,8 @@ export class WhatsAppConnector implements Connector {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shuttingDown = false;
+  /** Tracks chat IDs that have received a progress status message (to avoid repeat sends). */
+  private readonly progressSent = new Set<string>();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -70,8 +74,27 @@ export class WhatsAppConnector implements Connector {
       localAuthOptions.dataPath = this.config.sessionPath;
     }
 
+    // Remove stale SingletonLock — left behind when Chromium crashes or the process is killed.
+    // Without this, Puppeteer hangs trying to connect to a dead browser.
+    await this.removeStaleLock();
+
     this.client = new Client({
       authStrategy: new LocalAuth(localAuthOptions),
+      // Use local cache to avoid remote fetch failures (GitHub URL can be unreachable)
+      webVersionCache: {
+        type: 'local',
+      },
+      puppeteer: {
+        headless: this.config.headless,
+        protocolTimeout: 300_000, // 5 min — WhatsApp Web can be slow to load
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--disable-extensions',
+        ],
+      },
     }) as unknown as WAClient;
 
     this.client.on('qr', (qr: string) => {
@@ -123,7 +146,93 @@ export class WhatsAppConnector implements Connector {
       this.scheduleReconnect();
     });
 
-    await this.client.initialize();
+    // Catch Puppeteer ProtocolError / browser crashes that don't trigger 'disconnected'.
+    // Log the phase (pre-ready vs post-ready) to help diagnose where the error occurs.
+    this.client.on('error', (err: Error) => {
+      const phase = this.connected ? 'post-ready' : 'pre-ready';
+      const isProtocolError =
+        err.message.includes('ProtocolError') ||
+        err.message.includes('Execution context was destroyed');
+      if (isProtocolError) {
+        logger.error(
+          { err: err.message, phase },
+          'WhatsApp ProtocolError — Chromium context destroyed',
+        );
+      } else {
+        logger.error({ err: err.message, phase }, 'WhatsApp client error');
+      }
+      if (this.connected) {
+        this.connected = false;
+        this.emit('error', err);
+        this.scheduleReconnect();
+      }
+    });
+
+    // Retry initialize() up to 3 times with exponential backoff.
+    // ProtocolError: Execution context was destroyed can occur transiently during startup.
+    const MAX_INIT_ATTEMPTS = 3;
+    const { initialDelayMs, backoffFactor, maxDelayMs } = this.config.reconnect;
+    let lastInitError: Error | null = null;
+    for (let attempt = 1; attempt <= MAX_INIT_ATTEMPTS; attempt++) {
+      try {
+        if (attempt > 1) {
+          logger.info(
+            { attempt, maxAttempts: MAX_INIT_ATTEMPTS },
+            'Retrying client.initialize() after previous failure',
+          );
+        } else {
+          logger.info('Launching Chromium and loading WhatsApp Web...');
+        }
+        await this.client.initialize();
+        logger.info('WhatsApp client initialized successfully');
+        return;
+      } catch (err: unknown) {
+        lastInitError = err instanceof Error ? err : new Error(String(err));
+        logger.warn(
+          { attempt, maxAttempts: MAX_INIT_ATTEMPTS, err: lastInitError.message },
+          'client.initialize() failed',
+        );
+        if (attempt < MAX_INIT_ATTEMPTS) {
+          const backoffMs = Math.min(
+            initialDelayMs * Math.pow(backoffFactor, attempt - 1),
+            maxDelayMs,
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
+    }
+    throw lastInitError ?? new Error('client.initialize() failed after all retries');
+  }
+
+  /**
+   * Remove stale SingletonLock from the Chromium profile directory.
+   * This lock is a symlink like `Mac-<PID>`. If the PID is no longer running,
+   * the lock is stale and will prevent Puppeteer from launching.
+   */
+  private async removeStaleLock(): Promise<void> {
+    const dataPath = this.config.sessionPath ?? '.wwebjs_auth';
+    const lockPath = join(dataPath, `session-${this.config.sessionName}`, 'SingletonLock');
+
+    try {
+      const target = await readlink(lockPath);
+      // Target format: "Mac-<PID>" or "<hostname>-<PID>"
+      const pidMatch = target.match(/-(\d+)$/);
+      if (!pidMatch?.[1]) return;
+
+      const pid = parseInt(pidMatch[1], 10);
+      try {
+        // signal 0 = check if process exists without sending a signal
+        process.kill(pid, 0);
+        // Process is alive — lock is valid, don't remove
+        logger.debug({ pid }, 'SingletonLock held by running process');
+      } catch {
+        // Process doesn't exist — lock is stale
+        await unlink(lockPath);
+        logger.info({ pid }, 'Removed stale SingletonLock from previous Chromium crash');
+      }
+    } catch {
+      // Lock doesn't exist or can't be read — nothing to do
+    }
   }
 
   private scheduleReconnect(): void {
@@ -131,6 +240,12 @@ export class WhatsAppConnector implements Connector {
       this.config.reconnect;
 
     if (this.shuttingDown || !enabled) {
+      return;
+    }
+
+    // Guard against double-scheduling (e.g. both 'error' and 'disconnected' fire together)
+    if (this.reconnectTimer !== null) {
+      logger.debug('Reconnect already scheduled — skipping duplicate');
       return;
     }
 
@@ -151,24 +266,27 @@ export class WhatsAppConnector implements Connector {
       'WhatsApp scheduling reconnect',
     );
 
-    this.reconnectTimer = setTimeout(() => {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       if (this.shuttingDown) return;
 
       logger.info({ attempt: this.reconnectAttempt }, 'WhatsApp attempting reconnect');
 
       if (this.client) {
-        this.client.destroy().catch((err: unknown) => {
+        await this.client.destroy().catch((err: unknown) => {
           logger.warn({ err }, 'Error destroying old WhatsApp client before reconnect');
         });
         this.client = null;
       }
 
-      this.createAndStartClient().catch((err: unknown) => {
+      try {
+        await this.createAndStartClient();
+      } catch (err: unknown) {
         logger.error({ err }, 'WhatsApp reconnect failed');
         this.emit('error', err instanceof Error ? err : new Error(String(err)));
         this.scheduleReconnect();
-      });
+      }
     }, delay);
   }
 
@@ -200,12 +318,36 @@ export class WhatsAppConnector implements Connector {
     }
   }
 
+  async sendProgress(event: ProgressEvent, chatId: string): Promise<void> {
+    if (!this.client || !this.connected) return;
+
+    if (event.type === 'complete') {
+      this.progressSent.delete(chatId);
+      return;
+    }
+
+    // Only send one status message per conversation to avoid spamming the user.
+    // The spawning event is the most informative — it tells the user how many subtasks are running.
+    if (event.type === 'spawning' && !this.progressSent.has(chatId)) {
+      const n = event.workerCount;
+      const text = `🔄 Breaking into ${n.toString()} subtask${n !== 1 ? 's' : ''}...`;
+      try {
+        await this.client.sendMessage(chatId, text);
+        this.progressSent.add(chatId);
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp progress message');
+      }
+    }
+    // All other events are silently skipped — avoid WhatsApp message spam
+  }
+
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
     this.listeners[event].push(listener);
   }
 
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    this.progressSent.clear();
 
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
