@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: 'npm'
     directory: '/'
+    target-branch: 'develop'
     schedule:
       interval: 'monthly'
     open-pull-requests-limit: 5
@@ -23,4 +24,10 @@ updates:
       - dependency-name: '@vitest/coverage-v8'
         update-types: ['version-update:semver-major']
       - dependency-name: 'vitest'
+        update-types: ['version-update:semver-major']
+      # Zod 4 requires dedicated migration — don't auto-bump
+      - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
+      # ESLint 10 needs typescript-eslint compatibility — don't auto-bump
+      - dependency-name: 'eslint'
         update-types: ['version-update:semver-major']
