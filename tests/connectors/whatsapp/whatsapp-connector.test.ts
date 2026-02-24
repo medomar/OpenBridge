@@ -4,9 +4,13 @@ import type { Mock } from 'vitest';
 // --------------------------------------------------------------------------
 // Mock node:fs/promises — removeStaleLock() calls readlink/unlink which do
 // real filesystem I/O.  Under fake timers on CI runners this can deadlock.
+// We use importOriginal to preserve all real exports while overriding only
+// the two functions used by removeStaleLock().
 // --------------------------------------------------------------------------
-vi.mock('node:fs/promises', async () => {
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual: Record<string, unknown> = await importOriginal();
   return {
+    ...actual,
     readlink: vi.fn(async () => {
       throw new Error('ENOENT');
     }),
