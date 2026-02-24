@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   WorkerRegistry,
   DEFAULT_MAX_CONCURRENT_WORKERS,
@@ -497,6 +497,119 @@ describe('WorkerRegistry', () => {
       expect(session2.getWorker(w2)?.status).toBe('completed');
       expect(session2.getWorker(w3)?.status).toBe('failed');
       expect(session2.getRunningCount()).toBe(1);
+    });
+  });
+
+  describe('Backpressure — waitForSlot()', () => {
+    it('should resolve immediately if under capacity', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 2 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      // Only 1 running, capacity is 2 — should resolve immediately
+      await expect(reg.waitForSlot()).resolves.toBeUndefined();
+    });
+
+    it('should wait and resolve when a slot frees up', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      expect(reg.isAtCapacity()).toBe(true);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      // Not resolved yet
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      // Complete the worker — frees a slot
+      reg.markCompleted(w1, sampleResult);
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve when a worker fails (not just completes)', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      // Fail the worker — should also free a slot
+      reg.markFailed(w1, { ...sampleResult, exitCode: 1 }, 'error');
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve when a worker is cancelled', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      reg.markCancelled(w1, 'cancelled by user');
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve multiple waiters in FIFO order', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      const order: number[] = [];
+      const wait1 = reg.waitForSlot(5000).then(() => order.push(1));
+      const wait2 = reg.waitForSlot(5000).then(() => order.push(2));
+
+      // Complete first worker — frees slot for first waiter
+      reg.markCompleted(w1, sampleResult);
+      await wait1;
+
+      // Add and complete another worker — frees slot for second waiter
+      const w2 = reg.addWorker(sampleManifest);
+      reg.markRunning(w2, 1002);
+      reg.markCompleted(w2, sampleResult);
+      await wait2;
+
+      expect(order).toEqual([1, 2]);
+    });
+
+    it('should reject on timeout if no slot frees up', async () => {
+      vi.useFakeTimers();
+      try {
+        const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+        const w1 = reg.addWorker(sampleManifest);
+        reg.markRunning(w1, 1001);
+
+        const waitPromise = reg.waitForSlot(1000);
+
+        // Advance past timeout
+        vi.advanceTimersByTime(1001);
+
+        await expect(waitPromise).rejects.toThrow('Timed out waiting for worker slot');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

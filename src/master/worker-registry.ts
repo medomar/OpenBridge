@@ -60,6 +60,8 @@ export const WorkerRecordSchema = z.object({
     .optional(),
   /** Error message (if failed or cancelled) */
   error: z.string().optional(),
+  /** Number of worker-level retries attempted (distinct from AgentRunner's internal retries) */
+  workerRetries: z.number().int().nonnegative().optional(),
 });
 
 export type WorkerRecord = z.infer<typeof WorkerRecordSchema>;
@@ -97,6 +99,8 @@ export const DEFAULT_MAX_CONCURRENT_WORKERS = 5;
 export class WorkerRegistry {
   private workers: Map<string, WorkerRecord> = new Map();
   private readonly maxConcurrentWorkers: number;
+  /** FIFO queue of resolvers waiting for a worker slot to free up */
+  private slotWaiters: Array<() => void> = [];
 
   constructor(opts?: { maxConcurrentWorkers?: number }) {
     this.maxConcurrentWorkers = opts?.maxConcurrentWorkers ?? DEFAULT_MAX_CONCURRENT_WORKERS;
@@ -167,6 +171,7 @@ export class WorkerRegistry {
     worker.result = result;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
   }
 
   /**
@@ -184,6 +189,7 @@ export class WorkerRegistry {
     worker.error = error;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
   }
 
   /**
@@ -200,6 +206,46 @@ export class WorkerRegistry {
     worker.error = error;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
+  }
+
+  /**
+   * Wait for a worker slot to become available.
+   * Returns a Promise that resolves when a running worker completes/fails/cancels.
+   * Waiters are resolved in FIFO order.
+   * @param timeoutMs Maximum time to wait (default: 5 minutes). Throws on timeout.
+   */
+  public waitForSlot(timeoutMs = 300_000): Promise<void> {
+    // If already under capacity, resolve immediately
+    if (!this.isAtCapacity()) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // Remove this waiter from the queue
+        const idx = this.slotWaiters.indexOf(onSlotFree);
+        if (idx !== -1) this.slotWaiters.splice(idx, 1);
+        reject(new Error(`Timed out waiting for worker slot after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      const onSlotFree = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+
+      this.slotWaiters.push(onSlotFree);
+    });
+  }
+
+  /**
+   * Notify the first waiter in the FIFO queue that a slot has freed up.
+   */
+  private notifySlotWaiters(): void {
+    if (this.slotWaiters.length > 0 && !this.isAtCapacity()) {
+      const waiter = this.slotWaiters.shift();
+      waiter?.();
+    }
   }
 
   /**

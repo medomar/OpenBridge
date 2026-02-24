@@ -619,6 +619,8 @@ export class DotFolderManager {
     }
 
     const prompt = manifest.prompts[promptId];
+    // Preserve the current success rate before resetting (for degradation detection)
+    prompt.previousSuccessRate = prompt.successRate;
     prompt.usageCount = 0;
     prompt.successCount = 0;
     prompt.successRate = 0;

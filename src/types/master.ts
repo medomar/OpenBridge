@@ -513,6 +513,12 @@ export const PromptTemplateSchema = z.object({
 
   /** When this prompt was last used */
   lastUsedAt: z.string().datetime().optional(),
+
+  /** Content of the prompt before the most recent rewrite (for rollback) */
+  previousVersion: z.string().optional(),
+
+  /** Success rate before the most recent rewrite (for degradation detection) */
+  previousSuccessRate: z.number().min(0).max(1).optional(),
 });
 
 export type PromptTemplate = z.infer<typeof PromptTemplateSchema>;

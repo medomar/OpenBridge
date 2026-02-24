@@ -3,8 +3,10 @@ import {
   recommendByProfile,
   recommendByDescription,
   recommendModel,
+  recommendFromLearnings,
 } from '../../src/core/model-selector.js';
 import type { TaskManifest } from '../../src/types/agent.js';
+import type { LearningEntry } from '../../src/types/master.js';
 
 // ── recommendByProfile ──────────────────────────────────────────────
 
@@ -145,5 +147,135 @@ describe('recommendModel', () => {
   it('defaults to haiku for simple prompts with no profile', () => {
     const rec = recommendModel(baseManifest);
     expect(rec.model).toBe('haiku');
+  });
+
+  it('uses learnings-based recommendation when data is available', () => {
+    const learnings = makeLearnings('bug-fix', [
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'haiku', success: false },
+      { model: 'haiku', success: false },
+    ]);
+    const manifest: TaskManifest = {
+      prompt: 'Some generic prompt',
+      workspacePath: '/tmp/test',
+      profile: 'code-edit',
+    };
+    const rec = recommendModel(manifest, { learnings, taskType: 'bug-fix' });
+    expect(rec.model).toBe('sonnet');
+    expect(rec.reason).toContain('historical performance');
+  });
+
+  it('falls through to heuristics when insufficient learning data', () => {
+    const learnings = makeLearnings('bug-fix', [
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+    ]); // Only 2 entries — not enough
+    const manifest: TaskManifest = {
+      prompt: 'List all files',
+      workspacePath: '/tmp/test',
+      profile: 'read-only',
+    };
+    const rec = recommendModel(manifest, { learnings, taskType: 'bug-fix' });
+    // Falls through to profile-based: read-only → haiku
+    expect(rec.model).toBe('haiku');
+  });
+});
+
+// ── recommendFromLearnings ─────────────────────────────────────────
+
+/** Helper to generate learning entries */
+function makeLearnings(
+  taskType: string,
+  items: Array<{ model: string; success: boolean }>,
+): LearningEntry[] {
+  return items.map((item, i) => ({
+    id: `learning-${i}`,
+    taskType,
+    modelUsed: item.model,
+    profileUsed: 'code-edit',
+    success: item.success,
+    durationMs: 1000,
+    recordedAt: new Date().toISOString(),
+    exitCode: item.success ? 0 : 1,
+    retryCount: 0,
+    metadata: {},
+  }));
+}
+
+describe('recommendFromLearnings', () => {
+  it('returns the model with the highest success rate', () => {
+    const learnings = makeLearnings('testing', [
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'haiku', success: true },
+      { model: 'haiku', success: false },
+      { model: 'haiku', success: false },
+    ]);
+    const rec = recommendFromLearnings('testing', learnings);
+    expect(rec).not.toBeNull();
+    expect(rec!.model).toBe('sonnet'); // 100% vs 33%
+    expect(rec!.reason).toContain('testing');
+  });
+
+  it('returns null when insufficient entries (<5)', () => {
+    const learnings = makeLearnings('feature', [
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+    ]);
+    const rec = recommendFromLearnings('feature', learnings);
+    expect(rec).toBeNull();
+  });
+
+  it('returns null when no model has 3+ uses', () => {
+    const learnings = makeLearnings('refactoring', [
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'haiku', success: true },
+      { model: 'opus', success: true },
+      { model: 'opus', success: false },
+    ]);
+    const rec = recommendFromLearnings('refactoring', learnings);
+    // sonnet has 2, haiku has 1, opus has 2 — none reach 3
+    expect(rec).toBeNull();
+  });
+
+  it('ignores entries for other task types', () => {
+    const mixed = [
+      ...makeLearnings('bug-fix', [
+        { model: 'haiku', success: true },
+        { model: 'haiku', success: true },
+        { model: 'haiku', success: true },
+      ]),
+      ...makeLearnings('feature', [
+        { model: 'sonnet', success: true },
+        { model: 'sonnet', success: true },
+        { model: 'sonnet', success: true },
+        { model: 'sonnet', success: true },
+        { model: 'sonnet', success: true },
+      ]),
+    ];
+    // bug-fix only has 3 entries → insufficient
+    expect(recommendFromLearnings('bug-fix', mixed)).toBeNull();
+    // feature has 5 entries → sufficient
+    expect(recommendFromLearnings('feature', mixed)?.model).toBe('sonnet');
+  });
+
+  it('picks the better model even with different sample sizes', () => {
+    const learnings = makeLearnings('optimization', [
+      { model: 'opus', success: true },
+      { model: 'opus', success: true },
+      { model: 'opus', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: true },
+      { model: 'sonnet', success: false },
+      { model: 'sonnet', success: false },
+    ]);
+    const rec = recommendFromLearnings('optimization', learnings);
+    expect(rec).not.toBeNull();
+    expect(rec!.model).toBe('opus'); // 100% vs 50%
   });
 });
