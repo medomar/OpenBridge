@@ -2,7 +2,7 @@
 
 > **Last Updated:** 2026-02-24 | **Version:** v0.0.1 | **License:** Apache 2.0
 
-An autonomous AI bridge — connects messaging channels to a self-governing Master AI that explores your workspace, spawns worker agents, and executes tasks. Zero API keys. Zero extra cost.
+Connect your messaging app to the AI tools on your machine. OpenBridge coordinates Claude, Codex, and Gemini to explore your workspace and execute tasks — using your existing subscriptions, at zero extra cost.
 
 ---
 

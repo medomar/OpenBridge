@@ -2,23 +2,23 @@
 
 ## What is OpenBridge?
 
-OpenBridge is an open-source platform that turns AI into a **self-governing autonomous worker for your project**. Point it at any workspace, connect your messaging app, and a Master AI explores your project, spawns worker agents to execute tasks, and continuously improves its own strategies — all using the AI tools already installed on your machine.
+OpenBridge is an open-source platform that turns your installed AI tools into a **coordinated team that works on your project from any messaging app**. Point it at any workspace, connect WhatsApp or Telegram, and a lead AI explores your project, spawns worker agents to execute tasks, and continuously improves — all using the AI tools already on your machine.
 
-There are no API keys to configure. No map files to write. No complex setup. OpenBridge auto-discovers the AI tools on your system (Claude Code, Codex, Aider, etc.), picks the most capable one as the Master, and lets it govern itself.
+No API keys. No per-request fees. No complex setup. OpenBridge auto-discovers Claude Code, Codex, Gemini, Aider, and any other AI tool on your system, then coordinates them automatically.
 
 ## Why OpenBridge?
 
-**The problem:** AI tools are powerful but isolated. You open Claude Code, type a question, get an answer, then manually relay instructions. You can't trigger AI work from your phone. You can't coordinate multiple AI tools. You can't give an AI persistent knowledge of your project that survives across sessions.
+**The problem:** You have powerful AI tools installed, but they're isolated. You open Claude Code, type a question, close it, open Codex for something else. You can't coordinate them. You can't trigger AI work from your phone. And every new session starts from scratch — no memory of your project.
 
-**The solution:** OpenBridge bridges the gap between you and your AI tools:
+**The solution:** OpenBridge makes your AI tools work together:
 
-- **Message from anywhere** — send a WhatsApp message, the AI handles it in your workspace
-- **Zero setup** — auto-discovers installed AI tools, no API keys, no config files to study
-- **Self-governing Master** — the Master AI decides which model, tools, and strategy to use for each task
-- **Worker delegation** — Master spawns short-lived worker agents with bounded permissions
-- **Persistent knowledge** — everything the AI learns is stored in `.openbridge/` with git tracking
-- **Self-improvement** — Master tracks what works and refines its own prompts over time
-- **Your subscription** — runs locally, uses your existing AI tools, zero extra cost
+- **Multi-AI orchestration** — Claude reads the code, Codex writes the fix, another AI runs the tests. One message from you, coordinated automatically.
+- **Manage AI from your phone** — send a WhatsApp message and a team of AI agents gets to work. Check progress, ask follow-ups, approve changes — all from your phone.
+- **You control AI access** — three levels (read-only, code-edit, full-access), workspace-scoped, phone whitelist. The AI only touches what you allow.
+- **Always up-to-date context** — OpenBridge explores your workspace, detects changes, and keeps its knowledge current. Multi-turn conversations remember everything.
+- **Zero extra cost** — runs locally, uses your existing AI subscriptions. No API keys, no new bills.
+
+**Under the hood:** A self-governing Master AI picks the best model, tools, and strategy for each task. It spawns short-lived worker agents with bounded permissions. Everything the AI learns is stored in `.openbridge/` with git tracking. The Master refines its own prompts over time.
 
 ## How It Works
 
