@@ -2,26 +2,44 @@
  * Model Selection Strategy
  *
  * Given a task description and tool profile, recommends a model.
+ * Uses capability tiers (fast / balanced / powerful) resolved through
+ * the ModelRegistry to stay provider-agnostic.
  *
  * Rules:
- * - read-only tasks → haiku (fast, cheap — exploration, information gathering)
- * - code-edit tasks → sonnet (balanced — implementation, modification)
- * - complex reasoning → opus (best — architecture, debugging, multi-step logic)
+ * - read-only tasks → fast tier (exploration, information gathering)
+ * - code-edit tasks → balanced tier (implementation, modification)
+ * - complex reasoning → powerful tier (architecture, debugging, multi-step logic)
  *
  * The Master AI can call this or ignore it. An explicit model in the
  * TaskManifest always takes priority over the recommendation.
  */
 
-import type { ModelAlias } from './agent-runner.js';
 import type { TaskManifest } from '../types/agent.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { LearningEntry } from '../types/master.js';
+import { ModelRegistry, createModelRegistry } from './model-registry.js';
+import type { ModelTier } from './model-registry.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('model-selector');
 
+/** Lazily-created default registry (Claude) for backward compatibility */
+let defaultRegistry: ModelRegistry | null = null;
+function getDefaultRegistry(): ModelRegistry {
+  if (!defaultRegistry) {
+    defaultRegistry = createModelRegistry('claude');
+  }
+  return defaultRegistry;
+}
+
+/** Resolve a tier to a model ID, falling back through tiers if needed */
+function resolveTier(tier: ModelTier, registry: ModelRegistry): string {
+  const entry = registry.resolveWithFallback(tier);
+  return entry?.id ?? tier;
+}
+
 /**
- * Keywords that signal complex reasoning (→ opus).
+ * Keywords that signal complex reasoning (→ powerful tier).
  * Matched case-insensitively against the task description.
  */
 const COMPLEX_KEYWORDS = [
@@ -43,7 +61,7 @@ const COMPLEX_KEYWORDS = [
 ] as const;
 
 /**
- * Keywords that signal code editing (→ sonnet).
+ * Keywords that signal code editing (→ balanced tier).
  * Matched case-insensitively against the task description.
  */
 const CODE_EDIT_KEYWORDS = [
@@ -65,8 +83,8 @@ const CODE_EDIT_KEYWORDS = [
 ] as const;
 
 export interface ModelRecommendation {
-  /** The recommended model alias */
-  model: ModelAlias;
+  /** The recommended model ID (provider-specific, resolved from tier) */
+  model: string;
   /** Why this model was chosen */
   reason: string;
 }
@@ -74,21 +92,35 @@ export interface ModelRecommendation {
 /**
  * Recommend a model based on the tool profile name.
  *
- * - 'read-only'    → haiku (fast, cheap)
- * - 'code-edit'    → sonnet (balanced)
- * - 'full-access'  → sonnet (balanced — full-access is a capability, not complexity)
- * - unknown        → sonnet (safe default)
+ * - 'read-only'    → fast tier (cheap, fast)
+ * - 'code-edit'    → balanced tier (implementation)
+ * - 'full-access'  → balanced tier (capability, not complexity)
+ * - unknown        → balanced tier (safe default)
  */
-export function recommendByProfile(profile: string): ModelRecommendation {
+export function recommendByProfile(
+  profile: string,
+  registry?: ModelRegistry,
+): ModelRecommendation {
+  const reg = registry ?? getDefaultRegistry();
+
   switch (profile) {
     case 'read-only':
-      return { model: 'haiku', reason: 'read-only profile — fast and cheap' };
+      return { model: resolveTier('fast', reg), reason: 'read-only profile — fast and cheap' };
     case 'code-edit':
-      return { model: 'sonnet', reason: 'code-edit profile — balanced for implementation' };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: 'code-edit profile — balanced for implementation',
+      };
     case 'full-access':
-      return { model: 'sonnet', reason: 'full-access profile — balanced default' };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: 'full-access profile — balanced default',
+      };
     default:
-      return { model: 'sonnet', reason: `unknown profile "${profile}" — defaulting to balanced` };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: `unknown profile "${profile}" — defaulting to balanced`,
+      };
   }
 }
 
@@ -96,17 +128,21 @@ export function recommendByProfile(profile: string): ModelRecommendation {
  * Recommend a model based on the task description.
  * Scans for keywords that indicate complexity level.
  *
- * - Complex reasoning keywords → opus
- * - Code editing keywords → sonnet
- * - Everything else (exploration, listing) → haiku
+ * - Complex reasoning keywords → powerful tier
+ * - Code editing keywords → balanced tier
+ * - Everything else (exploration, listing) → fast tier
  */
-export function recommendByDescription(description: string): ModelRecommendation {
+export function recommendByDescription(
+  description: string,
+  registry?: ModelRegistry,
+): ModelRecommendation {
+  const reg = registry ?? getDefaultRegistry();
   const lower = description.toLowerCase();
 
   for (const keyword of COMPLEX_KEYWORDS) {
     if (lower.includes(keyword)) {
       return {
-        model: 'opus',
+        model: resolveTier('powerful', reg),
         reason: `description contains "${keyword}" — complex reasoning`,
       };
     }
@@ -115,13 +151,13 @@ export function recommendByDescription(description: string): ModelRecommendation
   for (const keyword of CODE_EDIT_KEYWORDS) {
     if (lower.includes(keyword)) {
       return {
-        model: 'sonnet',
+        model: resolveTier('balanced', reg),
         reason: `description contains "${keyword}" — code editing`,
       };
     }
   }
 
-  return { model: 'haiku', reason: 'no complexity signals — fast default' };
+  return { model: resolveTier('fast', reg), reason: 'no complexity signals — fast default' };
 }
 
 /** Minimum completed tasks required before trusting learning data. */
@@ -167,6 +203,9 @@ export async function getRecommendedModel(
  * Recommend a model based on historical learnings for a specific task type.
  * Requires 5+ entries for the task type and 3+ uses per model to be statistically meaningful.
  * Returns null if insufficient data — caller should fall back to heuristics.
+ *
+ * This function is already provider-agnostic: it picks the best model from
+ * actual performance data regardless of provider.
  */
 export function recommendFromLearnings(
   taskType: string,
@@ -208,7 +247,7 @@ export function recommendFromLearnings(
   );
 
   return {
-    model: bestModel as ModelAlias,
+    model: bestModel,
     reason: `historical performance for "${taskType}" tasks: ${pct}% success (${stats.total} samples)`,
   };
 }
@@ -226,13 +265,19 @@ export function recommendFromLearnings(
  */
 export function recommendModel(
   manifest: TaskManifest,
-  options?: { learnings?: LearningEntry[]; taskType?: string },
+  options?: {
+    learnings?: LearningEntry[];
+    taskType?: string;
+    registry?: ModelRegistry;
+  },
 ): ModelRecommendation {
+  const registry = options?.registry;
+
   // Explicit model override — respect the caller's choice
   if (manifest.model) {
     logger.debug({ model: manifest.model }, 'Model explicitly set in manifest — using as-is');
     return {
-      model: manifest.model as ModelAlias,
+      model: manifest.model,
       reason: 'explicitly set in manifest',
     };
   }
@@ -245,7 +290,7 @@ export function recommendModel(
 
   // Profile-based recommendation
   if (manifest.profile) {
-    const rec = recommendByProfile(manifest.profile);
+    const rec = recommendByProfile(manifest.profile, registry);
     logger.debug(
       { profile: manifest.profile, recommended: rec.model },
       'Model recommended by profile',
@@ -254,7 +299,7 @@ export function recommendModel(
   }
 
   // Description-based recommendation from the prompt
-  const rec = recommendByDescription(manifest.prompt);
+  const rec = recommendByDescription(manifest.prompt, registry);
   logger.debug({ recommended: rec.model, reason: rec.reason }, 'Model recommended by description');
   return rec;
 }
