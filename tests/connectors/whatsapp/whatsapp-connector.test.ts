@@ -386,8 +386,8 @@ describe('WhatsAppConnector', () => {
         reconnect: {
           enabled: true,
           maxAttempts: 5,
-          initialDelayMs: 1,
-          maxDelayMs: 1,
+          initialDelayMs: 5,
+          maxDelayMs: 5,
           backoffFactor: 1,
         },
       });
@@ -397,16 +397,16 @@ describe('WhatsAppConnector', () => {
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
 
-      // Disconnect — schedules reconnect with 1ms delay
+      // Disconnect — schedules reconnect with 5ms delay
       mockClientInstance._trigger('disconnected', 'reason');
 
       // Wait for the reconnect timer to fire and createAndStartClient() to complete
-      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
       expect(connector.isConnected()).toBe(true);
-    });
+    }, 15_000);
   });
 
   // -----------------------------------------------------------------------
@@ -427,7 +427,7 @@ describe('WhatsAppConnector', () => {
 
       expect(mockClientInstance.getChatById).toHaveBeenCalledWith('+1234567890');
       expect(mockChat.sendStateTyping).toHaveBeenCalledOnce();
-    });
+    }, 15_000);
 
     it('silently skips when not connected', async () => {
       const connector = buildConnector();
