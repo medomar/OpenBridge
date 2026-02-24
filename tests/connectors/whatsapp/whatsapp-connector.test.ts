@@ -2,21 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 // --------------------------------------------------------------------------
-// Mock node:fs/promises — removeStaleLock() calls readlink/unlink which do
-// real filesystem I/O.  Under fake timers on CI runners this can deadlock.
-// We use importOriginal to preserve all real exports while overriding only
-// the two functions used by removeStaleLock().
+// No need to mock node:fs/promises — we stub removeStaleLock() on the
+// WhatsAppConnector prototype instead.  See beforeEach below.
 // --------------------------------------------------------------------------
-vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual: Record<string, unknown> = await importOriginal();
-  return {
-    ...actual,
-    readlink: vi.fn(async () => {
-      throw new Error('ENOENT');
-    }),
-    unlink: vi.fn(async () => {}),
-  };
-});
 
 // --------------------------------------------------------------------------
 // Mock whatsapp-web.js
@@ -119,6 +107,12 @@ describe('WhatsAppConnector', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     vi.clearAllTimers();
+    // Stub removeStaleLock — it does real filesystem I/O (readlink/unlink) that
+    // can deadlock under fake timers or on CI runners.
+    vi.spyOn(
+      WhatsAppConnector.prototype as unknown as { removeStaleLock: () => Promise<void> },
+      'removeStaleLock',
+    ).mockResolvedValue(undefined);
     createdClients.length = 0;
     capturedClientOptions.length = 0;
     initializeFailCount = 0;
