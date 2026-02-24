@@ -61,6 +61,8 @@ import {
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
+import { createModelRegistry } from '../core/model-registry.js';
+import type { ModelRegistry } from '../core/model-registry.js';
 import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
@@ -302,6 +304,7 @@ export class MasterManager {
   /** Sub-master manager — null when no root DB is available (OB-755) */
   private subMasterManager: SubMasterManager | null = null;
   private readonly workerRetryDelayMs: number;
+  private readonly modelRegistry: ModelRegistry;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -352,6 +355,7 @@ export class MasterManager {
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
     this.workerRetryDelayMs = options.workerRetryDelayMs ?? 5000;
+    this.modelRegistry = createModelRegistry(options.masterTool.name);
 
     // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
     if (this.memory) {
@@ -651,6 +655,13 @@ export class MasterManager {
    */
   public getState(): MasterState {
     return this.state;
+  }
+
+  /**
+   * Get the model registry (for provider-agnostic model resolution)
+   */
+  public getModelRegistry(): ModelRegistry {
+    return this.modelRegistry;
   }
 
   /**
@@ -1969,7 +1980,7 @@ export class MasterManager {
         this.agentRunner.spawn({
           prompt,
           workspacePath: this.workspacePath,
-          model: 'haiku',
+          model: this.modelRegistry.resolveModelOrTier('fast'),
           maxTurns: 1,
           retries: 0,
         }),

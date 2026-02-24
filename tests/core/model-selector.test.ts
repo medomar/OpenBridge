@@ -5,6 +5,7 @@ import {
   recommendModel,
   recommendFromLearnings,
 } from '../../src/core/model-selector.js';
+import { createModelRegistry } from '../../src/core/model-registry.js';
 import type { TaskManifest } from '../../src/types/agent.js';
 import type { LearningEntry } from '../../src/types/master.js';
 
@@ -277,5 +278,79 @@ describe('recommendFromLearnings', () => {
     const rec = recommendFromLearnings('optimization', learnings);
     expect(rec).not.toBeNull();
     expect(rec!.model).toBe('opus'); // 100% vs 50%
+  });
+});
+
+// ── Provider-Agnostic Selection ─────────────────────────────────
+
+describe('Provider-agnostic selection (with ModelRegistry)', () => {
+  it('uses Codex models when codex registry is provided', () => {
+    const codexRegistry = createModelRegistry('codex');
+
+    const rec = recommendByProfile('read-only', codexRegistry);
+    expect(rec.model).toBe('codex-mini'); // fast tier
+
+    const rec2 = recommendByProfile('code-edit', codexRegistry);
+    expect(rec2.model).toBe('codex'); // balanced tier
+  });
+
+  it('uses Aider models when aider registry is provided', () => {
+    const aiderRegistry = createModelRegistry('aider');
+
+    const rec = recommendByDescription('List all files', aiderRegistry);
+    expect(rec.model).toBe('gpt-4o-mini'); // fast tier (no complexity signals)
+
+    const rec2 = recommendByDescription('Refactor the auth module', aiderRegistry);
+    expect(rec2.model).toBe('o1'); // powerful tier (complex keyword)
+
+    const rec3 = recommendByDescription('Implement the login form', aiderRegistry);
+    expect(rec3.model).toBe('gpt-4o'); // balanced tier (code edit keyword)
+  });
+
+  it('recommendModel passes registry through all layers', () => {
+    const codexRegistry = createModelRegistry('codex');
+
+    const manifest: TaskManifest = {
+      prompt: 'List all files',
+      workspacePath: '/tmp/test',
+      profile: 'read-only',
+    };
+    const rec = recommendModel(manifest, { registry: codexRegistry });
+    expect(rec.model).toBe('codex-mini'); // fast tier via profile
+  });
+
+  it('explicit model in manifest bypasses registry', () => {
+    const codexRegistry = createModelRegistry('codex');
+
+    const manifest: TaskManifest = {
+      prompt: 'Do something',
+      workspacePath: '/tmp/test',
+      model: 'my-custom-model',
+    };
+    const rec = recommendModel(manifest, { registry: codexRegistry });
+    expect(rec.model).toBe('my-custom-model');
+    expect(rec.reason).toContain('explicitly set');
+  });
+
+  it('learnings-based picks best model regardless of provider', () => {
+    const learnings = makeLearnings('deploy', [
+      { model: 'gpt-4o', success: true },
+      { model: 'gpt-4o', success: true },
+      { model: 'gpt-4o', success: true },
+      { model: 'codex-mini', success: false },
+      { model: 'codex-mini', success: false },
+    ]);
+    const rec = recommendFromLearnings('deploy', learnings);
+    expect(rec).not.toBeNull();
+    expect(rec!.model).toBe('gpt-4o'); // best performing, regardless of provider
+  });
+
+  it('defaults to Claude models when no registry is provided', () => {
+    // Without registry — backward compatible
+    const rec = recommendByProfile('read-only');
+    expect(rec.model).toBe('haiku');
+
+    const rec2 = recommendByDescription('Debug the issue');
+    expect(rec2.model).toBe('opus');
   });
 });
