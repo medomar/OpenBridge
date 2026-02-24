@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { TaskManifest, ToolProfile } from '../types/agent.js';
+import type { ModelRegistry } from './model-registry.js';
 
 const logger = createLogger('agent-runner');
 
@@ -23,14 +24,15 @@ export const DEFAULT_MAX_TURNS_TASK = 25;
 
 /**
  * Accepted model short names for the --model flag.
- * The Claude CLI accepts these directly (no need to resolve to full IDs).
- * Callers can also pass full model IDs like 'claude-sonnet-4-5-20250929'.
+ * @deprecated Use ModelRegistry with capability tiers ('fast', 'balanced', 'powerful') instead.
+ * Kept for backward compatibility — these are the Claude-specific aliases.
  */
 export const MODEL_ALIASES = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelAlias = (typeof MODEL_ALIASES)[number];
 
 /**
  * Model fallback chain: opus → sonnet → haiku.
+ * @deprecated Use ModelRegistry.getFallback() for provider-agnostic fallback.
  * If the preferred model is unavailable or rate-limited, the runner
  * falls back to the next model in the chain before retrying.
  */
@@ -66,20 +68,28 @@ export function isRateLimitError(stderr: string): boolean {
 
 /**
  * Get the next model in the fallback chain for a given model.
- * Returns undefined if there is no further fallback (haiku is the end of the chain).
- * For unknown models (full model IDs), falls back to sonnet as a safe default.
+ * If a ModelRegistry is provided, uses tier-aware fallback (provider-agnostic).
+ * Otherwise falls back to the hardcoded Claude chain.
  */
-export function getNextFallbackModel(currentModel: string): string | undefined {
+export function getNextFallbackModel(
+  currentModel: string,
+  registry?: ModelRegistry,
+): string | undefined {
+  if (registry) {
+    return registry.getFallback(currentModel);
+  }
   return MODEL_FALLBACK_CHAIN[currentModel] ?? (currentModel === 'haiku' ? undefined : 'sonnet');
 }
 
 /**
  * Validate a model string.
- * Accepts known short aliases ('haiku', 'sonnet', 'opus') or full model IDs
- * matching the Claude naming pattern (e.g. 'claude-sonnet-4-5-20250929').
- * Returns true if valid, false otherwise.
+ * If a ModelRegistry is provided, checks against registered models (provider-agnostic).
+ * Otherwise falls back to Claude-specific validation.
  */
-export function isValidModel(model: string): boolean {
+export function isValidModel(model: string, registry?: ModelRegistry): boolean {
+  if (registry) {
+    return registry.isValid(model);
+  }
   if (MODEL_ALIASES.includes(model as ModelAlias)) return true;
   // Full model IDs follow the pattern: claude-<variant>-<version>
   return /^claude-[a-z0-9]+-[a-z0-9._-]+$/.test(model);
