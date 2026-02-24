@@ -3,9 +3,8 @@ updates:
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
-      interval: 'weekly'
-      day: 'monday'
-    open-pull-requests-limit: 10
+      interval: 'monthly'
+    open-pull-requests-limit: 5
     reviewers:
       - 'medomar'
     groups:
@@ -13,3 +12,15 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+      major:
+        update-types:
+          - 'major'
+    ignore:
+      # @types/node major must match our engines.node (>=22) — don't auto-bump
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # @vitest/coverage-v8 must stay in sync with vitest — upgrade together manually
+      - dependency-name: '@vitest/coverage-v8'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vitest'
+        update-types: ['version-update:semver-major']
