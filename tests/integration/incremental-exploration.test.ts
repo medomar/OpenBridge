@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MasterManager } from '../../src/master/master-manager.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import { MemoryManager } from '../../src/memory/index.js';
 import type { WorkspaceAnalysisMarker } from '../../src/types/master.js';
 import type { WorkspaceMap } from '../../src/types/master.js';
 import * as fs from 'node:fs/promises';
@@ -121,11 +122,24 @@ async function setupGitWorkspace(dir: string): Promise<string> {
  * Pre-populate .openbridge/ with a valid workspace map and analysis marker
  * so MasterManager sees an already-explored workspace on startup.
  */
-async function seedOpenBridge(workspacePath: string, commitHash: string): Promise<void> {
+async function seedOpenBridge(
+  workspacePath: string,
+  commitHash: string,
+  memory?: MemoryManager,
+): Promise<void> {
   const dotFolder = new DotFolderManager(workspacePath);
   await dotFolder.initialize();
 
-  await dotFolder.writeMap(makeMinimalMap(workspacePath));
+  // Store workspace map in memory (OB-810: JSON fallback removed).
+  if (memory) {
+    await memory.storeChunks([
+      {
+        scope: '_workspace_map',
+        category: 'structure',
+        content: JSON.stringify(makeMinimalMap(workspacePath)),
+      },
+    ]);
+  }
 
   const marker: WorkspaceAnalysisMarker = {
     workspaceCommitHash: commitHash,
@@ -137,6 +151,18 @@ async function seedOpenBridge(workspacePath: string, commitHash: string): Promis
     schemaVersion: '1.0.0',
   };
   await dotFolder.writeAnalysisMarker(marker);
+
+  // Also write marker to memory DB (OB-810: DB-first reads).
+  if (memory) {
+    await memory.updateWorkspaceState({
+      commit_hash: commitHash,
+      branch: 'main',
+      has_git: true,
+      analyzed_at: marker.analyzedAt,
+      analysis_type: 'full',
+      files_changed: 0,
+    });
+  }
 }
 
 /** Shared master tool fixture */
@@ -154,6 +180,7 @@ const masterTool = {
 describe('Incremental Exploration E2E', () => {
   let testWorkspace: string;
   let manager: MasterManager | undefined;
+  let memory: MemoryManager | undefined;
 
   beforeEach(async () => {
     // Use os.tmpdir() to avoid collisions with the project's own git repo
@@ -163,6 +190,7 @@ describe('Incremental Exploration E2E', () => {
     );
     await fs.mkdir(testWorkspace, { recursive: true });
     manager = undefined;
+    memory = undefined;
     vi.clearAllMocks();
   });
 
@@ -170,6 +198,10 @@ describe('Incremental Exploration E2E', () => {
     if (manager) {
       await manager.shutdown();
       manager = undefined;
+    }
+    if (memory) {
+      await memory.close();
+      memory = undefined;
     }
     try {
       await fs.rm(testWorkspace, { recursive: true, force: true });
@@ -243,8 +275,12 @@ describe('Incremental Exploration E2E', () => {
       // Workspace with git + initial commit
       const initialHash = await setupGitWorkspace(testWorkspace);
 
+      // Create MemoryManager so workspace map and marker are stored in DB.
+      memory = new MemoryManager(path.join(testWorkspace, '.openbridge', 'openbridge.db'));
+      await memory.init();
+
       // Seed .openbridge/ with map + marker at initial commit
-      await seedOpenBridge(testWorkspace, initialHash);
+      await seedOpenBridge(testWorkspace, initialHash, memory);
 
       // Add a new file and commit it (simulates developer adding a feature)
       await fs.writeFile(path.join(testWorkspace, 'feature.ts'), 'export const value = 42;');
@@ -257,6 +293,7 @@ describe('Incremental Exploration E2E', () => {
         workspacePath: testWorkspace,
         masterTool,
         discoveredTools: [masterTool],
+        memory,
       });
 
       await manager.start();
@@ -267,12 +304,11 @@ describe('Incremental Exploration E2E', () => {
       expect(mockSpawn).toHaveBeenCalled();
       expect(mockStream).not.toHaveBeenCalled();
 
-      // Marker must be updated to incremental
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const marker = await dotFolder.readAnalysisMarker();
-      expect(marker).not.toBeNull();
-      expect(marker?.analysisType).toBe('incremental');
-      expect(marker?.filesChanged).toBeGreaterThan(0);
+      // Marker must be updated to incremental — read from DB (OB-810: DB is source of truth)
+      const wsState = await memory.getWorkspaceState();
+      expect(wsState).not.toBeNull();
+      expect(wsState.analysis_type).toBe('incremental');
+      expect(wsState.files_changed).toBeGreaterThan(0);
     });
   });
 
@@ -283,13 +319,18 @@ describe('Incremental Exploration E2E', () => {
       // Workspace with git + initial commit
       const initialHash = await setupGitWorkspace(testWorkspace);
 
+      // Create MemoryManager so workspace map and marker are stored in DB.
+      memory = new MemoryManager(path.join(testWorkspace, '.openbridge', 'openbridge.db'));
+      await memory.init();
+
       // Seed .openbridge/ with map + marker pointing at the same HEAD
-      await seedOpenBridge(testWorkspace, initialHash);
+      await seedOpenBridge(testWorkspace, initialHash, memory);
 
       manager = new MasterManager({
         workspacePath: testWorkspace,
         masterTool,
         discoveredTools: [masterTool],
+        memory,
       });
 
       await manager.start();
@@ -309,8 +350,12 @@ describe('Incremental Exploration E2E', () => {
       // Workspace with git + initial commit
       const initialHash = await setupGitWorkspace(testWorkspace);
 
+      // Create MemoryManager so workspace map and marker are stored in DB.
+      memory = new MemoryManager(path.join(testWorkspace, '.openbridge', 'openbridge.db'));
+      await memory.init();
+
       // Seed .openbridge/ with map + marker at initial commit
-      await seedOpenBridge(testWorkspace, initialHash);
+      await seedOpenBridge(testWorkspace, initialHash, memory);
 
       // Add 205 files (above the MAX_INCREMENTAL_FILES = 200 threshold) and commit
       await Promise.all(
@@ -351,6 +396,7 @@ describe('Incremental Exploration E2E', () => {
         workspacePath: testWorkspace,
         masterTool,
         discoveredTools: [masterTool],
+        memory,
       });
 
       await manager.start();

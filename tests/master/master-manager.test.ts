@@ -5,6 +5,7 @@ import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import { MemoryManager } from '../../src/memory/index.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -276,27 +277,33 @@ describe('MasterManager', () => {
         maxTurns: 50,
       });
 
-      // Write a valid workspace map so exploration is skipped
-      await dotFolder.writeMap({
+      // Write workspace map to memory (OB-810: JSON fallback removed).
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const mapData = {
         workspacePath: testWorkspace,
         projectName: 'test',
         projectType: 'node',
-        frameworks: [],
+        frameworks: [] as string[],
         structure: {},
-        keyFiles: [],
-        entryPoints: [],
+        keyFiles: [] as unknown[],
+        entryPoints: [] as string[],
         commands: {},
-        dependencies: [],
+        dependencies: [] as string[],
         summary: 'Test',
         generatedAt: new Date().toISOString(),
         schemaVersion: '1.0.0',
-      });
+      };
+      await memory.storeChunks([
+        { scope: '_workspace_map', category: 'structure', content: JSON.stringify(mapData) },
+      ]);
 
       const options: MasterManagerOptions = {
         workspacePath: testWorkspace,
         masterTool,
         discoveredTools,
         skipAutoExploration: false,
+        memory,
       };
 
       masterManager = new MasterManager(options);
@@ -308,33 +315,34 @@ describe('MasterManager', () => {
     });
 
     it('should load existing workspace map if .openbridge folder exists', async () => {
-      const options: MasterManagerOptions = {
-        workspacePath: testWorkspace,
-        masterTool,
-        discoveredTools,
-        skipAutoExploration: false,
-      };
-
-      // Initialize .openbridge folder with git and workspace map
-      const dotFolderManager = new DotFolderManager(testWorkspace);
-      await dotFolderManager.initialize();
-
+      // Write workspace map to memory (OB-810: JSON fallback removed).
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
       const workspaceMap = {
         workspacePath: testWorkspace,
         projectName: 'existing-project',
         projectType: 'python',
         frameworks: ['django'],
         structure: {},
-        keyFiles: [],
-        entryPoints: [],
+        keyFiles: [] as unknown[],
+        entryPoints: [] as string[],
         commands: {},
-        dependencies: [],
+        dependencies: [] as string[],
         summary: 'Existing workspace',
         generatedAt: new Date().toISOString(),
         schemaVersion: '1.0.0',
       };
+      await memory.storeChunks([
+        { scope: '_workspace_map', category: 'structure', content: JSON.stringify(workspaceMap) },
+      ]);
 
-      await dotFolderManager.writeMap(workspaceMap);
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: false,
+        memory,
+      };
 
       masterManager = new MasterManager(options);
       await masterManager.start();
@@ -958,27 +966,36 @@ describe('MasterManager', () => {
       const customPrompt = '# Custom Master Prompt\nEdited by the Master itself.';
       await dotFolder.writeSystemPrompt(customPrompt);
 
-      // Write a valid workspace map so exploration is skipped
-      await dotFolder.writeMap({
-        workspacePath: testWorkspace,
-        projectName: 'test',
-        projectType: 'node',
-        frameworks: [],
-        structure: {},
-        keyFiles: [],
-        entryPoints: [],
-        commands: {},
-        dependencies: [],
-        summary: 'Test',
-        generatedAt: new Date().toISOString(),
-        schemaVersion: '1.0.0',
-      });
+      // Write workspace map to memory so exploration is skipped (OB-810: JSON fallback removed).
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      await memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify({
+            workspacePath: testWorkspace,
+            projectName: 'test',
+            projectType: 'node',
+            frameworks: [],
+            structure: {},
+            keyFiles: [],
+            entryPoints: [],
+            commands: {},
+            dependencies: [],
+            summary: 'Test',
+            generatedAt: new Date().toISOString(),
+            schemaVersion: '1.0.0',
+          }),
+        },
+      ]);
 
       const options: MasterManagerOptions = {
         workspacePath: testWorkspace,
         masterTool,
         discoveredTools,
         skipAutoExploration: false,
+        memory,
       };
 
       masterManager = new MasterManager(options);
@@ -1251,22 +1268,41 @@ describe('MasterManager', () => {
     });
 
     it('should include workspace map in context summary', async () => {
-      // Write a workspace map
-      const dotFolder = new DotFolderManager(testWorkspace);
-      await dotFolder.writeMap({
+      // Write workspace map to memory (OB-810: JSON fallback removed).
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      await memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify({
+            workspacePath: testWorkspace,
+            projectName: 'my-project',
+            projectType: 'node',
+            frameworks: ['express', 'typescript'],
+            structure: {},
+            keyFiles: [],
+            entryPoints: [],
+            commands: {},
+            dependencies: [],
+            summary: 'A Node.js project with Express',
+            generatedAt: new Date().toISOString(),
+            schemaVersion: '1.0.0',
+          }),
+        },
+      ]);
+
+      // Use a local masterManager with memory so the map is accessible on restart.
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+      const localManager = new MasterManager({
         workspacePath: testWorkspace,
-        projectName: 'my-project',
-        projectType: 'node',
-        frameworks: ['express', 'typescript'],
-        structure: {},
-        keyFiles: [],
-        entryPoints: [],
-        commands: {},
-        dependencies: [],
-        summary: 'A Node.js project with Express',
-        generatedAt: new Date().toISOString(),
-        schemaVersion: '1.0.0',
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
       });
+      await localManager.start();
 
       // SIGTERM triggers restart
       mockSpawn.mockResolvedValueOnce({
@@ -1304,7 +1340,7 @@ describe('MasterManager', () => {
         timestamp: new Date(),
       };
 
-      await masterManager.processMessage(message);
+      await localManager.processMessage(message);
 
       // The second spawn call should be the context summary seed
       const contextCall = getSpawnCallOpts(1);

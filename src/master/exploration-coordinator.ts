@@ -40,6 +40,7 @@ import {
   StructureScanSchema,
   ClassificationSchema,
   DirectoryDiveResultSchema,
+  WorkspaceMapSchema,
   type ExplorationState,
   type StructureScan,
   type Classification,
@@ -973,7 +974,18 @@ export class ExplorationCoordinator {
       schemaVersion: '1.0.0',
     };
 
-    await this.dotFolder.writeMap(workspaceMap);
+    // Write workspace map to DB (OB-810: JSON fallback removed).
+    if (this.memory) {
+      await this.memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify(workspaceMap),
+        },
+      ]);
+    } else {
+      logger.warn('Memory not available — skipping workspace map write in Phase 4');
+    }
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
     await this.writeExplorationState(state);
@@ -1080,7 +1092,18 @@ export class ExplorationCoordinator {
    * Build ExplorationSummary from final state
    */
   private async buildSummary(state: ExplorationState): Promise<ExplorationSummary> {
-    const map = await this.dotFolder.readMap();
+    // Read workspace map from DB (OB-810: JSON fallback removed).
+    let map: WorkspaceMap | null = null;
+    if (this.memory) {
+      try {
+        const chunks = await this.memory.getChunksByScope('_workspace_map', 'structure');
+        if (chunks.length > 0 && chunks[0]?.content) {
+          map = WorkspaceMapSchema.parse(JSON.parse(chunks[0].content));
+        }
+      } catch {
+        // ignore — map not yet stored
+      }
+    }
     const classification = await this.readClassificationFromStore();
 
     return {
@@ -1097,7 +1120,7 @@ export class ExplorationCoordinator {
       projectType: classification?.projectType ?? map?.projectType,
       frameworks: classification?.frameworks ?? map?.frameworks ?? [],
       insights: classification?.insights ?? [],
-      mapPath: map ? this.dotFolder.getMapPath() : undefined,
+      mapPath: undefined, // workspace-map.json removed; map is stored in DB (OB-810)
       gitInitialized: true,
       error: state.error,
     };

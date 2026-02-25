@@ -383,14 +383,15 @@ export class MasterManager {
           return WorkspaceMapSchema.parse(JSON.parse(chunks[0].content));
         }
       } catch {
-        // fall through to dotFolder
+        // ignore — map not yet stored
       }
       return null;
     }
-    return this.dotFolder.readMap();
+    logger.warn('Memory not available — cannot read workspace map from DB');
+    return null;
   }
 
-  /** Write workspace map to memory (as chunk) or DotFolderManager (JSON file). */
+  /** Write workspace map to memory (as chunk). JSON fallback removed (OB-810). */
   private async writeWorkspaceMapToStore(map: WorkspaceMap): Promise<void> {
     if (this.memory) {
       await this.memory.storeChunks([
@@ -402,7 +403,7 @@ export class MasterManager {
       ]);
       return;
     }
-    await this.dotFolder.writeMap(map);
+    logger.warn('Memory not available — skipping workspace map write');
   }
 
   /** Load master session from memory (sessions table) or DotFolderManager (JSON file). */
