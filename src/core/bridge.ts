@@ -8,6 +8,7 @@ import { MemoryManager } from '../memory/index.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
+import { FileServer } from './file-server.js';
 import { HealthServer } from './health.js';
 import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
@@ -46,6 +47,7 @@ export class Bridge {
   private readonly orchestrator: AgentOrchestrator;
   private master: MasterManager | null = null;
   private memory: MemoryManager | null = null;
+  private fileServer: FileServer | null = null;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -71,6 +73,7 @@ export class Bridge {
     if (options?.workspacePath) {
       const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
       this.memory = new MemoryManager(dbPath);
+      this.fileServer = new FileServer(options.workspacePath);
     }
   }
 
@@ -195,6 +198,20 @@ export class Bridge {
     this.metricsServer.setDataProvider(() => this.metrics.snapshot());
     await this.metricsServer.start();
 
+    // Start local file server for generated content (non-fatal)
+    if (this.fileServer) {
+      try {
+        await this.fileServer.start();
+        logger.info(
+          { url: this.fileServer.baseUrl, dir: this.fileServer.directory },
+          'File server started — generated content available at /shared/:filename',
+        );
+      } catch (error) {
+        logger.warn({ err: error }, 'File server failed to start — continuing without it');
+        this.fileServer = null;
+      }
+    }
+
     // Start config file watcher for hot-reload
     if (this.configPath) {
       this.configWatcher = new ConfigWatcher(this.configPath);
@@ -267,6 +284,14 @@ export class Bridge {
 
     await this.healthServer.stop();
     await this.metricsServer.stop();
+
+    if (this.fileServer) {
+      try {
+        await this.fileServer.stop();
+      } catch (error) {
+        logger.warn({ err: error }, 'Error stopping file server');
+      }
+    }
 
     if (this.memory) {
       try {
