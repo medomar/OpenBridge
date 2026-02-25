@@ -2174,15 +2174,26 @@ export class MasterManager {
    * without executing the tasks itself — forcing delegation within 3-5 turns.
    */
   private buildPlanningPrompt(userMessage: string): string {
-    return (
+    let prompt =
       `The user asked: "${userMessage}"\n\n` +
       `Break this into 1-3 concrete subtasks. For each subtask, output a SPAWN marker ` +
       `with the appropriate profile, model, and instructions. ` +
       `Do NOT execute the tasks yourself — only plan and delegate.\n\n` +
       `Use this format for each subtask:\n` +
       `[SPAWN:profile]{"prompt":"...","model":"sonnet","maxTurns":15}[/SPAWN]\n\n` +
-      `Available profiles: read-only (Read/Glob/Grep), code-edit (Read/Edit/Write/Glob/Grep/Bash(git:*)/Bash(npm:*)), full-access (all tools).`
-    );
+      `Available profiles: read-only (Read/Glob/Grep), code-edit (Read/Edit/Write/Glob/Grep/Bash(git:*)/Bash(npm:*)), full-access (all tools).`;
+
+    // When multiple tools are available, guide the Master to pick the best tool per worker
+    const availableTools = this.discoveredTools.filter((t) => t.available);
+    if (availableTools.length > 1) {
+      const toolList = availableTools.map((t) => `\`${t.name}\``).join(', ');
+      prompt +=
+        `\n\nAvailable AI tools: ${toolList}. ` +
+        `You may add a \`"tool"\` field to each SPAWN body to route the worker to a specific tool ` +
+        `(e.g., \`"tool":"codex"\`). If omitted, the worker uses the Master tool (\`${this.masterTool.name}\`).`;
+    }
+
+    return prompt;
   }
 
   /**
