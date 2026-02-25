@@ -308,6 +308,7 @@ export class MasterManager {
   private subMasterManager: SubMasterManager | null = null;
   private readonly workerRetryDelayMs: number;
   private readonly modelRegistry: ModelRegistry;
+  private readonly adapter?: CLIAdapter;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -353,7 +354,8 @@ export class MasterManager {
     this.skipAutoExploration = options.skipAutoExploration ?? false;
     this.dotFolder = new DotFolderManager(this.workspacePath);
     this.changeTracker = new WorkspaceChangeTracker(this.workspacePath);
-    this.delegationCoordinator = new DelegationCoordinator();
+    this.adapter = options.adapter;
+    this.delegationCoordinator = new DelegationCoordinator({ adapter: options.adapter });
     this.agentRunner = new AgentRunner(options.adapter);
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
@@ -2524,6 +2526,7 @@ export class MasterManager {
         workspacePath: this.workspacePath,
         masterTool: this.masterTool,
         discoveredTools: this.discoveredTools,
+        adapter: this.adapter,
         onProgress: async (event): Promise<void> => {
           await this.emitExplorationProgress(event);
         },
