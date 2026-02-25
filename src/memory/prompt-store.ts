@@ -94,6 +94,23 @@ export function recordPromptOutcome(db: Database.Database, name: string, success
 }
 
 /**
+ * Return per-version stats (effectiveness, usage_count, success_count) for all versions
+ * of the given prompt name, ordered by version descending.
+ */
+export function getPromptStats(db: Database.Database, name: string): PromptRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, version, content, effectiveness, usage_count, success_count, active, created_at
+       FROM prompts
+       WHERE name = ?
+       ORDER BY version DESC`,
+    )
+    .all(name) as PromptRow[];
+
+  return rows.map(rowToRecord);
+}
+
+/**
  * Return all active prompt versions whose effectiveness is below `threshold`.
  * Default threshold is 0.7 (70% success rate).
  */

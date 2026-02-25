@@ -1277,6 +1277,10 @@ export class MasterManager {
 
       await this.dotFolder.recordPromptUsage(promptId, isValid);
 
+      if (this.memory) {
+        await this.memory.recordPromptOutcome(promptId, isValid);
+      }
+
       logger.debug(
         {
           workerId: taskRecord.id,
