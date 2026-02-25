@@ -846,4 +846,168 @@ describe('WhatsAppConnector', () => {
       // No mock client yet — should not throw
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Voice message transcription (OB-605)
+  // -----------------------------------------------------------------------
+
+  describe('voice message transcription (OB-605)', () => {
+    it('emits message with transcription text for ptt voice notes', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      // Stub the private transcribeVoiceMessage to return a transcription
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue('Hello from voice message');
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-1' },
+        from: '+1234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue({ data: 'base64audio', mimetype: 'audio/ogg' }),
+      });
+
+      // Flush async microtasks from the void handleIncomingMessage() call
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Hello from voice message');
+    });
+
+    it('uses fallback text when transcription returns null (whisper not installed)', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-2' },
+        from: '+1234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue(null),
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toContain('[Voice message');
+      expect(msg.content).toContain('whisper');
+    });
+
+    it('does not call transcribeVoiceMessage for regular text messages', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      const transcribeSpy = vi
+        .spyOn(
+          connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+          'transcribeVoiceMessage',
+        )
+        .mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'msg-text-1' },
+        from: '+1234567890',
+        body: 'Hello world',
+        timestamp: 1700000000,
+        hasMedia: false,
+        type: 'chat',
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Hello world');
+      expect(transcribeSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not transcribe non-ptt media messages (e.g. images)', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      const transcribeSpy = vi
+        .spyOn(
+          connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+          'transcribeVoiceMessage',
+        )
+        .mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'img-1' },
+        from: '+1234567890',
+        body: 'Look at this!',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'image',
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Look at this!');
+      expect(transcribeSpy).not.toHaveBeenCalled();
+    });
+
+    it('emits message with correct sender and id for voice notes', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue('Transcribed text');
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-id-42' },
+        from: '+441234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue({ data: 'abc', mimetype: 'audio/ogg' }),
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as {
+        id: string;
+        sender: string;
+        content: string;
+      };
+      expect(msg.id).toBe('voice-id-42');
+      expect(msg.sender).toBe('+441234567890');
+      expect(msg.content).toBe('Transcribed text');
+    });
+  });
 });
