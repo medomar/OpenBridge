@@ -305,6 +305,29 @@ const CHAT_HTML = `<!DOCTYPE html>
       ws = new WebSocket('ws://' + location.host);
       ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
       ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
+      ws.onmessage = function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (data.type === 'response') {
+            hideStatus();
+            addBubble(data.content, 'ai');
+          } else if (data.type === 'typing') {
+            showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
+          } else if (data.type === 'progress') {
+            if (data.event && data.event.type === 'complete') {
+              hideStatus();
+            } else if (data.event && data.event.type === 'worker-result') {
+              var icon = data.event.success ? '\u2705' : '\u274C';
+              var toolLabel = data.event.tool ? ' \u00b7 ' + data.event.tool : '';
+              var header = icon + ' **Subtask ' + data.event.workerIndex + '/' + data.event.total + '** (' + data.event.profile + toolLabel + '):\\n\\n';
+              addBubble(header + data.event.content, 'ai');
+            } else if (data.event) {
+              var label = progressLabel(data.event);
+              if (label) showStatus(label);
+            }
+          }
+        } catch(ex) {}
+      };
     }
     connectWs();
     ws.onmessage = function(e) {

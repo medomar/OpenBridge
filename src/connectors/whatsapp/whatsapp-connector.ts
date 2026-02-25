@@ -523,8 +523,7 @@ export class WhatsAppConnector implements Connector {
       return;
     }
 
-    // Only send one status message per conversation to avoid spamming the user.
-    // The spawning event is the most informative — it tells the user how many subtasks are running.
+    // Send spawning status once per conversation
     if (event.type === 'spawning' && !this.progressSent.has(chatId)) {
       const n = event.workerCount;
       const text = `🔄 Breaking into ${n.toString()} subtask${n !== 1 ? 's' : ''}...`;
@@ -535,7 +534,21 @@ export class WhatsAppConnector implements Connector {
         logger.debug({ chatId, err }, 'Failed to send WhatsApp progress message');
       }
     }
-    // All other events are silently skipped — avoid WhatsApp message spam
+
+    // Send each worker result as it completes
+    if (event.type === 'worker-result') {
+      const icon = event.success ? '✅' : '❌';
+      const header = `${icon} Subtask ${event.workerIndex}/${event.total} (${event.profile}):`;
+      const maxLen = 4000;
+      const body = event.content.length > maxLen
+        ? event.content.slice(0, maxLen) + '\n...(truncated)'
+        : event.content;
+      try {
+        await this.client.sendMessage(chatId, `${header}\n${body}`);
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp worker result');
+      }
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
