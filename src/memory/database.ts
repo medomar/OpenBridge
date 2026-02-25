@@ -200,6 +200,17 @@ function createSchema(db: Database.Database): void {
       UNIQUE(user_id, channel)
     );
 
+    -- sub_masters: registry of sub-project master AI instances
+    CREATE TABLE IF NOT EXISTS sub_masters (
+      id             TEXT    PRIMARY KEY,
+      path           TEXT    NOT NULL UNIQUE,
+      name           TEXT    NOT NULL,
+      capabilities   TEXT,
+      file_count     INTEGER,
+      last_synced_at TEXT,
+      status         TEXT    NOT NULL DEFAULT 'active'
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
