@@ -65,3 +65,7 @@ export type { ExplorationOptions } from './exploration-coordinator.js';
 // Export WorkerRegistry for worker orchestration
 export { WorkerRegistry, DEFAULT_MAX_CONCURRENT_WORKERS } from './worker-registry.js';
 export type { WorkerRecord, WorkerStatus, WorkersRegistry } from './worker-registry.js';
+
+// Export sub-master detector for hierarchical workspace management (OB-753)
+export { detectSubProjects, SUB_PROJECT_MIN_FILES } from './sub-master-detector.js';
+export type { SubProjectInfo, ProjectType } from './sub-master-detector.js';
