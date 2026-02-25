@@ -22,6 +22,9 @@ const PROGRESS_MESSAGES = [
 /** Pattern matching [SEND:channel]recipient|content[/SEND] markers in AI output */
 const SEND_MARKER_RE = /\[SEND:([^\]]+)\]([^|]+)\|([^[]*)\[\/SEND\]/g;
 
+/** Pattern matching [VOICE]text[/VOICE] markers in AI output */
+const VOICE_MARKER_RE = /\[VOICE\]([\s\S]*?)\[\/VOICE\]/g;
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -227,7 +230,10 @@ export class Router {
     this.metrics?.recordProcessed(Date.now() - startTime);
 
     // Parse and dispatch [SEND:channel] proactive markers before sending main reply
-    const cleanedContent = await this.processSendMarkers(result.content);
+    const afterSend = await this.processSendMarkers(result.content);
+
+    // Parse and dispatch [VOICE] TTS markers before sending main reply
+    const cleanedContent = await this.processVoiceMarkers(afterSend, connector, message.sender);
 
     // Send result back
     const response: OutboundMessage = {
@@ -294,6 +300,48 @@ export class Router {
         logger.info({ channel, recipient: trimmedRecipient }, 'Proactive SEND dispatched');
       } catch (err) {
         logger.warn({ channel, recipient: trimmedRecipient, err }, 'SEND marker dispatch failed');
+      }
+
+      cleaned = cleaned.replace(fullMatch, '');
+    }
+
+    return cleaned.trim();
+  }
+
+  /**
+   * Parse [VOICE]text[/VOICE] markers from AI output, dispatch TTS voice replies
+   * via the connector's sendVoiceReply method, and return the response with markers stripped.
+   * If the connector does not support voice, the text inside the marker is kept as plain text.
+   */
+  private async processVoiceMarkers(
+    content: string,
+    connector: Connector,
+    recipient: string,
+  ): Promise<string> {
+    let cleaned = content;
+    const regex = new RegExp(VOICE_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const voiceText = (match[1] ?? '').trim();
+
+      if (!voiceText) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      if (!connector.sendVoiceReply) {
+        // Connector doesn't support voice — keep text but strip marker tags
+        cleaned = cleaned.replace(fullMatch, voiceText);
+        continue;
+      }
+
+      try {
+        await connector.sendVoiceReply(recipient, voiceText);
+        logger.info({ connector: connector.name, recipient }, 'VOICE reply dispatched');
+      } catch (err) {
+        logger.warn({ err, connector: connector.name, recipient }, 'VOICE marker dispatch failed');
       }
 
       cleaned = cleaned.replace(fullMatch, '');

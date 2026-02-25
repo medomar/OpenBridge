@@ -42,6 +42,7 @@ interface WAMessage {
 interface WASendOptions {
   caption?: string;
   sendMediaAsDocument?: boolean;
+  sendAudioAsVoice?: boolean;
 }
 
 interface WAClient {
@@ -310,6 +311,81 @@ export class WhatsAppConnector implements Connector {
       return stdout.trim() || null;
     } catch {
       return null;
+    }
+  }
+
+  private async findTtsTool(): Promise<{
+    bin: string;
+    ext: string;
+    mimeType: string;
+    argsFor: (text: string, outPath: string) => string[];
+  } | null> {
+    // macOS: 'say' command → AIFF output
+    try {
+      const { stdout } = await execFileAsync('which', ['say']);
+      if (stdout.trim()) {
+        return {
+          bin: stdout.trim(),
+          ext: 'aiff',
+          mimeType: 'audio/aiff',
+          argsFor: (text, outPath) => ['-o', outPath, text],
+        };
+      }
+    } catch {
+      // not found
+    }
+    // Linux: 'espeak' command → WAV output
+    try {
+      const { stdout } = await execFileAsync('which', ['espeak']);
+      if (stdout.trim()) {
+        return {
+          bin: stdout.trim(),
+          ext: 'wav',
+          mimeType: 'audio/wav',
+          argsFor: (text, outPath) => ['-w', outPath, text],
+        };
+      }
+    } catch {
+      // not found
+    }
+    return null;
+  }
+
+  async sendVoiceReply(chatId: string, text: string): Promise<void> {
+    if (!this.client || !this.connected) {
+      throw new Error('WhatsApp connector is not connected');
+    }
+
+    const ttsTool = await this.findTtsTool();
+    if (!ttsTool) {
+      logger.warn({ chatId }, 'No TTS tool found — falling back to text for voice reply');
+      const formatted = formatMarkdownForWhatsApp(text);
+      const chunks = splitForWhatsApp(formatted);
+      for (const chunk of chunks) {
+        await this.client.sendMessage(chatId, chunk);
+      }
+      return;
+    }
+
+    const tmpPath = join(tmpdir(), `wa-tts-${Date.now()}.${ttsTool.ext}`);
+    try {
+      await execFileAsync(ttsTool.bin, ttsTool.argsFor(text, tmpPath));
+      const audioData = await readFile(tmpPath);
+      const base64 = audioData.toString('base64');
+      const WAWebJS = await import('whatsapp-web.js');
+      const { MessageMedia: MessageMediaClass } = WAWebJS;
+      const media = new MessageMediaClass(ttsTool.mimeType, base64, null);
+      await this.client.sendMessage(chatId, media, { sendAudioAsVoice: true });
+      logger.debug({ chatId }, 'Voice reply sent via TTS');
+    } catch (err) {
+      logger.warn({ err, chatId }, 'TTS generation failed — falling back to text reply');
+      const formatted = formatMarkdownForWhatsApp(text);
+      const chunks = splitForWhatsApp(formatted);
+      for (const chunk of chunks) {
+        await this.client.sendMessage(chatId, chunk);
+      }
+    } finally {
+      await unlink(tmpPath).catch(() => {});
     }
   }
 

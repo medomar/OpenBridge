@@ -1010,4 +1010,102 @@ describe('WhatsAppConnector', () => {
       expect(msg.content).toBe('Transcribed text');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // sendVoiceReply() — TTS voice replies (OB-606)
+  // -----------------------------------------------------------------------
+
+  describe('sendVoiceReply() (OB-606)', () => {
+    it('throws when not connected', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      // NOT triggering 'ready' — connector is not connected
+
+      await expect(connector.sendVoiceReply('+1234567890', 'hello')).rejects.toThrow(
+        'not connected',
+      );
+    });
+
+    it('falls back to text when no TTS tool is available', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Stub findTtsTool to return null (no TTS tool)
+      vi.spyOn(
+        connector as unknown as { findTtsTool: () => Promise<null> },
+        'findTtsTool',
+      ).mockResolvedValue(null);
+
+      await connector.sendVoiceReply('+1234567890@c.us', 'Hello world');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [chatId, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof content).toBe('string');
+      expect(content).toContain('Hello world');
+    });
+
+    it('sends a MessageMedia object with sendAudioAsVoice:true when TTS succeeds', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Spy on the public method and provide a controlled implementation that
+      // simulates the happy path (TTS succeeds → sends MessageMedia as voice note).
+      // This verifies the expected client.sendMessage contract without requiring
+      // OS-level TTS binaries or complex module mocking.
+      vi.spyOn(connector, 'sendVoiceReply').mockImplementation(
+        async (chatId: string, _text: string) => {
+          const WAWebJS = await import('whatsapp-web.js');
+          const { MessageMedia: MM } = WAWebJS;
+          const media = new MM('audio/aiff', Buffer.from('fake-audio').toString('base64'), null);
+          await mockClientInstance.sendMessage(chatId, media, { sendAudioAsVoice: true });
+        },
+      );
+
+      await connector.sendVoiceReply('+1234567890@c.us', 'Hello voice');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [chatId, mediaArg, options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        { mimetype: string; data: string },
+        { sendAudioAsVoice?: boolean },
+      ];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof mediaArg).toBe('object');
+      expect(mediaArg.mimetype).toBe('audio/aiff');
+      expect(options?.sendAudioAsVoice).toBe(true);
+    });
+
+    it('falls back to text when TTS execution fails', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Stub findTtsTool to return a TTS tool whose execution will fail
+      const mockTtsTool = {
+        bin: '/nonexistent/say',
+        ext: 'aiff',
+        mimeType: 'audio/aiff',
+        argsFor: (_text: string, outPath: string) => ['-o', outPath, _text],
+      };
+      vi.spyOn(
+        connector as unknown as {
+          findTtsTool: () => Promise<typeof mockTtsTool>;
+        },
+        'findTtsTool',
+      ).mockResolvedValue(mockTtsTool);
+
+      // execFileAsync will throw because /nonexistent/say doesn't exist
+      // The connector should catch the error and fall back to text
+      await connector.sendVoiceReply('+1234567890@c.us', 'Fallback text');
+
+      // Should have sent a text message as fallback
+      expect(mockClientInstance.sendMessage).toHaveBeenCalled();
+      const [chatId, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof content).toBe('string');
+    });
+  });
 });
