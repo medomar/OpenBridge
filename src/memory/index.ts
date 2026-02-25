@@ -13,6 +13,7 @@ import {
   getTasksByType as _getTasksByType,
   getSimilarTasks as _getSimilarTasks,
   getLearnedParams as _getLearnedParams,
+  recordLearning as _recordLearning,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
@@ -157,6 +158,121 @@ export class MemoryManager {
   getTasksByType(type: TaskRecord['type'], limit?: number): Promise<TaskRecord[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getTasksByType(this.db, type, limit));
+  }
+
+  recordLearning(
+    taskType: string,
+    model: string,
+    success: boolean,
+    turns: number,
+    durationMs: number,
+  ): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordLearning(this.db, taskType, model, success, turns, durationMs);
+    return Promise.resolve();
+  }
+
+  /** Return aggregate stats for every task_type in the learnings table (OB-711). */
+  getLearnedTaskTypes(): Promise<
+    {
+      taskType: string;
+      successCount: number;
+      failureCount: number;
+      successRate: number;
+      bestModel: string;
+    }[]
+  > {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    interface Row {
+      task_type: string;
+      success_count: number;
+      failure_count: number;
+      success_rate: number;
+      best_model: string;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT task_type,
+                SUM(success_count) AS success_count,
+                SUM(failure_count) AS failure_count,
+                CAST(SUM(success_count) AS REAL) /
+                  NULLIF(SUM(success_count) + SUM(failure_count), 0) AS success_rate,
+                model AS best_model
+         FROM learnings
+         GROUP BY task_type
+         ORDER BY success_rate DESC`,
+      )
+      .all() as Row[];
+    return Promise.resolve(
+      rows.map((r) => ({
+        taskType: r.task_type,
+        successCount: r.success_count ?? 0,
+        failureCount: r.failure_count ?? 0,
+        successRate: r.success_rate ?? 0,
+        bestModel: r.best_model ?? 'unknown',
+      })),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Context chunk direct lookup (chunk-store.ts — OB-711)
+  // -------------------------------------------------------------------------
+
+  getChunksByScope(scope: string, category?: string): Promise<Chunk[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    let query = 'SELECT * FROM context_chunks WHERE scope = ? AND stale = 0';
+    const params: (string | number)[] = [scope];
+    if (category) {
+      query += ' AND category = ?';
+      params.push(category);
+    }
+    interface ChunkRow {
+      id: number;
+      scope: string;
+      category: 'structure' | 'patterns' | 'dependencies' | 'api' | 'config';
+      content: string;
+      source_hash: string | null;
+      created_at: string;
+      updated_at: string;
+      stale: number;
+    }
+    const rows = this.db.prepare(query).all(...params) as ChunkRow[];
+    return Promise.resolve(
+      rows.map((row) => ({
+        id: row.id,
+        scope: row.scope,
+        category: row.category,
+        content: row.content,
+        source_hash: row.source_hash ?? undefined,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        stale: row.stale === 1,
+      })),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // System config (key-value store — OB-711)
+  // -------------------------------------------------------------------------
+
+  getSystemConfig(key: string): Promise<string | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    interface ConfigRow {
+      value: string;
+    }
+    const row = this.db.prepare('SELECT value FROM system_config WHERE key = ?').get(key) as
+      | ConfigRow
+      | undefined;
+    return Promise.resolve(row?.value ?? null);
+  }
+
+  setSystemConfig(key: string, value: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const now = new Date().toISOString();
+    this.db
+      .prepare('INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, ?)')
+      .run(key, value, now);
+    return Promise.resolve();
   }
 
   // -------------------------------------------------------------------------

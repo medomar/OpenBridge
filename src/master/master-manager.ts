@@ -9,7 +9,12 @@ import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/ag
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import type { Router } from '../core/router.js';
-import type { MemoryManager } from '../memory/index.js';
+import type {
+  MemoryManager,
+  SessionRecord,
+  WorkspaceState,
+  TaskRecord as MemoryTaskRecord,
+} from '../memory/index.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ToolProfile } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
@@ -26,7 +31,10 @@ import type {
   MasterSession,
   PromptTemplate,
   ClassificationCacheEntry,
+  ExplorationState,
+  WorkspaceAnalysisMarker,
 } from '../types/master.js';
+import { WorkspaceMapSchema, ExplorationStateSchema } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
@@ -111,6 +119,89 @@ const MESSAGE_MAX_TURNS_TOOL_USE = 15;
 const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
+
+// ---------------------------------------------------------------------------
+// Memory ↔ DotFolderManager type conversion helpers (OB-711)
+// ---------------------------------------------------------------------------
+
+/** Convert MasterSession → SessionRecord for SQLite storage */
+function masterSessionToSessionRecord(session: MasterSession, restartCount = 0): SessionRecord {
+  return {
+    id: session.sessionId,
+    type: 'master',
+    status: 'active',
+    restart_count: restartCount,
+    message_count: session.messageCount,
+    allowed_tools: JSON.stringify(session.allowedTools),
+    created_at: session.createdAt,
+    last_used_at: session.lastUsedAt,
+  };
+}
+
+/** Convert SessionRecord → MasterSession */
+function sessionRecordToMasterSession(record: SessionRecord): MasterSession {
+  return {
+    sessionId: record.id,
+    createdAt: record.created_at,
+    lastUsedAt: record.last_used_at,
+    messageCount: record.message_count ?? 0,
+    allowedTools: record.allowed_tools
+      ? (JSON.parse(record.allowed_tools) as string[])
+      : [...MASTER_TOOLS],
+    maxTurns: MASTER_MAX_TURNS,
+  };
+}
+
+/** Convert WorkspaceAnalysisMarker → WorkspaceState for SQLite storage */
+function markerToWorkspaceState(marker: WorkspaceAnalysisMarker): WorkspaceState {
+  return {
+    commit_hash: marker.workspaceCommitHash,
+    branch: marker.workspaceBranch,
+    has_git: marker.workspaceHasGit,
+    analyzed_at: marker.analyzedAt,
+    last_verified_at: marker.lastVerifiedAt,
+    analysis_type: marker.analysisType,
+    files_changed: marker.filesChanged,
+  };
+}
+
+/** Convert WorkspaceState → WorkspaceAnalysisMarker */
+function workspaceStateToMarker(state: WorkspaceState): WorkspaceAnalysisMarker {
+  return {
+    workspaceCommitHash: state.commit_hash,
+    workspaceBranch: state.branch,
+    workspaceHasGit: state.has_git ?? false,
+    analyzedAt: state.analyzed_at,
+    lastVerifiedAt: state.last_verified_at,
+    analysisType: (state.analysis_type as 'full' | 'incremental') ?? 'full',
+    filesChanged: state.files_changed ?? 0,
+    schemaVersion: '1.0.0',
+  };
+}
+
+/** Convert master TaskRecord (types/master.ts) → memory TaskRecord (memory/task-store.ts) */
+function masterTaskToMemoryTask(
+  task: TaskRecord,
+  type: MemoryTaskRecord['type'] = 'worker',
+): MemoryTaskRecord {
+  const statusMap: Record<string, MemoryTaskRecord['status']> = {
+    completed: 'completed',
+    failed: 'failed',
+    pending: 'running',
+    processing: 'running',
+    delegated: 'completed',
+  };
+  return {
+    id: task.id,
+    type,
+    status: statusMap[task.status] ?? 'failed',
+    prompt: task.userMessage,
+    response: task.result,
+    duration_ms: task.durationMs,
+    created_at: task.createdAt,
+    completed_at: task.completedAt,
+  };
+}
 
 /**
  * Result returned by classifyTask() — includes class, suggested turn budget, and reasoning.
@@ -238,6 +329,164 @@ export class MasterManager {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Memory-aware store helpers (OB-711): route reads/writes through MemoryManager
+  // when available, fall back to DotFolderManager when not.
+  // ---------------------------------------------------------------------------
+
+  /** Read workspace map from memory (chunks) or DotFolderManager (JSON file). */
+  private async readWorkspaceMapFromStore(): Promise<WorkspaceMap | null> {
+    if (this.memory) {
+      try {
+        const chunks = await this.memory.getChunksByScope('_workspace_map', 'structure');
+        if (chunks.length > 0 && chunks[0]?.content) {
+          return WorkspaceMapSchema.parse(JSON.parse(chunks[0].content));
+        }
+      } catch {
+        // fall through to dotFolder
+      }
+      return null;
+    }
+    return this.dotFolder.readMap();
+  }
+
+  /** Write workspace map to memory (as chunk) or DotFolderManager (JSON file). */
+  private async writeWorkspaceMapToStore(map: WorkspaceMap): Promise<void> {
+    if (this.memory) {
+      await this.memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify(map),
+        },
+      ]);
+      return;
+    }
+    await this.dotFolder.writeMap(map);
+  }
+
+  /** Load master session from memory (sessions table) or DotFolderManager (JSON file). */
+  private async loadMasterSessionFromStore(): Promise<MasterSession | null> {
+    if (this.memory) {
+      try {
+        const record = await this.memory.getSession('master');
+        if (!record) return null;
+        return sessionRecordToMasterSession(record);
+      } catch {
+        return null;
+      }
+    }
+    return this.dotFolder.readMasterSession();
+  }
+
+  /** Save master session to memory (sessions table) or DotFolderManager (JSON file). */
+  private async saveMasterSessionToStore(session: MasterSession): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertSession(masterSessionToSessionRecord(session, this.restartCount));
+      return;
+    }
+    await this.dotFolder.writeMasterSession(session);
+  }
+
+  /** Read analysis marker from memory (workspace_state table) or DotFolderManager (JSON file). */
+  private async readAnalysisMarkerFromStore(): Promise<WorkspaceAnalysisMarker | null> {
+    if (this.memory) {
+      try {
+        const state = await this.memory.getWorkspaceState();
+        return workspaceStateToMarker(state);
+      } catch {
+        return null;
+      }
+    }
+    return this.dotFolder.readAnalysisMarker();
+  }
+
+  /** Write analysis marker to memory (workspace_state table) or DotFolderManager (JSON file). */
+  private async writeAnalysisMarkerToStore(marker: WorkspaceAnalysisMarker): Promise<void> {
+    if (this.memory) {
+      await this.memory.updateWorkspaceState(markerToWorkspaceState(marker));
+      return;
+    }
+    await this.dotFolder.writeAnalysisMarker(marker);
+  }
+
+  /**
+   * Read exploration state from memory (system_config) or DotFolderManager (JSON file).
+   * Only a read is needed in master-manager.ts; writes happen in exploration-coordinator.ts.
+   */
+  private async readExplorationStateFromStore(): Promise<ExplorationState | null> {
+    if (this.memory) {
+      try {
+        const json = await this.memory.getSystemConfig('exploration_state');
+        if (json) return ExplorationStateSchema.parse(JSON.parse(json));
+      } catch {
+        return null;
+      }
+      return null;
+    }
+    return this.dotFolder.readExplorationState();
+  }
+
+  /**
+   * Record a master-level task (user interaction) to memory or DotFolderManager.
+   * When memory is available: write to SQLite tasks table.
+   * When memory is null: write JSON file + git commit via DotFolderManager.
+   */
+  private async recordTaskToStore(
+    task: TaskRecord,
+    type: MemoryTaskRecord['type'] = 'worker',
+  ): Promise<void> {
+    if (this.memory) {
+      try {
+        await this.memory.recordTask(masterTaskToMemoryTask(task, type));
+      } catch (err) {
+        logger.warn({ err }, 'Failed to record task to memory store');
+      }
+      return;
+    }
+    await this.dotFolder.recordTask(task);
+  }
+
+  /**
+   * Read all task records from memory or DotFolderManager.
+   * Memory returns MemoryTaskRecord (different schema) — converted to approximate MasterTaskRecord.
+   * When memory is null, returns the full DotFolderManager records.
+   */
+  private async readAllTasksFromStore(): Promise<TaskRecord[]> {
+    if (this.memory) {
+      try {
+        const types: MemoryTaskRecord['type'][] = ['worker', 'quick-answer', 'tool-use', 'complex'];
+        const collected: MemoryTaskRecord[] = [];
+        for (const t of types) {
+          const batch = await this.memory.getTasksByType(t);
+          collected.push(...batch);
+        }
+        const statusMap: Record<MemoryTaskRecord['status'], TaskRecord['status']> = {
+          running: 'processing',
+          completed: 'completed',
+          failed: 'failed',
+          timeout: 'failed',
+        };
+        return collected.map((t) => ({
+          id: t.id,
+          userMessage: t.prompt ?? '',
+          sender: 'user',
+          description: (t.prompt ?? '').slice(0, 200),
+          status: statusMap[t.status] ?? 'failed',
+          handledBy: 'master',
+          result: t.response ?? undefined,
+          createdAt: t.created_at,
+          completedAt: t.completed_at ?? undefined,
+          durationMs: t.duration_ms ?? undefined,
+          metadata: {},
+        }));
+      } catch {
+        return [];
+      }
+    }
+    return this.dotFolder.readAllTasks();
+  }
+
   /**
    * Get current state
    */
@@ -256,7 +505,7 @@ export class MasterManager {
    * Get the workspace map (if exploration has been completed)
    */
   public async getWorkspaceMap(): Promise<WorkspaceMap | null> {
-    return this.dotFolder.readMap();
+    return this.readWorkspaceMapFromStore();
   }
 
   /**
@@ -298,7 +547,7 @@ export class MasterManager {
     const folderExistedBefore = await this.dotFolder.exists();
 
     // Check if workspace map exists and is valid
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
 
     if (map) {
       // Check for workspace changes before deciding to skip exploration
@@ -344,7 +593,7 @@ export class MasterManager {
     }
 
     // Check for incomplete or failed exploration state
-    const explorationState = await this.dotFolder.readExplorationState();
+    const explorationState = await this.readExplorationStateFromStore();
     if (
       explorationState &&
       (explorationState.status === 'in_progress' || explorationState.status === 'failed')
@@ -389,7 +638,7 @@ export class MasterManager {
     }
 
     // Try to load existing session
-    const existing = await this.dotFolder.readMasterSession();
+    const existing = await this.loadMasterSessionFromStore();
 
     if (existing) {
       this.masterSession = existing;
@@ -416,9 +665,9 @@ export class MasterManager {
 
     this.sessionInitialized = false; // New session — first call uses --session-id
 
-    // Persist to disk
+    // Persist to store (memory or JSON file)
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
       logger.info({ sessionId }, 'Created new Master session');
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session to disk');
@@ -612,7 +861,7 @@ export class MasterManager {
     this.masterSession.messageCount++;
 
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session update');
     }
@@ -654,7 +903,7 @@ export class MasterManager {
     );
 
     // Load workspace map
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
     if (map) {
       parts.push('## Workspace Summary');
       parts.push(`- **Project:** ${map.projectName} (${map.projectType})`);
@@ -667,7 +916,7 @@ export class MasterManager {
     }
 
     // Load recent task history
-    const tasks = await this.dotFolder.readAllTasks();
+    const tasks = await this.readAllTasksFromStore();
     if (tasks.length > 0) {
       // Sort by createdAt descending, take most recent
       const recentTasks = tasks
@@ -736,7 +985,7 @@ export class MasterManager {
 
     // Persist the new session
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
     } catch (error) {
       logger.warn({ error }, 'Failed to persist restarted Master session');
     }
@@ -1035,7 +1284,17 @@ export class MasterManager {
         },
       };
 
-      await this.dotFolder.appendLearning(learningEntry);
+      if (this.memory) {
+        await this.memory.recordLearning(
+          taskType,
+          learningEntry.modelUsed ?? 'unknown',
+          learningEntry.success,
+          0, // turns not tracked in AgentResult
+          learningEntry.durationMs,
+        );
+      } else {
+        await this.dotFolder.appendLearning(learningEntry);
+      }
 
       logger.debug(
         {
@@ -1555,14 +1814,14 @@ export class MasterManager {
   private async checkWorkspaceChanges(
     existingMap: WorkspaceMap,
   ): Promise<'no-changes' | 'incremental' | 'full-reexplore'> {
-    const marker = await this.dotFolder.readAnalysisMarker();
+    const marker = await this.readAnalysisMarkerFromStore();
 
     // No marker but valid map exists = upgrade from before incremental tracking.
     // Write a marker now and treat as no-changes (skip re-exploration).
     if (!marker) {
       logger.info('No analysis marker found — writing initial marker for existing map');
       const initialMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.dotFolder.writeAnalysisMarker(initialMarker);
+      await this.writeAnalysisMarkerToStore(initialMarker);
       this.mapLastVerifiedAt = initialMarker.lastVerifiedAt ?? initialMarker.analyzedAt;
       return 'no-changes';
     }
@@ -1583,7 +1842,7 @@ export class MasterManager {
     if (!changes.hasChanges) {
       // Update lastVerifiedAt to record this startup even if no changes detected
       const now = new Date().toISOString();
-      await this.dotFolder.writeAnalysisMarker({ ...marker, lastVerifiedAt: now });
+      await this.writeAnalysisMarkerToStore({ ...marker, lastVerifiedAt: now });
       this.mapLastVerifiedAt = now;
       return 'no-changes';
     }
@@ -1657,7 +1916,7 @@ export class MasterManager {
       // Save the analysis marker with the current workspace state
       const totalChanged = changes.changedFiles.length + changes.deletedFiles.length;
       const newMarker = await this.changeTracker.buildCurrentMarker('incremental', totalChanged);
-      await this.dotFolder.writeAnalysisMarker(newMarker);
+      await this.writeAnalysisMarkerToStore(newMarker);
       this.mapLastVerifiedAt = newMarker.lastVerifiedAt ?? newMarker.analyzedAt;
 
       // Commit all .openbridge changes
@@ -1669,7 +1928,7 @@ export class MasterManager {
       await this.loadExplorationSummary();
 
       // Update cached map summary
-      const updatedMap = await this.dotFolder.readMap();
+      const updatedMap = await this.readWorkspaceMapFromStore();
       if (updatedMap) {
         this.workspaceMapSummary = this.buildMapSummary(updatedMap);
       }
@@ -1737,14 +1996,14 @@ export class MasterManager {
 
       // Write analysis marker for incremental change detection on next startup
       const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.dotFolder.writeAnalysisMarker(fullMarker);
+      await this.writeAnalysisMarkerToStore(fullMarker);
       this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
 
       // Load the workspace map into memory for system prompt injection
       await this.loadExplorationSummary();
 
       // Cache the map summary
-      const map = await this.dotFolder.readMap();
+      const map = await this.readWorkspaceMapFromStore();
       if (map) {
         this.workspaceMapSummary = this.buildMapSummary(map);
       }
@@ -1872,7 +2131,7 @@ Work silently — do not output conversational text, just explore and write the 
 
     // Write analysis marker for incremental change detection on next startup
     const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-    await this.dotFolder.writeAnalysisMarker(fullMarker);
+    await this.writeAnalysisMarkerToStore(fullMarker);
     this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
 
     logger.info('Monolithic exploration completed successfully');
@@ -1892,7 +2151,7 @@ Work silently — do not output conversational text, just explore and write the 
    * Load exploration summary from the workspace map written by the Master.
    */
   private async loadExplorationSummary(): Promise<void> {
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
 
     if (map) {
       this.explorationSummary = {
@@ -2107,7 +2366,7 @@ Work silently — do not output conversational text, just explore and write the 
         task.completedAt = new Date().toISOString();
         task.durationMs =
           new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
-        await this.dotFolder.recordTask(task);
+        await this.recordTaskToStore(task);
         return status;
       }
 
@@ -2167,7 +2426,7 @@ Work silently — do not output conversational text, just explore and write the 
           logger.info({ spawnCount: spawnResult.markers.length }, 'SPAWN markers detected');
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const n = spawnResult.markers.length;
 
@@ -2210,7 +2469,7 @@ Work silently — do not output conversational text, just explore and write the 
           logger.info({ delegationCount: delegations.length }, 'Delegation markers detected');
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
@@ -2242,8 +2501,10 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
-      await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      await this.recordTaskToStore(task);
+      if (!this.memory) {
+        await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      }
 
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
@@ -2268,7 +2529,7 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
+      await this.recordTaskToStore(task);
 
       // Record classification feedback: task failed — check if it was a timeout
       const timedOut =
@@ -2347,7 +2608,7 @@ Work silently — do not output conversational text, just explore and write the 
         task.completedAt = new Date().toISOString();
         task.durationMs =
           new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
-        await this.dotFolder.recordTask(task);
+        await this.recordTaskToStore(task);
         yield status;
         return;
       }
@@ -2437,7 +2698,7 @@ Work silently — do not output conversational text, just explore and write the 
           );
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const streamN = spawnResult.markers.length;
 
@@ -2508,7 +2769,7 @@ Work silently — do not output conversational text, just explore and write the 
           );
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
@@ -2545,8 +2806,10 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
-      await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      await this.recordTaskToStore(task);
+      if (!this.memory) {
+        await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      }
 
       this.state = 'ready';
 
@@ -2566,7 +2829,7 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
+      await this.recordTaskToStore(task);
 
       this.state = 'ready';
 
@@ -2583,8 +2846,8 @@ Work silently — do not output conversational text, just explore and write the 
    * Get system status
    */
   public async getStatus(): Promise<string> {
-    const map = await this.dotFolder.readMap();
-    const tasks = await this.dotFolder.readAllTasks();
+    const map = await this.readWorkspaceMapFromStore();
+    const tasks = await this.readAllTasksFromStore();
 
     const completedTasks = tasks.filter((t) => t.status === 'completed').length;
     const failedTasks = tasks.filter((t) => t.status === 'failed').length;
@@ -2855,93 +3118,97 @@ ${currentContent}
    * create a "test-runner" profile.
    */
   private async createProfilesFromLearnings(): Promise<void> {
-    const learnings = await this.dotFolder.readLearnings();
-    if (!learnings || learnings.entries.length < 10) {
-      // Need at least 10 learnings to identify patterns
+    // Build a list of { taskType, successCount, failureCount, successRate } from either memory or JSON.
+    type TaskTypeStat = {
+      taskType: string;
+      successCount: number;
+      failureCount: number;
+      successRate: number;
+    };
+    let taskTypeStats: TaskTypeStat[] = [];
+
+    if (this.memory) {
+      try {
+        const rows = await this.memory.getLearnedTaskTypes();
+        taskTypeStats = rows.map((r) => ({
+          taskType: r.taskType,
+          successCount: r.successCount,
+          failureCount: r.failureCount,
+          successRate: r.successRate,
+        }));
+      } catch {
+        return;
+      }
+    } else {
+      const learnings = await this.dotFolder.readLearnings();
+      if (!learnings || learnings.entries.length < 10) {
+        return;
+      }
+      logger.info(
+        { learningCount: learnings.entries.length },
+        'Analyzing learnings for profile patterns',
+      );
+      const byTaskType = new Map<string, typeof learnings.entries>();
+      for (const entry of learnings.entries) {
+        const existing = byTaskType.get(entry.taskType) ?? [];
+        existing.push(entry);
+        byTaskType.set(entry.taskType, existing);
+      }
+      for (const [taskType, entries] of byTaskType) {
+        const successCount = entries.filter((e) => e.success).length;
+        taskTypeStats.push({
+          taskType,
+          successCount,
+          failureCount: entries.length - successCount,
+          successRate: successCount / entries.length,
+        });
+      }
+    }
+
+    const totalEntries = taskTypeStats.reduce((s, r) => s + r.successCount + r.failureCount, 0);
+    if (totalEntries < 10) {
       return;
     }
 
-    logger.info(
-      { learningCount: learnings.entries.length },
-      'Analyzing learnings for profile patterns',
-    );
-
-    // Group learnings by task type
-    const byTaskType = new Map<string, typeof learnings.entries>();
-    for (const entry of learnings.entries) {
-      const existing = byTaskType.get(entry.taskType) ?? [];
-      existing.push(entry);
-      byTaskType.set(entry.taskType, existing);
-    }
-
-    // Look for task types with >5 entries and >70% success rate
-    for (const [taskType, entries] of byTaskType) {
-      if (entries.length < 5) continue;
-
-      const successCount = entries.filter((e) => e.success).length;
-      const successRate = successCount / entries.length;
-
-      if (successRate < 0.7) continue;
+    // Look for task types with >5 total executions and >70% success rate
+    for (const stat of taskTypeStats) {
+      const total = stat.successCount + stat.failureCount;
+      if (total < 5) continue;
+      if (stat.successRate < 0.7) continue;
 
       // Check if a profile already exists for this task type
       const existingProfiles = await this.dotFolder.readProfiles();
-      const profileId = `auto-${taskType}`;
+      const profileId = `auto-${stat.taskType}`;
+      if (existingProfiles?.profiles[profileId]) continue;
 
-      if (existingProfiles?.profiles[profileId]) {
-        // Profile already exists
-        continue;
-      }
-
-      // Analyze which profile was most commonly used for successful tasks
-      const successfulProfiles = entries
-        .filter((e) => e.success && e.profileUsed !== undefined)
-        .map((e) => e.profileUsed as string); // Safe because we filtered out undefined above
-
-      // Find most common profile
-      const profileCounts = new Map<string, number>();
-      for (const profile of successfulProfiles) {
-        profileCounts.set(profile, (profileCounts.get(profile) ?? 0) + 1);
-      }
-
-      const [mostCommonProfile, count] = [...profileCounts.entries()].sort(
-        (a, b) => b[1] - a[1],
-      )[0] ?? [null, 0];
-
-      if (!mostCommonProfile || count < 3) {
-        // Not enough evidence for a pattern
-        continue;
-      }
-
-      // Find the tools from the most common profile
-      const builtInProfile = BUILT_IN_PROFILES[mostCommonProfile as keyof typeof BUILT_IN_PROFILES];
-      if (!builtInProfile) {
-        continue;
-      }
+      // Default to 'code-edit' profile for auto-generated profiles
+      const baseProfileName = 'code-edit';
+      const builtInProfile = BUILT_IN_PROFILES[baseProfileName as keyof typeof BUILT_IN_PROFILES];
+      if (!builtInProfile) continue;
 
       logger.info(
         {
-          taskType,
+          taskType: stat.taskType,
           profileId,
-          baseProfile: mostCommonProfile,
-          successRate,
-          usageCount: entries.length,
+          successRate: stat.successRate,
+          totalExecutions: total,
         },
         'Creating custom profile from learning patterns',
       );
 
-      // Create new profile
       const newProfile: ToolProfile = {
         name: profileId,
-        description: `Auto-generated profile for ${taskType} tasks (success rate: ${(successRate * 100).toFixed(1)}%)`,
+        description: `Auto-generated profile for ${stat.taskType} tasks (success rate: ${(stat.successRate * 100).toFixed(1)}%)`,
         tools: [...builtInProfile.tools],
       };
 
       try {
         await this.dotFolder.addProfile(newProfile);
-        await this.dotFolder.commitChanges(
-          `feat(master): create custom profile ${profileId} from learnings (${entries.length} samples, ${(successRate * 100).toFixed(1)}% success)`,
-        );
-
+        if (!this.memory) {
+          await this.dotFolder.commitChanges(
+            `feat(master): create custom profile ${profileId} from learnings (${total} samples, ${(stat.successRate * 100).toFixed(1)}% success)`,
+          );
+        }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
@@ -2954,7 +3221,7 @@ ${currentContent}
    * Detects changes by checking for new files, modified package.json, new directories, etc.
    */
   private async updateWorkspaceMapIfChanged(): Promise<void> {
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
     if (!map) {
       // No map to update
       return;
@@ -3014,7 +3281,7 @@ ${currentContent}
     // Persist Master session before shutdown
     if (this.masterSession) {
       try {
-        await this.dotFolder.writeMasterSession(this.masterSession);
+        await this.saveMasterSessionToStore(this.masterSession);
       } catch (error) {
         logger.warn({ error }, 'Failed to persist Master session on shutdown');
       }
@@ -3356,9 +3623,29 @@ ${currentContent}
         resolvedTools: spawnOpts.allowedTools,
       };
 
-      // Write worker task to disk without git commit (OB-165: task history + audit trail)
-      // Workers are batched, so we don't commit each one individually to avoid git lock contention
-      await this.dotFolder.writeTask(taskRecord);
+      // Write worker task to store (memory or JSON file) (OB-165: task history + audit trail)
+      if (this.memory) {
+        const statusMap: Record<string, MemoryTaskRecord['status']> = {
+          completed: 'completed',
+          failed: 'failed',
+        };
+        await this.memory.recordTask({
+          id: taskRecord.id,
+          type: 'worker',
+          status: statusMap[taskRecord.status] ?? 'failed',
+          prompt: taskRecord.userMessage,
+          response: taskRecord.result,
+          model: (taskRecord.metadata?.['modelUsed'] as string | undefined) ?? spawnOpts.model,
+          profile,
+          duration_ms: taskRecord.durationMs,
+          exit_code: (taskRecord.metadata?.['exitCode'] as number | undefined) ?? result.exitCode,
+          retries: result.retryCount,
+          created_at: taskRecord.createdAt,
+          completed_at: taskRecord.completedAt,
+        });
+      } else {
+        await this.dotFolder.writeTask(taskRecord);
+      }
 
       // Record learning entry for this worker execution (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, result, profile, spawnOpts.model);
@@ -3395,9 +3682,24 @@ ${currentContent}
         exceptionThrown: true,
       };
 
-      // Write worker task to disk even on exception (OB-165: task history + audit trail)
-      // Workers are batched, so we don't commit each one individually to avoid git lock contention
-      await this.dotFolder.writeTask(taskRecord);
+      // Write worker task to store (memory or JSON file) even on exception (OB-165)
+      if (this.memory) {
+        await this.memory.recordTask({
+          id: taskRecord.id,
+          type: 'worker',
+          status: 'failed',
+          prompt: taskRecord.userMessage,
+          model: taskRecord.metadata?.['modelUsed'] as string | undefined,
+          profile,
+          duration_ms: 0,
+          exit_code: -1,
+          retries: 0,
+          created_at: taskRecord.createdAt,
+          completed_at: taskRecord.completedAt,
+        });
+      } else {
+        await this.dotFolder.writeTask(taskRecord);
+      }
 
       // Record learning entry even on exception (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, failedResult, profile, body.model);
