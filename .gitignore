@@ -71,3 +71,8 @@ test-workspace-*/
 
 # Smoke test directory (created by OB-621 fresh install verification)
 ob-smoke-test/
+
+# SQLite database files
+*.db
+*.db-wal
+*.db-shm

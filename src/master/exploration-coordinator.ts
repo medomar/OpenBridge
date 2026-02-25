@@ -21,6 +21,7 @@
  * for programmatic use (testing, scripts).
  */
 
+import { execFileSync } from 'node:child_process';
 import { DotFolderManager } from './dotfolder-manager.js';
 import {
   generateStructureScanPrompt,
@@ -34,17 +35,24 @@ import {
   TOOLS_READ_ONLY,
   DEFAULT_MAX_TURNS_EXPLORATION,
 } from '../core/agent-runner.js';
-import type {
-  ExplorationState,
-  StructureScan,
-  Classification,
-  DirectoryDiveResult,
-  WorkspaceMap,
-  AgentsRegistry,
-  ExplorationSummary,
+import {
+  ExplorationStateSchema,
+  StructureScanSchema,
+  ClassificationSchema,
+  DirectoryDiveResultSchema,
+  WorkspaceMapSchema,
+  type ExplorationState,
+  type StructureScan,
+  type Classification,
+  type DirectoryDiveResult,
+  type WorkspaceMap,
+  type AgentsRegistry,
+  type ExplorationSummary,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
+import type { MemoryManager } from '../memory/index.js';
+import type { Chunk } from '../memory/chunk-store.js';
 
 const logger = createLogger('exploration-coordinator');
 
@@ -74,6 +82,14 @@ export interface ExplorationOptions {
   onProgress?: ExplorationProgressCallback;
   /** Override batch size for directory dives (default: auto-detected from project size) */
   batchSize?: number;
+  /** Optional MemoryManager for storing exploration results as searchable chunks */
+  memory?: MemoryManager;
+  /**
+   * Optional agent_activity.id for the explorer agent running this exploration.
+   * When provided (and memory is set), exploration phases and directory dives are
+   * tracked in the exploration_progress table for the "status" command.
+   */
+  explorationId?: string;
 }
 
 /**
@@ -90,6 +106,10 @@ export class ExplorationCoordinator {
   private readonly agentRunner: AgentRunner;
   private readonly onProgress?: ExplorationProgressCallback;
   private readonly batchSizeOverride?: number;
+  private readonly memory?: MemoryManager;
+  private readonly explorationId?: string;
+  /** Maps directory path → exploration_progress row id for the directory-dive phase. */
+  private readonly dirProgressIds = new Map<string, number>();
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
@@ -99,6 +119,219 @@ export class ExplorationCoordinator {
     this.agentRunner = new AgentRunner();
     this.onProgress = options.onProgress;
     this.batchSizeOverride = options.batchSize;
+    this.memory = options.memory;
+    this.explorationId = options.explorationId;
+  }
+
+  /**
+   * Write exploration state to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeExplorationState(state: ExplorationState): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertExplorationState(state);
+    } else {
+      await this.dotFolder.writeExplorationState(state);
+    }
+  }
+
+  /**
+   * Read exploration state from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration when the
+   * DB entry does not yet exist.
+   */
+  private async readExplorationStateFromStore(): Promise<ExplorationState | null> {
+    if (!this.memory) {
+      return this.dotFolder.readExplorationState();
+    }
+    const raw = await this.memory.getExplorationState();
+    if (raw !== null) {
+      try {
+        return ExplorationStateSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    // Migration fallback: read from JSON file once (first run after upgrade)
+    return this.dotFolder.readExplorationState();
+  }
+
+  /**
+   * Write structure scan to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeStructureScanToStore(scan: StructureScan): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertStructureScan(scan);
+    } else {
+      await this.dotFolder.writeStructureScan(scan);
+    }
+  }
+
+  /**
+   * Read structure scan from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readStructureScanFromStore(): Promise<StructureScan | null> {
+    if (!this.memory) {
+      return this.dotFolder.readStructureScan();
+    }
+    const raw = await this.memory.getStructureScan();
+    if (raw !== null) {
+      try {
+        return StructureScanSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readStructureScan();
+  }
+
+  /**
+   * Write classification to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeClassificationToStore(classification: Classification): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertClassification(classification);
+    } else {
+      await this.dotFolder.writeClassification(classification);
+    }
+  }
+
+  /**
+   * Read classification from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readClassificationFromStore(): Promise<Classification | null> {
+    if (!this.memory) {
+      return this.dotFolder.readClassification();
+    }
+    const raw = await this.memory.getClassification();
+    if (raw !== null) {
+      try {
+        return ClassificationSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readClassification();
+  }
+
+  /**
+   * Write a directory dive result to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeDirectoryDiveToStore(
+    dirName: string,
+    dive: DirectoryDiveResult,
+  ): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertDirectoryDive(dirName, dive);
+    } else {
+      await this.dotFolder.writeDirectoryDive(dirName, dive);
+    }
+  }
+
+  /**
+   * Read a directory dive result from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readDirectoryDiveFromStore(dirName: string): Promise<DirectoryDiveResult | null> {
+    if (!this.memory) {
+      return this.dotFolder.readDirectoryDive(dirName);
+    }
+    const raw = await this.memory.getDirectoryDive(dirName);
+    if (raw !== null) {
+      try {
+        return DirectoryDiveResultSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readDirectoryDive(dirName);
+  }
+
+  /**
+   * Get the current git commit hash for use as source_hash in chunks.
+   * Returns an empty string if git is unavailable or there are no commits.
+   */
+  private getSourceHash(): string {
+    try {
+      return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+        cwd: this.workspacePath,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Split a long text into chunks of at most `maxChars` characters.
+   * Prefers splitting on newline boundaries to keep content coherent.
+   * ~500 tokens ≈ 2000 characters (assuming 4 chars/token average).
+   */
+  private splitIntoChunks(text: string, maxChars = 2000): string[] {
+    if (text.length <= maxChars) return text.trim() ? [text] : [];
+
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+      let end = start + maxChars;
+      if (end >= text.length) {
+        const slice = text.slice(start).trim();
+        if (slice) chunks.push(slice);
+        break;
+      }
+      // Prefer splitting at a newline boundary
+      const lastNewline = text.lastIndexOf('\n', end);
+      if (lastNewline > start) {
+        end = lastNewline + 1;
+      }
+      const slice = text.slice(start, end).trim();
+      if (slice) chunks.push(slice);
+      start = end;
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Convert exploration result data to text chunks and store in MemoryManager.
+   * Falls back silently (logs a debug warning) if memory is unavailable or fails.
+   */
+  private async storeExplorationChunks(
+    scope: string,
+    category: Chunk['category'],
+    data: unknown,
+  ): Promise<void> {
+    if (!this.memory) return;
+
+    try {
+      const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      const sourceHash = this.getSourceHash();
+      const textChunks = this.splitIntoChunks(text);
+
+      if (textChunks.length === 0) return;
+
+      const chunks: Chunk[] = textChunks.map((content) => ({
+        scope,
+        category,
+        content,
+        source_hash: sourceHash || undefined,
+      }));
+
+      await this.memory.storeChunks(chunks);
+      logger.debug(
+        { scope, category, chunkCount: chunks.length },
+        'Stored exploration chunks in memory',
+      );
+    } catch (err) {
+      logger.warn({ err, scope, category }, 'Failed to store exploration chunks — continuing');
+    }
   }
 
   /**
@@ -136,12 +369,12 @@ export class ExplorationCoordinator {
     await this.dotFolder.createExplorationDir();
 
     // Load or create exploration state
-    let state = await this.dotFolder.readExplorationState();
+    let state = await this.readExplorationStateFromStore();
 
     if (!state) {
       logger.info('No existing exploration state found, creating fresh state');
       state = this.createInitialState();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
     }
 
     // If exploration is already complete, return summary
@@ -154,7 +387,7 @@ export class ExplorationCoordinator {
     if (state.status === 'failed') {
       logger.info('Previous exploration failed, resetting to retry');
       state = this.createInitialState();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
     }
 
     try {
@@ -182,7 +415,7 @@ export class ExplorationCoordinator {
       // Mark as completed
       state.status = 'completed';
       state.completedAt = new Date().toISOString();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
 
       logger.info(
         {
@@ -198,8 +431,87 @@ export class ExplorationCoordinator {
       logger.error({ err: error }, 'Exploration failed');
       state.status = 'failed';
       state.error = String(error);
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
       throw error;
+    }
+  }
+
+  /**
+   * Re-explore only the directories that have stale chunks in the MemoryManager.
+   *
+   * Called after workspace changes have been detected and the affected scopes
+   * have been marked stale via `memory.markStale(changedScopes)`. This avoids
+   * a full 5-phase re-exploration when only a subset of directories changed.
+   *
+   * Flow:
+   * 1. Query the DB for scopes with stale=1 chunks.
+   * 2. Filter to directory scopes (skip '.' root which belongs to structure/assembly passes).
+   * 3. Run directory dives in parallel batches (reusing executeSingleDirectoryDive).
+   * 4. Delete all stale chunks so the DB reflects only the fresh data.
+   *
+   * Falls back gracefully (logs a warning) if:
+   * - No MemoryManager is configured.
+   * - No classification exists (needed for context in dive prompts).
+   * - Individual directory dives fail (those scopes remain stale until next run).
+   */
+  public async reexploreStaleDirs(): Promise<void> {
+    if (!this.memory) {
+      logger.debug('reexploreStaleDirs: no MemoryManager — skipping');
+      return;
+    }
+
+    const staleScopes = await this.memory.getStaleScopes();
+    if (staleScopes.length === 0) {
+      logger.info('No stale directory scopes — skipping partial re-exploration');
+      return;
+    }
+
+    logger.info({ staleScopes }, 'Partial re-exploration: found stale scopes');
+
+    // Classification is required for the dive prompts (project type + frameworks)
+    const classification = await this.readClassificationFromStore();
+    if (!classification) {
+      logger.warn('No classification found for partial re-exploration — skipping');
+      return;
+    }
+
+    const context = {
+      projectType: classification.projectType,
+      frameworks: classification.frameworks,
+    };
+
+    // Load (or create) an exploration state so executeSingleDirectoryDive can
+    // update counters (totalCalls, totalAITimeMs) without throwing.
+    let state = await this.readExplorationStateFromStore();
+    if (!state) {
+      state = this.createInitialState();
+    }
+
+    // Only re-explore real directory scopes; '.' is the root scope handled by
+    // the structure-scan and assembly phases, not directory dives.
+    const dirScopes = staleScopes.filter((s) => s !== '.');
+
+    const batchSize = 3;
+    for (let i = 0; i < dirScopes.length; i += batchSize) {
+      const batch = dirScopes.slice(i, i + batchSize);
+      await Promise.allSettled(
+        batch.map(async (scope) => {
+          try {
+            await this.executeSingleDirectoryDive(scope, context, state);
+            logger.info({ scope }, 'Stale scope successfully re-explored');
+          } catch (err) {
+            logger.warn({ err, scope }, 'Failed to re-explore stale scope — continuing');
+          }
+        }),
+      );
+    }
+
+    // Delete stale chunks now that fresh replacements are stored.
+    try {
+      await this.memory.deleteStaleChunks();
+      logger.info('Stale chunks deleted — incremental chunk refresh complete');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to delete stale chunks after re-exploration');
     }
   }
 
@@ -216,8 +528,9 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 1: Structure Scan');
     state.currentPhase = 'structure_scan';
     state.phases.structure_scan = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
+    const phase1RowId = await this.insertPhaseRow('structure');
     const prompt = generateStructureScanPrompt(this.workspacePath);
     const startTime = Date.now();
 
@@ -235,11 +548,13 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase1RowId);
       throw new Error(`Structure scan failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
     const parsed = parseAIResult<StructureScan>(result.stdout, 'structure scan');
     if (!parsed.success) {
+      await this.failPhaseRow(phase1RowId);
       throw new Error(`Failed to parse structure scan result: ${parsed.error}`);
     }
 
@@ -248,9 +563,11 @@ export class ExplorationCoordinator {
     parsed.data.scannedAt = new Date().toISOString();
     parsed.data.durationMs = elapsed;
 
-    await this.dotFolder.writeStructureScan(parsed.data);
+    await this.writeStructureScanToStore(parsed.data);
+    await this.storeExplorationChunks('.', 'structure', parsed.data);
     state.phases.structure_scan = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
+    await this.completePhaseRow(phase1RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 1 completed');
   }
@@ -268,10 +585,12 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 2: Classification');
     state.currentPhase = 'classification';
     state.phases.classification = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
-    const structureScan = await this.dotFolder.readStructureScan();
+    const phase2RowId = await this.insertPhaseRow('classification');
+    const structureScan = await this.readStructureScanFromStore();
     if (!structureScan) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error('Structure scan result not found (Phase 1 incomplete)');
     }
 
@@ -292,11 +611,13 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error(`Classification failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
     const parsed = parseAIResult<Classification>(result.stdout, 'classification');
     if (!parsed.success) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error(`Failed to parse classification result: ${parsed.error}`);
     }
 
@@ -305,9 +626,11 @@ export class ExplorationCoordinator {
     parsed.data.classifiedAt = new Date().toISOString();
     parsed.data.durationMs = elapsed;
 
-    await this.dotFolder.writeClassification(parsed.data);
+    await this.writeClassificationToStore(parsed.data);
+    await this.storeExplorationChunks('.', 'config', parsed.data);
     state.phases.classification = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
+    await this.completePhaseRow(phase2RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 2 completed');
   }
@@ -325,10 +648,10 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 3: Directory Dives');
     state.currentPhase = 'directory_dives';
     state.phases.directory_dives = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
-    const structureScan = await this.dotFolder.readStructureScan();
-    const classification = await this.dotFolder.readClassification();
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
 
     if (!structureScan || !classification) {
       throw new Error('Structure scan or classification not found (Phases 1-2 incomplete)');
@@ -346,7 +669,31 @@ export class ExplorationCoordinator {
         status: 'pending',
         attempts: 0,
       }));
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
+    }
+
+    // Insert exploration_progress rows for each directory (status=pending).
+    // Already-tracked dirs (from a resumed run) are skipped via the map check.
+    if (this.memory && this.explorationId) {
+      for (const dir of significantDirs) {
+        if (this.dirProgressIds.has(dir)) continue; // already inserted this run
+        const filesTotal = structureScan.directoryCounts[dir] ?? null;
+        try {
+          const rowId = await this.memory.insertExplorationProgress({
+            exploration_id: this.explorationId,
+            phase: 'directory-dive',
+            target: dir,
+            status: 'pending',
+            progress_pct: 0,
+            files_processed: 0,
+            files_total: filesTotal,
+            started_at: null,
+          });
+          this.dirProgressIds.set(dir, rowId);
+        } catch {
+          // ignore — progress tracking is best-effort
+        }
+      }
     }
 
     const context = {
@@ -395,6 +742,18 @@ export class ExplorationCoordinator {
             diveState.status = 'failed';
             diveState.error = String(result.reason);
             completedSoFar++; // Count failed as "done" for progress
+            // Mark the exploration_progress row as failed
+            const rowId = this.dirProgressIds.get(dive.path) ?? 0;
+            if (rowId > 0 && this.memory) {
+              this.memory
+                .updateExplorationProgressById(rowId, {
+                  status: 'failed',
+                  completed_at: new Date().toISOString(),
+                })
+                .catch(() => {
+                  // ignore — progress tracking is best-effort
+                });
+            }
             logger.warn(
               { path: dive.path, error: result.reason },
               'Directory dive failed after retries',
@@ -409,7 +768,7 @@ export class ExplorationCoordinator {
         }
       });
 
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
 
       // Emit per-batch directory progress
       await this.emitProgress('directory_dives', 'starting', undefined, {
@@ -429,7 +788,7 @@ export class ExplorationCoordinator {
     }
 
     state.phases.directory_dives = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     logger.info('Phase 3 completed');
   }
@@ -442,6 +801,19 @@ export class ExplorationCoordinator {
     context: { projectType: string; frameworks: string[] },
     state: ExplorationState,
   ): Promise<void> {
+    // Mark this directory as in_progress in exploration_progress
+    const progressRowId = this.dirProgressIds.get(dirPath) ?? 0;
+    if (progressRowId > 0 && this.memory) {
+      try {
+        await this.memory.updateExplorationProgressById(progressRowId, {
+          status: 'in_progress',
+          started_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore — progress tracking is best-effort
+      }
+    }
+
     const prompt = generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
     const startTime = Date.now();
 
@@ -476,7 +848,22 @@ export class ExplorationCoordinator {
 
     // Sanitize directory name for filename (replace / with -)
     const safeDirName = dirPath.replace(/\//g, '-');
-    await this.dotFolder.writeDirectoryDive(safeDirName, parsed.data);
+    await this.writeDirectoryDiveToStore(safeDirName, parsed.data);
+    await this.storeExplorationChunks(dirPath, 'patterns', parsed.data);
+
+    // Mark this directory as completed in exploration_progress
+    if (progressRowId > 0 && this.memory) {
+      try {
+        await this.memory.updateExplorationProgressById(progressRowId, {
+          status: 'completed',
+          progress_pct: 100,
+          files_processed: parsed.data.fileCount,
+          completed_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore — progress tracking is best-effort
+      }
+    }
 
     logger.info({ dirPath, elapsed, method: parsed.method }, 'Directory dive completed');
   }
@@ -494,12 +881,14 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 4: Assembly');
     state.currentPhase = 'assembly';
     state.phases.assembly = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
-    const structureScan = await this.dotFolder.readStructureScan();
-    const classification = await this.dotFolder.readClassification();
+    const phase4RowId = await this.insertPhaseRow('assembly');
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
 
     if (!structureScan || !classification) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error('Structure scan or classification not found');
     }
 
@@ -509,7 +898,7 @@ export class ExplorationCoordinator {
 
     for (const dive of completedDives) {
       const safeDirName = dive.path.replace(/\//g, '-');
-      const result = await this.dotFolder.readDirectoryDive(safeDirName);
+      const result = await this.readDirectoryDiveFromStore(safeDirName);
       if (result) {
         diveResults.push(result);
       }
@@ -557,6 +946,7 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error(
         `Summary generation failed with exit code ${result.exitCode}: ${result.stderr}`,
       );
@@ -564,6 +954,7 @@ export class ExplorationCoordinator {
 
     const parsed = parseAIResult<{ summary: string }>(result.stdout, 'summary generation');
     if (!parsed.success) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error(`Failed to parse summary result: ${parsed.error}`);
     }
 
@@ -583,9 +974,22 @@ export class ExplorationCoordinator {
       schemaVersion: '1.0.0',
     };
 
-    await this.dotFolder.writeMap(workspaceMap);
+    // Write workspace map to DB (OB-810: JSON fallback removed).
+    if (this.memory) {
+      await this.memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify(workspaceMap),
+        },
+      ]);
+    } else {
+      logger.warn('Memory not available — skipping workspace map write in Phase 4');
+    }
+    await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
+    await this.completePhaseRow(phase4RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 4 completed');
   }
@@ -603,7 +1007,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 5: Finalization');
     state.currentPhase = 'finalization';
     state.phases.finalization = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     // Create agents.json
     const agentsRegistry: AgentsRegistry = {
@@ -625,26 +1029,41 @@ export class ExplorationCoordinator {
       updatedAt: new Date().toISOString(),
     };
 
-    await this.dotFolder.writeAgents(agentsRegistry);
-
-    // Git commit
-    await this.dotFolder.commitChanges('feat(master): complete incremental workspace exploration');
+    if (this.memory) {
+      await this.memory.setSystemConfig('agents', JSON.stringify(agentsRegistry));
+    } else {
+      await this.dotFolder.writeAgents(agentsRegistry);
+    }
 
     // Log entry
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: 'Incremental exploration completed successfully',
-      data: {
-        totalCalls: state.totalCalls,
-        totalAITimeMs: state.totalAITimeMs,
-        phases: state.phases,
-        directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Incremental exploration completed successfully',
+        data: {
+          totalCalls: state.totalCalls,
+          totalAITimeMs: state.totalAITimeMs,
+          phases: state.phases,
+          directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Incremental exploration completed successfully',
+        data: {
+          totalCalls: state.totalCalls,
+          totalAITimeMs: state.totalAITimeMs,
+          phases: state.phases,
+          directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
+        },
+      });
+    }
 
     state.phases.finalization = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     logger.info('Phase 5 completed');
   }
@@ -674,8 +1093,19 @@ export class ExplorationCoordinator {
    * Build ExplorationSummary from final state
    */
   private async buildSummary(state: ExplorationState): Promise<ExplorationSummary> {
-    const map = await this.dotFolder.readMap();
-    const classification = await this.dotFolder.readClassification();
+    // Read workspace map from DB (OB-810: JSON fallback removed).
+    let map: WorkspaceMap | null = null;
+    if (this.memory) {
+      try {
+        const chunks = await this.memory.getChunksByScope('_workspace_map', 'structure');
+        if (chunks.length > 0 && chunks[0]?.content) {
+          map = WorkspaceMapSchema.parse(JSON.parse(chunks[0].content));
+        }
+      } catch {
+        // ignore — map not yet stored
+      }
+    }
+    const classification = await this.readClassificationFromStore();
 
     return {
       startedAt: state.startedAt,
@@ -691,10 +1121,65 @@ export class ExplorationCoordinator {
       projectType: classification?.projectType ?? map?.projectType,
       frameworks: classification?.frameworks ?? map?.frameworks ?? [],
       insights: classification?.insights ?? [],
-      mapPath: map ? this.dotFolder.getMapPath() : undefined,
+      mapPath: undefined, // workspace-map.json removed; map is stored in DB (OB-810)
       gitInitialized: true,
       error: state.error,
     };
+  }
+
+  /**
+   * Insert an exploration_progress row for a non-directory phase.
+   * Returns the row id (0 if tracking is unavailable or fails).
+   */
+  private async insertPhaseRow(phase: string, filesTotal?: number): Promise<number> {
+    if (!this.memory || !this.explorationId) return 0;
+    try {
+      return await this.memory.insertExplorationProgress({
+        exploration_id: this.explorationId,
+        phase,
+        target: null,
+        status: 'in_progress',
+        progress_pct: 0,
+        files_processed: 0,
+        files_total: filesTotal ?? null,
+        started_at: new Date().toISOString(),
+      });
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Mark an exploration_progress row as completed with 100% progress.
+   * No-ops if id is 0 or tracking is unavailable.
+   */
+  private async completePhaseRow(id: number): Promise<void> {
+    if (!this.memory || id === 0) return;
+    try {
+      await this.memory.updateExplorationProgressById(id, {
+        status: 'completed',
+        progress_pct: 100,
+        completed_at: new Date().toISOString(),
+      });
+    } catch {
+      // ignore — progress tracking is best-effort
+    }
+  }
+
+  /**
+   * Mark an exploration_progress row as failed.
+   * No-ops if id is 0 or tracking is unavailable.
+   */
+  private async failPhaseRow(id: number): Promise<void> {
+    if (!this.memory || id === 0) return;
+    try {
+      await this.memory.updateExplorationProgressById(id, {
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+      });
+    } catch {
+      // ignore — progress tracking is best-effort
+    }
   }
 
   /**
@@ -728,7 +1213,7 @@ export class ExplorationCoordinator {
     totalCalls: number;
     totalAITimeMs: number;
   } | null> {
-    const state = await this.dotFolder.readExplorationState();
+    const state = await this.readExplorationStateFromStore();
     if (!state) {
       return null;
     }

@@ -6,8 +6,10 @@ import {
   convertV2ToInternal,
   expandTilde,
   injectDevConnectors,
+  applyEnvOverrides,
+  buildV2ConfigFromEnv,
 } from '../../src/core/config.js';
-import type { AppConfig } from '../../src/types/config.js';
+import type { AppConfig, V2Config } from '../../src/types/config.js';
 
 describe('AppConfigSchema', () => {
   it('should validate a valid config', () => {
@@ -361,6 +363,206 @@ describe('convertV2ToInternal', () => {
       retryDelayMs: 2_000,
     });
     expect(internalConfig.logLevel).toBe('debug');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeV2Config(overrides: Partial<V2Config> = {}): V2Config {
+  return V2ConfigSchema.parse({
+    workspacePath: '/path/to/workspace',
+    channels: [{ type: 'console', enabled: true }],
+    auth: { whitelist: ['+1234567890'], prefix: '/ai' },
+    ...overrides,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// applyEnvOverrides
+// ---------------------------------------------------------------------------
+
+describe('applyEnvOverrides', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns unchanged config when no env vars are set', () => {
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.workspacePath).toBe('/path/to/workspace');
+    expect(result.auth.whitelist).toEqual(['+1234567890']);
+    expect(result.auth.prefix).toBe('/ai');
+    expect(result.logLevel).toBeUndefined();
+  });
+
+  it('overrides workspacePath from OPENBRIDGE_WORKSPACE_PATH', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/new/workspace');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.workspacePath).toBe('/new/workspace');
+  });
+
+  it('overrides channels from OPENBRIDGE_CHANNELS', () => {
+    vi.stubEnv('OPENBRIDGE_CHANNELS', '[{"type":"whatsapp","enabled":true}]');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.channels).toHaveLength(1);
+    expect(result.channels[0]?.type).toBe('whatsapp');
+  });
+
+  it('throws on invalid OPENBRIDGE_CHANNELS JSON', () => {
+    vi.stubEnv('OPENBRIDGE_CHANNELS', 'not-json');
+    const config = makeV2Config();
+    expect(() => applyEnvOverrides(config)).toThrow(
+      'OPENBRIDGE_CHANNELS must be a valid JSON array',
+    );
+  });
+
+  it('overrides auth.whitelist from OPENBRIDGE_AUTH_WHITELIST (comma-separated)', () => {
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+9999999999, +8888888888');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.auth.whitelist).toEqual(['+9999999999', '+8888888888']);
+  });
+
+  it('filters empty entries from OPENBRIDGE_AUTH_WHITELIST', () => {
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+9999999999,,+8888888888,');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.auth.whitelist).toEqual(['+9999999999', '+8888888888']);
+  });
+
+  it('overrides auth.prefix from OPENBRIDGE_AUTH_PREFIX', () => {
+    vi.stubEnv('OPENBRIDGE_AUTH_PREFIX', '/bot');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.auth.prefix).toBe('/bot');
+  });
+
+  it('overrides logLevel from OPENBRIDGE_LOG_LEVEL', () => {
+    vi.stubEnv('OPENBRIDGE_LOG_LEVEL', 'debug');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.logLevel).toBe('debug');
+  });
+
+  it('throws on invalid OPENBRIDGE_LOG_LEVEL value', () => {
+    vi.stubEnv('OPENBRIDGE_LOG_LEVEL', 'verbose');
+    const config = makeV2Config();
+    expect(() => applyEnvOverrides(config)).toThrow('OPENBRIDGE_LOG_LEVEL must be one of');
+  });
+
+  it('does not mutate the original config', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/new/workspace');
+    const config = makeV2Config();
+    const original = config.workspacePath;
+    applyEnvOverrides(config);
+    expect(config.workspacePath).toBe(original);
+  });
+
+  it('applies multiple overrides at once', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/project');
+    vi.stubEnv('OPENBRIDGE_AUTH_PREFIX', '/cmd');
+    vi.stubEnv('OPENBRIDGE_LOG_LEVEL', 'warn');
+    const config = makeV2Config();
+    const result = applyEnvOverrides(config);
+    expect(result.workspacePath).toBe('/my/project');
+    expect(result.auth.prefix).toBe('/cmd');
+    expect(result.logLevel).toBe('warn');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildV2ConfigFromEnv
+// ---------------------------------------------------------------------------
+
+describe('buildV2ConfigFromEnv', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('builds a valid V2Config from required ENV vars', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    const config = buildV2ConfigFromEnv();
+    expect(config.workspacePath).toBe('/my/workspace');
+    expect(config.auth.whitelist).toEqual(['+1234567890']);
+  });
+
+  it('defaults to console channel when OPENBRIDGE_CHANNELS is not set', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    const config = buildV2ConfigFromEnv();
+    expect(config.channels).toHaveLength(1);
+    expect(config.channels[0]?.type).toBe('console');
+  });
+
+  it('uses OPENBRIDGE_CHANNELS when provided', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    vi.stubEnv('OPENBRIDGE_CHANNELS', '[{"type":"whatsapp","enabled":true}]');
+    const config = buildV2ConfigFromEnv();
+    expect(config.channels[0]?.type).toBe('whatsapp');
+  });
+
+  it('uses OPENBRIDGE_AUTH_PREFIX when provided', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    vi.stubEnv('OPENBRIDGE_AUTH_PREFIX', '/mybot');
+    const config = buildV2ConfigFromEnv();
+    expect(config.auth.prefix).toBe('/mybot');
+  });
+
+  it('defaults auth.prefix to /ai when not set', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    const config = buildV2ConfigFromEnv();
+    expect(config.auth.prefix).toBe('/ai');
+  });
+
+  it('uses OPENBRIDGE_LOG_LEVEL when provided', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    vi.stubEnv('OPENBRIDGE_LOG_LEVEL', 'error');
+    const config = buildV2ConfigFromEnv();
+    expect(config.logLevel).toBe('error');
+  });
+
+  it('throws when OPENBRIDGE_WORKSPACE_PATH is missing', () => {
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    expect(() => buildV2ConfigFromEnv()).toThrow('OPENBRIDGE_WORKSPACE_PATH');
+  });
+
+  it('throws when OPENBRIDGE_AUTH_WHITELIST is missing', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    expect(() => buildV2ConfigFromEnv()).toThrow('OPENBRIDGE_AUTH_WHITELIST');
+  });
+
+  it('throws when both required vars are missing with helpful message', () => {
+    expect(() => buildV2ConfigFromEnv()).toThrow('npx openbridge init');
+  });
+
+  it('throws on invalid OPENBRIDGE_CHANNELS JSON', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    vi.stubEnv('OPENBRIDGE_CHANNELS', '{bad json}');
+    expect(() => buildV2ConfigFromEnv()).toThrow('OPENBRIDGE_CHANNELS must be a valid JSON array');
+  });
+
+  it('throws on invalid OPENBRIDGE_LOG_LEVEL', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1234567890');
+    vi.stubEnv('OPENBRIDGE_LOG_LEVEL', 'verbose');
+    expect(() => buildV2ConfigFromEnv()).toThrow('OPENBRIDGE_LOG_LEVEL must be one of');
+  });
+
+  it('handles multiple whitelist entries', () => {
+    vi.stubEnv('OPENBRIDGE_WORKSPACE_PATH', '/my/workspace');
+    vi.stubEnv('OPENBRIDGE_AUTH_WHITELIST', '+1111111111, +2222222222, +3333333333');
+    const config = buildV2ConfigFromEnv();
+    expect(config.auth.whitelist).toEqual(['+1111111111', '+2222222222', '+3333333333']);
   });
 });
 

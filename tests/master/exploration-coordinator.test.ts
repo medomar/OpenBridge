@@ -5,14 +5,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ExplorationCoordinator } from '../../src/master/exploration-coordinator.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import { MemoryManager } from '../../src/memory/index.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type {
-  ExplorationState,
-  StructureScan,
-  Classification,
-  DirectoryDiveResult,
+import {
+  WorkspaceMapSchema,
+  type ExplorationState,
+  type StructureScan,
+  type Classification,
+  type DirectoryDiveResult,
 } from '../../src/types/master.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 
@@ -805,31 +807,49 @@ describe('ExplorationCoordinator', () => {
   });
 
   describe('Phase 4: Assembly', () => {
-    it('should merge partial results into workspace map', async () => {
+    it('should merge partial results into workspace map (OB-810: stored in DB)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+      });
       setupCompleteExploration();
 
-      const summary = await coordinator.explore();
+      const summary = await coordinatorWithMemory.explore();
 
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const map = await dotFolder.readMap();
-
+      // Workspace map is stored in DB, not JSON file (OB-810).
+      const chunks = await memory.getChunksByScope('_workspace_map', 'structure');
+      expect(chunks.length).toBeGreaterThan(0);
+      const map = WorkspaceMapSchema.parse(JSON.parse(chunks[0]!.content));
       expect(map).toBeDefined();
-      expect(map?.projectType).toBe('node');
-      expect(map?.summary).toBe('Test project summary');
+      expect(map.projectType).toBe('node');
+      expect(map.summary).toBe('Test project summary');
       expect(summary.status).toBe('completed');
     });
 
-    it('should include directory dive results in workspace map', async () => {
+    it('should include directory dive results in workspace map (OB-810: stored in DB)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+      });
       setupCompleteExploration();
 
-      await coordinator.explore();
+      await coordinatorWithMemory.explore();
 
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const map = await dotFolder.readMap();
-
-      expect(map?.structure).toBeDefined();
-      expect(map?.structure.src).toBeDefined();
-      expect(map?.structure.src.purpose).toBe('Source code');
+      // Workspace map is stored in DB, not JSON file (OB-810).
+      const chunks = await memory.getChunksByScope('_workspace_map', 'structure');
+      expect(chunks.length).toBeGreaterThan(0);
+      const map = WorkspaceMapSchema.parse(JSON.parse(chunks[0]!.content));
+      expect(map.structure).toBeDefined();
+      expect(map.structure.src).toBeDefined();
+      expect(map.structure.src.purpose).toBe('Source code');
     });
   });
 
@@ -848,34 +868,19 @@ describe('ExplorationCoordinator', () => {
       expect(agents?.specialists[0]?.name).toBe('codex');
     });
 
-    it('should commit changes to git', async () => {
+    it('exploration log entry goes to DB, not flat file (OB-802, OB-813)', async () => {
       setupCompleteExploration();
 
       await coordinator.explore();
 
+      // appendLog() is a no-op (OB-802) — no flat log file is written
       const dotFolder = new DotFolderManager(testWorkspace);
-      const dotFolderPath = dotFolder.getDotFolderPath();
-
-      // Check git repo exists
-      const gitExists = await fs
-        .access(path.join(dotFolderPath, '.git'))
+      const logPath = dotFolder.getLogPath();
+      const logExists = await import('node:fs/promises')
+        .then((fsm) => fsm.access(logPath))
         .then(() => true)
         .catch(() => false);
-
-      expect(gitExists).toBe(true);
-    });
-
-    it('should write exploration log entry', async () => {
-      setupCompleteExploration();
-
-      await coordinator.explore();
-
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const log = await dotFolder.readLog();
-
-      expect(log.length).toBeGreaterThan(0);
-      const lastEntry = log[log.length - 1];
-      expect(lastEntry?.message).toContain('Incremental exploration completed successfully');
+      expect(logExists).toBe(false);
     });
   });
 

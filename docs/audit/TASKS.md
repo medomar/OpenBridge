@@ -1,181 +1,51 @@
 # OpenBridge — Task List
 
-> **Pending:** 68 tasks | **In Progress:** 0
+> **Pending:** 0 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-25
-> **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md)
+> **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md) | [Memory + Scale (Phases 31–38)](archive/v9/TASKS-v9-memory-scale.md)
 
 ---
 
-## Planned — Track A: Memory & Intelligence
+## Phase 40: Memory Integration Hardening
 
-> Full roadmap with design notes: [docs/ROADMAP.md](../ROADMAP.md)
-> Milestone details: [milestones/](milestones/)
+> Fix all gaps between the memory system (SQLite) and the runtime code. The memory modules exist and pass tests, but several code paths still write to JSON files instead of the DB. This phase wires everything end-to-end.
 
-### Phase 31: Memory Foundation — [v0.1.0](milestones/v0.1.0-memory-system.md)
-
-| #   | Task                                                           | ID     | Priority |  Status   |
-| --- | -------------------------------------------------------------- | ------ | :------: | :-------: |
-| 208 | Add `better-sqlite3` dependency + TypeScript types             | OB-700 | 🔴 High  | ◻ Pending |
-| 209 | Create `src/memory/database.ts` — DB init, WAL mode, PRAGMA    | OB-701 | 🔴 High  | ◻ Pending |
-| 210 | Create full schema (9 tables + 2 FTS virtual tables + indexes) | OB-702 | 🔴 High  | ◻ Pending |
-| 211 | Create `src/memory/index.ts` — MemoryManager public API        | OB-703 | 🔴 High  | ◻ Pending |
-| 212 | Create `src/memory/chunk-store.ts` — context chunks CRUD       | OB-704 | 🔴 High  | ◻ Pending |
-| 213 | Create `src/memory/task-store.ts` — tasks + learnings CRUD     | OB-705 | 🔴 High  | ◻ Pending |
-| 214 | Create `src/memory/conversation-store.ts` — message CRUD       | OB-706 | 🔴 High  | ◻ Pending |
-| 215 | Create `src/memory/prompt-store.ts` — versioned prompts        | OB-707 | 🔴 High  | ◻ Pending |
-| 216 | Create `src/memory/migration.ts` — JSON → SQLite migration     | OB-708 | 🔴 High  | ◻ Pending |
-| 217 | Create `src/memory/eviction.ts` — data lifecycle + cleanup     | OB-709 |  🟡 Med  | ◻ Pending |
-| 218 | Integrate MemoryManager into Bridge startup                    | OB-710 | 🔴 High  | ◻ Pending |
-| 219 | Replace DotFolderManager reads/writes with MemoryManager       | OB-711 | 🔴 High  | ◻ Pending |
-| 220 | Remove `.openbridge/.git` — DB transactions replace git safety | OB-712 |  🟡 Med  | ◻ Pending |
-| 221 | Tests for all memory modules                                   | OB-713 | 🔴 High  | ◻ Pending |
-
-### Phase 32: Intelligent Retrieval + Worker Briefing — [v0.1.0](milestones/v0.1.0-memory-system.md)
-
-| #   | Task                                                               | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------------ | ------ | :------: | :-------: |
-| 222 | Create `src/memory/retrieval.ts` — hybrid FTS5 search engine       | OB-720 | 🔴 High  | ◻ Pending |
-| 223 | AI-powered reranking — use device AI for semantic result reranking | OB-721 | 🔴 High  | ◻ Pending |
-| 224 | Create `src/memory/worker-briefing.ts` — context package builder   | OB-722 | 🔴 High  | ◻ Pending |
-| 225 | Integrate briefing into MasterManager.spawnWorker() flow           | OB-723 | 🔴 High  | ◻ Pending |
-| 226 | Adaptive model selection — query learnings for best model per task | OB-724 | 🔴 High  | ◻ Pending |
-| 227 | Exploration chunking — store results as granular ~500-token chunks | OB-725 | 🔴 High  | ◻ Pending |
-| 228 | Incremental chunk refresh — only re-explore stale scopes           | OB-726 |  🟡 Med  | ◻ Pending |
-| 229 | Tests for retrieval and briefing                                   | OB-727 | 🔴 High  | ◻ Pending |
-
-### Phase 35: Conversation Memory + Prompt Evolution — [v0.2.0](milestones/v0.2.0-smart-system.md)
-
-| #   | Task                                                                         | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 241 | Record all user↔Master messages to conversations table                       | OB-730 | 🔴 High  | ◻ Pending |
-| 242 | Context retrieval — inject relevant past conversations into Master prompt    | OB-731 | 🔴 High  | ◻ Pending |
-| 243 | Classification learning loop — feedback improves future classification       | OB-732 |  🟡 Med  | ◻ Pending |
-| 244 | Prompt effectiveness tracking — measure success rate per prompt version      | OB-733 |  🟡 Med  | ◻ Pending |
-| 245 | Prompt evolution — auto-generate improved prompt variations                  | OB-734 |  🟡 Med  | ◻ Pending |
-| 246 | System prompt enrichment — inject learned patterns into Master system prompt | OB-735 | 🔴 High  | ◻ Pending |
-| 247 | Conversation eviction — 30/90 day policy with auto-summarization             | OB-736 |  🟡 Med  | ◻ Pending |
-| 248 | Tests for conversation memory and prompt evolution                           | OB-737 | 🔴 High  | ◻ Pending |
-
-### Phase 36: Agent Dashboard + Exploration Progress — [v0.3.0](milestones/v0.3.0-visibility.md)
-
-| #   | Task                                                                         | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 249 | `agent_activity` table — real-time agent/worker status tracking              | OB-740 | 🔴 High  | ◻ Pending |
-| 250 | `exploration_progress` table — per-phase, per-directory progress             | OB-741 | 🔴 High  | ◻ Pending |
-| 251 | Wire agent lifecycle events — INSERT on spawn, UPDATE on progress/completion | OB-742 | 🔴 High  | ◻ Pending |
-| 252 | "status" command — user queries active agents via any channel                | OB-743 | 🔴 High  | ◻ Pending |
-| 253 | WebChat dashboard — live agent activity view with progress bars              | OB-744 |  🟡 Med  | ◻ Pending |
-| 254 | Exploration progress tracking — parallel directory dives with percentages    | OB-745 | 🔴 High  | ◻ Pending |
-| 255 | Cost tracking — per-agent and per-day cost accumulation                      | OB-746 |  🟡 Med  | ◻ Pending |
-| 256 | Tests for dashboard and exploration progress                                 | OB-747 | 🔴 High  | ◻ Pending |
-
----
-
-## Planned — Track B: User-Facing Features
-
-### Phase 33: Media & Proactive Messaging — [v0.2.0](milestones/v0.2.0-smart-system.md)
-
-| #   | Task                                                 | ID     | Priority |  Status   |
-| --- | ---------------------------------------------------- | ------ | :------: | :-------: |
-| 230 | Extend OutboundMessage with media/attachment support | OB-600 | 🔴 High  | ◻ Pending |
-| 231 | WhatsApp: send to specific number (proactive)        | OB-601 | 🔴 High  | ◻ Pending |
-| 232 | WhatsApp: send file/document attachments             | OB-602 | 🔴 High  | ◻ Pending |
-| 233 | WhatsApp: receive and transcribe voice messages      | OB-605 |  🟡 Med  | ◻ Pending |
-| 234 | WhatsApp: send voice replies (TTS)                   | OB-606 |  🟢 Low  | ◻ Pending |
-| 235 | WebChat: file download support                       | OB-607 |  🟡 Med  | ◻ Pending |
-
-### Phase 34: Content Publishing & Sharing — [v0.2.0](milestones/v0.2.0-smart-system.md)
-
-| #   | Task                                                          | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------- | ------ | :------: | :-------: |
-| 236 | Local file server — serve generated content via HTTP          | OB-610 | 🔴 High  | ◻ Pending |
-| 237 | Share via WhatsApp — send generated files as attachments      | OB-611 | 🔴 High  | ◻ Pending |
-| 238 | Share via email — SMTP integration for sending files          | OB-612 |  🟡 Med  | ◻ Pending |
-| 239 | GitHub Pages publish — push HTML to gh-pages branch           | OB-613 |  🟡 Med  | ◻ Pending |
-| 240 | Shareable link generation — unique URLs for generated content | OB-614 |  🟡 Med  | ◻ Pending |
-
----
-
-## Planned — Scale & Team
-
-### Phase 37: Access Control + Hierarchical Masters — [v0.4.0](milestones/v0.4.0-scale.md)
-
-| #   | Task                                                                             | ID     | Priority |  Status   |
-| --- | -------------------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 257 | Access control DB table + role definitions (owner/admin/developer/viewer/custom) | OB-750 | 🔴 High  | ◻ Pending |
-| 258 | Access control enforcement in auth layer — scopes, actions, daily budget         | OB-751 | 🔴 High  | ◻ Pending |
-| 259 | Access control CLI — `npx openbridge access add +1234567890 --role developer`    | OB-752 |  🟡 Med  | ◻ Pending |
-| 260 | Sub-master detection — auto-detect large sub-projects by size/complexity         | OB-753 | 🔴 High  | ◻ Pending |
-| 261 | Sub-master lifecycle — spawn/manage independent sub-master DBs                   | OB-754 | 🔴 High  | ◻ Pending |
-| 262 | Root-to-sub-master delegation — cross-cutting task routing                       | OB-755 | 🔴 High  | ◻ Pending |
-| 263 | `sub_masters` registry table in root DB                                          | OB-756 | 🔴 High  | ◻ Pending |
-| 264 | Tests for access control and hierarchical masters                                | OB-757 | 🔴 High  | ◻ Pending |
-
-### Phase 38: Server Deployment Mode — [v0.4.0](milestones/v0.4.0-scale.md)
-
-| #   | Task                                                          | ID     | Priority |  Status   |
-| --- | ------------------------------------------------------------- | ------ | :------: | :-------: |
-| 265 | Headless startup mode — no QR code display dependency         | OB-760 | 🔴 High  | ◻ Pending |
-| 266 | Remote workspace via git clone + auto-pull on changes         | OB-761 | 🔴 High  | ◻ Pending |
-| 267 | Docker container image (Dockerfile + docker-compose)          | OB-762 | 🔴 High  | ◻ Pending |
-| 268 | Environment-based configuration — all config via ENV vars     | OB-763 |  🟡 Med  | ◻ Pending |
-| 269 | Health check + monitoring endpoints for server operation      | OB-764 |  🟡 Med  | ◻ Pending |
-| 270 | Deployment documentation — VPS, Docker, cloud provider guides | OB-765 |  🟡 Med  | ◻ Pending |
-
-### Phase 39: Agent Orchestration — [v1.0.0](milestones/v1.0.0-team.md)
-
-| #   | Task                                                                    | ID     | Priority |  Status   |
-| --- | ----------------------------------------------------------------------- | ------ | :------: | :-------: |
-| 271 | Role-based worker types (Architect, Coder, Tester, Reviewer)            | OB-770 | 🔴 High  | ◻ Pending |
-| 272 | Task dependency chains — Architect → Coder → Tester → Reviewer pipeline | OB-771 | 🔴 High  | ◻ Pending |
-| 273 | Worker synchronization via DB — shared state coordination               | OB-772 | 🔴 High  | ◻ Pending |
-| 274 | Parallel worker conflict detection — same-file edit resolution          | OB-773 |  🟡 Med  | ◻ Pending |
-| 275 | Worker result validation — auto-verify output (tests/typecheck)         | OB-774 |  🟡 Med  | ◻ Pending |
-
----
-
-## Backlog — Unscheduled
-
-| Task                                                                 | ID     | Priority |
-| -------------------------------------------------------------------- | ------ | :------: |
-| Docker sandbox — run workers in containers for untrusted workspaces  | OB-193 |  🟢 Low  |
-| Interactive AI views — AI generates reports/dashboards on local HTTP | OB-124 |  🟢 Low  |
-| E2E test: Business files use case (CSV workspace)                    | OB-306 |  🟢 Low  |
-| Skill creator — Master creates reusable skill templates              | OB-192 |  🟢 Low  |
-| Context compaction — progressive summarization                       | OB-190 |  🟡 Med  |
-| Scheduled tasks — cron-like task scheduling                          | —      |  🟢 Low  |
-| AI tool marketplace — community connectors and providers             | —      |  🟢 Low  |
-| Webhook connector — HTTP endpoint for CI/CD integration              | —      |  🟢 Low  |
-| PDF generation — HTML-to-PDF conversion                              | —      |  🟢 Low  |
-| Secrets management — encrypted token storage                         | —      |  🟢 Low  |
-| WhatsApp session persistence — avoid re-scan                         | —      |  🟢 Low  |
-
----
-
-## Completed Milestones
-
-**Phases 1–14 (98 tasks):** MVP — Connectors, bridge core, AI discovery, Master AI, exploration, delegation.
-
-**Phases 16–21 (34 tasks):** Self-Governing Master — AgentRunner, tool profiles, model selection, worker orchestration, self-improvement.
-
-**Phases 22–24 (17 tasks):** E2E hardening, production polish, 5 connectors (Console, WhatsApp, Telegram, WebChat, Discord), incremental exploration.
-
-**Phases 25–28 (16 tasks):** Smart Orchestration — keyword task classifier, auto-delegation via SPAWN markers, worker turn budgets, progress feedback, workspace mapping reliability, connector hardening, test fixes, docs update.
-
-**Phase 29 (8 tasks):** AI Classification + Live Progress — replaced keyword classifier with AI-powered intent classification, added live progress events across all 5 connectors.
-
-**Phase 30 (30 tasks):** Production Readiness v0.0.1 — npm packaging, process resilience, logging, security hardening, documentation accuracy, CI/CD pipeline, test coverage, CLI polish, API surface cleanup, final verification + tag.
-
-**Hotfixes (2026-02-22–23):** Master session ID format, exploration timeout, stdin pipe hang, env var contamination, Zod passthrough, WhatsApp --single-process removal, incremental workspace change detection.
-
-**Total completed: 207 tasks across 30 phases.**
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | ID     | Priority | Status  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-----: |
+| 270 | **Wire exploration state to SQLite.** In `src/master/exploration-coordinator.ts`, there are 16+ calls to `dotFolder.writeExplorationState()` and reads via `dotFolder.readExplorationState()`. Replace ALL of them with `memory.getSession('exploration')` / `memory.upsertSession()` or direct writes to the `exploration_state` table via a new helper method on MemoryManager (e.g., `memory.upsertExplorationState(state)`). The exploration-coordinator checkpoints state at lines 243, 256, 284, 300, 397, 435, 454, 498, 517, 538, 637, 657, 750, 846, 865, 903 — every one of these must be migrated. The JSON file `exploration/exploration-state.json` should no longer be written. Keep a read-fallback: if the DB is empty, try `dotFolder.readExplorationState()` once for migration. Update affected tests in `tests/`. | OB-800 | 🔴 High  | ✅ Done |
+| 271 | **Wire exploration scan results to SQLite.** In `src/master/exploration-coordinator.ts`, replace `dotFolder.writeStructureScan()` (line 432), `dotFolder.readStructureScan()` (line 515), `dotFolder.writeClassification()` (line 495), `dotFolder.readClassification()` (line 516), `dotFolder.writeDirectoryDive()` (line 717), and `dotFolder.readDirectoryDive()` (line 597) with writes to the `exploration_state` table (store JSON blobs in the `directory_dives` or `status` columns) or to `context_chunks` with category `'structure-scan'`, `'classification'`, `'directory-dive'`. Remove the JSON files `exploration/structure-scan.json`, `exploration/classification.json`, and `exploration/dirs/*.json`. Keep read-fallbacks for one-time migration from JSON.                                                       | OB-801 | 🔴 High  | ✅ Done |
+| 272 | **Wire exploration.log to the DB.** In `src/master/master-manager.ts` there are **15 calls** to `dotFolder.appendLog()` at lines 1114, 1972, 2012, 2100, 2186, 2200, 2225, 2262, 2287, 2450, 2490, 3364, 3390, 3404, 3651. In `src/master/exploration-coordinator.ts` there is 1 more at line 890. Replace ALL 16 calls with a new `memory.logExploration(entry)` method that INSERTs into `exploration_progress` (reuse existing table — add a `log_entry` text column if needed) or into `agent_activity` with `type='log'`. Add the `logExploration(entry)` method to `src/memory/index.ts`. Also replace `dotFolder.readLog()` in `dotfolder-manager.ts` lines 223–237 with a DB query. Remove the flat-file `exploration.log` write from `dotfolder-manager.ts` `appendLog()` (line 210).                                        | OB-802 | 🔴 High  | ✅ Done |
+| 273 | **Wire agents.json writes to system_config.** In `src/master/dotfolder-manager.ts`, method `writeAgents()` (line 199) writes `agents.json`. Also call `memory.setSystemConfig('agents', registry)` — `setSystemConfig` already exists on MemoryManager. In `readAgents()` (line 184), read from DB first via `memory.getSystemConfig('agents')`, fall back to JSON. In `src/master/master-manager.ts`, `writeAgentsRegistry()` (line 2393) calls `dotFolder.writeAgents()` — add the DB write there too. In `src/master/exploration-coordinator.ts` line 887, same pattern. Once DB is populated, stop writing the JSON file. The `memory` reference is available via `this.memory` in master-manager and can be passed to exploration-coordinator.                                                                                   | OB-803 |  🟡 Med  | ✅ Done |
+| 274 | **Wire classifications.json writes to system_config.** In `src/master/dotfolder-manager.ts`, method `writeClassifications()` (line 936) writes `classifications.json`. Also call `memory.setSystemConfig('classifications', data)`. In `readClassifications()` (line 923), read from DB first, fall back to JSON. In `src/master/master-manager.ts` `cacheClassificationResult()` (lines 1545–1567), add the DB write alongside the JSON write. Stop writing the JSON file once DB is populated.                                                                                                                                                                                                                                                                                                                                      | OB-804 |  🟡 Med  | ✅ Done |
+| 275 | **Wire workers.json writes to system_config.** In `src/master/master-manager.ts`, `persistWorkerRegistry()` (line 1232) calls `dotFolder.writeWorkers(registry)`. Also call `memory.setSystemConfig('workers', registry)`. In `loadWorkerRegistry()` (line 1212), read from DB first via `memory.getSystemConfig('workers')`, fall back to JSON. Stop writing the JSON file once DB is populated.                                                                                                                                                                                                                                                                                                                                                                                                                                     | OB-805 |  🟡 Med  | ✅ Done |
+| 276 | **Wire profiles.json reads to system_config.** In `src/master/master-manager.ts`, there are 4 calls to `dotFolder.readProfiles()` at lines 840, 3544, 3699, 3784. Replace each with `memory.getSystemConfig('profiles')` first, falling back to `dotFolder.readProfiles()`. In `dotfolder-manager.ts`, `writeProfiles()` (line 439) should also call `memory.setSystemConfig('profiles', data)`. This ensures profiles are read from DB once migrated.                                                                                                                                                                                                                                                                                                                                                                                | OB-806 |  🟡 Med  | ✅ Done |
+| 277 | **Wire system prompt to the prompts table.** In `src/master/master-manager.ts`, `seedSystemPrompt()` (line 835) reads/writes `prompts/master-system.md` via `dotFolder.readSystemPrompt()` / `dotFolder.writeSystemPrompt()`. Change `seedSystemPrompt()` to check `memory.getActivePrompt('master-system')` first — if found, use that content instead of the file. When writing, call `memory.createPromptVersion('master-system', content)` in addition to the file write. In `rewritePrompt()` (lines 3428/3468), replace `fs.readFile(promptPath)` / `fs.writeFile(promptPath)` with `memory.getActivePrompt(promptName)` / `memory.createPromptVersion(promptName, rewrittenContent)`. This enables prompt effectiveness tracking via `recordPromptOutcome()`.                                                                  | OB-807 |  🟡 Med  | ✅ Done |
+| 278 | **Wire master-session.json to sessions table.** In `src/master/master-manager.ts`, `saveMasterSessionToStore()` (line 421) calls `dotFolder.writeMasterSession()`. Also call `memory.upsertSession({ type: 'master', ...session })`. In `loadMasterSessionFromStore()` (line 412), read from DB first via `memory.getSession('master')`, fall back to JSON. This is the prerequisite for eliminating the last JSON file.                                                                                                                                                                                                                                                                                                                                                                                                              | OB-808 |  🟡 Med  | ✅ Done |
+| 279 | **Wire task recording fallback to DB-only.** In `src/master/master-manager.ts`, `recordTaskToStore()` (line 468) already writes to memory when available, but falls back to `dotFolder.recordTask()` (line 480). Additionally, `spawnWorker()` writes task records via `dotFolder.writeTask()` at lines 4066 and 4141 (success and failure paths). Remove the dotFolder fallback writes — if memory is available, use it exclusively. If memory is not available (should not happen in production), log a warning instead of writing JSON.                                                                                                                                                                                                                                                                                            | OB-809 |  🟡 Med  | ✅ Done |
+| 280 | **Wire workspace-map.json to DB-only.** In `src/master/master-manager.ts`, `writeWorkspaceMapToStore()` (line 398) calls `dotFolder.writeMap(map)` as fallback. `readWorkspaceMapFromStore()` (line 383) calls `dotFolder.readMap()`. Remove the JSON fallback — use `memory.storeChunks()` / `memory.getChunksByScope()` exclusively. In `exploration-coordinator.ts` line 843, `dotFolder.writeMap()` is called after exploration assembly — replace with memory write.                                                                                                                                                                                                                                                                                                                                                             | OB-810 |  🟡 Med  | ✅ Done |
+| 281 | **Schedule eviction on startup.** In `src/core/bridge.ts` (after MemoryManager init around line 118), call `memory.evictOldData()` once on startup (fire-and-forget, log errors). Then schedule it to run every 24 hours via `setInterval`. Use the default thresholds (conversations: 30/90/365 days tiered, tasks: 180 days, chunks: 30 days stale, activity: 24 hours). Store the interval handle and clear it in `bridge.stop()`. Log eviction results at info level.                                                                                                                                                                                                                                                                                                                                                             | OB-811 |  🟡 Med  | ✅ Done |
+| 282 | **Wire sub-master registration through MemoryManager.** In `src/master/sub-master-manager.ts`, the `spawnSubMaster()` method (line 163) writes directly to SQLite via `this.rootDb.prepare(INSERT INTO sub_masters...)`. Refactor to call `memory.registerSubMaster()` instead of raw SQL. In `updateStatus()` (line 228), call `memory.updateSubMasterStatus()` instead of raw SQL. In `stopSubMaster()` (line 195), call `memory.updateSubMasterStatus(id, 'disabled')`. The constructor should accept a `MemoryManager` reference instead of a raw `Database` instance. Update tests in `tests/` accordingly.                                                                                                                                                                                                                      | OB-812 |  🟡 Med  | ✅ Done |
+| 283 | **Remove legacy .openbridge subdirectories.** After all preceding wiring tasks (800–810) are done, update `createFolder()` in `src/master/dotfolder-manager.ts` to only create `.openbridge/` and `.openbridge/generated/`. Remove creation of `tasks/`, `exploration/`, `exploration/dirs/`, `prompts/`. Update `createExplorationDir()` to be a no-op. Remove all JSON read/write methods from `DotFolderManager` that are no longer called (dead code). Update all affected tests in `tests/`.                                                                                                                                                                                                                                                                                                                                     | OB-813 |  🟡 Med  | ✅ Done |
+| 284 | **Add integration tests for memory wiring.** Create `tests/integration/memory-wiring.test.ts` that spins up a Bridge with MemoryManager, sends a message through the full pipeline, and verifies: (a) `conversations` table has user + master rows, (b) `tasks` table has a task record, (c) `learnings` table has a learning, (d) `context_chunks` has exploration data, (e) `sessions` has the master session, (f) `agent_activity` has entries with status updates, (g) `system_config` has agents/classifications/workers/profiles keys, (h) `exploration_state` has exploration checkpoint data. This test validates the full end-to-end wiring, not individual store modules.                                                                                                                                                   | OB-814 | 🔴 High  | ✅ Done |
+| 285 | **Verify all tests pass after wiring changes.** Run `npm run lint && npm run typecheck && npm test && npm run build`. Fix any regressions introduced by the preceding wiring tasks (800–814). The WhatsApp reconnect test is known-flaky and can be skipped if it's the only failure. Ensure test count is at or above 1621.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | OB-815 | 🔴 High  | ✅ Done |
+| 286 | **Clean up .openbridge on fresh start.** After all wiring is complete, verify that a fresh `npm run dev` (with no `.openbridge/` folder) creates only: `.openbridge/openbridge.db`, `.openbridge/openbridge.db-wal`, `.openbridge/openbridge.db-shm`, `.openbridge/generated/`, and `.openbridge/master-session.json` (temporary — until the sessions-table task is done). No `tasks/`, `exploration/`, `prompts/`, `agents.json`, `classifications.json`, `workers.json`, `profiles.json`, `learnings.json`, `workspace-map.json`, or `exploration.log` should be created. If the sessions-table task (808) is done, `master-session.json` should also be absent. Fix any code that still creates these files.                                                                                                                       | OB-816 | 🔴 High  | ✅ Done |
 
 ---
 
 ## Status Legend
 
-|     Status     | Meaning                   |
-| :------------: | ------------------------- |
-|   ◻ Pending    | Not started               |
-| 🔄 In Progress | Currently being worked on |
-|    ✅ Done     | Completed and verified    |
+|  Status   | Description               |
+| :-------: | ------------------------- |
+|  ✅ Done  | Completed and verified    |
+| 🔄 Active | Currently being worked on |
+| ◻ Pending | Not started               |
+
+---
+
+## Backlog — Unscheduled
+
+| Task                                                                      | ID     | Priority |
+| ------------------------------------------------------------------------- | ------ | :------: |
+| Migrate audit-logger.ts to SQLite (create audit_log table)                | OB-820 |  🟡 Med  |
+| Add DB schema versioning (migration table with version number)            | OB-821 |  🟡 Med  |
+| Conversation context injection from DB (replace buildConversationContext) | OB-822 |  🟡 Med  |

@@ -1,9 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import type {
-  WorkspaceMap,
   AgentsRegistry,
   ExplorationLogEntry,
   TaskRecord,
@@ -20,9 +17,7 @@ import type {
   ClassificationCache,
 } from '../types/master.js';
 import {
-  WorkspaceMapSchema,
   AgentsRegistrySchema,
-  ExplorationLogEntrySchema,
   TaskRecordSchema,
   ExplorationStateSchema,
   StructureScanSchema,
@@ -40,16 +35,12 @@ import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
 import type { WorkersRegistry } from './worker-registry.js';
 import { WorkersRegistrySchema } from './worker-registry.js';
 
-const execAsync = promisify(exec);
-
 /**
  * Manages the .openbridge/ folder inside the target workspace.
  * This folder contains:
- * - .git/ — local git repo tracking Master AI changes
- * - workspace-map.json — auto-generated project understanding
- * - exploration.log — timestamped scan history
- * - agents.json — discovered AI tools + roles
- * - tasks/ — task history (one JSON per task)
+ * - openbridge.db — SQLite database (primary storage for all runtime data)
+ * - generated/ — AI-generated output files
+ * - agents.json — discovered AI tools + roles (legacy fallback; DB is primary)
  */
 export class DotFolderManager {
   private readonly workspacePath: string;
@@ -112,116 +103,11 @@ export class DotFolderManager {
    * Create .openbridge folder structure
    * Creates:
    * - .openbridge/
-   * - .openbridge/tasks/
-   * - .openbridge/exploration/
-   * - .openbridge/exploration/dirs/
+   * - .openbridge/generated/
    */
   public async createFolder(): Promise<void> {
     await fs.mkdir(this.dotFolderPath, { recursive: true });
-    await fs.mkdir(this.tasksPath, { recursive: true });
-    await fs.mkdir(this.explorationPath, { recursive: true });
-    await fs.mkdir(this.explorationDirsPath, { recursive: true });
-    await fs.mkdir(this.promptsPath, { recursive: true });
-  }
-
-  /**
-   * Initialize git repository inside .openbridge/
-   * This repo tracks all Master AI changes to the workspace knowledge.
-   */
-  public async initGit(): Promise<void> {
-    const gitPath = path.join(this.dotFolderPath, '.git');
-
-    // Check if git repo already exists
-    try {
-      await fs.access(gitPath);
-      return; // Already initialized
-    } catch {
-      // Not initialized, proceed
-    }
-
-    // Initialize git repo
-    await execAsync('git init', { cwd: this.dotFolderPath });
-
-    // Create .gitignore to avoid tracking unnecessary files
-    const gitignore = `# Ignore node_modules if they somehow end up here
-node_modules/
-
-# Ignore OS files
-.DS_Store
-Thumbs.db
-`;
-    await fs.writeFile(path.join(this.dotFolderPath, '.gitignore'), gitignore, 'utf-8');
-
-    // Initial commit
-    await this.commitChanges('Initial commit: .openbridge folder created');
-  }
-
-  /**
-   * Commit changes to the .openbridge git repo
-   */
-  public async commitChanges(message: string): Promise<void> {
-    try {
-      // Add all changes
-      await execAsync('git add -A', { cwd: this.dotFolderPath });
-
-      // Check if there are changes to commit
-      const { stdout: status } = await execAsync('git status --porcelain', {
-        cwd: this.dotFolderPath,
-      });
-
-      if (!status.trim()) {
-        // No changes to commit
-        return;
-      }
-
-      // Commit with message
-      await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-        cwd: this.dotFolderPath,
-      });
-    } catch (error) {
-      // If git user is not configured, try to set a default
-      if (error instanceof Error && error.message.includes('user.email')) {
-        await execAsync('git config user.email "master@openbridge.local"', {
-          cwd: this.dotFolderPath,
-        });
-        await execAsync('git config user.name "OpenBridge Master AI"', {
-          cwd: this.dotFolderPath,
-        });
-
-        // Retry commit
-        await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-          cwd: this.dotFolderPath,
-        });
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * Read workspace map from workspace-map.json
-   */
-  public async readMap(): Promise<WorkspaceMap | null> {
-    const mapPath = this.getMapPath();
-
-    try {
-      const content = await fs.readFile(mapPath, 'utf-8');
-      const data = JSON.parse(content) as unknown;
-      return WorkspaceMapSchema.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Write workspace map to workspace-map.json
-   */
-  public async writeMap(map: WorkspaceMap): Promise<void> {
-    // Validate before writing
-    const validated = WorkspaceMapSchema.parse(map);
-
-    const mapPath = this.getMapPath();
-    await fs.writeFile(mapPath, JSON.stringify(validated, null, 2), 'utf-8');
+    await fs.mkdir(path.join(this.dotFolderPath, 'generated'), { recursive: true });
   }
 
   /**
@@ -284,76 +170,12 @@ Thumbs.db
 
   /**
    * Append an entry to exploration.log
+   * @deprecated Flat-file logging removed. Use memory.logExploration() instead.
+   * This method is kept for call-site compatibility during the memory migration.
    */
-  public async appendLog(entry: ExplorationLogEntry): Promise<void> {
-    // Validate before appending
-    const validated = ExplorationLogEntrySchema.parse(entry);
-
-    const logPath = this.getLogPath();
-    const line = JSON.stringify(validated) + '\n';
-
-    await fs.appendFile(logPath, line, 'utf-8');
-  }
-
-  /**
-   * Read all exploration log entries
-   */
-  public async readLog(): Promise<ExplorationLogEntry[]> {
-    const logPath = this.getLogPath();
-
-    try {
-      const content = await fs.readFile(logPath, 'utf-8');
-      const lines = content
-        .split('\n')
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line) as unknown);
-
-      return lines.map((line) => ExplorationLogEntrySchema.parse(line));
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Record a task in tasks/ folder and commit to git
-   */
-  public async recordTask(task: TaskRecord): Promise<void> {
-    // Validate before recording
-    const validated = TaskRecordSchema.parse(task);
-
-    const taskPath = path.join(this.tasksPath, `${task.id}.json`);
-    await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
-
-    // Commit the task to git with conventional commit format
-    const commitMessage = `chore(master): record task ${task.id} - ${task.status}`;
-    await this.commitChanges(commitMessage);
-  }
-
-  /**
-   * Write a task record to tasks/ folder WITHOUT committing to git.
-   * Useful for worker tasks that should be batched into a single commit later.
-   */
-  public async writeTask(task: TaskRecord): Promise<void> {
-    // Validate before recording
-    const validated = TaskRecordSchema.parse(task);
-
-    const taskPath = path.join(this.tasksPath, `${task.id}.json`);
-    await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
-  }
-
-  /**
-   * Read a task by ID
-   */
-  public async readTask(taskId: string): Promise<TaskRecord | null> {
-    const taskPath = path.join(this.tasksPath, `${taskId}.json`);
-
-    try {
-      const content = await fs.readFile(taskPath, 'utf-8');
-      const data = JSON.parse(content) as unknown;
-      return TaskRecordSchema.parse(data);
-    } catch {
-      return null;
-    }
+  public async appendLog(_entry: ExplorationLogEntry): Promise<void> {
+    // No-op: exploration log is now written to the DB via memory.logExploration().
+    // The flat-file exploration.log is no longer written.
   }
 
   /**
@@ -379,15 +201,11 @@ Thumbs.db
   }
 
   /**
-   * Create exploration directory structure
-   * Creates:
-   * - .openbridge/exploration/
-   * - .openbridge/exploration/dirs/
+   * No-op: exploration directories are no longer created on disk.
+   * Exploration state is stored in the SQLite DB via MemoryManager.
+   * @deprecated OB-813 — exploration subdirs removed; DB is the primary store.
    */
-  public async createExplorationDir(): Promise<void> {
-    await fs.mkdir(this.explorationPath, { recursive: true });
-    await fs.mkdir(this.explorationDirsPath, { recursive: true });
-  }
+  public async createExplorationDir(): Promise<void> {}
 
   /**
    * Read exploration state from exploration-state.json
@@ -411,6 +229,7 @@ Thumbs.db
     // Validate before writing
     const validated = ExplorationStateSchema.parse(state);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const statePath = path.join(this.explorationPath, 'exploration-state.json');
     await fs.writeFile(statePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -437,6 +256,7 @@ Thumbs.db
     // Validate before writing
     const validated = StructureScanSchema.parse(scan);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const scanPath = path.join(this.explorationPath, 'structure-scan.json');
     await fs.writeFile(scanPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -463,6 +283,7 @@ Thumbs.db
     // Validate before writing
     const validated = ClassificationSchema.parse(classification);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const classificationPath = path.join(this.explorationPath, 'classification.json');
     await fs.writeFile(classificationPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -489,6 +310,7 @@ Thumbs.db
     // Validate before writing
     const validated = DirectoryDiveResultSchema.parse(dive);
 
+    await fs.mkdir(this.explorationDirsPath, { recursive: true });
     const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
     await fs.writeFile(divePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -699,19 +521,6 @@ Thumbs.db
   }
 
   /**
-   * Read a specific prompt template content from .openbridge/prompts/<filename>
-   */
-  public async readPromptTemplate(filename: string): Promise<string | null> {
-    const promptPath = path.join(this.promptsPath, filename);
-
-    try {
-      return await fs.readFile(promptPath, 'utf-8');
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Write a prompt template file to .openbridge/prompts/<filename>
    * Also updates the manifest with metadata.
    */
@@ -721,15 +530,11 @@ Thumbs.db
     metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>,
   ): Promise<void> {
     await fs.mkdir(this.promptsPath, { recursive: true });
-
-    // Write the prompt file
     const promptPath = path.join(this.promptsPath, filename);
     await fs.writeFile(promptPath, content, 'utf-8');
 
-    // Update manifest
     const manifest = await this.readPromptManifest();
     const now = new Date().toISOString();
-
     const existingPrompt = manifest?.prompts[metadata.id];
     const promptTemplate: PromptTemplate = {
       ...metadata,
@@ -738,22 +543,27 @@ Thumbs.db
       updatedAt: now,
       lastUsedAt: existingPrompt?.lastUsedAt,
     };
-
     const newManifest: PromptManifest = manifest ?? {
       prompts: {},
       createdAt: now,
       updatedAt: now,
       schemaVersion: '1.0.0',
     };
-
     newManifest.prompts[metadata.id] = promptTemplate;
     newManifest.updatedAt = now;
-
     await this.writePromptManifest(newManifest);
   }
 
   /**
-   * Get a prompt template by ID from the manifest
+   * Read the content of a prompt template file from .openbridge/prompts/<filename>.
+   */
+  public async readPromptTemplate(filename: string): Promise<string> {
+    return fs.readFile(path.join(this.promptsPath, filename), 'utf-8');
+  }
+
+  /**
+   * Get a prompt template by ID from the manifest.
+   * Returns null if the manifest doesn't exist or the prompt ID is not found.
    */
   public async getPromptTemplate(promptId: string): Promise<PromptTemplate | null> {
     const manifest = await this.readPromptManifest();
@@ -980,14 +790,12 @@ Thumbs.db
 
   /**
    * Initialize .openbridge folder if it doesn't exist
-   * Creates folder structure and initializes git repo
    */
   public async initialize(): Promise<void> {
     const folderExists = await this.exists();
 
     if (!folderExists) {
       await this.createFolder();
-      await this.initGit();
     }
   }
 
