@@ -2,7 +2,11 @@ import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
-import { storeChunks as _storeChunks, markStale as _markStale } from './chunk-store.js';
+import {
+  storeChunks as _storeChunks,
+  markStale as _markStale,
+  deleteStaleChunks as _deleteStaleChunks,
+} from './chunk-store.js';
 import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
 import type { TaskRecord, LearnedParams } from './task-store.js';
 import {
@@ -30,6 +34,7 @@ import {
   type SessionRecord,
 } from './migration.js';
 import { evictOldData as _evictOldData, type EvictionOptions } from './eviction.js';
+import { buildBriefing as _buildBriefing } from './worker-briefing.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -67,8 +72,6 @@ export type { SearchOptions } from './retrieval.js';
 // ---------------------------------------------------------------------------
 // MemoryManager
 // ---------------------------------------------------------------------------
-
-const NOT_IMPLEMENTED = new Error('not implemented');
 
 export class MemoryManager {
   private dbPath: string;
@@ -113,6 +116,22 @@ export class MemoryManager {
   markStale(scopes: string[]): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _markStale(this.db, scopes);
+    return Promise.resolve();
+  }
+
+  /** Return the unique scopes that have at least one stale chunk in the DB. */
+  getStaleScopes(): Promise<string[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const rows = this.db
+      .prepare('SELECT DISTINCT scope FROM context_chunks WHERE stale = 1')
+      .all() as { scope: string }[];
+    return Promise.resolve(rows.map((r) => r.scope));
+  }
+
+  /** Immediately delete all stale chunks (stale=1) and their FTS5 entries. */
+  deleteStaleChunks(): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _deleteStaleChunks(this.db);
     return Promise.resolve();
   }
 
@@ -291,11 +310,12 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Worker Briefing (implemented by worker-briefing.ts — OB-722)
+  // Worker Briefing (worker-briefing.ts — OB-722)
   // -------------------------------------------------------------------------
 
-  buildBriefing(_task: string, _scope?: string): Promise<string> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  buildBriefing(task: string, scope?: string): Promise<string> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return _buildBriefing(this.db, task, scope);
   }
 
   // -------------------------------------------------------------------------

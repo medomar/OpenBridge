@@ -1890,6 +1890,23 @@ export class MasterManager {
     });
 
     try {
+      // Mark affected memory chunks as stale so the search index reflects
+      // that these directory scopes need refreshed data.
+      if (this.memory) {
+        const changedScopes = this.changeTracker.extractChangedScopes(
+          changes.changedFiles,
+          changes.deletedFiles,
+        );
+        if (changedScopes.length > 0) {
+          try {
+            await this.memory.markStale(changedScopes);
+            logger.info({ changedScopes }, 'Marked stale memory scopes for incremental refresh');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to mark stale scopes — continuing');
+          }
+        }
+      }
+
       const prompt = generateIncrementalExplorationPrompt(
         this.workspacePath,
         existingMap,
@@ -1927,6 +1944,23 @@ export class MasterManager {
       const updatedMap = await this.readWorkspaceMapFromStore();
       if (updatedMap) {
         this.workspaceMapSummary = this.buildMapSummary(updatedMap);
+      }
+
+      // Re-explore any directories that were marked stale and store fresh chunks.
+      // This replaces the stale memory data with up-to-date content without
+      // triggering a full 5-phase re-exploration.
+      if (this.memory) {
+        const coordinator = new ExplorationCoordinator({
+          workspacePath: this.workspacePath,
+          masterTool: this.masterTool,
+          discoveredTools: this.discoveredTools,
+          memory: this.memory,
+        });
+        try {
+          await coordinator.reexploreStaleDirs();
+        } catch (err) {
+          logger.warn({ err }, 'Stale dir re-exploration failed — continuing');
+        }
       }
 
       await this.dotFolder.appendLog({

@@ -349,6 +349,29 @@ export class WorkspaceChangeTracker {
   }
 
   /**
+   * Extract unique top-level directory scopes from changed and deleted file paths.
+   * Each file's immediate parent directory becomes a scope.
+   * Root-level files (no directory separator) map to '.' (the workspace root scope).
+   *
+   * Used by ExplorationCoordinator to decide which memory chunks to mark stale.
+   */
+  public extractChangedScopes(changedFiles: string[], deletedFiles: string[] = []): string[] {
+    const scopes = new Set<string>();
+    for (const filePath of [...changedFiles, ...deletedFiles]) {
+      // Normalise to forward slashes for cross-platform compatibility
+      const normalised = filePath.replace(/\\/g, '/');
+      const firstSlash = normalised.indexOf('/');
+      if (firstSlash > 0) {
+        scopes.add(normalised.slice(0, firstSlash));
+      } else {
+        // Root-level file — maps to the workspace root scope
+        scopes.add('.');
+      }
+    }
+    return Array.from(scopes);
+  }
+
+  /**
    * Filter out paths that fall under excluded directories.
    */
   private filterExcludedPaths(paths: string[]): string[] {
