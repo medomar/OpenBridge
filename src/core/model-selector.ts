@@ -140,9 +140,9 @@ export async function getRecommendedModel(
 ): Promise<ModelRecommendation | null> {
   try {
     const learned = await memory.getLearnedParams(taskType);
-    if (learned.total_tasks < MIN_TASKS_FOR_LEARNING) {
+    if (!learned || learned.total_tasks < MIN_TASKS_FOR_LEARNING) {
       logger.debug(
-        { taskType, total_tasks: learned.total_tasks, min: MIN_TASKS_FOR_LEARNING },
+        { taskType, total_tasks: learned?.total_tasks ?? 0, min: MIN_TASKS_FOR_LEARNING },
         'Insufficient learning data — skipping adaptive model selection',
       );
       return null;
