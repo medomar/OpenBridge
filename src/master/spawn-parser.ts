@@ -27,8 +27,10 @@ const logger = createLogger('spawn-parser');
 export const SpawnMarkerBodySchema = z.object({
   /** The prompt/instructions for the worker */
   prompt: z.string().min(1),
-  /** Model override (e.g., 'haiku', 'sonnet', 'opus') */
+  /** Model override (e.g., 'haiku', 'sonnet', 'opus', or tier: 'fast', 'balanced', 'powerful') */
   model: z.string().optional(),
+  /** AI tool to use for this worker (e.g., 'claude', 'codex', 'aider'). Defaults to master tool. */
+  tool: z.string().optional(),
   /** Max agentic turns for this worker */
   maxTurns: z.number().int().positive().optional(),
   /** Timeout in milliseconds */
