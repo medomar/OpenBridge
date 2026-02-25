@@ -44,8 +44,13 @@ import {
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
   cleanupOldActivity as _cleanupOldActivity,
+  insertExplorationProgress as _insertExplorationProgress,
+  updateExplorationProgressById as _updateExplorationProgressById,
+  getExplorationProgressByExplorationId as _getExplorationProgressByExplorationId,
   type ActivityRecord,
   type ActivityUpdate,
+  type ExplorationProgressRecord,
+  type ExplorationProgressUpdate,
 } from './activity-store.js';
 
 // ---------------------------------------------------------------------------
@@ -80,7 +85,12 @@ export interface PromptRecord {
 export type { WorkspaceState, SessionRecord } from './migration.js';
 export type { EvictionOptions } from './eviction.js';
 export type { SearchOptions } from './retrieval.js';
-export type { ActivityRecord, ActivityUpdate } from './activity-store.js';
+export type {
+  ActivityRecord,
+  ActivityUpdate,
+  ExplorationProgressRecord,
+  ExplorationProgressUpdate,
+} from './activity-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -441,6 +451,31 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _cleanupOldActivity(this.db, cutoffHours);
     return Promise.resolve();
+  }
+
+  // -------------------------------------------------------------------------
+  // Exploration progress (activity-store.ts — OB-745)
+  // -------------------------------------------------------------------------
+
+  /** Insert an exploration_progress row; returns the auto-increment row id. */
+  insertExplorationProgress(record: Omit<ExplorationProgressRecord, 'id'>): Promise<number> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_insertExplorationProgress(this.db, record));
+  }
+
+  /** Update an exploration_progress row by its numeric id. */
+  updateExplorationProgressById(id: number, updates: ExplorationProgressUpdate): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _updateExplorationProgressById(this.db, id, updates);
+    return Promise.resolve();
+  }
+
+  /** Return all exploration_progress rows for a given exploration_id. */
+  getExplorationProgressByExplorationId(
+    explorationId: string,
+  ): Promise<ExplorationProgressRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getExplorationProgressByExplorationId(this.db, explorationId));
   }
 
   /** Return pending or in-progress rows from the exploration_progress table. */

@@ -79,6 +79,12 @@ export interface ExplorationOptions {
   batchSize?: number;
   /** Optional MemoryManager for storing exploration results as searchable chunks */
   memory?: MemoryManager;
+  /**
+   * Optional agent_activity.id for the explorer agent running this exploration.
+   * When provided (and memory is set), exploration phases and directory dives are
+   * tracked in the exploration_progress table for the "status" command.
+   */
+  explorationId?: string;
 }
 
 /**
@@ -96,6 +102,9 @@ export class ExplorationCoordinator {
   private readonly onProgress?: ExplorationProgressCallback;
   private readonly batchSizeOverride?: number;
   private readonly memory?: MemoryManager;
+  private readonly explorationId?: string;
+  /** Maps directory path → exploration_progress row id for the directory-dive phase. */
+  private readonly dirProgressIds = new Map<string, number>();
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
@@ -106,6 +115,7 @@ export class ExplorationCoordinator {
     this.onProgress = options.onProgress;
     this.batchSizeOverride = options.batchSize;
     this.memory = options.memory;
+    this.explorationId = options.explorationId;
   }
 
   /**
@@ -386,6 +396,7 @@ export class ExplorationCoordinator {
     state.phases.structure_scan = 'in_progress';
     await this.dotFolder.writeExplorationState(state);
 
+    const phase1RowId = await this.insertPhaseRow('structure');
     const prompt = generateStructureScanPrompt(this.workspacePath);
     const startTime = Date.now();
 
@@ -403,11 +414,13 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase1RowId);
       throw new Error(`Structure scan failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
     const parsed = parseAIResult<StructureScan>(result.stdout, 'structure scan');
     if (!parsed.success) {
+      await this.failPhaseRow(phase1RowId);
       throw new Error(`Failed to parse structure scan result: ${parsed.error}`);
     }
 
@@ -420,6 +433,7 @@ export class ExplorationCoordinator {
     await this.storeExplorationChunks('.', 'structure', parsed.data);
     state.phases.structure_scan = 'completed';
     await this.dotFolder.writeExplorationState(state);
+    await this.completePhaseRow(phase1RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 1 completed');
   }
@@ -439,8 +453,10 @@ export class ExplorationCoordinator {
     state.phases.classification = 'in_progress';
     await this.dotFolder.writeExplorationState(state);
 
+    const phase2RowId = await this.insertPhaseRow('classification');
     const structureScan = await this.dotFolder.readStructureScan();
     if (!structureScan) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error('Structure scan result not found (Phase 1 incomplete)');
     }
 
@@ -461,11 +477,13 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error(`Classification failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
     const parsed = parseAIResult<Classification>(result.stdout, 'classification');
     if (!parsed.success) {
+      await this.failPhaseRow(phase2RowId);
       throw new Error(`Failed to parse classification result: ${parsed.error}`);
     }
 
@@ -478,6 +496,7 @@ export class ExplorationCoordinator {
     await this.storeExplorationChunks('.', 'config', parsed.data);
     state.phases.classification = 'completed';
     await this.dotFolder.writeExplorationState(state);
+    await this.completePhaseRow(phase2RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 2 completed');
   }
@@ -517,6 +536,30 @@ export class ExplorationCoordinator {
         attempts: 0,
       }));
       await this.dotFolder.writeExplorationState(state);
+    }
+
+    // Insert exploration_progress rows for each directory (status=pending).
+    // Already-tracked dirs (from a resumed run) are skipped via the map check.
+    if (this.memory && this.explorationId) {
+      for (const dir of significantDirs) {
+        if (this.dirProgressIds.has(dir)) continue; // already inserted this run
+        const filesTotal = structureScan.directoryCounts[dir] ?? null;
+        try {
+          const rowId = await this.memory.insertExplorationProgress({
+            exploration_id: this.explorationId,
+            phase: 'directory-dive',
+            target: dir,
+            status: 'pending',
+            progress_pct: 0,
+            files_processed: 0,
+            files_total: filesTotal,
+            started_at: null,
+          });
+          this.dirProgressIds.set(dir, rowId);
+        } catch {
+          // ignore — progress tracking is best-effort
+        }
+      }
     }
 
     const context = {
@@ -565,6 +608,18 @@ export class ExplorationCoordinator {
             diveState.status = 'failed';
             diveState.error = String(result.reason);
             completedSoFar++; // Count failed as "done" for progress
+            // Mark the exploration_progress row as failed
+            const rowId = this.dirProgressIds.get(dive.path) ?? 0;
+            if (rowId > 0 && this.memory) {
+              this.memory
+                .updateExplorationProgressById(rowId, {
+                  status: 'failed',
+                  completed_at: new Date().toISOString(),
+                })
+                .catch(() => {
+                  // ignore — progress tracking is best-effort
+                });
+            }
             logger.warn(
               { path: dive.path, error: result.reason },
               'Directory dive failed after retries',
@@ -612,6 +667,19 @@ export class ExplorationCoordinator {
     context: { projectType: string; frameworks: string[] },
     state: ExplorationState,
   ): Promise<void> {
+    // Mark this directory as in_progress in exploration_progress
+    const progressRowId = this.dirProgressIds.get(dirPath) ?? 0;
+    if (progressRowId > 0 && this.memory) {
+      try {
+        await this.memory.updateExplorationProgressById(progressRowId, {
+          status: 'in_progress',
+          started_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore — progress tracking is best-effort
+      }
+    }
+
     const prompt = generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
     const startTime = Date.now();
 
@@ -649,6 +717,20 @@ export class ExplorationCoordinator {
     await this.dotFolder.writeDirectoryDive(safeDirName, parsed.data);
     await this.storeExplorationChunks(dirPath, 'patterns', parsed.data);
 
+    // Mark this directory as completed in exploration_progress
+    if (progressRowId > 0 && this.memory) {
+      try {
+        await this.memory.updateExplorationProgressById(progressRowId, {
+          status: 'completed',
+          progress_pct: 100,
+          files_processed: parsed.data.fileCount,
+          completed_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore — progress tracking is best-effort
+      }
+    }
+
     logger.info({ dirPath, elapsed, method: parsed.method }, 'Directory dive completed');
   }
 
@@ -667,10 +749,12 @@ export class ExplorationCoordinator {
     state.phases.assembly = 'in_progress';
     await this.dotFolder.writeExplorationState(state);
 
+    const phase4RowId = await this.insertPhaseRow('assembly');
     const structureScan = await this.dotFolder.readStructureScan();
     const classification = await this.dotFolder.readClassification();
 
     if (!structureScan || !classification) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error('Structure scan or classification not found');
     }
 
@@ -728,6 +812,7 @@ export class ExplorationCoordinator {
     state.totalAITimeMs += elapsed;
 
     if (result.exitCode !== 0) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error(
         `Summary generation failed with exit code ${result.exitCode}: ${result.stderr}`,
       );
@@ -735,6 +820,7 @@ export class ExplorationCoordinator {
 
     const parsed = parseAIResult<{ summary: string }>(result.stdout, 'summary generation');
     if (!parsed.success) {
+      await this.failPhaseRow(phase4RowId);
       throw new Error(`Failed to parse summary result: ${parsed.error}`);
     }
 
@@ -758,6 +844,7 @@ export class ExplorationCoordinator {
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
     await this.dotFolder.writeExplorationState(state);
+    await this.completePhaseRow(phase4RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 4 completed');
   }
@@ -864,6 +951,61 @@ export class ExplorationCoordinator {
       gitInitialized: true,
       error: state.error,
     };
+  }
+
+  /**
+   * Insert an exploration_progress row for a non-directory phase.
+   * Returns the row id (0 if tracking is unavailable or fails).
+   */
+  private async insertPhaseRow(phase: string, filesTotal?: number): Promise<number> {
+    if (!this.memory || !this.explorationId) return 0;
+    try {
+      return await this.memory.insertExplorationProgress({
+        exploration_id: this.explorationId,
+        phase,
+        target: null,
+        status: 'in_progress',
+        progress_pct: 0,
+        files_processed: 0,
+        files_total: filesTotal ?? null,
+        started_at: new Date().toISOString(),
+      });
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Mark an exploration_progress row as completed with 100% progress.
+   * No-ops if id is 0 or tracking is unavailable.
+   */
+  private async completePhaseRow(id: number): Promise<void> {
+    if (!this.memory || id === 0) return;
+    try {
+      await this.memory.updateExplorationProgressById(id, {
+        status: 'completed',
+        progress_pct: 100,
+        completed_at: new Date().toISOString(),
+      });
+    } catch {
+      // ignore — progress tracking is best-effort
+    }
+  }
+
+  /**
+   * Mark an exploration_progress row as failed.
+   * No-ops if id is 0 or tracking is unavailable.
+   */
+  private async failPhaseRow(id: number): Promise<void> {
+    if (!this.memory || id === 0) return;
+    try {
+      await this.memory.updateExplorationProgressById(id, {
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+      });
+    } catch {
+      // ignore — progress tracking is best-effort
+    }
   }
 
   /**
