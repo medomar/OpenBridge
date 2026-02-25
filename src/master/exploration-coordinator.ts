@@ -21,6 +21,7 @@
  * for programmatic use (testing, scripts).
  */
 
+import { execFileSync } from 'node:child_process';
 import { DotFolderManager } from './dotfolder-manager.js';
 import {
   generateStructureScanPrompt,
@@ -45,6 +46,8 @@ import type {
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
+import type { MemoryManager } from '../memory/index.js';
+import type { Chunk } from '../memory/chunk-store.js';
 
 const logger = createLogger('exploration-coordinator');
 
@@ -74,6 +77,8 @@ export interface ExplorationOptions {
   onProgress?: ExplorationProgressCallback;
   /** Override batch size for directory dives (default: auto-detected from project size) */
   batchSize?: number;
+  /** Optional MemoryManager for storing exploration results as searchable chunks */
+  memory?: MemoryManager;
 }
 
 /**
@@ -90,6 +95,7 @@ export class ExplorationCoordinator {
   private readonly agentRunner: AgentRunner;
   private readonly onProgress?: ExplorationProgressCallback;
   private readonly batchSizeOverride?: number;
+  private readonly memory?: MemoryManager;
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
@@ -99,6 +105,89 @@ export class ExplorationCoordinator {
     this.agentRunner = new AgentRunner();
     this.onProgress = options.onProgress;
     this.batchSizeOverride = options.batchSize;
+    this.memory = options.memory;
+  }
+
+  /**
+   * Get the current git commit hash for use as source_hash in chunks.
+   * Returns an empty string if git is unavailable or there are no commits.
+   */
+  private getSourceHash(): string {
+    try {
+      return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+        cwd: this.workspacePath,
+        encoding: 'utf-8',
+        timeout: 5000,
+      }).trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Split a long text into chunks of at most `maxChars` characters.
+   * Prefers splitting on newline boundaries to keep content coherent.
+   * ~500 tokens ≈ 2000 characters (assuming 4 chars/token average).
+   */
+  private splitIntoChunks(text: string, maxChars = 2000): string[] {
+    if (text.length <= maxChars) return text.trim() ? [text] : [];
+
+    const chunks: string[] = [];
+    let start = 0;
+
+    while (start < text.length) {
+      let end = start + maxChars;
+      if (end >= text.length) {
+        const slice = text.slice(start).trim();
+        if (slice) chunks.push(slice);
+        break;
+      }
+      // Prefer splitting at a newline boundary
+      const lastNewline = text.lastIndexOf('\n', end);
+      if (lastNewline > start) {
+        end = lastNewline + 1;
+      }
+      const slice = text.slice(start, end).trim();
+      if (slice) chunks.push(slice);
+      start = end;
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Convert exploration result data to text chunks and store in MemoryManager.
+   * Falls back silently (logs a debug warning) if memory is unavailable or fails.
+   */
+  private async storeExplorationChunks(
+    scope: string,
+    category: Chunk['category'],
+    data: unknown,
+  ): Promise<void> {
+    if (!this.memory) return;
+
+    try {
+      const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      const sourceHash = this.getSourceHash();
+      const textChunks = this.splitIntoChunks(text);
+
+      if (textChunks.length === 0) return;
+
+      const chunks: Chunk[] = textChunks.map((content) => ({
+        scope,
+        category,
+        content,
+        source_hash: sourceHash || undefined,
+      }));
+
+      await this.memory.storeChunks(chunks);
+      logger.debug(
+        { scope, category, chunkCount: chunks.length },
+        'Stored exploration chunks in memory',
+      );
+    } catch (err) {
+      logger.warn({ err, scope, category }, 'Failed to store exploration chunks — continuing');
+    }
   }
 
   /**
@@ -249,6 +338,7 @@ export class ExplorationCoordinator {
     parsed.data.durationMs = elapsed;
 
     await this.dotFolder.writeStructureScan(parsed.data);
+    await this.storeExplorationChunks('.', 'structure', parsed.data);
     state.phases.structure_scan = 'completed';
     await this.dotFolder.writeExplorationState(state);
 
@@ -306,6 +396,7 @@ export class ExplorationCoordinator {
     parsed.data.durationMs = elapsed;
 
     await this.dotFolder.writeClassification(parsed.data);
+    await this.storeExplorationChunks('.', 'config', parsed.data);
     state.phases.classification = 'completed';
     await this.dotFolder.writeExplorationState(state);
 
@@ -477,6 +568,7 @@ export class ExplorationCoordinator {
     // Sanitize directory name for filename (replace / with -)
     const safeDirName = dirPath.replace(/\//g, '-');
     await this.dotFolder.writeDirectoryDive(safeDirName, parsed.data);
+    await this.storeExplorationChunks(dirPath, 'patterns', parsed.data);
 
     logger.info({ dirPath, elapsed, method: parsed.method }, 'Directory dive completed');
   }
@@ -584,6 +676,7 @@ export class ExplorationCoordinator {
     };
 
     await this.dotFolder.writeMap(workspaceMap);
+    await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
     await this.dotFolder.writeExplorationState(state);
 
