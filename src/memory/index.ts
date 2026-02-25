@@ -39,6 +39,14 @@ import {
 } from './migration.js';
 import { evictOldData as _evictOldData, type EvictionOptions } from './eviction.js';
 import { buildBriefing as _buildBriefing } from './worker-briefing.js';
+import {
+  insertActivity as _insertActivity,
+  updateActivity as _updateActivity,
+  getActiveAgents as _getActiveAgents,
+  cleanupOldActivity as _cleanupOldActivity,
+  type ActivityRecord,
+  type ActivityUpdate,
+} from './activity-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -72,6 +80,7 @@ export interface PromptRecord {
 export type { WorkspaceState, SessionRecord } from './migration.js';
 export type { EvictionOptions } from './eviction.js';
 export type { SearchOptions } from './retrieval.js';
+export type { ActivityRecord, ActivityUpdate } from './activity-store.js';
 
 // ---------------------------------------------------------------------------
 // MemoryManager
@@ -392,6 +401,33 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     const dotfolderPath = path.dirname(this.dbPath);
     return migrateJsonToSqlite(this.db, dotfolderPath);
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent Activity (activity-store.ts — OB-742)
+  // -------------------------------------------------------------------------
+
+  insertActivity(activity: ActivityRecord): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _insertActivity(this.db, activity);
+    return Promise.resolve();
+  }
+
+  updateActivity(id: string, updates: ActivityUpdate): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _updateActivity(this.db, id, updates);
+    return Promise.resolve();
+  }
+
+  getActiveAgents(): Promise<ActivityRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getActiveAgents(this.db));
+  }
+
+  cleanupOldActivity(cutoffHours?: number): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _cleanupOldActivity(this.db, cutoffHours);
+    return Promise.resolve();
   }
 }
 

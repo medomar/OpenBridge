@@ -19,6 +19,7 @@ import type {
   SessionRecord,
   WorkspaceState,
   TaskRecord as MemoryTaskRecord,
+  ActivityRecord,
 } from '../memory/index.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ToolProfile } from '../types/agent.js';
@@ -782,6 +783,23 @@ export class MasterManager {
       logger.info({ sessionId }, 'Created new Master session');
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session to disk');
+    }
+
+    // Record master agent startup in agent_activity (OB-742)
+    if (this.memory) {
+      try {
+        await this.memory.insertActivity({
+          id: sessionId,
+          type: 'master',
+          model: this.masterTool.name,
+          task_summary: 'Master AI session started',
+          status: 'running',
+          started_at: now,
+          updated_at: now,
+        });
+      } catch (actErr) {
+        logger.warn({ error: actErr }, 'Failed to record master activity');
+      }
     }
   }
 
@@ -3877,11 +3895,42 @@ ${currentContent}
       }
     }
 
+    // INSERT agent_activity row with status='starting' (OB-742)
+    const workerStartedAt = new Date().toISOString();
+    if (this.memory) {
+      try {
+        const masterSessionId = this.masterSession?.sessionId;
+        const workerActivity: ActivityRecord = {
+          id: workerId,
+          type: 'worker',
+          model: resolvedModel ?? body.model ?? undefined,
+          profile,
+          task_summary: body.prompt.slice(0, 120),
+          status: 'starting',
+          parent_id: masterSessionId,
+          started_at: workerStartedAt,
+          updated_at: workerStartedAt,
+        };
+        await this.memory.insertActivity(workerActivity);
+      } catch (actErr) {
+        logger.warn({ workerId, error: actErr }, 'Failed to record worker activity (starting)');
+      }
+    }
+
     try {
       // Note: We cannot get the actual PID from spawn() because it's an async call
       // that returns a promise. We mark it as running without a PID for now.
       // A future enhancement could expose the child process from AgentRunner.
       this.workerRegistry.markRunning(workerId, -1); // -1 indicates PID not available
+
+      // UPDATE agent_activity to 'running' now that spawn is about to start (OB-742)
+      if (this.memory) {
+        try {
+          await this.memory.updateActivity(workerId, { status: 'running' });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (running)');
+        }
+      }
 
       const result = await this.agentRunner.spawn(spawnOpts);
 
@@ -3952,6 +4001,20 @@ ${currentContent}
         await this.dotFolder.writeTask(taskRecord);
       }
 
+      // UPDATE agent_activity to 'done' or 'failed' (OB-742)
+      if (this.memory) {
+        try {
+          const activityStatus = result.exitCode === 0 ? 'done' : 'failed';
+          await this.memory.updateActivity(workerId, {
+            status: activityStatus,
+            progress_pct: result.exitCode === 0 ? 100 : undefined,
+            completed_at: taskRecord.completedAt,
+          });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (completion)');
+        }
+      }
+
       // Record worker output to conversation history (OB-730)
       if (result.exitCode === 0 && result.stdout.trim()) {
         const workerSessionId = this.masterSession?.sessionId ?? workerId;
@@ -4010,6 +4073,18 @@ ${currentContent}
         });
       } else {
         await this.dotFolder.writeTask(taskRecord);
+      }
+
+      // UPDATE agent_activity to 'failed' on exception (OB-742)
+      if (this.memory) {
+        try {
+          await this.memory.updateActivity(workerId, {
+            status: 'failed',
+            completed_at: taskRecord.completedAt,
+          });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (failed)');
+        }
       }
 
       // Record learning entry even on exception (OB-171: learnings store)
