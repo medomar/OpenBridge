@@ -44,6 +44,7 @@ import {
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
   cleanupOldActivity as _cleanupOldActivity,
+  getDailyCost as _getDailyCost,
   insertExplorationProgress as _insertExplorationProgress,
   updateExplorationProgressById as _updateExplorationProgressById,
   getExplorationProgressByExplorationId as _getExplorationProgressByExplorationId,
@@ -451,6 +452,15 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _cleanupOldActivity(this.db, cutoffHours);
     return Promise.resolve();
+  }
+
+  /**
+   * Return the total cost_usd for all agent_activity rows on a given date (YYYY-MM-DD).
+   * Defaults to today's date (UTC) when no date is provided.
+   */
+  getDailyCost(date?: string): Promise<number> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getDailyCost(this.db, date));
   }
 
   // -------------------------------------------------------------------------

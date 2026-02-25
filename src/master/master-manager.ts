@@ -4001,7 +4001,7 @@ ${currentContent}
         await this.dotFolder.writeTask(taskRecord);
       }
 
-      // UPDATE agent_activity to 'done' or 'failed' (OB-742)
+      // UPDATE agent_activity to 'done' or 'failed' with cost (OB-742, OB-746)
       if (this.memory) {
         try {
           const activityStatus = result.exitCode === 0 ? 'done' : 'failed';
@@ -4009,6 +4009,7 @@ ${currentContent}
             status: activityStatus,
             progress_pct: result.exitCode === 0 ? 100 : undefined,
             completed_at: taskRecord.completedAt,
+            cost_usd: result.costUsd,
           });
         } catch (actErr) {
           logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (completion)');
