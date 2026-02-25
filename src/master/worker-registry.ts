@@ -39,7 +39,7 @@ export const WorkerRecordSchema = z.object({
   /** The task manifest passed to this worker */
   taskManifest: TaskManifestSchema,
   /** Process ID (if running) */
-  pid: z.number().int().positive().optional(),
+  pid: z.number().int().nonnegative().optional(),
   /** When the worker started executing */
   startedAt: z.string().datetime(),
   /** When the worker finished (completed/failed/cancelled) */

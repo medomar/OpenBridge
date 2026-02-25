@@ -2,20 +2,43 @@ import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
-import { generateMasterSystemPrompt } from './master-system-prompt.js';
+import {
+  generateMasterSystemPrompt,
+  formatLearnedPatternsSection,
+} from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
-import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
+import {
+  AgentRunner,
+  TOOLS_READ_ONLY,
+  TOOLS_CODE_EDIT,
+  DEFAULT_MAX_TURNS_TASK,
+} from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import { getRecommendedModel } from '../core/model-selector.js';
 import type { Router } from '../core/router.js';
+import type {
+  MemoryManager,
+  ConversationEntry,
+  SessionRecord,
+  WorkspaceState,
+  TaskRecord as MemoryTaskRecord,
+  ActivityRecord,
+} from '../memory/index.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
-import type { ToolProfile } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
+import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
+import { SubMasterManager } from './sub-master-manager.js';
+import type { SubMasterRecord } from './sub-master-manager.js';
+import { openDatabase, closeDatabase } from '../memory/database.js';
+import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
-import { WorkerRegistry } from './worker-registry.js';
+import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
+import { evolvePrompts } from './prompt-evolver.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -25,6 +48,15 @@ import type {
   MasterSession,
   PromptTemplate,
   ClassificationCacheEntry,
+  ClassificationCache,
+  ExplorationState,
+  WorkspaceAnalysisMarker,
+} from '../types/master.js';
+import {
+  WorkspaceMapSchema,
+  ExplorationStateSchema,
+  AgentsRegistrySchema,
+  ClassificationCacheSchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
@@ -111,6 +143,89 @@ const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
 
+// ---------------------------------------------------------------------------
+// Memory ↔ DotFolderManager type conversion helpers (OB-711)
+// ---------------------------------------------------------------------------
+
+/** Convert MasterSession → SessionRecord for SQLite storage */
+function masterSessionToSessionRecord(session: MasterSession, restartCount = 0): SessionRecord {
+  return {
+    id: session.sessionId,
+    type: 'master',
+    status: 'active',
+    restart_count: restartCount,
+    message_count: session.messageCount,
+    allowed_tools: JSON.stringify(session.allowedTools),
+    created_at: session.createdAt,
+    last_used_at: session.lastUsedAt,
+  };
+}
+
+/** Convert SessionRecord → MasterSession */
+function sessionRecordToMasterSession(record: SessionRecord): MasterSession {
+  return {
+    sessionId: record.id,
+    createdAt: record.created_at,
+    lastUsedAt: record.last_used_at,
+    messageCount: record.message_count ?? 0,
+    allowedTools: record.allowed_tools
+      ? (JSON.parse(record.allowed_tools) as string[])
+      : [...MASTER_TOOLS],
+    maxTurns: MASTER_MAX_TURNS,
+  };
+}
+
+/** Convert WorkspaceAnalysisMarker → WorkspaceState for SQLite storage */
+function markerToWorkspaceState(marker: WorkspaceAnalysisMarker): WorkspaceState {
+  return {
+    commit_hash: marker.workspaceCommitHash,
+    branch: marker.workspaceBranch,
+    has_git: marker.workspaceHasGit,
+    analyzed_at: marker.analyzedAt,
+    last_verified_at: marker.lastVerifiedAt,
+    analysis_type: marker.analysisType,
+    files_changed: marker.filesChanged,
+  };
+}
+
+/** Convert WorkspaceState → WorkspaceAnalysisMarker */
+function workspaceStateToMarker(state: WorkspaceState): WorkspaceAnalysisMarker {
+  return {
+    workspaceCommitHash: state.commit_hash,
+    workspaceBranch: state.branch,
+    workspaceHasGit: state.has_git ?? false,
+    analyzedAt: state.analyzed_at,
+    lastVerifiedAt: state.last_verified_at,
+    analysisType: (state.analysis_type as 'full' | 'incremental') ?? 'full',
+    filesChanged: state.files_changed ?? 0,
+    schemaVersion: '1.0.0',
+  };
+}
+
+/** Convert master TaskRecord (types/master.ts) → memory TaskRecord (memory/task-store.ts) */
+function masterTaskToMemoryTask(
+  task: TaskRecord,
+  type: MemoryTaskRecord['type'] = 'worker',
+): MemoryTaskRecord {
+  const statusMap: Record<string, MemoryTaskRecord['status']> = {
+    completed: 'completed',
+    failed: 'failed',
+    pending: 'running',
+    processing: 'running',
+    delegated: 'completed',
+  };
+  return {
+    id: task.id,
+    type,
+    status: statusMap[task.status] ?? 'failed',
+    prompt: task.userMessage,
+    response: task.result,
+    duration_ms: task.durationMs,
+    created_at: task.createdAt,
+    completed_at: task.completedAt,
+  };
+}
+
 /**
  * Result returned by classifyTask() — includes class, suggested turn budget, and reasoning.
  * The maxTurns value is AI-suggested based on message content and workspace context,
@@ -147,6 +262,8 @@ export interface MasterManagerOptions {
   messageTimeout?: number;
   /** Whether to skip automatic exploration on startup */
   skipAutoExploration?: boolean;
+  /** MemoryManager instance — when provided, enables SQLite-backed persistence (OB-711 will wire reads/writes) */
+  memory?: MemoryManager;
 }
 
 /**
@@ -178,6 +295,9 @@ export class MasterManager {
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
+  readonly memory: MemoryManager | null;
+  /** Sub-master manager — null when no root DB is available (OB-755) */
+  private subMasterManager: SubMasterManager | null = null;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -201,6 +321,8 @@ export class MasterManager {
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
   private isSelfImproving = false;
+  /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
+  private completedTaskCount = 0;
   /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
   private workspaceMapSummary: string | null = null;
   /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
@@ -222,6 +344,17 @@ export class MasterManager {
     this.delegationCoordinator = new DelegationCoordinator();
     this.agentRunner = new AgentRunner();
     this.workerRegistry = new WorkerRegistry();
+    this.memory = options.memory ?? null;
+
+    // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
+    if (this.memory) {
+      this.subMasterManager = new SubMasterManager(
+        this.memory,
+        this.workspacePath,
+        this.agentRunner,
+        this.masterTool,
+      );
+    }
 
     logger.info(
       {
@@ -231,6 +364,279 @@ export class MasterManager {
       },
       'MasterManager created',
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Memory-aware store helpers (OB-711): route reads/writes through MemoryManager
+  // when available, fall back to DotFolderManager when not.
+  // ---------------------------------------------------------------------------
+
+  /** Read workspace map from memory (chunks) or DotFolderManager (JSON file). */
+  private async readWorkspaceMapFromStore(): Promise<WorkspaceMap | null> {
+    if (this.memory) {
+      try {
+        const chunks = await this.memory.getChunksByScope('_workspace_map', 'structure');
+        if (chunks.length > 0 && chunks[0]?.content) {
+          return WorkspaceMapSchema.parse(JSON.parse(chunks[0].content));
+        }
+      } catch {
+        // ignore — map not yet stored
+      }
+      return null;
+    }
+    logger.warn('Memory not available — cannot read workspace map from DB');
+    return null;
+  }
+
+  /** Write workspace map to memory (as chunk). JSON fallback removed (OB-810). */
+  private async writeWorkspaceMapToStore(map: WorkspaceMap): Promise<void> {
+    if (this.memory) {
+      await this.memory.storeChunks([
+        {
+          scope: '_workspace_map',
+          category: 'structure',
+          content: JSON.stringify(map),
+        },
+      ]);
+      return;
+    }
+    logger.warn('Memory not available — skipping workspace map write');
+  }
+
+  /** Load master session from memory (sessions table) or DotFolderManager (JSON file). */
+  private async loadMasterSessionFromStore(): Promise<MasterSession | null> {
+    if (this.memory) {
+      try {
+        const record = await this.memory.getSession('master');
+        if (record) return sessionRecordToMasterSession(record);
+      } catch {
+        // Fall through to JSON fallback
+      }
+    }
+    return this.dotFolder.readMasterSession();
+  }
+
+  /** Save master session to memory (sessions table) or DotFolderManager (JSON fallback). */
+  private async saveMasterSessionToStore(session: MasterSession): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertSession(masterSessionToSessionRecord(session, this.restartCount));
+    } else {
+      await this.dotFolder.writeMasterSession(session);
+    }
+  }
+
+  /** Read analysis marker from memory (workspace_state table) or DotFolderManager (JSON file). */
+  private async readAnalysisMarkerFromStore(): Promise<WorkspaceAnalysisMarker | null> {
+    if (this.memory) {
+      try {
+        const state = await this.memory.getWorkspaceState();
+        return workspaceStateToMarker(state);
+      } catch {
+        return null;
+      }
+    }
+    return this.dotFolder.readAnalysisMarker();
+  }
+
+  /** Write analysis marker to memory (workspace_state table) or DotFolderManager (JSON file). */
+  private async writeAnalysisMarkerToStore(marker: WorkspaceAnalysisMarker): Promise<void> {
+    if (this.memory) {
+      await this.memory.updateWorkspaceState(markerToWorkspaceState(marker));
+      return;
+    }
+    await this.dotFolder.writeAnalysisMarker(marker);
+  }
+
+  /**
+   * Read exploration state from memory (system_config) or DotFolderManager (JSON file).
+   * Only a read is needed in master-manager.ts; writes happen in exploration-coordinator.ts.
+   */
+  private async readExplorationStateFromStore(): Promise<ExplorationState | null> {
+    if (this.memory) {
+      try {
+        const json = await this.memory.getSystemConfig('exploration_state');
+        if (json) return ExplorationStateSchema.parse(JSON.parse(json));
+      } catch {
+        return null;
+      }
+      return null;
+    }
+    return this.dotFolder.readExplorationState();
+  }
+
+  /** Read profiles registry from DB (system_config) first, fall back to dotFolder JSON. */
+  private async readProfilesFromStore(): Promise<ProfilesRegistry | null> {
+    if (this.memory) {
+      try {
+        const raw = await this.memory.getSystemConfig('profiles');
+        if (raw) return ProfilesRegistrySchema.parse(JSON.parse(raw));
+      } catch {
+        // Fall through to JSON fallback
+      }
+    }
+    return this.dotFolder.readProfiles();
+  }
+
+  /**
+   * Record a master-level task (user interaction) to memory (SQLite tasks table).
+   * If memory is not available, logs a warning — no JSON fallback.
+   */
+  private async recordTaskToStore(
+    task: TaskRecord,
+    type: MemoryTaskRecord['type'] = 'worker',
+  ): Promise<void> {
+    if (this.memory) {
+      try {
+        await this.memory.recordTask(masterTaskToMemoryTask(task, type));
+      } catch (err) {
+        logger.warn({ err }, 'Failed to record task to memory store');
+      }
+      return;
+    }
+    logger.warn({ taskId: task.id }, 'MemoryManager not available — task record not persisted');
+  }
+
+  /**
+   * Record a conversation message to the memory store (OB-730).
+   * Silently skips when MemoryManager is unavailable or errors occur.
+   */
+  private async recordConversationMessage(
+    sessionId: string,
+    role: ConversationEntry['role'],
+    content: string,
+    channel?: string,
+    userId?: string,
+  ): Promise<void> {
+    if (!this.memory) return;
+    try {
+      await this.memory.recordMessage({
+        session_id: sessionId,
+        role,
+        content,
+        channel,
+        user_id: userId,
+      });
+    } catch (err) {
+      logger.warn({ err, role }, 'Failed to record conversation message');
+    }
+  }
+
+  /**
+   * Retrieve relevant past conversation history for the given user message (OB-731).
+   * Returns a formatted "## Previous context:" section or null when no history exists.
+   */
+  private async buildConversationContext(userMessage: string): Promise<string | null> {
+    if (!this.memory) return null;
+    try {
+      const history = await this.memory.findRelevantHistory(userMessage, 5);
+      // Only include user and master turns — skip worker/system noise
+      const relevant = history.filter((e) => e.role === 'user' || e.role === 'master');
+      if (relevant.length === 0) return null;
+
+      const lines = relevant.map((e) => {
+        const dateStr = e.created_at
+          ? new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16)
+          : '';
+        const label = e.role === 'user' ? 'User' : 'Master';
+        const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
+        return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
+      });
+
+      return '## Previous context:\n' + lines.join('\n');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to retrieve conversation history for context injection');
+      return null;
+    }
+  }
+
+  /**
+   * Build the "## Learned Patterns" section for injection into the Master system prompt.
+   * Pulls from the learnings table (best model per task type with > 5 data points) and the
+   * prompts table (high-effectiveness prompt templates with > 5 uses). Returns null when
+   * there is insufficient data or when MemoryManager is unavailable (OB-735).
+   */
+  private async buildLearnedPatternsContext(): Promise<string | null> {
+    if (!this.memory) return null;
+    try {
+      const [allLearnings, effectivePrompts] = await Promise.all([
+        this.memory.getLearnedTaskTypes(),
+        this.memory.getHighEffectivenessPrompts(0.7, 5),
+      ]);
+
+      // Only include task types with > 5 total data points
+      const modelLearnings = allLearnings
+        .filter((l) => l.successCount + l.failureCount > 5)
+        .map((l) => ({
+          taskType: l.taskType,
+          bestModel: l.bestModel,
+          successRate: l.successRate,
+          totalTasks: l.successCount + l.failureCount,
+        }));
+
+      const promptPatterns = effectivePrompts.map((p) => ({
+        name: p.name,
+        effectiveness: p.effectiveness,
+        usageCount: p.usage_count,
+      }));
+
+      return formatLearnedPatternsSection({ modelLearnings, effectivePrompts: promptPatterns });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to build learned patterns context');
+      return null;
+    }
+  }
+
+  /**
+   * Increment the completed task counter and trigger prompt evolution every 50 tasks (OB-734).
+   * Runs asynchronously in the background — never blocks the caller.
+   */
+  private onTaskCompleted(): void {
+    this.completedTaskCount += 1;
+    if (this.completedTaskCount % 50 === 0 && this.memory) {
+      void evolvePrompts(this.memory, this.agentRunner, this.workspacePath).catch((err) => {
+        logger.warn({ err }, 'Prompt evolution cycle failed');
+      });
+    }
+  }
+
+  /**
+   * Read all task records from memory or DotFolderManager.
+   * Memory returns MemoryTaskRecord (different schema) — converted to approximate MasterTaskRecord.
+   * When memory is null, returns the full DotFolderManager records.
+   */
+  private async readAllTasksFromStore(): Promise<TaskRecord[]> {
+    if (this.memory) {
+      try {
+        const types: MemoryTaskRecord['type'][] = ['worker', 'quick-answer', 'tool-use', 'complex'];
+        const collected: MemoryTaskRecord[] = [];
+        for (const t of types) {
+          const batch = await this.memory.getTasksByType(t);
+          collected.push(...batch);
+        }
+        const statusMap: Record<MemoryTaskRecord['status'], TaskRecord['status']> = {
+          running: 'processing',
+          completed: 'completed',
+          failed: 'failed',
+          timeout: 'failed',
+        };
+        return collected.map((t) => ({
+          id: t.id,
+          userMessage: t.prompt ?? '',
+          sender: 'user',
+          description: (t.prompt ?? '').slice(0, 200),
+          status: statusMap[t.status] ?? 'failed',
+          handledBy: 'master',
+          result: t.response ?? undefined,
+          createdAt: t.created_at,
+          completedAt: t.completed_at ?? undefined,
+          durationMs: t.duration_ms ?? undefined,
+          metadata: {},
+        }));
+      } catch {
+        return [];
+      }
+    }
+    return this.dotFolder.readAllTasks();
   }
 
   /**
@@ -251,7 +657,7 @@ export class MasterManager {
    * Get the workspace map (if exploration has been completed)
    */
   public async getWorkspaceMap(): Promise<WorkspaceMap | null> {
-    return this.dotFolder.readMap();
+    return this.readWorkspaceMapFromStore();
   }
 
   /**
@@ -293,7 +699,7 @@ export class MasterManager {
     const folderExistedBefore = await this.dotFolder.exists();
 
     // Check if workspace map exists and is valid
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
 
     if (map) {
       // Check for workspace changes before deciding to skip exploration
@@ -339,7 +745,7 @@ export class MasterManager {
     }
 
     // Check for incomplete or failed exploration state
-    const explorationState = await this.dotFolder.readExplorationState();
+    const explorationState = await this.readExplorationStateFromStore();
     if (
       explorationState &&
       (explorationState.status === 'in_progress' || explorationState.status === 'failed')
@@ -377,14 +783,23 @@ export class MasterManager {
     // Seed system prompt if it doesn't exist yet
     await this.seedSystemPrompt();
 
-    // Load the system prompt
-    this.systemPrompt = await this.dotFolder.readSystemPrompt();
+    // Load the system prompt — prefer DB, fall back to file
+    if (this.memory) {
+      try {
+        const dbPrompt = await this.memory.getActivePrompt('master-system');
+        this.systemPrompt = dbPrompt.content;
+      } catch {
+        this.systemPrompt = await this.dotFolder.readSystemPrompt();
+      }
+    } else {
+      this.systemPrompt = await this.dotFolder.readSystemPrompt();
+    }
     if (this.systemPrompt) {
       logger.info('Loaded Master system prompt');
     }
 
     // Try to load existing session
-    const existing = await this.dotFolder.readMasterSession();
+    const existing = await this.loadMasterSessionFromStore();
 
     if (existing) {
       this.masterSession = existing;
@@ -411,12 +826,29 @@ export class MasterManager {
 
     this.sessionInitialized = false; // New session — first call uses --session-id
 
-    // Persist to disk
+    // Persist to store (memory or JSON file)
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
       logger.info({ sessionId }, 'Created new Master session');
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session to disk');
+    }
+
+    // Record master agent startup in agent_activity (OB-742)
+    if (this.memory) {
+      try {
+        await this.memory.insertActivity({
+          id: sessionId,
+          type: 'master',
+          model: this.masterTool.name,
+          task_summary: 'Master AI session started',
+          status: 'running',
+          started_at: now,
+          updated_at: now,
+        });
+      } catch (actErr) {
+        logger.warn({ error: actErr }, 'Failed to record master activity');
+      }
     }
   }
 
@@ -425,12 +857,30 @@ export class MasterManager {
    * Generates the default prompt and writes it to .openbridge/prompts/master-system.md.
    */
   private async seedSystemPrompt(): Promise<void> {
+    // Check DB first — if we have an active prompt, it's already seeded
+    if (this.memory) {
+      try {
+        await this.memory.getActivePrompt('master-system');
+        return; // Already in DB — don't overwrite
+      } catch {
+        // Not in DB yet — fall through to file check
+      }
+    }
+
     const existing = await this.dotFolder.readSystemPrompt();
     if (existing) {
+      // Migrate file → DB (one-time)
+      if (this.memory) {
+        try {
+          await this.memory.createPromptVersion('master-system', existing);
+        } catch (dbErr) {
+          logger.warn({ error: dbErr }, 'Failed to migrate system prompt to DB');
+        }
+      }
       return; // Already seeded — don't overwrite (Master may have edited it)
     }
 
-    const customProfiles = (await this.dotFolder.readProfiles())?.profiles;
+    const customProfiles = (await this.readProfilesFromStore())?.profiles;
 
     const promptContent = generateMasterSystemPrompt({
       workspacePath: this.workspacePath,
@@ -440,7 +890,11 @@ export class MasterManager {
     });
 
     try {
-      await this.dotFolder.writeSystemPrompt(promptContent);
+      if (this.memory) {
+        await this.memory.createPromptVersion('master-system', promptContent);
+      } else {
+        await this.dotFolder.writeSystemPrompt(promptContent);
+      }
       logger.info('Seeded Master system prompt');
     } catch (error) {
       logger.warn({ error }, 'Failed to seed Master system prompt');
@@ -607,7 +1061,7 @@ export class MasterManager {
     this.masterSession.messageCount++;
 
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session update');
     }
@@ -649,7 +1103,7 @@ export class MasterManager {
     );
 
     // Load workspace map
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
     if (map) {
       parts.push('## Workspace Summary');
       parts.push(`- **Project:** ${map.projectName} (${map.projectType})`);
@@ -662,7 +1116,7 @@ export class MasterManager {
     }
 
     // Load recent task history
-    const tasks = await this.dotFolder.readAllTasks();
+    const tasks = await this.readAllTasksFromStore();
     if (tasks.length > 0) {
       // Sort by createdAt descending, take most recent
       const recentTasks = tasks
@@ -704,16 +1158,29 @@ export class MasterManager {
     );
 
     // Log the restart
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'warn',
-      message: 'Master session restarted',
-      data: {
-        oldSessionId: oldSession?.sessionId,
-        oldMessageCount: oldSession?.messageCount,
-        restartCount: this.restartCount,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: 'Master session restarted',
+        data: {
+          oldSessionId: oldSession?.sessionId,
+          oldMessageCount: oldSession?.messageCount,
+          restartCount: this.restartCount,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: 'Master session restarted',
+        data: {
+          oldSessionId: oldSession?.sessionId,
+          oldMessageCount: oldSession?.messageCount,
+          restartCount: this.restartCount,
+        },
+      });
+    }
 
     // Create a new session — use raw UUID (Claude CLI requires valid UUID format)
     const sessionId = randomUUID();
@@ -731,7 +1198,7 @@ export class MasterManager {
 
     // Persist the new session
     try {
-      await this.dotFolder.writeMasterSession(this.masterSession);
+      await this.saveMasterSessionToStore(this.masterSession);
     } catch (error) {
       logger.warn({ error }, 'Failed to persist restarted Master session');
     }
@@ -797,12 +1264,30 @@ export class MasterManager {
   }
 
   /**
-   * Load the worker registry from .openbridge/workers.json.
+   * Load the worker registry from DB (system_config) or .openbridge/workers.json fallback.
    * Called during start() to restore worker state from previous sessions.
    */
   private async loadWorkerRegistry(): Promise<void> {
     try {
-      const registry = await this.dotFolder.readWorkers();
+      let registry = null;
+
+      // Try DB first
+      if (this.memory) {
+        const raw = await this.memory.getSystemConfig('workers');
+        if (raw) {
+          try {
+            registry = WorkersRegistrySchema.parse(JSON.parse(raw));
+          } catch {
+            // fall through to JSON file
+          }
+        }
+      }
+
+      // Fall back to JSON file
+      if (!registry) {
+        registry = await this.dotFolder.readWorkers();
+      }
+
       if (registry) {
         this.workerRegistry.fromJSON(registry);
         logger.info(
@@ -816,13 +1301,17 @@ export class MasterManager {
   }
 
   /**
-   * Persist the worker registry to .openbridge/workers.json.
+   * Persist the worker registry to system_config (DB) and .openbridge/workers.json (fallback).
    * Called after worker state changes to maintain cross-restart visibility.
    */
   private async persistWorkerRegistry(): Promise<void> {
     try {
       const registry = this.workerRegistry.toJSON();
-      await this.dotFolder.writeWorkers(registry);
+      if (this.memory) {
+        await this.memory.setSystemConfig('workers', JSON.stringify(registry));
+      } else {
+        await this.dotFolder.writeWorkers(registry);
+      }
     } catch (error) {
       logger.warn({ error }, 'Failed to persist worker registry to disk');
     }
@@ -968,6 +1457,10 @@ export class MasterManager {
 
       await this.dotFolder.recordPromptUsage(promptId, isValid);
 
+      if (this.memory) {
+        await this.memory.recordPromptOutcome(promptId, isValid);
+      }
+
       logger.debug(
         {
           workerId: taskRecord.id,
@@ -1030,7 +1523,17 @@ export class MasterManager {
         },
       };
 
-      await this.dotFolder.appendLearning(learningEntry);
+      if (this.memory) {
+        await this.memory.recordLearning(
+          taskType,
+          learningEntry.modelUsed ?? 'unknown',
+          learningEntry.success,
+          0, // turns not tracked in AgentResult
+          learningEntry.durationMs,
+        );
+      } else {
+        await this.dotFolder.appendLearning(learningEntry);
+      }
 
       logger.debug(
         {
@@ -1116,12 +1619,31 @@ export class MasterManager {
   /**
    * Load the classification cache from disk into the in-memory map.
    * Called lazily on the first classifyTask() call. Non-blocking on failure.
+   * Reads from DB first (system_config 'classifications'), falls back to JSON.
    */
   private async loadClassificationCache(): Promise<void> {
     if (this.cacheLoaded) return;
     this.cacheLoaded = true;
     try {
-      const stored = await this.dotFolder.readClassifications();
+      let stored = null;
+
+      // DB-first read
+      if (this.memory) {
+        try {
+          const raw = await this.memory.getSystemConfig('classifications');
+          if (raw) {
+            stored = ClassificationCacheSchema.parse(JSON.parse(raw));
+          }
+        } catch {
+          // DB read failed — fall through to JSON
+        }
+      }
+
+      // JSON fallback (migration path)
+      if (!stored) {
+        stored = await this.dotFolder.readClassifications();
+      }
+
       if (stored) {
         for (const [key, entry] of Object.entries(stored.entries)) {
           this.classificationCache.set(key, entry);
@@ -1134,8 +1656,9 @@ export class MasterManager {
   }
 
   /**
-   * Persist the in-memory classification cache to .openbridge/classifications.json.
-   * Called non-blockingly after cache updates. Failures are logged but not thrown.
+   * Persist the in-memory classification cache to system_config (DB) and
+   * classifications.json (fallback). Called non-blockingly after cache updates.
+   * Failures are logged but not thrown.
    */
   private async persistClassificationCache(): Promise<void> {
     try {
@@ -1143,11 +1666,17 @@ export class MasterManager {
       for (const [key, entry] of this.classificationCache) {
         entries[key] = entry;
       }
-      await this.dotFolder.writeClassifications({
+      const cache: ClassificationCache = {
         entries,
         updatedAt: new Date().toISOString(),
         schemaVersion: '1.0.0',
-      });
+      };
+
+      if (this.memory) {
+        await this.memory.setSystemConfig('classifications', JSON.stringify(cache));
+      } else {
+        await this.dotFolder.writeClassifications(cache);
+      }
     } catch (err) {
       logger.warn({ err }, 'Failed to persist classification cache — non-fatal');
     }
@@ -1192,6 +1721,23 @@ export class MasterManager {
     }
 
     await this.persistClassificationCache();
+
+    // Persist classification feedback to SQLite learnings table for aggregate learning (OB-732)
+    if (this.memory) {
+      void (async (): Promise<void> => {
+        try {
+          await this.memory!.recordLearning(
+            'classification',
+            entry.result.class,
+            turnBudgetSufficient,
+            0,
+            0,
+          );
+        } catch (err) {
+          logger.warn({ err }, 'Failed to record classification learning to DB — non-fatal');
+        }
+      })();
+    }
   }
 
   /**
@@ -1422,6 +1968,53 @@ export class MasterManager {
       classificationResult = this.classifyTaskByKeywords(content);
     }
 
+    // Apply classification learning: if aggregate data shows this class underperforms,
+    // escalate to the best-performing class seen in the learnings table (OB-732)
+    if (this.memory) {
+      try {
+        const learned = await this.memory.getLearnedParams('classification');
+        if (learned) {
+          const classRank: Record<string, number> = {
+            'quick-answer': 0,
+            'tool-use': 1,
+            'complex-task': 2,
+          };
+          const validClasses = new Set(['quick-answer', 'tool-use', 'complex-task']);
+          const currentRank = classRank[classificationResult.class] ?? 0;
+          const learnedRank = classRank[learned.model] ?? 0;
+          if (
+            validClasses.has(learned.model) &&
+            learnedRank > currentRank &&
+            learned.success_rate > 0.5
+          ) {
+            const escalatedClass = learned.model as ClassificationResult['class'];
+            const escalatedMaxTurns =
+              escalatedClass === 'quick-answer'
+                ? MESSAGE_MAX_TURNS_QUICK
+                : escalatedClass === 'tool-use'
+                  ? MESSAGE_MAX_TURNS_TOOL_USE
+                  : MESSAGE_MAX_TURNS_PLANNING;
+            logger.info(
+              {
+                original: classificationResult.class,
+                escalated: escalatedClass,
+                successRate: learned.success_rate,
+                totalTasks: learned.total_tasks,
+              },
+              'Classification escalated based on learning data',
+            );
+            classificationResult = {
+              class: escalatedClass,
+              maxTurns: escalatedMaxTurns,
+              reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
+            };
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to query classification learning — using original result');
+      }
+    }
+
     // Store result in cache for future lookups
     this.classificationCache.set(cacheKey, {
       normalizedKey: cacheKey,
@@ -1484,12 +2077,21 @@ export class MasterManager {
 
       // Log exploration start
       const startedAt = new Date().toISOString();
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Master-driven workspace exploration started',
-        data: { masterTool: this.masterTool.name, version: this.masterTool.version },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Master-driven workspace exploration started',
+          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Master-driven workspace exploration started',
+          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
+        });
+      }
 
       // Master-driven exploration via the persistent session
       await this.masterDrivenExplore();
@@ -1524,12 +2126,21 @@ export class MasterManager {
       };
 
       // Log exploration failure
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Workspace exploration failed',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Workspace exploration failed',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Workspace exploration failed',
+          data: { error: errorMessage },
+        });
+      }
 
       this.state = 'error';
 
@@ -1550,14 +2161,14 @@ export class MasterManager {
   private async checkWorkspaceChanges(
     existingMap: WorkspaceMap,
   ): Promise<'no-changes' | 'incremental' | 'full-reexplore'> {
-    const marker = await this.dotFolder.readAnalysisMarker();
+    const marker = await this.readAnalysisMarkerFromStore();
 
     // No marker but valid map exists = upgrade from before incremental tracking.
     // Write a marker now and treat as no-changes (skip re-exploration).
     if (!marker) {
       logger.info('No analysis marker found — writing initial marker for existing map');
       const initialMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.dotFolder.writeAnalysisMarker(initialMarker);
+      await this.writeAnalysisMarkerToStore(initialMarker);
       this.mapLastVerifiedAt = initialMarker.lastVerifiedAt ?? initialMarker.analyzedAt;
       return 'no-changes';
     }
@@ -1578,7 +2189,7 @@ export class MasterManager {
     if (!changes.hasChanges) {
       // Update lastVerifiedAt to record this startup even if no changes detected
       const now = new Date().toISOString();
-      await this.dotFolder.writeAnalysisMarker({ ...marker, lastVerifiedAt: now });
+      await this.writeAnalysisMarkerToStore({ ...marker, lastVerifiedAt: now });
       this.mapLastVerifiedAt = now;
       return 'no-changes';
     }
@@ -1612,19 +2223,50 @@ export class MasterManager {
       'Starting incremental workspace exploration',
     );
 
-    await this.dotFolder.appendLog({
-      timestamp: startedAt,
-      level: 'info',
-      message: 'Incremental workspace exploration started',
-      data: {
-        method: changes.method,
-        changedCount: changes.changedFiles.length,
-        deletedCount: changes.deletedFiles.length,
-        summary: changes.summary,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: startedAt,
+        level: 'info',
+        message: 'Incremental workspace exploration started',
+        data: {
+          method: changes.method,
+          changedCount: changes.changedFiles.length,
+          deletedCount: changes.deletedFiles.length,
+          summary: changes.summary,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: startedAt,
+        level: 'info',
+        message: 'Incremental workspace exploration started',
+        data: {
+          method: changes.method,
+          changedCount: changes.changedFiles.length,
+          deletedCount: changes.deletedFiles.length,
+          summary: changes.summary,
+        },
+      });
+    }
 
     try {
+      // Mark affected memory chunks as stale so the search index reflects
+      // that these directory scopes need refreshed data.
+      if (this.memory) {
+        const changedScopes = this.changeTracker.extractChangedScopes(
+          changes.changedFiles,
+          changes.deletedFiles,
+        );
+        if (changedScopes.length > 0) {
+          try {
+            await this.memory.markStale(changedScopes);
+            logger.info({ changedScopes }, 'Marked stale memory scopes for incremental refresh');
+          } catch (err) {
+            logger.warn({ err }, 'Failed to mark stale scopes — continuing');
+          }
+        }
+      }
+
       const prompt = generateIncrementalExplorationPrompt(
         this.workspacePath,
         existingMap,
@@ -1652,29 +2294,50 @@ export class MasterManager {
       // Save the analysis marker with the current workspace state
       const totalChanged = changes.changedFiles.length + changes.deletedFiles.length;
       const newMarker = await this.changeTracker.buildCurrentMarker('incremental', totalChanged);
-      await this.dotFolder.writeAnalysisMarker(newMarker);
+      await this.writeAnalysisMarkerToStore(newMarker);
       this.mapLastVerifiedAt = newMarker.lastVerifiedAt ?? newMarker.analyzedAt;
-
-      // Commit all .openbridge changes
-      await this.dotFolder.commitChanges(
-        `feat(master): incremental map update (${totalChanged} files changed)`,
-      );
 
       // Reload the map into memory
       await this.loadExplorationSummary();
 
       // Update cached map summary
-      const updatedMap = await this.dotFolder.readMap();
+      const updatedMap = await this.readWorkspaceMapFromStore();
       if (updatedMap) {
         this.workspaceMapSummary = this.buildMapSummary(updatedMap);
       }
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Incremental exploration completed',
-        data: { filesChanged: totalChanged, durationMs: result.durationMs },
-      });
+      // Re-explore any directories that were marked stale and store fresh chunks.
+      // This replaces the stale memory data with up-to-date content without
+      // triggering a full 5-phase re-exploration.
+      if (this.memory) {
+        const coordinator = new ExplorationCoordinator({
+          workspacePath: this.workspacePath,
+          masterTool: this.masterTool,
+          discoveredTools: this.discoveredTools,
+          memory: this.memory,
+        });
+        try {
+          await coordinator.reexploreStaleDirs();
+        } catch (err) {
+          logger.warn({ err }, 'Stale dir re-exploration failed — continuing');
+        }
+      }
+
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Incremental exploration completed',
+          data: { filesChanged: totalChanged, durationMs: result.durationMs },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Incremental exploration completed',
+          data: { filesChanged: totalChanged, durationMs: result.durationMs },
+        });
+      }
 
       logger.info(
         { filesChanged: totalChanged, durationMs: result.durationMs },
@@ -1683,12 +2346,21 @@ export class MasterManager {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Incremental exploration failed — falling back to full re-explore',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Incremental exploration failed — falling back to full re-explore',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Incremental exploration failed — falling back to full re-explore',
+          data: { error: errorMessage },
+        });
+      }
 
       logger.warn(
         { error: errorMessage },
@@ -1708,12 +2380,21 @@ export class MasterManager {
   private async masterDrivenExplore(): Promise<void> {
     logger.info('Starting multi-agent workspace exploration via ExplorationCoordinator');
 
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: 'Starting multi-agent workspace exploration',
-      data: { workspacePath: this.workspacePath },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Starting multi-agent workspace exploration',
+        data: { workspacePath: this.workspacePath },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Starting multi-agent workspace exploration',
+        data: { workspacePath: this.workspacePath },
+      });
+    }
 
     try {
       const coordinator = new ExplorationCoordinator({
@@ -1723,6 +2404,7 @@ export class MasterManager {
         onProgress: async (event): Promise<void> => {
           await this.emitExplorationProgress(event);
         },
+        memory: this.memory ?? undefined,
       });
 
       const summary = await coordinator.explore();
@@ -1732,28 +2414,41 @@ export class MasterManager {
 
       // Write analysis marker for incremental change detection on next startup
       const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.dotFolder.writeAnalysisMarker(fullMarker);
+      await this.writeAnalysisMarkerToStore(fullMarker);
       this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
 
       // Load the workspace map into memory for system prompt injection
       await this.loadExplorationSummary();
 
       // Cache the map summary
-      const map = await this.dotFolder.readMap();
+      const map = await this.readWorkspaceMapFromStore();
       if (map) {
         this.workspaceMapSummary = this.buildMapSummary(map);
       }
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Multi-agent exploration completed',
-        data: {
-          directoriesExplored: summary.directoriesExplored,
-          projectType: summary.projectType,
-          frameworks: summary.frameworks,
-        },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Multi-agent exploration completed',
+          data: {
+            directoriesExplored: summary.directoriesExplored,
+            projectType: summary.projectType,
+            frameworks: summary.frameworks,
+          },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Multi-agent exploration completed',
+          data: {
+            directoriesExplored: summary.directoriesExplored,
+            projectType: summary.projectType,
+            frameworks: summary.frameworks,
+          },
+        });
+      }
 
       logger.info(
         {
@@ -1769,12 +2464,21 @@ export class MasterManager {
         'Multi-agent exploration failed, falling back to monolithic exploration',
       );
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'warn',
-        message: 'Multi-agent exploration failed, falling back to monolithic exploration',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
+          data: { error: errorMessage },
+        });
+      }
 
       await this.monolithicExplore();
     }
@@ -1862,12 +2566,9 @@ Work silently — do not output conversational text, just explore and write the 
     // Write agents.json
     await this.writeAgentsRegistry();
 
-    // Commit exploration results
-    await this.dotFolder.commitChanges('feat(master): monolithic workspace exploration');
-
     // Write analysis marker for incremental change detection on next startup
     const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-    await this.dotFolder.writeAnalysisMarker(fullMarker);
+    await this.writeAnalysisMarkerToStore(fullMarker);
     this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
 
     logger.info('Monolithic exploration completed successfully');
@@ -1876,18 +2577,22 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
-   * Write the agents.json registry based on discovered tools.
+   * Write the agents registry to system_config (DB) and agents.json (fallback).
    */
   private async writeAgentsRegistry(): Promise<void> {
     const registry = this.createAgentsRegistry();
-    await this.dotFolder.writeAgents(registry);
+    if (this.memory) {
+      await this.memory.setSystemConfig('agents', JSON.stringify(registry));
+    } else {
+      await this.dotFolder.writeAgents(registry);
+    }
   }
 
   /**
    * Load exploration summary from the workspace map written by the Master.
    */
   private async loadExplorationSummary(): Promise<void> {
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
 
     if (map) {
       this.explorationSummary = {
@@ -1935,11 +2640,19 @@ Work silently — do not output conversational text, just explore and write the 
 
     try {
       // Log re-exploration start
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Workspace re-exploration started',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Workspace re-exploration started',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Workspace re-exploration started',
+        });
+      }
 
       if (this.masterSession) {
         // Master-driven re-exploration via session
@@ -1975,11 +2688,19 @@ Work silently — do not output conversational text, just explore and write the 
       await this.loadExplorationSummary();
 
       // Log re-exploration completion
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Workspace re-exploration completed',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Workspace re-exploration completed',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Workspace re-exploration completed',
+        });
+      }
 
       this.state = 'ready';
 
@@ -2092,7 +2813,19 @@ Work silently — do not output conversational text, just explore and write the 
     // Build a ProgressReporter that maps events to the connector's sendProgress()
     const progress = this.makeProgressReporter(message.source, message.sender);
 
+    // Stable session ID for grouping all turns of this conversation (OB-730)
+    const sessionId = this.masterSession?.sessionId ?? taskId;
+
     try {
+      // Record the inbound user message to conversation history (OB-730)
+      await this.recordConversationMessage(
+        sessionId,
+        'user',
+        message.content,
+        message.source,
+        message.sender,
+      );
+
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
         const status = await this.getStatus();
@@ -2102,9 +2835,16 @@ Work silently — do not output conversational text, just explore and write the 
         task.completedAt = new Date().toISOString();
         task.durationMs =
           new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
-        await this.dotFolder.recordTask(task);
+        await this.recordTaskToStore(task);
         return status;
       }
+
+      // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
+      // and fetch learned patterns for system prompt enrichment (OB-735)
+      const [conversationContext, learnedPatternsContext] = await Promise.all([
+        this.buildConversationContext(message.content),
+        this.buildLearnedPatternsContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
@@ -2129,8 +2869,57 @@ Work silently — do not output conversational text, just explore and write the 
         await progress?.({ type: 'planning' });
       }
 
+      // Check if task targets a specific sub-master's scope (OB-755)
+      // For non-trivial tasks, detect file-path mentions that belong to a sub-project
+      // and route directly to that sub-master's context instead of the root Master.
+      if (taskClass !== 'quick-answer' && this.subMasterManager) {
+        const allSubMasters = await this.subMasterManager.listSubMasters();
+        const activeSubMasters = allSubMasters.filter((sm) => sm.status === 'active');
+        if (activeSubMasters.length > 0) {
+          const routing = this.detectSubMasterRouting(message.content, activeSubMasters);
+          if (routing) {
+            logger.info(
+              { type: routing.type, count: routing.subMasters.length },
+              'Routing task to sub-master(s)',
+            );
+            await progress?.({ type: 'spawning', workerCount: routing.subMasters.length });
+
+            const subMasterResponse = await this.handleSubMasterDelegation(
+              routing,
+              message.content,
+              progress,
+            );
+
+            task.status = 'completed';
+            task.result = subMasterResponse;
+            task.completedAt = new Date().toISOString();
+            task.durationMs =
+              new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
+            await this.recordTaskToStore(task);
+            await this.recordConversationMessage(sessionId, 'master', subMasterResponse);
+            void this.recordClassificationFeedback(
+              this.normalizeForCache(message.content),
+              true,
+              false,
+            );
+            this.onTaskCompleted();
+            this.state = 'ready';
+            await progress?.({ type: 'complete' });
+            return subMasterResponse;
+          }
+        }
+      }
+
       // Execute message through the persistent Master session
       const spawnOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+      // Inject relevant conversation history into the Master's system prompt (OB-731)
+      if (conversationContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
+      }
+      // Inject learned patterns into the Master's system prompt (OB-735)
+      if (learnedPatternsContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
+      }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -2145,6 +2934,14 @@ Work silently — do not output conversational text, just explore and write the 
 
         // Retry with the same prompt (planning or raw) and the new session
         const retryOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+        // Re-inject conversation history into retry opts as well
+        if (conversationContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
+        }
+        // Re-inject learned patterns into retry opts as well
+        if (learnedPatternsContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
+        }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
       }
@@ -2162,7 +2959,7 @@ Work silently — do not output conversational text, just explore and write the 
           logger.info({ spawnCount: spawnResult.markers.length }, 'SPAWN markers detected');
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const n = spawnResult.markers.length;
 
@@ -2205,7 +3002,7 @@ Work silently — do not output conversational text, just explore and write the 
           logger.info({ delegationCount: delegations.length }, 'Delegation markers detected');
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
@@ -2237,11 +3034,16 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
-      await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      await this.recordTaskToStore(task);
+
+      // Record the Master AI response to conversation history (OB-730)
+      await this.recordConversationMessage(sessionId, 'master', response);
 
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
+
+      // Increment completed task counter and trigger prompt evolution every 50 tasks (OB-734)
+      this.onTaskCompleted();
 
       this.state = 'ready';
 
@@ -2263,7 +3065,7 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
+      await this.recordTaskToStore(task);
 
       // Record classification feedback: task failed — check if it was a timeout
       const timedOut =
@@ -2332,7 +3134,19 @@ Work silently — do not output conversational text, just explore and write the 
     // Build a ProgressReporter that maps events to the connector's sendProgress()
     const streamProgress = this.makeProgressReporter(message.source, message.sender);
 
+    // Stable session ID for grouping all turns of this conversation (OB-730)
+    const streamSessionId = this.masterSession?.sessionId ?? taskId;
+
     try {
+      // Record the inbound user message to conversation history (OB-730)
+      await this.recordConversationMessage(
+        streamSessionId,
+        'user',
+        message.content,
+        message.source,
+        message.sender,
+      );
+
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
         const status = await this.getStatus();
@@ -2342,10 +3156,17 @@ Work silently — do not output conversational text, just explore and write the 
         task.completedAt = new Date().toISOString();
         task.durationMs =
           new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
-        await this.dotFolder.recordTask(task);
+        await this.recordTaskToStore(task);
         yield status;
         return;
       }
+
+      // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
+      // and fetch learned patterns for system prompt enrichment (OB-735)
+      const [streamConversationContext, streamLearnedPatternsContext] = await Promise.all([
+        this.buildConversationContext(message.content),
+        this.buildLearnedPatternsContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await streamProgress?.({ type: 'classifying' });
@@ -2371,6 +3192,16 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Stream message through the persistent Master session
       const spawnOpts = this.buildMasterSpawnOptions(streamPromptToSend, undefined, streamMaxTurns);
+      // Inject relevant conversation history into the Master's system prompt (OB-731)
+      if (streamConversationContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+      }
+      // Inject learned patterns into the Master's system prompt (OB-735)
+      if (streamLearnedPatternsContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
+      }
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
 
@@ -2402,6 +3233,16 @@ Work silently — do not output conversational text, just explore and write the 
           undefined,
           streamMaxTurns,
         );
+        // Re-inject conversation history into retry opts as well
+        if (streamConversationContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+        }
+        // Re-inject learned patterns into retry opts as well
+        if (streamLearnedPatternsContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
+        }
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);
 
@@ -2432,7 +3273,7 @@ Work silently — do not output conversational text, just explore and write the 
           );
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const streamN = spawnResult.markers.length;
 
@@ -2503,7 +3344,7 @@ Work silently — do not output conversational text, just explore and write the 
           );
 
           task.status = 'delegated';
-          await this.dotFolder.recordTask(task);
+          await this.recordTaskToStore(task);
 
           const delegationResults = await this.handleDelegations(delegations, message);
 
@@ -2540,8 +3381,13 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
-      await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
+      await this.recordTaskToStore(task);
+
+      // Record the Master AI response to conversation history (OB-730)
+      await this.recordConversationMessage(streamSessionId, 'master', task.result);
+
+      // Increment completed task counter and trigger prompt evolution every 50 tasks (OB-734)
+      this.onTaskCompleted();
 
       this.state = 'ready';
 
@@ -2561,7 +3407,7 @@ Work silently — do not output conversational text, just explore and write the 
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
-      await this.dotFolder.recordTask(task);
+      await this.recordTaskToStore(task);
 
       this.state = 'ready';
 
@@ -2578,8 +3424,8 @@ Work silently — do not output conversational text, just explore and write the 
    * Get system status
    */
   public async getStatus(): Promise<string> {
-    const map = await this.dotFolder.readMap();
-    const tasks = await this.dotFolder.readAllTasks();
+    const map = await this.readWorkspaceMapFromStore();
+    const tasks = await this.readAllTasksFromStore();
 
     const completedTasks = tasks.filter((t) => t.status === 'completed').length;
     const failedTasks = tasks.filter((t) => t.status === 'failed').length;
@@ -2724,12 +3570,21 @@ Work silently — do not output conversational text, just explore and write the 
     logger.info('Starting self-improvement cycle');
 
     try {
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Self-improvement cycle started',
-        data: {},
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Self-improvement cycle started',
+          data: {},
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Self-improvement cycle started',
+          data: {},
+        });
+      }
 
       // Task 1: Identify and rewrite low-performing prompts
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
@@ -2750,26 +3605,47 @@ Work silently — do not output conversational text, just explore and write the 
       // Task 3: Check if workspace has changed and update map if needed
       await this.updateWorkspaceMapIfChanged();
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Self-improvement cycle completed',
-        data: {
-          lowPerformingPrompts: lowPerformingPrompts.length,
-          durationMs: new Date().getTime() - new Date(startedAt).getTime(),
-        },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Self-improvement cycle completed',
+          data: {
+            lowPerformingPrompts: lowPerformingPrompts.length,
+            durationMs: new Date().getTime() - new Date(startedAt).getTime(),
+          },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Self-improvement cycle completed',
+          data: {
+            lowPerformingPrompts: lowPerformingPrompts.length,
+            durationMs: new Date().getTime() - new Date(startedAt).getTime(),
+          },
+        });
+      }
 
       logger.info('Self-improvement cycle completed successfully');
     } catch (error) {
       logger.error({ err: error }, 'Self-improvement cycle encountered an error');
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Self-improvement cycle failed',
-        data: { error: error instanceof Error ? error.message : String(error) },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Self-improvement cycle failed',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Self-improvement cycle failed',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      }
     } finally {
       this.isSelfImproving = false;
     }
@@ -2786,9 +3662,24 @@ Work silently — do not output conversational text, just explore and write the 
     );
 
     try {
-      // Read the current prompt content from disk
-      const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
-      const currentContent = await fs.readFile(promptPath, 'utf-8');
+      // Read the current prompt content — prefer DB, fall back to file
+      let currentContent: string;
+      if (this.memory) {
+        try {
+          const dbRecord = await this.memory.getActivePrompt(prompt.id);
+          currentContent = dbRecord.content;
+        } catch {
+          const promptPath = path.join(
+            this.dotFolder.getDotFolderPath(),
+            'prompts',
+            prompt.filePath,
+          );
+          currentContent = await fs.readFile(promptPath, 'utf-8');
+        }
+      } else {
+        const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
+        currentContent = await fs.readFile(promptPath, 'utf-8');
+      }
 
       // Build a self-improvement prompt for the Master
       const improvementPrompt = `You are reviewing your own prompt templates for effectiveness.
@@ -2827,16 +3718,16 @@ ${currentContent}
         return;
       }
 
-      // Update the prompt file
-      await fs.writeFile(promptPath, rewrittenContent, 'utf-8');
+      // Update the prompt — write to DB (primary) or file (fallback)
+      if (this.memory) {
+        await this.memory.createPromptVersion(prompt.id, rewrittenContent);
+      } else {
+        const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
+        await fs.writeFile(promptPath, rewrittenContent, 'utf-8');
+      }
 
       // Reset the prompt's usage stats (fresh start with new version)
       await this.dotFolder.resetPromptStats(prompt.id);
-
-      // Commit the rewrite
-      await this.dotFolder.commitChanges(
-        `feat(master): rewrite ${prompt.id} prompt (low success rate: ${(prompt.successRate ?? 0) * 100}%)`,
-      );
 
       logger.info({ promptId: prompt.id }, 'Successfully rewrote prompt');
     } catch (error) {
@@ -2850,93 +3741,98 @@ ${currentContent}
    * create a "test-runner" profile.
    */
   private async createProfilesFromLearnings(): Promise<void> {
-    const learnings = await this.dotFolder.readLearnings();
-    if (!learnings || learnings.entries.length < 10) {
-      // Need at least 10 learnings to identify patterns
+    // Build a list of { taskType, successCount, failureCount, successRate } from either memory or JSON.
+    type TaskTypeStat = {
+      taskType: string;
+      successCount: number;
+      failureCount: number;
+      successRate: number;
+    };
+    let taskTypeStats: TaskTypeStat[] = [];
+
+    if (this.memory) {
+      try {
+        const rows = await this.memory.getLearnedTaskTypes();
+        taskTypeStats = rows.map((r) => ({
+          taskType: r.taskType,
+          successCount: r.successCount,
+          failureCount: r.failureCount,
+          successRate: r.successRate,
+        }));
+      } catch {
+        return;
+      }
+    } else {
+      const learnings = await this.dotFolder.readLearnings();
+      if (!learnings || learnings.entries.length < 10) {
+        return;
+      }
+      logger.info(
+        { learningCount: learnings.entries.length },
+        'Analyzing learnings for profile patterns',
+      );
+      const byTaskType = new Map<string, typeof learnings.entries>();
+      for (const entry of learnings.entries) {
+        const existing = byTaskType.get(entry.taskType) ?? [];
+        existing.push(entry);
+        byTaskType.set(entry.taskType, existing);
+      }
+      for (const [taskType, entries] of byTaskType) {
+        const successCount = entries.filter((e) => e.success).length;
+        taskTypeStats.push({
+          taskType,
+          successCount,
+          failureCount: entries.length - successCount,
+          successRate: successCount / entries.length,
+        });
+      }
+    }
+
+    const totalEntries = taskTypeStats.reduce((s, r) => s + r.successCount + r.failureCount, 0);
+    if (totalEntries < 10) {
       return;
     }
 
-    logger.info(
-      { learningCount: learnings.entries.length },
-      'Analyzing learnings for profile patterns',
-    );
-
-    // Group learnings by task type
-    const byTaskType = new Map<string, typeof learnings.entries>();
-    for (const entry of learnings.entries) {
-      const existing = byTaskType.get(entry.taskType) ?? [];
-      existing.push(entry);
-      byTaskType.set(entry.taskType, existing);
-    }
-
-    // Look for task types with >5 entries and >70% success rate
-    for (const [taskType, entries] of byTaskType) {
-      if (entries.length < 5) continue;
-
-      const successCount = entries.filter((e) => e.success).length;
-      const successRate = successCount / entries.length;
-
-      if (successRate < 0.7) continue;
+    // Look for task types with >5 total executions and >70% success rate
+    for (const stat of taskTypeStats) {
+      const total = stat.successCount + stat.failureCount;
+      if (total < 5) continue;
+      if (stat.successRate < 0.7) continue;
 
       // Check if a profile already exists for this task type
-      const existingProfiles = await this.dotFolder.readProfiles();
-      const profileId = `auto-${taskType}`;
+      const existingProfiles = await this.readProfilesFromStore();
+      const profileId = `auto-${stat.taskType}`;
+      if (existingProfiles?.profiles[profileId]) continue;
 
-      if (existingProfiles?.profiles[profileId]) {
-        // Profile already exists
-        continue;
-      }
-
-      // Analyze which profile was most commonly used for successful tasks
-      const successfulProfiles = entries
-        .filter((e) => e.success && e.profileUsed !== undefined)
-        .map((e) => e.profileUsed as string); // Safe because we filtered out undefined above
-
-      // Find most common profile
-      const profileCounts = new Map<string, number>();
-      for (const profile of successfulProfiles) {
-        profileCounts.set(profile, (profileCounts.get(profile) ?? 0) + 1);
-      }
-
-      const [mostCommonProfile, count] = [...profileCounts.entries()].sort(
-        (a, b) => b[1] - a[1],
-      )[0] ?? [null, 0];
-
-      if (!mostCommonProfile || count < 3) {
-        // Not enough evidence for a pattern
-        continue;
-      }
-
-      // Find the tools from the most common profile
-      const builtInProfile = BUILT_IN_PROFILES[mostCommonProfile as keyof typeof BUILT_IN_PROFILES];
-      if (!builtInProfile) {
-        continue;
-      }
+      // Default to 'code-edit' profile for auto-generated profiles
+      const baseProfileName = 'code-edit';
+      const builtInProfile = BUILT_IN_PROFILES[baseProfileName as keyof typeof BUILT_IN_PROFILES];
+      if (!builtInProfile) continue;
 
       logger.info(
         {
-          taskType,
+          taskType: stat.taskType,
           profileId,
-          baseProfile: mostCommonProfile,
-          successRate,
-          usageCount: entries.length,
+          successRate: stat.successRate,
+          totalExecutions: total,
         },
         'Creating custom profile from learning patterns',
       );
 
-      // Create new profile
       const newProfile: ToolProfile = {
         name: profileId,
-        description: `Auto-generated profile for ${taskType} tasks (success rate: ${(successRate * 100).toFixed(1)}%)`,
+        description: `Auto-generated profile for ${stat.taskType} tasks (success rate: ${(stat.successRate * 100).toFixed(1)}%)`,
         tools: [...builtInProfile.tools],
       };
 
       try {
         await this.dotFolder.addProfile(newProfile);
-        await this.dotFolder.commitChanges(
-          `feat(master): create custom profile ${profileId} from learnings (${entries.length} samples, ${(successRate * 100).toFixed(1)}% success)`,
-        );
-
+        if (this.memory) {
+          const updated = await this.dotFolder.readProfiles();
+          if (updated) {
+            await this.memory.setSystemConfig('profiles', JSON.stringify(updated));
+          }
+        }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
@@ -2949,7 +3845,7 @@ ${currentContent}
    * Detects changes by checking for new files, modified package.json, new directories, etc.
    */
   private async updateWorkspaceMapIfChanged(): Promise<void> {
-    const map = await this.dotFolder.readMap();
+    const map = await this.readWorkspaceMapFromStore();
     if (!map) {
       // No map to update
       return;
@@ -3009,7 +3905,7 @@ ${currentContent}
     // Persist Master session before shutdown
     if (this.masterSession) {
       try {
-        await this.dotFolder.writeMasterSession(this.masterSession);
+        await this.saveMasterSessionToStore(this.masterSession);
       } catch (error) {
         logger.warn({ error }, 'Failed to persist Master session on shutdown');
       }
@@ -3017,11 +3913,19 @@ ${currentContent}
 
     // Log shutdown
     try {
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Master AI shutting down',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Master AI shutting down',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Master AI shutting down',
+        });
+      }
     } catch (error) {
       logger.error({ err: error }, 'Failed to log shutdown');
     }
@@ -3065,7 +3969,7 @@ ${currentContent}
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): Promise<string> {
     // Load custom profiles once for all workers
-    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfilesRegistry = await this.readProfilesFromStore();
     const customProfiles = customProfilesRegistry?.profiles;
 
     // Register all workers in the registry BEFORE spawning
@@ -3150,7 +4054,7 @@ ${currentContent}
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
-    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfilesRegistry = await this.readProfilesFromStore();
     const customProfiles = customProfilesRegistry?.profiles;
 
     // Register all workers in the registry BEFORE spawning
@@ -3256,13 +4160,27 @@ ${currentContent}
       'Spawning worker from SPAWN marker',
     );
 
+    // Adaptive model selection (OB-724): marker override → learned best model → heuristics
+    let resolvedModel = body.model;
+    if (!resolvedModel && this.memory) {
+      const taskType = this.classifyTaskType(body.prompt);
+      const learned = await getRecommendedModel(this.memory, taskType);
+      if (learned) {
+        resolvedModel = learned.model;
+        logger.debug(
+          { workerId, model: learned.model, reason: learned.reason },
+          'Adaptive model selected for worker',
+        );
+      }
+    }
+
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     const spawnOpts = manifestToSpawnOptions(
       {
         prompt: body.prompt,
         workspacePath: this.workspacePath,
         profile,
-        model: body.model,
+        model: resolvedModel,
         maxTurns: body.maxTurns ?? this.defaultMaxTurnsForProfile(profile),
         timeout: body.timeout,
         retries: body.retries,
@@ -3300,11 +4218,57 @@ ${currentContent}
       },
     };
 
+    // Inject memory briefing as system prompt so the worker starts with project context (OB-723)
+    if (this.memory) {
+      try {
+        const briefing = await this.memory.buildBriefing(body.prompt);
+        if (briefing) {
+          spawnOpts.systemPrompt = briefing;
+        }
+      } catch (briefingErr) {
+        logger.warn(
+          { workerId, error: briefingErr },
+          'Failed to build worker briefing — proceeding without context',
+        );
+      }
+    }
+
+    // INSERT agent_activity row with status='starting' (OB-742)
+    const workerStartedAt = new Date().toISOString();
+    if (this.memory) {
+      try {
+        const masterSessionId = this.masterSession?.sessionId;
+        const workerActivity: ActivityRecord = {
+          id: workerId,
+          type: 'worker',
+          model: resolvedModel ?? body.model ?? undefined,
+          profile,
+          task_summary: body.prompt.slice(0, 120),
+          status: 'starting',
+          parent_id: masterSessionId,
+          started_at: workerStartedAt,
+          updated_at: workerStartedAt,
+        };
+        await this.memory.insertActivity(workerActivity);
+      } catch (actErr) {
+        logger.warn({ workerId, error: actErr }, 'Failed to record worker activity (starting)');
+      }
+    }
+
     try {
       // Note: We cannot get the actual PID from spawn() because it's an async call
       // that returns a promise. We mark it as running without a PID for now.
       // A future enhancement could expose the child process from AgentRunner.
       this.workerRegistry.markRunning(workerId, -1); // -1 indicates PID not available
+
+      // UPDATE agent_activity to 'running' now that spawn is about to start (OB-742)
+      if (this.memory) {
+        try {
+          await this.memory.updateActivity(workerId, { status: 'running' });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (running)');
+        }
+      }
 
       const result = await this.agentRunner.spawn(spawnOpts);
 
@@ -3351,9 +4315,50 @@ ${currentContent}
         resolvedTools: spawnOpts.allowedTools,
       };
 
-      // Write worker task to disk without git commit (OB-165: task history + audit trail)
-      // Workers are batched, so we don't commit each one individually to avoid git lock contention
-      await this.dotFolder.writeTask(taskRecord);
+      // Write worker task to store (memory) (OB-165: task history + audit trail)
+      if (this.memory) {
+        const statusMap: Record<string, MemoryTaskRecord['status']> = {
+          completed: 'completed',
+          failed: 'failed',
+        };
+        await this.memory.recordTask({
+          id: taskRecord.id,
+          type: 'worker',
+          status: statusMap[taskRecord.status] ?? 'failed',
+          prompt: taskRecord.userMessage,
+          response: taskRecord.result,
+          model: (taskRecord.metadata?.['modelUsed'] as string | undefined) ?? spawnOpts.model,
+          profile,
+          duration_ms: taskRecord.durationMs,
+          exit_code: (taskRecord.metadata?.['exitCode'] as number | undefined) ?? result.exitCode,
+          retries: result.retryCount,
+          created_at: taskRecord.createdAt,
+          completed_at: taskRecord.completedAt,
+        });
+      } else {
+        logger.warn({ workerId }, 'MemoryManager not available — worker task record not persisted');
+      }
+
+      // UPDATE agent_activity to 'done' or 'failed' with cost (OB-742, OB-746)
+      if (this.memory) {
+        try {
+          const activityStatus = result.exitCode === 0 ? 'done' : 'failed';
+          await this.memory.updateActivity(workerId, {
+            status: activityStatus,
+            progress_pct: result.exitCode === 0 ? 100 : undefined,
+            completed_at: taskRecord.completedAt,
+            cost_usd: result.costUsd,
+          });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (completion)');
+        }
+      }
+
+      // Record worker output to conversation history (OB-730)
+      if (result.exitCode === 0 && result.stdout.trim()) {
+        const workerSessionId = this.masterSession?.sessionId ?? workerId;
+        await this.recordConversationMessage(workerSessionId, 'worker', result.stdout.trim());
+      }
 
       // Record learning entry for this worker execution (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, result, profile, spawnOpts.model);
@@ -3390,9 +4395,39 @@ ${currentContent}
         exceptionThrown: true,
       };
 
-      // Write worker task to disk even on exception (OB-165: task history + audit trail)
-      // Workers are batched, so we don't commit each one individually to avoid git lock contention
-      await this.dotFolder.writeTask(taskRecord);
+      // Write worker task to store (memory) even on exception (OB-165)
+      if (this.memory) {
+        await this.memory.recordTask({
+          id: taskRecord.id,
+          type: 'worker',
+          status: 'failed',
+          prompt: taskRecord.userMessage,
+          model: taskRecord.metadata?.['modelUsed'] as string | undefined,
+          profile,
+          duration_ms: 0,
+          exit_code: -1,
+          retries: 0,
+          created_at: taskRecord.createdAt,
+          completed_at: taskRecord.completedAt,
+        });
+      } else {
+        logger.warn(
+          { workerId },
+          'MemoryManager not available — worker exception task record not persisted',
+        );
+      }
+
+      // UPDATE agent_activity to 'failed' on exception (OB-742)
+      if (this.memory) {
+        try {
+          await this.memory.updateActivity(workerId, {
+            status: 'failed',
+            completed_at: taskRecord.completedAt,
+          });
+        } catch (actErr) {
+          logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (failed)');
+        }
+      }
 
       // Record learning entry even on exception (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, failedResult, profile, body.model);
@@ -3444,8 +4479,21 @@ ${currentContent}
       return tool;
     }
 
-    // Check agents.json as fallback
-    const agents = await this.dotFolder.readAgents();
+    // Check agents registry — DB first, JSON fallback
+    let agents = null;
+    if (this.memory) {
+      const raw = await this.memory.getSystemConfig('agents');
+      if (raw) {
+        try {
+          agents = AgentsRegistrySchema.parse(JSON.parse(raw));
+        } catch {
+          // fall through to JSON file
+        }
+      }
+    }
+    if (!agents) {
+      agents = await this.dotFolder.readAgents();
+    }
     if (!agents) {
       return null;
     }
@@ -3557,5 +4605,169 @@ ${currentContent}
       specialists,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sub-master routing helpers (OB-755)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Detect which active sub-masters (if any) are relevant for the given message content.
+   *
+   * Scans the message text for path-like references that start with a sub-master's
+   * relative path (e.g. "backend/", "frontend/"). Returns routing info when at
+   * least one sub-master is matched.
+   *
+   * Examples of matched patterns:
+   *   "Update backend/src/auth.ts"   → matches sub-master with path "backend"
+   *   "Fix the frontend/app/index"   → matches sub-master with path "frontend"
+   *   "backend and frontend changes" → cross-cutting (matches both)
+   *
+   * Returns null when no sub-master scope is detected.
+   */
+  private detectSubMasterRouting(
+    content: string,
+    activeSubMasters: SubMasterRecord[],
+  ): { type: 'single' | 'cross-cutting'; subMasters: SubMasterRecord[] } | null {
+    const normalizedContent = content.toLowerCase();
+    const matched: SubMasterRecord[] = [];
+
+    for (const subMaster of activeSubMasters) {
+      // subMaster.path is a relative path like "backend" or "packages/api"
+      const subPath = subMaster.path.toLowerCase();
+      // Match references like "backend/", "./backend", or standalone "backend" at word boundary
+      const hasPathRef =
+        normalizedContent.includes(`${subPath}/`) ||
+        normalizedContent.includes(`./${subPath}`) ||
+        new RegExp(`\\b${subPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(
+          normalizedContent,
+        );
+      if (hasPathRef) {
+        matched.push(subMaster);
+      }
+    }
+
+    if (matched.length === 0) return null;
+
+    return {
+      type: matched.length === 1 ? 'single' : 'cross-cutting',
+      subMasters: matched,
+    };
+  }
+
+  /**
+   * Delegate a task to a single sub-master.
+   *
+   * Opens the sub-master's DB, builds a context briefing from its exploration
+   * data, then spawns a worker scoped to the sub-master's workspace directory.
+   * Falls back gracefully if the sub-master DB doesn't exist yet.
+   */
+  private async delegateToSubMaster(
+    subMaster: SubMasterRecord,
+    taskContent: string,
+  ): Promise<string> {
+    const subMasterAbsPath = path.join(this.workspacePath, subMaster.path);
+    const subMasterDbPath = path.join(subMasterAbsPath, '.openbridge', 'openbridge.db');
+
+    let briefingContext = '';
+    let subDb = null;
+    try {
+      subDb = openDatabase(subMasterDbPath);
+      const briefing = await buildBriefing(subDb, taskContent, undefined, this.agentRunner);
+      briefingContext = briefing;
+      logger.info(
+        { subMasterPath: subMaster.path, briefingLength: briefing.length },
+        'Built sub-master briefing',
+      );
+    } catch (err) {
+      // Sub-master DB may not exist yet (exploration still in progress or stale).
+      // Fall through and spawn the worker without briefing context.
+      logger.warn(
+        { error: err, subMasterPath: subMaster.path },
+        'Could not read sub-master briefing — proceeding without context',
+      );
+    } finally {
+      if (subDb) {
+        closeDatabase(subDb);
+      }
+    }
+
+    const prompt = briefingContext
+      ? `${briefingContext}\n\n## Task\n\n${taskContent}`
+      : taskContent;
+
+    const result = await this.agentRunner.spawn({
+      prompt,
+      workspacePath: subMasterAbsPath,
+      model: 'sonnet',
+      allowedTools: [...TOOLS_CODE_EDIT],
+      maxTurns: DEFAULT_MAX_TURNS_TASK,
+    });
+
+    if (result.exitCode !== 0) {
+      logger.warn(
+        { subMasterPath: subMaster.path, exitCode: result.exitCode },
+        'Sub-master worker exited with non-zero code',
+      );
+    }
+
+    return (
+      result.stdout.trim() ||
+      `Sub-master task for ${subMaster.name} completed with exit code ${result.exitCode}.`
+    );
+  }
+
+  /**
+   * Orchestrate delegation to one or more sub-masters.
+   *
+   * Single sub-master: delegate directly and return its response.
+   * Cross-cutting (multiple sub-masters): spawn one worker per affected
+   * sub-master concurrently, then collect and combine their results into
+   * a unified response string for the Master to relay to the user.
+   */
+  private async handleSubMasterDelegation(
+    routing: { type: 'single' | 'cross-cutting'; subMasters: SubMasterRecord[] },
+    taskContent: string,
+    progress?: ProgressReporter,
+  ): Promise<string> {
+    if (routing.type === 'single') {
+      const [subMaster] = routing.subMasters;
+      logger.info({ subMasterPath: subMaster!.path }, 'Delegating task to single sub-master');
+      const result = await this.delegateToSubMaster(subMaster!, taskContent);
+      await progress?.({ type: 'worker-progress', completed: 1, total: 1 });
+      return result;
+    }
+
+    // Cross-cutting: decompose into per-sub-master sub-tasks and run concurrently
+    logger.info(
+      { count: routing.subMasters.length, paths: routing.subMasters.map((s) => s.path) },
+      'Delegating cross-cutting task to multiple sub-masters',
+    );
+
+    let completedCount = 0;
+    const total = routing.subMasters.length;
+
+    const settled = await Promise.allSettled(
+      routing.subMasters.map((subMaster) =>
+        this.delegateToSubMaster(subMaster, taskContent).then(async (res) => {
+          completedCount++;
+          await progress?.({ type: 'worker-progress', completed: completedCount, total });
+          return { name: subMaster.name, path: subMaster.path, result: res };
+        }),
+      ),
+    );
+
+    const parts: string[] = [];
+    for (const outcome of settled) {
+      if (outcome.status === 'fulfilled') {
+        parts.push(`### ${outcome.value.name} (${outcome.value.path})\n\n${outcome.value.result}`);
+      } else {
+        const err =
+          outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        parts.push(`### Sub-master delegation failed\n\n${err}`);
+      }
+    }
+
+    return parts.join('\n\n---\n\n');
   }
 }

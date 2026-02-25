@@ -29,6 +29,66 @@ export interface MasterSystemPromptContext {
 }
 
 /**
+ * Data fetched from the memory DB for the "Learned Patterns" system prompt section.
+ * Only entries with > 5 data points are included.
+ */
+export interface LearnedPatternsData {
+  /** Best model per task type (only entries with > 5 total tasks). */
+  modelLearnings: Array<{
+    taskType: string;
+    bestModel: string;
+    successRate: number;
+    totalTasks: number;
+  }>;
+  /** High-effectiveness prompts with > 5 uses and effectiveness >= 0.7. */
+  effectivePrompts: Array<{
+    name: string;
+    effectiveness: number;
+    usageCount: number;
+  }>;
+}
+
+/**
+ * Format the "## Learned Patterns" section to append to the Master system prompt.
+ * Returns null when there is nothing to include (no data yet).
+ * Kept concise — target < 500 tokens.
+ */
+export function formatLearnedPatternsSection(data: LearnedPatternsData): string | null {
+  const hasModelData = data.modelLearnings.length > 0;
+  const hasPromptData = data.effectivePrompts.length > 0;
+
+  if (!hasModelData && !hasPromptData) return null;
+
+  const lines: string[] = [
+    '## Learned Patterns',
+    '',
+    'Use these empirically derived patterns to make better model and strategy decisions.',
+    '',
+  ];
+
+  if (hasModelData) {
+    lines.push('### Best Models by Task Type');
+    for (const learning of data.modelLearnings) {
+      const pct = Math.round(learning.successRate * 100);
+      lines.push(
+        `- **${learning.taskType}**: ${learning.bestModel} (${pct}% success, ${learning.totalTasks} tasks)`,
+      );
+    }
+    lines.push('');
+  }
+
+  if (hasPromptData) {
+    lines.push('### High-Effectiveness Prompt Templates');
+    for (const prompt of data.effectivePrompts) {
+      const pct = Math.round(prompt.effectiveness * 100);
+      lines.push(`- **${prompt.name}**: ${pct}% effective (${prompt.usageCount} uses)`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Generate the default Master system prompt content.
  *
  * This is seeded once into `.openbridge/prompts/master-system.md` and can be

@@ -409,20 +409,11 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const dotFolderPath = join(workspacePath, '.openbridge');
     await expect(access(dotFolderPath)).resolves.toBeUndefined();
 
-    // Verify workspace-map.json (written by ExplorationCoordinator)
-    const mapPath = join(dotFolderPath, 'workspace-map.json');
-    await expect(access(mapPath)).resolves.toBeUndefined();
-
-    const mapContent = await readFile(mapPath, 'utf-8');
-    const map = JSON.parse(mapContent) as {
-      projectType: string;
-      frameworks: string[];
-      summary: string;
-    };
-    expect(map.projectType).toBe('nodejs-typescript');
-    expect(map.frameworks).toContain('express');
-    expect(map.summary).toContain('Node.js');
-    expect(map.summary).toContain('TypeScript');
+    // workspace-map.json is no longer written to disk (OB-810): it is stored in DB only
+    // (requires MemoryManager to retrieve). Verify via the in-memory exploration summary instead.
+    const explorationSummary = masterManager.getExplorationSummary();
+    expect(explorationSummary).toBeDefined();
+    expect(explorationSummary?.status).toBe('completed');
 
     // Verify agents.json (written mechanically by MasterManager)
     const agentsPath = join(dotFolderPath, 'agents.json');
@@ -435,13 +426,7 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     expect(agents.master).toBeDefined();
     expect(agents.master.name).toBe('claude');
 
-    // Verify exploration.log
-    const logPath = join(dotFolderPath, 'exploration.log');
-    await expect(access(logPath)).resolves.toBeUndefined();
-
-    // Verify git repository
-    const gitPath = join(dotFolderPath, '.git');
-    await expect(access(gitPath)).resolves.toBeUndefined();
+    // exploration.log is no longer written to disk (OB-802): logging goes to DB via memory.logExploration()
 
     // Verify coordinator used spawn() for multi-agent exploration (not stream())
     expect(mockSpawn).toHaveBeenCalled();

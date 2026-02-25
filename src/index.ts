@@ -11,6 +11,7 @@ import {
   isV2Config,
 } from './core/index.js';
 import { injectDevConnectors } from './core/config.js';
+import { WorkspaceManager } from './core/workspace-manager.js';
 import { V2ConfigSchema } from './types/config.js';
 // whatsapp-web.js / puppeteer registers multiple exit handlers — raise the limit to avoid the warning
 process.setMaxListeners(20);
@@ -70,11 +71,21 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
   await bridge.start();
 
   const connectorNames = bridge.getActiveConnectorNames();
-  process.stdout.write(
-    `OpenBridge v${OPENBRIDGE_VERSION} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
-  );
-
-  logger.info('OpenBridge (V0) is running. Press Ctrl+C to stop.');
+  if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+    process.stdout.write(
+      JSON.stringify({
+        event: 'ready',
+        version: OPENBRIDGE_VERSION,
+        mode: 'v0',
+        connectors: connectorNames,
+      }) + '\n',
+    );
+  } else {
+    process.stdout.write(
+      `OpenBridge v${OPENBRIDGE_VERSION} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+    );
+    logger.info('OpenBridge (V0) is running. Press Ctrl+C to stop.');
+  }
 
   return bridge;
 }
@@ -89,8 +100,20 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
  * - Launch Master AI
  * - Explore workspace autonomously
  */
-async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Bridge> {
+async function startV2Flow(
+  configPath: string,
+  v2Config: V2Config,
+): Promise<{ bridge: Bridge; workspaceManager: WorkspaceManager }> {
   logger.info('Starting V2 flow (autonomous AI bridge)');
+
+  // Step 0: Resolve workspace path — clone remote repo if needed
+  const workspaceManager = new WorkspaceManager(v2Config.workspacePath, {
+    pullIntervalSeconds: v2Config.workspace?.pullInterval,
+  });
+  const resolvedWorkspacePath = await workspaceManager.init();
+  if (WorkspaceManager.isRemoteUrl(v2Config.workspacePath)) {
+    logger.info({ localPath: resolvedWorkspacePath }, 'Using cloned remote workspace');
+  }
 
   // Step 1: Discover AI tools on the machine
   logger.info('Discovering AI tools...');
@@ -146,7 +169,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   const config = await loadConfig();
   setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
-  const bridge = new Bridge(config, { configPath });
+  const bridge = new Bridge(config, { configPath, workspacePath: resolvedWorkspacePath });
 
   // Register built-in plugins
   const registry = bridge.getRegistry();
@@ -158,16 +181,31 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   await registry.discoverPlugins(srcDir);
 
   // Step 3: Create Master AI and wire into bridge BEFORE starting
-  logger.info({ workspacePath: v2Config.workspacePath }, 'Launching Master AI...');
+  logger.info({ workspacePath: resolvedWorkspacePath }, 'Launching Master AI...');
 
   const masterManager = new MasterManager({
-    workspacePath: v2Config.workspacePath,
+    workspacePath: resolvedWorkspacePath,
     masterTool: selectedMaster,
     discoveredTools: scanResult.cliTools,
+    memory: bridge.getMemory() ?? undefined,
+  });
+
+  // Wire workspace polling callback — triggers re-exploration on new commits
+  workspaceManager.setOnChangesDetected(() => {
+    logger.info('Remote workspace changes detected — scheduling re-exploration');
+    void masterManager.reExplore().catch((err: unknown) => {
+      logger.error({ err }, 'Re-exploration after remote pull failed');
+    });
   });
 
   // Wire Master into the bridge router (must happen before start)
   bridge.setMaster(masterManager);
+
+  // Wire email config if provided
+  if (v2Config.email) {
+    bridge.setEmailConfig(v2Config.email);
+    logger.info('Email config wired into bridge');
+  }
 
   // Step 4: Start Master AI BEFORE bridge — so it's ready when messages arrive.
   // This loads workspace-map.json and transitions from 'idle' to 'ready'.
@@ -182,15 +220,29 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   // Step 5: Start bridge (connectors + queue handler)
   await Promise.all([masterStartPromise, bridge.start()]);
 
+  // Step 6: Start remote workspace polling (no-op for local workspaces)
+  workspaceManager.startPolling();
+
   const connectorNames = bridge.getActiveConnectorNames();
-  process.stdout.write(
-    `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
-  );
+  if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+    process.stdout.write(
+      JSON.stringify({
+        event: 'ready',
+        version: OPENBRIDGE_VERSION,
+        mode: 'v2',
+        master: selectedMaster.name,
+        connectors: connectorNames,
+      }) + '\n',
+    );
+  } else {
+    process.stdout.write(
+      `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+    );
+    logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
+    logger.info('Press Ctrl+C to stop.');
+  }
 
-  logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
-  logger.info('Press Ctrl+C to stop.');
-
-  return bridge;
+  return { bridge, workspaceManager };
 }
 
 /**
@@ -216,9 +268,17 @@ async function detectConfigVersion(configPath: string): Promise<'v0' | 'v2'> {
 }
 
 async function main(): Promise<void> {
-  logger.info('OpenBridge starting...');
+  // Detect headless mode: --headless CLI flag or OPENBRIDGE_HEADLESS env var
+  const isHeadless =
+    process.argv.includes('--headless') || process.env['OPENBRIDGE_HEADLESS'] === 'true';
+  if (isHeadless) {
+    process.env['OPENBRIDGE_HEADLESS'] = 'true';
+  }
+
+  logger.info({ headless: isHeadless }, 'OpenBridge starting...');
 
   let bridge: Bridge | null = null;
+  let workspaceManager: WorkspaceManager | null = null;
   let configPath: string | undefined;
 
   try {
@@ -232,7 +292,9 @@ async function main(): Promise<void> {
       const raw = await readFile(configPath, 'utf-8');
       const parsed: unknown = JSON.parse(raw);
       const v2Config = V2ConfigSchema.parse(parsed);
-      bridge = await startV2Flow(configPath, v2Config);
+      const result = await startV2Flow(configPath, v2Config);
+      bridge = result.bridge;
+      workspaceManager = result.workspaceManager;
     } else {
       // V0 flow: legacy mode (backward compatibility)
       bridge = await startV0Flow(configPath);
@@ -246,6 +308,7 @@ async function main(): Promise<void> {
       }
       shutdownInProgress = true;
       logger.info('Shutting down...');
+      workspaceManager?.stopPolling();
       if (bridge) {
         await bridge.stop();
       }

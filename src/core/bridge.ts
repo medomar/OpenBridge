@@ -1,11 +1,14 @@
-import type { AppConfig } from '../types/config.js';
-import type { InboundMessage } from '../types/message.js';
+import path from 'node:path';
+import type { AppConfig, EmailConfig } from '../types/config.js';
+import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
+import { MemoryManager } from '../memory/index.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
+import { FileServer } from './file-server.js';
 import { HealthServer } from './health.js';
 import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
@@ -25,6 +28,8 @@ export interface BridgeOptions {
   configPath?: string;
   /** Max ms to wait for queue drain on shutdown before proceeding. Default: 30 000 */
   drainTimeoutMs?: number;
+  /** Absolute path to the target workspace — when provided, MemoryManager is created for SQLite persistence */
+  workspacePath?: string;
 }
 
 export class Bridge {
@@ -41,12 +46,17 @@ export class Bridge {
   private readonly router: Router;
   private readonly orchestrator: AgentOrchestrator;
   private master: MasterManager | null = null;
+  private memory: MemoryManager | null = null;
+  private fileServer: FileServer | null = null;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
   private readonly configPath?: string;
   private stopped = false;
   private readonly drainTimeoutMs: number;
+  private agentStatusInterval: ReturnType<typeof setInterval> | null = null;
+  private evictionInterval: ReturnType<typeof setInterval> | null = null;
+  private lastMessageAt: string | null = null;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -62,6 +72,13 @@ export class Bridge {
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
     this.orchestrator = new AgentOrchestrator(config.defaultProvider);
+
+    if (options?.workspacePath) {
+      const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
+      this.memory = new MemoryManager(dbPath);
+      this.fileServer = new FileServer(options.workspacePath);
+      this.router.setWorkspacePath(options.workspacePath);
+    }
   }
 
   /** Register built-in and external plugins before starting */
@@ -74,15 +91,71 @@ export class Bridge {
     return this.connectors.map((c) => c.name);
   }
 
+  /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
+  getMemory(): MemoryManager | null {
+    return this.memory;
+  }
+
   /** Set the Master AI — must be called before start() to enable Master routing */
   setMaster(master: MasterManager): void {
     this.master = master;
     logger.info('Master AI set on Bridge');
   }
 
+  /** Set the email config — enables [SHARE:email] marker support in the router */
+  setEmailConfig(config: EmailConfig): void {
+    this.router.setEmailConfig(config);
+    logger.info('Email config set on Router');
+  }
+
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
+
+    // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
+    if (this.memory) {
+      try {
+        await this.memory.init();
+        await this.memory.migrate();
+        logger.info('MemoryManager initialized and migrated');
+      } catch (error) {
+        logger.error(
+          { err: error },
+          'MemoryManager initialization failed — continuing with DotFolderManager fallback',
+        );
+        this.memory = null;
+      }
+    }
+
+    // Schedule periodic DB eviction — run once on startup, then every 24 hours
+    if (this.memory) {
+      const runEviction = (): void => {
+        logger.info('Running scheduled DB eviction');
+        void this.memory!.evictOldData()
+          .then(() => {
+            logger.info('DB eviction complete');
+          })
+          .catch((err: unknown) => {
+            logger.error({ err }, 'DB eviction failed');
+          });
+      };
+      runEviction();
+      this.evictionInterval = setInterval(runEviction, 24 * 60 * 60 * 1000);
+    }
+
+    // Wire auth service into router for SEND marker whitelist enforcement
+    this.router.setAuth(this.auth);
+
+    // Attach the SQLite DB to the auth service for access_control enforcement
+    if (this.memory) {
+      const db = this.memory.getDb();
+      if (db) this.auth.setDatabase(db);
+    }
+
+    // Wire memory into router for "status" command support
+    if (this.memory) {
+      this.router.setMemory(this.memory);
+    }
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
@@ -109,7 +182,30 @@ export class Bridge {
     // Set up queue processing BEFORE connectors — so messages are handled
     // as soon as any connector is ready (don't wait for slow ones like WhatsApp).
     this.queue.onMessage(async (message) => {
+      // Snapshot daily cost before routing so we can attribute the delta to this user.
+      let costBefore = 0;
+      if (this.memory) {
+        try {
+          costBefore = await this.memory.getDailyCost();
+        } catch {
+          // best-effort — cost attribution skipped if this fails
+        }
+      }
+
       await this.router.route(message);
+
+      // Increment daily_cost_used by the cost incurred during this task.
+      if (this.memory) {
+        try {
+          const costAfter = await this.memory.getDailyCost();
+          const delta = Math.max(0, costAfter - costBefore);
+          if (delta > 0) {
+            this.auth.incrementDailyCost(message.sender, message.source, delta);
+          }
+        } catch {
+          // best-effort — cost tracking is non-fatal
+        }
+      }
     });
 
     // Initialize connectors in parallel — slow connectors (WhatsApp/Puppeteer)
@@ -154,13 +250,38 @@ export class Bridge {
     // Wait for all connectors to finish (success or failure)
     await Promise.allSettled(connectorPromises);
 
+    // Start agent status broadcasting to WebChat dashboard (2s poll — best-effort)
+    if (this.memory) {
+      this.agentStatusInterval = setInterval(() => {
+        void this.broadcastAgentStatusToWebChat();
+      }, 2000);
+    }
+
     // Start health check endpoint
     this.healthServer.setDataProvider(() => this.getHealthStatus());
+    this.healthServer.setMetricsProvider(() => this.metrics.snapshot());
+    this.healthServer.setReadinessProvider(
+      () => this.master !== null && this.master.getState() === 'ready',
+    );
     await this.healthServer.start();
 
     // Start metrics endpoint
     this.metricsServer.setDataProvider(() => this.metrics.snapshot());
     await this.metricsServer.start();
+
+    // Start local file server for generated content (non-fatal)
+    if (this.fileServer) {
+      try {
+        await this.fileServer.start();
+        logger.info(
+          { url: this.fileServer.baseUrl, dir: this.fileServer.directory },
+          'File server started — generated content available at /shared/:filename',
+        );
+      } catch (error) {
+        logger.warn({ err: error }, 'File server failed to start — continuing without it');
+        this.fileServer = null;
+      }
+    }
 
     // Start config file watcher for hot-reload
     if (this.configPath) {
@@ -230,10 +351,37 @@ export class Bridge {
       }
     }
 
+    if (this.agentStatusInterval) {
+      clearInterval(this.agentStatusInterval);
+      this.agentStatusInterval = null;
+    }
+
+    if (this.evictionInterval) {
+      clearInterval(this.evictionInterval);
+      this.evictionInterval = null;
+    }
+
     this.configWatcher?.stop();
 
     await this.healthServer.stop();
     await this.metricsServer.stop();
+
+    if (this.fileServer) {
+      try {
+        await this.fileServer.stop();
+      } catch (error) {
+        logger.warn({ err: error }, 'Error stopping file server');
+      }
+    }
+
+    if (this.memory) {
+      try {
+        await this.memory.close();
+        logger.info('MemoryManager closed');
+      } catch (error) {
+        logger.error({ err: error }, 'Error closing MemoryManager');
+      }
+    }
 
     logger.info('OpenBridge stopped');
   }
@@ -245,6 +393,22 @@ export class Bridge {
     this.rateLimiter.updateConfig(newConfig.auth.rateLimit);
 
     logger.info('Configuration hot-reload complete');
+  }
+
+  /** Poll active agent activity and broadcast to any connector that supports it (e.g. WebChat). */
+  private async broadcastAgentStatusToWebChat(): Promise<void> {
+    if (!this.memory) return;
+    try {
+      const agents = await this.memory.getActiveAgents();
+      for (const connector of this.connectors) {
+        const c = connector as { broadcastAgentStatus?: (agents: unknown[]) => void };
+        if (typeof c.broadcastAgentStatus === 'function') {
+          c.broadcastAgentStatus(agents);
+        }
+      }
+    } catch {
+      // Non-fatal — dashboard updates are best-effort
+    }
   }
 
   private getHealthStatus(): HealthStatus {
@@ -274,7 +438,12 @@ export class Bridge {
 
     return {
       status: overall,
-      uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+      uptime_seconds: Math.floor((Date.now() - this.startedAt) / 1000),
+      memory_mb: Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10,
+      active_workers: orchestratorSnapshot.activeAgents,
+      master_status: this.master ? this.master.getState() : 'not_configured',
+      db_status: this.memory ? 'connected' : 'disconnected',
+      last_message_at: this.lastMessageAt,
       timestamp: new Date().toISOString(),
       connectors: connectorStatuses,
       providers: providerStatuses,
@@ -293,7 +462,7 @@ export class Bridge {
    */
   private static readonly DIRECT_AI_CONNECTORS = new Set(['webchat', 'console']);
 
-  private handleIncomingMessage(incomingMessage: InboundMessage, _connector?: Connector): void {
+  private handleIncomingMessage(incomingMessage: InboundMessage, connector?: Connector): void {
     // Cap rawContent length before any further processing to protect queue, auth, and prefix checks
     let message = incomingMessage;
     if (incomingMessage.rawContent.length > MAX_INBOUND_LENGTH) {
@@ -319,6 +488,7 @@ export class Bridge {
     }
 
     this.metrics.recordReceived();
+    this.lastMessageAt = new Date().toISOString();
 
     if (!this.auth.isAuthorized(message.sender)) {
       logger.warn({ sender: message.sender }, 'Unauthorized sender');
@@ -341,6 +511,33 @@ export class Bridge {
 
     const strippedContent = this.auth.stripPrefix(message.rawContent);
     const metadata: Record<string, unknown> = { ...message.metadata };
+
+    // Access control check: verify role, action, scope, and daily budget.
+    // Runs after prefix-stripping so the classifier receives the actual command text.
+    const accessResult = this.auth.checkAccessControl(
+      message.sender,
+      message.source,
+      strippedContent,
+    );
+    if (!accessResult.allowed) {
+      logger.warn(
+        { sender: message.sender, reason: accessResult.reason },
+        'Message blocked by access control',
+      );
+      this.metrics.recordCommandBlocked();
+      void this.auditLogger.logAuthDenied(message.sender);
+      // Send a denial message so the user knows why their request was rejected.
+      if (connector) {
+        const denialMsg: OutboundMessage = {
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to perform that action.',
+          replyTo: message.id,
+        };
+        void connector.sendMessage(denialMsg);
+      }
+      return;
+    }
 
     const filterResult = this.auth.filterCommand(strippedContent);
     if (!filterResult.allowed) {

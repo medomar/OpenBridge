@@ -68,6 +68,17 @@ vi.mock('whatsapp-web.js', () => {
 
   class LocalAuth {}
 
+  class MessageMedia {
+    mimetype: string;
+    data: string;
+    filename: string | null;
+    constructor(mimetype: string, data: string, filename?: string | null) {
+      this.mimetype = mimetype;
+      this.data = data;
+      this.filename = filename ?? null;
+    }
+  }
+
   const ClientConstructor = vi.fn(function (this: MockClientInstance, options: unknown) {
     capturedClientOptions.push(options);
     const instance = new MockClient() as unknown as MockClientInstance;
@@ -79,8 +90,9 @@ vi.mock('whatsapp-web.js', () => {
   return {
     Client: ClientConstructor,
     LocalAuth,
+    MessageMedia,
     // whatsapp-web.js is CJS — in ESM dynamic import, LocalAuth lives on .default
-    default: { Client: ClientConstructor, LocalAuth },
+    default: { Client: ClientConstructor, LocalAuth, MessageMedia },
   };
 });
 
@@ -272,6 +284,197 @@ describe('WhatsAppConnector', () => {
   });
 
   // -----------------------------------------------------------------------
+  // sendMessage() with media attachments (OB-602)
+  // -----------------------------------------------------------------------
+
+  describe('sendMessage() with media', () => {
+    it('sends a MessageMedia object when media field is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'image',
+          data: Buffer.from('fake-image-data'),
+          mimeType: 'image/png',
+        },
+      });
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, unknown];
+      // Content should be a MessageMedia object (not a string)
+      expect(typeof content).toBe('object');
+      expect(content).not.toBeNull();
+    });
+
+    it('encodes buffer data as base64 in the MessageMedia object', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      const rawData = Buffer.from('hello pdf');
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: rawData,
+          mimeType: 'application/pdf',
+          filename: 'report.pdf',
+        },
+      });
+
+      const [, media] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        { data: string; mimetype: string; filename: string | null },
+      ];
+      expect(media.data).toBe(rawData.toString('base64'));
+      expect(media.mimetype).toBe('application/pdf');
+      expect(media.filename).toBe('report.pdf');
+    });
+
+    it('uses content as caption when content is non-empty', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: 'Here is your report',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'report.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { caption?: string },
+      ];
+      expect(options?.caption).toBe('Here is your report');
+    });
+
+    it('uses filename as caption when content is empty and filename is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'invoice.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { caption?: string },
+      ];
+      expect(options?.caption).toBe('invoice.pdf');
+    });
+
+    it('sets sendMediaAsDocument for document type', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'doc.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { sendMediaAsDocument?: boolean },
+      ];
+      expect(options?.sendMediaAsDocument).toBe(true);
+    });
+
+    it('does not set sendMediaAsDocument for image type', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'image',
+          data: Buffer.from('img'),
+          mimeType: 'image/jpeg',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { sendMediaAsDocument?: boolean } | undefined,
+      ];
+      expect(options?.sendMediaAsDocument).toBeUndefined();
+    });
+
+    it('sends text normally when no media field is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: 'plain text',
+      });
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(typeof content).toBe('string');
+      expect(content).toBe('plain text');
+    });
+
+    it('throws when not connected even with media', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      // NOT triggering 'ready'
+
+      await expect(
+        connector.sendMessage({
+          target: 'whatsapp',
+          recipient: '+1234567890',
+          content: '',
+          media: {
+            type: 'image',
+            data: Buffer.from('img'),
+            mimeType: 'image/png',
+          },
+        }),
+      ).rejects.toThrow('not connected');
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // shutdown()
   // -----------------------------------------------------------------------
 
@@ -380,35 +583,48 @@ describe('WhatsAppConnector', () => {
       expect(err.message).toContain('max attempts');
     });
 
-    it('resets reconnect attempt counter on successful reconnect', async () => {
-      vi.useRealTimers(); // Avoid fake-timer microtask deadlocks on CI runners
-      const connector = buildConnector({
-        reconnect: {
-          enabled: true,
-          maxAttempts: 5,
-          initialDelayMs: 5,
-          maxDelayMs: 5,
-          backoffFactor: 1,
-        },
+    // This test uses real timers in its own describe block to avoid the
+    // fake→real timer switch that corrupts mock state on Node 22 CI, and
+    // the fake-timer microtask deadlock on Node 24 CI.
+    describe('reconnect counter reset (real timers)', () => {
+      beforeEach(() => {
+        vi.useRealTimers();
       });
-      await connector.initialize();
-      const firstClient = mockClientInstance;
 
-      // First successful connection
-      firstClient._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
+      it('resets reconnect attempt counter on successful reconnect', async () => {
+        const connector = buildConnector({
+          reconnect: {
+            enabled: true,
+            maxAttempts: 5,
+            initialDelayMs: 10,
+            maxDelayMs: 10,
+            backoffFactor: 1,
+          },
+        });
+        await connector.initialize();
+        const firstClient = mockClientInstance;
 
-      // Disconnect — schedules reconnect with 5ms delay
-      firstClient._trigger('disconnected', 'reason');
+        // First successful connection
+        firstClient._trigger('ready');
+        expect(connector.isConnected()).toBe(true);
 
-      // Wait for reconnect: setTimeout(5ms) + destroy() + createAndStartClient()
-      // Use generous wait to handle slow CI runners
-      await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+        // Disconnect — schedules reconnect timer (10ms)
+        firstClient._trigger('disconnected', 'reason');
+        expect(connector.isConnected()).toBe(false);
 
-      // The new client fires ready — reconnectAttempt should reset to 0
-      mockClientInstance._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
-    }, 15_000);
+        // Wait for reconnect: timer(10ms) + async destroy + async createAndStartClient.
+        // Poll until a new client is created (mocks resolve instantly, just need microtasks).
+        const deadline = Date.now() + 5000;
+        while (mockClientInstance === firstClient && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        expect(mockClientInstance).not.toBe(firstClient);
+
+        // The new client fires ready — reconnectAttempt should reset to 0
+        mockClientInstance._trigger('ready');
+        expect(connector.isConnected()).toBe(true);
+      }, 10_000);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -641,6 +857,268 @@ describe('WhatsAppConnector', () => {
       // Not initialized — not connected
       await connector.sendProgress({ type: 'spawning', workerCount: 2 }, '+1234567890@c.us');
       // No mock client yet — should not throw
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Voice message transcription (OB-605)
+  // -----------------------------------------------------------------------
+
+  describe('voice message transcription (OB-605)', () => {
+    it('emits message with transcription text for ptt voice notes', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      // Stub the private transcribeVoiceMessage to return a transcription
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue('Hello from voice message');
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-1' },
+        from: '+1234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue({ data: 'base64audio', mimetype: 'audio/ogg' }),
+      });
+
+      // Flush async microtasks from the void handleIncomingMessage() call
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Hello from voice message');
+    });
+
+    it('uses fallback text when transcription returns null (whisper not installed)', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-2' },
+        from: '+1234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue(null),
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toContain('[Voice message');
+      expect(msg.content).toContain('whisper');
+    });
+
+    it('does not call transcribeVoiceMessage for regular text messages', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      const transcribeSpy = vi
+        .spyOn(
+          connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+          'transcribeVoiceMessage',
+        )
+        .mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'msg-text-1' },
+        from: '+1234567890',
+        body: 'Hello world',
+        timestamp: 1700000000,
+        hasMedia: false,
+        type: 'chat',
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Hello world');
+      expect(transcribeSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not transcribe non-ptt media messages (e.g. images)', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      const transcribeSpy = vi
+        .spyOn(
+          connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+          'transcribeVoiceMessage',
+        )
+        .mockResolvedValue(null);
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'img-1' },
+        from: '+1234567890',
+        body: 'Look at this!',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'image',
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as { content: string };
+      expect(msg.content).toBe('Look at this!');
+      expect(transcribeSpy).not.toHaveBeenCalled();
+    });
+
+    it('emits message with correct sender and id for voice notes', async () => {
+      const connector = buildConnector();
+      const messageListener = vi.fn();
+      connector.on('message', messageListener);
+
+      vi.spyOn(
+        connector as unknown as { transcribeVoiceMessage: () => Promise<string | null> },
+        'transcribeVoiceMessage',
+      ).mockResolvedValue('Transcribed text');
+
+      await connector.initialize();
+      mockClientInstance._trigger('message', {
+        id: { id: 'voice-id-42' },
+        from: '+441234567890',
+        body: '',
+        timestamp: 1700000000,
+        hasMedia: true,
+        type: 'ptt',
+        downloadMedia: vi.fn().mockResolvedValue({ data: 'abc', mimetype: 'audio/ogg' }),
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(messageListener).toHaveBeenCalledOnce();
+      const msg = messageListener.mock.calls[0]?.[0] as {
+        id: string;
+        sender: string;
+        content: string;
+      };
+      expect(msg.id).toBe('voice-id-42');
+      expect(msg.sender).toBe('+441234567890');
+      expect(msg.content).toBe('Transcribed text');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendVoiceReply() — TTS voice replies (OB-606)
+  // -----------------------------------------------------------------------
+
+  describe('sendVoiceReply() (OB-606)', () => {
+    it('throws when not connected', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      // NOT triggering 'ready' — connector is not connected
+
+      await expect(connector.sendVoiceReply('+1234567890', 'hello')).rejects.toThrow(
+        'not connected',
+      );
+    });
+
+    it('falls back to text when no TTS tool is available', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Stub findTtsTool to return null (no TTS tool)
+      vi.spyOn(
+        connector as unknown as { findTtsTool: () => Promise<null> },
+        'findTtsTool',
+      ).mockResolvedValue(null);
+
+      await connector.sendVoiceReply('+1234567890@c.us', 'Hello world');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [chatId, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof content).toBe('string');
+      expect(content).toContain('Hello world');
+    });
+
+    it('sends a MessageMedia object with sendAudioAsVoice:true when TTS succeeds', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Spy on the public method and provide a controlled implementation that
+      // simulates the happy path (TTS succeeds → sends MessageMedia as voice note).
+      // This verifies the expected client.sendMessage contract without requiring
+      // OS-level TTS binaries or complex module mocking.
+      vi.spyOn(connector, 'sendVoiceReply').mockImplementation(
+        async (chatId: string, _text: string) => {
+          const WAWebJS = await import('whatsapp-web.js');
+          const { MessageMedia: MM } = WAWebJS;
+          const media = new MM('audio/aiff', Buffer.from('fake-audio').toString('base64'), null);
+          await mockClientInstance.sendMessage(chatId, media, { sendAudioAsVoice: true });
+        },
+      );
+
+      await connector.sendVoiceReply('+1234567890@c.us', 'Hello voice');
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [chatId, mediaArg, options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        { mimetype: string; data: string },
+        { sendAudioAsVoice?: boolean },
+      ];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof mediaArg).toBe('object');
+      expect(mediaArg.mimetype).toBe('audio/aiff');
+      expect(options?.sendAudioAsVoice).toBe(true);
+    });
+
+    it('falls back to text when TTS execution fails', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      // Stub findTtsTool to return a TTS tool whose execution will fail
+      const mockTtsTool = {
+        bin: '/nonexistent/say',
+        ext: 'aiff',
+        mimeType: 'audio/aiff',
+        argsFor: (_text: string, outPath: string) => ['-o', outPath, _text],
+      };
+      vi.spyOn(
+        connector as unknown as {
+          findTtsTool: () => Promise<typeof mockTtsTool>;
+        },
+        'findTtsTool',
+      ).mockResolvedValue(mockTtsTool);
+
+      // execFileAsync will throw because /nonexistent/say doesn't exist
+      // The connector should catch the error and fall back to text
+      await connector.sendVoiceReply('+1234567890@c.us', 'Fallback text');
+
+      // Should have sent a text message as fallback
+      expect(mockClientInstance.sendMessage).toHaveBeenCalled();
+      const [chatId, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(chatId).toBe('+1234567890@c.us');
+      expect(typeof content).toBe('string');
     });
   });
 });

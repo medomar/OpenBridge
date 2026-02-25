@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WebChatConfigSchema } from './webchat-config.js';
 import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
+import { getQrCode } from '../../core/qr-store.js';
+import type { ActivityRecord } from '../../memory/activity-store.js';
 
 const logger = createLogger('webchat');
 
@@ -72,6 +75,21 @@ const CHAT_HTML = `<!DOCTYPE html>
     #send { padding: 10px 22px; background: #1a73e8; color: #fff; border: none; border-radius: 24px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
     #send:hover:not(:disabled) { background: #1557b0; }
     #send:disabled { background: #bdc1c6; cursor: not-allowed; }
+    .download-link { display: inline-block; margin-top: 6px; padding: 6px 14px; background: #1a73e8; color: #fff; border-radius: 16px; text-decoration: none; font-size: 13px; }
+    .download-link:hover { background: #1557b0; }
+    #dash { border-bottom: 1px solid #e8eaed; background: #f8f9fa; flex-shrink: 0; max-height: 220px; overflow-y: auto; }
+    #dash.hidden { display: none; }
+    .dash-hdr { padding: 6px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 500; color: #5f6368; user-select: none; }
+    .dash-hdr:hover { background: #f1f3f4; }
+    #dash-body { padding: 2px 16px 8px; font-size: 12px; }
+    .agent-row { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+    .prog-wrap { width: 72px; height: 7px; background: #e8eaed; border-radius: 4px; overflow: hidden; flex-shrink: 0; }
+    .prog-bar { height: 100%; background: #1a73e8; border-radius: 4px; transition: width 0.4s; }
+    .abadge { padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+    .s-starting { background: #fef3c7; color: #92400e; }
+    .s-running { background: #d1fae5; color: #065f46; }
+    .s-completing { background: #dbeafe; color: #1e40af; }
+    .dash-cost { padding: 4px 0 0; color: #5f6368; border-top: 1px solid #e8eaed; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -81,6 +99,17 @@ const CHAT_HTML = `<!DOCTYPE html>
       <div class="conn-status">
         <div class="conn-dot" id="dot"></div>
         <span id="connLabel">Connecting...</span>
+      </div>
+    </div>
+    <div id="dash" class="hidden">
+      <div class="dash-hdr" id="dash-hdr">
+        <span id="dash-lbl">Agent Status</span>
+        <span id="dash-icon">&#9650;</span>
+      </div>
+      <div id="dash-body">
+        <div id="dash-master"></div>
+        <div id="dash-workers"></div>
+        <div id="dash-cost"></div>
       </div>
     </div>
     <div id="msgs"></div>
@@ -212,6 +241,56 @@ const CHAT_HTML = `<!DOCTYPE html>
       return null;
     }
 
+    var dashOpen = true;
+    document.getElementById('dash-hdr').addEventListener('click', function() {
+      dashOpen = !dashOpen;
+      document.getElementById('dash-body').style.display = dashOpen ? '' : 'none';
+      document.getElementById('dash-icon').textContent = dashOpen ? '\u25B2' : '\u25BC';
+    });
+
+    function updateDashboard(agents) {
+      var dash = document.getElementById('dash');
+      if (!agents || agents.length === 0) { dash.classList.add('hidden'); return; }
+      dash.classList.remove('hidden');
+      var master = null;
+      var workers = [];
+      for (var i = 0; i < agents.length; i++) {
+        if (agents[i].type === 'master') master = agents[i];
+        else workers.push(agents[i]);
+      }
+      var masterDiv = document.getElementById('dash-master');
+      masterDiv.innerHTML = master
+        ? '<div style="padding:2px 0;color:#202124"><strong>Master:</strong> ' + (master.model || 'unknown') + ' &nbsp;|&nbsp; ' + master.status + '</div>'
+        : '';
+      var workersDiv = document.getElementById('dash-workers');
+      if (workers.length === 0) {
+        workersDiv.innerHTML = '';
+      } else {
+        var h = '<div style="font-weight:500;padding:2px 0">Workers (' + workers.length + '):</div>';
+        for (var j = 0; j < workers.length; j++) {
+          var w = workers[j];
+          var pct = w.progress_pct || 0;
+          var sc = 's-' + (w.status || 'running');
+          var elapsed = w.started_at ? Math.floor((Date.now() - new Date(w.started_at).getTime()) / 1000) + 's' : '';
+          h += '<div class="agent-row">' +
+            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + String(w.id).slice(0, 8) + '</span>' +
+            '<span class="abadge ' + sc + '">' + (w.model || '\u2014') + '</span>' +
+            '<span style="color:#9aa0a6;flex-shrink:0">' + (w.profile || '\u2014') + '</span>' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124">' + (w.task_summary || '\u2014') + '</span>' +
+            '<div class="prog-wrap"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
+            '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0">' + pct + '%</span>' +
+            '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0;min-width:32px;text-align:right">' + elapsed + '</span>' +
+            '</div>';
+        }
+        workersDiv.innerHTML = h;
+      }
+      var totalCost = 0;
+      for (var k = 0; k < agents.length; k++) { totalCost += agents[k].cost_usd || 0; }
+      document.getElementById('dash-cost').innerHTML =
+        '<div class="dash-cost">Cost: $' + totalCost.toFixed(4) + ' &nbsp;|&nbsp; Active workers: ' + workers.length + '</div>';
+      document.getElementById('dash-lbl').textContent = 'Agent Status (' + agents.length + ' active)';
+    }
+
     function setOnline(online) {
       dot.className = 'conn-dot' + (online ? ' online' : '');
       connLabel.textContent = online ? 'Connected' : 'Disconnected';
@@ -228,6 +307,19 @@ const CHAT_HTML = `<!DOCTYPE html>
         if (data.type === 'response') {
           hideStatus();
           addBubble(data.content, 'ai');
+        } else if (data.type === 'download') {
+          hideStatus();
+          var div = document.createElement('div');
+          div.className = 'bubble ai';
+          if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
+          var link = document.createElement('a');
+          link.href = data.url;
+          link.download = data.filename || 'download';
+          link.className = 'download-link';
+          link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
+          div.appendChild(link);
+          msgs.appendChild(div);
+          msgs.scrollTop = msgs.scrollHeight;
         } else if (data.type === 'typing') {
           showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
         } else if (data.type === 'progress') {
@@ -237,6 +329,8 @@ const CHAT_HTML = `<!DOCTYPE html>
             var label = progressLabel(data.event);
             if (label) showStatus(label);
           }
+        } else if (data.type === 'agent-status') {
+          updateDashboard(data.agents);
         }
       } catch(ex) {}
     };
@@ -275,6 +369,10 @@ export class WebChatConnector implements Connector {
   private wss: WssServer | null = null;
   private clients = new Set<WsClient>();
   private messageCounter = 0;
+  private readonly pendingDownloads = new Map<
+    string,
+    { data: Buffer; mimeType: string; filename?: string; timer: ReturnType<typeof setTimeout> }
+  >();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -294,7 +392,56 @@ export class WebChatConnector implements Connector {
       server: unknown;
     }) => WssServer;
 
-    const server = http.createServer((_req: IncomingMessage, res: ServerResponse) => {
+    const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = req.url ?? '/';
+
+      // QR code endpoint — serves a scannable QR page in headless mode
+      if (url === '/qr') {
+        const qrData = getQrCode();
+        if (!qrData) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(
+            '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>WhatsApp QR</title>' +
+              '<meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif;text-align:center;padding:40px">' +
+              '<h2>Waiting for QR code...</h2><p>This page will auto-refresh.</p></body></html>',
+          );
+          return;
+        }
+        const html =
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Scan WhatsApp QR</title>' +
+          '<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>' +
+          '<style>body{font-family:sans-serif;text-align:center;padding:40px;background:#f0f2f5}' +
+          'h2{color:#128c7e}#qr{display:inline-block;padding:16px;background:#fff;border-radius:8px;' +
+          'box-shadow:0 2px 12px rgba(0,0,0,0.12);margin:24px auto}</style></head>' +
+          '<body><h2>Scan with WhatsApp</h2>' +
+          '<p>Open WhatsApp → Linked Devices → Link a Device</p>' +
+          '<div id="qr"></div>' +
+          '<script>new QRCode(document.getElementById("qr"),' +
+          JSON.stringify({ text: qrData, width: 256, height: 256 }) +
+          ');</script></body></html>';
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
+      const match = url.match(/^\/download\/([0-9a-f-]+)$/i);
+      if (match) {
+        const fileId = match[1]!;
+        const entry = this.pendingDownloads.get(fileId);
+        if (!entry) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not found');
+          return;
+        }
+        const filename = entry.filename ?? 'download';
+        res.writeHead(200, {
+          'Content-Type': entry.mimeType,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': entry.data.length,
+        });
+        res.end(entry.data);
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
@@ -353,7 +500,30 @@ export class WebChatConnector implements Connector {
     if (!this.connected) {
       return Promise.reject(new Error('WebChat connector is not connected'));
     }
-    const payload = JSON.stringify({ type: 'response', content: message.content });
+
+    let payload: string;
+    if (message.media) {
+      const fileId = randomUUID();
+      const { data, mimeType, filename } = message.media;
+      const timer = setTimeout(
+        () => {
+          this.pendingDownloads.delete(fileId);
+        },
+        60 * 60 * 1000,
+      ); // 1 hour
+      this.pendingDownloads.set(fileId, { data, mimeType, filename, timer });
+      payload = JSON.stringify({
+        type: 'download',
+        content: message.content,
+        fileId,
+        filename: filename ?? 'download',
+        url: `/download/${fileId}`,
+        mimeType,
+      });
+    } else {
+      payload = JSON.stringify({ type: 'response', content: message.content });
+    }
+
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {
         client.send(payload);
@@ -384,6 +554,21 @@ export class WebChatConnector implements Connector {
     return Promise.resolve();
   }
 
+  /** Broadcast current agent activity to all connected WebSocket clients. */
+  broadcastAgentStatus(agents: ActivityRecord[]): void {
+    if (!this.connected || this.clients.size === 0) return;
+    const payload = JSON.stringify({
+      type: 'agent-status',
+      agents,
+      timestamp: new Date().toISOString(),
+    });
+    for (const client of this.clients) {
+      if (client.readyState === WS_OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
     this.listeners[event].push(listener);
   }
@@ -391,6 +576,11 @@ export class WebChatConnector implements Connector {
   async shutdown(): Promise<void> {
     this.connected = false;
     this.clients.clear();
+
+    for (const entry of this.pendingDownloads.values()) {
+      clearTimeout(entry.timer);
+    }
+    this.pendingDownloads.clear();
 
     if (this.wss) {
       await new Promise<void>((resolve) => {

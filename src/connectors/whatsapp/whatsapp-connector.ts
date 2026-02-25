@@ -1,12 +1,19 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
+import { setQrCode } from '../../core/qr-store.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
-import { unlink, readlink } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import type { MessageMedia } from 'whatsapp-web.js';
+
+const execFileAsync = promisify(execFile);
 
 const logger = createLogger('whatsapp');
 
@@ -18,10 +25,35 @@ interface WAChat {
   sendStateTyping: () => Promise<void>;
 }
 
+interface WAMediaData {
+  data: string; // base64-encoded audio
+  mimetype: string;
+}
+
+interface WAMessage {
+  id: { id: string };
+  from: string;
+  body: string;
+  timestamp: number;
+  hasMedia?: boolean;
+  type?: string;
+  downloadMedia?: () => Promise<WAMediaData | null>;
+}
+
+interface WASendOptions {
+  caption?: string;
+  sendMediaAsDocument?: boolean;
+  sendAudioAsVoice?: boolean;
+}
+
 interface WAClient {
   on: (event: string, handler: (...args: never[]) => void) => void;
   initialize: () => Promise<void>;
-  sendMessage: (to: string, content: string) => Promise<void>;
+  sendMessage: (
+    to: string,
+    content: string | MessageMedia,
+    options?: WASendOptions,
+  ) => Promise<void>;
   getChatById: (chatId: string) => Promise<WAChat>;
   destroy: () => Promise<void>;
 }
@@ -98,17 +130,23 @@ export class WhatsAppConnector implements Connector {
     }) as unknown as WAClient;
 
     this.client.on('qr', (qr: string) => {
-      logger.info('QR code received — scan with WhatsApp');
-      // Render QR code to terminal so the user can scan it
-      import('qrcode-terminal')
-        .then((qrcodeTerminal) => {
-          const mod = qrcodeTerminal.default ?? qrcodeTerminal;
-          mod.generate(qr, { small: true });
-        })
-        .catch(() => {
-          // Fallback: print raw QR string if qrcode-terminal is not available
-          logger.info({ qr }, 'Install qrcode-terminal to display QR in terminal');
-        });
+      setQrCode(qr);
+      if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+        // Headless mode: skip terminal display, log QR as JSON and serve via WebChat /qr endpoint
+        logger.info({ qr }, 'QR code received — scan at http://localhost:3000/qr');
+      } else {
+        // Interactive mode: render QR to terminal
+        logger.info('QR code received — scan with WhatsApp');
+        import('qrcode-terminal')
+          .then((qrcodeTerminal) => {
+            const mod = qrcodeTerminal.default ?? qrcodeTerminal;
+            mod.generate(qr, { small: true });
+          })
+          .catch(() => {
+            // Fallback: print raw QR string if qrcode-terminal is not available
+            logger.info({ qr }, 'Install qrcode-terminal to display QR in terminal');
+          });
+      }
       this.emit('auth', qr);
     });
 
@@ -131,13 +169,9 @@ export class WhatsAppConnector implements Connector {
       this.emit('ready');
     });
 
-    this.client.on(
-      'message',
-      (msg: { id: { id: string }; from: string; body: string; timestamp: number }) => {
-        const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
-        this.emit('message', parsed);
-      },
-    );
+    this.client.on('message', (msg: WAMessage) => {
+      void this.handleIncomingMessage(msg);
+    });
 
     this.client.on('disconnected', (reason: string) => {
       this.connected = false;
@@ -235,6 +269,133 @@ export class WhatsAppConnector implements Connector {
     }
   }
 
+  private async handleIncomingMessage(msg: WAMessage): Promise<void> {
+    if (msg.hasMedia && msg.type === 'ptt') {
+      const transcription = await this.transcribeVoiceMessage(msg);
+      const content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+      const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp);
+      this.emit('message', parsed);
+      return;
+    }
+    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
+    this.emit('message', parsed);
+  }
+
+  private async transcribeVoiceMessage(msg: WAMessage): Promise<string | null> {
+    try {
+      const media = await msg.downloadMedia?.();
+      if (!media?.data) return null;
+
+      const whisperPath = await this.findWhisper();
+      if (!whisperPath) return null;
+
+      const tmpPath = join(tmpdir(), `wa-voice-${Date.now()}.ogg`);
+      await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
+      try {
+        await execFileAsync(whisperPath, [
+          tmpPath,
+          '--output-format',
+          'txt',
+          '--output-dir',
+          tmpdir(),
+        ]);
+        const txtPath = tmpPath.replace(/\.ogg$/, '.txt');
+        const text = await readFile(txtPath, 'utf-8').catch(() => '');
+        await unlink(txtPath).catch(() => {});
+        return text.trim() || null;
+      } finally {
+        await unlink(tmpPath).catch(() => {});
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Voice message transcription failed');
+      return null;
+    }
+  }
+
+  private async findWhisper(): Promise<string | null> {
+    try {
+      const { stdout } = await execFileAsync('which', ['whisper']);
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async findTtsTool(): Promise<{
+    bin: string;
+    ext: string;
+    mimeType: string;
+    argsFor: (text: string, outPath: string) => string[];
+  } | null> {
+    // macOS: 'say' command → AIFF output
+    try {
+      const { stdout } = await execFileAsync('which', ['say']);
+      if (stdout.trim()) {
+        return {
+          bin: stdout.trim(),
+          ext: 'aiff',
+          mimeType: 'audio/aiff',
+          argsFor: (text, outPath) => ['-o', outPath, text],
+        };
+      }
+    } catch {
+      // not found
+    }
+    // Linux: 'espeak' command → WAV output
+    try {
+      const { stdout } = await execFileAsync('which', ['espeak']);
+      if (stdout.trim()) {
+        return {
+          bin: stdout.trim(),
+          ext: 'wav',
+          mimeType: 'audio/wav',
+          argsFor: (text, outPath) => ['-w', outPath, text],
+        };
+      }
+    } catch {
+      // not found
+    }
+    return null;
+  }
+
+  async sendVoiceReply(chatId: string, text: string): Promise<void> {
+    if (!this.client || !this.connected) {
+      throw new Error('WhatsApp connector is not connected');
+    }
+
+    const ttsTool = await this.findTtsTool();
+    if (!ttsTool) {
+      logger.warn({ chatId }, 'No TTS tool found — falling back to text for voice reply');
+      const formatted = formatMarkdownForWhatsApp(text);
+      const chunks = splitForWhatsApp(formatted);
+      for (const chunk of chunks) {
+        await this.client.sendMessage(chatId, chunk);
+      }
+      return;
+    }
+
+    const tmpPath = join(tmpdir(), `wa-tts-${Date.now()}.${ttsTool.ext}`);
+    try {
+      await execFileAsync(ttsTool.bin, ttsTool.argsFor(text, tmpPath));
+      const audioData = await readFile(tmpPath);
+      const base64 = audioData.toString('base64');
+      const WAWebJS = await import('whatsapp-web.js');
+      const { MessageMedia: MessageMediaClass } = WAWebJS;
+      const media = new MessageMediaClass(ttsTool.mimeType, base64, null);
+      await this.client.sendMessage(chatId, media, { sendAudioAsVoice: true });
+      logger.debug({ chatId }, 'Voice reply sent via TTS');
+    } catch (err) {
+      logger.warn({ err, chatId }, 'TTS generation failed — falling back to text reply');
+      const formatted = formatMarkdownForWhatsApp(text);
+      const chunks = splitForWhatsApp(formatted);
+      for (const chunk of chunks) {
+        await this.client.sendMessage(chatId, chunk);
+      }
+    } finally {
+      await unlink(tmpPath).catch(() => {});
+    }
+  }
+
   private scheduleReconnect(): void {
     const { enabled, maxAttempts, initialDelayMs, maxDelayMs, backoffFactor } =
       this.config.reconnect;
@@ -295,6 +456,24 @@ export class WhatsAppConnector implements Connector {
       throw new Error('WhatsApp connector is not connected');
     }
 
+    if (message.media) {
+      const WAWebJS = await import('whatsapp-web.js');
+      const { MessageMedia: MessageMediaClass } = WAWebJS;
+      const base64 = message.media.data.toString('base64');
+      const media = new MessageMediaClass(
+        message.media.mimeType,
+        base64,
+        message.media.filename ?? null,
+      );
+      const caption = message.content || message.media.filename;
+      const options: WASendOptions = {};
+      if (caption) options.caption = caption;
+      if (message.media.type === 'document') options.sendMediaAsDocument = true;
+      await this.client.sendMessage(message.recipient, media, options);
+      logger.debug({ recipient: message.recipient, type: message.media.type }, 'Media sent');
+      return;
+    }
+
     const formatted = formatMarkdownForWhatsApp(message.content);
     const chunks = splitForWhatsApp(formatted);
     for (const chunk of chunks) {
@@ -302,6 +481,24 @@ export class WhatsAppConnector implements Connector {
     }
 
     logger.debug({ recipient: message.recipient, chunks: chunks.length }, 'Message sent');
+  }
+
+  async sendProactive(recipient: string, content: string): Promise<void> {
+    if (!this.client || !this.connected) {
+      throw new Error('WhatsApp connector is not connected');
+    }
+
+    // Normalize to WhatsApp chat ID format: digits only + @c.us
+    const digits = recipient.replace(/\D/g, '');
+    const chatId = digits.includes('@') ? recipient : `${digits}@c.us`;
+
+    const formatted = formatMarkdownForWhatsApp(content);
+    const chunks = splitForWhatsApp(formatted);
+    for (const chunk of chunks) {
+      await this.client.sendMessage(chatId, chunk);
+    }
+
+    logger.debug({ recipient: chatId, chunks: chunks.length }, 'Proactive message sent');
   }
 
   async sendTypingIndicator(chatId: string): Promise<void> {
