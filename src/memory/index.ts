@@ -107,7 +107,7 @@ export class MemoryManager {
 
   searchContext(query: string, limit?: number, options?: SearchOptions): Promise<Chunk[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    return Promise.resolve(_hybridSearch(this.db, query, { limit, ...options }));
+    return _hybridSearch(this.db, query, { limit, ...options });
   }
 
   markStale(scopes: string[]): Promise<void> {

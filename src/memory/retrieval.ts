@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { Chunk } from './chunk-store.js';
 import type { ConversationEntry } from './index.js';
+import type { AgentRunner } from '../core/agent-runner.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,6 +16,10 @@ export interface SearchOptions {
   limit?: number;
   /** Exclude stale chunks (default true). */
   excludeStale?: boolean;
+  /** Enable AI-powered reranking when > 10 results are returned (default false). */
+  rerank?: boolean;
+  /** Working directory for the AI reranker (required when rerank is true). */
+  workspacePath?: string;
 }
 
 interface ChunkRow {
@@ -64,6 +69,91 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
 }
 
 // ---------------------------------------------------------------------------
+// AI-powered reranking (OB-721)
+// ---------------------------------------------------------------------------
+
+/**
+ * Use AgentRunner to semantically rerank chunks by relevance to a query.
+ *
+ * Spawns a quick haiku call that scores each chunk and returns a ranked order.
+ * Falls back to the original BM25 order if the AI call fails or times out.
+ *
+ * @param chunks      Chunks to rerank (should have > 10 for reranking to be worthwhile)
+ * @param query       The search query that produced the chunks
+ * @param agentRunner AgentRunner instance used to spawn the AI call
+ * @param workspacePath Working directory for the agent (defaults to process.cwd())
+ */
+export async function rerank(
+  chunks: Chunk[],
+  query: string,
+  agentRunner: AgentRunner,
+  workspacePath = process.cwd(),
+): Promise<Chunk[]> {
+  if (chunks.length === 0) return chunks;
+
+  // Build a numbered list of chunk summaries (truncate content for token budget)
+  const numberedList = chunks
+    .map(
+      (chunk, i) =>
+        `[${i + 1}] scope=${chunk.scope} category=${chunk.category}\n${chunk.content.slice(0, 200)}`,
+    )
+    .join('\n\n');
+
+  const prompt =
+    `Rank these ${chunks.length} text chunks by relevance to the query: "${query}"\n\n` +
+    `${numberedList}\n\n` +
+    `Reply with ONLY a comma-separated list of chunk numbers from most to least relevant. ` +
+    `Example for 5 chunks: 3,1,5,2,4`;
+
+  try {
+    const result = await agentRunner.spawn({
+      prompt,
+      workspacePath,
+      model: 'haiku',
+      maxTurns: 1,
+      timeout: 15_000,
+      retries: 0,
+    });
+
+    if (result.exitCode !== 0 || !result.stdout.trim()) return chunks;
+
+    // Parse "3,1,5,2,4" — convert 1-based to 0-based indices
+    const indices = result.stdout
+      .trim()
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10) - 1)
+      .filter((i) => Number.isFinite(i) && i >= 0 && i < chunks.length);
+
+    if (indices.length === 0) return chunks;
+
+    // Build reranked array; append any chunks not mentioned in the ranking
+    const seen = new Set<number>();
+    const reranked: Chunk[] = [];
+
+    for (const i of indices) {
+      const chunk = chunks[i];
+      if (!seen.has(i) && chunk !== undefined) {
+        seen.add(i);
+        reranked.push(chunk);
+      }
+    }
+
+    // Append remaining chunks in original BM25 order
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (!seen.has(i) && chunk !== undefined) {
+        reranked.push(chunk);
+      }
+    }
+
+    return reranked;
+  } catch {
+    // Any error (timeout, spawn failure, parse error) → return original order
+    return chunks;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hybrid FTS5 + metadata search
 // ---------------------------------------------------------------------------
 
@@ -75,14 +165,16 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
  *   1. FTS5 MATCH — fast sub-millisecond keyword search
  *   2. Metadata filters — scope prefix, category, stale flag
  *   3. BM25 ordering — SQLite's built-in ranking (lower rank = more relevant)
+ *   4. AI reranking (optional, Layer 4) — enabled via options.rerank when > 10 results
  *
- * AI reranking (Layer 4) is handled separately by OB-721.
+ * @param agentRunner Optional AgentRunner for AI reranking (required when options.rerank is true)
  */
-export function hybridSearch(
+export async function hybridSearch(
   db: Database.Database,
   query: string,
   options: SearchOptions = {},
-): Chunk[] {
+  agentRunner?: AgentRunner,
+): Promise<Chunk[]> {
   if (!query.trim()) return [];
 
   const { scope, category, limit = 10, excludeStale = true } = options;
@@ -122,7 +214,14 @@ export function hybridSearch(
   `;
 
   const rows = db.prepare(sql).all(query, ...extraParams, limit) as ChunkRow[];
-  return rows.map(rowToChunk);
+  const chunks = rows.map(rowToChunk);
+
+  // Layer 4: AI reranking — only when explicitly enabled and results exceed 10
+  if (options.rerank && agentRunner && chunks.length > 10) {
+    return rerank(chunks, query, agentRunner, options.workspacePath);
+  }
+
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------
