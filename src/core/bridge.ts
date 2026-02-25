@@ -55,6 +55,7 @@ export class Bridge {
   private stopped = false;
   private readonly drainTimeoutMs: number;
   private agentStatusInterval: ReturnType<typeof setInterval> | null = null;
+  private evictionInterval: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt: string | null = null;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
@@ -124,6 +125,22 @@ export class Bridge {
         );
         this.memory = null;
       }
+    }
+
+    // Schedule periodic DB eviction — run once on startup, then every 24 hours
+    if (this.memory) {
+      const runEviction = (): void => {
+        logger.info('Running scheduled DB eviction');
+        void this.memory!.evictOldData()
+          .then(() => {
+            logger.info('DB eviction complete');
+          })
+          .catch((err: unknown) => {
+            logger.error({ err }, 'DB eviction failed');
+          });
+      };
+      runEviction();
+      this.evictionInterval = setInterval(runEviction, 24 * 60 * 60 * 1000);
     }
 
     // Wire auth service into router for SEND marker whitelist enforcement
@@ -337,6 +354,11 @@ export class Bridge {
     if (this.agentStatusInterval) {
       clearInterval(this.agentStatusInterval);
       this.agentStatusInterval = null;
+    }
+
+    if (this.evictionInterval) {
+      clearInterval(this.evictionInterval);
+      this.evictionInterval = null;
     }
 
     this.configWatcher?.stop();
