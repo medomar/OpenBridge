@@ -11,6 +11,7 @@ import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
 import { sendEmail } from './email-sender.js';
+import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -415,6 +416,13 @@ export class Router {
         continue;
       }
 
+      // Handle github-pages channel — push file to the gh-pages branch
+      if (channel === 'github-pages') {
+        await this.handleGitHubPagesShare(resolvedPath);
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
       // Route to the named connector if registered, otherwise the inbound connector
       const targetConnector = this.connectors.get(channel) ?? connector;
 
@@ -565,6 +573,20 @@ export class Router {
       logger.info({ emailAddress, filePath: resolvedPath }, 'SHARE:email dispatched');
     } catch (err) {
       logger.warn({ emailAddress, filePath: resolvedPath, err }, 'SHARE:email dispatch failed');
+    }
+  }
+
+  /**
+   * Handle [SHARE:github-pages]/path/to/file[/SHARE] markers.
+   * Publishes the validated file (already confirmed to be under .openbridge/generated/)
+   * to the gh-pages branch of the workspace git repository.
+   */
+  private async handleGitHubPagesShare(filePath: string): Promise<void> {
+    try {
+      const pagesUrl = await publishToGitHubPages(filePath);
+      logger.info({ filePath, pagesUrl: pagesUrl || '(unknown)' }, 'SHARE:github-pages dispatched');
+    } catch (err) {
+      logger.warn({ filePath, err }, 'SHARE:github-pages: publish failed');
     }
   }
 
