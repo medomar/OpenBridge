@@ -130,6 +130,12 @@ export const V2MasterSchema = z.object({
   sessionTtlMs: z.number().int().positive().optional(),
 });
 
+/** V2 workspace options — remote git clone + auto-pull configuration */
+export const V2WorkspaceSchema = z.object({
+  /** Polling interval in seconds for remote workspace auto-pull (default: 300) */
+  pullInterval: z.number().int().positive().optional(),
+});
+
 /** Schema for email (SMTP) configuration */
 export const EmailConfigSchema = z.object({
   host: z.string().min(1),
@@ -147,6 +153,7 @@ export const V2ConfigSchema = z
     channels: z.array(V2ChannelSchema).min(1),
     auth: V2AuthSchema,
     master: V2MasterSchema.optional(),
+    workspace: V2WorkspaceSchema.optional(),
     email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
     router: RouterConfigSchema.optional(),
@@ -160,5 +167,6 @@ export const V2ConfigSchema = z
 export type V2Channel = z.infer<typeof V2ChannelSchema>;
 export type V2Auth = z.infer<typeof V2AuthSchema>;
 export type V2Master = z.infer<typeof V2MasterSchema>;
+export type V2Workspace = z.infer<typeof V2WorkspaceSchema>;
 export type EmailConfig = z.infer<typeof EmailConfigSchema>;
 export type V2Config = z.infer<typeof V2ConfigSchema>;
