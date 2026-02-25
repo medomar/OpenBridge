@@ -4,6 +4,26 @@ import type Database from 'better-sqlite3';
 // Types
 // ---------------------------------------------------------------------------
 
+export interface ExplorationProgressRecord {
+  id?: number;
+  exploration_id: string;
+  phase: string;
+  target?: string | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  progress_pct: number;
+  files_processed: number;
+  files_total?: number | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export type ExplorationProgressUpdate = Partial<
+  Pick<
+    ExplorationProgressRecord,
+    'status' | 'progress_pct' | 'files_processed' | 'completed_at' | 'started_at'
+  >
+>;
+
 export interface ActivityRecord {
   id: string;
   type: 'master' | 'worker' | 'sub-master' | 'explorer';
@@ -110,4 +130,83 @@ export function cleanupOldActivity(db: Database.Database, cutoffHours = 24): voi
     `DELETE FROM agent_activity
      WHERE completed_at IS NOT NULL AND completed_at < ?`,
   ).run(cutoff);
+}
+
+// ---------------------------------------------------------------------------
+// exploration_progress CRUD
+// ---------------------------------------------------------------------------
+
+/** Insert a new exploration_progress row and return its auto-increment id. */
+export function insertExplorationProgress(
+  db: Database.Database,
+  record: Omit<ExplorationProgressRecord, 'id'>,
+): number {
+  const result = db
+    .prepare(
+      `INSERT INTO exploration_progress
+         (exploration_id, phase, target, status, progress_pct, files_processed,
+          files_total, started_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      record.exploration_id,
+      record.phase,
+      record.target ?? null,
+      record.status,
+      record.progress_pct,
+      record.files_processed,
+      record.files_total ?? null,
+      record.started_at ?? null,
+      record.completed_at ?? null,
+    );
+  return Number(result.lastInsertRowid);
+}
+
+/** Update an exploration_progress row by its id. Only provided fields are changed. */
+export function updateExplorationProgressById(
+  db: Database.Database,
+  id: number,
+  updates: ExplorationProgressUpdate,
+): void {
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+
+  if (updates.status !== undefined) {
+    fields.push('status = ?');
+    values.push(updates.status);
+  }
+  if (updates.progress_pct !== undefined) {
+    fields.push('progress_pct = ?');
+    values.push(updates.progress_pct);
+  }
+  if (updates.files_processed !== undefined) {
+    fields.push('files_processed = ?');
+    values.push(updates.files_processed);
+  }
+  if (updates.completed_at !== undefined) {
+    fields.push('completed_at = ?');
+    values.push(updates.completed_at);
+  }
+  if (updates.started_at !== undefined) {
+    fields.push('started_at = ?');
+    values.push(updates.started_at);
+  }
+
+  if (fields.length === 0) return;
+  values.push(id);
+  db.prepare(`UPDATE exploration_progress SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+}
+
+/** Return all exploration_progress rows for a given exploration_id, ordered by id. */
+export function getExplorationProgressByExplorationId(
+  db: Database.Database,
+  explorationId: string,
+): ExplorationProgressRecord[] {
+  return db
+    .prepare(
+      `SELECT * FROM exploration_progress
+       WHERE exploration_id = ?
+       ORDER BY id ASC`,
+    )
+    .all(explorationId) as ExplorationProgressRecord[];
 }
