@@ -17,6 +17,10 @@ import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
 } from './conversation-store.js';
+import {
+  getActivePrompt as _getActivePrompt,
+  recordPromptOutcome as _recordPromptOutcome,
+} from './prompt-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -163,15 +167,20 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Prompts (implemented by prompt-store.ts — OB-707)
+  // Prompts (prompt-store.ts — OB-707)
   // -------------------------------------------------------------------------
 
-  getActivePrompt(_name: string): Promise<PromptRecord> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  getActivePrompt(name: string): Promise<PromptRecord> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const record = _getActivePrompt(this.db, name);
+    if (!record) return Promise.reject(new Error(`No active prompt found: ${name}`));
+    return Promise.resolve(record);
   }
 
-  recordPromptOutcome(_name: string, _success: boolean): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  recordPromptOutcome(name: string, success: boolean): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordPromptOutcome(this.db, name, success);
+    return Promise.resolve();
   }
 
   // -------------------------------------------------------------------------
