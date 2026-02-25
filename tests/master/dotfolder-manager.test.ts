@@ -3,8 +3,6 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import type {
   WorkspaceMap,
   AgentsRegistry,
@@ -14,8 +12,6 @@ import type {
   LearningsRegistry,
 } from '../../src/types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../../src/types/agent.js';
-
-const execAsync = promisify(exec);
 
 describe('DotFolderManager', () => {
   let testWorkspace: string;
@@ -85,116 +81,6 @@ describe('DotFolderManager', () => {
       await manager.createFolder();
       const exists = await manager.exists();
       expect(exists).toBe(true);
-    });
-  });
-
-  describe('Git Operations', () => {
-    beforeEach(async () => {
-      await manager.createFolder();
-    });
-
-    it('should initialize git repository', async () => {
-      await manager.initGit();
-
-      const gitPath = path.join(manager.getDotFolderPath(), '.git');
-      const gitExists = await fs
-        .access(gitPath)
-        .then(() => true)
-        .catch(() => false);
-
-      expect(gitExists).toBe(true);
-    });
-
-    it('should create .gitignore file during git init', async () => {
-      await manager.initGit();
-
-      const gitignorePath = path.join(manager.getDotFolderPath(), '.gitignore');
-      const content = await fs.readFile(gitignorePath, 'utf-8');
-
-      expect(content).toContain('node_modules/');
-      expect(content).toContain('.DS_Store');
-    });
-
-    it('should not re-initialize git if already initialized', async () => {
-      await manager.initGit();
-
-      // Write a test file and commit it
-      const testFile = path.join(manager.getDotFolderPath(), 'test.txt');
-      await fs.writeFile(testFile, 'test', 'utf-8');
-      await manager.commitChanges('Add test file');
-
-      // Get commit count
-      const { stdout: beforeCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-
-      // Try to init again
-      await manager.initGit();
-
-      // Commit count should be unchanged
-      const { stdout: afterCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(afterCount.trim()).toBe(beforeCount.trim());
-    });
-
-    it('should commit changes with message', async () => {
-      await manager.initGit();
-
-      // Write a test file
-      const testFile = path.join(manager.getDotFolderPath(), 'test.txt');
-      await fs.writeFile(testFile, 'test content', 'utf-8');
-
-      await manager.commitChanges('Test commit message');
-
-      // Verify commit exists
-      const { stdout } = await execAsync('git log --oneline -1', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(stdout).toContain('Test commit message');
-    });
-
-    it('should not commit if there are no changes', async () => {
-      await manager.initGit();
-
-      // Get initial commit count
-      const { stdout: beforeCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-
-      // Try to commit with no changes
-      await manager.commitChanges('No changes');
-
-      // Commit count should be unchanged
-      const { stdout: afterCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(afterCount.trim()).toBe(beforeCount.trim());
-    });
-
-    it('should handle git user config errors gracefully', async () => {
-      await manager.initGit();
-
-      // Unset git user config in the test repo
-      await execAsync('git config --unset user.email', { cwd: manager.getDotFolderPath() }).catch(
-        () => {},
-      );
-      await execAsync('git config --unset user.name', { cwd: manager.getDotFolderPath() }).catch(
-        () => {},
-      );
-
-      // Write a test file
-      const testFile = path.join(manager.getDotFolderPath(), 'test.txt');
-      await fs.writeFile(testFile, 'test', 'utf-8');
-
-      // Should auto-configure and succeed
-      await expect(manager.commitChanges('Auto-config test')).resolves.toBeUndefined();
-
-      // Verify commit exists
-      const { stdout } = await execAsync('git log --oneline -1', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(stdout).toContain('Auto-config test');
     });
   });
 
@@ -364,7 +250,6 @@ describe('DotFolderManager', () => {
   describe('Task Operations', () => {
     beforeEach(async () => {
       await manager.createFolder();
-      await manager.initGit();
     });
 
     it('should return null when reading non-existent task', async () => {
@@ -436,131 +321,32 @@ describe('DotFolderManager', () => {
 
       await expect(manager.recordTask(invalidTask)).rejects.toThrow();
     });
-
-    it('should commit task to git after recording', async () => {
-      await manager.initGit();
-
-      const testTask: TaskRecord = {
-        id: 'task-git-test',
-        userMessage: '/ai git commit test',
-        sender: '+1234567890',
-        description: 'Test task for git commit',
-        status: 'completed',
-        handledBy: 'master',
-        createdAt: new Date().toISOString(),
-      };
-
-      await manager.recordTask(testTask);
-
-      // Verify git commit was created
-      const { stdout } = await execAsync('git log --oneline -1', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(stdout).toContain('chore(master): record task task-git-test - completed');
-    });
-
-    it('should use consistent commit message format', async () => {
-      await manager.initGit();
-
-      const testTask: TaskRecord = {
-        id: 'task-123',
-        userMessage: '/ai test message',
-        sender: '+1234567890',
-        description: 'Test task description',
-        status: 'processing',
-        handledBy: 'master',
-        createdAt: new Date().toISOString(),
-      };
-
-      await manager.recordTask(testTask);
-
-      // Verify commit message follows conventional commit format
-      const { stdout } = await execAsync('git log --oneline -1', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(stdout).toContain('chore(master): record task task-123 - processing');
-    });
-
-    it('should update task file and commit when recording with same ID', async () => {
-      await manager.initGit();
-
-      const initialTask: TaskRecord = {
-        id: 'task-update',
-        userMessage: '/ai update test',
-        sender: '+1234567890',
-        description: 'Initial task state',
-        status: 'pending',
-        handledBy: 'master',
-        createdAt: new Date().toISOString(),
-      };
-
-      await manager.recordTask(initialTask);
-
-      // Get initial commit count
-      const { stdout: beforeCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-
-      // Update the task
-      const updatedTask: TaskRecord = {
-        ...initialTask,
-        status: 'completed',
-        description: 'Updated task state',
-        completedAt: new Date().toISOString(),
-      };
-
-      await manager.recordTask(updatedTask);
-
-      // Verify a new commit was created
-      const { stdout: afterCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(parseInt(afterCount.trim())).toBe(parseInt(beforeCount.trim()) + 1);
-
-      // Verify the latest commit message reflects the update
-      const { stdout } = await execAsync('git log --oneline -1', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(stdout).toContain('chore(master): record task task-update - completed');
-    });
   });
 
   describe('Initialize', () => {
-    it('should initialize folder and git if folder does not exist', async () => {
+    it('should initialize folder if folder does not exist', async () => {
       await manager.initialize();
 
       const folderExists = await manager.exists();
       expect(folderExists).toBe(true);
-
-      const gitPath = path.join(manager.getDotFolderPath(), '.git');
-      const gitExists = await fs
-        .access(gitPath)
-        .then(() => true)
-        .catch(() => false);
-      expect(gitExists).toBe(true);
     });
 
     it('should not re-initialize if folder already exists', async () => {
       await manager.createFolder();
-      await manager.initGit();
 
-      // Write a test file and commit
+      // Write a test file
       const testFile = path.join(manager.getDotFolderPath(), 'existing.txt');
       await fs.writeFile(testFile, 'existing content', 'utf-8');
-      await manager.commitChanges('Existing commit');
 
-      const { stdout: beforeCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-
-      // Call initialize again
+      // Call initialize again — should not throw or overwrite
       await manager.initialize();
 
-      // Commit count should be unchanged
-      const { stdout: afterCount } = await execAsync('git rev-list --count HEAD', {
-        cwd: manager.getDotFolderPath(),
-      });
-      expect(afterCount.trim()).toBe(beforeCount.trim());
+      // File should still exist
+      const fileExists = await fs
+        .access(testFile)
+        .then(() => true)
+        .catch(() => false);
+      expect(fileExists).toBe(true);
     });
   });
 

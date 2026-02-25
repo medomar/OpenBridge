@@ -137,8 +137,6 @@ async function seedOpenBridge(workspacePath: string, commitHash: string): Promis
     schemaVersion: '1.0.0',
   };
   await dotFolder.writeAnalysisMarker(marker);
-
-  await dotFolder.commitChanges('feat(master): seed initial exploration for test');
 }
 
 /** Shared master tool fixture */
