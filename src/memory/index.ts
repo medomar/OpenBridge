@@ -1,20 +1,17 @@
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from './database.js';
+import type { Chunk } from './chunk-store.js';
+import {
+  storeChunks as _storeChunks,
+  searchChunks as _searchChunks,
+  markStale as _markStale,
+} from './chunk-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
 // ---------------------------------------------------------------------------
 
-export interface Chunk {
-  id?: number;
-  scope: string;
-  category: 'structure' | 'patterns' | 'dependencies' | 'api' | 'config';
-  content: string;
-  source_hash?: string;
-  created_at?: string;
-  updated_at?: string;
-  stale?: boolean;
-}
+export type { Chunk };
 
 export interface ConversationEntry {
   id?: number;
@@ -116,19 +113,24 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Context chunks (implemented by chunk-store.ts — OB-704)
+  // Context chunks (chunk-store.ts — OB-704)
   // -------------------------------------------------------------------------
 
-  storeChunks(_chunks: Chunk[]): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  storeChunks(chunks: Chunk[]): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _storeChunks(this.db, chunks);
+    return Promise.resolve();
   }
 
-  searchContext(_query: string, _limit?: number): Promise<Chunk[]> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  searchContext(query: string, limit?: number): Promise<Chunk[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchChunks(this.db, query, limit));
   }
 
-  markStale(_scopes: string[]): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  markStale(scopes: string[]): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _markStale(this.db, scopes);
+    return Promise.resolve();
   }
 
   // -------------------------------------------------------------------------
