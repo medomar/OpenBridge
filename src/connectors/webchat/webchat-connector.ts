@@ -5,6 +5,7 @@ import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types
 import { WebChatConfigSchema } from './webchat-config.js';
 import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
+import type { ActivityRecord } from '../../memory/activity-store.js';
 
 const logger = createLogger('webchat');
 
@@ -75,6 +76,19 @@ const CHAT_HTML = `<!DOCTYPE html>
     #send:disabled { background: #bdc1c6; cursor: not-allowed; }
     .download-link { display: inline-block; margin-top: 6px; padding: 6px 14px; background: #1a73e8; color: #fff; border-radius: 16px; text-decoration: none; font-size: 13px; }
     .download-link:hover { background: #1557b0; }
+    #dash { border-bottom: 1px solid #e8eaed; background: #f8f9fa; flex-shrink: 0; max-height: 220px; overflow-y: auto; }
+    #dash.hidden { display: none; }
+    .dash-hdr { padding: 6px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 500; color: #5f6368; user-select: none; }
+    .dash-hdr:hover { background: #f1f3f4; }
+    #dash-body { padding: 2px 16px 8px; font-size: 12px; }
+    .agent-row { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+    .prog-wrap { width: 72px; height: 7px; background: #e8eaed; border-radius: 4px; overflow: hidden; flex-shrink: 0; }
+    .prog-bar { height: 100%; background: #1a73e8; border-radius: 4px; transition: width 0.4s; }
+    .abadge { padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+    .s-starting { background: #fef3c7; color: #92400e; }
+    .s-running { background: #d1fae5; color: #065f46; }
+    .s-completing { background: #dbeafe; color: #1e40af; }
+    .dash-cost { padding: 4px 0 0; color: #5f6368; border-top: 1px solid #e8eaed; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -84,6 +98,17 @@ const CHAT_HTML = `<!DOCTYPE html>
       <div class="conn-status">
         <div class="conn-dot" id="dot"></div>
         <span id="connLabel">Connecting...</span>
+      </div>
+    </div>
+    <div id="dash" class="hidden">
+      <div class="dash-hdr" id="dash-hdr">
+        <span id="dash-lbl">Agent Status</span>
+        <span id="dash-icon">&#9650;</span>
+      </div>
+      <div id="dash-body">
+        <div id="dash-master"></div>
+        <div id="dash-workers"></div>
+        <div id="dash-cost"></div>
       </div>
     </div>
     <div id="msgs"></div>
@@ -215,6 +240,56 @@ const CHAT_HTML = `<!DOCTYPE html>
       return null;
     }
 
+    var dashOpen = true;
+    document.getElementById('dash-hdr').addEventListener('click', function() {
+      dashOpen = !dashOpen;
+      document.getElementById('dash-body').style.display = dashOpen ? '' : 'none';
+      document.getElementById('dash-icon').textContent = dashOpen ? '\u25B2' : '\u25BC';
+    });
+
+    function updateDashboard(agents) {
+      var dash = document.getElementById('dash');
+      if (!agents || agents.length === 0) { dash.classList.add('hidden'); return; }
+      dash.classList.remove('hidden');
+      var master = null;
+      var workers = [];
+      for (var i = 0; i < agents.length; i++) {
+        if (agents[i].type === 'master') master = agents[i];
+        else workers.push(agents[i]);
+      }
+      var masterDiv = document.getElementById('dash-master');
+      masterDiv.innerHTML = master
+        ? '<div style="padding:2px 0;color:#202124"><strong>Master:</strong> ' + (master.model || 'unknown') + ' &nbsp;|&nbsp; ' + master.status + '</div>'
+        : '';
+      var workersDiv = document.getElementById('dash-workers');
+      if (workers.length === 0) {
+        workersDiv.innerHTML = '';
+      } else {
+        var h = '<div style="font-weight:500;padding:2px 0">Workers (' + workers.length + '):</div>';
+        for (var j = 0; j < workers.length; j++) {
+          var w = workers[j];
+          var pct = w.progress_pct || 0;
+          var sc = 's-' + (w.status || 'running');
+          var elapsed = w.started_at ? Math.floor((Date.now() - new Date(w.started_at).getTime()) / 1000) + 's' : '';
+          h += '<div class="agent-row">' +
+            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + String(w.id).slice(0, 8) + '</span>' +
+            '<span class="abadge ' + sc + '">' + (w.model || '\u2014') + '</span>' +
+            '<span style="color:#9aa0a6;flex-shrink:0">' + (w.profile || '\u2014') + '</span>' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124">' + (w.task_summary || '\u2014') + '</span>' +
+            '<div class="prog-wrap"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
+            '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0">' + pct + '%</span>' +
+            '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0;min-width:32px;text-align:right">' + elapsed + '</span>' +
+            '</div>';
+        }
+        workersDiv.innerHTML = h;
+      }
+      var totalCost = 0;
+      for (var k = 0; k < agents.length; k++) { totalCost += agents[k].cost_usd || 0; }
+      document.getElementById('dash-cost').innerHTML =
+        '<div class="dash-cost">Cost: $' + totalCost.toFixed(4) + ' &nbsp;|&nbsp; Active workers: ' + workers.length + '</div>';
+      document.getElementById('dash-lbl').textContent = 'Agent Status (' + agents.length + ' active)';
+    }
+
     function setOnline(online) {
       dot.className = 'conn-dot' + (online ? ' online' : '');
       connLabel.textContent = online ? 'Connected' : 'Disconnected';
@@ -253,6 +328,8 @@ const CHAT_HTML = `<!DOCTYPE html>
             var label = progressLabel(data.event);
             if (label) showStatus(label);
           }
+        } else if (data.type === 'agent-status') {
+          updateDashboard(data.agents);
         }
       } catch(ex) {}
     };
@@ -444,6 +521,21 @@ export class WebChatConnector implements Connector {
       }
     }
     return Promise.resolve();
+  }
+
+  /** Broadcast current agent activity to all connected WebSocket clients. */
+  broadcastAgentStatus(agents: ActivityRecord[]): void {
+    if (!this.connected || this.clients.size === 0) return;
+    const payload = JSON.stringify({
+      type: 'agent-status',
+      agents,
+      timestamp: new Date().toISOString(),
+    });
+    for (const client of this.clients) {
+      if (client.readyState === WS_OPEN) {
+        client.send(payload);
+      }
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {
