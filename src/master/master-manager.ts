@@ -8,6 +8,7 @@ import type { WorkspaceChanges } from './workspace-change-tracker.js';
 import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import { getRecommendedModel } from '../core/model-selector.js';
 import type { Router } from '../core/router.js';
 import type {
   MemoryManager,
@@ -3504,13 +3505,27 @@ ${currentContent}
       'Spawning worker from SPAWN marker',
     );
 
+    // Adaptive model selection (OB-724): marker override → learned best model → heuristics
+    let resolvedModel = body.model;
+    if (!resolvedModel && this.memory) {
+      const taskType = this.classifyTaskType(body.prompt);
+      const learned = await getRecommendedModel(this.memory, taskType);
+      if (learned) {
+        resolvedModel = learned.model;
+        logger.debug(
+          { workerId, model: learned.model, reason: learned.reason },
+          'Adaptive model selected for worker',
+        );
+      }
+    }
+
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     const spawnOpts = manifestToSpawnOptions(
       {
         prompt: body.prompt,
         workspacePath: this.workspacePath,
         profile,
-        model: body.model,
+        model: resolvedModel,
         maxTurns: body.maxTurns ?? this.defaultMaxTurnsForProfile(profile),
         timeout: body.timeout,
         retries: body.retries,
