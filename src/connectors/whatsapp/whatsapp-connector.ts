@@ -7,6 +7,7 @@ import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
 import { unlink, readlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { MessageMedia } from 'whatsapp-web.js';
 
 const logger = createLogger('whatsapp');
 
@@ -18,10 +19,19 @@ interface WAChat {
   sendStateTyping: () => Promise<void>;
 }
 
+interface WASendOptions {
+  caption?: string;
+  sendMediaAsDocument?: boolean;
+}
+
 interface WAClient {
   on: (event: string, handler: (...args: never[]) => void) => void;
   initialize: () => Promise<void>;
-  sendMessage: (to: string, content: string) => Promise<void>;
+  sendMessage: (
+    to: string,
+    content: string | MessageMedia,
+    options?: WASendOptions,
+  ) => Promise<void>;
   getChatById: (chatId: string) => Promise<WAChat>;
   destroy: () => Promise<void>;
 }
@@ -293,6 +303,24 @@ export class WhatsAppConnector implements Connector {
   async sendMessage(message: OutboundMessage): Promise<void> {
     if (!this.client || !this.connected) {
       throw new Error('WhatsApp connector is not connected');
+    }
+
+    if (message.media) {
+      const WAWebJS = await import('whatsapp-web.js');
+      const { MessageMedia: MessageMediaClass } = WAWebJS;
+      const base64 = message.media.data.toString('base64');
+      const media = new MessageMediaClass(
+        message.media.mimeType,
+        base64,
+        message.media.filename ?? null,
+      );
+      const caption = message.content || message.media.filename;
+      const options: WASendOptions = {};
+      if (caption) options.caption = caption;
+      if (message.media.type === 'document') options.sendMediaAsDocument = true;
+      await this.client.sendMessage(message.recipient, media, options);
+      logger.debug({ recipient: message.recipient, type: message.media.type }, 'Media sent');
+      return;
     }
 
     const formatted = formatMarkdownForWhatsApp(message.content);

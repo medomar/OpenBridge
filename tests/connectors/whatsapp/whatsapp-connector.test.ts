@@ -68,6 +68,17 @@ vi.mock('whatsapp-web.js', () => {
 
   class LocalAuth {}
 
+  class MessageMedia {
+    mimetype: string;
+    data: string;
+    filename: string | null;
+    constructor(mimetype: string, data: string, filename?: string | null) {
+      this.mimetype = mimetype;
+      this.data = data;
+      this.filename = filename ?? null;
+    }
+  }
+
   const ClientConstructor = vi.fn(function (this: MockClientInstance, options: unknown) {
     capturedClientOptions.push(options);
     const instance = new MockClient() as unknown as MockClientInstance;
@@ -79,8 +90,9 @@ vi.mock('whatsapp-web.js', () => {
   return {
     Client: ClientConstructor,
     LocalAuth,
+    MessageMedia,
     // whatsapp-web.js is CJS — in ESM dynamic import, LocalAuth lives on .default
-    default: { Client: ClientConstructor, LocalAuth },
+    default: { Client: ClientConstructor, LocalAuth, MessageMedia },
   };
 });
 
@@ -268,6 +280,197 @@ describe('WhatsAppConnector', () => {
         const sent = call[1] as string;
         expect(sent.length).toBeLessThanOrEqual(4096);
       }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // sendMessage() with media attachments (OB-602)
+  // -----------------------------------------------------------------------
+
+  describe('sendMessage() with media', () => {
+    it('sends a MessageMedia object when media field is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'image',
+          data: Buffer.from('fake-image-data'),
+          mimeType: 'image/png',
+        },
+      });
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, unknown];
+      // Content should be a MessageMedia object (not a string)
+      expect(typeof content).toBe('object');
+      expect(content).not.toBeNull();
+    });
+
+    it('encodes buffer data as base64 in the MessageMedia object', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      const rawData = Buffer.from('hello pdf');
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: rawData,
+          mimeType: 'application/pdf',
+          filename: 'report.pdf',
+        },
+      });
+
+      const [, media] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        { data: string; mimetype: string; filename: string | null },
+      ];
+      expect(media.data).toBe(rawData.toString('base64'));
+      expect(media.mimetype).toBe('application/pdf');
+      expect(media.filename).toBe('report.pdf');
+    });
+
+    it('uses content as caption when content is non-empty', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: 'Here is your report',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'report.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { caption?: string },
+      ];
+      expect(options?.caption).toBe('Here is your report');
+    });
+
+    it('uses filename as caption when content is empty and filename is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'invoice.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { caption?: string },
+      ];
+      expect(options?.caption).toBe('invoice.pdf');
+    });
+
+    it('sets sendMediaAsDocument for document type', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'document',
+          data: Buffer.from('pdf'),
+          mimeType: 'application/pdf',
+          filename: 'doc.pdf',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { sendMediaAsDocument?: boolean },
+      ];
+      expect(options?.sendMediaAsDocument).toBe(true);
+    });
+
+    it('does not set sendMediaAsDocument for image type', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: '',
+        media: {
+          type: 'image',
+          data: Buffer.from('img'),
+          mimeType: 'image/jpeg',
+        },
+      });
+
+      const [, , options] = mockClientInstance.sendMessage.mock.calls[0] as [
+        string,
+        unknown,
+        { sendMediaAsDocument?: boolean } | undefined,
+      ];
+      expect(options?.sendMediaAsDocument).toBeUndefined();
+    });
+
+    it('sends text normally when no media field is present', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      mockClientInstance._trigger('ready');
+
+      await connector.sendMessage({
+        target: 'whatsapp',
+        recipient: '+1234567890',
+        content: 'plain text',
+      });
+
+      expect(mockClientInstance.sendMessage).toHaveBeenCalledOnce();
+      const [, content] = mockClientInstance.sendMessage.mock.calls[0] as [string, string];
+      expect(typeof content).toBe('string');
+      expect(content).toBe('plain text');
+    });
+
+    it('throws when not connected even with media', async () => {
+      const connector = buildConnector();
+      await connector.initialize();
+      // NOT triggering 'ready'
+
+      await expect(
+        connector.sendMessage({
+          target: 'whatsapp',
+          recipient: '+1234567890',
+          content: '',
+          media: {
+            type: 'image',
+            data: Buffer.from('img'),
+            mimeType: 'image/png',
+          },
+        }),
+      ).rejects.toThrow('not connected');
     });
   });
 
