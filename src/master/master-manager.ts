@@ -479,9 +479,8 @@ export class MasterManager {
   }
 
   /**
-   * Record a master-level task (user interaction) to memory or DotFolderManager.
-   * When memory is available: write to SQLite tasks table.
-   * When memory is null: write JSON file + git commit via DotFolderManager.
+   * Record a master-level task (user interaction) to memory (SQLite tasks table).
+   * If memory is not available, logs a warning — no JSON fallback.
    */
   private async recordTaskToStore(
     task: TaskRecord,
@@ -495,7 +494,7 @@ export class MasterManager {
       }
       return;
     }
-    await this.dotFolder.recordTask(task);
+    logger.warn({ taskId: task.id }, 'MemoryManager not available — task record not persisted');
   }
 
   /**
@@ -4316,7 +4315,7 @@ ${currentContent}
         resolvedTools: spawnOpts.allowedTools,
       };
 
-      // Write worker task to store (memory or JSON file) (OB-165: task history + audit trail)
+      // Write worker task to store (memory) (OB-165: task history + audit trail)
       if (this.memory) {
         const statusMap: Record<string, MemoryTaskRecord['status']> = {
           completed: 'completed',
@@ -4337,7 +4336,7 @@ ${currentContent}
           completed_at: taskRecord.completedAt,
         });
       } else {
-        await this.dotFolder.writeTask(taskRecord);
+        logger.warn({ workerId }, 'MemoryManager not available — worker task record not persisted');
       }
 
       // UPDATE agent_activity to 'done' or 'failed' with cost (OB-742, OB-746)
@@ -4396,7 +4395,7 @@ ${currentContent}
         exceptionThrown: true,
       };
 
-      // Write worker task to store (memory or JSON file) even on exception (OB-165)
+      // Write worker task to store (memory) even on exception (OB-165)
       if (this.memory) {
         await this.memory.recordTask({
           id: taskRecord.id,
@@ -4412,7 +4411,10 @@ ${currentContent}
           completed_at: taskRecord.completedAt,
         });
       } else {
-        await this.dotFolder.writeTask(taskRecord);
+        logger.warn(
+          { workerId },
+          'MemoryManager not available — worker exception task record not persisted',
+        );
       }
 
       // UPDATE agent_activity to 'failed' on exception (OB-742)
