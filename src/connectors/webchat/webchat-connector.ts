@@ -18,6 +18,7 @@ type EventListeners = {
 interface WsClient {
   readyState: number;
   send(data: string): void;
+  ping(): void;
   on(event: 'message', listener: (data: Buffer | string) => void): void;
   on(event: 'close', listener: () => void): void;
   on(event: 'error', listener: (err: Error) => void): void;
@@ -26,6 +27,7 @@ interface WsClient {
 /** Minimal WebSocketServer interface */
 interface WssServer {
   on(event: 'connection', listener: (socket: WsClient) => void): void;
+  on(event: 'close', listener: () => void): void;
   close(callback?: () => void): void;
 }
 
@@ -298,9 +300,13 @@ const CHAT_HTML = `<!DOCTYPE html>
       send.disabled = !online;
     }
 
-    var ws = new WebSocket('ws://' + location.host);
-    ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
-    ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected', 'sys'); };
+    var ws;
+    function connectWs() {
+      ws = new WebSocket('ws://' + location.host);
+      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
+      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
+    }
+    connectWs();
     ws.onmessage = function(e) {
       try {
         var data = JSON.parse(e.data);
@@ -450,6 +456,17 @@ export class WebChatConnector implements Connector {
 
     const wss = new WsServer({ server });
     this.wss = wss;
+
+    // Keep WebSocket connections alive during long-running tasks (workers can take 10+ minutes)
+    const PING_INTERVAL_MS = 30_000;
+    const pingTimer = setInterval(() => {
+      for (const client of this.clients) {
+        if (client.readyState === WS_OPEN) {
+          client.ping();
+        }
+      }
+    }, PING_INTERVAL_MS);
+    wss.on('close', () => clearInterval(pingTimer));
 
     wss.on('connection', (socket: WsClient) => {
       this.clients.add(socket);
