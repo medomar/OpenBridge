@@ -117,6 +117,7 @@ export class DotFolderManager {
     await fs.mkdir(this.explorationPath, { recursive: true });
     await fs.mkdir(this.explorationDirsPath, { recursive: true });
     await fs.mkdir(this.promptsPath, { recursive: true });
+    await fs.mkdir(path.join(this.dotFolderPath, 'generated'), { recursive: true });
   }
 
   /**
