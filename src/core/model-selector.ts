@@ -14,6 +14,7 @@
 
 import type { ModelAlias } from './agent-runner.js';
 import type { TaskManifest } from '../types/agent.js';
+import type { MemoryManager } from '../memory/index.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('model-selector');
@@ -120,6 +121,45 @@ export function recommendByDescription(description: string): ModelRecommendation
   }
 
   return { model: 'haiku', reason: 'no complexity signals — fast default' };
+}
+
+/** Minimum completed tasks required before trusting learning data. */
+const MIN_TASKS_FOR_LEARNING = 5;
+
+/**
+ * Query the learnings store for the best model for a given task type.
+ *
+ * Returns a ModelRecommendation when the learnings table has at least
+ * MIN_TASKS_FOR_LEARNING completed tasks for the given task type.
+ * Returns null when there is insufficient data or on any error, so the
+ * caller can fall back to heuristic selection.
+ */
+export async function getRecommendedModel(
+  memory: MemoryManager,
+  taskType: string,
+): Promise<ModelRecommendation | null> {
+  try {
+    const learned = await memory.getLearnedParams(taskType);
+    if (learned.total_tasks < MIN_TASKS_FOR_LEARNING) {
+      logger.debug(
+        { taskType, total_tasks: learned.total_tasks, min: MIN_TASKS_FOR_LEARNING },
+        'Insufficient learning data — skipping adaptive model selection',
+      );
+      return null;
+    }
+    const successPct = (learned.success_rate * 100).toFixed(0);
+    logger.debug(
+      { taskType, model: learned.model, success_rate: learned.success_rate },
+      'Adaptive model selected from learnings',
+    );
+    return {
+      model: learned.model as ModelAlias,
+      reason: `learned: ${successPct}% success rate over ${learned.total_tasks} tasks`,
+    };
+  } catch {
+    // No data or memory error — caller will use heuristic fallback
+    return null;
+  }
 }
 
 /**
