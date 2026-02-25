@@ -47,6 +47,7 @@ import type {
   MasterSession,
   PromptTemplate,
   ClassificationCacheEntry,
+  ClassificationCache,
   ExplorationState,
   WorkspaceAnalysisMarker,
 } from '../types/master.js';
@@ -54,6 +55,7 @@ import {
   WorkspaceMapSchema,
   ExplorationStateSchema,
   AgentsRegistrySchema,
+  ClassificationCacheSchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
@@ -1554,12 +1556,31 @@ export class MasterManager {
   /**
    * Load the classification cache from disk into the in-memory map.
    * Called lazily on the first classifyTask() call. Non-blocking on failure.
+   * Reads from DB first (system_config 'classifications'), falls back to JSON.
    */
   private async loadClassificationCache(): Promise<void> {
     if (this.cacheLoaded) return;
     this.cacheLoaded = true;
     try {
-      const stored = await this.dotFolder.readClassifications();
+      let stored = null;
+
+      // DB-first read
+      if (this.memory) {
+        try {
+          const raw = await this.memory.getSystemConfig('classifications');
+          if (raw) {
+            stored = ClassificationCacheSchema.parse(JSON.parse(raw));
+          }
+        } catch {
+          // DB read failed — fall through to JSON
+        }
+      }
+
+      // JSON fallback (migration path)
+      if (!stored) {
+        stored = await this.dotFolder.readClassifications();
+      }
+
       if (stored) {
         for (const [key, entry] of Object.entries(stored.entries)) {
           this.classificationCache.set(key, entry);
@@ -1572,8 +1593,9 @@ export class MasterManager {
   }
 
   /**
-   * Persist the in-memory classification cache to .openbridge/classifications.json.
-   * Called non-blockingly after cache updates. Failures are logged but not thrown.
+   * Persist the in-memory classification cache to system_config (DB) and
+   * classifications.json (fallback). Called non-blockingly after cache updates.
+   * Failures are logged but not thrown.
    */
   private async persistClassificationCache(): Promise<void> {
     try {
@@ -1581,11 +1603,19 @@ export class MasterManager {
       for (const [key, entry] of this.classificationCache) {
         entries[key] = entry;
       }
-      await this.dotFolder.writeClassifications({
+      const cache: ClassificationCache = {
         entries,
         updatedAt: new Date().toISOString(),
         schemaVersion: '1.0.0',
-      });
+      };
+
+      // DB write (primary)
+      if (this.memory) {
+        await this.memory.setSystemConfig('classifications', JSON.stringify(cache));
+      }
+
+      // JSON write (fallback — keep until OB-813 removes legacy files)
+      await this.dotFolder.writeClassifications(cache);
     } catch (err) {
       logger.warn({ err }, 'Failed to persist classification cache — non-fatal');
     }
