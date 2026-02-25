@@ -5,6 +5,8 @@ import { createLogger } from './logger.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { TaskManifest, ToolProfile } from '../types/agent.js';
 import type { ModelRegistry } from './model-registry.js';
+import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
+import { ClaudeAdapter } from './adapters/claude-adapter.js';
 
 const logger = createLogger('agent-runner');
 
@@ -303,7 +305,11 @@ export class AgentExhaustedError extends Error {
   }
 }
 
-/** Build the CLI argument array from spawn options. */
+/**
+ * Build the CLI argument array from spawn options.
+ * @deprecated Use CLIAdapter.buildSpawnConfig() instead for provider-agnostic arg building.
+ * Kept for backward compatibility — produces Claude-specific args.
+ */
 export function buildArgs(opts: SpawnOptions): string[] {
   const args: string[] = [];
 
@@ -365,34 +371,20 @@ const SIGTERM_GRACE_PERIOD_MS = 5000;
 
 /** Execute a single agent attempt. Returns stdout, stderr, exitCode. */
 function execOnce(
-  args: string[],
+  config: CLISpawnConfig,
   workspacePath: string,
   timeout?: number,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
-    // Remove Claude Code env vars to prevent "nested session" detection.
-    // When OpenBridge runs inside a Claude Code session (VS Code extension or CLI),
-    // these vars cause child `claude` calls to refuse to start or behave unexpectedly.
-    const cleanEnv = { ...process.env };
-    for (const key of Object.keys(cleanEnv)) {
-      if (
-        key === 'CLAUDECODE' ||
-        key.startsWith('CLAUDE_CODE_') ||
-        key.startsWith('CLAUDE_AGENT_SDK_')
-      ) {
-        delete cleanEnv[key];
-      }
-    }
-
-    const child = nodeSpawn('claude', args, {
+    const child = nodeSpawn(config.binary, config.args, {
       cwd: workspacePath,
-      env: cleanEnv,
-      stdio: ['ignore', 'pipe', 'pipe'], // Close stdin immediately — claude --print doesn't need it
+      env: config.env,
+      stdio: ['ignore', 'pipe', 'pipe'], // Close stdin — non-interactive mode
     });
 
     logger.debug(
-      { pid: child.pid, argCount: args.length, promptLen: args[args.length - 1]?.length },
-      'Spawned claude child process',
+      { pid: child.pid, binary: config.binary, argCount: config.args.length },
+      'Spawned child process',
     );
 
     let stdout = '';
@@ -452,7 +444,7 @@ function execOnce(
 
       logger.debug(
         { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
-        'claude child process closed',
+        'Child process closed',
       );
 
       if (timedOut) {
@@ -515,29 +507,17 @@ async function writeLogFile(
 
 /** Execute a single agent attempt in streaming mode. Yields stdout chunks. */
 function execOnceStreaming(
-  args: string[],
+  config: CLISpawnConfig,
   workspacePath: string,
   timeout?: number,
 ): {
   chunks: AsyncGenerator<string, { exitCode: number; stderr: string }>;
   abort: () => void;
 } {
-  // Remove Claude Code env vars to prevent "nested session" detection (same as execOnce).
-  const cleanEnv = { ...process.env };
-  for (const key of Object.keys(cleanEnv)) {
-    if (
-      key === 'CLAUDECODE' ||
-      key.startsWith('CLAUDE_CODE_') ||
-      key.startsWith('CLAUDE_AGENT_SDK_')
-    ) {
-      delete cleanEnv[key];
-    }
-  }
-
-  const child = nodeSpawn('claude', args, {
+  const child = nodeSpawn(config.binary, config.args, {
     cwd: workspacePath,
     // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
-    env: cleanEnv,
+    env: config.env,
   });
 
   let stderr = '';
@@ -660,18 +640,24 @@ function execOnceStreaming(
 }
 
 export class AgentRunner {
+  private readonly adapter: CLIAdapter;
+
+  constructor(adapter?: CLIAdapter) {
+    this.adapter = adapter ?? new ClaudeAdapter();
+  }
+
   /**
-   * Spawn a Claude CLI agent with the given options.
+   * Spawn an AI CLI agent with the given options.
    *
-   * Builds CLI args from the options, executes the child process, and
-   * retries on non-zero exit codes up to `retries` times with `retryDelay`
-   * between attempts.
+   * Uses the CLIAdapter to build provider-specific CLI args, executes the
+   * child process, and retries on non-zero exit codes up to `retries` times
+   * with `retryDelay` between attempts.
    */
   async spawn(opts: SpawnOptions): Promise<AgentResult> {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
     let currentModel = opts.model;
-    let currentArgs = buildArgs(opts);
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
 
@@ -702,7 +688,7 @@ export class AgentRunner {
       }
 
       try {
-        lastResult = await execOnce(currentArgs, opts.workspacePath, opts.timeout);
+        lastResult = await execOnce(currentConfig, opts.workspacePath, opts.timeout);
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
         attemptRecords.push({
@@ -741,7 +727,7 @@ export class AgentRunner {
           );
           modelFallbacks.push(currentModel);
           currentModel = nextModel;
-          currentArgs = buildArgs({ ...opts, model: currentModel });
+          currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
         }
       }
     }
@@ -790,7 +776,7 @@ export class AgentRunner {
   }
 
   /**
-   * Stream a Claude CLI agent, yielding stdout chunks as they arrive.
+   * Stream an AI CLI agent, yielding stdout chunks as they arrive.
    *
    * Supports all the same options as spawn() — allowedTools, maxTurns,
    * model, retries, disk logging. On non-zero exit codes, retries the
@@ -803,7 +789,7 @@ export class AgentRunner {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
     let currentModel = opts.model;
-    let currentArgs = buildArgs(opts);
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
 
@@ -837,7 +823,7 @@ export class AgentRunner {
       let spawnError: Error | undefined;
 
       try {
-        const { chunks } = execOnceStreaming(currentArgs, opts.workspacePath, opts.timeout);
+        const { chunks } = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
 
         // Drain all chunks — yield each one and accumulate stdout
         let iterResult = await chunks.next();
@@ -931,7 +917,7 @@ export class AgentRunner {
           );
           modelFallbacks.push(currentModel);
           currentModel = nextModel;
-          currentArgs = buildArgs({ ...opts, model: currentModel });
+          currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
         }
       }
     }
@@ -941,10 +927,10 @@ export class AgentRunner {
   }
 
   /**
-   * Spawn a Claude CLI agent from a TaskManifest.
+   * Spawn an AI CLI agent from a TaskManifest.
    *
    * Converts the manifest into SpawnOptions, resolving the `profile` field
-   * into `--allowedTools` flags via custom profiles then built-in profiles.
+   * into tool lists via custom profiles then built-in profiles.
    * If both `profile` and explicit `allowedTools` are provided, explicit wins.
    */
   async spawnFromManifest(
@@ -955,9 +941,9 @@ export class AgentRunner {
   }
 
   /**
-   * Stream a Claude CLI agent from a TaskManifest.
+   * Stream an AI CLI agent from a TaskManifest.
    *
-   * Same as streamFromManifest but yields stdout chunks as they arrive.
+   * Same as spawnFromManifest but yields stdout chunks as they arrive.
    * Resolves `profile` to tools the same way as spawnFromManifest.
    */
   async *streamFromManifest(
