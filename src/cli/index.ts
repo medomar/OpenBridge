@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import { runAccess } from './access.js';
 import { runInit } from './init.js';
 
 const require = createRequire(import.meta.url);
@@ -20,6 +21,13 @@ if (command === 'init') {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);
   });
+} else if (command === 'access') {
+  try {
+    runAccess(process.argv.slice(3));
+  } catch (error: unknown) {
+    console.error('Error:', error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 } else if (command === '--help' || command === '-h') {
   console.log(`${pkg.name} v${pkg.version}`);
   console.log(pkg.description);
@@ -27,7 +35,8 @@ if (command === 'init') {
   console.log('Usage: openbridge <command>');
   console.log('');
   console.log('Commands:');
-  console.log('  init    Generate a config.json interactively');
+  console.log('  init      Generate a config.json interactively');
+  console.log('  access    Manage per-user access control (add/remove/list)');
   process.exit(0);
 } else if (command === '--version' || command === '-v') {
   console.log(pkg.version);
@@ -35,6 +44,7 @@ if (command === 'init') {
 } else {
   console.log('Usage: openbridge <command>\n');
   console.log('Commands:');
-  console.log('  init    Generate a config.json interactively\n');
+  console.log('  init      Generate a config.json interactively');
+  console.log('  access    Manage per-user access control (add/remove/list)\n');
   process.exit(command === undefined ? 0 : 1);
 }
