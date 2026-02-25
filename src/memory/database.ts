@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 
 /**
@@ -5,6 +7,7 @@ import Database from 'better-sqlite3';
  * Configures WAL mode, PRAGMAs, and creates all tables on first run.
  */
 export function openDatabase(dbPath: string): Database.Database {
+  mkdirSync(dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
 
   // PRAGMAs for safety and performance
