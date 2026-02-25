@@ -126,3 +126,25 @@ export function getUnderperformingPrompts(db: Database.Database, threshold = 0.7
 
   return rows.map(rowToRecord);
 }
+
+/**
+ * Return active prompt versions whose effectiveness is at or above `threshold`
+ * and whose `usage_count` meets the minimum (default 5).
+ * Used for injecting high-performing prompt patterns into the Master system prompt.
+ */
+export function getHighEffectivenessPrompts(
+  db: Database.Database,
+  threshold = 0.7,
+  minUsage = 5,
+): PromptRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT id, name, version, content, effectiveness, usage_count, success_count, active, created_at
+       FROM prompts
+       WHERE active = 1 AND effectiveness >= ? AND usage_count >= ?
+       ORDER BY effectiveness DESC`,
+    )
+    .all(threshold, minUsage) as PromptRow[];
+
+  return rows.map(rowToRecord);
+}
