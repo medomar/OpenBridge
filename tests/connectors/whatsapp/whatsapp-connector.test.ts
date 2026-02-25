@@ -583,41 +583,47 @@ describe('WhatsAppConnector', () => {
       expect(err.message).toContain('max attempts');
     });
 
-    it('resets reconnect attempt counter on successful reconnect', async () => {
-      const connector = buildConnector({
-        reconnect: {
-          enabled: true,
-          maxAttempts: 5,
-          initialDelayMs: 50,
-          maxDelayMs: 50,
-          backoffFactor: 1,
-        },
+    // This test uses real timers in its own describe block to avoid the
+    // fake→real timer switch that corrupts mock state on Node 22 CI, and
+    // the fake-timer microtask deadlock on Node 24 CI.
+    describe('reconnect counter reset (real timers)', () => {
+      beforeEach(() => {
+        vi.useRealTimers();
       });
-      await connector.initialize();
-      const firstClient = mockClientInstance;
 
-      // First successful connection
-      firstClient._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
+      it('resets reconnect attempt counter on successful reconnect', async () => {
+        const connector = buildConnector({
+          reconnect: {
+            enabled: true,
+            maxAttempts: 5,
+            initialDelayMs: 10,
+            maxDelayMs: 10,
+            backoffFactor: 1,
+          },
+        });
+        await connector.initialize();
+        const firstClient = mockClientInstance;
 
-      // Disconnect — schedules reconnect timer (50ms)
-      firstClient._trigger('disconnected', 'reason');
-      expect(connector.isConnected()).toBe(false);
+        // First successful connection
+        firstClient._trigger('ready');
+        expect(connector.isConnected()).toBe(true);
 
-      // Advance past the reconnect delay so the timer fires.
-      // The setTimeout callback is async (destroy + createAndStartClient),
-      // so we advance timers and flush microtasks multiple times to let
-      // the full async chain resolve.
-      for (let i = 0; i < 10; i++) {
-        await vi.advanceTimersByTimeAsync(50);
-      }
+        // Disconnect — schedules reconnect timer (10ms)
+        firstClient._trigger('disconnected', 'reason');
+        expect(connector.isConnected()).toBe(false);
 
-      // mockClientInstance now points to the reconnected client
-      expect(mockClientInstance).not.toBe(firstClient);
+        // Wait for reconnect: timer(10ms) + async destroy + async createAndStartClient.
+        // Poll until a new client is created (mocks resolve instantly, just need microtasks).
+        const deadline = Date.now() + 5000;
+        while (mockClientInstance === firstClient && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        expect(mockClientInstance).not.toBe(firstClient);
 
-      // The new client fires ready — reconnectAttempt should reset to 0
-      mockClientInstance._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
+        // The new client fires ready — reconnectAttempt should reset to 0
+        mockClientInstance._trigger('ready');
+        expect(connector.isConnected()).toBe(true);
+      }, 10_000);
     });
   });
 
