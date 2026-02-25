@@ -47,12 +47,19 @@ export interface InboundMessage {
 export interface OutboundMessage {
   /** The connector to send through */
   target: string;
-  /** The recipient identifier */
+  /** The recipient identifier (phone number, user ID, etc.) — also used for proactive messaging */
   recipient: string;
   /** The response content */
   content: string;
   /** Reference to the original inbound message ID */
   replyTo?: string;
+  /** Optional media attachment to send alongside or instead of text content */
+  media?: {
+    type: 'document' | 'image' | 'audio' | 'video';
+    data: Buffer;
+    mimeType: string;
+    filename?: string;
+  };
   /** Optional metadata for the connector */
   metadata?: Record<string, unknown>;
 }
