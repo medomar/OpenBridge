@@ -17,6 +17,7 @@ import {
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { getRecommendedModel } from '../core/model-selector.js';
+import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { Router } from '../core/router.js';
 import type {
   MemoryManager,
@@ -269,6 +270,8 @@ export interface MasterManagerOptions {
   memory?: MemoryManager;
   /** Base delay for worker-level retry backoff in milliseconds (default: 5000) */
   workerRetryDelayMs?: number;
+  /** CLI adapter for spawning worker agents (defaults to ClaudeAdapter) */
+  adapter?: CLIAdapter;
 }
 
 /**
@@ -351,7 +354,7 @@ export class MasterManager {
     this.dotFolder = new DotFolderManager(this.workspacePath);
     this.changeTracker = new WorkspaceChangeTracker(this.workspacePath);
     this.delegationCoordinator = new DelegationCoordinator();
-    this.agentRunner = new AgentRunner();
+    this.agentRunner = new AgentRunner(options.adapter);
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
     this.workerRetryDelayMs = options.workerRetryDelayMs ?? 5000;

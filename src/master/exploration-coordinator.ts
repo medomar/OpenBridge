@@ -35,6 +35,7 @@ import {
   TOOLS_READ_ONLY,
   DEFAULT_MAX_TURNS_EXPLORATION,
 } from '../core/agent-runner.js';
+import type { CLIAdapter } from '../core/cli-adapter.js';
 import {
   ExplorationStateSchema,
   StructureScanSchema,
@@ -90,6 +91,8 @@ export interface ExplorationOptions {
    * tracked in the exploration_progress table for the "status" command.
    */
   explorationId?: string;
+  /** CLI adapter for spawning worker agents (defaults to ClaudeAdapter) */
+  adapter?: CLIAdapter;
 }
 
 /**
@@ -116,7 +119,7 @@ export class ExplorationCoordinator {
     this.masterTool = options.masterTool;
     this.discoveredTools = options.discoveredTools;
     this.dotFolder = new DotFolderManager(this.workspacePath);
-    this.agentRunner = new AgentRunner();
+    this.agentRunner = new AgentRunner(options.adapter);
     this.onProgress = options.onProgress;
     this.batchSizeOverride = options.batchSize;
     this.memory = options.memory;
