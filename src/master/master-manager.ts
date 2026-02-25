@@ -27,7 +27,8 @@ import type {
   ActivityRecord,
 } from '../memory/index.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
-import type { ToolProfile } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
+import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { SubMasterManager } from './sub-master-manager.js';
 import type { SubMasterRecord } from './sub-master-manager.js';
@@ -466,6 +467,19 @@ export class MasterManager {
     return this.dotFolder.readExplorationState();
   }
 
+  /** Read profiles registry from DB (system_config) first, fall back to dotFolder JSON. */
+  private async readProfilesFromStore(): Promise<ProfilesRegistry | null> {
+    if (this.memory) {
+      try {
+        const raw = await this.memory.getSystemConfig('profiles');
+        if (raw) return ProfilesRegistrySchema.parse(JSON.parse(raw));
+      } catch {
+        // Fall through to JSON fallback
+      }
+    }
+    return this.dotFolder.readProfiles();
+  }
+
   /**
    * Record a master-level task (user interaction) to memory or DotFolderManager.
    * When memory is available: write to SQLite tasks table.
@@ -843,7 +857,7 @@ export class MasterManager {
       return; // Already seeded — don't overwrite (Master may have edited it)
     }
 
-    const customProfiles = (await this.dotFolder.readProfiles())?.profiles;
+    const customProfiles = (await this.readProfilesFromStore())?.profiles;
 
     const promptContent = generateMasterSystemPrompt({
       workspacePath: this.workspacePath,
@@ -3739,7 +3753,7 @@ ${currentContent}
       if (stat.successRate < 0.7) continue;
 
       // Check if a profile already exists for this task type
-      const existingProfiles = await this.dotFolder.readProfiles();
+      const existingProfiles = await this.readProfilesFromStore();
       const profileId = `auto-${stat.taskType}`;
       if (existingProfiles?.profiles[profileId]) continue;
 
@@ -3766,6 +3780,12 @@ ${currentContent}
 
       try {
         await this.dotFolder.addProfile(newProfile);
+        if (this.memory) {
+          const updated = await this.dotFolder.readProfiles();
+          if (updated) {
+            await this.memory.setSystemConfig('profiles', JSON.stringify(updated));
+          }
+        }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
@@ -3902,7 +3922,7 @@ ${currentContent}
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): Promise<string> {
     // Load custom profiles once for all workers
-    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfilesRegistry = await this.readProfilesFromStore();
     const customProfiles = customProfilesRegistry?.profiles;
 
     // Register all workers in the registry BEFORE spawning
@@ -3987,7 +4007,7 @@ ${currentContent}
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
-    const customProfilesRegistry = await this.dotFolder.readProfiles();
+    const customProfilesRegistry = await this.readProfilesFromStore();
     const customProfiles = customProfilesRegistry?.profiles;
 
     // Register all workers in the registry BEFORE spawning
