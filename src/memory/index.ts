@@ -1,5 +1,7 @@
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type { ExplorationLogEntry } from '../types/master.js';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
 import {
@@ -658,6 +660,76 @@ export class MemoryManager {
    */
   getDirectoryDive(dirName: string): Promise<string | null> {
     return this.getSystemConfig(`dir_dive:${dirName}`);
+  }
+
+  // -------------------------------------------------------------------------
+  // Exploration log (agent_activity table — OB-802)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Append an exploration log entry to the DB.
+   * Uses agent_activity with type='log' so no schema change is needed.
+   * Replaces dotFolder.appendLog() calls.
+   */
+  logExploration(entry: ExplorationLogEntry): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const now = entry.timestamp ?? new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO agent_activity
+           (id, type, model, task_summary, status, started_at, updated_at, completed_at)
+         VALUES (?, 'log', ?, ?, 'done', ?, ?, ?)`,
+      )
+      .run(
+        randomUUID(),
+        entry.level,
+        entry.data ? `${entry.message} | ${JSON.stringify(entry.data)}` : entry.message,
+        now,
+        now,
+        now,
+      );
+    return Promise.resolve();
+  }
+
+  /**
+   * Read all exploration log entries from the DB (agent_activity rows with type='log').
+   * Replaces dotFolder.readLog() calls.
+   */
+  readExplorationLog(): Promise<ExplorationLogEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    interface LogRow {
+      model: string;
+      task_summary: string;
+      started_at: string;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT model, task_summary, started_at FROM agent_activity
+         WHERE type = 'log'
+         ORDER BY started_at ASC`,
+      )
+      .all() as LogRow[];
+    return Promise.resolve(
+      rows.map((row) => {
+        const pipeIdx = row.task_summary.indexOf(' | ');
+        let message = row.task_summary;
+        let data: Record<string, unknown> | undefined;
+        if (pipeIdx !== -1) {
+          message = row.task_summary.slice(0, pipeIdx);
+          try {
+            data = JSON.parse(row.task_summary.slice(pipeIdx + 3)) as Record<string, unknown>;
+          } catch {
+            // leave data undefined
+          }
+        }
+        return {
+          timestamp: row.started_at,
+          level: row.model as 'info' | 'warn' | 'error',
+          message,
+          ...(data !== undefined ? { data } : {}),
+        };
+      }),
+    );
   }
 
   /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */

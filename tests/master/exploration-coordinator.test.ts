@@ -848,17 +848,16 @@ describe('ExplorationCoordinator', () => {
       expect(agents?.specialists[0]?.name).toBe('codex');
     });
 
-    it('should write exploration log entry', async () => {
+    it('exploration log entry goes to DB, not flat file (OB-802)', async () => {
       setupCompleteExploration();
 
       await coordinator.explore();
 
+      // Since no MemoryManager is injected in this test, the else-branch calls
+      // dotFolder.appendLog() which is now a no-op. readLog() should return [].
       const dotFolder = new DotFolderManager(testWorkspace);
       const log = await dotFolder.readLog();
-
-      expect(log.length).toBeGreaterThan(0);
-      const lastEntry = log[log.length - 1];
-      expect(lastEntry?.message).toContain('Incremental exploration completed successfully');
+      expect(log).toHaveLength(0);
     });
   });
 

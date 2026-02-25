@@ -1020,17 +1020,31 @@ export class ExplorationCoordinator {
     await this.dotFolder.writeAgents(agentsRegistry);
 
     // Log entry
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: 'Incremental exploration completed successfully',
-      data: {
-        totalCalls: state.totalCalls,
-        totalAITimeMs: state.totalAITimeMs,
-        phases: state.phases,
-        directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Incremental exploration completed successfully',
+        data: {
+          totalCalls: state.totalCalls,
+          totalAITimeMs: state.totalAITimeMs,
+          phases: state.phases,
+          directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Incremental exploration completed successfully',
+        data: {
+          totalCalls: state.totalCalls,
+          totalAITimeMs: state.totalAITimeMs,
+          phases: state.phases,
+          directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
+        },
+      });
+    }
 
     state.phases.finalization = 'completed';
     await this.writeExplorationState(state);

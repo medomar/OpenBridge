@@ -1111,16 +1111,29 @@ export class MasterManager {
     );
 
     // Log the restart
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'warn',
-      message: 'Master session restarted',
-      data: {
-        oldSessionId: oldSession?.sessionId,
-        oldMessageCount: oldSession?.messageCount,
-        restartCount: this.restartCount,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: 'Master session restarted',
+        data: {
+          oldSessionId: oldSession?.sessionId,
+          oldMessageCount: oldSession?.messageCount,
+          restartCount: this.restartCount,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: 'Master session restarted',
+        data: {
+          oldSessionId: oldSession?.sessionId,
+          oldMessageCount: oldSession?.messageCount,
+          restartCount: this.restartCount,
+        },
+      });
+    }
 
     // Create a new session — use raw UUID (Claude CLI requires valid UUID format)
     const sessionId = randomUUID();
@@ -1969,12 +1982,21 @@ export class MasterManager {
 
       // Log exploration start
       const startedAt = new Date().toISOString();
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Master-driven workspace exploration started',
-        data: { masterTool: this.masterTool.name, version: this.masterTool.version },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Master-driven workspace exploration started',
+          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Master-driven workspace exploration started',
+          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
+        });
+      }
 
       // Master-driven exploration via the persistent session
       await this.masterDrivenExplore();
@@ -2009,12 +2031,21 @@ export class MasterManager {
       };
 
       // Log exploration failure
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Workspace exploration failed',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Workspace exploration failed',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Workspace exploration failed',
+          data: { error: errorMessage },
+        });
+      }
 
       this.state = 'error';
 
@@ -2097,17 +2128,31 @@ export class MasterManager {
       'Starting incremental workspace exploration',
     );
 
-    await this.dotFolder.appendLog({
-      timestamp: startedAt,
-      level: 'info',
-      message: 'Incremental workspace exploration started',
-      data: {
-        method: changes.method,
-        changedCount: changes.changedFiles.length,
-        deletedCount: changes.deletedFiles.length,
-        summary: changes.summary,
-      },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: startedAt,
+        level: 'info',
+        message: 'Incremental workspace exploration started',
+        data: {
+          method: changes.method,
+          changedCount: changes.changedFiles.length,
+          deletedCount: changes.deletedFiles.length,
+          summary: changes.summary,
+        },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: startedAt,
+        level: 'info',
+        message: 'Incremental workspace exploration started',
+        data: {
+          method: changes.method,
+          changedCount: changes.changedFiles.length,
+          deletedCount: changes.deletedFiles.length,
+          summary: changes.summary,
+        },
+      });
+    }
 
     try {
       // Mark affected memory chunks as stale so the search index reflects
@@ -2183,12 +2228,21 @@ export class MasterManager {
         }
       }
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Incremental exploration completed',
-        data: { filesChanged: totalChanged, durationMs: result.durationMs },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Incremental exploration completed',
+          data: { filesChanged: totalChanged, durationMs: result.durationMs },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Incremental exploration completed',
+          data: { filesChanged: totalChanged, durationMs: result.durationMs },
+        });
+      }
 
       logger.info(
         { filesChanged: totalChanged, durationMs: result.durationMs },
@@ -2197,12 +2251,21 @@ export class MasterManager {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Incremental exploration failed — falling back to full re-explore',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Incremental exploration failed — falling back to full re-explore',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Incremental exploration failed — falling back to full re-explore',
+          data: { error: errorMessage },
+        });
+      }
 
       logger.warn(
         { error: errorMessage },
@@ -2222,12 +2285,21 @@ export class MasterManager {
   private async masterDrivenExplore(): Promise<void> {
     logger.info('Starting multi-agent workspace exploration via ExplorationCoordinator');
 
-    await this.dotFolder.appendLog({
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: 'Starting multi-agent workspace exploration',
-      data: { workspacePath: this.workspacePath },
-    });
+    if (this.memory) {
+      await this.memory.logExploration({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Starting multi-agent workspace exploration',
+        data: { workspacePath: this.workspacePath },
+      });
+    } else {
+      await this.dotFolder.appendLog({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Starting multi-agent workspace exploration',
+        data: { workspacePath: this.workspacePath },
+      });
+    }
 
     try {
       const coordinator = new ExplorationCoordinator({
@@ -2259,16 +2331,29 @@ export class MasterManager {
         this.workspaceMapSummary = this.buildMapSummary(map);
       }
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Multi-agent exploration completed',
-        data: {
-          directoriesExplored: summary.directoriesExplored,
-          projectType: summary.projectType,
-          frameworks: summary.frameworks,
-        },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Multi-agent exploration completed',
+          data: {
+            directoriesExplored: summary.directoriesExplored,
+            projectType: summary.projectType,
+            frameworks: summary.frameworks,
+          },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Multi-agent exploration completed',
+          data: {
+            directoriesExplored: summary.directoriesExplored,
+            projectType: summary.projectType,
+            frameworks: summary.frameworks,
+          },
+        });
+      }
 
       logger.info(
         {
@@ -2284,12 +2369,21 @@ export class MasterManager {
         'Multi-agent exploration failed, falling back to monolithic exploration',
       );
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'warn',
-        message: 'Multi-agent exploration failed, falling back to monolithic exploration',
-        data: { error: errorMessage },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
+          data: { error: errorMessage },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
+          data: { error: errorMessage },
+        });
+      }
 
       await this.monolithicExplore();
     }
@@ -2447,11 +2541,19 @@ Work silently — do not output conversational text, just explore and write the 
 
     try {
       // Log re-exploration start
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Workspace re-exploration started',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Workspace re-exploration started',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Workspace re-exploration started',
+        });
+      }
 
       if (this.masterSession) {
         // Master-driven re-exploration via session
@@ -2487,11 +2589,19 @@ Work silently — do not output conversational text, just explore and write the 
       await this.loadExplorationSummary();
 
       // Log re-exploration completion
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Workspace re-exploration completed',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Workspace re-exploration completed',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Workspace re-exploration completed',
+        });
+      }
 
       this.state = 'ready';
 
@@ -3361,12 +3471,21 @@ Work silently — do not output conversational text, just explore and write the 
     logger.info('Starting self-improvement cycle');
 
     try {
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Self-improvement cycle started',
-        data: {},
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Self-improvement cycle started',
+          data: {},
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Self-improvement cycle started',
+          data: {},
+        });
+      }
 
       // Task 1: Identify and rewrite low-performing prompts
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
@@ -3387,26 +3506,47 @@ Work silently — do not output conversational text, just explore and write the 
       // Task 3: Check if workspace has changed and update map if needed
       await this.updateWorkspaceMapIfChanged();
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Self-improvement cycle completed',
-        data: {
-          lowPerformingPrompts: lowPerformingPrompts.length,
-          durationMs: new Date().getTime() - new Date(startedAt).getTime(),
-        },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Self-improvement cycle completed',
+          data: {
+            lowPerformingPrompts: lowPerformingPrompts.length,
+            durationMs: new Date().getTime() - new Date(startedAt).getTime(),
+          },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Self-improvement cycle completed',
+          data: {
+            lowPerformingPrompts: lowPerformingPrompts.length,
+            durationMs: new Date().getTime() - new Date(startedAt).getTime(),
+          },
+        });
+      }
 
       logger.info('Self-improvement cycle completed successfully');
     } catch (error) {
       logger.error({ err: error }, 'Self-improvement cycle encountered an error');
 
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        message: 'Self-improvement cycle failed',
-        data: { error: error instanceof Error ? error.message : String(error) },
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Self-improvement cycle failed',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: 'Self-improvement cycle failed',
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
+      }
     } finally {
       this.isSelfImproving = false;
     }
@@ -3648,11 +3788,19 @@ ${currentContent}
 
     // Log shutdown
     try {
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Master AI shutting down',
-      });
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Master AI shutting down',
+        });
+      } else {
+        await this.dotFolder.appendLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Master AI shutting down',
+        });
+      }
     } catch (error) {
       logger.error({ err: error }, 'Failed to log shutdown');
     }
