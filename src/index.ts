@@ -146,7 +146,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   const config = await loadConfig();
   setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
-  const bridge = new Bridge(config, { configPath });
+  const bridge = new Bridge(config, { configPath, workspacePath: v2Config.workspacePath });
 
   // Register built-in plugins
   const registry = bridge.getRegistry();
@@ -164,6 +164,7 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
     workspacePath: v2Config.workspacePath,
     masterTool: selectedMaster,
     discoveredTools: scanResult.cliTools,
+    memory: bridge.getMemory() ?? undefined,
   });
 
   // Wire Master into the bridge router (must happen before start)

@@ -1,8 +1,10 @@
+import path from 'node:path';
 import type { AppConfig } from '../types/config.js';
 import type { InboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
+import { MemoryManager } from '../memory/index.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
@@ -25,6 +27,8 @@ export interface BridgeOptions {
   configPath?: string;
   /** Max ms to wait for queue drain on shutdown before proceeding. Default: 30 000 */
   drainTimeoutMs?: number;
+  /** Absolute path to the target workspace — when provided, MemoryManager is created for SQLite persistence */
+  workspacePath?: string;
 }
 
 export class Bridge {
@@ -41,6 +45,7 @@ export class Bridge {
   private readonly router: Router;
   private readonly orchestrator: AgentOrchestrator;
   private master: MasterManager | null = null;
+  private memory: MemoryManager | null = null;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -62,6 +67,11 @@ export class Bridge {
     this.registry = new PluginRegistry();
     this.router = new Router(config.defaultProvider, config.router, this.auditLogger, this.metrics);
     this.orchestrator = new AgentOrchestrator(config.defaultProvider);
+
+    if (options?.workspacePath) {
+      const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
+      this.memory = new MemoryManager(dbPath);
+    }
   }
 
   /** Register built-in and external plugins before starting */
@@ -74,6 +84,11 @@ export class Bridge {
     return this.connectors.map((c) => c.name);
   }
 
+  /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
+  getMemory(): MemoryManager | null {
+    return this.memory;
+  }
+
   /** Set the Master AI — must be called before start() to enable Master routing */
   setMaster(master: MasterManager): void {
     this.master = master;
@@ -83,6 +98,21 @@ export class Bridge {
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
+
+    // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
+    if (this.memory) {
+      try {
+        await this.memory.init();
+        await this.memory.migrate();
+        logger.info('MemoryManager initialized and migrated');
+      } catch (error) {
+        logger.error(
+          { err: error },
+          'MemoryManager initialization failed — continuing with DotFolderManager fallback',
+        );
+        this.memory = null;
+      }
+    }
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
@@ -234,6 +264,15 @@ export class Bridge {
 
     await this.healthServer.stop();
     await this.metricsServer.stop();
+
+    if (this.memory) {
+      try {
+        await this.memory.close();
+        logger.info('MemoryManager closed');
+      } catch (error) {
+        logger.error({ err: error }, 'Error closing MemoryManager');
+      }
+    }
 
     logger.info('OpenBridge stopped');
   }

@@ -9,6 +9,7 @@ import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/ag
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import type { Router } from '../core/router.js';
+import type { MemoryManager } from '../memory/index.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ToolProfile } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
@@ -147,6 +148,8 @@ export interface MasterManagerOptions {
   messageTimeout?: number;
   /** Whether to skip automatic exploration on startup */
   skipAutoExploration?: boolean;
+  /** MemoryManager instance — when provided, enables SQLite-backed persistence (OB-711 will wire reads/writes) */
+  memory?: MemoryManager;
 }
 
 /**
@@ -178,6 +181,7 @@ export class MasterManager {
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
+  readonly memory: MemoryManager | null;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -222,6 +226,7 @@ export class MasterManager {
     this.delegationCoordinator = new DelegationCoordinator();
     this.agentRunner = new AgentRunner();
     this.workerRegistry = new WorkerRegistry();
+    this.memory = options.memory ?? null;
 
     logger.info(
       {
