@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { ConversationEntry } from './index.js';
+import type { AgentRunner } from '../core/agent-runner.js';
 
 // ---------------------------------------------------------------------------
 // Raw row shape returned by better-sqlite3
@@ -129,4 +130,227 @@ export function deleteOldConversations(db: Database.Database, cutoffDate: Date):
     }
     db.prepare('DELETE FROM conversations WHERE created_at < ?').run(cutoff);
   })();
+}
+
+// ---------------------------------------------------------------------------
+// Tiered eviction with AI summarization (OB-736)
+// ---------------------------------------------------------------------------
+
+/** Options for the tiered conversation eviction policy. */
+export interface ConversationEvictionOptions {
+  /** Conversations newer than this many days are kept untouched (default: 30). */
+  recentDays?: number;
+  /** Conversations between recentDays and summarizeDays are AI-summarized then deleted (default: 90). */
+  summarizeDays?: number;
+  /**
+   * Conversations older than this are deleted except those in sessions linked to a completed
+   * task; beyond this boundary everything is deleted unconditionally (default: 365).
+   */
+  extendedRetentionDays?: number;
+  /** Optional AgentRunner for AI-powered one-paragraph summarization. */
+  agentRunner?: AgentRunner;
+  /** Working directory for the AI summarizer (defaults to process.cwd()). */
+  workspacePath?: string;
+}
+
+/** Build a simple text-only summary when no AI is available. */
+function buildTextSummary(
+  rows: { role: string; content: string; created_at: string }[],
+  sessionId: string,
+): string {
+  const first = rows[0]?.created_at ?? '';
+  const last = rows[rows.length - 1]?.created_at ?? '';
+  const userCount = rows.filter((r) => r.role === 'user').length;
+  const assistantCount = rows.filter((r) => r.role === 'master' || r.role === 'worker').length;
+  return (
+    `[Auto-summary of session ${sessionId}: ` +
+    `${rows.length} messages (${userCount} user, ${assistantCount} assistant) ` +
+    `from ${first} to ${last}. Content archived during eviction.]`
+  );
+}
+
+/** Spawn a haiku agent to generate a one-paragraph summary; falls back to text summary on error. */
+async function generateAISummary(
+  rows: { role: string; content: string; created_at: string }[],
+  sessionId: string,
+  agentRunner: AgentRunner,
+  workspacePath: string,
+): Promise<string> {
+  const formatted = rows
+    .map((r) => `[${r.created_at}] ${r.role}: ${r.content.slice(0, 400)}`)
+    .join('\n');
+
+  const prompt =
+    `Summarize the following conversation in one paragraph. ` +
+    `Focus on what was discussed, decisions made, and key outcomes.\n\n` +
+    `${formatted}\n\n` +
+    `Provide ONLY the one-paragraph summary with no extra commentary:`;
+
+  try {
+    const result = await agentRunner.spawn({
+      prompt,
+      workspacePath,
+      model: 'haiku',
+      maxTurns: 1,
+      timeout: 15_000,
+      retries: 0,
+    });
+
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      const dateRange = `${rows[0]?.created_at ?? ''} to ${rows[rows.length - 1]?.created_at ?? ''}`;
+      return `[Session summary (${rows.length} messages, ${dateRange})]\n${result.stdout.trim()}`;
+    }
+  } catch {
+    // Fall through to text summary
+  }
+
+  return buildTextSummary(rows, sessionId);
+}
+
+/** Summarize all messages for one session in [from, to) then delete the originals. */
+async function summarizeAndDeleteSession(
+  db: Database.Database,
+  sessionId: string,
+  from: string,
+  to: string,
+  agentRunner: AgentRunner | undefined,
+  workspacePath: string,
+): Promise<void> {
+  interface MsgRow {
+    id: number;
+    role: string;
+    content: string;
+    created_at: string;
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT id, role, content, created_at
+       FROM conversations
+       WHERE session_id = ? AND created_at >= ? AND created_at < ?
+         AND role != 'system'
+       ORDER BY created_at ASC`,
+    )
+    .all(sessionId, from, to) as MsgRow[];
+
+  if (rows.length === 0) return;
+
+  const summary = agentRunner
+    ? await generateAISummary(rows, sessionId, agentRunner, workspacePath)
+    : buildTextSummary(rows, sessionId);
+
+  // Atomically save the summary row and remove the originals
+  db.transaction(() => {
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        `INSERT INTO conversations (session_id, role, content, channel, user_id, created_at)
+         VALUES (?, 'system', ?, NULL, NULL, ?)`,
+      )
+      .run(sessionId, summary, now);
+
+    db.prepare('INSERT INTO conversations_fts (rowid, content) VALUES (?, ?)').run(
+      result.lastInsertRowid,
+      summary,
+    );
+
+    for (const { id } of rows) {
+      db.prepare('DELETE FROM conversations_fts WHERE rowid = ?').run(id);
+    }
+
+    db.prepare(
+      `DELETE FROM conversations
+       WHERE session_id = ? AND created_at >= ? AND created_at < ? AND role != 'system'`,
+    ).run(sessionId, from, to);
+  })();
+}
+
+/**
+ * Tiered conversation eviction:
+ *
+ * - Zone 1 — 0 to recentDays (default 30): keep full history, no action.
+ * - Zone 2 — recentDays to summarizeDays (default 30–90): AI-summarize each session_id group
+ *   into a single 'system' row, then delete the originals.
+ * - Zone 3 — summarizeDays to extendedRetentionDays (default 90–365): delete all except rows
+ *   whose session_id matches a completed task id in the tasks table.
+ * - Zone 4 — Beyond extendedRetentionDays (default 365+): delete everything.
+ */
+export async function evictConversations(
+  db: Database.Database,
+  options: ConversationEvictionOptions = {},
+): Promise<void> {
+  const {
+    recentDays = 30,
+    summarizeDays = 90,
+    extendedRetentionDays = 365,
+    agentRunner,
+    workspacePath = process.cwd(),
+  } = options;
+
+  const now = new Date();
+  function offset(days: number): string {
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    return d.toISOString();
+  }
+
+  const recentCutoff = offset(recentDays);
+  const summarizeCutoff = offset(summarizeDays);
+  const extendedCutoff = offset(extendedRetentionDays);
+
+  // Zone 4: beyond extendedRetentionDays — delete everything
+  deleteOldConversations(db, new Date(extendedCutoff));
+
+  // Zone 3: summarizeDays–extendedRetentionDays — delete except sessions linked to
+  // completed tasks (matched by session_id = task.id)
+  {
+    const ids = db
+      .prepare(
+        `SELECT id FROM conversations
+         WHERE created_at >= ? AND created_at < ?
+           AND session_id NOT IN (
+             SELECT id FROM tasks WHERE status = 'completed'
+           )`,
+      )
+      .all(extendedCutoff, summarizeCutoff) as { id: number }[];
+
+    if (ids.length > 0) {
+      db.transaction(() => {
+        for (const { id } of ids) {
+          db.prepare('DELETE FROM conversations_fts WHERE rowid = ?').run(id);
+        }
+        db.prepare(
+          `DELETE FROM conversations
+           WHERE created_at >= ? AND created_at < ?
+             AND session_id NOT IN (
+               SELECT id FROM tasks WHERE status = 'completed'
+             )`,
+        ).run(extendedCutoff, summarizeCutoff);
+      })();
+    }
+  }
+
+  // Zone 2: recentDays–summarizeDays — summarize each session then delete originals
+  {
+    const sessions = db
+      .prepare(
+        `SELECT DISTINCT session_id FROM conversations
+         WHERE created_at >= ? AND created_at < ?
+           AND role != 'system'`,
+      )
+      .all(summarizeCutoff, recentCutoff) as { session_id: string }[];
+
+    for (const { session_id } of sessions) {
+      await summarizeAndDeleteSession(
+        db,
+        session_id,
+        summarizeCutoff,
+        recentCutoff,
+        agentRunner,
+        workspacePath,
+      );
+    }
+  }
+
+  // Zone 1: 0–recentDays — keep untouched (no action)
 }

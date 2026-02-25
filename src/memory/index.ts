@@ -385,8 +385,7 @@ export class MemoryManager {
 
   evictOldData(options?: EvictionOptions): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    _evictOldData(this.db, options);
-    return Promise.resolve();
+    return _evictOldData(this.db, options);
   }
 
   migrate(): Promise<void> {

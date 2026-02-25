@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3';
-import { deleteOldConversations } from './conversation-store.js';
+import {
+  evictConversations as _evictConversations,
+  type ConversationEvictionOptions,
+} from './conversation-store.js';
 
 // ---------------------------------------------------------------------------
 // Options
@@ -14,6 +17,10 @@ export interface EvictionOptions {
   staleChunkRetentionDays?: number;
   /** Delete completed agent_activity records older than this many hours (default: 24) */
   agentActivityRetentionHours?: number;
+  /** Optional AgentRunner for AI-powered conversation summarization (30–90 day window). */
+  agentRunner?: ConversationEvictionOptions['agentRunner'];
+  /** Working directory for the AI summarizer agent. */
+  workspacePath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,12 +54,19 @@ function tableExists(db: Database.Database, tableName: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Delete conversations older than `retentionDays`.
- * Phase 35 will add summarisation before deletion; for now we delete directly.
+ * Tiered conversation eviction — delegates to the public `evictConversations`
+ * in conversation-store.ts which implements the 30/90/365-day policy.
+ *
+ * `conversationRetentionDays` maps to the `summarizeDays` boundary (default 90):
+ * conversations older than that are deleted / task-linked; the 30-day keep and
+ * 365-day hard-delete boundaries use their own defaults.
  */
-function evictConversations(db: Database.Database, retentionDays: number): void {
-  const cutoff = daysAgo(retentionDays);
-  deleteOldConversations(db, cutoff);
+async function evictConversations(db: Database.Database, options: EvictionOptions): Promise<void> {
+  return _evictConversations(db, {
+    summarizeDays: options.conversationRetentionDays ?? 90,
+    agentRunner: options.agentRunner,
+    workspacePath: options.workspacePath,
+  });
 }
 
 /**
@@ -127,20 +141,24 @@ function evictAgentActivity(db: Database.Database, retentionHours: number): void
  * Run all eviction policies against the database.
  *
  * Each policy can be individually tuned via `options`:
- * - `conversationRetentionDays`  — conversations older than N days  (default 90)
- * - `taskRetentionDays`          — completed tasks older than N days (default 180)
- * - `staleChunkRetentionDays`    — stale chunks older than N days    (default 30)
- * - `agentActivityRetentionHours`— agent_activity older than N hours (default 24)
+ * - `conversationRetentionDays`  — summarizeDays boundary for conversations (default 90)
+ * - `taskRetentionDays`          — completed tasks older than N days        (default 180)
+ * - `staleChunkRetentionDays`    — stale chunks older than N days           (default 30)
+ * - `agentActivityRetentionHours`— agent_activity older than N hours        (default 24)
+ * - `agentRunner`                — enables AI summarization for 30–90 day window
+ * - `workspacePath`              — working directory for the AI summarizer
  */
-export function evictOldData(db: Database.Database, options: EvictionOptions = {}): void {
+export async function evictOldData(
+  db: Database.Database,
+  options: EvictionOptions = {},
+): Promise<void> {
   const {
-    conversationRetentionDays = 90,
     taskRetentionDays = 180,
     staleChunkRetentionDays = 30,
     agentActivityRetentionHours = 24,
   } = options;
 
-  evictConversations(db, conversationRetentionDays);
+  await evictConversations(db, options);
   evictTasks(db, taskRetentionDays);
   evictStaleChunks(db, staleChunkRetentionDays);
   evictAgentActivity(db, agentActivityRetentionHours);
