@@ -28,7 +28,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Paths (all relative to project root unless absolute)
 TASKS_FILE="docs/audit/TASKS.md"
 FINDINGS_FILE="docs/audit/FINDINGS.md"
-HEALTH_FILE="docs/audit/HEALTH.md"
 POINTER_FILE="docs/audit/.current_task"
 PROMPT_FILE="$SCRIPT_DIR/prompts/execute-task.md"
 LOG_DIR="logs/task-runs"
@@ -67,7 +66,6 @@ Arguments:
 Paths:
   --tasks FILE          Task list file (default: $TASKS_FILE)
   --findings FILE       Findings file (default: $FINDINGS_FILE)
-  --health FILE         Health score file (default: $HEALTH_FILE)
   --pointer FILE        Pointer file (default: $POINTER_FILE)
   --prompt FILE         Prompt template (default: prompts/execute-task.md)
   --log-dir DIR         Log directory (default: $LOG_DIR)
@@ -103,7 +101,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --tasks)              TASKS_FILE="$2"; shift 2 ;;
     --findings)           FINDINGS_FILE="$2"; shift 2 ;;
-    --health)             HEALTH_FILE="$2"; shift 2 ;;
     --pointer)            POINTER_FILE="$2"; shift 2 ;;
     --prompt)             PROMPT_FILE="$2"; shift 2 ;;
     --log-dir)            LOG_DIR="$2"; shift 2 ;;
@@ -193,7 +190,6 @@ fi
 PROMPT_TEMPLATE=$(echo "$PROMPT_TEMPLATE" | sed \
   -e "s|{{TASKS_FILE}}|$TASKS_FILE|g" \
   -e "s|{{FINDINGS_FILE}}|$FINDINGS_FILE|g" \
-  -e "s|{{HEALTH_FILE}}|$HEALTH_FILE|g" \
   -e "s|{{POINTER_FILE}}|$POINTER_FILE|g" \
   -e "s|{{PHASE}}|$PHASE_FILTER|g")
 
@@ -334,7 +330,7 @@ get_pending_tasks() {
 
   local raw_tasks
   if [[ "$phase" != "none" ]]; then
-    raw_tasks=$(sed -n "/^## Phase $phase/,/^## Phase \|^## Status\|^---$/p" "$tasks_file" \
+    raw_tasks=$(sed -nE "/^## Phase $phase/,/^## Phase |^## Status|^---$/p" "$tasks_file" \
       | grep -i 'Pending' \
       | grep -oE 'OB-[0-9]+')
   else

@@ -14,7 +14,6 @@ Read the following files to understand the project:
 - `CLAUDE.md` — Development guide, architecture, conventions
 - `{{TASKS_FILE}}` — The task list (find the next pending task)
 - `{{FINDINGS_FILE}}` — Issue details for each finding
-- `{{HEALTH_FILE}}` — Current health score
 
 ## Step 2: Identify the Task
 
@@ -28,6 +27,7 @@ PHASE_FILTER: {{PHASE}}
 
 If the task ID has a matching finding in the findings file, read it for additional context.
 If no matching finding exists, use the task description from the task list — it contains everything you need.
+If the task description references a milestone doc (e.g., `docs/audit/milestones/v0.1.0-memory-system.md`), read it for detailed schemas, interfaces, and design notes.
 
 ## Step 3: Implement the Task
 
@@ -66,15 +66,6 @@ If any command fails, fix the issue before proceeding. Do not skip verification.
   - Change its status from open (🟠/🟡/🟢) to `✅ Fixed`
   - Update the summary tables at the top
 - If no matching finding exists, skip this step
-
-### 5c. Update `{{HEALTH_FILE}}`
-- Apply the score impact based on the task's priority in TASKS.md:
-  - 🟠 High task completed: +0.03
-  - 🟡 Med task completed: +0.015
-  - 🟢 Low task completed: +0.005
-- Update the "Current Score" in the header
-- Add a new row to the "Score Change History" table
-- Update the "Open Issues Summary" line
 
 ## Step 6: Commit
 
