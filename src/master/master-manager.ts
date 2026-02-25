@@ -410,22 +410,20 @@ export class MasterManager {
     if (this.memory) {
       try {
         const record = await this.memory.getSession('master');
-        if (!record) return null;
-        return sessionRecordToMasterSession(record);
+        if (record) return sessionRecordToMasterSession(record);
       } catch {
-        return null;
+        // Fall through to JSON fallback
       }
     }
     return this.dotFolder.readMasterSession();
   }
 
-  /** Save master session to memory (sessions table) or DotFolderManager (JSON file). */
+  /** Save master session to DotFolderManager (JSON file) and memory (sessions table). */
   private async saveMasterSessionToStore(session: MasterSession): Promise<void> {
+    await this.dotFolder.writeMasterSession(session);
     if (this.memory) {
       await this.memory.upsertSession(masterSessionToSessionRecord(session, this.restartCount));
-      return;
     }
-    await this.dotFolder.writeMasterSession(session);
   }
 
   /** Read analysis marker from memory (workspace_state table) or DotFolderManager (JSON file). */
