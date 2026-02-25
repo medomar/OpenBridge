@@ -125,11 +125,13 @@ There is no `v0.0.0`; this is the first published release. If you cloned the rep
 
 ## What's Next (Backlog)
 
-- Context compaction — progressive summarization when Master context gets large
-- Vector memory — SQLite + embeddings for long-term knowledge retrieval
-- Docker sandbox — run workers in containers for untrusted workspaces
-- Skill creator — Master creates reusable skill templates
-- Multi-Master coordination
+- Memory system — SQLite + FTS5 replacing JSON files, worker briefings, intelligent retrieval
+- Media support — file attachments, voice messages, proactive messaging
+- Conversation memory — long-term history with context retrieval, prompt evolution
+- Agent dashboard — real-time worker tracking with progress bars, cost tracking
+- Access control — per-user roles with scoped permissions
+- Hierarchical masters — automatic sub-master creation for large workspaces
+- Server deployment — Docker, headless mode, remote workspaces
 
 ---
 

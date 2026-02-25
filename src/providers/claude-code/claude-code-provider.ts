@@ -3,7 +3,7 @@ import type { AIProvider, ProviderResult, ProviderContext } from '../../types/pr
 import type { InboundMessage } from '../../types/message.js';
 import { ClaudeCodeConfigSchema } from './claude-code-config.js';
 import type { ClaudeCodeConfig } from './claude-code-config.js';
-import { executeClaudeCode, streamClaudeCode } from './claude-code-executor.js';
+import { AgentRunner } from '../../core/agent-runner.js';
 import { SessionManager } from './session-manager.js';
 import { ProviderError, classifyError } from './provider-error.js';
 import { createLogger } from '../../core/logger.js';
@@ -14,10 +14,12 @@ export class ClaudeCodeProvider implements AIProvider {
   readonly name = 'claude-code';
   private config: ClaudeCodeConfig;
   private sessionManager: SessionManager;
+  private runner: AgentRunner;
 
   constructor(options: Record<string, unknown>) {
     this.config = ClaudeCodeConfigSchema.parse(options);
     this.sessionManager = new SessionManager(this.config.sessionTtlMs);
+    this.runner = new AgentRunner();
   }
 
   async initialize(): Promise<void> {
@@ -43,10 +45,11 @@ export class ClaudeCodeProvider implements AIProvider {
       'Processing with Claude Code',
     );
 
-    const result = await executeClaudeCode({
+    const result = await this.runner.spawn({
       prompt: message.content,
       workspacePath,
       timeout: this.config.timeout,
+      retries: 0,
       ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
     });
 
@@ -91,15 +94,16 @@ export class ClaudeCodeProvider implements AIProvider {
       'Streaming with Claude Code',
     );
 
-    const stream = streamClaudeCode({
+    const stream = this.runner.stream({
       prompt: message.content,
       workspacePath,
       timeout: this.config.timeout,
+      retries: 0,
       ...(isNew ? { sessionId } : { resumeSessionId: sessionId }),
     });
 
     let fullOutput = '';
-    let streamResult: IteratorResult<string, { exitCode: number; stderr: string }>;
+    let streamResult: IteratorResult<string, unknown>;
 
     do {
       streamResult = await stream.next();
@@ -110,15 +114,21 @@ export class ClaudeCodeProvider implements AIProvider {
     } while (!streamResult.done);
 
     const durationMs = Date.now() - startTime;
-    const { exitCode, stderr } = streamResult.value;
+    const agentResult = streamResult.value as {
+      exitCode: number;
+      stderr: string;
+    };
 
-    if (exitCode !== 0) {
-      const errorKind = classifyError(exitCode, stderr);
-      logger.warn({ exitCode, stderr, errorKind }, 'Claude Code returned non-zero exit code');
+    if (agentResult.exitCode !== 0) {
+      const errorKind = classifyError(agentResult.exitCode, agentResult.stderr);
+      logger.warn(
+        { exitCode: agentResult.exitCode, stderr: agentResult.stderr, errorKind },
+        'Claude Code returned non-zero exit code',
+      );
       throw new ProviderError(
-        stderr.trim() || `Claude Code exited with code ${exitCode}`,
+        agentResult.stderr.trim() || `Claude Code exited with code ${agentResult.exitCode}`,
         errorKind,
-        exitCode,
+        agentResult.exitCode,
       );
     }
 
@@ -128,7 +138,7 @@ export class ClaudeCodeProvider implements AIProvider {
       content,
       metadata: {
         durationMs,
-        exitCode,
+        exitCode: agentResult.exitCode,
         sessionId,
       },
     };
@@ -136,7 +146,12 @@ export class ClaudeCodeProvider implements AIProvider {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const result = await executeClaudeCode('echo "ping"', this.config.workspacePath, 10_000);
+      const result = await this.runner.spawn({
+        prompt: 'echo "ping"',
+        workspacePath: this.config.workspacePath,
+        timeout: 10_000,
+        retries: 0,
+      });
       return result.exitCode === 0;
     } catch {
       return false;

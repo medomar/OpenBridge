@@ -7,25 +7,25 @@ import type { InboundMessage } from '../../../src/types/message.js';
 // Mock fs/promises so initialize() doesn't check real filesystem
 // ---------------------------------------------------------------------------
 
-const mockAccess = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockAccess = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('node:fs/promises', () => ({
-  access: (...args: unknown[]) => mockAccess(...args),
+  access: (...args: unknown[]) => mockAccess(...args) as Promise<void>,
 }));
 
 // ---------------------------------------------------------------------------
-// Mock executeClaudeCode so tests never invoke the real CLI
+// Mock AgentRunner so tests never invoke the real CLI
 // ---------------------------------------------------------------------------
 
-const mockExecute = vi.fn();
+const mockSpawn = vi.fn();
 const mockStream = vi.fn();
 
-vi.mock('../../../src/providers/claude-code/claude-code-executor.js', () => ({
-  executeClaudeCode: (...args: unknown[]): Promise<unknown> =>
-    mockExecute(...args) as Promise<unknown>,
-  sanitizePrompt: (s: string) => s,
-  streamClaudeCode: (...args: unknown[]) =>
-    mockStream(...args) as AsyncGenerator<string, { exitCode: number; stderr: string }>,
+vi.mock('../../../src/core/agent-runner.js', () => ({
+  AgentRunner: class {
+    spawn = (...args: unknown[]): Promise<unknown> => mockSpawn(...args) as Promise<unknown>;
+    stream = (...args: unknown[]) =>
+      mockStream(...args) as AsyncGenerator<string, { exitCode: number; stderr: string }>;
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ describe('ClaudeCodeProvider', () => {
 
   describe('processMessage()', () => {
     it('returns stdout as content on success', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'file list here', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'file list here', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
@@ -100,19 +100,19 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('throws ProviderError when exit code is non-zero', async () => {
-      mockExecute.mockResolvedValue({ stdout: '   ', stderr: 'some error output', exitCode: 1 });
+      mockSpawn.mockResolvedValue({ stdout: '   ', stderr: 'some error output', exitCode: 1 });
 
       await expect(provider.processMessage(createMessage())).rejects.toThrow(ProviderError);
     });
 
     it('ProviderError includes stderr as message', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: 'some error output', exitCode: 1 });
+      mockSpawn.mockResolvedValue({ stdout: '', stderr: 'some error output', exitCode: 1 });
 
       await expect(provider.processMessage(createMessage())).rejects.toThrow('some error output');
     });
 
     it('classifies timeout errors as transient', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: 'Request timeout', exitCode: 1 });
+      mockSpawn.mockResolvedValue({ stdout: '', stderr: 'Request timeout', exitCode: 1 });
 
       try {
         await provider.processMessage(createMessage());
@@ -124,7 +124,7 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('classifies auth errors as permanent', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: 'invalid api key', exitCode: 1 });
+      mockSpawn.mockResolvedValue({ stdout: '', stderr: 'invalid api key', exitCode: 1 });
 
       try {
         await provider.processMessage(createMessage());
@@ -136,19 +136,19 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('returns default message when both stdout and stderr are empty', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
       expect(result.content).toBe('No output from Claude Code.');
     });
 
-    it('passes message content to executeClaudeCode with session options', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+    it('passes message content to AgentRunner.spawn with session options', async () => {
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       await provider.processMessage(createMessage('list all files'));
 
-      expect(mockExecute).toHaveBeenCalledWith(
+      expect(mockSpawn).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'list all files',
           workspacePath: '/tmp/workspace',
@@ -159,7 +159,7 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('includes durationMs in metadata', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'done', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
@@ -167,7 +167,7 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('includes exitCode in metadata', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
@@ -175,7 +175,7 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('trims whitespace from stdout', async () => {
-      mockExecute.mockResolvedValue({ stdout: '  trimmed output  ', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: '  trimmed output  ', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
@@ -183,7 +183,7 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('includes sessionId in metadata', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       const result = await provider.processMessage(createMessage());
 
@@ -191,31 +191,31 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('uses sessionId for first message from a sender', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       await provider.processMessage(createMessage());
 
-      const opts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const opts = mockSpawn.mock.calls[0][0] as Record<string, unknown>;
       expect(opts.sessionId).toEqual(expect.any(String));
       expect(opts.resumeSessionId).toBeUndefined();
     });
 
     it('uses resumeSessionId for subsequent messages from the same sender', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       await provider.processMessage(createMessage('first'));
-      const firstOpts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
+      const firstOpts = mockSpawn.mock.calls[0][0] as Record<string, unknown>;
       const firstSessionId = firstOpts.sessionId;
 
       await provider.processMessage(createMessage('second'));
-      const secondOpts = mockExecute.mock.calls[1][0] as Record<string, unknown>;
+      const secondOpts = mockSpawn.mock.calls[1][0] as Record<string, unknown>;
 
       expect(secondOpts.resumeSessionId).toBe(firstSessionId);
       expect(secondOpts.sessionId).toBeUndefined();
     });
 
     it('uses separate sessions for different senders', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
 
       const aliceMsg = createMessage('hello');
       aliceMsg.sender = '+1111111111';
@@ -226,8 +226,8 @@ describe('ClaudeCodeProvider', () => {
       await provider.processMessage(aliceMsg);
       await provider.processMessage(bobMsg);
 
-      const aliceOpts = mockExecute.mock.calls[0][0] as Record<string, unknown>;
-      const bobOpts = mockExecute.mock.calls[1][0] as Record<string, unknown>;
+      const aliceOpts = mockSpawn.mock.calls[0][0] as Record<string, unknown>;
+      const bobOpts = mockSpawn.mock.calls[1][0] as Record<string, unknown>;
 
       expect(aliceOpts.sessionId).not.toBe(bobOpts.sessionId);
     });
@@ -238,7 +238,7 @@ describe('ClaudeCodeProvider', () => {
   // -----------------------------------------------------------------------
 
   describe('streamMessage()', () => {
-    it('yields chunks from streamClaudeCode', async () => {
+    it('yields chunks from AgentRunner.stream', async () => {
       mockStream.mockReturnValue(
         createMockStream(['Hello ', 'world!'], { exitCode: 0, stderr: '' }),
       );
@@ -318,7 +318,7 @@ describe('ClaudeCodeProvider', () => {
       expect(providerResult.content).toBe('No output from Claude Code.');
     });
 
-    it('passes session options to streamClaudeCode', async () => {
+    it('passes session options to AgentRunner.stream', async () => {
       mockStream.mockReturnValue(createMockStream(['ok'], { exitCode: 0, stderr: '' }));
 
       const stream = provider.streamMessage(createMessage('list files'));
@@ -344,7 +344,7 @@ describe('ClaudeCodeProvider', () => {
 
   describe('isAvailable()', () => {
     it('returns true when CLI exits with code 0', async () => {
-      mockExecute.mockResolvedValue({ stdout: 'ping', stderr: '', exitCode: 0 });
+      mockSpawn.mockResolvedValue({ stdout: 'ping', stderr: '', exitCode: 0 });
 
       const available = await provider.isAvailable();
 
@@ -352,15 +352,15 @@ describe('ClaudeCodeProvider', () => {
     });
 
     it('returns false when CLI exits with non-zero code', async () => {
-      mockExecute.mockResolvedValue({ stdout: '', stderr: 'not found', exitCode: 1 });
+      mockSpawn.mockResolvedValue({ stdout: '', stderr: 'not found', exitCode: 1 });
 
       const available = await provider.isAvailable();
 
       expect(available).toBe(false);
     });
 
-    it('returns false when executeClaudeCode throws', async () => {
-      mockExecute.mockRejectedValue(new Error('ENOENT: command not found'));
+    it('returns false when AgentRunner.spawn throws', async () => {
+      mockSpawn.mockRejectedValue(new Error('ENOENT: command not found'));
 
       const available = await provider.isAvailable();
 

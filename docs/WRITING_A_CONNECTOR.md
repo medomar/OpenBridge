@@ -120,11 +120,12 @@ export const YourConnectorOptionsSchema = z.object({
 export type YourConnectorOptions = z.infer<typeof YourConnectorOptionsSchema>;
 ```
 
-Users configure it in `config.json`:
+Users configure it in `config.json` (V2 format):
 
 ```json
 {
-  "connectors": [
+  "workspacePath": "/path/to/project",
+  "channels": [
     {
       "type": "your-connector",
       "enabled": true,
@@ -133,7 +134,8 @@ Users configure it in `config.json`:
         "channelId": "C012345"
       }
     }
-  ]
+  ],
+  "auth": { "whitelist": ["+1234567890"], "prefix": "/ai" }
 }
 ```
 

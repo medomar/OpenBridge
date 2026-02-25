@@ -331,7 +331,7 @@ export class DelegationCoordinator {
       'Delegation timed out',
     );
 
-    // Note: The timeout in the executeClaudeCode call will handle actual process termination
+    // Note: The timeout in the AgentRunner spawn call will handle actual process termination
     // This is just for tracking and cleanup
   }
 
