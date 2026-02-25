@@ -53,6 +53,14 @@ import {
   type ExplorationProgressRecord,
   type ExplorationProgressUpdate,
 } from './activity-store.js';
+import {
+  getAccess as _getAccess,
+  setAccess as _setAccess,
+  listAccess as _listAccess,
+  removeAccess as _removeAccess,
+  resetDailyCosts as _resetDailyCosts,
+  type AccessControlEntry,
+} from './access-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -92,6 +100,7 @@ export type {
   ExplorationProgressRecord,
   ExplorationProgressUpdate,
 } from './activity-store.js';
+export type { AccessControlEntry, AccessRole } from './access-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -499,6 +508,38 @@ export class MemoryManager {
       )
       .all() as ExplorationProgressRow[];
     return Promise.resolve(rows);
+  }
+
+  // -------------------------------------------------------------------------
+  // Access control (access-store.ts — OB-750)
+  // -------------------------------------------------------------------------
+
+  getAccess(userId: string, channel: string): Promise<AccessControlEntry | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getAccess(this.db, userId, channel));
+  }
+
+  setAccess(entry: AccessControlEntry): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _setAccess(this.db, entry);
+    return Promise.resolve();
+  }
+
+  listAccess(): Promise<AccessControlEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_listAccess(this.db));
+  }
+
+  removeAccess(userId: string, channel: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _removeAccess(this.db, userId, channel);
+    return Promise.resolve();
+  }
+
+  resetDailyCosts(): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _resetDailyCosts(this.db);
+    return Promise.resolve();
   }
 }
 

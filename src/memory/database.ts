@@ -182,6 +182,24 @@ function createSchema(db: Database.Database): void {
       FOREIGN KEY (exploration_id) REFERENCES agent_activity(id)
     );
 
+    -- access_control: per-user role-based permissions
+    CREATE TABLE IF NOT EXISTS access_control (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id              TEXT    NOT NULL,
+      channel              TEXT    NOT NULL,
+      role                 TEXT    NOT NULL DEFAULT 'viewer',
+      scopes               TEXT,
+      allowed_actions      TEXT,
+      blocked_actions      TEXT,
+      max_cost_per_day_usd REAL,
+      daily_cost_used      REAL    DEFAULT 0,
+      cost_reset_at        TEXT,
+      active               BOOLEAN DEFAULT 1,
+      created_at           TEXT    NOT NULL,
+      updated_at           TEXT    NOT NULL,
+      UNIQUE(user_id, channel)
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
