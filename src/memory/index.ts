@@ -2,11 +2,8 @@ import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
-import {
-  storeChunks as _storeChunks,
-  searchChunks as _searchChunks,
-  markStale as _markStale,
-} from './chunk-store.js';
+import { storeChunks as _storeChunks, markStale as _markStale } from './chunk-store.js';
+import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
 import type { TaskRecord, LearnedParams } from './task-store.js';
 import {
   recordTask as _recordTask,
@@ -65,6 +62,7 @@ export interface PromptRecord {
 
 export type { WorkspaceState, SessionRecord } from './migration.js';
 export type { EvictionOptions } from './eviction.js';
+export type { SearchOptions } from './retrieval.js';
 
 // ---------------------------------------------------------------------------
 // MemoryManager
@@ -107,9 +105,9 @@ export class MemoryManager {
     return Promise.resolve();
   }
 
-  searchContext(query: string, limit?: number): Promise<Chunk[]> {
+  searchContext(query: string, limit?: number, options?: SearchOptions): Promise<Chunk[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    return Promise.resolve(_searchChunks(this.db, query, limit));
+    return Promise.resolve(_hybridSearch(this.db, query, { limit, ...options }));
   }
 
   markStale(scopes: string[]): Promise<void> {
