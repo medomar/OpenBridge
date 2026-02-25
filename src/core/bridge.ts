@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { AppConfig } from '../types/config.js';
+import type { AppConfig, EmailConfig } from '../types/config.js';
 import type { InboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
@@ -97,6 +97,12 @@ export class Bridge {
   setMaster(master: MasterManager): void {
     this.master = master;
     logger.info('Master AI set on Bridge');
+  }
+
+  /** Set the email config — enables [SHARE:email] marker support in the router */
+  setEmailConfig(config: EmailConfig): void {
+    this.router.setEmailConfig(config);
+    logger.info('Email config set on Router');
   }
 
   /** Start the bridge: initialize all connectors and providers, begin processing */

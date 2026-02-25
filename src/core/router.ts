@@ -9,6 +9,8 @@ import type { MetricsCollector } from './metrics.js';
 import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
+import type { EmailConfig } from '../types/config.js';
+import { sendEmail } from './email-sender.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -70,6 +72,7 @@ export class Router {
   private master?: MasterManager;
   private auth?: AuthService;
   private workspacePath?: string;
+  private emailConfig?: EmailConfig;
 
   constructor(
     defaultProvider: string,
@@ -103,6 +106,11 @@ export class Router {
   /** Set the workspace path — used to validate file paths in SHARE markers */
   setWorkspacePath(workspacePath: string): void {
     this.workspacePath = workspacePath;
+  }
+
+  /** Set the email config — enables [SHARE:email] marker support */
+  setEmailConfig(config: EmailConfig): void {
+    this.emailConfig = config;
   }
 
   /** Register an active connector */
@@ -400,6 +408,13 @@ export class Router {
         continue;
       }
 
+      // Handle email channel separately — it doesn't route through a connector
+      if (channel === 'email') {
+        await this.handleEmailShare(filePath, recipient, replyTo);
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
       // Route to the named connector if registered, otherwise the inbound connector
       const targetConnector = this.connectors.get(channel) ?? connector;
 
@@ -477,6 +492,80 @@ export class Router {
     }
 
     return cleaned.trim();
+  }
+
+  /**
+   * Handle [SHARE:email]user@example.com|/path/to/file[/SHARE] markers.
+   * The raw value from the SHARE marker capture group is `email|filePath`.
+   * Validates the recipient against the email allowlist, reads the file from
+   * .openbridge/generated/, and sends it as an email attachment.
+   */
+  private async handleEmailShare(
+    rawValue: string,
+    _recipient: string,
+    _replyTo?: string,
+  ): Promise<void> {
+    if (!this.emailConfig) {
+      logger.warn('SHARE:email marker received but no email config is set — skipping');
+      return;
+    }
+
+    if (!this.workspacePath) {
+      logger.warn('SHARE:email marker received but workspacePath is not set — skipping');
+      return;
+    }
+
+    // Parse email address and file path from raw value (format: "email|/path")
+    const pipeIdx = rawValue.indexOf('|');
+    if (pipeIdx === -1) {
+      logger.warn({ rawValue }, 'SHARE:email marker has no pipe separator — expected email|path');
+      return;
+    }
+    const emailAddress = rawValue.slice(0, pipeIdx).trim();
+    const filePath = rawValue.slice(pipeIdx + 1).trim();
+
+    if (!emailAddress || !filePath) {
+      logger.warn({ rawValue }, 'SHARE:email marker: missing email address or file path');
+      return;
+    }
+
+    const generatedDir = path.resolve(path.join(this.workspacePath, '.openbridge', 'generated'));
+    const resolvedPath = path.resolve(
+      path.isAbsolute(filePath) ? filePath : path.join(generatedDir, filePath),
+    );
+
+    // Security: file must be strictly under .openbridge/generated/
+    if (!resolvedPath.startsWith(generatedDir + path.sep)) {
+      logger.warn(
+        { filePath: resolvedPath, generatedDir },
+        'SHARE:email blocked — file not under .openbridge/generated/',
+      );
+      return;
+    }
+
+    let data: Buffer;
+    try {
+      data = await readFile(resolvedPath);
+    } catch (err) {
+      logger.warn({ filePath: resolvedPath, err }, 'SHARE:email: failed to read file');
+      return;
+    }
+
+    const filename = path.basename(resolvedPath);
+    const { mimeType } = getMimeType(filename);
+
+    try {
+      await sendEmail(
+        this.emailConfig,
+        emailAddress,
+        `Shared file: ${filename}`,
+        `Please find the attached file: ${filename}`,
+        [{ filename, content: data, contentType: mimeType }],
+      );
+      logger.info({ emailAddress, filePath: resolvedPath }, 'SHARE:email dispatched');
+    } catch (err) {
+      logger.warn({ emailAddress, filePath: resolvedPath, err }, 'SHARE:email dispatch failed');
+    }
   }
 
   /** Start sending periodic progress updates, returns a stop function */

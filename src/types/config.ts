@@ -130,6 +130,16 @@ export const V2MasterSchema = z.object({
   sessionTtlMs: z.number().int().positive().optional(),
 });
 
+/** Schema for email (SMTP) configuration */
+export const EmailConfigSchema = z.object({
+  host: z.string().min(1),
+  port: z.number().int().positive().default(587),
+  user: z.string().min(1),
+  pass: z.string().min(1),
+  from: z.string().email(),
+  allowlist: z.array(z.string().email()).default([]),
+});
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
@@ -137,6 +147,7 @@ export const V2ConfigSchema = z
     channels: z.array(V2ChannelSchema).min(1),
     auth: V2AuthSchema,
     master: V2MasterSchema.optional(),
+    email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
     router: RouterConfigSchema.optional(),
     audit: AuditConfigSchema.optional(),
@@ -149,4 +160,5 @@ export const V2ConfigSchema = z
 export type V2Channel = z.infer<typeof V2ChannelSchema>;
 export type V2Auth = z.infer<typeof V2AuthSchema>;
 export type V2Master = z.infer<typeof V2MasterSchema>;
+export type EmailConfig = z.infer<typeof EmailConfigSchema>;
 export type V2Config = z.infer<typeof V2ConfigSchema>;
