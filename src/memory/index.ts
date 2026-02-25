@@ -6,12 +6,20 @@ import {
   searchChunks as _searchChunks,
   markStale as _markStale,
 } from './chunk-store.js';
+import type { TaskRecord, LearnedParams } from './task-store.js';
+import {
+  recordTask as _recordTask,
+  getTasksByType as _getTasksByType,
+  getSimilarTasks as _getSimilarTasks,
+  getLearnedParams as _getLearnedParams,
+} from './task-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
 // ---------------------------------------------------------------------------
 
 export type { Chunk };
+export type { TaskRecord, LearnedParams };
 
 export interface ConversationEntry {
   id?: number;
@@ -21,31 +29,6 @@ export interface ConversationEntry {
   channel?: string;
   user_id?: string;
   created_at?: string;
-}
-
-export interface TaskRecord {
-  id: string;
-  type: 'exploration' | 'worker' | 'quick-answer' | 'tool-use' | 'complex';
-  status: 'running' | 'completed' | 'failed' | 'timeout';
-  prompt?: string;
-  response?: string;
-  model?: string;
-  profile?: string;
-  turns_used?: number;
-  max_turns?: number;
-  duration_ms?: number;
-  exit_code?: number;
-  retries?: number;
-  parent_task_id?: string;
-  created_at: string;
-  completed_at?: string;
-}
-
-export interface LearnedParams {
-  model: string;
-  success_rate: number;
-  avg_turns: number;
-  total_tasks: number;
 }
 
 export interface PromptRecord {
@@ -146,19 +129,30 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Tasks & Learnings (implemented by task-store.ts — OB-705)
+  // Tasks & Learnings (task-store.ts — OB-705)
   // -------------------------------------------------------------------------
 
-  recordTask(_task: TaskRecord): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  recordTask(task: TaskRecord): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordTask(this.db, task);
+    return Promise.resolve();
   }
 
-  getLearnedParams(_taskType: string): Promise<LearnedParams> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  getLearnedParams(taskType: string): Promise<LearnedParams> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const result = _getLearnedParams(this.db, taskType);
+    if (!result) return Promise.reject(new Error(`No learning data for task type: ${taskType}`));
+    return Promise.resolve(result);
   }
 
-  getSimilarTasks(_prompt: string, _limit?: number): Promise<TaskRecord[]> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  getSimilarTasks(prompt: string, limit?: number): Promise<TaskRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSimilarTasks(this.db, prompt, limit));
+  }
+
+  getTasksByType(type: TaskRecord['type'], limit?: number): Promise<TaskRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getTasksByType(this.db, type, limit));
   }
 
   // -------------------------------------------------------------------------
