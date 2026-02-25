@@ -170,6 +170,12 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   // Wire Master into the bridge router (must happen before start)
   bridge.setMaster(masterManager);
 
+  // Wire email config if provided
+  if (v2Config.email) {
+    bridge.setEmailConfig(v2Config.email);
+    logger.info('Email config wired into bridge');
+  }
+
   // Step 4: Start Master AI BEFORE bridge — so it's ready when messages arrive.
   // This loads workspace-map.json and transitions from 'idle' to 'ready'.
   // Runs in parallel with bridge.start() so neither blocks the other.
