@@ -12,6 +12,7 @@ import { getRecommendedModel } from '../core/model-selector.js';
 import type { Router } from '../core/router.js';
 import type {
   MemoryManager,
+  ConversationEntry,
   SessionRecord,
   WorkspaceState,
   TaskRecord as MemoryTaskRecord,
@@ -446,6 +447,31 @@ export class MasterManager {
       return;
     }
     await this.dotFolder.recordTask(task);
+  }
+
+  /**
+   * Record a conversation message to the memory store (OB-730).
+   * Silently skips when MemoryManager is unavailable or errors occur.
+   */
+  private async recordConversationMessage(
+    sessionId: string,
+    role: ConversationEntry['role'],
+    content: string,
+    channel?: string,
+    userId?: string,
+  ): Promise<void> {
+    if (!this.memory) return;
+    try {
+      await this.memory.recordMessage({
+        session_id: sessionId,
+        role,
+        content,
+        channel,
+        user_id: userId,
+      });
+    } catch (err) {
+      logger.warn({ err, role }, 'Failed to record conversation message');
+    }
   }
 
   /**
@@ -2384,7 +2410,19 @@ Work silently — do not output conversational text, just explore and write the 
     // Build a ProgressReporter that maps events to the connector's sendProgress()
     const progress = this.makeProgressReporter(message.source, message.sender);
 
+    // Stable session ID for grouping all turns of this conversation (OB-730)
+    const sessionId = this.masterSession?.sessionId ?? taskId;
+
     try {
+      // Record the inbound user message to conversation history (OB-730)
+      await this.recordConversationMessage(
+        sessionId,
+        'user',
+        message.content,
+        message.source,
+        message.sender,
+      );
+
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
         const status = await this.getStatus();
@@ -2531,6 +2569,9 @@ Work silently — do not output conversational text, just explore and write the 
 
       await this.recordTaskToStore(task);
 
+      // Record the Master AI response to conversation history (OB-730)
+      await this.recordConversationMessage(sessionId, 'master', response);
+
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
 
@@ -2623,7 +2664,19 @@ Work silently — do not output conversational text, just explore and write the 
     // Build a ProgressReporter that maps events to the connector's sendProgress()
     const streamProgress = this.makeProgressReporter(message.source, message.sender);
 
+    // Stable session ID for grouping all turns of this conversation (OB-730)
+    const streamSessionId = this.masterSession?.sessionId ?? taskId;
+
     try {
+      // Record the inbound user message to conversation history (OB-730)
+      await this.recordConversationMessage(
+        streamSessionId,
+        'user',
+        message.content,
+        message.source,
+        message.sender,
+      );
+
       // Check for status queries
       if (this.isStatusQuery(message.content)) {
         const status = await this.getStatus();
@@ -2832,6 +2885,9 @@ Work silently — do not output conversational text, just explore and write the 
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
       await this.recordTaskToStore(task);
+
+      // Record the Master AI response to conversation history (OB-730)
+      await this.recordConversationMessage(streamSessionId, 'master', task.result);
 
       this.state = 'ready';
 
@@ -3686,6 +3742,12 @@ ${currentContent}
         });
       } else {
         await this.dotFolder.writeTask(taskRecord);
+      }
+
+      // Record worker output to conversation history (OB-730)
+      if (result.exitCode === 0 && result.stdout.trim()) {
+        const workerSessionId = this.masterSession?.sessionId ?? workerId;
+        await this.recordConversationMessage(workerSessionId, 'worker', result.stdout.trim());
       }
 
       // Record learning entry for this worker execution (OB-171: learnings store)
