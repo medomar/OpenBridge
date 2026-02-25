@@ -150,6 +150,25 @@ export function removeAccess(db: Database.Database, userId: string, channel: str
 }
 
 /**
+ * Increment daily_cost_used for a specific user+channel by the given amount.
+ * No-op if no entry exists for that user+channel.
+ */
+export function incrementDailyCost(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+  costUsd: number,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE access_control
+     SET daily_cost_used = daily_cost_used + ?,
+         updated_at      = ?
+     WHERE user_id = ? AND channel = ?`,
+  ).run(costUsd, now, userId, channel);
+}
+
+/**
  * Reset daily_cost_used to 0 for all entries whose cost_reset_at is in the past
  * (or null). Updates cost_reset_at to the start of the next UTC day.
  */

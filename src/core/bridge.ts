@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { AppConfig, EmailConfig } from '../types/config.js';
-import type { InboundMessage } from '../types/message.js';
+import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
@@ -128,6 +128,12 @@ export class Bridge {
     // Wire auth service into router for SEND marker whitelist enforcement
     this.router.setAuth(this.auth);
 
+    // Attach the SQLite DB to the auth service for access_control enforcement
+    if (this.memory) {
+      const db = this.memory.getDb();
+      if (db) this.auth.setDatabase(db);
+    }
+
     // Wire memory into router for "status" command support
     if (this.memory) {
       this.router.setMemory(this.memory);
@@ -158,7 +164,30 @@ export class Bridge {
     // Set up queue processing BEFORE connectors — so messages are handled
     // as soon as any connector is ready (don't wait for slow ones like WhatsApp).
     this.queue.onMessage(async (message) => {
+      // Snapshot daily cost before routing so we can attribute the delta to this user.
+      let costBefore = 0;
+      if (this.memory) {
+        try {
+          costBefore = await this.memory.getDailyCost();
+        } catch {
+          // best-effort — cost attribution skipped if this fails
+        }
+      }
+
       await this.router.route(message);
+
+      // Increment daily_cost_used by the cost incurred during this task.
+      if (this.memory) {
+        try {
+          const costAfter = await this.memory.getDailyCost();
+          const delta = Math.max(0, costAfter - costBefore);
+          if (delta > 0) {
+            this.auth.incrementDailyCost(message.sender, message.source, delta);
+          }
+        } catch {
+          // best-effort — cost tracking is non-fatal
+        }
+      }
     });
 
     // Initialize connectors in parallel — slow connectors (WhatsApp/Puppeteer)
@@ -401,7 +430,7 @@ export class Bridge {
    */
   private static readonly DIRECT_AI_CONNECTORS = new Set(['webchat', 'console']);
 
-  private handleIncomingMessage(incomingMessage: InboundMessage, _connector?: Connector): void {
+  private handleIncomingMessage(incomingMessage: InboundMessage, connector?: Connector): void {
     // Cap rawContent length before any further processing to protect queue, auth, and prefix checks
     let message = incomingMessage;
     if (incomingMessage.rawContent.length > MAX_INBOUND_LENGTH) {
@@ -449,6 +478,33 @@ export class Bridge {
 
     const strippedContent = this.auth.stripPrefix(message.rawContent);
     const metadata: Record<string, unknown> = { ...message.metadata };
+
+    // Access control check: verify role, action, scope, and daily budget.
+    // Runs after prefix-stripping so the classifier receives the actual command text.
+    const accessResult = this.auth.checkAccessControl(
+      message.sender,
+      message.source,
+      strippedContent,
+    );
+    if (!accessResult.allowed) {
+      logger.warn(
+        { sender: message.sender, reason: accessResult.reason },
+        'Message blocked by access control',
+      );
+      this.metrics.recordCommandBlocked();
+      void this.auditLogger.logAuthDenied(message.sender);
+      // Send a denial message so the user knows why their request was rejected.
+      if (connector) {
+        const denialMsg: OutboundMessage = {
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to perform that action.',
+          replyTo: message.id,
+        };
+        void connector.sendMessage(denialMsg);
+      }
+      return;
+    }
 
     const filterResult = this.auth.filterCommand(strippedContent);
     if (!filterResult.allowed) {
