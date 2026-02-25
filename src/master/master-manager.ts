@@ -787,8 +787,17 @@ export class MasterManager {
     // Seed system prompt if it doesn't exist yet
     await this.seedSystemPrompt();
 
-    // Load the system prompt
-    this.systemPrompt = await this.dotFolder.readSystemPrompt();
+    // Load the system prompt — prefer DB, fall back to file
+    if (this.memory) {
+      try {
+        const dbPrompt = await this.memory.getActivePrompt('master-system');
+        this.systemPrompt = dbPrompt.content;
+      } catch {
+        this.systemPrompt = await this.dotFolder.readSystemPrompt();
+      }
+    } else {
+      this.systemPrompt = await this.dotFolder.readSystemPrompt();
+    }
     if (this.systemPrompt) {
       logger.info('Loaded Master system prompt');
     }
@@ -852,8 +861,26 @@ export class MasterManager {
    * Generates the default prompt and writes it to .openbridge/prompts/master-system.md.
    */
   private async seedSystemPrompt(): Promise<void> {
+    // Check DB first — if we have an active prompt, it's already seeded
+    if (this.memory) {
+      try {
+        await this.memory.getActivePrompt('master-system');
+        return; // Already in DB — don't overwrite
+      } catch {
+        // Not in DB yet — fall through to file check
+      }
+    }
+
     const existing = await this.dotFolder.readSystemPrompt();
     if (existing) {
+      // Migrate file → DB (one-time)
+      if (this.memory) {
+        try {
+          await this.memory.createPromptVersion('master-system', existing);
+        } catch (dbErr) {
+          logger.warn({ error: dbErr }, 'Failed to migrate system prompt to DB');
+        }
+      }
       return; // Already seeded — don't overwrite (Master may have edited it)
     }
 
@@ -868,6 +895,9 @@ export class MasterManager {
 
     try {
       await this.dotFolder.writeSystemPrompt(promptContent);
+      if (this.memory) {
+        await this.memory.createPromptVersion('master-system', promptContent);
+      }
       logger.info('Seeded Master system prompt');
     } catch (error) {
       logger.warn({ error }, 'Failed to seed Master system prompt');
@@ -3635,9 +3665,24 @@ Work silently — do not output conversational text, just explore and write the 
     );
 
     try {
-      // Read the current prompt content from disk
-      const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
-      const currentContent = await fs.readFile(promptPath, 'utf-8');
+      // Read the current prompt content — prefer DB, fall back to file
+      let currentContent: string;
+      if (this.memory) {
+        try {
+          const dbRecord = await this.memory.getActivePrompt(prompt.id);
+          currentContent = dbRecord.content;
+        } catch {
+          const promptPath = path.join(
+            this.dotFolder.getDotFolderPath(),
+            'prompts',
+            prompt.filePath,
+          );
+          currentContent = await fs.readFile(promptPath, 'utf-8');
+        }
+      } else {
+        const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
+        currentContent = await fs.readFile(promptPath, 'utf-8');
+      }
 
       // Build a self-improvement prompt for the Master
       const improvementPrompt = `You are reviewing your own prompt templates for effectiveness.
@@ -3676,8 +3721,13 @@ ${currentContent}
         return;
       }
 
-      // Update the prompt file
-      await fs.writeFile(promptPath, rewrittenContent, 'utf-8');
+      // Update the prompt — write to DB (primary) or file (fallback)
+      if (this.memory) {
+        await this.memory.createPromptVersion(prompt.id, rewrittenContent);
+      } else {
+        const promptPath = path.join(this.dotFolder.getDotFolderPath(), 'prompts', prompt.filePath);
+        await fs.writeFile(promptPath, rewrittenContent, 'utf-8');
+      }
 
       // Reset the prompt's usage stats (fresh start with new version)
       await this.dotFolder.resetPromptStats(prompt.id);
