@@ -18,6 +18,7 @@ import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { getRecommendedModel } from '../core/model-selector.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
+import { AdapterRegistry } from '../core/adapter-registry.js';
 import type { Router } from '../core/router.js';
 import type {
   MemoryManager,
@@ -272,6 +273,8 @@ export interface MasterManagerOptions {
   workerRetryDelayMs?: number;
   /** CLI adapter for spawning worker agents (defaults to ClaudeAdapter) */
   adapter?: CLIAdapter;
+  /** Adapter registry for resolving per-worker CLIAdapters */
+  adapterRegistry?: AdapterRegistry;
 }
 
 /**
@@ -309,6 +312,7 @@ export class MasterManager {
   private readonly workerRetryDelayMs: number;
   private readonly modelRegistry: ModelRegistry;
   private readonly adapter?: CLIAdapter;
+  private readonly adapterRegistry: AdapterRegistry;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -370,6 +374,17 @@ export class MasterManager {
         this.agentRunner,
         this.masterTool,
       );
+    }
+
+    // Store adapter registry for per-worker tool resolution
+    if (options.adapterRegistry) {
+      this.adapterRegistry = options.adapterRegistry;
+    } else {
+      // Backward compatible: create minimal registry with just the master adapter
+      this.adapterRegistry = new AdapterRegistry();
+      if (options.adapter) {
+        this.adapterRegistry.register(options.masterTool.name, options.adapter);
+      }
     }
 
     logger.info(
@@ -4364,12 +4379,42 @@ ${currentContent}
   ): Promise<AgentResult> {
     const { profile, body } = marker;
 
+    // Resolve per-worker tool and adapter
+    let workerRunner = this.agentRunner;
+    let resolvedModel = body.model;
+    const requestedTool = body.tool;
+    const toolUsed = requestedTool ?? this.masterTool.name;
+
+    if (requestedTool && requestedTool !== this.masterTool.name) {
+      const tool = this.resolveDiscoveredTool(requestedTool);
+      const toolAdapter = tool ? this.adapterRegistry.get(requestedTool) : undefined;
+
+      if (!tool || !toolAdapter) {
+        logger.warn(
+          { requestedTool, workerId },
+          'Requested tool not available — falling back to master tool',
+        );
+      } else {
+        workerRunner = new AgentRunner(toolAdapter);
+        // Resolve model tier for this tool's provider (e.g., "fast" → "codex-mini")
+        if (resolvedModel) {
+          const toolModelRegistry = createModelRegistry(requestedTool);
+          resolvedModel = toolModelRegistry.resolveModelOrTier(resolvedModel);
+        }
+        logger.info(
+          { requestedTool, resolvedModel, workerId },
+          'Worker using tool-specific adapter',
+        );
+      }
+    }
+
     logger.info(
       {
         workerId,
         workerIndex: index,
         profile,
-        model: body.model,
+        model: resolvedModel,
+        tool: toolUsed,
         maxTurns: body.maxTurns,
         promptLength: body.prompt.length,
       },
@@ -4418,7 +4463,8 @@ ${currentContent}
       metadata: {
         workerIndex: index,
         profile,
-        model: body.model,
+        model: resolvedModel,
+        tool: toolUsed,
         maxTurns: body.maxTurns,
         timeout: body.timeout,
         retries: body.retries,
@@ -4426,7 +4472,7 @@ ${currentContent}
           prompt: body.prompt,
           workspacePath: this.workspacePath,
           profile,
-          model: body.model,
+          model: resolvedModel,
           maxTurns: body.maxTurns,
           timeout: body.timeout,
           retries: body.retries,
@@ -4496,7 +4542,7 @@ ${currentContent}
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        result = await this.agentRunner.spawn(spawnOpts);
+        result = await workerRunner.spawn(spawnOpts);
 
         if (result.exitCode === 0) {
           break; // Success — no retry needed
@@ -4735,6 +4781,14 @@ ${currentContent}
   /**
    * Find a specialist tool by name from the agents registry
    */
+  /**
+   * Resolve a discovered tool by name (synchronous, exact match only).
+   * Used for per-worker tool selection from SPAWN markers.
+   */
+  private resolveDiscoveredTool(toolName: string): DiscoveredTool | undefined {
+    return this.discoveredTools.find((t) => t.name === toolName && t.available);
+  }
+
   private async findSpecialistTool(toolName: string): Promise<DiscoveredTool | null> {
     // First check discovered tools
     const tool = this.discoveredTools.find(
