@@ -588,6 +588,27 @@ export class MemoryManager {
     return Promise.resolve();
   }
 
+  // -------------------------------------------------------------------------
+  // Exploration State (system_config — OB-800)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Persist the full ExplorationState as JSON in system_config.
+   * Replaces dotFolder.writeExplorationState() calls.
+   */
+  upsertExplorationState(state: unknown): Promise<void> {
+    return this.setSystemConfig('exploration_state', JSON.stringify(state));
+  }
+
+  /**
+   * Read the persisted ExplorationState JSON from system_config.
+   * Returns null if not yet stored.
+   * Replaces dotFolder.readExplorationState() calls.
+   */
+  getExplorationState(): Promise<string | null> {
+    return this.getSystemConfig('exploration_state');
+  }
+
   /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */
   getDb(): Database.Database | null {
     return this.db;

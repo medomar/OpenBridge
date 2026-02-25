@@ -35,14 +35,15 @@ import {
   TOOLS_READ_ONLY,
   DEFAULT_MAX_TURNS_EXPLORATION,
 } from '../core/agent-runner.js';
-import type {
-  ExplorationState,
-  StructureScan,
-  Classification,
-  DirectoryDiveResult,
-  WorkspaceMap,
-  AgentsRegistry,
-  ExplorationSummary,
+import {
+  ExplorationStateSchema,
+  type ExplorationState,
+  type StructureScan,
+  type Classification,
+  type DirectoryDiveResult,
+  type WorkspaceMap,
+  type AgentsRegistry,
+  type ExplorationSummary,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
@@ -116,6 +117,39 @@ export class ExplorationCoordinator {
     this.batchSizeOverride = options.batchSize;
     this.memory = options.memory;
     this.explorationId = options.explorationId;
+  }
+
+  /**
+   * Write exploration state to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeExplorationState(state: ExplorationState): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertExplorationState(state);
+    } else {
+      await this.dotFolder.writeExplorationState(state);
+    }
+  }
+
+  /**
+   * Read exploration state from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration when the
+   * DB entry does not yet exist.
+   */
+  private async readExplorationStateFromStore(): Promise<ExplorationState | null> {
+    if (!this.memory) {
+      return this.dotFolder.readExplorationState();
+    }
+    const raw = await this.memory.getExplorationState();
+    if (raw !== null) {
+      try {
+        return ExplorationStateSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    // Migration fallback: read from JSON file once (first run after upgrade)
+    return this.dotFolder.readExplorationState();
   }
 
   /**
@@ -235,12 +269,12 @@ export class ExplorationCoordinator {
     await this.dotFolder.createExplorationDir();
 
     // Load or create exploration state
-    let state = await this.dotFolder.readExplorationState();
+    let state = await this.readExplorationStateFromStore();
 
     if (!state) {
       logger.info('No existing exploration state found, creating fresh state');
       state = this.createInitialState();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
     }
 
     // If exploration is already complete, return summary
@@ -253,7 +287,7 @@ export class ExplorationCoordinator {
     if (state.status === 'failed') {
       logger.info('Previous exploration failed, resetting to retry');
       state = this.createInitialState();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
     }
 
     try {
@@ -281,7 +315,7 @@ export class ExplorationCoordinator {
       // Mark as completed
       state.status = 'completed';
       state.completedAt = new Date().toISOString();
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
 
       logger.info(
         {
@@ -297,7 +331,7 @@ export class ExplorationCoordinator {
       logger.error({ err: error }, 'Exploration failed');
       state.status = 'failed';
       state.error = String(error);
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
       throw error;
     }
   }
@@ -348,7 +382,7 @@ export class ExplorationCoordinator {
 
     // Load (or create) an exploration state so executeSingleDirectoryDive can
     // update counters (totalCalls, totalAITimeMs) without throwing.
-    let state = await this.dotFolder.readExplorationState();
+    let state = await this.readExplorationStateFromStore();
     if (!state) {
       state = this.createInitialState();
     }
@@ -394,7 +428,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 1: Structure Scan');
     state.currentPhase = 'structure_scan';
     state.phases.structure_scan = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     const phase1RowId = await this.insertPhaseRow('structure');
     const prompt = generateStructureScanPrompt(this.workspacePath);
@@ -432,7 +466,7 @@ export class ExplorationCoordinator {
     await this.dotFolder.writeStructureScan(parsed.data);
     await this.storeExplorationChunks('.', 'structure', parsed.data);
     state.phases.structure_scan = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
     await this.completePhaseRow(phase1RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 1 completed');
@@ -451,7 +485,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 2: Classification');
     state.currentPhase = 'classification';
     state.phases.classification = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     const phase2RowId = await this.insertPhaseRow('classification');
     const structureScan = await this.dotFolder.readStructureScan();
@@ -495,7 +529,7 @@ export class ExplorationCoordinator {
     await this.dotFolder.writeClassification(parsed.data);
     await this.storeExplorationChunks('.', 'config', parsed.data);
     state.phases.classification = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
     await this.completePhaseRow(phase2RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 2 completed');
@@ -514,7 +548,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 3: Directory Dives');
     state.currentPhase = 'directory_dives';
     state.phases.directory_dives = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     const structureScan = await this.dotFolder.readStructureScan();
     const classification = await this.dotFolder.readClassification();
@@ -535,7 +569,7 @@ export class ExplorationCoordinator {
         status: 'pending',
         attempts: 0,
       }));
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
     }
 
     // Insert exploration_progress rows for each directory (status=pending).
@@ -634,7 +668,7 @@ export class ExplorationCoordinator {
         }
       });
 
-      await this.dotFolder.writeExplorationState(state);
+      await this.writeExplorationState(state);
 
       // Emit per-batch directory progress
       await this.emitProgress('directory_dives', 'starting', undefined, {
@@ -654,7 +688,7 @@ export class ExplorationCoordinator {
     }
 
     state.phases.directory_dives = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     logger.info('Phase 3 completed');
   }
@@ -747,7 +781,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 4: Assembly');
     state.currentPhase = 'assembly';
     state.phases.assembly = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     const phase4RowId = await this.insertPhaseRow('assembly');
     const structureScan = await this.dotFolder.readStructureScan();
@@ -843,7 +877,7 @@ export class ExplorationCoordinator {
     await this.dotFolder.writeMap(workspaceMap);
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
     await this.completePhaseRow(phase4RowId);
 
     logger.info({ elapsed, method: parsed.method }, 'Phase 4 completed');
@@ -862,7 +896,7 @@ export class ExplorationCoordinator {
     logger.info('Starting Phase 5: Finalization');
     state.currentPhase = 'finalization';
     state.phases.finalization = 'in_progress';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     // Create agents.json
     const agentsRegistry: AgentsRegistry = {
@@ -900,7 +934,7 @@ export class ExplorationCoordinator {
     });
 
     state.phases.finalization = 'completed';
-    await this.dotFolder.writeExplorationState(state);
+    await this.writeExplorationState(state);
 
     logger.info('Phase 5 completed');
   }
@@ -1039,7 +1073,7 @@ export class ExplorationCoordinator {
     totalCalls: number;
     totalAITimeMs: number;
   } | null> {
-    const state = await this.dotFolder.readExplorationState();
+    const state = await this.readExplorationStateFromStore();
     if (!state) {
       return null;
     }
