@@ -32,11 +32,11 @@ describe('eviction.ts', () => {
   });
 
   describe('conversation eviction', () => {
-    it('deletes conversations older than conversationRetentionDays', () => {
+    it('deletes conversations older than conversationRetentionDays', async () => {
       recordMessage(db, makeConv({ content: 'very old message', created_at: daysAgo(95) }));
       recordMessage(db, makeConv({ content: 'recent message', created_at: daysAgo(5) }));
 
-      evictOldData(db, { conversationRetentionDays: 90 });
+      await evictOldData(db, { conversationRetentionDays: 90 });
 
       const remaining = db.prepare('SELECT content FROM conversations').all() as {
         content: string;
@@ -45,21 +45,21 @@ describe('eviction.ts', () => {
       expect(remaining[0].content).toBe('recent message');
     });
 
-    it('keeps conversations within the retention period', () => {
+    it('keeps conversations within the retention period', async () => {
       recordMessage(db, makeConv({ content: 'recent message', created_at: daysAgo(10) }));
 
-      evictOldData(db, { conversationRetentionDays: 90 });
+      await evictOldData(db, { conversationRetentionDays: 90 });
 
       const count = (db.prepare('SELECT COUNT(*) as c FROM conversations').get() as { c: number })
         .c;
       expect(count).toBe(1);
     });
 
-    it('uses 90 days as default retention', () => {
+    it('uses 90 days as default retention', async () => {
       recordMessage(db, makeConv({ content: 'old message', created_at: daysAgo(91) }));
       recordMessage(db, makeConv({ content: 'fresh message', created_at: daysAgo(1) }));
 
-      evictOldData(db); // default options
+      await evictOldData(db); // default options
 
       const count = (db.prepare('SELECT COUNT(*) as c FROM conversations').get() as { c: number })
         .c;
@@ -68,7 +68,7 @@ describe('eviction.ts', () => {
   });
 
   describe('task eviction', () => {
-    it('deletes completed tasks older than taskRetentionDays', () => {
+    it('deletes completed tasks older than taskRetentionDays', async () => {
       db.prepare(
         `INSERT INTO tasks (id, type, status, created_at, completed_at)
          VALUES ('old-task', 'worker', 'completed', ?, ?)`,
@@ -79,31 +79,31 @@ describe('eviction.ts', () => {
          VALUES ('new-task', 'worker', 'completed', ?, ?)`,
       ).run(daysAgo(10), daysAgo(10));
 
-      evictOldData(db, { taskRetentionDays: 180 });
+      await evictOldData(db, { taskRetentionDays: 180 });
 
       const remaining = db.prepare('SELECT id FROM tasks').all() as { id: string }[];
       expect(remaining.map((r) => r.id)).toEqual(['new-task']);
     });
 
-    it('does not delete running tasks even if old', () => {
+    it('does not delete running tasks even if old', async () => {
       db.prepare(
         `INSERT INTO tasks (id, type, status, created_at)
          VALUES ('running-old', 'worker', 'running', ?)`,
       ).run(daysAgo(200));
 
-      evictOldData(db, { taskRetentionDays: 180 });
+      await evictOldData(db, { taskRetentionDays: 180 });
 
       const row = db.prepare("SELECT id FROM tasks WHERE id = 'running-old'").get();
       expect(row).toBeDefined();
     });
 
-    it('keeps recently completed tasks', () => {
+    it('keeps recently completed tasks', async () => {
       db.prepare(
         `INSERT INTO tasks (id, type, status, created_at, completed_at)
          VALUES ('recent-task', 'worker', 'completed', ?, ?)`,
       ).run(daysAgo(5), daysAgo(5));
 
-      evictOldData(db, { taskRetentionDays: 180 });
+      await evictOldData(db, { taskRetentionDays: 180 });
 
       const row = db.prepare("SELECT id FROM tasks WHERE id = 'recent-task'").get();
       expect(row).toBeDefined();
@@ -111,7 +111,7 @@ describe('eviction.ts', () => {
   });
 
   describe('stale chunk eviction', () => {
-    it('deletes stale chunks older than staleChunkRetentionDays', () => {
+    it('deletes stale chunks older than staleChunkRetentionDays', async () => {
       storeChunks(db, [
         { scope: 'old-stale', category: 'structure', content: 'old stale content' },
       ]);
@@ -126,32 +126,32 @@ describe('eviction.ts', () => {
         { scope: 'fresh', category: 'structure', content: 'fresh non-stale content' },
       ]);
 
-      evictOldData(db, { staleChunkRetentionDays: 30 });
+      await evictOldData(db, { staleChunkRetentionDays: 30 });
 
       const remaining = db.prepare('SELECT scope FROM context_chunks').all() as { scope: string }[];
       expect(remaining.map((r) => r.scope)).toEqual(['fresh']);
     });
 
-    it('keeps recently stale chunks', () => {
+    it('keeps recently stale chunks', async () => {
       storeChunks(db, [
         { scope: 'new-stale', category: 'patterns', content: 'newly stale content' },
       ]);
       markStale(db, ['new-stale']); // updated_at is now
 
-      evictOldData(db, { staleChunkRetentionDays: 30 });
+      await evictOldData(db, { staleChunkRetentionDays: 30 });
 
       const row = db.prepare("SELECT scope FROM context_chunks WHERE scope = 'new-stale'").get();
       expect(row).toBeDefined();
     });
 
-    it('keeps non-stale chunks regardless of age', () => {
+    it('keeps non-stale chunks regardless of age', async () => {
       storeChunks(db, [{ scope: 'very-old-fresh', category: 'api', content: 'old but not stale' }]);
       db.prepare('UPDATE context_chunks SET updated_at = ? WHERE scope = ?').run(
         daysAgo(365),
         'very-old-fresh',
       );
 
-      evictOldData(db, { staleChunkRetentionDays: 30 });
+      await evictOldData(db, { staleChunkRetentionDays: 30 });
 
       const row = db
         .prepare("SELECT scope FROM context_chunks WHERE scope = 'very-old-fresh'")
@@ -161,19 +161,19 @@ describe('eviction.ts', () => {
   });
 
   describe('agent_activity eviction', () => {
-    it('does not throw when agent_activity table does not exist', () => {
-      expect(() => evictOldData(db, { agentActivityRetentionHours: 24 })).not.toThrow();
+    it('does not throw when agent_activity table does not exist', async () => {
+      await expect(evictOldData(db, { agentActivityRetentionHours: 24 })).resolves.toBeUndefined();
     });
   });
 
   describe('combined eviction', () => {
-    it('runs all eviction policies in one call without error', () => {
+    it('runs all eviction policies in one call without error', async () => {
       recordMessage(db, makeConv({ created_at: daysAgo(100) }));
       storeChunks(db, [{ scope: 'stale-s', category: 'config', content: 'stale' }]);
       markStale(db, ['stale-s']);
       db.prepare('UPDATE context_chunks SET updated_at = ?').run(daysAgo(50));
 
-      expect(() => evictOldData(db)).not.toThrow();
+      await expect(evictOldData(db)).resolves.toBeUndefined();
     });
   });
 });
