@@ -13,6 +13,10 @@ import {
   getSimilarTasks as _getSimilarTasks,
   getLearnedParams as _getLearnedParams,
 } from './task-store.js';
+import {
+  recordMessage as _recordMessage,
+  findRelevantHistory as _findRelevantHistory,
+} from './conversation-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -120,12 +124,15 @@ export class MemoryManager {
   // Conversations (implemented by conversation-store.ts — OB-706)
   // -------------------------------------------------------------------------
 
-  recordMessage(_msg: ConversationEntry): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  recordMessage(msg: ConversationEntry): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordMessage(this.db, msg);
+    return Promise.resolve();
   }
 
-  findRelevantHistory(_query: string, _limit?: number): Promise<ConversationEntry[]> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  findRelevantHistory(query: string, limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_findRelevantHistory(this.db, query, limit));
   }
 
   // -------------------------------------------------------------------------
