@@ -2225,23 +2225,46 @@ export class MasterManager {
    * without executing the tasks itself — forcing delegation within 3-5 turns.
    */
   private buildPlanningPrompt(userMessage: string): string {
+    const availableTools = this.discoveredTools.filter((t) => t.available);
+    const hasMultipleTools = availableTools.length > 1;
+
+    // When multiple tools are available, include tool field in the example format
+    const spawnExample = hasMultipleTools
+      ? `[SPAWN:profile]{"prompt":"...","tool":"<tool>","model":"balanced","maxTurns":15}[/SPAWN]`
+      : `[SPAWN:profile]{"prompt":"...","model":"balanced","maxTurns":15}[/SPAWN]`;
+
     let prompt =
       `The user asked: "${userMessage}"\n\n` +
       `Break this into 1-3 concrete subtasks. For each subtask, output a SPAWN marker ` +
       `with the appropriate profile, model, and instructions. ` +
       `Do NOT execute the tasks yourself — only plan and delegate.\n\n` +
       `Use this format for each subtask:\n` +
-      `[SPAWN:profile]{"prompt":"...","model":"sonnet","maxTurns":15}[/SPAWN]\n\n` +
+      `${spawnExample}\n\n` +
+      `Model tiers: \`fast\` (cheap, mechanical tasks), \`balanced\` (default), \`powerful\` (complex reasoning). ` +
+      `Always use tier names — they auto-resolve to the correct model per tool.\n\n` +
       `Available profiles: read-only (Read/Glob/Grep), code-edit (Read/Edit/Write/Glob/Grep/Bash(git:*)/Bash(npm:*)), full-access (all tools).`;
 
-    // When multiple tools are available, guide the Master to pick the best tool per worker
-    const availableTools = this.discoveredTools.filter((t) => t.available);
-    if (availableTools.length > 1) {
-      const toolList = availableTools.map((t) => `\`${t.name}\``).join(', ');
+    // When multiple tools are available, strongly guide the Master to pick the best tool per worker
+    if (hasMultipleTools) {
+      const toolStrengths: Record<string, string> = {
+        claude: 'deep reasoning, complex architecture, code review',
+        codex: 'quick code edits, simple refactors, mechanical changes',
+        aider: 'git-aware refactors, multi-file renames, commit-driven workflows',
+      };
+
+      const toolLines = availableTools
+        .map((t) => {
+          const strength = toolStrengths[t.name] ?? 'general-purpose';
+          return `  - \`${t.name}\`: ${strength}`;
+        })
+        .join('\n');
+
       prompt +=
-        `\n\nAvailable AI tools: ${toolList}. ` +
-        `You may add a \`"tool"\` field to each SPAWN body to route the worker to a specific tool ` +
-        `(e.g., \`"tool":"codex"\`). If omitted, the worker uses the Master tool (\`${this.masterTool.name}\`).`;
+        `\n\n**IMPORTANT — Tool Selection:** You MUST choose the best AI tool for each worker using the \`"tool"\` field. ` +
+        `Available tools:\n${toolLines}\n\n` +
+        `Route each subtask to the tool best suited for it. ` +
+        `For example, use \`"tool":"codex"\` for straightforward code edits and \`"tool":"claude"\` for tasks requiring deep understanding. ` +
+        `Do NOT default all workers to \`${this.masterTool.name}\` — distribute work across tools based on task fit.`;
     }
 
     return prompt;
@@ -3169,32 +3192,59 @@ Work silently — do not output conversational text, just explore and write the 
           // (3) Emit spawning event — N workers are being created
           await progress?.({ type: 'spawning', workerCount: n });
 
-          // (4) Emit worker-progress events as each worker completes
+          // (4) Emit worker-progress + worker-result events as each worker completes
           const feedbackPrompt = await this.handleSpawnMarkers(
             spawnResult.markers,
-            async (completed: number, total: number): Promise<void> => {
+            async (completed: number, total: number, workerResult?: AgentResult, workerMarker?: ParsedSpawnMarker): Promise<void> => {
               await progress?.({ type: 'worker-progress', completed, total });
+
+              // Stream each worker's output to the user immediately
+              if (workerResult && workerMarker) {
+                const raw = workerResult.exitCode === 0
+                  ? workerResult.stdout.trim()
+                  : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
+                const maxLen = 2000;
+                const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...(truncated)' : raw;
+                await progress?.({
+                  type: 'worker-result',
+                  workerIndex: completed,
+                  total,
+                  profile: workerMarker.profile,
+                  tool: workerMarker.body.tool,
+                  content,
+                  success: workerResult.exitCode === 0,
+                });
+              }
             },
           );
 
           // (5) Emit synthesizing event — Master is combining worker results
           await progress?.({ type: 'synthesizing' });
 
-          // Inject worker results back into the Master session
+          // Inject worker results back into the Master session for synthesis.
+          // If synthesis fails or times out, fall back gracefully — the user
+          // already received each worker's output via worker-result events.
           this.state = 'processing';
           const feedbackOpts = this.buildMasterSpawnOptions(
             feedbackPrompt,
             undefined,
             MESSAGE_MAX_TURNS_SYNTHESIS,
           );
-          result = await this.agentRunner.spawn(feedbackOpts);
-          await this.updateMasterSession();
 
-          if (result.exitCode !== 0) {
-            throw new Error(`Worker feedback processing failed: ${result.stderr}`);
+          try {
+            result = await this.agentRunner.spawn(feedbackOpts);
+            await this.updateMasterSession();
+
+            if (result.exitCode !== 0) {
+              logger.warn({ exitCode: result.exitCode }, 'Synthesis failed — returning fallback');
+              response = 'All subtask results were shown above. The summary step could not complete.';
+            } else {
+              response = result.stdout.trim() || feedbackPrompt;
+            }
+          } catch (synthesisError) {
+            logger.warn({ err: synthesisError }, 'Synthesis timed out — returning fallback');
+            response = 'All subtask results were shown above. The summary step timed out.';
           }
-
-          response = result.stdout.trim() || feedbackPrompt;
         }
       }
 
@@ -3483,16 +3533,35 @@ Work silently — do not output conversational text, just explore and write the 
           // (3) Emit spawning event — N workers are being created
           await streamProgress?.({ type: 'spawning', workerCount: streamN });
 
+          // Callback that emits both worker-progress and worker-result events
+          const workerCallback = async (completed: number, total: number, workerResult?: AgentResult, workerMarker?: ParsedSpawnMarker): Promise<void> => {
+            await streamProgress?.({ type: 'worker-progress', completed, total });
+
+            if (workerResult && workerMarker) {
+              const raw = workerResult.exitCode === 0
+                ? workerResult.stdout.trim()
+                : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
+              const maxLen = 2000;
+              const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...(truncated)' : raw;
+              await streamProgress?.({
+                type: 'worker-result',
+                workerIndex: completed,
+                total,
+                profile: workerMarker.profile,
+                tool: workerMarker.body.tool,
+                content,
+                success: workerResult.exitCode === 0,
+              });
+            }
+          };
+
           // Use progress-streaming variant if multiple workers are spawned
           let feedbackPrompt: string;
           if (spawnResult.markers.length > 1) {
             // Stream progress updates as workers complete, also emitting worker-progress events
             const progressGen = this.handleSpawnMarkersWithProgress(
               spawnResult.markers,
-              async (completed: number, total: number): Promise<void> => {
-                // (4) Emit worker-progress event per completed worker
-                await streamProgress?.({ type: 'worker-progress', completed, total });
-              },
+              workerCallback,
             );
             let progressIter = await progressGen.next();
             while (!progressIter.done) {
@@ -3505,9 +3574,7 @@ Work silently — do not output conversational text, just explore and write the 
             // Single worker — emit worker-progress on completion
             feedbackPrompt = await this.handleSpawnMarkers(
               spawnResult.markers,
-              async (completed: number, total: number): Promise<void> => {
-                await streamProgress?.({ type: 'worker-progress', completed, total });
-              },
+              workerCallback,
             );
           }
 
@@ -4244,7 +4311,7 @@ ${currentContent}
    */
   private async handleSpawnMarkers(
     markers: ParsedSpawnMarker[],
-    onProgress?: (completed: number, total: number) => Promise<void>,
+    onProgress?: (completed: number, total: number, result?: AgentResult, marker?: ParsedSpawnMarker) => Promise<void>,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -4314,7 +4381,7 @@ ${currentContent}
       if (onProgress) {
         return workerPromise.then(async (result) => {
           completedCount++;
-          await onProgress(completedCount, total);
+          await onProgress(completedCount, total, result, marker);
           return result;
         });
       }
@@ -4344,7 +4411,7 @@ ${currentContent}
    */
   private async *handleSpawnMarkersWithProgress(
     markers: ParsedSpawnMarker[],
-    onProgress?: (completed: number, total: number) => Promise<void>,
+    onProgress?: (completed: number, total: number, result?: AgentResult, marker?: ParsedSpawnMarker) => Promise<void>,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -4400,7 +4467,7 @@ ${currentContent}
       if (onProgress) {
         return workerPromise.then(async (result) => {
           progressCompletedCount++;
-          await onProgress(progressCompletedCount, totalWorkers);
+          await onProgress(progressCompletedCount, totalWorkers, result, marker);
           return result;
         });
       }
@@ -4458,16 +4525,21 @@ ${currentContent}
         );
       } else {
         workerRunner = new AgentRunner(toolAdapter);
-        // Resolve model tier for this tool's provider (e.g., "fast" → "codex-mini")
-        if (resolvedModel) {
-          const toolModelRegistry = createModelRegistry(requestedTool);
-          resolvedModel = toolModelRegistry.resolveModelOrTier(resolvedModel);
-        }
         logger.info(
-          { requestedTool, resolvedModel, workerId },
+          { requestedTool, workerId },
           'Worker using tool-specific adapter',
         );
       }
+    }
+
+    // Always resolve model tiers to concrete model IDs for the target provider.
+    // This handles "fast" → "haiku" (claude), "fast" → "codex-mini" (codex), etc.
+    if (resolvedModel) {
+      const providerName = (requestedTool && this.resolveDiscoveredTool(requestedTool))
+        ? requestedTool
+        : this.masterTool.name;
+      const modelRegistry = createModelRegistry(providerName);
+      resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
     }
 
     logger.info(

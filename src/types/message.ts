@@ -16,6 +16,7 @@ export type ProgressEvent =
   | { type: 'planning' }
   | { type: 'spawning'; workerCount: number }
   | { type: 'worker-progress'; completed: number; total: number; workerName?: string }
+  | { type: 'worker-result'; workerIndex: number; total: number; profile: string; tool?: string; content: string; success: boolean }
   | { type: 'synthesizing' }
   | { type: 'complete' }
   | { type: 'exploring'; phase: string; detail?: string }

@@ -105,14 +105,24 @@ describe('ModelRegistry', () => {
       expect(registry.resolveModelOrTier('powerful')).toBe('opus');
     });
 
-    it('passes through raw model IDs unchanged', () => {
+    it('passes through own-provider and unknown model IDs unchanged', () => {
       const registry = createModelRegistry('claude');
 
-      expect(registry.resolveModelOrTier('gpt-4o')).toBe('gpt-4o');
+      // Own-provider models stay unchanged
       expect(registry.resolveModelOrTier('haiku')).toBe('haiku');
+      // Fully-qualified / unknown IDs pass through
       expect(registry.resolveModelOrTier('claude-sonnet-4-5-20250929')).toBe(
         'claude-sonnet-4-5-20250929',
       );
+    });
+
+    it('translates foreign provider models to equivalent tier', () => {
+      const registry = createModelRegistry('claude');
+
+      // gpt-4o is aider's "balanced" → claude's balanced is "sonnet"
+      expect(registry.resolveModelOrTier('gpt-4o')).toBe('sonnet');
+      // codex-mini is codex's "fast" → claude's fast is "haiku"
+      expect(registry.resolveModelOrTier('codex-mini')).toBe('haiku');
     });
 
     it('returns tier name if no model registered for that tier', () => {

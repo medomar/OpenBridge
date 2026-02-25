@@ -91,8 +91,8 @@ describe('Router', () => {
     expect(connector.sentMessages[1]?.content).toBe('chunk1chunk2');
   });
 
-  it('should send progress updates for long-running tasks', async () => {
-    const router = new Router('mock', { progressIntervalMs: 10_000 });
+  it('should not send cycling progress messages (only ack + response)', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
 
@@ -103,7 +103,6 @@ describe('Router', () => {
         resolveProcess = resolve;
       });
     };
-    // Disable streaming to force processMessage path
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
@@ -112,34 +111,27 @@ describe('Router', () => {
 
     const routePromise = router.route(createMessage());
 
-    // After initial ack, advance time past the progress interval
-    await vi.advanceTimersByTimeAsync(10_000);
+    // Advance time well past where old cycling timer would fire
+    await vi.advanceTimersByTimeAsync(60_000);
 
-    // Should have sent ack + 1 progress update
-    expect(connector.sentMessages).toHaveLength(2);
+    // Only the initial ack — no cycling messages
+    expect(connector.sentMessages).toHaveLength(1);
     expect(connector.sentMessages[0]?.content).toBe('Working on it...');
-    expect(connector.sentMessages[1]?.content).toBe('Still working on it...');
-
-    // Advance again — second progress update with different message
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(connector.sentMessages).toHaveLength(3);
-    expect(connector.sentMessages[2]?.content).toBe('This is taking a moment \u2014 hang tight...');
 
     // Resolve the provider and complete routing
     resolveProcess({ content: 'Done!' });
     await routePromise;
 
-    // Final response sent
-    expect(connector.sentMessages).toHaveLength(4);
-    expect(connector.sentMessages[3]?.content).toBe('Done!');
+    // ack + final response only
+    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[1]?.content).toBe('Done!');
   });
 
-  it('should stop progress updates after provider completes', async () => {
-    const router = new Router('mock', { progressIntervalMs: 5_000 });
+  it('should send only ack + response even for fast tasks', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
     provider.setResponse({ content: 'Quick response' });
-    // Disable streaming
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
@@ -148,75 +140,32 @@ describe('Router', () => {
 
     await router.route(createMessage());
 
-    // ack + response only (no progress because it was fast)
+    // ack + response only
     expect(connector.sentMessages).toHaveLength(2);
-
-    // Advance time — no more progress updates should be sent
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toBe('Quick response');
   });
 
-  it('should stop progress updates on provider error', async () => {
-    const router = new Router('mock', { progressIntervalMs: 5_000 });
+  it('should send only ack + error on provider failure (no cycling)', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
 
-    let rejectProcess!: (error: Error) => void;
-    provider.processMessage = (_message: InboundMessage) => {
-      return new Promise((_resolve, reject) => {
-        rejectProcess = reject;
-      });
-    };
+    provider.processMessage = vi
+      .fn()
+      .mockRejectedValue(new ProviderError('Provider failed', 'permanent', 1));
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
     router.addProvider(provider);
     await connector.initialize();
 
-    const routePromise = router.route(createMessage());
+    await expect(router.route(createMessage())).rejects.toThrow('Provider failed');
 
-    await vi.advanceTimersByTimeAsync(5_000);
-    // ack + 1 progress update
+    // ack + error message only — no cycling messages
     expect(connector.sentMessages).toHaveLength(2);
-
-    rejectProcess(new Error('Provider failed'));
-    await expect(routePromise).rejects.toThrow('Provider failed');
-
-    // Advance more — no further progress updates
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(connector.sentMessages).toHaveLength(2);
-  });
-
-  it('should refresh typing indicator on each progress tick', async () => {
-    const router = new Router('mock', { progressIntervalMs: 10_000 });
-    const connector = new MockConnector();
-    const provider = new MockProvider();
-
-    let resolveProcess!: (result: { content: string }) => void;
-    provider.processMessage = (_message: InboundMessage) => {
-      return new Promise((resolve) => {
-        resolveProcess = resolve;
-      });
-    };
-    provider.streamMessage = undefined;
-
-    router.addConnector(connector);
-    router.addProvider(provider);
-    await connector.initialize();
-
-    const routePromise = router.route(createMessage());
-    // Flush microtask queue so route() proceeds past the awaited ack + typing indicator
-    await vi.advanceTimersByTimeAsync(0);
-
-    // Initial typing indicator
-    expect(connector.typingIndicators).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    // Progress tick refreshes typing indicator
-    expect(connector.typingIndicators).toHaveLength(2);
-
-    resolveProcess({ content: 'Done' });
-    await routePromise;
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toContain('Request failed');
   });
 
   describe('with Agent Orchestrator', () => {

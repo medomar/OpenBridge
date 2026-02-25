@@ -79,11 +79,11 @@ function getMimeType(filename: string): {
   return mimeMap[ext] ?? { mimeType: 'application/octet-stream', mediaType: 'document' };
 }
 
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
   private defaultProviderName: string;
-  private readonly progressIntervalMs: number;
   private readonly auditLogger?: AuditLogger;
   private readonly metrics?: MetricsCollector;
   private orchestrator?: AgentOrchestrator;
@@ -95,12 +95,11 @@ export class Router {
 
   constructor(
     defaultProvider: string,
-    config?: RouterConfig,
+    _config?: RouterConfig,
     auditLogger?: AuditLogger,
     metrics?: MetricsCollector,
   ) {
     this.defaultProviderName = defaultProvider;
-    this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
     this.auditLogger = auditLogger;
     this.metrics = metrics;
   }
@@ -239,7 +238,7 @@ export class Router {
       'Routing message',
     );
 
-    // Send acknowledgment
+    // Send single acknowledgment (no cycling timer — progress events handle the rest)
     const ack: OutboundMessage = {
       target: message.source,
       recipient: message.sender,
@@ -252,9 +251,6 @@ export class Router {
     if (connector.sendTypingIndicator) {
       await connector.sendTypingIndicator(message.sender);
     }
-
-    // Start progress updates
-    const stopProgress = this.startProgressUpdates(connector, message);
 
     // Process message — through Master, orchestrator, or directly via provider
     let result: ProviderResult;
@@ -277,7 +273,6 @@ export class Router {
         }
       }
     } catch (error) {
-      stopProgress();
       const errorKind = error instanceof ProviderError ? error.kind : ('unknown' as const);
       this.metrics?.recordFailed(errorKind);
       if (error instanceof ProviderError) {
@@ -305,7 +300,6 @@ export class Router {
       throw error;
     }
 
-    stopProgress();
     this.metrics?.recordProcessed(Date.now() - startTime);
 
     // Parse and dispatch [SHARE:channel] file-sharing markers before sending main reply
@@ -336,6 +330,7 @@ export class Router {
     logger.info({ messageId: message.id }, 'Message processed and response sent');
   }
 
+<<<<<<< HEAD
   /**
    * Parse [SEND:channel]recipient|content[/SEND] markers from AI output,
    * dispatch proactive messages to whitelisted recipients, and return

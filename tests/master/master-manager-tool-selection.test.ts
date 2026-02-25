@@ -53,9 +53,24 @@ describe('Per-tool model resolution via ModelRegistry', () => {
     expect(registry.resolveModelOrTier('fast')).toBe('gpt-4o-mini');
   });
 
-  it('passes through raw model IDs without tier resolution', () => {
+  it('passes through unknown raw model IDs without tier resolution', () => {
     const registry = createModelRegistry('claude');
-    expect(registry.resolveModelOrTier('gpt-4o')).toBe('gpt-4o');
+    expect(registry.resolveModelOrTier('my-custom-model')).toBe('my-custom-model');
+  });
+
+  it('translates foreign provider models to equivalent tier (cross-provider)', () => {
+    // "haiku" is Claude's fast model → codex registry should resolve to "codex-mini"
+    const codexRegistry = createModelRegistry('codex');
+    expect(codexRegistry.resolveModelOrTier('haiku')).toBe('codex-mini');
+    expect(codexRegistry.resolveModelOrTier('sonnet')).toBe('codex');
+    expect(codexRegistry.resolveModelOrTier('opus')).toBe('codex');
+
+    // "codex-mini" is Codex's fast model → claude registry should resolve to "haiku"
+    const claudeRegistry = createModelRegistry('claude');
+    expect(claudeRegistry.resolveModelOrTier('codex-mini')).toBe('haiku');
+
+    // "gpt-4o-mini" is Aider's fast model → codex registry should resolve to "codex-mini"
+    expect(codexRegistry.resolveModelOrTier('gpt-4o-mini')).toBe('codex-mini');
   });
 
   it('resolves "balanced" to provider-specific models', () => {

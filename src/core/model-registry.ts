@@ -99,15 +99,40 @@ export class ModelRegistry {
   }
 
   /**
-   * Resolve a string that could be either a tier name or a raw model ID.
-   * - If the value matches a tier name ('fast', 'balanced', 'powerful'), resolves to the model ID
-   * - Otherwise, passes the value through as-is (backward compatibility with raw model IDs)
+   * Resolve a string that could be either a tier name, a raw model ID, or a
+   * foreign provider's model alias (e.g. "haiku" passed to a codex registry).
+   *
+   * Resolution order:
+   * 1. Tier name ('fast', 'balanced', 'powerful') → resolve to this provider's model
+   * 2. Known model from another provider → translate to equivalent tier's model
+   * 3. Unknown string → pass through as-is (backward compat)
    */
   resolveModelOrTier(value: string): string {
+    // 1. Tier names resolve directly
     if (MODEL_TIERS.includes(value as ModelTier)) {
       const entry = this.resolve(value as ModelTier);
       return entry?.id ?? value;
     }
+
+    // 2. If this model belongs to the current provider, pass through
+    if (this.models.some((m) => m.id === value)) {
+      return value;
+    }
+
+    // 3. Check if it's a known model from another provider — translate via tier
+    const foreignEntry = findForeignModel(value);
+    if (foreignEntry) {
+      const localEntry = this.resolve(foreignEntry.tier);
+      if (localEntry) {
+        logger.debug(
+          { from: value, to: localEntry.id, tier: foreignEntry.tier },
+          'Cross-provider model translation',
+        );
+        return localEntry.id;
+      }
+    }
+
+    // 4. Unknown — pass through as-is
     return value;
   }
 
@@ -152,6 +177,18 @@ export class ModelRegistry {
 
     return this.resolveWithFallback(nextTier);
   }
+}
+
+/**
+ * Look up a model ID across all known providers' default model maps.
+ * Returns the matching entry (with tier info) if found, undefined otherwise.
+ */
+function findForeignModel(modelId: string): ModelEntry | undefined {
+  for (const entries of Object.values(DEFAULT_MODEL_MAPS)) {
+    const entry = entries.find((m) => m.id === modelId);
+    if (entry) return entry;
+  }
+  return undefined;
 }
 
 /**
