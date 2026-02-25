@@ -1029,9 +1029,10 @@ export class ExplorationCoordinator {
       updatedAt: new Date().toISOString(),
     };
 
-    await this.dotFolder.writeAgents(agentsRegistry);
     if (this.memory) {
       await this.memory.setSystemConfig('agents', JSON.stringify(agentsRegistry));
+    } else {
+      await this.dotFolder.writeAgents(agentsRegistry);
     }
 
     // Log entry
