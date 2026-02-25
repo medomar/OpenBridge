@@ -217,11 +217,9 @@ export class MemoryManager {
     return Promise.resolve();
   }
 
-  getLearnedParams(taskType: string): Promise<LearnedParams> {
+  getLearnedParams(taskType: string): Promise<LearnedParams | null> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    const result = _getLearnedParams(this.db, taskType);
-    if (!result) return Promise.reject(new Error(`No learning data for task type: ${taskType}`));
-    return Promise.resolve(result);
+    return Promise.resolve(_getLearnedParams(this.db, taskType));
   }
 
   getSimilarTasks(prompt: string, limit?: number): Promise<TaskRecord[]> {

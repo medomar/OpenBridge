@@ -116,12 +116,14 @@ describe('MemoryManager (index.ts)', () => {
     it('records a learning and retrieves best params', async () => {
       await manager.recordLearning('worker', 'claude-sonnet-4-6', true, 5, 2000);
       const params = await manager.getLearnedParams('worker');
-      expect(params.model).toBe('claude-sonnet-4-6');
-      expect(params.success_rate).toBe(1);
+      expect(params).not.toBeNull();
+      expect(params!.model).toBe('claude-sonnet-4-6');
+      expect(params!.success_rate).toBe(1);
     });
 
-    it('getLearnedParams rejects when no data exists', async () => {
-      await expect(manager.getLearnedParams('unknown-type')).rejects.toThrow();
+    it('getLearnedParams returns null when no data exists', async () => {
+      const result = await manager.getLearnedParams('unknown-type');
+      expect(result).toBeNull();
     });
   });
 

@@ -29,6 +29,24 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
 }
 
 // ---------------------------------------------------------------------------
+// FTS5 query sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize a user-provided string for use in an FTS5 MATCH expression.
+ * Strips special FTS5 syntax characters and wraps each token in double quotes.
+ * Returns an empty string if no usable tokens remain.
+ */
+function sanitizeFts5Query(raw: string): string {
+  // Remove FTS5 operators and special characters
+  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return '';
+  // Quote each token to prevent FTS5 syntax errors
+  return tokens.map((t) => `"${t}"`).join(' ');
+}
+
+// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
@@ -74,6 +92,9 @@ export function findRelevantHistory(
 ): ConversationEntry[] {
   if (!query.trim()) return [];
 
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
   const rows = db
     .prepare(
       `SELECT c.id, c.session_id, c.role, c.content, c.channel, c.user_id, c.created_at
@@ -84,7 +105,7 @@ export function findRelevantHistory(
        ORDER BY c.created_at DESC
        LIMIT ?`,
     )
-    .all(query, limit) as ConversationRow[];
+    .all(sanitized, limit) as ConversationRow[];
 
   return rows.map(rowToEntry);
 }

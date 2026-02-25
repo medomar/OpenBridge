@@ -41,6 +41,17 @@ function rowToChunk(row: ChunkRow): Chunk {
 }
 
 // ---------------------------------------------------------------------------
+// FTS5 query sanitization
+// ---------------------------------------------------------------------------
+
+function sanitizeFts5Query(raw: string): string {
+  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return '';
+  return tokens.map((t) => `"${t}"`).join(' ');
+}
+
+// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
@@ -87,6 +98,9 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
 export function searchChunks(db: Database.Database, query: string, limit = 10): Chunk[] {
   if (!query.trim()) return [];
 
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
   const rows = db
     .prepare(
       `SELECT c.id, c.scope, c.category, c.content, c.source_hash,
@@ -98,7 +112,7 @@ export function searchChunks(db: Database.Database, query: string, limit = 10): 
          AND c.stale = 0
        LIMIT ?`,
     )
-    .all(query, limit) as ChunkRow[];
+    .all(sanitized, limit) as ChunkRow[];
 
   return rows.map(rowToChunk);
 }
