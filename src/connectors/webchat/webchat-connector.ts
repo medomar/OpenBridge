@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
@@ -72,6 +73,8 @@ const CHAT_HTML = `<!DOCTYPE html>
     #send { padding: 10px 22px; background: #1a73e8; color: #fff; border: none; border-radius: 24px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
     #send:hover:not(:disabled) { background: #1557b0; }
     #send:disabled { background: #bdc1c6; cursor: not-allowed; }
+    .download-link { display: inline-block; margin-top: 6px; padding: 6px 14px; background: #1a73e8; color: #fff; border-radius: 16px; text-decoration: none; font-size: 13px; }
+    .download-link:hover { background: #1557b0; }
   </style>
 </head>
 <body>
@@ -228,6 +231,19 @@ const CHAT_HTML = `<!DOCTYPE html>
         if (data.type === 'response') {
           hideStatus();
           addBubble(data.content, 'ai');
+        } else if (data.type === 'download') {
+          hideStatus();
+          var div = document.createElement('div');
+          div.className = 'bubble ai';
+          if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
+          var link = document.createElement('a');
+          link.href = data.url;
+          link.download = data.filename || 'download';
+          link.className = 'download-link';
+          link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
+          div.appendChild(link);
+          msgs.appendChild(div);
+          msgs.scrollTop = msgs.scrollHeight;
         } else if (data.type === 'typing') {
           showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
         } else if (data.type === 'progress') {
@@ -275,6 +291,10 @@ export class WebChatConnector implements Connector {
   private wss: WssServer | null = null;
   private clients = new Set<WsClient>();
   private messageCounter = 0;
+  private readonly pendingDownloads = new Map<
+    string,
+    { data: Buffer; mimeType: string; filename?: string; timer: ReturnType<typeof setTimeout> }
+  >();
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -294,7 +314,26 @@ export class WebChatConnector implements Connector {
       server: unknown;
     }) => WssServer;
 
-    const server = http.createServer((_req: IncomingMessage, res: ServerResponse) => {
+    const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
+      const url = req.url ?? '/';
+      const match = url.match(/^\/download\/([0-9a-f-]+)$/i);
+      if (match) {
+        const fileId = match[1]!;
+        const entry = this.pendingDownloads.get(fileId);
+        if (!entry) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not found');
+          return;
+        }
+        const filename = entry.filename ?? 'download';
+        res.writeHead(200, {
+          'Content-Type': entry.mimeType,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': entry.data.length,
+        });
+        res.end(entry.data);
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
@@ -353,7 +392,30 @@ export class WebChatConnector implements Connector {
     if (!this.connected) {
       return Promise.reject(new Error('WebChat connector is not connected'));
     }
-    const payload = JSON.stringify({ type: 'response', content: message.content });
+
+    let payload: string;
+    if (message.media) {
+      const fileId = randomUUID();
+      const { data, mimeType, filename } = message.media;
+      const timer = setTimeout(
+        () => {
+          this.pendingDownloads.delete(fileId);
+        },
+        60 * 60 * 1000,
+      ); // 1 hour
+      this.pendingDownloads.set(fileId, { data, mimeType, filename, timer });
+      payload = JSON.stringify({
+        type: 'download',
+        content: message.content,
+        fileId,
+        filename: filename ?? 'download',
+        url: `/download/${fileId}`,
+        mimeType,
+      });
+    } else {
+      payload = JSON.stringify({ type: 'response', content: message.content });
+    }
+
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {
         client.send(payload);
@@ -391,6 +453,11 @@ export class WebChatConnector implements Connector {
   async shutdown(): Promise<void> {
     this.connected = false;
     this.clients.clear();
+
+    for (const entry of this.pendingDownloads.values()) {
+      clearTimeout(entry.timer);
+    }
+    this.pendingDownloads.clear();
 
     if (this.wss) {
       await new Promise<void>((resolve) => {
