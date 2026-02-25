@@ -147,6 +147,11 @@ const MESSAGE_MAX_TURNS_TOOL_USE = 15;
 const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
+/**
+ * Classifier logic version — bump this when keyword/compound rules change.
+ * Cache entries with a different version are treated as stale and re-classified.
+ */
+const CLASSIFIER_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // Memory ↔ DotFolderManager type conversion helpers (OB-711)
@@ -2010,7 +2015,7 @@ export class MasterManager {
     await this.loadClassificationCache();
     const cacheKey = this.normalizeForCache(content);
     const cached = this.classificationCache.get(cacheKey);
-    if (cached) {
+    if (cached && (cached as Record<string, unknown>)['classifierVersion'] === CLASSIFIER_VERSION) {
       cached.hitCount++;
       logger.debug(
         { cacheKey, class: cached.result.class, hitCount: cached.hitCount },
@@ -2018,6 +2023,10 @@ export class MasterManager {
       );
       void this.persistClassificationCache();
       return { ...cached.result };
+    }
+    // Stale cache entry (missing or old classifierVersion) — re-classify
+    if (cached) {
+      this.classificationCache.delete(cacheKey);
     }
 
     // Include workspace context so the AI can calibrate scope
@@ -2196,14 +2205,15 @@ export class MasterManager {
       }
     }
 
-    // Store result in cache for future lookups
+    // Store result in cache for future lookups (with classifier version for staleness detection)
     this.classificationCache.set(cacheKey, {
       normalizedKey: cacheKey,
       result: { ...classificationResult },
       recordedAt: new Date().toISOString(),
       hitCount: 0,
       feedback: [],
-    });
+      classifierVersion: CLASSIFIER_VERSION,
+    } as ClassificationCacheEntry);
     void this.persistClassificationCache();
 
     return classificationResult;
