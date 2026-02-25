@@ -303,12 +303,24 @@ describe('MemoryManager (index.ts)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // buildBriefing (stubbed until OB-722)
+  // buildBriefing (OB-722)
   // ---------------------------------------------------------------------------
 
   describe('buildBriefing', () => {
-    it('rejects with "not implemented" until OB-722 is done', async () => {
-      await expect(manager.buildBriefing('some task')).rejects.toThrow();
+    it('returns a string starting with TASK:', async () => {
+      const briefing = await manager.buildBriefing('some task');
+      expect(typeof briefing).toBe('string');
+      expect(briefing.startsWith('TASK:')).toBe(true);
+    });
+
+    it('includes the task description in the output', async () => {
+      const briefing = await manager.buildBriefing('fix auth validation bug');
+      expect(briefing).toContain('fix auth validation bug');
+    });
+
+    it('returns a briefing under the 2000-token budget (~8000 chars)', async () => {
+      const briefing = await manager.buildBriefing('some task');
+      expect(briefing.length).toBeLessThanOrEqual(8000);
     });
   });
 });
