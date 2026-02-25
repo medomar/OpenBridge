@@ -379,7 +379,7 @@ function execOnce(
     const child = nodeSpawn(config.binary, config.args, {
       cwd: workspacePath,
       env: config.env,
-      stdio: ['ignore', 'pipe', 'pipe'], // Close stdin — non-interactive mode
+      stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
     });
 
     logger.debug(
@@ -518,6 +518,7 @@ function execOnceStreaming(
     cwd: workspacePath,
     // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
     env: config.env,
+    stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
   });
 
   let stderr = '';

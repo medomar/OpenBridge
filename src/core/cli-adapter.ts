@@ -21,11 +21,16 @@ export interface CLISpawnConfig {
   args: string[];
   /** Environment variables (already cleaned of conflicting vars) */
   env: Record<string, string | undefined>;
+  /**
+   * stdin behavior: 'ignore' closes stdin (Claude), 'pipe' provides a writable stream
+   * (needed by CLIs that check for TTY). Defaults to 'ignore'.
+   */
+  stdin?: 'ignore' | 'pipe';
 }
 
 /**
  * Capability level — maps tool profiles to CLI-specific access mechanisms.
- * Claude uses --allowedTools, Codex uses --approval-mode, Aider uses --yes.
+ * Claude uses --allowedTools, Codex uses --sandbox modes, Aider uses --yes.
  */
 export type CapabilityLevel = 'read-only' | 'code-edit' | 'full-access';
 

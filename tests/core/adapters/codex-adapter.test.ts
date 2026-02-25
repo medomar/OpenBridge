@@ -14,12 +14,20 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.binary).toBe('codex');
   });
 
-  it('builds minimal args: just the prompt', () => {
+  it('starts args with "exec" subcommand', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Hello',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.args[0]).toBe('exec');
+  });
+
+  it('builds minimal args: exec + --ephemeral + prompt', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'List all files',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).toEqual(['List all files']);
+    expect(config.args).toEqual(['exec', '--ephemeral', 'List all files']);
   });
 
   it('adds --model when specified', () => {
@@ -32,42 +40,60 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).toContain('codex-mini');
   });
 
-  it('maps read-only tools to --approval-mode suggest', () => {
+  it('maps read-only tools to --sandbox read-only', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Read files',
       workspacePath: '/tmp/test',
       allowedTools: ['Read', 'Glob', 'Grep'],
     });
-    expect(config.args).toContain('--approval-mode');
-    expect(config.args).toContain('suggest');
+    expect(config.args).toContain('--sandbox');
+    expect(config.args).toContain('read-only');
   });
 
-  it('maps code-edit tools to --approval-mode auto-edit', () => {
+  it('maps code-edit tools to --sandbox workspace-write', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Fix bug',
       workspacePath: '/tmp/test',
       allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
     });
-    expect(config.args).toContain('--approval-mode');
-    expect(config.args).toContain('auto-edit');
+    expect(config.args).toContain('--sandbox');
+    expect(config.args).toContain('workspace-write');
   });
 
-  it('maps full-access tools (Bash(*)) to --approval-mode full-auto', () => {
+  it('maps full-access tools (Bash(*)) to --full-auto', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Deploy',
       workspacePath: '/tmp/test',
       allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'],
     });
-    expect(config.args).toContain('--approval-mode');
-    expect(config.args).toContain('full-auto');
+    expect(config.args).toContain('--full-auto');
+    // Should NOT use --sandbox when using --full-auto
+    expect(config.args).not.toContain('--sandbox');
   });
 
-  it('does not add --approval-mode when no tools specified', () => {
+  it('does not add --sandbox when no tools specified', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Do something',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).not.toContain('--approval-mode');
+    expect(config.args).not.toContain('--sandbox');
+    expect(config.args).not.toContain('--full-auto');
+  });
+
+  it('always includes --ephemeral', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Do something',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.args).toContain('--ephemeral');
+  });
+
+  it('sets stdin to pipe', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Hello',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.stdin).toBe('pipe');
   });
 
   it('prepends systemPrompt to prompt text', () => {
@@ -109,7 +135,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).not.toContain('--resume');
   });
 
-  it('does not add --print (codex is non-interactive by default)', () => {
+  it('does not add --print (codex exec is non-interactive)', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Task',
       workspacePath: '/tmp/test',
@@ -139,7 +165,7 @@ describe('CodexAdapter.cleanEnv', () => {
 // ── mapCapabilityLevel ──────────────────────────────────────────────
 
 describe('CodexAdapter.mapCapabilityLevel', () => {
-  it('returns undefined (codex uses approval modes, not tool lists)', () => {
+  it('returns undefined (codex uses sandbox modes, not tool lists)', () => {
     expect(adapter.mapCapabilityLevel('read-only')).toBeUndefined();
     expect(adapter.mapCapabilityLevel('code-edit')).toBeUndefined();
     expect(adapter.mapCapabilityLevel('full-access')).toBeUndefined();
@@ -159,6 +185,7 @@ describe('CodexAdapter.isValidModel', () => {
     expect(adapter.isValidModel('gpt-4o-mini')).toBe(true);
     expect(adapter.isValidModel('o1')).toBe(true);
     expect(adapter.isValidModel('o3-mini')).toBe(true);
+    expect(adapter.isValidModel('o4-mini')).toBe(true);
   });
 
   it('rejects Claude model names', () => {
