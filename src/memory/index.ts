@@ -23,6 +23,7 @@ import {
 import {
   getActivePrompt as _getActivePrompt,
   recordPromptOutcome as _recordPromptOutcome,
+  getPromptStats as _getPromptStats,
 } from './prompt-store.js';
 import {
   migrateJsonToSqlite,
@@ -307,6 +308,12 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _recordPromptOutcome(this.db, name, success);
     return Promise.resolve();
+  }
+
+  /** Return per-version stats (effectiveness, usage_count, success_count) for all versions of a prompt. */
+  getPromptStats(name: string): Promise<PromptRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getPromptStats(this.db, name));
   }
 
   // -------------------------------------------------------------------------
