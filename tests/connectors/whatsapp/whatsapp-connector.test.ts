@@ -584,39 +584,41 @@ describe('WhatsAppConnector', () => {
     });
 
     it('resets reconnect attempt counter on successful reconnect', async () => {
-      vi.useRealTimers(); // Avoid fake-timer microtask deadlocks on CI runners
       const connector = buildConnector({
         reconnect: {
           enabled: true,
           maxAttempts: 5,
-          initialDelayMs: 5,
-          maxDelayMs: 5,
+          initialDelayMs: 50,
+          maxDelayMs: 50,
           backoffFactor: 1,
         },
       });
       await connector.initialize();
       const firstClient = mockClientInstance;
 
-      // First successful connection — flush microtask queue before asserting,
-      // because vi.useRealTimers() after vi.useFakeTimers() (in beforeEach) can
-      // leave pending microtasks on some Node versions / CI runners.
+      // First successful connection
       firstClient._trigger('ready');
-      await vi.waitFor(() => expect(connector.isConnected()).toBe(true));
+      expect(connector.isConnected()).toBe(true);
 
-      // Disconnect — schedules reconnect with 5ms delay
+      // Disconnect — schedules reconnect timer (50ms)
       firstClient._trigger('disconnected', 'reason');
+      expect(connector.isConnected()).toBe(false);
 
-      // Wait for reconnect to create a new client:
-      // setTimeout(5ms) + destroy() + createAndStartClient()
-      await vi.waitFor(() => expect(mockClientInstance).not.toBe(firstClient), {
-        timeout: 5000,
-        interval: 50,
-      });
+      // Advance past the reconnect delay so the timer fires.
+      // The setTimeout callback is async (destroy + createAndStartClient),
+      // so we advance timers and flush microtasks multiple times to let
+      // the full async chain resolve.
+      for (let i = 0; i < 10; i++) {
+        await vi.advanceTimersByTimeAsync(50);
+      }
+
+      // mockClientInstance now points to the reconnected client
+      expect(mockClientInstance).not.toBe(firstClient);
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
-      await vi.waitFor(() => expect(connector.isConnected()).toBe(true));
-    }, 15_000);
+      expect(connector.isConnected()).toBe(true);
+    });
   });
 
   // -----------------------------------------------------------------------
