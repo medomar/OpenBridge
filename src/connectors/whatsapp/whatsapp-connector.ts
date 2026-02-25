@@ -5,9 +5,14 @@ import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
-import { unlink, readlink } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { MessageMedia } from 'whatsapp-web.js';
+
+const execFileAsync = promisify(execFile);
 
 const logger = createLogger('whatsapp');
 
@@ -17,6 +22,21 @@ type EventListeners = {
 
 interface WAChat {
   sendStateTyping: () => Promise<void>;
+}
+
+interface WAMediaData {
+  data: string; // base64-encoded audio
+  mimetype: string;
+}
+
+interface WAMessage {
+  id: { id: string };
+  from: string;
+  body: string;
+  timestamp: number;
+  hasMedia?: boolean;
+  type?: string;
+  downloadMedia?: () => Promise<WAMediaData | null>;
 }
 
 interface WASendOptions {
@@ -141,13 +161,9 @@ export class WhatsAppConnector implements Connector {
       this.emit('ready');
     });
 
-    this.client.on(
-      'message',
-      (msg: { id: { id: string }; from: string; body: string; timestamp: number }) => {
-        const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
-        this.emit('message', parsed);
-      },
-    );
+    this.client.on('message', (msg: WAMessage) => {
+      void this.handleIncomingMessage(msg);
+    });
 
     this.client.on('disconnected', (reason: string) => {
       this.connected = false;
@@ -242,6 +258,58 @@ export class WhatsAppConnector implements Connector {
       }
     } catch {
       // Lock doesn't exist or can't be read — nothing to do
+    }
+  }
+
+  private async handleIncomingMessage(msg: WAMessage): Promise<void> {
+    if (msg.hasMedia && msg.type === 'ptt') {
+      const transcription = await this.transcribeVoiceMessage(msg);
+      const content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+      const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp);
+      this.emit('message', parsed);
+      return;
+    }
+    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
+    this.emit('message', parsed);
+  }
+
+  private async transcribeVoiceMessage(msg: WAMessage): Promise<string | null> {
+    try {
+      const media = await msg.downloadMedia?.();
+      if (!media?.data) return null;
+
+      const whisperPath = await this.findWhisper();
+      if (!whisperPath) return null;
+
+      const tmpPath = join(tmpdir(), `wa-voice-${Date.now()}.ogg`);
+      await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
+      try {
+        await execFileAsync(whisperPath, [
+          tmpPath,
+          '--output-format',
+          'txt',
+          '--output-dir',
+          tmpdir(),
+        ]);
+        const txtPath = tmpPath.replace(/\.ogg$/, '.txt');
+        const text = await readFile(txtPath, 'utf-8').catch(() => '');
+        await unlink(txtPath).catch(() => {});
+        return text.trim() || null;
+      } finally {
+        await unlink(tmpPath).catch(() => {});
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Voice message transcription failed');
+      return null;
+    }
+  }
+
+  private async findWhisper(): Promise<string | null> {
+    try {
+      const { stdout } = await execFileAsync('which', ['whisper']);
+      return stdout.trim() || null;
+    } catch {
+      return null;
     }
   }
 
