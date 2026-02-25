@@ -5,14 +5,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ExplorationCoordinator } from '../../src/master/exploration-coordinator.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
+import { MemoryManager } from '../../src/memory/index.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type {
-  ExplorationState,
-  StructureScan,
-  Classification,
-  DirectoryDiveResult,
+import {
+  WorkspaceMapSchema,
+  type ExplorationState,
+  type StructureScan,
+  type Classification,
+  type DirectoryDiveResult,
 } from '../../src/types/master.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 
@@ -805,31 +807,49 @@ describe('ExplorationCoordinator', () => {
   });
 
   describe('Phase 4: Assembly', () => {
-    it('should merge partial results into workspace map', async () => {
+    it('should merge partial results into workspace map (OB-810: stored in DB)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+      });
       setupCompleteExploration();
 
-      const summary = await coordinator.explore();
+      const summary = await coordinatorWithMemory.explore();
 
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const map = await dotFolder.readMap();
-
+      // Workspace map is stored in DB, not JSON file (OB-810).
+      const chunks = await memory.getChunksByScope('_workspace_map', 'structure');
+      expect(chunks.length).toBeGreaterThan(0);
+      const map = WorkspaceMapSchema.parse(JSON.parse(chunks[0]!.content));
       expect(map).toBeDefined();
-      expect(map?.projectType).toBe('node');
-      expect(map?.summary).toBe('Test project summary');
+      expect(map.projectType).toBe('node');
+      expect(map.summary).toBe('Test project summary');
       expect(summary.status).toBe('completed');
     });
 
-    it('should include directory dive results in workspace map', async () => {
+    it('should include directory dive results in workspace map (OB-810: stored in DB)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+      });
       setupCompleteExploration();
 
-      await coordinator.explore();
+      await coordinatorWithMemory.explore();
 
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const map = await dotFolder.readMap();
-
-      expect(map?.structure).toBeDefined();
-      expect(map?.structure.src).toBeDefined();
-      expect(map?.structure.src.purpose).toBe('Source code');
+      // Workspace map is stored in DB, not JSON file (OB-810).
+      const chunks = await memory.getChunksByScope('_workspace_map', 'structure');
+      expect(chunks.length).toBeGreaterThan(0);
+      const map = WorkspaceMapSchema.parse(JSON.parse(chunks[0]!.content));
+      expect(map.structure).toBeDefined();
+      expect(map.structure.src).toBeDefined();
+      expect(map.structure.src.purpose).toBe('Source code');
     });
   });
 
