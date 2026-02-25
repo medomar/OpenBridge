@@ -31,6 +31,7 @@ import {
   type WorkspaceState,
   type SessionRecord,
 } from './migration.js';
+import { evictOldData as _evictOldData, type EvictionOptions } from './eviction.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -62,6 +63,7 @@ export interface PromptRecord {
 }
 
 export type { WorkspaceState, SessionRecord } from './migration.js';
+export type { EvictionOptions } from './eviction.js';
 
 // ---------------------------------------------------------------------------
 // MemoryManager
@@ -218,8 +220,10 @@ export class MemoryManager {
   // Maintenance (eviction.ts — OB-709, migration.ts — OB-708)
   // -------------------------------------------------------------------------
 
-  evictOldData(): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  evictOldData(options?: EvictionOptions): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _evictOldData(this.db, options);
+    return Promise.resolve();
   }
 
   migrate(): Promise<void> {
