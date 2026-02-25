@@ -82,6 +82,19 @@ export type { EvictionOptions } from './eviction.js';
 export type { SearchOptions } from './retrieval.js';
 export type { ActivityRecord, ActivityUpdate } from './activity-store.js';
 
+export interface ExplorationProgressRow {
+  id: number;
+  exploration_id: string;
+  phase: string;
+  target: string | null;
+  status: string;
+  progress_pct: number;
+  files_processed: number;
+  files_total: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // MemoryManager
 // ---------------------------------------------------------------------------
@@ -428,6 +441,19 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _cleanupOldActivity(this.db, cutoffHours);
     return Promise.resolve();
+  }
+
+  /** Return pending or in-progress rows from the exploration_progress table. */
+  getExplorationProgress(): Promise<ExplorationProgressRow[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM exploration_progress
+         WHERE status IN ('pending', 'in_progress')
+         ORDER BY id ASC`,
+      )
+      .all() as ExplorationProgressRow[];
+    return Promise.resolve(rows);
   }
 }
 
