@@ -597,20 +597,25 @@ describe('WhatsAppConnector', () => {
       await connector.initialize();
       const firstClient = mockClientInstance;
 
-      // First successful connection
+      // First successful connection — flush microtask queue before asserting,
+      // because vi.useRealTimers() after vi.useFakeTimers() (in beforeEach) can
+      // leave pending microtasks on some Node versions / CI runners.
       firstClient._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
+      await vi.waitFor(() => expect(connector.isConnected()).toBe(true));
 
       // Disconnect — schedules reconnect with 5ms delay
       firstClient._trigger('disconnected', 'reason');
 
-      // Wait for reconnect: setTimeout(5ms) + destroy() + createAndStartClient()
-      // Use generous wait to handle slow CI runners
-      await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+      // Wait for reconnect to create a new client:
+      // setTimeout(5ms) + destroy() + createAndStartClient()
+      await vi.waitFor(() => expect(mockClientInstance).not.toBe(firstClient), {
+        timeout: 5000,
+        interval: 50,
+      });
 
       // The new client fires ready — reconnectAttempt should reset to 0
       mockClientInstance._trigger('ready');
-      expect(connector.isConnected()).toBe(true);
+      await vi.waitFor(() => expect(connector.isConnected()).toBe(true));
     }, 15_000);
   });
 
