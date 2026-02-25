@@ -55,6 +55,7 @@ export class Bridge {
   private stopped = false;
   private readonly drainTimeoutMs: number;
   private agentStatusInterval: ReturnType<typeof setInterval> | null = null;
+  private lastMessageAt: string | null = null;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -241,6 +242,10 @@ export class Bridge {
 
     // Start health check endpoint
     this.healthServer.setDataProvider(() => this.getHealthStatus());
+    this.healthServer.setMetricsProvider(() => this.metrics.snapshot());
+    this.healthServer.setReadinessProvider(
+      () => this.master !== null && this.master.getState() === 'ready',
+    );
     await this.healthServer.start();
 
     // Start metrics endpoint
@@ -411,7 +416,12 @@ export class Bridge {
 
     return {
       status: overall,
-      uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+      uptime_seconds: Math.floor((Date.now() - this.startedAt) / 1000),
+      memory_mb: Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10,
+      active_workers: orchestratorSnapshot.activeAgents,
+      master_status: this.master ? this.master.getState() : 'not_configured',
+      db_status: this.memory ? 'connected' : 'disconnected',
+      last_message_at: this.lastMessageAt,
       timestamp: new Date().toISOString(),
       connectors: connectorStatuses,
       providers: providerStatuses,
@@ -456,6 +466,7 @@ export class Bridge {
     }
 
     this.metrics.recordReceived();
+    this.lastMessageAt = new Date().toISOString();
 
     if (!this.auth.isAuthorized(message.sender)) {
       logger.warn({ sender: message.sender }, 'Unauthorized sender');
