@@ -84,9 +84,11 @@ describe('Adapter → SpawnConfig verification', () => {
     const config = adapter.buildSpawnConfig(baseOpts);
 
     expect(config.binary).toBe('codex');
+    expect(config.args[0]).toBe('exec');
     expect(config.args).toContain('--model');
-    expect(config.args).toContain('--approval-mode');
-    expect(config.args).toContain('suggest'); // Read/Glob/Grep → suggest
+    expect(config.args).toContain('--sandbox');
+    expect(config.args).toContain('read-only'); // Read/Glob/Grep → read-only
+    expect(config.args).toContain('--ephemeral');
     // No Claude-specific flags
     expect(config.args).not.toContain('--print');
     expect(config.args).not.toContain('--max-turns');
@@ -190,11 +192,11 @@ describe('End-to-end: same SpawnOptions → different configs per provider', () 
     expect(claude.args).toContain('--allowedTools');
     expect(claude.args).toContain('--append-system-prompt');
 
-    // Codex drops max-turns and budget, maps tools to approval mode
+    // Codex drops max-turns and budget, maps tools to sandbox mode
     expect(codex.args).not.toContain('--max-turns');
     expect(codex.args).not.toContain('--max-budget-usd');
-    expect(codex.args).toContain('--approval-mode');
-    expect(codex.args).toContain('auto-edit'); // Edit/Write present
+    expect(codex.args).toContain('--sandbox');
+    expect(codex.args).toContain('workspace-write'); // Edit/Write present
 
     // Aider drops max-turns and budget, uses --message
     expect(aider.args).not.toContain('--max-turns');

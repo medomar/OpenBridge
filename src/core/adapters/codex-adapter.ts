@@ -3,17 +3,23 @@
  *
  * Translates provider-neutral SpawnOptions into OpenAI Codex CLI arguments.
  *
- * Codex CLI flags:
- *   --model <model>             Model to use (codex-mini, codex, gpt-4o, etc.)
- *   --approval-mode <mode>      suggest | auto-edit | full-auto
- *   <prompt>                    Positional argument
+ * Codex uses the `exec` subcommand for non-interactive execution:
+ *   codex exec [OPTIONS] <PROMPT>
+ *
+ * Codex exec flags:
+ *   -m, --model <MODEL>           Model to use (codex-mini, o4-mini, gpt-4o, etc.)
+ *   -s, --sandbox <MODE>          read-only | workspace-write | danger-full-access
+ *   --full-auto                   Auto-approve all actions (convenience flag)
+ *   -C, --cd <DIR>                Working directory
+ *   --ephemeral                   No session persistence
+ *   <prompt>                      Positional argument (after exec)
  *
  * Feature mapping (lossy — Codex doesn't support these):
  *   --max-turns        → dropped (codex runs to completion)
  *   --max-budget-usd   → dropped
- *   --session-id       → dropped (no session concept)
+ *   --session-id       → dropped (use --ephemeral)
  *   --append-system-prompt → prepended to prompt text
- *   --allowedTools     → mapped to --approval-mode via heuristic
+ *   --allowedTools     → mapped to --sandbox via heuristic
  */
 
 import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../cli-adapter.js';
@@ -23,28 +29,37 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('codex-adapter');
 
-/** Map capability levels to codex approval modes */
-const CAPABILITY_TO_APPROVAL: Record<CapabilityLevel, string> = {
-  'read-only': 'suggest',
-  'code-edit': 'auto-edit',
-  'full-access': 'full-auto',
+/** Map capability levels to codex sandbox modes */
+const CAPABILITY_TO_SANDBOX: Record<CapabilityLevel, string> = {
+  'read-only': 'read-only',
+  'code-edit': 'workspace-write',
+  'full-access': 'danger-full-access',
 };
 
 export class CodexAdapter implements CLIAdapter {
   readonly name = 'codex';
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
-    const args: string[] = [];
+    // Start with `exec` subcommand for non-interactive mode
+    const args: string[] = ['exec'];
 
     if (opts.model) {
       args.push('--model', opts.model);
     }
 
-    // Map allowedTools → approval mode via heuristic
-    const approvalMode = this.inferApprovalMode(opts.allowedTools);
-    if (approvalMode) {
-      args.push('--approval-mode', approvalMode);
+    // Map allowedTools → sandbox mode via heuristic
+    const sandboxMode = this.inferSandboxMode(opts.allowedTools);
+    if (sandboxMode) {
+      if (sandboxMode === 'danger-full-access') {
+        // Use --full-auto for full access (enables auto-approve + full sandbox)
+        args.push('--full-auto');
+      } else {
+        args.push('--sandbox', sandboxMode);
+      }
     }
+
+    // No session persistence for worker spawning
+    args.push('--ephemeral');
 
     // systemPrompt: prepend to the prompt text (codex has no --append-system-prompt)
     let prompt = sanitizePrompt(opts.prompt);
@@ -52,7 +67,7 @@ export class CodexAdapter implements CLIAdapter {
       prompt = opts.systemPrompt + '\n\n' + prompt;
     }
 
-    // Prompt is positional for codex
+    // Prompt is positional for codex exec
     args.push(prompt);
 
     // Log dropped options at debug level
@@ -73,6 +88,7 @@ export class CodexAdapter implements CLIAdapter {
       binary: 'codex',
       args,
       env: this.cleanEnv({ ...process.env }),
+      stdin: 'pipe', // codex checks for TTY
     };
   }
 
@@ -92,36 +108,36 @@ export class CodexAdapter implements CLIAdapter {
   }
 
   mapCapabilityLevel(level: CapabilityLevel): string[] | undefined {
-    // Codex doesn't use tool lists — it uses approval modes.
-    // Return undefined; the approval mode is set in buildSpawnConfig via inferApprovalMode.
+    // Codex doesn't use tool lists — it uses sandbox modes.
+    // Return undefined; the sandbox mode is set in buildSpawnConfig via inferSandboxMode.
     return undefined;
   }
 
   isValidModel(model: string): boolean {
-    const codexModels = ['codex-mini', 'codex', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'];
+    const codexModels = ['codex-mini', 'codex', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini', 'o4-mini'];
     if (codexModels.includes(model)) return true;
     // Accept OpenAI-style model IDs
     return /^(gpt-|o[0-9]|codex)/.test(model);
   }
 
   /**
-   * Infer codex approval mode from Claude-style allowedTools list.
+   * Infer codex sandbox mode from Claude-style allowedTools list.
    *
    * Heuristic:
-   *   - Bash(*) present        → full-auto (unrestricted)
-   *   - Edit or Write present  → auto-edit (file modifications)
-   *   - Otherwise              → suggest (read-only)
+   *   - Bash(*) present        → danger-full-access (unrestricted)
+   *   - Edit or Write present  → workspace-write (file modifications)
+   *   - Otherwise              → read-only
    */
-  private inferApprovalMode(allowedTools?: string[]): string | undefined {
+  private inferSandboxMode(allowedTools?: string[]): string | undefined {
     if (!allowedTools || allowedTools.length === 0) return undefined;
 
     const hasUnrestrictedBash = allowedTools.some((t) => t === 'Bash(*)');
     const hasEditWrite = allowedTools.some((t) => t === 'Edit' || t === 'Write');
 
-    if (hasUnrestrictedBash) return 'full-auto';
-    if (hasEditWrite) return 'auto-edit';
-    return 'suggest';
+    if (hasUnrestrictedBash) return 'danger-full-access';
+    if (hasEditWrite) return 'workspace-write';
+    return 'read-only';
   }
 }
 
-export { CAPABILITY_TO_APPROVAL };
+export { CAPABILITY_TO_SANDBOX };
