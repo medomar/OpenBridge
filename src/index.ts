@@ -19,6 +19,7 @@ import { registerBuiltInConnectors } from './connectors/index.js';
 import { registerBuiltInProviders } from './providers/index.js';
 import { scanForAITools } from './discovery/index.js';
 import { MasterManager } from './master/index.js';
+import { createAdapterRegistry } from './core/adapter-registry.js';
 import type { V2Config } from './types/config.js';
 
 interface PackageJson {
@@ -183,11 +184,16 @@ async function startV2Flow(
   // Step 3: Create Master AI and wire into bridge BEFORE starting
   logger.info({ workspacePath: resolvedWorkspacePath }, 'Launching Master AI...');
 
+  // Resolve CLI adapter based on the discovered master tool
+  const adapterRegistry = createAdapterRegistry();
+  const cliAdapter = adapterRegistry.getForTool(selectedMaster);
+
   const masterManager = new MasterManager({
     workspacePath: resolvedWorkspacePath,
     masterTool: selectedMaster,
     discoveredTools: scanResult.cliTools,
     memory: bridge.getMemory() ?? undefined,
+    adapter: cliAdapter,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
