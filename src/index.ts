@@ -194,6 +194,7 @@ async function startV2Flow(
     discoveredTools: scanResult.cliTools,
     memory: bridge.getMemory() ?? undefined,
     adapter: cliAdapter,
+    adapterRegistry,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
