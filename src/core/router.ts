@@ -10,6 +10,7 @@ import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
+import type { MemoryManager, ActivityRecord, ExplorationProgressRow } from '../memory/index.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
@@ -32,6 +33,22 @@ const VOICE_MARKER_RE = /\[VOICE\]([\s\S]*?)\[\/VOICE\]/g;
 
 /** Pattern matching [SHARE:channel]/path/to/file[/SHARE] markers in AI output */
 const SHARE_MARKER_RE = /\[SHARE:([^\]]+)\]([^[]*)\[\/SHARE\]/g;
+
+/** Format a millisecond duration as a human-readable string (e.g. "2h 14m", "45s"). */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) return `${minutes}m ${totalSeconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+/** Render a simple Unicode progress bar of the given width (default 5 blocks). */
+function makeProgressBar(pct: number, width = 5): string {
+  const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
+  return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
 
 /** Map file extension to MIME type and media category */
 function getMimeType(filename: string): {
@@ -74,6 +91,7 @@ export class Router {
   private auth?: AuthService;
   private workspacePath?: string;
   private emailConfig?: EmailConfig;
+  private memory?: MemoryManager;
 
   constructor(
     defaultProvider: string,
@@ -112,6 +130,12 @@ export class Router {
   /** Set the email config — enables [SHARE:email] marker support */
   setEmailConfig(config: EmailConfig): void {
     this.emailConfig = config;
+  }
+
+  /** Set the MemoryManager — enables the "status" command */
+  setMemory(memory: MemoryManager): void {
+    this.memory = memory;
+    logger.info('Router configured with MemoryManager (status command enabled)');
   }
 
   /** Register an active connector */
@@ -194,6 +218,12 @@ export class Router {
     const connector = this.connectors.get(message.source);
     if (!connector) {
       logger.error({ source: message.source }, 'Source connector not found');
+      return;
+    }
+
+    // Handle built-in "status" command — intercept before routing to Master AI
+    if (message.content.trim().toLowerCase() === 'status') {
+      await this.handleStatusCommand(message, connector);
       return;
     }
 
@@ -588,6 +618,99 @@ export class Router {
     } catch (err) {
       logger.warn({ filePath, err }, 'SHARE:github-pages: publish failed');
     }
+  }
+
+  /**
+   * Handle the built-in "status" command.
+   * Queries agent_activity and exploration_progress tables and returns a
+   * text-based status report that works on all channels.
+   */
+  private async handleStatusCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const lines: string[] = ['*OpenBridge Status*'];
+
+    if (!this.memory) {
+      lines.push('Status tracking not available — memory system not initialized.');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let agents: ActivityRecord[] = [];
+    let exploration: ExplorationProgressRow[] = [];
+    try {
+      [agents, exploration] = await Promise.all([
+        this.memory.getActiveAgents(),
+        this.memory.getExplorationProgress(),
+      ]);
+    } catch (err) {
+      logger.warn({ err }, 'handleStatusCommand: failed to query agent activity');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Status temporarily unavailable — could not query agent activity.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const masters = agents.filter((a) => a.type === 'master');
+    const workers = agents.filter((a) => a.type !== 'master');
+
+    // Master AI section
+    if (masters.length > 0) {
+      const m = masters[0]!;
+      const uptime = formatDuration(Date.now() - new Date(m.started_at).getTime());
+      lines.push(`\n🤖 Master AI: ACTIVE (${m.model ?? 'unknown'})`);
+      lines.push(`   Uptime: ${uptime}`);
+      if (m.task_summary) lines.push(`   Current: ${m.task_summary}`);
+    } else {
+      lines.push('\n🤖 Master AI: idle');
+    }
+
+    // Active workers section
+    if (workers.length > 0) {
+      lines.push(`\nWorkers (${workers.length} active):`);
+      for (const w of workers) {
+        const elapsed = formatDuration(Date.now() - new Date(w.started_at).getTime());
+        const bar = makeProgressBar(w.progress_pct ?? 0);
+        const shortId = w.id.length > 8 ? `…${w.id.slice(-6)}` : w.id;
+        const task = (w.task_summary ?? 'working...').slice(0, 32);
+        lines.push(
+          ` • ${shortId} | ${w.model ?? '?'} | ${w.profile ?? '?'} | ${task} | ${bar} | ${elapsed}`,
+        );
+      }
+    } else {
+      lines.push('\nWorkers: none active');
+    }
+
+    // Exploration progress section
+    if (exploration.length > 0) {
+      lines.push('\nExploration:');
+      for (const ep of exploration) {
+        const bar = makeProgressBar(ep.progress_pct ?? 0);
+        const label = ep.target ?? ep.phase;
+        lines.push(` ${label}: [${bar}] ${ep.progress_pct ?? 0}%`);
+      }
+    }
+
+    // Cost summary
+    const totalCost = agents.reduce((sum, a) => sum + (a.cost_usd ?? 0), 0);
+    const workerCount = agents.filter((a) => a.type === 'worker').length;
+    lines.push(
+      `\nCost: $${totalCost.toFixed(4)} today | ${workerCount} worker${workerCount !== 1 ? 's' : ''} spawned`,
+    );
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Status command handled');
   }
 
   /** Start sending periodic progress updates, returns a stop function */
