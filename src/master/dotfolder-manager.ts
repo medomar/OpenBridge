@@ -1,7 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type {
-  WorkspaceMap,
   AgentsRegistry,
   ExplorationLogEntry,
   TaskRecord,
@@ -18,9 +17,7 @@ import type {
   ClassificationCache,
 } from '../types/master.js';
 import {
-  WorkspaceMapSchema,
   AgentsRegistrySchema,
-  ExplorationLogEntrySchema,
   TaskRecordSchema,
   ExplorationStateSchema,
   StructureScanSchema,
@@ -41,10 +38,9 @@ import { WorkersRegistrySchema } from './worker-registry.js';
 /**
  * Manages the .openbridge/ folder inside the target workspace.
  * This folder contains:
- * - workspace-map.json — auto-generated project understanding
- * - exploration.log — timestamped scan history
- * - agents.json — discovered AI tools + roles
- * - tasks/ — task history (one JSON per task)
+ * - openbridge.db — SQLite database (primary storage for all runtime data)
+ * - generated/ — AI-generated output files
+ * - agents.json — discovered AI tools + roles (legacy fallback; DB is primary)
  */
 export class DotFolderManager {
   private readonly workspacePath: string;
@@ -107,43 +103,11 @@ export class DotFolderManager {
    * Create .openbridge folder structure
    * Creates:
    * - .openbridge/
-   * - .openbridge/tasks/
-   * - .openbridge/exploration/
-   * - .openbridge/exploration/dirs/
+   * - .openbridge/generated/
    */
   public async createFolder(): Promise<void> {
     await fs.mkdir(this.dotFolderPath, { recursive: true });
-    await fs.mkdir(this.tasksPath, { recursive: true });
-    await fs.mkdir(this.explorationPath, { recursive: true });
-    await fs.mkdir(this.explorationDirsPath, { recursive: true });
-    await fs.mkdir(this.promptsPath, { recursive: true });
     await fs.mkdir(path.join(this.dotFolderPath, 'generated'), { recursive: true });
-  }
-
-  /**
-   * Read workspace map from workspace-map.json
-   */
-  public async readMap(): Promise<WorkspaceMap | null> {
-    const mapPath = this.getMapPath();
-
-    try {
-      const content = await fs.readFile(mapPath, 'utf-8');
-      const data = JSON.parse(content) as unknown;
-      return WorkspaceMapSchema.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Write workspace map to workspace-map.json
-   */
-  public async writeMap(map: WorkspaceMap): Promise<void> {
-    // Validate before writing
-    const validated = WorkspaceMapSchema.parse(map);
-
-    const mapPath = this.getMapPath();
-    await fs.writeFile(mapPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
@@ -215,63 +179,6 @@ export class DotFolderManager {
   }
 
   /**
-   * Read all exploration log entries
-   */
-  public async readLog(): Promise<ExplorationLogEntry[]> {
-    const logPath = this.getLogPath();
-
-    try {
-      const content = await fs.readFile(logPath, 'utf-8');
-      const lines = content
-        .split('\n')
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line) as unknown);
-
-      return lines.map((line) => ExplorationLogEntrySchema.parse(line));
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Record a task in tasks/ folder
-   */
-  public async recordTask(task: TaskRecord): Promise<void> {
-    // Validate before recording
-    const validated = TaskRecordSchema.parse(task);
-
-    const taskPath = path.join(this.tasksPath, `${task.id}.json`);
-    await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
-  }
-
-  /**
-   * Write a task record to tasks/ folder WITHOUT committing to git.
-   * Useful for worker tasks that should be batched into a single commit later.
-   */
-  public async writeTask(task: TaskRecord): Promise<void> {
-    // Validate before recording
-    const validated = TaskRecordSchema.parse(task);
-
-    const taskPath = path.join(this.tasksPath, `${task.id}.json`);
-    await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
-  }
-
-  /**
-   * Read a task by ID
-   */
-  public async readTask(taskId: string): Promise<TaskRecord | null> {
-    const taskPath = path.join(this.tasksPath, `${taskId}.json`);
-
-    try {
-      const content = await fs.readFile(taskPath, 'utf-8');
-      const data = JSON.parse(content) as unknown;
-      return TaskRecordSchema.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Read all tasks
    */
   public async readAllTasks(): Promise<TaskRecord[]> {
@@ -294,15 +201,11 @@ export class DotFolderManager {
   }
 
   /**
-   * Create exploration directory structure
-   * Creates:
-   * - .openbridge/exploration/
-   * - .openbridge/exploration/dirs/
+   * No-op: exploration directories are no longer created on disk.
+   * Exploration state is stored in the SQLite DB via MemoryManager.
+   * @deprecated OB-813 — exploration subdirs removed; DB is the primary store.
    */
-  public async createExplorationDir(): Promise<void> {
-    await fs.mkdir(this.explorationPath, { recursive: true });
-    await fs.mkdir(this.explorationDirsPath, { recursive: true });
-  }
+  public async createExplorationDir(): Promise<void> {}
 
   /**
    * Read exploration state from exploration-state.json
@@ -326,6 +229,7 @@ export class DotFolderManager {
     // Validate before writing
     const validated = ExplorationStateSchema.parse(state);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const statePath = path.join(this.explorationPath, 'exploration-state.json');
     await fs.writeFile(statePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -352,6 +256,7 @@ export class DotFolderManager {
     // Validate before writing
     const validated = StructureScanSchema.parse(scan);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const scanPath = path.join(this.explorationPath, 'structure-scan.json');
     await fs.writeFile(scanPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -378,6 +283,7 @@ export class DotFolderManager {
     // Validate before writing
     const validated = ClassificationSchema.parse(classification);
 
+    await fs.mkdir(this.explorationPath, { recursive: true });
     const classificationPath = path.join(this.explorationPath, 'classification.json');
     await fs.writeFile(classificationPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -404,6 +310,7 @@ export class DotFolderManager {
     // Validate before writing
     const validated = DirectoryDiveResultSchema.parse(dive);
 
+    await fs.mkdir(this.explorationDirsPath, { recursive: true });
     const divePath = path.join(this.explorationDirsPath, `${dirName}.json`);
     await fs.writeFile(divePath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -614,19 +521,6 @@ export class DotFolderManager {
   }
 
   /**
-   * Read a specific prompt template content from .openbridge/prompts/<filename>
-   */
-  public async readPromptTemplate(filename: string): Promise<string | null> {
-    const promptPath = path.join(this.promptsPath, filename);
-
-    try {
-      return await fs.readFile(promptPath, 'utf-8');
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Write a prompt template file to .openbridge/prompts/<filename>
    * Also updates the manifest with metadata.
    */
@@ -636,15 +530,11 @@ export class DotFolderManager {
     metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>,
   ): Promise<void> {
     await fs.mkdir(this.promptsPath, { recursive: true });
-
-    // Write the prompt file
     const promptPath = path.join(this.promptsPath, filename);
     await fs.writeFile(promptPath, content, 'utf-8');
 
-    // Update manifest
     const manifest = await this.readPromptManifest();
     const now = new Date().toISOString();
-
     const existingPrompt = manifest?.prompts[metadata.id];
     const promptTemplate: PromptTemplate = {
       ...metadata,
@@ -653,22 +543,27 @@ export class DotFolderManager {
       updatedAt: now,
       lastUsedAt: existingPrompt?.lastUsedAt,
     };
-
     const newManifest: PromptManifest = manifest ?? {
       prompts: {},
       createdAt: now,
       updatedAt: now,
       schemaVersion: '1.0.0',
     };
-
     newManifest.prompts[metadata.id] = promptTemplate;
     newManifest.updatedAt = now;
-
     await this.writePromptManifest(newManifest);
   }
 
   /**
-   * Get a prompt template by ID from the manifest
+   * Read the content of a prompt template file from .openbridge/prompts/<filename>.
+   */
+  public async readPromptTemplate(filename: string): Promise<string> {
+    return fs.readFile(path.join(this.promptsPath, filename), 'utf-8');
+  }
+
+  /**
+   * Get a prompt template by ID from the manifest.
+   * Returns null if the manifest doesn't exist or the prompt ID is not found.
    */
   public async getPromptTemplate(promptId: string): Promise<PromptTemplate | null> {
     const manifest = await this.readPromptManifest();

@@ -868,16 +868,19 @@ describe('ExplorationCoordinator', () => {
       expect(agents?.specialists[0]?.name).toBe('codex');
     });
 
-    it('exploration log entry goes to DB, not flat file (OB-802)', async () => {
+    it('exploration log entry goes to DB, not flat file (OB-802, OB-813)', async () => {
       setupCompleteExploration();
 
       await coordinator.explore();
 
-      // Since no MemoryManager is injected in this test, the else-branch calls
-      // dotFolder.appendLog() which is now a no-op. readLog() should return [].
+      // appendLog() is a no-op (OB-802) — no flat log file is written
       const dotFolder = new DotFolderManager(testWorkspace);
-      const log = await dotFolder.readLog();
-      expect(log).toHaveLength(0);
+      const logPath = dotFolder.getLogPath();
+      const logExists = await import('node:fs/promises')
+        .then((fsm) => fsm.access(logPath))
+        .then(() => true)
+        .catch(() => false);
+      expect(logExists).toBe(false);
     });
   });
 
