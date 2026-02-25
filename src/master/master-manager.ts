@@ -475,6 +475,34 @@ export class MasterManager {
   }
 
   /**
+   * Retrieve relevant past conversation history for the given user message (OB-731).
+   * Returns a formatted "## Previous context:" section or null when no history exists.
+   */
+  private async buildConversationContext(userMessage: string): Promise<string | null> {
+    if (!this.memory) return null;
+    try {
+      const history = await this.memory.findRelevantHistory(userMessage, 5);
+      // Only include user and master turns — skip worker/system noise
+      const relevant = history.filter((e) => e.role === 'user' || e.role === 'master');
+      if (relevant.length === 0) return null;
+
+      const lines = relevant.map((e) => {
+        const dateStr = e.created_at
+          ? new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16)
+          : '';
+        const label = e.role === 'user' ? 'User' : 'Master';
+        const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
+        return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
+      });
+
+      return '## Previous context:\n' + lines.join('\n');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to retrieve conversation history for context injection');
+      return null;
+    }
+  }
+
+  /**
    * Read all task records from memory or DotFolderManager.
    * Memory returns MemoryTaskRecord (different schema) — converted to approximate MasterTaskRecord.
    * When memory is null, returns the full DotFolderManager records.
@@ -2436,6 +2464,9 @@ Work silently — do not output conversational text, just explore and write the 
         return status;
       }
 
+      // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
+      const conversationContext = await this.buildConversationContext(message.content);
+
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
 
@@ -2461,6 +2492,10 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Execute message through the persistent Master session
       const spawnOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+      // Inject relevant conversation history into the Master's system prompt (OB-731)
+      if (conversationContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
+      }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -2475,6 +2510,10 @@ Work silently — do not output conversational text, just explore and write the 
 
         // Retry with the same prompt (planning or raw) and the new session
         const retryOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+        // Re-inject conversation history into retry opts as well
+        if (conversationContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
+        }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
       }
@@ -2691,6 +2730,9 @@ Work silently — do not output conversational text, just explore and write the 
         return;
       }
 
+      // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
+      const streamConversationContext = await this.buildConversationContext(message.content);
+
       // (1) Emit classifying event — AI is analyzing the message
       await streamProgress?.({ type: 'classifying' });
 
@@ -2715,6 +2757,11 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Stream message through the persistent Master session
       const spawnOpts = this.buildMasterSpawnOptions(streamPromptToSend, undefined, streamMaxTurns);
+      // Inject relevant conversation history into the Master's system prompt (OB-731)
+      if (streamConversationContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+      }
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
 
@@ -2746,6 +2793,11 @@ Work silently — do not output conversational text, just explore and write the 
           undefined,
           streamMaxTurns,
         );
+        // Re-inject conversation history into retry opts as well
+        if (streamConversationContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+        }
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);
 
