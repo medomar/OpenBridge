@@ -1983,6 +1983,7 @@ export class MasterManager {
         onProgress: async (event): Promise<void> => {
           await this.emitExplorationProgress(event);
         },
+        memory: this.memory ?? undefined,
       });
 
       const summary = await coordinator.explore();
