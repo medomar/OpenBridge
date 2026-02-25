@@ -1,5 +1,6 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
+import { setQrCode } from '../../core/qr-store.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
@@ -129,17 +130,23 @@ export class WhatsAppConnector implements Connector {
     }) as unknown as WAClient;
 
     this.client.on('qr', (qr: string) => {
-      logger.info('QR code received — scan with WhatsApp');
-      // Render QR code to terminal so the user can scan it
-      import('qrcode-terminal')
-        .then((qrcodeTerminal) => {
-          const mod = qrcodeTerminal.default ?? qrcodeTerminal;
-          mod.generate(qr, { small: true });
-        })
-        .catch(() => {
-          // Fallback: print raw QR string if qrcode-terminal is not available
-          logger.info({ qr }, 'Install qrcode-terminal to display QR in terminal');
-        });
+      setQrCode(qr);
+      if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+        // Headless mode: skip terminal display, log QR as JSON and serve via WebChat /qr endpoint
+        logger.info({ qr }, 'QR code received — scan at http://localhost:3000/qr');
+      } else {
+        // Interactive mode: render QR to terminal
+        logger.info('QR code received — scan with WhatsApp');
+        import('qrcode-terminal')
+          .then((qrcodeTerminal) => {
+            const mod = qrcodeTerminal.default ?? qrcodeTerminal;
+            mod.generate(qr, { small: true });
+          })
+          .catch(() => {
+            // Fallback: print raw QR string if qrcode-terminal is not available
+            logger.info({ qr }, 'Install qrcode-terminal to display QR in terminal');
+          });
+      }
       this.emit('auth', qr);
     });
 
