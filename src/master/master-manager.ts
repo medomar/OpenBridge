@@ -416,11 +416,12 @@ export class MasterManager {
     return this.dotFolder.readMasterSession();
   }
 
-  /** Save master session to DotFolderManager (JSON file) and memory (sessions table). */
+  /** Save master session to memory (sessions table) or DotFolderManager (JSON fallback). */
   private async saveMasterSessionToStore(session: MasterSession): Promise<void> {
-    await this.dotFolder.writeMasterSession(session);
     if (this.memory) {
       await this.memory.upsertSession(masterSessionToSessionRecord(session, this.restartCount));
+    } else {
+      await this.dotFolder.writeMasterSession(session);
     }
   }
 
@@ -889,9 +890,10 @@ export class MasterManager {
     });
 
     try {
-      await this.dotFolder.writeSystemPrompt(promptContent);
       if (this.memory) {
         await this.memory.createPromptVersion('master-system', promptContent);
+      } else {
+        await this.dotFolder.writeSystemPrompt(promptContent);
       }
       logger.info('Seeded Master system prompt');
     } catch (error) {
@@ -1305,9 +1307,10 @@ export class MasterManager {
   private async persistWorkerRegistry(): Promise<void> {
     try {
       const registry = this.workerRegistry.toJSON();
-      await this.dotFolder.writeWorkers(registry);
       if (this.memory) {
         await this.memory.setSystemConfig('workers', JSON.stringify(registry));
+      } else {
+        await this.dotFolder.writeWorkers(registry);
       }
     } catch (error) {
       logger.warn({ error }, 'Failed to persist worker registry to disk');
@@ -1669,13 +1672,11 @@ export class MasterManager {
         schemaVersion: '1.0.0',
       };
 
-      // DB write (primary)
       if (this.memory) {
         await this.memory.setSystemConfig('classifications', JSON.stringify(cache));
+      } else {
+        await this.dotFolder.writeClassifications(cache);
       }
-
-      // JSON write (fallback — keep until OB-813 removes legacy files)
-      await this.dotFolder.writeClassifications(cache);
     } catch (err) {
       logger.warn({ err }, 'Failed to persist classification cache — non-fatal');
     }
@@ -2580,9 +2581,10 @@ Work silently — do not output conversational text, just explore and write the 
    */
   private async writeAgentsRegistry(): Promise<void> {
     const registry = this.createAgentsRegistry();
-    await this.dotFolder.writeAgents(registry);
     if (this.memory) {
       await this.memory.setSystemConfig('agents', JSON.stringify(registry));
+    } else {
+      await this.dotFolder.writeAgents(registry);
     }
   }
 
