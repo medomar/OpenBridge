@@ -114,6 +114,9 @@ export class Bridge {
       }
     }
 
+    // Wire auth service into router for SEND marker whitelist enforcement
+    this.router.setAuth(this.auth);
+
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
       this.router.setMaster(this.master);
