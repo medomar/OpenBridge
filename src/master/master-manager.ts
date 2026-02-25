@@ -8,7 +8,12 @@ import {
 } from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
-import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
+import {
+  AgentRunner,
+  TOOLS_READ_ONLY,
+  TOOLS_CODE_EDIT,
+  DEFAULT_MAX_TURNS_TASK,
+} from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { getRecommendedModel } from '../core/model-selector.js';
@@ -24,6 +29,10 @@ import type {
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ToolProfile } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
+import { SubMasterManager } from './sub-master-manager.js';
+import type { SubMasterRecord } from './sub-master-manager.js';
+import { openDatabase, closeDatabase } from '../memory/database.js';
+import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
@@ -280,6 +289,8 @@ export class MasterManager {
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
   readonly memory: MemoryManager | null;
+  /** Sub-master manager — null when no root DB is available (OB-755) */
+  private subMasterManager: SubMasterManager | null = null;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -327,6 +338,19 @@ export class MasterManager {
     this.agentRunner = new AgentRunner();
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
+
+    // Initialise SubMasterManager when root DB is available (OB-755)
+    if (this.memory) {
+      const db = this.memory.getDb();
+      if (db) {
+        this.subMasterManager = new SubMasterManager(
+          db,
+          this.workspacePath,
+          this.agentRunner,
+          this.masterTool,
+        );
+      }
+    }
 
     logger.info(
       {
@@ -2636,6 +2660,47 @@ Work silently — do not output conversational text, just explore and write the 
         await progress?.({ type: 'planning' });
       }
 
+      // Check if task targets a specific sub-master's scope (OB-755)
+      // For non-trivial tasks, detect file-path mentions that belong to a sub-project
+      // and route directly to that sub-master's context instead of the root Master.
+      if (taskClass !== 'quick-answer' && this.subMasterManager) {
+        const allSubMasters = await this.subMasterManager.listSubMasters();
+        const activeSubMasters = allSubMasters.filter((sm) => sm.status === 'active');
+        if (activeSubMasters.length > 0) {
+          const routing = this.detectSubMasterRouting(message.content, activeSubMasters);
+          if (routing) {
+            logger.info(
+              { type: routing.type, count: routing.subMasters.length },
+              'Routing task to sub-master(s)',
+            );
+            await progress?.({ type: 'spawning', workerCount: routing.subMasters.length });
+
+            const subMasterResponse = await this.handleSubMasterDelegation(
+              routing,
+              message.content,
+              progress,
+            );
+
+            task.status = 'completed';
+            task.result = subMasterResponse;
+            task.completedAt = new Date().toISOString();
+            task.durationMs =
+              new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
+            await this.recordTaskToStore(task);
+            await this.recordConversationMessage(sessionId, 'master', subMasterResponse);
+            void this.recordClassificationFeedback(
+              this.normalizeForCache(message.content),
+              true,
+              false,
+            );
+            this.onTaskCompleted();
+            this.state = 'ready';
+            await progress?.({ type: 'complete' });
+            return subMasterResponse;
+          }
+        }
+      }
+
       // Execute message through the persistent Master session
       const spawnOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
       // Inject relevant conversation history into the Master's system prompt (OB-731)
@@ -4251,5 +4316,169 @@ ${currentContent}
       specialists,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sub-master routing helpers (OB-755)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Detect which active sub-masters (if any) are relevant for the given message content.
+   *
+   * Scans the message text for path-like references that start with a sub-master's
+   * relative path (e.g. "backend/", "frontend/"). Returns routing info when at
+   * least one sub-master is matched.
+   *
+   * Examples of matched patterns:
+   *   "Update backend/src/auth.ts"   → matches sub-master with path "backend"
+   *   "Fix the frontend/app/index"   → matches sub-master with path "frontend"
+   *   "backend and frontend changes" → cross-cutting (matches both)
+   *
+   * Returns null when no sub-master scope is detected.
+   */
+  private detectSubMasterRouting(
+    content: string,
+    activeSubMasters: SubMasterRecord[],
+  ): { type: 'single' | 'cross-cutting'; subMasters: SubMasterRecord[] } | null {
+    const normalizedContent = content.toLowerCase();
+    const matched: SubMasterRecord[] = [];
+
+    for (const subMaster of activeSubMasters) {
+      // subMaster.path is a relative path like "backend" or "packages/api"
+      const subPath = subMaster.path.toLowerCase();
+      // Match references like "backend/", "./backend", or standalone "backend" at word boundary
+      const hasPathRef =
+        normalizedContent.includes(`${subPath}/`) ||
+        normalizedContent.includes(`./${subPath}`) ||
+        new RegExp(`\\b${subPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(
+          normalizedContent,
+        );
+      if (hasPathRef) {
+        matched.push(subMaster);
+      }
+    }
+
+    if (matched.length === 0) return null;
+
+    return {
+      type: matched.length === 1 ? 'single' : 'cross-cutting',
+      subMasters: matched,
+    };
+  }
+
+  /**
+   * Delegate a task to a single sub-master.
+   *
+   * Opens the sub-master's DB, builds a context briefing from its exploration
+   * data, then spawns a worker scoped to the sub-master's workspace directory.
+   * Falls back gracefully if the sub-master DB doesn't exist yet.
+   */
+  private async delegateToSubMaster(
+    subMaster: SubMasterRecord,
+    taskContent: string,
+  ): Promise<string> {
+    const subMasterAbsPath = path.join(this.workspacePath, subMaster.path);
+    const subMasterDbPath = path.join(subMasterAbsPath, '.openbridge', 'openbridge.db');
+
+    let briefingContext = '';
+    let subDb = null;
+    try {
+      subDb = openDatabase(subMasterDbPath);
+      const briefing = await buildBriefing(subDb, taskContent, undefined, this.agentRunner);
+      briefingContext = briefing;
+      logger.info(
+        { subMasterPath: subMaster.path, briefingLength: briefing.length },
+        'Built sub-master briefing',
+      );
+    } catch (err) {
+      // Sub-master DB may not exist yet (exploration still in progress or stale).
+      // Fall through and spawn the worker without briefing context.
+      logger.warn(
+        { error: err, subMasterPath: subMaster.path },
+        'Could not read sub-master briefing — proceeding without context',
+      );
+    } finally {
+      if (subDb) {
+        closeDatabase(subDb);
+      }
+    }
+
+    const prompt = briefingContext
+      ? `${briefingContext}\n\n## Task\n\n${taskContent}`
+      : taskContent;
+
+    const result = await this.agentRunner.spawn({
+      prompt,
+      workspacePath: subMasterAbsPath,
+      model: 'sonnet',
+      allowedTools: [...TOOLS_CODE_EDIT],
+      maxTurns: DEFAULT_MAX_TURNS_TASK,
+    });
+
+    if (result.exitCode !== 0) {
+      logger.warn(
+        { subMasterPath: subMaster.path, exitCode: result.exitCode },
+        'Sub-master worker exited with non-zero code',
+      );
+    }
+
+    return (
+      result.stdout.trim() ||
+      `Sub-master task for ${subMaster.name} completed with exit code ${result.exitCode}.`
+    );
+  }
+
+  /**
+   * Orchestrate delegation to one or more sub-masters.
+   *
+   * Single sub-master: delegate directly and return its response.
+   * Cross-cutting (multiple sub-masters): spawn one worker per affected
+   * sub-master concurrently, then collect and combine their results into
+   * a unified response string for the Master to relay to the user.
+   */
+  private async handleSubMasterDelegation(
+    routing: { type: 'single' | 'cross-cutting'; subMasters: SubMasterRecord[] },
+    taskContent: string,
+    progress?: ProgressReporter,
+  ): Promise<string> {
+    if (routing.type === 'single') {
+      const [subMaster] = routing.subMasters;
+      logger.info({ subMasterPath: subMaster!.path }, 'Delegating task to single sub-master');
+      const result = await this.delegateToSubMaster(subMaster!, taskContent);
+      await progress?.({ type: 'worker-progress', completed: 1, total: 1 });
+      return result;
+    }
+
+    // Cross-cutting: decompose into per-sub-master sub-tasks and run concurrently
+    logger.info(
+      { count: routing.subMasters.length, paths: routing.subMasters.map((s) => s.path) },
+      'Delegating cross-cutting task to multiple sub-masters',
+    );
+
+    let completedCount = 0;
+    const total = routing.subMasters.length;
+
+    const settled = await Promise.allSettled(
+      routing.subMasters.map((subMaster) =>
+        this.delegateToSubMaster(subMaster, taskContent).then(async (res) => {
+          completedCount++;
+          await progress?.({ type: 'worker-progress', completed: completedCount, total });
+          return { name: subMaster.name, path: subMaster.path, result: res };
+        }),
+      ),
+    );
+
+    const parts: string[] = [];
+    for (const outcome of settled) {
+      if (outcome.status === 'fulfilled') {
+        parts.push(`### ${outcome.value.name} (${outcome.value.path})\n\n${outcome.value.result}`);
+      } else {
+        const err =
+          outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        parts.push(`### Sub-master delegation failed\n\n${err}`);
+      }
+    }
+
+    return parts.join('\n\n---\n\n');
   }
 }
