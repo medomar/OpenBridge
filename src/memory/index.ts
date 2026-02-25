@@ -59,6 +59,7 @@ import {
   listAccess as _listAccess,
   removeAccess as _removeAccess,
   resetDailyCosts as _resetDailyCosts,
+  incrementDailyCost as _incrementDailyCost,
   type AccessControlEntry,
 } from './access-store.js';
 
@@ -540,6 +541,16 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _resetDailyCosts(this.db);
     return Promise.resolve();
+  }
+
+  incrementDailyCost(userId: string, channel: string, costUsd: number): void {
+    if (!this.db) return;
+    _incrementDailyCost(this.db, userId, channel, costUsd);
+  }
+
+  /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */
+  getDb(): Database.Database | null {
+    return this.db;
   }
 }
 
