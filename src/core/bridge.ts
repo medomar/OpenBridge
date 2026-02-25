@@ -54,6 +54,7 @@ export class Bridge {
   private readonly configPath?: string;
   private stopped = false;
   private readonly drainTimeoutMs: number;
+  private agentStatusInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -202,6 +203,13 @@ export class Bridge {
     // Wait for all connectors to finish (success or failure)
     await Promise.allSettled(connectorPromises);
 
+    // Start agent status broadcasting to WebChat dashboard (2s poll — best-effort)
+    if (this.memory) {
+      this.agentStatusInterval = setInterval(() => {
+        void this.broadcastAgentStatusToWebChat();
+      }, 2000);
+    }
+
     // Start health check endpoint
     this.healthServer.setDataProvider(() => this.getHealthStatus());
     await this.healthServer.start();
@@ -292,6 +300,11 @@ export class Bridge {
       }
     }
 
+    if (this.agentStatusInterval) {
+      clearInterval(this.agentStatusInterval);
+      this.agentStatusInterval = null;
+    }
+
     this.configWatcher?.stop();
 
     await this.healthServer.stop();
@@ -324,6 +337,22 @@ export class Bridge {
     this.rateLimiter.updateConfig(newConfig.auth.rateLimit);
 
     logger.info('Configuration hot-reload complete');
+  }
+
+  /** Poll active agent activity and broadcast to any connector that supports it (e.g. WebChat). */
+  private async broadcastAgentStatusToWebChat(): Promise<void> {
+    if (!this.memory) return;
+    try {
+      const agents = await this.memory.getActiveAgents();
+      for (const connector of this.connectors) {
+        const c = connector as { broadcastAgentStatus?: (agents: unknown[]) => void };
+        if (typeof c.broadcastAgentStatus === 'function') {
+          c.broadcastAgentStatus(agents);
+        }
+      }
+    } catch {
+      // Non-fatal — dashboard updates are best-effort
+    }
   }
 
   private getHealthStatus(): HealthStatus {
