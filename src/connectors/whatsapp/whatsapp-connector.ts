@@ -304,6 +304,24 @@ export class WhatsAppConnector implements Connector {
     logger.debug({ recipient: message.recipient, chunks: chunks.length }, 'Message sent');
   }
 
+  async sendProactive(recipient: string, content: string): Promise<void> {
+    if (!this.client || !this.connected) {
+      throw new Error('WhatsApp connector is not connected');
+    }
+
+    // Normalize to WhatsApp chat ID format: digits only + @c.us
+    const digits = recipient.replace(/\D/g, '');
+    const chatId = digits.includes('@') ? recipient : `${digits}@c.us`;
+
+    const formatted = formatMarkdownForWhatsApp(content);
+    const chunks = splitForWhatsApp(formatted);
+    for (const chunk of chunks) {
+      await this.client.sendMessage(chatId, chunk);
+    }
+
+    logger.debug({ recipient: chatId, chunks: chunks.length }, 'Proactive message sent');
+  }
+
   async sendTypingIndicator(chatId: string): Promise<void> {
     if (!this.client || !this.connected) {
       return; // Best-effort — silently skip if not connected

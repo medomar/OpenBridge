@@ -6,6 +6,7 @@ import type { AuditLogger } from './audit-logger.js';
 import type { MetricsCollector } from './metrics.js';
 import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
+import type { AuthService } from './auth.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { createLogger } from './logger.js';
 
@@ -18,6 +19,9 @@ const PROGRESS_MESSAGES = [
   'Almost there — still working...',
 ];
 
+/** Pattern matching [SEND:channel]recipient|content[/SEND] markers in AI output */
+const SEND_MARKER_RE = /\[SEND:([^\]]+)\]([^|]+)\|([^[]*)\[\/SEND\]/g;
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -27,6 +31,7 @@ export class Router {
   private readonly metrics?: MetricsCollector;
   private orchestrator?: AgentOrchestrator;
   private master?: MasterManager;
+  private auth?: AuthService;
 
   constructor(
     defaultProvider: string,
@@ -50,6 +55,11 @@ export class Router {
   setMaster(master: MasterManager): void {
     this.master = master;
     logger.info('Router configured to use Master AI');
+  }
+
+  /** Set the auth service — used to whitelist-check recipients in SEND markers */
+  setAuth(auth: AuthService): void {
+    this.auth = auth;
   }
 
   /** Register an active connector */
@@ -216,11 +226,14 @@ export class Router {
     stopProgress();
     this.metrics?.recordProcessed(Date.now() - startTime);
 
+    // Parse and dispatch [SEND:channel] proactive markers before sending main reply
+    const cleanedContent = await this.processSendMarkers(result.content);
+
     // Send result back
     const response: OutboundMessage = {
       target: message.source,
       recipient: message.sender,
-      content: result.content,
+      content: cleanedContent,
       replyTo: message.id,
       metadata: result.metadata,
     };
@@ -228,6 +241,65 @@ export class Router {
     void this.auditLogger?.logOutbound(response);
 
     logger.info({ messageId: message.id }, 'Message processed and response sent');
+  }
+
+  /**
+   * Parse [SEND:channel]recipient|content[/SEND] markers from AI output,
+   * dispatch proactive messages to whitelisted recipients, and return
+   * the response with markers stripped.
+   */
+  private async processSendMarkers(content: string): Promise<string> {
+    let cleaned = content;
+    const regex = new RegExp(SEND_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const channel = match[1] ?? '';
+      const recipient = match[2] ?? '';
+      const body = match[3] ?? '';
+      const trimmedRecipient = recipient.trim();
+      const trimmedBody = body.trim();
+
+      if (!channel || !trimmedRecipient) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Only allow sending to whitelisted numbers when auth is configured
+      if (this.auth && !this.auth.isAuthorized(trimmedRecipient)) {
+        logger.warn(
+          { channel, recipient: trimmedRecipient },
+          'SEND marker blocked — recipient not in whitelist',
+        );
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      const connector = this.connectors.get(channel);
+      if (!connector) {
+        logger.warn({ channel }, 'SEND marker: connector not found');
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      if (!connector.sendProactive) {
+        logger.warn({ channel }, 'SEND marker: connector does not support sendProactive');
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      try {
+        await connector.sendProactive(trimmedRecipient, trimmedBody);
+        logger.info({ channel, recipient: trimmedRecipient }, 'Proactive SEND dispatched');
+      } catch (err) {
+        logger.warn({ channel, recipient: trimmedRecipient, err }, 'SEND marker dispatch failed');
+      }
+
+      cleaned = cleaned.replace(fullMatch, '');
+    }
+
+    return cleaned.trim();
   }
 
   /** Start sending periodic progress updates, returns a stop function */

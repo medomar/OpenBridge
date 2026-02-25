@@ -40,6 +40,9 @@ export interface Connector {
   /** Send a progress event update to the given chat (best-effort, not all connectors support this) */
   sendProgress?(event: ProgressEvent, chatId: string): Promise<void>;
 
+  /** Send a message proactively to a specific recipient without an inbound trigger (optional) */
+  sendProactive?(recipient: string, content: string): Promise<void>;
+
   /** Register event listeners */
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void;
 
