@@ -192,7 +192,7 @@ describe('DotFolderManager', () => {
       expect(entries).toEqual([]);
     });
 
-    it('should append log entry', async () => {
+    it('appendLog is a no-op — flat-file logging removed (OB-802)', async () => {
       const entry: ExplorationLogEntry = {
         timestamp: new Date().toISOString(),
         level: 'info',
@@ -200,14 +200,15 @@ describe('DotFolderManager', () => {
         data: { foo: 'bar' },
       };
 
-      await manager.appendLog(entry);
+      // appendLog() no longer writes to disk; logging goes to DB via memory.logExploration()
+      await expect(manager.appendLog(entry)).resolves.toBeUndefined();
 
+      // readLog() returns [] because the file is never written
       const entries = await manager.readLog();
-      expect(entries).toHaveLength(1);
-      expect(entries[0]).toEqual(entry);
+      expect(entries).toHaveLength(0);
     });
 
-    it('should append multiple log entries in order', async () => {
+    it('appendLog does not throw for multiple calls (no-op)', async () => {
       const entry1: ExplorationLogEntry = {
         timestamp: new Date().toISOString(),
         level: 'info',
@@ -223,19 +224,19 @@ describe('DotFolderManager', () => {
       await manager.appendLog(entry1);
       await manager.appendLog(entry2);
 
+      // No file is written; readLog() returns empty
       const entries = await manager.readLog();
-      expect(entries).toHaveLength(2);
-      expect(entries[0]?.message).toBe('First entry');
-      expect(entries[1]?.message).toBe('Second entry');
+      expect(entries).toHaveLength(0);
     });
 
-    it('should validate log entry schema before appending', async () => {
+    it('appendLog does not throw for any input (no-op, no validation)', async () => {
       const invalidEntry = {
         message: 'Test',
         // Missing required fields
       } as unknown as ExplorationLogEntry;
 
-      await expect(manager.appendLog(invalidEntry)).rejects.toThrow();
+      // Previously would throw on Zod validation; now it's a no-op
+      await expect(manager.appendLog(invalidEntry)).resolves.toBeUndefined();
     });
 
     it('should handle corrupted log file gracefully', async () => {

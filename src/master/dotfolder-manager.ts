@@ -206,15 +206,12 @@ export class DotFolderManager {
 
   /**
    * Append an entry to exploration.log
+   * @deprecated Flat-file logging removed. Use memory.logExploration() instead.
+   * This method is kept for call-site compatibility during the memory migration.
    */
-  public async appendLog(entry: ExplorationLogEntry): Promise<void> {
-    // Validate before appending
-    const validated = ExplorationLogEntrySchema.parse(entry);
-
-    const logPath = this.getLogPath();
-    const line = JSON.stringify(validated) + '\n';
-
-    await fs.appendFile(logPath, line, 'utf-8');
+  public async appendLog(_entry: ExplorationLogEntry): Promise<void> {
+    // No-op: exploration log is now written to the DB via memory.logExploration().
+    // The flat-file exploration.log is no longer written.
   }
 
   /**

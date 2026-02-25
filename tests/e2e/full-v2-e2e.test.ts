@@ -435,9 +435,7 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     expect(agents.master).toBeDefined();
     expect(agents.master.name).toBe('claude');
 
-    // Verify exploration.log
-    const logPath = join(dotFolderPath, 'exploration.log');
-    await expect(access(logPath)).resolves.toBeUndefined();
+    // exploration.log is no longer written to disk (OB-802): logging goes to DB via memory.logExploration()
 
     // Verify coordinator used spawn() for multi-agent exploration (not stream())
     expect(mockSpawn).toHaveBeenCalled();
