@@ -1,0 +1,67 @@
+# Dependencies — installed fresh inside the image
+node_modules/
+
+# Git history
+.git/
+.github/
+
+# TypeScript build output — rebuilt inside the image
+dist/
+build/
+*.tsbuildinfo
+
+# Test artifacts
+coverage/
+tests/
+benchmarks/
+
+# Logs and runtime data
+logs/
+*.log
+
+# SQLite databases — created at runtime via volume mounts
+*.db
+*.db-wal
+*.db-shm
+
+# WhatsApp session data — mounted as a volume
+.wwebjs_auth/
+.wwebjs_cache/
+
+# OpenBridge runtime state
+.openbridge/
+
+# Config with secrets — passed via ENV vars in Docker
+config.json
+config.local.json
+config.production.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# npm pack artifacts
+*.tgz
+
+# Smoke test directory
+ob-smoke-test/
+
+# Test workspace directories
+test-workspace-*/
+
+# Docs (not needed at runtime)
+docs/
+
+# Scripts (not needed at runtime)
+scripts/
