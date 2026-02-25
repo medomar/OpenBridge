@@ -346,17 +346,14 @@ export class MasterManager {
     this.workerRegistry = new WorkerRegistry();
     this.memory = options.memory ?? null;
 
-    // Initialise SubMasterManager when root DB is available (OB-755)
+    // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
     if (this.memory) {
-      const db = this.memory.getDb();
-      if (db) {
-        this.subMasterManager = new SubMasterManager(
-          db,
-          this.workspacePath,
-          this.agentRunner,
-          this.masterTool,
-        );
-      }
+      this.subMasterManager = new SubMasterManager(
+        this.memory,
+        this.workspacePath,
+        this.agentRunner,
+        this.masterTool,
+      );
     }
 
     logger.info(
