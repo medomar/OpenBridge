@@ -150,6 +150,38 @@ function createSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
+    -- agent_activity: real-time agent/worker status tracking
+    CREATE TABLE IF NOT EXISTS agent_activity (
+      id           TEXT    PRIMARY KEY,
+      type         TEXT    NOT NULL,
+      model        TEXT,
+      profile      TEXT,
+      task_summary TEXT,
+      status       TEXT    NOT NULL,
+      progress_pct INTEGER,
+      parent_id    TEXT,
+      cost_usd     REAL,
+      started_at   TEXT    NOT NULL,
+      updated_at   TEXT    NOT NULL,
+      completed_at TEXT,
+      FOREIGN KEY (parent_id) REFERENCES agent_activity(id)
+    );
+
+    -- exploration_progress: granular exploration tracking
+    CREATE TABLE IF NOT EXISTS exploration_progress (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      exploration_id TEXT    NOT NULL,
+      phase          TEXT    NOT NULL,
+      target         TEXT,
+      status         TEXT    NOT NULL,
+      progress_pct   INTEGER DEFAULT 0,
+      files_processed INTEGER DEFAULT 0,
+      files_total    INTEGER,
+      started_at     TEXT,
+      completed_at   TEXT,
+      FOREIGN KEY (exploration_id) REFERENCES agent_activity(id)
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
@@ -159,5 +191,9 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_context_stale       ON context_chunks(stale);
     CREATE INDEX IF NOT EXISTS idx_learnings_type      ON learnings(task_type);
     CREATE INDEX IF NOT EXISTS idx_prompts_active      ON prompts(name, active);
+    CREATE INDEX IF NOT EXISTS idx_agent_activity_status  ON agent_activity(status);
+    CREATE INDEX IF NOT EXISTS idx_agent_activity_type    ON agent_activity(type);
+    CREATE INDEX IF NOT EXISTS idx_exploration_id         ON exploration_progress(exploration_id);
+    CREATE INDEX IF NOT EXISTS idx_exploration_status     ON exploration_progress(status);
   `);
 }
