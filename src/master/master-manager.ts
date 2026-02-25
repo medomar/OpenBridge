@@ -24,6 +24,7 @@ import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry } from './worker-registry.js';
+import { evolvePrompts } from './prompt-evolver.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -298,6 +299,8 @@ export class MasterManager {
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
   private isSelfImproving = false;
+  /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
+  private completedTaskCount = 0;
   /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
   private workspaceMapSummary: string | null = null;
   /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
@@ -499,6 +502,19 @@ export class MasterManager {
     } catch (err) {
       logger.warn({ err }, 'Failed to retrieve conversation history for context injection');
       return null;
+    }
+  }
+
+  /**
+   * Increment the completed task counter and trigger prompt evolution every 50 tasks (OB-734).
+   * Runs asynchronously in the background — never blocks the caller.
+   */
+  private onTaskCompleted(): void {
+    this.completedTaskCount += 1;
+    if (this.completedTaskCount % 50 === 0 && this.memory) {
+      void evolvePrompts(this.memory, this.agentRunner, this.workspacePath).catch((err) => {
+        logger.warn({ err }, 'Prompt evolution cycle failed');
+      });
     }
   }
 
@@ -2682,6 +2698,9 @@ Work silently — do not output conversational text, just explore and write the 
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
 
+      // Increment completed task counter and trigger prompt evolution every 50 tasks (OB-734)
+      this.onTaskCompleted();
+
       this.state = 'ready';
 
       logger.info(
@@ -3008,6 +3027,9 @@ Work silently — do not output conversational text, just explore and write the 
 
       // Record the Master AI response to conversation history (OB-730)
       await this.recordConversationMessage(streamSessionId, 'master', task.result);
+
+      // Increment completed task counter and trigger prompt evolution every 50 tasks (OB-734)
+      this.onTaskCompleted();
 
       this.state = 'ready';
 
