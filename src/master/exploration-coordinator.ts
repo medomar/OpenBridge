@@ -37,6 +37,9 @@ import {
 } from '../core/agent-runner.js';
 import {
   ExplorationStateSchema,
+  StructureScanSchema,
+  ClassificationSchema,
+  DirectoryDiveResultSchema,
   type ExplorationState,
   type StructureScan,
   type Classification,
@@ -150,6 +153,102 @@ export class ExplorationCoordinator {
     }
     // Migration fallback: read from JSON file once (first run after upgrade)
     return this.dotFolder.readExplorationState();
+  }
+
+  /**
+   * Write structure scan to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeStructureScanToStore(scan: StructureScan): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertStructureScan(scan);
+    } else {
+      await this.dotFolder.writeStructureScan(scan);
+    }
+  }
+
+  /**
+   * Read structure scan from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readStructureScanFromStore(): Promise<StructureScan | null> {
+    if (!this.memory) {
+      return this.dotFolder.readStructureScan();
+    }
+    const raw = await this.memory.getStructureScan();
+    if (raw !== null) {
+      try {
+        return StructureScanSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readStructureScan();
+  }
+
+  /**
+   * Write classification to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeClassificationToStore(classification: Classification): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertClassification(classification);
+    } else {
+      await this.dotFolder.writeClassification(classification);
+    }
+  }
+
+  /**
+   * Read classification from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readClassificationFromStore(): Promise<Classification | null> {
+    if (!this.memory) {
+      return this.dotFolder.readClassification();
+    }
+    const raw = await this.memory.getClassification();
+    if (raw !== null) {
+      try {
+        return ClassificationSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readClassification();
+  }
+
+  /**
+   * Write a directory dive result to the DB (via MemoryManager) if available,
+   * otherwise fall back to the dot-folder JSON file.
+   */
+  private async writeDirectoryDiveToStore(
+    dirName: string,
+    dive: DirectoryDiveResult,
+  ): Promise<void> {
+    if (this.memory) {
+      await this.memory.upsertDirectoryDive(dirName, dive);
+    } else {
+      await this.dotFolder.writeDirectoryDive(dirName, dive);
+    }
+  }
+
+  /**
+   * Read a directory dive result from the DB (via MemoryManager) if available.
+   * Falls back to the dot-folder JSON file for one-time migration.
+   */
+  private async readDirectoryDiveFromStore(dirName: string): Promise<DirectoryDiveResult | null> {
+    if (!this.memory) {
+      return this.dotFolder.readDirectoryDive(dirName);
+    }
+    const raw = await this.memory.getDirectoryDive(dirName);
+    if (raw !== null) {
+      try {
+        return DirectoryDiveResultSchema.parse(JSON.parse(raw));
+      } catch {
+        // Corrupt DB entry — fall through to JSON migration fallback
+      }
+    }
+    return this.dotFolder.readDirectoryDive(dirName);
   }
 
   /**
@@ -369,7 +468,7 @@ export class ExplorationCoordinator {
     logger.info({ staleScopes }, 'Partial re-exploration: found stale scopes');
 
     // Classification is required for the dive prompts (project type + frameworks)
-    const classification = await this.dotFolder.readClassification();
+    const classification = await this.readClassificationFromStore();
     if (!classification) {
       logger.warn('No classification found for partial re-exploration — skipping');
       return;
@@ -463,7 +562,7 @@ export class ExplorationCoordinator {
     parsed.data.scannedAt = new Date().toISOString();
     parsed.data.durationMs = elapsed;
 
-    await this.dotFolder.writeStructureScan(parsed.data);
+    await this.writeStructureScanToStore(parsed.data);
     await this.storeExplorationChunks('.', 'structure', parsed.data);
     state.phases.structure_scan = 'completed';
     await this.writeExplorationState(state);
@@ -488,7 +587,7 @@ export class ExplorationCoordinator {
     await this.writeExplorationState(state);
 
     const phase2RowId = await this.insertPhaseRow('classification');
-    const structureScan = await this.dotFolder.readStructureScan();
+    const structureScan = await this.readStructureScanFromStore();
     if (!structureScan) {
       await this.failPhaseRow(phase2RowId);
       throw new Error('Structure scan result not found (Phase 1 incomplete)');
@@ -526,7 +625,7 @@ export class ExplorationCoordinator {
     parsed.data.classifiedAt = new Date().toISOString();
     parsed.data.durationMs = elapsed;
 
-    await this.dotFolder.writeClassification(parsed.data);
+    await this.writeClassificationToStore(parsed.data);
     await this.storeExplorationChunks('.', 'config', parsed.data);
     state.phases.classification = 'completed';
     await this.writeExplorationState(state);
@@ -550,8 +649,8 @@ export class ExplorationCoordinator {
     state.phases.directory_dives = 'in_progress';
     await this.writeExplorationState(state);
 
-    const structureScan = await this.dotFolder.readStructureScan();
-    const classification = await this.dotFolder.readClassification();
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
 
     if (!structureScan || !classification) {
       throw new Error('Structure scan or classification not found (Phases 1-2 incomplete)');
@@ -748,7 +847,7 @@ export class ExplorationCoordinator {
 
     // Sanitize directory name for filename (replace / with -)
     const safeDirName = dirPath.replace(/\//g, '-');
-    await this.dotFolder.writeDirectoryDive(safeDirName, parsed.data);
+    await this.writeDirectoryDiveToStore(safeDirName, parsed.data);
     await this.storeExplorationChunks(dirPath, 'patterns', parsed.data);
 
     // Mark this directory as completed in exploration_progress
@@ -784,8 +883,8 @@ export class ExplorationCoordinator {
     await this.writeExplorationState(state);
 
     const phase4RowId = await this.insertPhaseRow('assembly');
-    const structureScan = await this.dotFolder.readStructureScan();
-    const classification = await this.dotFolder.readClassification();
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
 
     if (!structureScan || !classification) {
       await this.failPhaseRow(phase4RowId);
@@ -798,7 +897,7 @@ export class ExplorationCoordinator {
 
     for (const dive of completedDives) {
       const safeDirName = dive.path.replace(/\//g, '-');
-      const result = await this.dotFolder.readDirectoryDive(safeDirName);
+      const result = await this.readDirectoryDiveFromStore(safeDirName);
       if (result) {
         diveResults.push(result);
       }
@@ -965,7 +1064,7 @@ export class ExplorationCoordinator {
    */
   private async buildSummary(state: ExplorationState): Promise<ExplorationSummary> {
     const map = await this.dotFolder.readMap();
-    const classification = await this.dotFolder.readClassification();
+    const classification = await this.readClassificationFromStore();
 
     return {
       startedAt: state.startedAt,

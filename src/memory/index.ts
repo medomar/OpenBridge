@@ -609,6 +609,57 @@ export class MemoryManager {
     return this.getSystemConfig('exploration_state');
   }
 
+  /**
+   * Persist the StructureScan result as JSON in system_config.
+   * Replaces dotFolder.writeStructureScan() calls.
+   */
+  upsertStructureScan(scan: unknown): Promise<void> {
+    return this.setSystemConfig('structure_scan', JSON.stringify(scan));
+  }
+
+  /**
+   * Read the persisted StructureScan JSON from system_config.
+   * Returns null if not yet stored.
+   * Replaces dotFolder.readStructureScan() calls.
+   */
+  getStructureScan(): Promise<string | null> {
+    return this.getSystemConfig('structure_scan');
+  }
+
+  /**
+   * Persist the Classification result as JSON in system_config.
+   * Replaces dotFolder.writeClassification() calls.
+   */
+  upsertClassification(classification: unknown): Promise<void> {
+    return this.setSystemConfig('classification', JSON.stringify(classification));
+  }
+
+  /**
+   * Read the persisted Classification JSON from system_config.
+   * Returns null if not yet stored.
+   * Replaces dotFolder.readClassification() calls.
+   */
+  getClassification(): Promise<string | null> {
+    return this.getSystemConfig('classification');
+  }
+
+  /**
+   * Persist a DirectoryDive result as JSON in system_config under key `dir_dive:<dirName>`.
+   * Replaces dotFolder.writeDirectoryDive() calls.
+   */
+  upsertDirectoryDive(dirName: string, dive: unknown): Promise<void> {
+    return this.setSystemConfig(`dir_dive:${dirName}`, JSON.stringify(dive));
+  }
+
+  /**
+   * Read a persisted DirectoryDive result JSON from system_config.
+   * Returns null if not yet stored.
+   * Replaces dotFolder.readDirectoryDive() calls.
+   */
+  getDirectoryDive(dirName: string): Promise<string | null> {
+    return this.getSystemConfig(`dir_dive:${dirName}`);
+  }
+
   /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */
   getDb(): Database.Database | null {
     return this.db;
