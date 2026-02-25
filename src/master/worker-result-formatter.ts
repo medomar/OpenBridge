@@ -23,6 +23,8 @@ export interface WorkerResultMeta {
   profile: string;
   /** The model requested for this worker (e.g., "haiku", "sonnet") */
   model?: string;
+  /** The AI tool used for this worker (e.g., "claude", "codex", "aider") */
+  tool?: string;
   /** Duration of the worker execution in milliseconds */
   durationMs: number;
   /** Whether the worker succeeded */
@@ -41,7 +43,7 @@ export interface WorkerResultMeta {
  *   <output>
  */
 export function formatWorkerResult(meta: WorkerResultMeta, output: string): string {
-  const modelLabel = meta.model ?? 'default';
+  const modelLabel = formatModelLabel(meta.tool, meta.model);
   const durationLabel = formatDuration(meta.durationMs);
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
 
@@ -56,7 +58,7 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
  *   <error details>
  */
 export function formatWorkerError(meta: WorkerResultMeta, error: string): string {
-  const modelLabel = meta.model ?? 'default';
+  const modelLabel = formatModelLabel(meta.tool, meta.model);
   const durationLabel = formatDuration(meta.durationMs);
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
 
@@ -79,7 +81,7 @@ export function buildWorkerFeedbackPrompt(formattedResults: string[]): string {
  */
 export function formatWorkerBatch(
   outcomes: PromiseSettledResult<AgentResult>[],
-  markers: Array<{ profile: string; body: { model?: string } }>,
+  markers: Array<{ profile: string; body: { model?: string; tool?: string } }>,
 ): { formattedResults: string[]; feedbackPrompt: string } {
   const formattedResults: string[] = [];
 
@@ -95,6 +97,7 @@ export function formatWorkerBatch(
         totalWorkers,
         profile: marker.profile,
         model: marker.body.model ?? result.model,
+        tool: marker.body.tool,
         durationMs: result.durationMs,
         success: result.exitCode === 0,
         exitCode: result.exitCode,
@@ -114,6 +117,7 @@ export function formatWorkerBatch(
         totalWorkers,
         profile: marker.profile,
         model: marker.body.model,
+        tool: marker.body.tool,
         durationMs: 0,
         success: false,
         exitCode: -1,
@@ -127,6 +131,16 @@ export function formatWorkerBatch(
     formattedResults,
     feedbackPrompt: buildWorkerFeedbackPrompt(formattedResults),
   };
+}
+
+/**
+ * Format the model label, optionally prefixed with the tool name.
+ * Examples: "haiku", "codex/codex-mini", "aider/gpt-4o-mini"
+ */
+function formatModelLabel(tool?: string, model?: string): string {
+  const modelName = model ?? 'default';
+  if (!tool) return modelName;
+  return `${tool}/${modelName}`;
 }
 
 /**
