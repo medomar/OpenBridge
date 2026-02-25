@@ -293,6 +293,85 @@ export class ExplorationCoordinator {
   }
 
   /**
+   * Re-explore only the directories that have stale chunks in the MemoryManager.
+   *
+   * Called after workspace changes have been detected and the affected scopes
+   * have been marked stale via `memory.markStale(changedScopes)`. This avoids
+   * a full 5-phase re-exploration when only a subset of directories changed.
+   *
+   * Flow:
+   * 1. Query the DB for scopes with stale=1 chunks.
+   * 2. Filter to directory scopes (skip '.' root which belongs to structure/assembly passes).
+   * 3. Run directory dives in parallel batches (reusing executeSingleDirectoryDive).
+   * 4. Delete all stale chunks so the DB reflects only the fresh data.
+   *
+   * Falls back gracefully (logs a warning) if:
+   * - No MemoryManager is configured.
+   * - No classification exists (needed for context in dive prompts).
+   * - Individual directory dives fail (those scopes remain stale until next run).
+   */
+  public async reexploreStaleDirs(): Promise<void> {
+    if (!this.memory) {
+      logger.debug('reexploreStaleDirs: no MemoryManager — skipping');
+      return;
+    }
+
+    const staleScopes = await this.memory.getStaleScopes();
+    if (staleScopes.length === 0) {
+      logger.info('No stale directory scopes — skipping partial re-exploration');
+      return;
+    }
+
+    logger.info({ staleScopes }, 'Partial re-exploration: found stale scopes');
+
+    // Classification is required for the dive prompts (project type + frameworks)
+    const classification = await this.dotFolder.readClassification();
+    if (!classification) {
+      logger.warn('No classification found for partial re-exploration — skipping');
+      return;
+    }
+
+    const context = {
+      projectType: classification.projectType,
+      frameworks: classification.frameworks,
+    };
+
+    // Load (or create) an exploration state so executeSingleDirectoryDive can
+    // update counters (totalCalls, totalAITimeMs) without throwing.
+    let state = await this.dotFolder.readExplorationState();
+    if (!state) {
+      state = this.createInitialState();
+    }
+
+    // Only re-explore real directory scopes; '.' is the root scope handled by
+    // the structure-scan and assembly phases, not directory dives.
+    const dirScopes = staleScopes.filter((s) => s !== '.');
+
+    const batchSize = 3;
+    for (let i = 0; i < dirScopes.length; i += batchSize) {
+      const batch = dirScopes.slice(i, i + batchSize);
+      await Promise.allSettled(
+        batch.map(async (scope) => {
+          try {
+            await this.executeSingleDirectoryDive(scope, context, state);
+            logger.info({ scope }, 'Stale scope successfully re-explored');
+          } catch (err) {
+            logger.warn({ err, scope }, 'Failed to re-explore stale scope — continuing');
+          }
+        }),
+      );
+    }
+
+    // Delete stale chunks now that fresh replacements are stored.
+    try {
+      await this.memory.deleteStaleChunks();
+      logger.info('Stale chunks deleted — incremental chunk refresh complete');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to delete stale chunks after re-exploration');
+    }
+  }
+
+  /**
    * Phase 1: Structure Scan
    * Lists top-level files/dirs, counts files per directory, detects config files
    */
