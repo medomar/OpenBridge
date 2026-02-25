@@ -1,0 +1,92 @@
+version: '3.9'
+
+# OpenBridge — docker-compose
+#
+# Quick start:
+#   OPENBRIDGE_WORKSPACE_PATH=/path/to/project \
+#   OPENBRIDGE_AUTH_WHITELIST="+1234567890" \
+#   docker compose up -d
+#
+# View logs:
+#   docker compose logs -f openbridge
+#
+# Stop:
+#   docker compose down
+
+services:
+  openbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: openbridge:latest
+    container_name: openbridge
+    restart: unless-stopped
+
+    environment:
+      # ── Required ──────────────────────────────────────────────────────────
+      # Path inside the container where your project is mounted (see volumes)
+      OPENBRIDGE_WORKSPACE_PATH: /workspace
+
+      # Comma-separated list of whitelisted phone numbers (WhatsApp) or
+      # usernames (Telegram/Discord). E.g. "+1234567890,+0987654321"
+      OPENBRIDGE_AUTH_WHITELIST: ${OPENBRIDGE_AUTH_WHITELIST:-}
+
+      # ── Optional overrides ────────────────────────────────────────────────
+      OPENBRIDGE_AUTH_PREFIX: ${OPENBRIDGE_AUTH_PREFIX:-/ai}
+      OPENBRIDGE_LOG_LEVEL: ${OPENBRIDGE_LOG_LEVEL:-info}
+      OPENBRIDGE_HEADLESS: 'true'
+      NODE_ENV: production
+
+      # ── Channel tokens (set these for Telegram / Discord) ─────────────────
+      # These are read by connectors; set via .env file or shell env
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+
+    volumes:
+      # Mount your target project (read-write — AI will modify files)
+      - ${OPENBRIDGE_WORKSPACE_PATH:-/tmp/workspace}:/workspace
+
+      # Persist WhatsApp session so you only scan QR once
+      - openbridge-whatsapp:/app/.wwebjs_auth
+      - openbridge-whatsapp-cache:/app/.wwebjs_cache
+
+      # Persist logs
+      - openbridge-logs:/app/logs
+
+    ports:
+      # WebChat UI + health/metrics endpoints
+      - '${OPENBRIDGE_PORT:-3000}:3000'
+
+    # Health check uses the /health endpoint added in OB-764
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Optional: Chromium service for WhatsApp Web ──────────────────────────
+  # Uncomment if you want to run Chrome in a separate container.
+  # whatsapp-web.js can connect to a remote Chromium via PUPPETEER_WS_ENDPOINT.
+  #
+  # chromium:
+  #   image: browserless/chrome:latest
+  #   container_name: openbridge-chromium
+  #   restart: unless-stopped
+  #   environment:
+  #     - MAX_CONCURRENT_SESSIONS=1
+  #     - CONNECTION_TIMEOUT=60000
+  #   ports:
+  #     - "3001:3000"
+
+volumes:
+  openbridge-whatsapp:
+  openbridge-whatsapp-cache:
+  openbridge-logs:
