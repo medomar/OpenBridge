@@ -5,6 +5,8 @@ import { AppConfigSchema, V2ConfigSchema } from '../types/config.js';
 import type { AppConfig, V2Config } from '../types/config.js';
 import { createLogger } from './logger.js';
 
+const SUPPORTED_LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
+
 const logger = createLogger('config');
 
 export function expandTilde(filePath: string): string {
@@ -109,17 +111,156 @@ export function injectDevConnectors(config: AppConfig): void {
   logger.info('Dev mode: WebChat connector auto-injected (localhost:3000)');
 }
 
+/**
+ * Apply environment variable overrides to a parsed V2Config.
+ * ENV vars take precedence over values in config.json.
+ *
+ * Supported variables:
+ *   OPENBRIDGE_WORKSPACE_PATH  — overrides workspacePath
+ *   OPENBRIDGE_CHANNELS        — JSON array string, overrides channels
+ *   OPENBRIDGE_AUTH_WHITELIST  — comma-separated phone numbers, overrides auth.whitelist
+ *   OPENBRIDGE_AUTH_PREFIX     — overrides auth.prefix
+ *   OPENBRIDGE_LOG_LEVEL       — overrides logLevel
+ */
+export function applyEnvOverrides(v2Config: V2Config): V2Config {
+  const overridden: V2Config = { ...v2Config, auth: { ...v2Config.auth } };
+
+  if (process.env['OPENBRIDGE_WORKSPACE_PATH']) {
+    overridden.workspacePath = process.env['OPENBRIDGE_WORKSPACE_PATH'];
+  }
+
+  if (process.env['OPENBRIDGE_CHANNELS']) {
+    try {
+      overridden.channels = JSON.parse(process.env['OPENBRIDGE_CHANNELS']) as V2Config['channels'];
+    } catch {
+      throw new Error(
+        'OPENBRIDGE_CHANNELS must be a valid JSON array, e.g.: \'[{"type":"console","enabled":true}]\'',
+      );
+    }
+  }
+
+  if (process.env['OPENBRIDGE_AUTH_WHITELIST']) {
+    overridden.auth.whitelist = process.env['OPENBRIDGE_AUTH_WHITELIST']
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (process.env['OPENBRIDGE_AUTH_PREFIX']) {
+    overridden.auth.prefix = process.env['OPENBRIDGE_AUTH_PREFIX'];
+  }
+
+  if (process.env['OPENBRIDGE_LOG_LEVEL']) {
+    const level = process.env['OPENBRIDGE_LOG_LEVEL'];
+    if (!SUPPORTED_LOG_LEVELS.includes(level as (typeof SUPPORTED_LOG_LEVELS)[number])) {
+      throw new Error(
+        `OPENBRIDGE_LOG_LEVEL must be one of: ${SUPPORTED_LOG_LEVELS.join(', ')}. Got: "${level}"`,
+      );
+    }
+    overridden.logLevel = level as V2Config['logLevel'];
+  }
+
+  return overridden;
+}
+
+/**
+ * Build a complete V2Config from environment variables alone (no config.json required).
+ * Throws a descriptive error if required variables are missing.
+ */
+export function buildV2ConfigFromEnv(): V2Config {
+  const workspacePath = process.env['OPENBRIDGE_WORKSPACE_PATH'];
+  const whitelistRaw = process.env['OPENBRIDGE_AUTH_WHITELIST'];
+
+  const missing: string[] = [];
+  if (!workspacePath) missing.push('OPENBRIDGE_WORKSPACE_PATH');
+  if (!whitelistRaw) missing.push('OPENBRIDGE_AUTH_WHITELIST');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `No config.json found and required environment variables are not set: ${missing.join(', ')}.\n` +
+        'Either create a config.json (run "npx openbridge init") or set:\n' +
+        '  OPENBRIDGE_WORKSPACE_PATH=/absolute/path/to/your/project\n' +
+        '  OPENBRIDGE_AUTH_WHITELIST=+1234567890,+0987654321\n' +
+        '  OPENBRIDGE_CHANNELS=\'[{"type":"console","enabled":true}]\'  # optional, defaults to console\n' +
+        '  OPENBRIDGE_AUTH_PREFIX=/ai   # optional\n' +
+        '  OPENBRIDGE_LOG_LEVEL=info    # optional',
+    );
+  }
+
+  let channels: V2Config['channels'];
+  const channelsRaw = process.env['OPENBRIDGE_CHANNELS'];
+  if (channelsRaw) {
+    try {
+      channels = JSON.parse(channelsRaw) as V2Config['channels'];
+    } catch {
+      throw new Error(
+        'OPENBRIDGE_CHANNELS must be a valid JSON array, e.g.: \'[{"type":"console","enabled":true}]\'',
+      );
+    }
+  } else {
+    channels = [{ type: 'console', enabled: true }];
+  }
+
+  const whitelist = (whitelistRaw as string)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const result: Record<string, unknown> = {
+    workspacePath,
+    channels,
+    auth: {
+      whitelist,
+      prefix: process.env['OPENBRIDGE_AUTH_PREFIX'] ?? '/ai',
+    },
+  };
+
+  if (process.env['OPENBRIDGE_LOG_LEVEL']) {
+    const level = process.env['OPENBRIDGE_LOG_LEVEL'];
+    if (!SUPPORTED_LOG_LEVELS.includes(level as (typeof SUPPORTED_LOG_LEVELS)[number])) {
+      throw new Error(
+        `OPENBRIDGE_LOG_LEVEL must be one of: ${SUPPORTED_LOG_LEVELS.join(', ')}. Got: "${level}"`,
+      );
+    }
+    result['logLevel'] = level;
+  }
+
+  return V2ConfigSchema.parse(result);
+}
+
 export async function loadConfig(configPath?: string): Promise<AppConfig> {
   const absolutePath = resolveConfigPath(configPath);
 
   logger.info({ path: absolutePath }, 'Loading configuration');
 
-  const raw = await readFile(absolutePath, 'utf-8');
+  let raw: string;
+  try {
+    raw = await readFile(absolutePath, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      logger.info('No config.json found — loading configuration from environment variables');
+      const v2Config = buildV2ConfigFromEnv();
+      const internalConfig = convertV2ToInternal(v2Config);
+      logger.info(
+        {
+          workspacePath: v2Config.workspacePath,
+          channels: v2Config.channels.length,
+          whitelist: v2Config.auth.whitelist.length,
+          source: 'env',
+        },
+        'Configuration loaded from environment variables',
+      );
+      return internalConfig;
+    }
+    throw err;
+  }
+
   const parsed: unknown = JSON.parse(raw);
 
   if (isV2Config(parsed)) {
     logger.info('Detected V2 config format');
-    const v2Config = V2ConfigSchema.parse(parsed);
+    let v2Config = V2ConfigSchema.parse(parsed);
+    v2Config = applyEnvOverrides(v2Config);
     const internalConfig = convertV2ToInternal(v2Config);
 
     logger.info(
