@@ -697,11 +697,18 @@ export class Router {
       }
     }
 
-    // Cost summary
-    const totalCost = agents.reduce((sum, a) => sum + (a.cost_usd ?? 0), 0);
+    // Cost summary — use getDailyCost to include all completed workers today (OB-746)
+    let dailyCost = 0;
+    try {
+      dailyCost = await this.memory.getDailyCost();
+    } catch (costErr) {
+      logger.warn({ costErr }, 'handleStatusCommand: failed to query daily cost');
+      // Fall back to summing active agents' costs
+      dailyCost = agents.reduce((sum, a) => sum + (a.cost_usd ?? 0), 0);
+    }
     const workerCount = agents.filter((a) => a.type === 'worker').length;
     lines.push(
-      `\nCost: $${totalCost.toFixed(4)} today | ${workerCount} worker${workerCount !== 1 ? 's' : ''} spawned`,
+      `\nCost: $${dailyCost.toFixed(4)} today | ${workerCount} worker${workerCount !== 1 ? 's' : ''} spawned`,
     );
 
     await connector.sendMessage({

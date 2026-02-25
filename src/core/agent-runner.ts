@@ -219,6 +219,28 @@ export interface SpawnOptions {
   maxBudgetUsd?: number;
 }
 
+/**
+ * Estimate the cost in USD for a single agent call.
+ * Uses a simple per-call heuristic scaled by output size:
+ *   haiku  = $0.001 base + $0.0001 per KB of output
+ *   sonnet = $0.01  base + $0.001  per KB of output
+ *   opus   = $0.05  base + $0.005  per KB of output
+ * Falls back to sonnet pricing for unknown / undefined models.
+ */
+export function estimateCostUsd(model: string | undefined, outputBytes: number): number {
+  const outputKb = outputBytes / 1024;
+  const modelKey = (model ?? '').toLowerCase();
+
+  if (modelKey.includes('haiku')) {
+    return 0.001 + outputKb * 0.0001;
+  }
+  if (modelKey.includes('opus')) {
+    return 0.05 + outputKb * 0.005;
+  }
+  // Default / sonnet
+  return 0.01 + outputKb * 0.001;
+}
+
 /** Result returned from AgentRunner.spawn() */
 export interface AgentResult {
   stdout: string;
@@ -230,6 +252,8 @@ export interface AgentResult {
   model?: string;
   /** Models that were tried and fell back from due to rate limits, in order */
   modelFallbacks?: string[];
+  /** Estimated cost in USD for this agent run */
+  costUsd?: number;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -728,6 +752,7 @@ export class AgentRunner {
       retryCount,
       model: currentModel,
       modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+      costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
     };
 
     logger.info(
@@ -737,6 +762,7 @@ export class AgentRunner {
         model: result.model ?? 'default',
         retryCount: result.retryCount,
         modelFallbacks: result.modelFallbacks,
+        costUsd: result.costUsd,
       },
       'Agent completed',
     );
@@ -842,6 +868,7 @@ export class AgentRunner {
           retryCount,
           model: currentModel,
           modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+          costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
         };
 
         logger.info(
@@ -851,6 +878,7 @@ export class AgentRunner {
             model: currentModel ?? 'default',
             retryCount,
             modelFallbacks: result.modelFallbacks,
+            costUsd: result.costUsd,
           },
           'Stream completed',
         );

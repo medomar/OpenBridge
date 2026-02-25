@@ -197,6 +197,23 @@ export function updateExplorationProgressById(
   db.prepare(`UPDATE exploration_progress SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
 
+/**
+ * Return the total cost_usd accumulated across all agent_activity rows
+ * whose started_at date matches the given date string (YYYY-MM-DD).
+ * Defaults to today's date (UTC) when no date is provided.
+ */
+export function getDailyCost(db: Database.Database, date?: string): number {
+  const day = date ?? new Date().toISOString().slice(0, 10);
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(cost_usd), 0) AS total
+       FROM agent_activity
+       WHERE date(started_at) = ?`,
+    )
+    .get(day) as { total: number };
+  return row.total;
+}
+
 /** Return all exploration_progress rows for a given exploration_id, ordered by id. */
 export function getExplorationProgressByExplorationId(
   db: Database.Database,
