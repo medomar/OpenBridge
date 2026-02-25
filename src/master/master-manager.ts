@@ -50,7 +50,11 @@ import type {
   ExplorationState,
   WorkspaceAnalysisMarker,
 } from '../types/master.js';
-import { WorkspaceMapSchema, ExplorationStateSchema } from '../types/master.js';
+import {
+  WorkspaceMapSchema,
+  ExplorationStateSchema,
+  AgentsRegistrySchema,
+} from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createLogger } from '../core/logger.js';
@@ -2482,11 +2486,14 @@ Work silently — do not output conversational text, just explore and write the 
   }
 
   /**
-   * Write the agents.json registry based on discovered tools.
+   * Write the agents registry to system_config (DB) and agents.json (fallback).
    */
   private async writeAgentsRegistry(): Promise<void> {
     const registry = this.createAgentsRegistry();
     await this.dotFolder.writeAgents(registry);
+    if (this.memory) {
+      await this.memory.setSystemConfig('agents', JSON.stringify(registry));
+    }
   }
 
   /**
@@ -4351,8 +4358,21 @@ ${currentContent}
       return tool;
     }
 
-    // Check agents.json as fallback
-    const agents = await this.dotFolder.readAgents();
+    // Check agents registry — DB first, JSON fallback
+    let agents = null;
+    if (this.memory) {
+      const raw = await this.memory.getSystemConfig('agents');
+      if (raw) {
+        try {
+          agents = AgentsRegistrySchema.parse(JSON.parse(raw));
+        } catch {
+          // fall through to JSON file
+        }
+      }
+    }
+    if (!agents) {
+      agents = await this.dotFolder.readAgents();
+    }
     if (!agents) {
       return null;
     }

@@ -1018,6 +1018,9 @@ export class ExplorationCoordinator {
     };
 
     await this.dotFolder.writeAgents(agentsRegistry);
+    if (this.memory) {
+      await this.memory.setSystemConfig('agents', JSON.stringify(agentsRegistry));
+    }
 
     // Log entry
     if (this.memory) {
