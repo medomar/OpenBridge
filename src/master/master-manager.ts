@@ -36,7 +36,7 @@ import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
-import { WorkerRegistry } from './worker-registry.js';
+import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
 import type {
   MasterState,
@@ -1223,12 +1223,30 @@ export class MasterManager {
   }
 
   /**
-   * Load the worker registry from .openbridge/workers.json.
+   * Load the worker registry from DB (system_config) or .openbridge/workers.json fallback.
    * Called during start() to restore worker state from previous sessions.
    */
   private async loadWorkerRegistry(): Promise<void> {
     try {
-      const registry = await this.dotFolder.readWorkers();
+      let registry = null;
+
+      // Try DB first
+      if (this.memory) {
+        const raw = await this.memory.getSystemConfig('workers');
+        if (raw) {
+          try {
+            registry = WorkersRegistrySchema.parse(JSON.parse(raw));
+          } catch {
+            // fall through to JSON file
+          }
+        }
+      }
+
+      // Fall back to JSON file
+      if (!registry) {
+        registry = await this.dotFolder.readWorkers();
+      }
+
       if (registry) {
         this.workerRegistry.fromJSON(registry);
         logger.info(
@@ -1242,13 +1260,16 @@ export class MasterManager {
   }
 
   /**
-   * Persist the worker registry to .openbridge/workers.json.
+   * Persist the worker registry to system_config (DB) and .openbridge/workers.json (fallback).
    * Called after worker state changes to maintain cross-restart visibility.
    */
   private async persistWorkerRegistry(): Promise<void> {
     try {
       const registry = this.workerRegistry.toJSON();
       await this.dotFolder.writeWorkers(registry);
+      if (this.memory) {
+        await this.memory.setSystemConfig('workers', JSON.stringify(registry));
+      }
     } catch (error) {
       logger.warn({ error }, 'Failed to persist worker registry to disk');
     }
