@@ -69,6 +69,14 @@ export class ConsoleConnector implements Connector {
   }
 
   async initialize(): Promise<void> {
+    // Headless mode: no stdin available — emit ready immediately with no-op input handling
+    if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+      this.connected = true;
+      logger.info('Console connector ready (headless — stdin disabled)');
+      this.emit('ready');
+      return;
+    }
+
     // Dynamic import to avoid requiring readline at module load
     const { createInterface } = await import('node:readline');
 

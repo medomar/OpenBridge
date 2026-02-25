@@ -5,6 +5,7 @@ import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types
 import { WebChatConfigSchema } from './webchat-config.js';
 import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
+import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 
 const logger = createLogger('webchat');
@@ -393,6 +394,36 @@ export class WebChatConnector implements Connector {
 
     const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = req.url ?? '/';
+
+      // QR code endpoint — serves a scannable QR page in headless mode
+      if (url === '/qr') {
+        const qrData = getQrCode();
+        if (!qrData) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(
+            '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>WhatsApp QR</title>' +
+              '<meta http-equiv="refresh" content="3"></head><body style="font-family:sans-serif;text-align:center;padding:40px">' +
+              '<h2>Waiting for QR code...</h2><p>This page will auto-refresh.</p></body></html>',
+          );
+          return;
+        }
+        const html =
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Scan WhatsApp QR</title>' +
+          '<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>' +
+          '<style>body{font-family:sans-serif;text-align:center;padding:40px;background:#f0f2f5}' +
+          'h2{color:#128c7e}#qr{display:inline-block;padding:16px;background:#fff;border-radius:8px;' +
+          'box-shadow:0 2px 12px rgba(0,0,0,0.12);margin:24px auto}</style></head>' +
+          '<body><h2>Scan with WhatsApp</h2>' +
+          '<p>Open WhatsApp → Linked Devices → Link a Device</p>' +
+          '<div id="qr"></div>' +
+          '<script>new QRCode(document.getElementById("qr"),' +
+          JSON.stringify({ text: qrData, width: 256, height: 256 }) +
+          ');</script></body></html>';
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
       const match = url.match(/^\/download\/([0-9a-f-]+)$/i);
       if (match) {
         const fileId = match[1]!;

@@ -70,11 +70,21 @@ async function startV0Flow(configPath: string): Promise<Bridge> {
   await bridge.start();
 
   const connectorNames = bridge.getActiveConnectorNames();
-  process.stdout.write(
-    `OpenBridge v${OPENBRIDGE_VERSION} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
-  );
-
-  logger.info('OpenBridge (V0) is running. Press Ctrl+C to stop.');
+  if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+    process.stdout.write(
+      JSON.stringify({
+        event: 'ready',
+        version: OPENBRIDGE_VERSION,
+        mode: 'v0',
+        connectors: connectorNames,
+      }) + '\n',
+    );
+  } else {
+    process.stdout.write(
+      `OpenBridge v${OPENBRIDGE_VERSION} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+    );
+    logger.info('OpenBridge (V0) is running. Press Ctrl+C to stop.');
+  }
 
   return bridge;
 }
@@ -190,12 +200,23 @@ async function startV2Flow(configPath: string, v2Config: V2Config): Promise<Brid
   await Promise.all([masterStartPromise, bridge.start()]);
 
   const connectorNames = bridge.getActiveConnectorNames();
-  process.stdout.write(
-    `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
-  );
-
-  logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
-  logger.info('Press Ctrl+C to stop.');
+  if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
+    process.stdout.write(
+      JSON.stringify({
+        event: 'ready',
+        version: OPENBRIDGE_VERSION,
+        mode: 'v2',
+        master: selectedMaster.name,
+        connectors: connectorNames,
+      }) + '\n',
+    );
+  } else {
+    process.stdout.write(
+      `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
+    );
+    logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
+    logger.info('Press Ctrl+C to stop.');
+  }
 
   return bridge;
 }
@@ -223,7 +244,14 @@ async function detectConfigVersion(configPath: string): Promise<'v0' | 'v2'> {
 }
 
 async function main(): Promise<void> {
-  logger.info('OpenBridge starting...');
+  // Detect headless mode: --headless CLI flag or OPENBRIDGE_HEADLESS env var
+  const isHeadless =
+    process.argv.includes('--headless') || process.env['OPENBRIDGE_HEADLESS'] === 'true';
+  if (isHeadless) {
+    process.env['OPENBRIDGE_HEADLESS'] = 'true';
+  }
+
+  logger.info({ headless: isHeadless }, 'OpenBridge starting...');
 
   let bridge: Bridge | null = null;
   let configPath: string | undefined;
