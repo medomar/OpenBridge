@@ -62,6 +62,15 @@ import {
   incrementDailyCost as _incrementDailyCost,
   type AccessControlEntry,
 } from './access-store.js';
+import {
+  registerSubMaster as _registerSubMaster,
+  getSubMaster as _getSubMaster,
+  listSubMasters as _listSubMasters,
+  updateSubMasterStatus as _updateSubMasterStatus,
+  removeSubMaster as _removeSubMaster,
+  type SubMasterEntry,
+  type SubMasterStatus,
+} from './sub-master-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -102,6 +111,7 @@ export type {
   ExplorationProgressUpdate,
 } from './activity-store.js';
 export type { AccessControlEntry, AccessRole } from './access-store.js';
+export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -546,6 +556,38 @@ export class MemoryManager {
   incrementDailyCost(userId: string, channel: string, costUsd: number): void {
     if (!this.db) return;
     _incrementDailyCost(this.db, userId, channel, costUsd);
+  }
+
+  // -------------------------------------------------------------------------
+  // Sub-master registry (sub-master-store.ts — OB-756)
+  // -------------------------------------------------------------------------
+
+  registerSubMaster(entry: SubMasterEntry): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _registerSubMaster(this.db, entry);
+    return Promise.resolve();
+  }
+
+  getSubMaster(id: string): Promise<SubMasterEntry | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSubMaster(this.db, id));
+  }
+
+  listSubMasters(): Promise<SubMasterEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_listSubMasters(this.db));
+  }
+
+  updateSubMasterStatus(id: string, status: SubMasterStatus): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _updateSubMasterStatus(this.db, id, status);
+    return Promise.resolve();
+  }
+
+  removeSubMaster(id: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _removeSubMaster(this.db, id);
+    return Promise.resolve();
   }
 
   /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */
