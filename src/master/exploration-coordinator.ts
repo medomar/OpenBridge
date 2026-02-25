@@ -627,9 +627,6 @@ export class ExplorationCoordinator {
 
     await this.dotFolder.writeAgents(agentsRegistry);
 
-    // Git commit
-    await this.dotFolder.commitChanges('feat(master): complete incremental workspace exploration');
-
     // Log entry
     await this.dotFolder.appendLog({
       timestamp: new Date().toISOString(),

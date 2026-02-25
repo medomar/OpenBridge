@@ -1,7 +1,5 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import type {
   WorkspaceMap,
   AgentsRegistry,
@@ -40,12 +38,9 @@ import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
 import type { WorkersRegistry } from './worker-registry.js';
 import { WorkersRegistrySchema } from './worker-registry.js';
 
-const execAsync = promisify(exec);
-
 /**
  * Manages the .openbridge/ folder inside the target workspace.
  * This folder contains:
- * - .git/ — local git repo tracking Master AI changes
  * - workspace-map.json — auto-generated project understanding
  * - exploration.log — timestamped scan history
  * - agents.json — discovered AI tools + roles
@@ -122,80 +117,6 @@ export class DotFolderManager {
     await fs.mkdir(this.explorationPath, { recursive: true });
     await fs.mkdir(this.explorationDirsPath, { recursive: true });
     await fs.mkdir(this.promptsPath, { recursive: true });
-  }
-
-  /**
-   * Initialize git repository inside .openbridge/
-   * This repo tracks all Master AI changes to the workspace knowledge.
-   */
-  public async initGit(): Promise<void> {
-    const gitPath = path.join(this.dotFolderPath, '.git');
-
-    // Check if git repo already exists
-    try {
-      await fs.access(gitPath);
-      return; // Already initialized
-    } catch {
-      // Not initialized, proceed
-    }
-
-    // Initialize git repo
-    await execAsync('git init', { cwd: this.dotFolderPath });
-
-    // Create .gitignore to avoid tracking unnecessary files
-    const gitignore = `# Ignore node_modules if they somehow end up here
-node_modules/
-
-# Ignore OS files
-.DS_Store
-Thumbs.db
-`;
-    await fs.writeFile(path.join(this.dotFolderPath, '.gitignore'), gitignore, 'utf-8');
-
-    // Initial commit
-    await this.commitChanges('Initial commit: .openbridge folder created');
-  }
-
-  /**
-   * Commit changes to the .openbridge git repo
-   */
-  public async commitChanges(message: string): Promise<void> {
-    try {
-      // Add all changes
-      await execAsync('git add -A', { cwd: this.dotFolderPath });
-
-      // Check if there are changes to commit
-      const { stdout: status } = await execAsync('git status --porcelain', {
-        cwd: this.dotFolderPath,
-      });
-
-      if (!status.trim()) {
-        // No changes to commit
-        return;
-      }
-
-      // Commit with message
-      await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-        cwd: this.dotFolderPath,
-      });
-    } catch (error) {
-      // If git user is not configured, try to set a default
-      if (error instanceof Error && error.message.includes('user.email')) {
-        await execAsync('git config user.email "master@openbridge.local"', {
-          cwd: this.dotFolderPath,
-        });
-        await execAsync('git config user.name "OpenBridge Master AI"', {
-          cwd: this.dotFolderPath,
-        });
-
-        // Retry commit
-        await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, {
-          cwd: this.dotFolderPath,
-        });
-      } else {
-        throw error;
-      }
-    }
   }
 
   /**
@@ -315,7 +236,7 @@ Thumbs.db
   }
 
   /**
-   * Record a task in tasks/ folder and commit to git
+   * Record a task in tasks/ folder
    */
   public async recordTask(task: TaskRecord): Promise<void> {
     // Validate before recording
@@ -323,10 +244,6 @@ Thumbs.db
 
     const taskPath = path.join(this.tasksPath, `${task.id}.json`);
     await fs.writeFile(taskPath, JSON.stringify(validated, null, 2), 'utf-8');
-
-    // Commit the task to git with conventional commit format
-    const commitMessage = `chore(master): record task ${task.id} - ${task.status}`;
-    await this.commitChanges(commitMessage);
   }
 
   /**
@@ -980,14 +897,12 @@ Thumbs.db
 
   /**
    * Initialize .openbridge folder if it doesn't exist
-   * Creates folder structure and initializes git repo
    */
   public async initialize(): Promise<void> {
     const folderExists = await this.exists();
 
     if (!folderExists) {
       await this.createFolder();
-      await this.initGit();
     }
   }
 

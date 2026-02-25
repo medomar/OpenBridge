@@ -1919,11 +1919,6 @@ export class MasterManager {
       await this.writeAnalysisMarkerToStore(newMarker);
       this.mapLastVerifiedAt = newMarker.lastVerifiedAt ?? newMarker.analyzedAt;
 
-      // Commit all .openbridge changes
-      await this.dotFolder.commitChanges(
-        `feat(master): incremental map update (${totalChanged} files changed)`,
-      );
-
       // Reload the map into memory
       await this.loadExplorationSummary();
 
@@ -2125,9 +2120,6 @@ Work silently — do not output conversational text, just explore and write the 
 
     // Write agents.json
     await this.writeAgentsRegistry();
-
-    // Commit exploration results
-    await this.dotFolder.commitChanges('feat(master): monolithic workspace exploration');
 
     // Write analysis marker for incremental change detection on next startup
     const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
@@ -2502,9 +2494,6 @@ Work silently — do not output conversational text, just explore and write the 
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
       await this.recordTaskToStore(task);
-      if (!this.memory) {
-        await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
-      }
 
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
@@ -2807,9 +2796,6 @@ Work silently — do not output conversational text, just explore and write the 
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
 
       await this.recordTaskToStore(task);
-      if (!this.memory) {
-        await this.dotFolder.commitChanges(`Task ${taskId}: ${message.content.slice(0, 50)}`);
-      }
 
       this.state = 'ready';
 
@@ -3101,11 +3087,6 @@ ${currentContent}
       // Reset the prompt's usage stats (fresh start with new version)
       await this.dotFolder.resetPromptStats(prompt.id);
 
-      // Commit the rewrite
-      await this.dotFolder.commitChanges(
-        `feat(master): rewrite ${prompt.id} prompt (low success rate: ${(prompt.successRate ?? 0) * 100}%)`,
-      );
-
       logger.info({ promptId: prompt.id }, 'Successfully rewrote prompt');
     } catch (error) {
       logger.error({ err: error, promptId: prompt.id }, 'Failed to rewrite prompt (non-blocking)');
@@ -3204,11 +3185,6 @@ ${currentContent}
 
       try {
         await this.dotFolder.addProfile(newProfile);
-        if (!this.memory) {
-          await this.dotFolder.commitChanges(
-            `feat(master): create custom profile ${profileId} from learnings (${total} samples, ${(stat.successRate * 100).toFixed(1)}% success)`,
-          );
-        }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');

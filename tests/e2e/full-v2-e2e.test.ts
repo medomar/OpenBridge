@@ -439,10 +439,6 @@ describe('E2E: Full V2 Flow - Discovery, Exploration, Messaging', () => {
     const logPath = join(dotFolderPath, 'exploration.log');
     await expect(access(logPath)).resolves.toBeUndefined();
 
-    // Verify git repository
-    const gitPath = join(dotFolderPath, '.git');
-    await expect(access(gitPath)).resolves.toBeUndefined();
-
     // Verify coordinator used spawn() for multi-agent exploration (not stream())
     expect(mockSpawn).toHaveBeenCalled();
   }, 15000);

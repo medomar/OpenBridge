@@ -848,23 +848,6 @@ describe('ExplorationCoordinator', () => {
       expect(agents?.specialists[0]?.name).toBe('codex');
     });
 
-    it('should commit changes to git', async () => {
-      setupCompleteExploration();
-
-      await coordinator.explore();
-
-      const dotFolder = new DotFolderManager(testWorkspace);
-      const dotFolderPath = dotFolder.getDotFolderPath();
-
-      // Check git repo exists
-      const gitExists = await fs
-        .access(path.join(dotFolderPath, '.git'))
-        .then(() => true)
-        .catch(() => false);
-
-      expect(gitExists).toBe(true);
-    });
-
     it('should write exploration log entry', async () => {
       setupCompleteExploration();
 
