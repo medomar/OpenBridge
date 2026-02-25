@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
@@ -21,6 +22,15 @@ import {
   getActivePrompt as _getActivePrompt,
   recordPromptOutcome as _recordPromptOutcome,
 } from './prompt-store.js';
+import {
+  migrateJsonToSqlite,
+  getWorkspaceState as _getWorkspaceState,
+  updateWorkspaceState as _updateWorkspaceState,
+  getSession as _getSession,
+  upsertSession as _upsertSession,
+  type WorkspaceState,
+  type SessionRecord,
+} from './migration.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -51,26 +61,7 @@ export interface PromptRecord {
   created_at: string;
 }
 
-export interface WorkspaceState {
-  commit_hash?: string;
-  branch?: string;
-  has_git?: boolean;
-  analyzed_at: string;
-  last_verified_at?: string;
-  analysis_type: string;
-  files_changed?: number;
-}
-
-export interface SessionRecord {
-  id: string;
-  type: 'master' | 'exploration';
-  status: 'active' | 'ended' | 'crashed';
-  restart_count?: number;
-  message_count?: number;
-  allowed_tools?: string;
-  created_at: string;
-  last_used_at: string;
-}
+export type { WorkspaceState, SessionRecord } from './migration.js';
 
 // ---------------------------------------------------------------------------
 // MemoryManager
@@ -192,31 +183,39 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Workspace State (implemented by migration.ts / OB-708)
+  // Workspace State (migration.ts — OB-708)
   // -------------------------------------------------------------------------
 
   getWorkspaceState(): Promise<WorkspaceState> {
-    return Promise.reject(NOT_IMPLEMENTED);
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const state = _getWorkspaceState(this.db);
+    if (!state) return Promise.reject(new Error('No workspace state found'));
+    return Promise.resolve(state);
   }
 
-  updateWorkspaceState(_state: WorkspaceState): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
-  }
-
-  // -------------------------------------------------------------------------
-  // Sessions (implemented by migration.ts / OB-708)
-  // -------------------------------------------------------------------------
-
-  getSession(_type: string): Promise<SessionRecord | null> {
-    return Promise.reject(NOT_IMPLEMENTED);
-  }
-
-  upsertSession(_session: SessionRecord): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+  updateWorkspaceState(state: WorkspaceState): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _updateWorkspaceState(this.db, state);
+    return Promise.resolve();
   }
 
   // -------------------------------------------------------------------------
-  // Maintenance (implemented by eviction.ts — OB-709, migration.ts — OB-708)
+  // Sessions (migration.ts — OB-708)
+  // -------------------------------------------------------------------------
+
+  getSession(type: string): Promise<SessionRecord | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSession(this.db, type));
+  }
+
+  upsertSession(session: SessionRecord): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _upsertSession(this.db, session);
+    return Promise.resolve();
+  }
+
+  // -------------------------------------------------------------------------
+  // Maintenance (eviction.ts — OB-709, migration.ts — OB-708)
   // -------------------------------------------------------------------------
 
   evictOldData(): Promise<void> {
@@ -224,7 +223,9 @@ export class MemoryManager {
   }
 
   migrate(): Promise<void> {
-    return Promise.reject(NOT_IMPLEMENTED);
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const dotfolderPath = path.dirname(this.dbPath);
+    return migrateJsonToSqlite(this.db, dotfolderPath);
   }
 }
 
