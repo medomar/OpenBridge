@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('../../src/core/github-publisher.js', () => ({
+  publishToGitHubPages: vi.fn().mockResolvedValue('https://owner.github.io/repo/report.html'),
+}));
 import { Router } from '../../src/core/router.js';
 import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
@@ -7,6 +11,7 @@ import { ProviderError } from '../../src/providers/claude-code/provider-error.js
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MasterManager } from '../../src/master/master-manager.js';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import { publishToGitHubPages } from '../../src/core/github-publisher.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -720,6 +725,107 @@ describe('Router', () => {
         expect(mediaMsgs[0]?.media?.mimeType).toBe(file.mimeType);
         expect(mediaMsgs[0]?.media?.type).toBe(file.mediaType);
       }
+    });
+  });
+
+  describe('SHARE:github-pages marker processing (OB-613)', () => {
+    let workspaceDir: string;
+    let generatedDir: string;
+
+    beforeEach(async () => {
+      workspaceDir = await mkdtemp(join(tmpdir(), 'openbridge-ghpages-test-'));
+      generatedDir = join(workspaceDir, '.openbridge', 'generated');
+      await mkdir(generatedDir, { recursive: true });
+      vi.mocked(publishToGitHubPages).mockClear();
+    });
+
+    it('should call publishToGitHubPages and strip the marker from the response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: '[SHARE:github-pages]report.html[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      await writeFile(join(generatedDir, 'report.html'), '<h1>Report</h1>');
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      expect(publishToGitHubPages).toHaveBeenCalledOnce();
+      const calledPath = vi.mocked(publishToGitHubPages).mock.calls[0]?.[0] ?? '';
+      expect(calledPath).toContain('report.html');
+
+      // Marker must be stripped from the final response text
+      const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
+      const finalReply = textMsgs[textMsgs.length - 1];
+      expect(finalReply?.content).toBe('');
+    });
+
+    it('should strip marker from a response that has surrounding text', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({
+        content: 'Published![SHARE:github-pages]page.html[/SHARE] Done.',
+      });
+      provider.streamMessage = undefined;
+
+      await writeFile(join(generatedDir, 'page.html'), '<h1>Page</h1>');
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
+      const finalReply = textMsgs[textMsgs.length - 1];
+      expect(finalReply?.content).toBe('Published! Done.');
+    });
+
+    it('should block path traversal attempts for github-pages markers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: '[SHARE:github-pages]../../etc/passwd[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      // publishToGitHubPages must NOT be called for path-traversal attempts
+      expect(publishToGitHubPages).not.toHaveBeenCalled();
+    });
+
+    it('should handle publishToGitHubPages failure gracefully', async () => {
+      vi.mocked(publishToGitHubPages).mockRejectedValueOnce(new Error('git push failed'));
+
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: '[SHARE:github-pages]report.html[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      await writeFile(join(generatedDir, 'report.html'), '<h1>Report</h1>');
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      // Should not throw — errors are caught and logged
+      await expect(router.route(createMessage())).resolves.not.toThrow();
+
+      // Marker is still stripped even on failure
+      const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
+      const finalReply = textMsgs[textMsgs.length - 1];
+      expect(finalReply?.content).toBe('');
     });
   });
 });
