@@ -26,6 +26,7 @@ import {
   getPromptStats as _getPromptStats,
   getUnderperformingPrompts as _getUnderperformingPrompts,
   createPromptVersion as _createPromptVersion,
+  getHighEffectivenessPrompts as _getHighEffectivenessPrompts,
 } from './prompt-store.js';
 import {
   migrateJsonToSqlite,
@@ -322,6 +323,12 @@ export class MemoryManager {
   getUnderperformingPrompts(threshold?: number): Promise<PromptRecord[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getUnderperformingPrompts(this.db, threshold));
+  }
+
+  /** Return active prompts at or above effectiveness threshold with minimum usage count. */
+  getHighEffectivenessPrompts(threshold?: number, minUsage?: number): Promise<PromptRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getHighEffectivenessPrompts(this.db, threshold, minUsage));
   }
 
   /** Insert a new version of a named prompt and deactivate all previous versions. */

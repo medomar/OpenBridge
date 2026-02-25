@@ -2,7 +2,10 @@ import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
 import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
-import { generateMasterSystemPrompt } from './master-system-prompt.js';
+import {
+  generateMasterSystemPrompt,
+  formatLearnedPatternsSection,
+} from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
 import { AgentRunner, TOOLS_READ_ONLY, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
@@ -501,6 +504,43 @@ export class MasterManager {
       return '## Previous context:\n' + lines.join('\n');
     } catch (err) {
       logger.warn({ err }, 'Failed to retrieve conversation history for context injection');
+      return null;
+    }
+  }
+
+  /**
+   * Build the "## Learned Patterns" section for injection into the Master system prompt.
+   * Pulls from the learnings table (best model per task type with > 5 data points) and the
+   * prompts table (high-effectiveness prompt templates with > 5 uses). Returns null when
+   * there is insufficient data or when MemoryManager is unavailable (OB-735).
+   */
+  private async buildLearnedPatternsContext(): Promise<string | null> {
+    if (!this.memory) return null;
+    try {
+      const [allLearnings, effectivePrompts] = await Promise.all([
+        this.memory.getLearnedTaskTypes(),
+        this.memory.getHighEffectivenessPrompts(0.7, 5),
+      ]);
+
+      // Only include task types with > 5 total data points
+      const modelLearnings = allLearnings
+        .filter((l) => l.successCount + l.failureCount > 5)
+        .map((l) => ({
+          taskType: l.taskType,
+          bestModel: l.bestModel,
+          successRate: l.successRate,
+          totalTasks: l.successCount + l.failureCount,
+        }));
+
+      const promptPatterns = effectivePrompts.map((p) => ({
+        name: p.name,
+        effectiveness: p.effectiveness,
+        usageCount: p.usage_count,
+      }));
+
+      return formatLearnedPatternsSection({ modelLearnings, effectivePrompts: promptPatterns });
+    } catch (err) {
+      logger.warn({ err }, 'Failed to build learned patterns context');
       return null;
     }
   }
@@ -2549,7 +2589,11 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
-      const conversationContext = await this.buildConversationContext(message.content);
+      // and fetch learned patterns for system prompt enrichment (OB-735)
+      const [conversationContext, learnedPatternsContext] = await Promise.all([
+        this.buildConversationContext(message.content),
+        this.buildLearnedPatternsContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
@@ -2580,6 +2624,10 @@ Work silently — do not output conversational text, just explore and write the 
       if (conversationContext) {
         spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
       }
+      // Inject learned patterns into the Master's system prompt (OB-735)
+      if (learnedPatternsContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
+      }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -2597,6 +2645,10 @@ Work silently — do not output conversational text, just explore and write the 
         // Re-inject conversation history into retry opts as well
         if (conversationContext) {
           retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
+        }
+        // Re-inject learned patterns into retry opts as well
+        if (learnedPatternsContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
         }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
@@ -2818,7 +2870,11 @@ Work silently — do not output conversational text, just explore and write the 
       }
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
-      const streamConversationContext = await this.buildConversationContext(message.content);
+      // and fetch learned patterns for system prompt enrichment (OB-735)
+      const [streamConversationContext, streamLearnedPatternsContext] = await Promise.all([
+        this.buildConversationContext(message.content),
+        this.buildLearnedPatternsContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await streamProgress?.({ type: 'classifying' });
@@ -2848,6 +2904,11 @@ Work silently — do not output conversational text, just explore and write the 
       if (streamConversationContext) {
         spawnOpts.systemPrompt =
           (spawnOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+      }
+      // Inject learned patterns into the Master's system prompt (OB-735)
+      if (streamLearnedPatternsContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
       }
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
@@ -2884,6 +2945,11 @@ Work silently — do not output conversational text, just explore and write the 
         if (streamConversationContext) {
           retryOpts.systemPrompt =
             (retryOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
+        }
+        // Re-inject learned patterns into retry opts as well
+        if (streamLearnedPatternsContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
         }
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);
