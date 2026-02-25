@@ -202,6 +202,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 - **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`full-access\`, or a custom profile
 - **JSON body fields**:
   - \`prompt\` (required): Detailed instructions for the worker
+  - \`tool\` (optional): AI tool for this worker. Available: ${formatToolNames(context.discoveredTools, context.masterToolName)}. Default: \`${context.masterToolName}\`
   - \`model\` (optional): \`${fastModel}\` (fast, mechanical), \`${balancedModel}\` (balanced), \`${powerfulModel}\` (complex reasoning)
   - \`maxTurns\` (optional): Maximum agentic turns (default: 25)
   - \`timeout\` (optional): Timeout in milliseconds
@@ -219,6 +220,11 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 [SPAWN:code-edit]{"prompt":"Add input validation to the createUser function in src/api/users.ts. Validate email format and password length >= 8","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
+**Worker using a specific AI tool:**
+\`\`\`
+[SPAWN:code-edit]{"prompt":"Refactor the auth module to use async/await","tool":"codex","model":"${fastModel}","maxTurns":15}[/SPAWN]
+\`\`\`
+
 **Multiple workers in parallel:**
 \`\`\`
 [SPAWN:read-only]{"prompt":"Analyze the database schema and list all tables with their relationships","model":"${fastModel}","maxTurns":10}[/SPAWN]
@@ -234,7 +240,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
-
+${formatToolSelectionGuidelines(context.discoveredTools, context.masterToolName)}
 ### Legacy DELEGATE Format (Deprecated)
 
 The older [DELEGATE:tool-name] format is still supported but SPAWN is preferred:
@@ -295,6 +301,60 @@ function formatProfiles(customProfiles?: Record<string, ToolProfile>): string {
   return lines.join('\n');
 }
 
+/** Known strengths for each supported CLI tool — used to guide the Master's tool selection */
+const TOOL_STRENGTHS: Record<string, { bestFor: string; note?: string }> = {
+  claude: {
+    bestFor: 'Deep reasoning, complex architecture, multi-file refactors, code review',
+    note: 'Most capable — use for tasks requiring understanding and planning',
+  },
+  codex: {
+    bestFor: 'Quick code edits, simple refactors, mechanical changes, fast iteration',
+    note: 'Fastest for straightforward code changes',
+  },
+  aider: {
+    bestFor: 'Git-aware refactors, multi-file renames, commit-driven workflows',
+    note: 'Strong git integration — auto-commits changes',
+  },
+};
+
+function formatToolNames(tools: DiscoveredTool[], masterToolName: string): string {
+  const names = tools.filter((t) => t.available).map((t) => `\`${t.name}\``);
+  if (names.length === 0) return `\`${masterToolName}\``;
+  return names.join(', ');
+}
+
+function formatToolSelectionGuidelines(
+  tools: DiscoveredTool[],
+  masterToolName: string,
+): string {
+  const availableTools = tools.filter((t) => t.available);
+  // Only show guidelines when multiple tools are available
+  if (availableTools.length <= 1) return '';
+
+  const lines: string[] = [
+    '',
+    '### Tool Selection Guidelines',
+    '',
+    `When multiple AI tools are available, you can route each worker to the best tool for the job using the \`"tool"\` field. If omitted, workers use the Master tool (\`${masterToolName}\`).`,
+    '',
+  ];
+
+  for (const tool of availableTools) {
+    const strengths = TOOL_STRENGTHS[tool.name];
+    if (strengths) {
+      lines.push(`- **${tool.name}**: ${strengths.bestFor}`);
+    }
+  }
+
+  lines.push('');
+  lines.push(
+    '> If the requested tool is unavailable, the worker automatically falls back to the Master tool.',
+  );
+  lines.push('');
+
+  return lines.join('\n');
+}
+
 function formatDiscoveredTools(tools: DiscoveredTool[]): string {
   if (tools.length === 0) {
     return 'No AI tools discovered on this machine.';
@@ -305,7 +365,9 @@ function formatDiscoveredTools(tools: DiscoveredTool[]): string {
     const role = tool.role ?? 'unknown';
     const version = tool.version ?? 'unknown';
     const caps = tool.capabilities?.length ? ` — ${tool.capabilities.join(', ')}` : '';
-    lines.push(`- **${tool.name}** (${role}, v${version})${caps}`);
+    const strengths = TOOL_STRENGTHS[tool.name];
+    const bestFor = strengths ? ` | Best for: ${strengths.bestFor}` : '';
+    lines.push(`- **${tool.name}** (${role}, v${version})${caps}${bestFor}`);
   }
   return lines.join('\n');
 }
