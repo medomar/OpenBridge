@@ -74,6 +74,7 @@ export class Bridge {
       const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
       this.memory = new MemoryManager(dbPath);
       this.fileServer = new FileServer(options.workspacePath);
+      this.router.setWorkspacePath(options.workspacePath);
     }
   }
 

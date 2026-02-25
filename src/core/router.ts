@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
@@ -25,6 +27,38 @@ const SEND_MARKER_RE = /\[SEND:([^\]]+)\]([^|]+)\|([^[]*)\[\/SEND\]/g;
 /** Pattern matching [VOICE]text[/VOICE] markers in AI output */
 const VOICE_MARKER_RE = /\[VOICE\]([\s\S]*?)\[\/VOICE\]/g;
 
+/** Pattern matching [SHARE:channel]/path/to/file[/SHARE] markers in AI output */
+const SHARE_MARKER_RE = /\[SHARE:([^\]]+)\]([^[]*)\[\/SHARE\]/g;
+
+/** Map file extension to MIME type and media category */
+function getMimeType(filename: string): {
+  mimeType: string;
+  mediaType: 'document' | 'image' | 'audio' | 'video';
+} {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const mimeMap: Record<
+    string,
+    { mimeType: string; mediaType: 'document' | 'image' | 'audio' | 'video' }
+  > = {
+    pdf: { mimeType: 'application/pdf', mediaType: 'document' },
+    html: { mimeType: 'text/html', mediaType: 'document' },
+    htm: { mimeType: 'text/html', mediaType: 'document' },
+    txt: { mimeType: 'text/plain', mediaType: 'document' },
+    csv: { mimeType: 'text/csv', mediaType: 'document' },
+    json: { mimeType: 'application/json', mediaType: 'document' },
+    md: { mimeType: 'text/markdown', mediaType: 'document' },
+    png: { mimeType: 'image/png', mediaType: 'image' },
+    jpg: { mimeType: 'image/jpeg', mediaType: 'image' },
+    jpeg: { mimeType: 'image/jpeg', mediaType: 'image' },
+    gif: { mimeType: 'image/gif', mediaType: 'image' },
+    webp: { mimeType: 'image/webp', mediaType: 'image' },
+    mp4: { mimeType: 'video/mp4', mediaType: 'video' },
+    mp3: { mimeType: 'audio/mpeg', mediaType: 'audio' },
+    wav: { mimeType: 'audio/wav', mediaType: 'audio' },
+  };
+  return mimeMap[ext] ?? { mimeType: 'application/octet-stream', mediaType: 'document' };
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -35,6 +69,7 @@ export class Router {
   private orchestrator?: AgentOrchestrator;
   private master?: MasterManager;
   private auth?: AuthService;
+  private workspacePath?: string;
 
   constructor(
     defaultProvider: string,
@@ -63,6 +98,11 @@ export class Router {
   /** Set the auth service — used to whitelist-check recipients in SEND markers */
   setAuth(auth: AuthService): void {
     this.auth = auth;
+  }
+
+  /** Set the workspace path — used to validate file paths in SHARE markers */
+  setWorkspacePath(workspacePath: string): void {
+    this.workspacePath = workspacePath;
   }
 
   /** Register an active connector */
@@ -229,8 +269,16 @@ export class Router {
     stopProgress();
     this.metrics?.recordProcessed(Date.now() - startTime);
 
+    // Parse and dispatch [SHARE:channel] file-sharing markers before sending main reply
+    const afterShare = await this.processShareMarkers(
+      result.content,
+      connector,
+      message.sender,
+      message.id,
+    );
+
     // Parse and dispatch [SEND:channel] proactive markers before sending main reply
-    const afterSend = await this.processSendMarkers(result.content);
+    const afterSend = await this.processSendMarkers(afterShare);
 
     // Parse and dispatch [VOICE] TTS markers before sending main reply
     const cleanedContent = await this.processVoiceMarkers(afterSend, connector, message.sender);
@@ -300,6 +348,87 @@ export class Router {
         logger.info({ channel, recipient: trimmedRecipient }, 'Proactive SEND dispatched');
       } catch (err) {
         logger.warn({ channel, recipient: trimmedRecipient, err }, 'SEND marker dispatch failed');
+      }
+
+      cleaned = cleaned.replace(fullMatch, '');
+    }
+
+    return cleaned.trim();
+  }
+
+  /**
+   * Parse [SHARE:channel]/path/to/file[/SHARE] markers from AI output, read the file,
+   * validate it is under .openbridge/generated/ (security), send it as a media attachment
+   * to the inbound message sender, and return the response with markers stripped.
+   */
+  private async processShareMarkers(
+    content: string,
+    connector: Connector,
+    recipient: string,
+    replyTo?: string,
+  ): Promise<string> {
+    if (!this.workspacePath) return content;
+
+    const generatedDir = path.resolve(path.join(this.workspacePath, '.openbridge', 'generated'));
+
+    let cleaned = content;
+    const regex = new RegExp(SHARE_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const channel = match[1] ?? '';
+      const filePath = (match[2] ?? '').trim();
+
+      if (!channel || !filePath) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Resolve path: if relative, resolve against the generated dir
+      const resolvedPath = path.resolve(
+        path.isAbsolute(filePath) ? filePath : path.join(generatedDir, filePath),
+      );
+
+      // Security: file must be strictly under .openbridge/generated/
+      if (!resolvedPath.startsWith(generatedDir + path.sep)) {
+        logger.warn(
+          { filePath: resolvedPath, generatedDir },
+          'SHARE marker blocked — file not under .openbridge/generated/',
+        );
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Route to the named connector if registered, otherwise the inbound connector
+      const targetConnector = this.connectors.get(channel) ?? connector;
+
+      // Read the file
+      let data: Buffer;
+      try {
+        data = await readFile(resolvedPath);
+      } catch (err) {
+        logger.warn({ filePath: resolvedPath, err }, 'SHARE marker: failed to read file');
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      const filename = path.basename(resolvedPath);
+      const { mimeType, mediaType } = getMimeType(filename);
+
+      const shareMsg: OutboundMessage = {
+        target: targetConnector.name,
+        recipient,
+        content: '',
+        replyTo,
+        media: { type: mediaType, data, mimeType, filename },
+      };
+
+      try {
+        await targetConnector.sendMessage(shareMsg);
+        logger.info({ channel, filePath: resolvedPath, recipient }, 'SHARE dispatched');
+      } catch (err) {
+        logger.warn({ channel, filePath: resolvedPath, err }, 'SHARE marker dispatch failed');
       }
 
       cleaned = cleaned.replace(fullMatch, '');

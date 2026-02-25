@@ -6,6 +6,9 @@ import { MockProvider } from '../helpers/mock-provider.js';
 import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MasterManager } from '../../src/master/master-manager.js';
+import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 function createMessage(): InboundMessage {
   return {
@@ -561,6 +564,162 @@ describe('Router', () => {
 
       expect(connector.sentMessages).toHaveLength(2);
       expect(connector.sentMessages[1]?.content).toContain('temporarily unavailable');
+    });
+  });
+
+  describe('SHARE marker processing (OB-611)', () => {
+    let workspaceDir: string;
+    let generatedDir: string;
+
+    beforeEach(async () => {
+      workspaceDir = await mkdtemp(join(tmpdir(), 'openbridge-share-test-'));
+      generatedDir = join(workspaceDir, '.openbridge', 'generated');
+      await mkdir(generatedDir, { recursive: true });
+    });
+
+    it('should send a file as media attachment and strip the SHARE marker', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: '[SHARE:mock]report.html[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      await writeFile(join(generatedDir, 'report.html'), '<h1>Report</h1>');
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      // ack + media message + final response (empty after strip)
+      const mediaMsgs = connector.sentMessages.filter((m) => m.media !== undefined);
+      expect(mediaMsgs).toHaveLength(1);
+      expect(mediaMsgs[0]?.media?.filename).toBe('report.html');
+      expect(mediaMsgs[0]?.media?.mimeType).toBe('text/html');
+      expect(mediaMsgs[0]?.media?.type).toBe('document');
+      expect(mediaMsgs[0]?.media?.data).toEqual(Buffer.from('<h1>Report</h1>'));
+    });
+
+    it('should strip marker from final response text', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Here is your file: [SHARE:mock]report.pdf[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      await writeFile(join(generatedDir, 'report.pdf'), '%PDF-1.4');
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
+      const finalReply = textMsgs[textMsgs.length - 1];
+      expect(finalReply?.content).toBe('Here is your file:');
+    });
+
+    it('should block files outside .openbridge/generated/ (path traversal)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({
+        content: '[SHARE:mock]../../etc/passwd[/SHARE]',
+      });
+      provider.streamMessage = undefined;
+
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      // No media should be sent for the blocked path
+      const mediaMsgs = connector.sentMessages.filter((m) => m.media !== undefined);
+      expect(mediaMsgs).toHaveLength(0);
+    });
+
+    it('should skip SHARE marker gracefully when file does not exist', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Result: [SHARE:mock]missing.txt[/SHARE]' });
+      provider.streamMessage = undefined;
+
+      router.setWorkspacePath(workspaceDir);
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      // Should not throw
+      await router.route(createMessage());
+
+      const mediaMsgs = connector.sentMessages.filter((m) => m.media !== undefined);
+      expect(mediaMsgs).toHaveLength(0);
+    });
+
+    it('should do nothing when workspacePath is not set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: '[SHARE:mock]report.html[/SHARE] Done' });
+      provider.streamMessage = undefined;
+
+      // workspacePath NOT set — marker is kept in output (passthrough)
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage());
+
+      const mediaMsgs = connector.sentMessages.filter((m) => m.media !== undefined);
+      expect(mediaMsgs).toHaveLength(0);
+    });
+
+    it('should detect MIME type and media type by extension', async () => {
+      const files: Array<{ name: string; content: Buffer; mimeType: string; mediaType: string }> = [
+        {
+          name: 'data.csv',
+          content: Buffer.from('a,b'),
+          mimeType: 'text/csv',
+          mediaType: 'document',
+        },
+        {
+          name: 'photo.png',
+          content: Buffer.from('\x89PNG'),
+          mimeType: 'image/png',
+          mediaType: 'image',
+        },
+        {
+          name: 'clip.mp4',
+          content: Buffer.from('\x00\x00'),
+          mimeType: 'video/mp4',
+          mediaType: 'video',
+        },
+      ];
+
+      for (const file of files) {
+        const router = new Router('mock');
+        const connector = new MockConnector();
+        const provider = new MockProvider();
+        provider.setResponse({ content: `[SHARE:mock]${file.name}[/SHARE]` });
+        provider.streamMessage = undefined;
+
+        await writeFile(join(generatedDir, file.name), file.content);
+        router.setWorkspacePath(workspaceDir);
+        router.addConnector(connector);
+        router.addProvider(provider);
+        await connector.initialize();
+
+        await router.route(createMessage());
+
+        const mediaMsgs = connector.sentMessages.filter((m) => m.media !== undefined);
+        expect(mediaMsgs[0]?.media?.mimeType).toBe(file.mimeType);
+        expect(mediaMsgs[0]?.media?.type).toBe(file.mediaType);
+      }
     });
   });
 });
