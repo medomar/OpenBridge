@@ -1511,6 +1511,23 @@ export class MasterManager {
     }
 
     await this.persistClassificationCache();
+
+    // Persist classification feedback to SQLite learnings table for aggregate learning (OB-732)
+    if (this.memory) {
+      void (async (): Promise<void> => {
+        try {
+          await this.memory!.recordLearning(
+            'classification',
+            entry.result.class,
+            turnBudgetSufficient,
+            0,
+            0,
+          );
+        } catch (err) {
+          logger.warn({ err }, 'Failed to record classification learning to DB — non-fatal');
+        }
+      })();
+    }
   }
 
   /**
@@ -1739,6 +1756,53 @@ export class MasterManager {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
       classificationResult = this.classifyTaskByKeywords(content);
+    }
+
+    // Apply classification learning: if aggregate data shows this class underperforms,
+    // escalate to the best-performing class seen in the learnings table (OB-732)
+    if (this.memory) {
+      try {
+        const learned = await this.memory.getLearnedParams('classification');
+        if (learned) {
+          const classRank: Record<string, number> = {
+            'quick-answer': 0,
+            'tool-use': 1,
+            'complex-task': 2,
+          };
+          const validClasses = new Set(['quick-answer', 'tool-use', 'complex-task']);
+          const currentRank = classRank[classificationResult.class] ?? 0;
+          const learnedRank = classRank[learned.model] ?? 0;
+          if (
+            validClasses.has(learned.model) &&
+            learnedRank > currentRank &&
+            learned.success_rate > 0.5
+          ) {
+            const escalatedClass = learned.model as ClassificationResult['class'];
+            const escalatedMaxTurns =
+              escalatedClass === 'quick-answer'
+                ? MESSAGE_MAX_TURNS_QUICK
+                : escalatedClass === 'tool-use'
+                  ? MESSAGE_MAX_TURNS_TOOL_USE
+                  : MESSAGE_MAX_TURNS_PLANNING;
+            logger.info(
+              {
+                original: classificationResult.class,
+                escalated: escalatedClass,
+                successRate: learned.success_rate,
+                totalTasks: learned.total_tasks,
+              },
+              'Classification escalated based on learning data',
+            );
+            classificationResult = {
+              class: escalatedClass,
+              maxTurns: escalatedMaxTurns,
+              reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
+            };
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to query classification learning — using original result');
+      }
     }
 
     // Store result in cache for future lookups
