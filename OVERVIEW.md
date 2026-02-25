@@ -241,11 +241,9 @@ The self-governing autonomous agent:
 - **`.openbridge/` Folder** — the AI's brain, stored inside your target project:
   ```
   .openbridge/
-  ├── .git/                ← tracks all AI changes
   ├── workspace-map.json   ← auto-generated project understanding
   ├── master-session.json  ← Master session ID for resume across restarts
   ├── profiles.json        ← custom tool profiles created by Master
-  ├── prompts/             ← editable prompt templates
   ├── learnings.json       ← what worked, what didn't, model selection patterns
   ├── exploration/         ← incremental exploration state
   ├── logs/                ← full worker execution logs
@@ -253,6 +251,7 @@ The self-governing autonomous agent:
   ├── workers.json         ← active worker registry
   └── tasks/               ← task history
   ```
+  > **v0.1.0** will replace all JSON files with a single `openbridge.db` (SQLite + FTS5).
 - **Self-improvement** — Master tracks prompt effectiveness, refines strategies, creates custom profiles
 - **Silent by default** — only speaks when the user sends a message
 

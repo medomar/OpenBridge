@@ -1,8 +1,10 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-02-24 | **Current Version:** v0.0.1
+> **Last Updated:** 2026-02-25 | **Current Version:** v0.0.1
 
-This document outlines the vision and planned features for OpenBridge. Features move from **Vision** to **Planned** to **In Progress** to **Released** as they mature.
+This document outlines the vision and planned features for OpenBridge. Features move from **Backlog** to **Planned** to **In Progress** to **Released** as they mature.
+
+Two parallel development tracks exist: **Track A (Memory & Intelligence)** builds the core infrastructure that makes everything smarter. **Track B (Features)** adds user-facing capabilities. Track A is prioritized because it improves every other feature.
 
 ---
 
@@ -30,20 +32,282 @@ Everything that shipped in the first release — 207 tasks across 30 phases.
 
 ---
 
-## Planned — Phase 31: Media & Proactive Messaging
+## Track A: Memory & Intelligence
+
+### Phase 31: Memory Foundation
+
+> **Goal:** Replace all `.openbridge/` flat JSON files with a single SQLite database. This is the foundation — every future feature depends on it.
+>
+> **Milestone:** [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md)
+
+**Why first:** Workers currently run blind (no project context). Learnings are written but never read. Classification cache is unbounded. All of these problems trace back to the storage layer. Fix the foundation, everything above it improves.
+
+| Task                                                                | ID     | Priority | Complexity |
+| ------------------------------------------------------------------- | ------ | :------: | :--------: |
+| Add `better-sqlite3` dependency + TypeScript types                  | OB-700 | 🔴 High  |    Low     |
+| Create `src/memory/database.ts` — DB init, WAL mode, PRAGMA         | OB-701 | 🔴 High  |   Medium   |
+| Create full schema (9 tables + 2 FTS virtual tables + indexes)      | OB-702 | 🔴 High  |   Medium   |
+| Create `src/memory/index.ts` — MemoryManager public API             | OB-703 | 🔴 High  |   Medium   |
+| Create `src/memory/chunk-store.ts` — context chunks CRUD            | OB-704 | 🔴 High  |   Medium   |
+| Create `src/memory/task-store.ts` — tasks + learnings CRUD          | OB-705 | 🔴 High  |   Medium   |
+| Create `src/memory/conversation-store.ts` — message CRUD            | OB-706 | 🔴 High  |   Medium   |
+| Create `src/memory/prompt-store.ts` — versioned prompts             | OB-707 | 🔴 High  |   Medium   |
+| Create `src/memory/migration.ts` — JSON → SQLite one-time migration | OB-708 | 🔴 High  |    High    |
+| Create `src/memory/eviction.ts` — data lifecycle + cleanup          | OB-709 |  🟡 Med  |   Medium   |
+| Integrate MemoryManager into Bridge startup                         | OB-710 | 🔴 High  |   Medium   |
+| Replace DotFolderManager reads/writes with MemoryManager            | OB-711 | 🔴 High  |    High    |
+| Remove `.openbridge/.git` — DB transactions replace git safety      | OB-712 |  🟡 Med  |    Low     |
+| Tests for all memory modules                                        | OB-713 | 🔴 High  |   Medium   |
+
+#### Design Notes — Database Schema
+
+Single file: `.openbridge/openbridge.db` (SQLite, WAL mode)
+
+```sql
+-- 9 tables replace all JSON files:
+context_chunks          -- Workspace knowledge (chunked, ~500 tokens each)
+context_chunks_fts      -- FTS5 virtual table for full-text search
+conversations           -- Every user↔Master message exchange
+conversations_fts       -- FTS5 virtual table for conversation search
+tasks                   -- Execution records (replaces tasks/*.json)
+learnings               -- Aggregated model/task-type performance stats
+prompts                 -- Versioned prompts with effectiveness tracking
+sessions                -- Master session state (replaces master-session.json)
+workspace_state         -- Git change detection (replaces analysis-marker.json)
+exploration_state       -- Exploration resumability (replaces exploration-state.json)
+system_config           -- Key-value store (replaces agents.json, profiles.json)
+```
+
+**What dies (replaced by DB):**
+
+```
+❌ workspace-map.json      → context_chunks table
+❌ agents.json              → system_config table
+❌ exploration.log          → tasks table (type='exploration')
+❌ master-session.json      → sessions table
+❌ exploration-state.json   → exploration_state table
+❌ analysis-marker.json     → workspace_state table
+❌ classifications.json     → learnings table
+❌ learnings.json           → learnings table
+❌ profiles.json            → system_config table
+❌ workers.json             → tasks table (type='worker', status='running')
+❌ prompts/manifest.json    → prompts table
+❌ tasks/*.json             → tasks table
+❌ .openbridge/.git/        → SQLite WAL + transactions
+```
+
+**Eviction policy (configurable):**
+
+```
+memory:
+  retentionDays: 30        # Full conversation history
+  summaryDays: 90          # Summaries only
+  archiveDays: 365         # Delete after this
+  maxDbSizeMb: 500         # Hard cap, triggers aggressive eviction
+```
+
+#### Design Notes — Module Structure
+
+```
+src/memory/
+├── index.ts               ← MemoryManager (public API)
+├── database.ts            ← SQLite init, migrations, WAL mode, PRAGMA
+├── chunk-store.ts         ← context_chunks CRUD + chunking logic
+├── conversation-store.ts  ← conversations CRUD + eviction policy
+├── task-store.ts          ← tasks + learnings CRUD + analytics
+├── prompt-store.ts        ← prompts versioning + effectiveness
+├── retrieval.ts           ← Hybrid search (FTS5 + AI rerank)
+├── worker-briefing.ts     ← Build context packages for workers
+├── migration.ts           ← One-time JSON → SQLite migration
+└── eviction.ts            ← Cleanup old data (30/90 day policy)
+```
+
+---
+
+### Phase 32: Intelligent Retrieval + Worker Briefing
+
+> **Goal:** Make workers smart. Use FTS5 search + AI reranking to give every worker relevant project context, past task history, and learned patterns before it starts.
+>
+> **Milestone:** [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md)
+
+**Why second:** This is the single biggest quality improvement. Workers currently waste 5-10 turns re-discovering project structure. With briefings, they start with full context.
+
+| Task                                                               | ID     | Priority | Complexity |
+| ------------------------------------------------------------------ | ------ | :------: | :--------: |
+| Create `src/memory/retrieval.ts` — hybrid FTS5 search engine       | OB-720 | 🔴 High  |    High    |
+| AI-powered reranking — use device AI for semantic result reranking | OB-721 | 🔴 High  |   Medium   |
+| Create `src/memory/worker-briefing.ts` — context package builder   | OB-722 | 🔴 High  |   Medium   |
+| Integrate briefing into MasterManager.spawnWorker() flow           | OB-723 | 🔴 High  |   Medium   |
+| Adaptive model selection — query learnings for best model per task | OB-724 | 🔴 High  |   Medium   |
+| Exploration chunking — store results as granular ~500-token chunks | OB-725 | 🔴 High  |    High    |
+| Incremental chunk refresh — only re-explore stale scopes           | OB-726 |  🟡 Med  |   Medium   |
+| Tests for retrieval and briefing                                   | OB-727 | 🔴 High  |   Medium   |
+
+#### Design Notes — Hybrid Search (No Embeddings)
+
+```
+Search Strategy (zero new dependencies):
+
+Layer 1: FTS5 (Full-Text Search)
+  → Built into SQLite, sub-millisecond
+  → Handles "auth bug" → finds auth-related chunks
+
+Layer 2: AI-Powered Semantic Reranking (optional)
+  → Take top 20 FTS5 results
+  → 1 quick haiku call: "Rank these by relevance to: '{query}'"
+  → Returns top 5 most relevant
+  → Only triggers for ambiguous queries (>10 results)
+
+Layer 3: Metadata Filtering
+  → Filter by scope (file path), category, recency, success rate
+  → Pure SQL, instant
+```
+
+This approach uses the AI tools already on the machine — no embedding models, no new dependencies, stays true to the project philosophy.
+
+#### Design Notes — Worker Briefing
+
+```
+Before (current):                     After (with briefing):
+Worker gets:                          Worker gets:
+  "Fix the auth bug"                    TASK: Fix the auth bug
+  (knows NOTHING about project)
+                                        ## Project Context
+                                        [3 relevant chunks from DB]
+
+                                        ## What Worked Before
+                                        [2 similar past tasks + outcomes]
+
+                                        ## Guidelines
+                                        - This project uses Vitest, not Jest
+                                        - Zod schemas need .passthrough()
+                                        - Always run typecheck after changes
+```
+
+---
+
+### Phase 35: Conversation Memory + Prompt Evolution
+
+> **Goal:** Give the Master long-term conversation memory and self-improving prompts. Users can reference past conversations. Prompts automatically improve based on measured effectiveness.
+>
+> **Milestone:** [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)
+
+| Task                                                                         | ID     | Priority | Complexity |
+| ---------------------------------------------------------------------------- | ------ | :------: | :--------: |
+| Record all user↔Master messages to conversations table                       | OB-730 | 🔴 High  |   Medium   |
+| Context retrieval — inject relevant past conversations into Master prompt    | OB-731 | 🔴 High  |   Medium   |
+| Classification learning loop — feedback improves future classification       | OB-732 |  🟡 Med  |   Medium   |
+| Prompt effectiveness tracking — measure success rate per prompt version      | OB-733 |  🟡 Med  |    Low     |
+| Prompt evolution — auto-generate improved prompt variations                  | OB-734 |  🟡 Med  |    High    |
+| System prompt enrichment — inject learned patterns into Master system prompt | OB-735 | 🔴 High  |   Medium   |
+| Conversation eviction — 30/90 day policy with auto-summarization             | OB-736 |  🟡 Med  |   Medium   |
+| Tests for conversation memory and prompt evolution                           | OB-737 | 🔴 High  |   Medium   |
+
+#### Design Notes — Conversation Flow
+
+```
+User sends: "do the same thing for payments"
+    ↓
+[Store message] → INSERT INTO conversations
+    ↓
+[FTS5 search history] → find related past conversations
+    ↓
+[Inject context]
+    "Previous relevant context:
+     [Feb 20] You asked to fix auth validation.
+     I modified src/core/auth.ts and added Zod schema...
+
+     Current message: do the same thing for payments"
+    ↓
+[Master responds with full context]
+```
+
+#### Design Notes — Prompt Evolution
+
+```
+Every task completion:
+  → Update prompt usage_count + success_count
+  → Track effectiveness = success_rate weighted by avg_turns
+
+Every 50 tasks:
+  → Query underperforming prompts (effectiveness < 0.7)
+  → Master proposes improved variation
+  → New version starts at 0.5 (neutral), earns its way up
+  → After 20 uses: keep if better, rollback if worse
+```
+
+---
+
+### Phase 36: Agent Dashboard + Exploration Progress
+
+> **Goal:** Give users real-time visibility into every agent, worker, and exploration phase — including which model is running, what it's doing, and how far along it is.
+>
+> **Milestone:** [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)
+
+| Task                                                                         | ID     | Priority | Complexity |
+| ---------------------------------------------------------------------------- | ------ | :------: | :--------: |
+| `agent_activity` table — real-time agent/worker status tracking              | OB-740 | 🔴 High  |   Medium   |
+| `exploration_progress` table — per-phase, per-directory progress             | OB-741 | 🔴 High  |   Medium   |
+| Wire agent lifecycle events — INSERT on spawn, UPDATE on progress/completion | OB-742 | 🔴 High  |   Medium   |
+| "status" command — user queries active agents via any channel                | OB-743 | 🔴 High  |    Low     |
+| WebChat dashboard — live agent activity view with progress bars              | OB-744 |  🟡 Med  |    High    |
+| Exploration progress tracking — parallel directory dives with percentages    | OB-745 | 🔴 High  |   Medium   |
+| Cost tracking — per-agent and per-day cost accumulation                      | OB-746 |  🟡 Med  |   Medium   |
+| Tests for dashboard and exploration progress                                 | OB-747 | 🔴 High  |   Medium   |
+
+#### Design Notes — Agent Activity Monitor
+
+```
+User (WhatsApp): "status"
+    ↓
+Master AI: ACTIVE (claude, opus)
+├── Session: abc-123 | Uptime: 2h 14m
+├── Messages processed: 47
+└── Current: Processing user request
+
+Active Workers:
+┌────────┬────────┬──────────┬────────────┬────────┬───────┐
+│ ID     │ Model  │ Profile  │ Task       │ Status │ Time  │
+├────────┼────────┼──────────┼────────────┼────────┼───────┤
+│ w-001  │ sonnet │ code-edit│ Fix auth   │ ██░░░  │ 45s   │
+│ w-002  │ haiku  │ read-only│ Scan tests │ ████░  │ 30s   │
+│ w-003  │ opus   │ full     │ Write API  │ █░░░░  │ 5s    │
+└────────┴────────┴──────────┴────────────┴────────┴───────┘
+
+Exploration: Phase 3/5 — Directory Dives
+┌──────────────────────────────────────────┐
+│ Overall: [████████████░░░░░░░░] 60%      │
+│ src/core:       [████████████████] DONE  │
+│ src/master:     [████████████████] DONE  │
+│ src/connectors: [████████░░░░░░░░] 40%  │
+│ tests/:         [░░░░░░░░░░░░░░░░] WAIT │
+└──────────────────────────────────────────┘
+
+Cost: $0.42 today | 12 workers spawned | 3 retries
+```
+
+---
+
+## Track B: User-Facing Features
+
+### Phase 33: Media & Proactive Messaging
 
 > **Goal:** Extend OpenBridge from text-only to media-capable, and enable the AI to send messages proactively (not just reply).
+>
+> **Milestone:** [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)
+>
+> **Note:** This track is independent from Track A. Can be developed in parallel after Phase 31.
 
-| Task                                                 | ID     | Feature                                                                          | Priority | Complexity |
-| ---------------------------------------------------- | ------ | -------------------------------------------------------------------------------- | -------- | ---------- |
-| Extend OutboundMessage with media/attachment support | OB-600 | Add optional `media` field to OutboundMessage (type, buffer, mimeType, filename) | High     | Medium     |
-| WhatsApp: send to specific number                    | OB-601 | Allow Master AI to proactively send a message to any whitelisted phone number    | High     | Low        |
-| WhatsApp: send file/document attachments             | OB-602 | Send PDFs, images, HTML files as WhatsApp document messages via MessageMedia     | High     | Medium     |
-| WhatsApp: receive and transcribe voice messages      | OB-605 | Download audio from `message.hasMedia`, transcribe with local STT (Whisper)      | Medium   | High       |
-| WhatsApp: send voice replies (TTS)                   | OB-606 | Convert AI text responses to audio using local TTS, send as voice message        | Low      | High       |
-| WebChat: file download support                       | OB-607 | Serve generated files via WebChat UI (download buttons in chat)                  | Medium   | Low        |
+| Task                                                 | ID     | Priority | Complexity |
+| ---------------------------------------------------- | ------ | :------: | :--------: |
+| Extend OutboundMessage with media/attachment support | OB-600 | 🔴 High  |   Medium   |
+| WhatsApp: send to specific number                    | OB-601 | 🔴 High  |    Low     |
+| WhatsApp: send file/document attachments             | OB-602 | 🔴 High  |   Medium   |
+| WhatsApp: receive and transcribe voice messages      | OB-605 |  🟡 Med  |    High    |
+| WhatsApp: send voice replies (TTS)                   | OB-606 |  🟢 Low  |    High    |
+| WebChat: file download support                       | OB-607 |  🟡 Med  |    Low     |
 
-### Design Notes — Media Architecture
+#### Design Notes — Media Architecture
 
 ```
 OutboundMessage (extended)
@@ -62,7 +326,7 @@ OutboundMessage (extended)
 }
 ```
 
-### Design Notes — Proactive Messaging
+#### Design Notes — Proactive Messaging
 
 The Master AI will be able to send messages to specific numbers using a new marker format:
 
@@ -74,37 +338,39 @@ Only whitelisted numbers can be contacted. The router will parse SEND markers an
 
 ---
 
-## Planned — Phase 32: Content Publishing & Sharing
+### Phase 34: Content Publishing & Sharing
 
 > **Goal:** When the AI generates content (HTML, PDF, reports), give it ways to share that content with users — locally, via messaging, or on the web.
+>
+> **Milestone:** [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)
+>
+> **Depends on:** Phase 33 (media support needed for file attachments)
 
-| Task                                                          | ID     | Feature                                                                 | Priority | Complexity |
-| ------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- | -------- | ---------- |
-| Local file server — serve generated content via HTTP          | OB-610 | Extend WebChat HTTP server with `/shared/` endpoint for generated files | High     | Low        |
-| Share via WhatsApp — send generated files as attachments      | OB-611 | Combine OB-602 (file send) with generated content pipeline              | High     | Medium     |
-| Share via email — SMTP integration for sending files          | OB-612 | Configurable SMTP settings, send attachments/HTML emails                | Medium   | Medium     |
-| GitHub Pages publish — push HTML to gh-pages branch           | OB-613 | Master commits generated HTML to `gh-pages` branch, pushes for hosting  | Medium   | Medium     |
-| Shareable link generation — unique URLs for generated content | OB-614 | Generate short-lived or permanent URLs for shared files                 | Medium   | High       |
+| Task                                                          | ID     | Priority | Complexity |
+| ------------------------------------------------------------- | ------ | :------: | :--------: |
+| Local file server — serve generated content via HTTP          | OB-610 | 🔴 High  |    Low     |
+| Share via WhatsApp — send generated files as attachments      | OB-611 | 🔴 High  |   Medium   |
+| Share via email — SMTP integration for sending files          | OB-612 |  🟡 Med  |   Medium   |
+| GitHub Pages publish — push HTML to gh-pages branch           | OB-613 |  🟡 Med  |   Medium   |
+| Shareable link generation — unique URLs for generated content | OB-614 |  🟡 Med  |    High    |
 
-### Design Notes — Content Pipeline
+#### Design Notes — Content Pipeline
 
 ```
 User: "Generate an investor report for our project"
   ↓
 Master AI → Worker (code-edit profile)
   ↓ generates report.html
-Worker saves to: .openbridge/generated/report-2026-02-24.html
+Worker saves to: .openbridge/generated/report-2026-02-25.html
   ↓
 Master detects generated file → asks user how to share:
   ↓
 Options:
-  1. Local: http://localhost:3000/shared/report-2026-02-24.html
+  1. Local: http://localhost:3000/shared/report-2026-02-25.html
   2. WhatsApp: send as document to requesting user
   3. Email: send to configured address
   4. GitHub Pages: https://username.github.io/project/reports/report.html
 ```
-
-### Hosting Approaches Comparison
 
 | Approach                | Pros                           | Cons                 | Requires          |
 | ----------------------- | ------------------------------ | -------------------- | ----------------- |
@@ -117,15 +383,173 @@ Options:
 
 ---
 
-## Planned — Phase 33: Smart Memory
+## Scale & Team
 
-> **Goal:** Give the Master AI long-term memory beyond `.openbridge/` flat files.
+### Phase 37: Access Control + Hierarchical Masters
 
-| Task                                                           | ID     | Feature                                                                 | Priority | Complexity |
-| -------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- | -------- | ---------- |
-| Context compaction — summarize when Master context grows large | OB-190 | Progressive summarization of conversation history                       | Medium   | Medium     |
-| Vector memory — SQLite + embeddings for knowledge retrieval    | OB-191 | Semantic search over workspace knowledge, past conversations, learnings | Low      | High       |
-| Skill creator — Master creates reusable skill templates        | OB-192 | Auto-generate prompt templates from successful task patterns            | Low      | Medium     |
+> **Goal:** Role-based access control per user per channel, and automatic sub-master creation for large workspaces with multiple sub-projects.
+>
+> **Milestone:** [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)
+>
+> **Depends on:** Phase 31 (needs DB tables), Phase 36 (needs dashboard to monitor sub-masters)
+
+| Task                                                                             | ID     | Priority | Complexity |
+| -------------------------------------------------------------------------------- | ------ | :------: | :--------: |
+| Access control DB table + role definitions (owner/admin/developer/viewer/custom) | OB-750 | 🔴 High  |   Medium   |
+| Access control enforcement in auth layer — scopes, actions, daily budget         | OB-751 | 🔴 High  |   Medium   |
+| Access control CLI — `npx openbridge access add +1234567890 --role developer`    | OB-752 |  🟡 Med  |   Medium   |
+| Sub-master detection — auto-detect large sub-projects by size/complexity         | OB-753 | 🔴 High  |   Medium   |
+| Sub-master lifecycle — spawn/manage independent sub-master DBs                   | OB-754 | 🔴 High  |    High    |
+| Root-to-sub-master delegation — cross-cutting task routing                       | OB-755 | 🔴 High  |    High    |
+| `sub_masters` registry table in root DB                                          | OB-756 | 🔴 High  |    Low     |
+| Tests for access control and hierarchical masters                                | OB-757 | 🔴 High  |    High    |
+
+#### Design Notes — Access Control
+
+```
+Per-user config:
+{
+  "users": [
+    {
+      "id": "+1234567890",
+      "channel": "whatsapp",
+      "role": "developer",
+      "scopes": ["src/", "tests/"],
+      "actions": ["read", "edit", "test"],
+      "blocked_actions": ["deploy", "delete"],
+      "max_cost_per_day_usd": 5
+    },
+    {
+      "id": "+0987654321",
+      "channel": "whatsapp",
+      "role": "viewer",
+      "scopes": ["*"],
+      "actions": ["read", "status"]
+    }
+  ]
+}
+
+Role hierarchy:
+  owner       → everything
+  admin       → all tasks, config, access management
+  developer   → code tasks, read config
+  viewer      → read-only, status queries
+  custom      → user-defined scopes + actions
+```
+
+#### Design Notes — Hierarchical Masters
+
+```
+/company-workspace/                    ← Root workspace
+├── .openbridge/
+│   └── openbridge.db                 ← ROOT Master DB
+├── backend/                           ← Large sub-project
+│   ├── .openbridge/
+│   │   └── openbridge.db             ← SUB-MASTER DB (backend specialist)
+│   └── src/
+├── frontend/                          ← Large sub-project
+│   ├── .openbridge/
+│   │   └── openbridge.db             ← SUB-MASTER DB (frontend specialist)
+│   └── src/
+└── mobile/                            ← Smaller folder, no sub-master
+    └── src/
+
+User: "Deploy the new auth feature across backend and frontend"
+  ↓
+Root Master delegates to:
+  → backend sub-master: "Implement auth backend logic"
+  → frontend sub-master: "Add auth UI components"
+  ↓
+Sub-masters spawn their own workers
+  ↓
+Results flow up: Workers → Sub-Masters → Root Master → User
+```
+
+**Key rules:**
+
+- Sub-master creation is automatic based on folder size/complexity
+- Root Master owns all user communication
+- Sub-Masters are specialists with deep domain context
+- Sub-Master DBs are independent (own chunks, learnings, tasks)
+- Cross-cutting tasks get coordinated by Root Master
+
+---
+
+### Phase 38: Server Deployment Mode
+
+> **Goal:** Allow OpenBridge to run on a VPS or cloud server, enabling users to manage projects remotely without keeping their local machine running.
+>
+> **Milestone:** [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)
+>
+> **Depends on:** Phase 37 (needs ACL for multi-user), Phase 36 (needs dashboard for headless monitoring)
+
+| Task                                                          | ID     | Priority | Complexity |
+| ------------------------------------------------------------- | ------ | :------: | :--------: |
+| Headless startup mode — no QR code display dependency         | OB-760 | 🔴 High  |   Medium   |
+| Remote workspace via git clone + auto-pull on changes         | OB-761 | 🔴 High  |   Medium   |
+| Docker container image (Dockerfile + docker-compose)          | OB-762 | 🔴 High  |   Medium   |
+| Environment-based configuration — all config via ENV vars     | OB-763 |  🟡 Med  |    Low     |
+| Health check + monitoring endpoints for server operation      | OB-764 |  🟡 Med  |    Low     |
+| Deployment documentation — VPS, Docker, cloud provider guides | OB-765 |  🟡 Med  |    Low     |
+
+#### Design Notes — Deployment Modes
+
+```
+Mode 1: LOCAL (current)
+  User's machine → Channels → AI tools installed locally
+
+Mode 2: SERVER
+  VPS/Cloud → Channels → AI tools installed on server
+  Workspace via git clone + auto-pull
+
+Mode 3: HYBRID
+  Server runs bridge + channels
+  AI tools on server, pointed at cloned repo
+```
+
+---
+
+### Phase 39: Agent Orchestration
+
+> **Goal:** Role-based worker types with dependency chains, synchronization, and conflict resolution. Led by co-founder.
+>
+> **Milestone:** [v1.0.0](docs/audit/milestones/v1.0.0-team.md)
+>
+> **Depends on:** Phase 31 (DB for shared state), Phase 36 (dashboard for agent visibility)
+
+| Task                                                                    | ID     | Priority | Complexity |
+| ----------------------------------------------------------------------- | ------ | :------: | :--------: |
+| Role-based worker types (Architect, Coder, Tester, Reviewer)            | OB-770 | 🔴 High  |   Medium   |
+| Task dependency chains — Architect → Coder → Tester → Reviewer pipeline | OB-771 | 🔴 High  |    High    |
+| Worker synchronization via DB — shared state coordination               | OB-772 | 🔴 High  |   Medium   |
+| Parallel worker conflict detection — same-file edit resolution          | OB-773 |  🟡 Med  |    High    |
+| Worker result validation — auto-verify output (tests/typecheck)         | OB-774 |  🟡 Med  |   Medium   |
+
+#### Design Notes — Role-Based Workers
+
+```
+Role hierarchy:
+  Architect  → Design decisions, file structure planning
+  Coder      → Write/edit code based on Architect's plan
+  Tester     → Write and run tests for Coder's output
+  Reviewer   → Code review, find bugs, validate quality
+
+Pipeline:
+  User: "Add JWT authentication"
+    ↓
+  Master spawns Architect: "Design the JWT auth approach"
+    ↓ plan produced
+  Master spawns Coder: "Implement the plan" (receives Architect output)
+    ↓ code written
+  Master spawns Tester: "Write tests" (receives Coder output)
+    ↓ tests written + run
+  Master spawns Reviewer: "Review everything" (receives all outputs)
+    ↓ approval or revision requests
+
+Sync via DB:
+  All workers read agent_activity table to see what others are doing.
+  Conflict detection: two workers editing the same file → queue or merge.
+```
 
 ---
 
@@ -136,26 +560,53 @@ These are ideas captured for future consideration. Not yet scoped or scheduled.
 | Feature                  | ID     | Description                                                        | Notes                |
 | ------------------------ | ------ | ------------------------------------------------------------------ | -------------------- |
 | Docker sandbox           | OB-193 | Run workers in containers for untrusted workspaces                 | Security isolation   |
-| Interactive AI views     | OB-124 | AI generates live reports/dashboards on local HTTP                 | Needs Phase 32 first |
+| Interactive AI views     | OB-124 | AI generates live reports/dashboards on local HTTP                 | Needs Phase 34 first |
 | E2E test: business files | OB-306 | CSV workspace E2E test                                             | Testing gap          |
-| Multi-workspace support  | —      | Master manages multiple project folders simultaneously             | Architecture change  |
 | Scheduled tasks          | —      | Cron-like task scheduling ("run tests every morning at 9am")       | New capability       |
-| Team mode                | —      | Multiple whitelisted users with different permissions/roles        | Auth expansion       |
 | AI tool marketplace      | —      | Browse and install community-built connectors and providers        | Plugin ecosystem     |
-| Web dashboard            | —      | Browser-based admin panel for monitoring Master, workers, logs     | Operational tooling  |
 | Webhook connector        | —      | HTTP webhook endpoint for CI/CD integration (GitHub Actions, etc.) | New connector type   |
 | PDF generation           | —      | Built-in HTML-to-PDF conversion for generated reports              | Uses Puppeteer       |
+| Secrets management       | —      | Encrypted storage for Discord/Telegram tokens                      | Security improvement |
+| WhatsApp session persist | —      | Avoid re-scan when session expires                                 | UX improvement       |
+| Skill creator            | OB-192 | Master creates reusable skill templates from successful patterns   | Self-improvement     |
+| Context compaction       | OB-190 | Progressive summarization when context grows large                 | Memory optimization  |
+
+---
+
+## Dependency Graph
+
+```
+Phase 31: Memory Foundation
+    │
+    ├──► Phase 32: Retrieval + Worker Briefing
+    │        │
+    │        ├──► Phase 35: Conversation Memory + Prompts
+    │        │
+    │        └──► Phase 36: Agent Dashboard + Exploration Progress
+    │                 │
+    │                 ├──► Phase 37: Access Control + Hierarchical Masters
+    │                 │        │
+    │                 │        └──► Phase 38: Server Deployment
+    │                 │
+    │                 └──► Phase 39: Agent Orchestration (co-founder)
+    │
+    └──► Phase 33: Media (independent track, can start after Phase 31)
+             │
+             └──► Phase 34: Content Publishing
+```
 
 ---
 
 ## Version Milestones
 
-| Version    | Target     | Key Features                                                |
-| ---------- | ---------- | ----------------------------------------------------------- |
-| **v0.0.1** | 2026-02-23 | Foundation — 5 connectors, self-governing Master, 207 tasks |
-| **v0.1.0** | TBD        | Media support, proactive messaging, content sharing         |
-| **v0.2.0** | TBD        | Smart memory, context compaction, skill creator             |
-| **v1.0.0** | TBD        | Stable API, multi-workspace, team mode, web dashboard       |
+| Version    | Target | Key Features                                                      | Milestone Doc                                           |
+| ---------- | ------ | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| **v0.0.1** | Done   | Foundation — 5 connectors, self-governing Master, 207 tasks       | [release notes](docs/releases/release-notes-v0.0.1.md)  |
+| **v0.1.0** | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing           | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
+| **v0.2.0** | TBD    | Smart System — media, content publishing, conversation memory     | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
+| **v0.3.0** | TBD    | Visibility — agent dashboard, exploration progress, cost tracking | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
+| **v0.4.0** | TBD    | Scale — access control, hierarchical masters, server deployment   | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
+| **v1.0.0** | TBD    | Team — agent orchestration, role-based workers, stable API        | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
 
 ---
 
@@ -176,5 +627,7 @@ These guide what we build and how:
 2. **Your tools, your cost** — OpenBridge uses AI tools already on your machine
 3. **AI does the work** — we don't hardcode business logic; we let the AI figure it out
 4. **Bounded workers** — workers always have restricted permissions and finite turns
-5. **Everything is tracked** — `.openbridge/` stores all knowledge, git-tracked
+5. **Single source of truth** — `openbridge.db` stores all knowledge in one reliable place
 6. **Plugin architecture** — new channels and AI tools are added via interfaces, not forks
+7. **Workers are briefed** — every worker receives relevant project context, past task history, and learned patterns
+8. **Memory improves with use** — learnings, prompt effectiveness, and model selection automatically improve over time

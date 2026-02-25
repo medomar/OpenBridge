@@ -428,22 +428,32 @@ When the Master needs help from another AI tool:
 - Result aggregation and error handling
 - Git commit per completed task
 
-### Generalized CLI Executor
+### Agent Runner (Unified CLI Executor)
 
-The `claude-code-executor.ts` module supports any CLI tool via the `command` option:
+The `agent-runner.ts` module (`src/core/agent-runner.ts`) is the production-grade CLI executor that replaced the original `claude-code-executor.ts`. It supports:
 
 ```typescript
-// Run claude (default)
-await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000 });
+const runner = new AgentRunner();
 
-// Run codex
-await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'codex' });
+// Single-turn execution with tool restrictions
+const result = await runner.spawn({
+  prompt: 'Fix the auth bug',
+  workspacePath: '/path/to/project',
+  model: 'sonnet',
+  allowedTools: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
+  maxTurns: 25,
+  timeout: 120_000,
+  retries: 3,
+});
 
-// Run aider
-await executeClaudeCode({ prompt: '...', workspacePath: '...', timeout: 120000, command: 'aider' });
+// Streaming execution
+const stream = runner.stream({ prompt: '...', workspacePath: '...' });
+for await (const chunk of stream) {
+  /* ... */
+}
 ```
 
-Features: streaming via async generator, session support (`--session-id`, `--resume`), prompt sanitization, graceful shutdown guard (active child processes tracked and waited for during SIGTERM/SIGINT).
+Features: `--allowedTools` for tool restrictions, `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
 
 ---
 
@@ -548,7 +558,7 @@ Scenario 4: First run (no .openbridge/)
 
 2. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI focused prompts and let it figure out the project. This is simpler and more powerful.
 
-3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. It has its own git repo so changes are tracked without polluting the project's git history.
+3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. Currently uses JSON files; v0.1.0 will migrate to a single SQLite database (`openbridge.db`).
 
 4. **Session continuity enables multi-turn conversations.** The Master tracks sessions per sender with 30-minute TTL. First message creates a session, subsequent messages resume it. This enables natural business conversations: "which invoices are overdue?" → "send reminders to those clients".
 
@@ -556,9 +566,9 @@ Scenario 4: First run (no .openbridge/)
 
 6. **V0 config stays supported.** Auto-detect config version, run the appropriate flow. No breaking changes.
 
-7. **The executor is generalized, not rewritten.** The existing `claude-code-executor.ts` handles spawning, streaming, sanitization, sessions, and graceful shutdown. Adding `command` option was a one-line change.
+7. **AgentRunner replaced the original executor.** The `agent-runner.ts` module provides retries, model fallback, tool restrictions (`--allowedTools`), bounded execution (`--max-turns`), and disk logging — inspired by the bash scripts in `scripts/`.
 
-8. **Dead code is archived, not deleted.** Old knowledge/ and orchestrator/ modules are in `src/_archived/` — out of the compile path but preserved in git.
+8. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
 
 ---
 
@@ -615,10 +625,16 @@ src/
 └── master/
     ├── index.ts                ← Module exports
     ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions
+    ├── master-system-prompt.ts ← Master AI system prompt builder
     ├── worker-registry.ts      ← Active worker tracking + concurrency limits
-    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + git operations
+    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + exploration state
     ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
     ├── exploration-prompts.ts  ← Pass-specific prompt generators
+    ├── exploration-prompt.ts   ← Legacy monolithic exploration prompt (V0)
     ├── result-parser.ts        ← Robust JSON extraction with fallbacks
+    ├── seed-prompts.ts         ← Initial prompt templates for Master AI
+    ├── spawn-parser.ts         ← Parse worker spawn requests from Master output
+    ├── worker-result-formatter.ts ← Format worker results for Master
+    ├── workspace-change-tracker.ts ← Git-based workspace change detection
     └── delegation.ts           ← Multi-AI task delegation
 ```

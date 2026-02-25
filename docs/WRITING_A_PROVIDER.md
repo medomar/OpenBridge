@@ -8,7 +8,7 @@
 
 A **provider** connects an AI service to OpenBridge's core engine. It receives cleaned messages and returns AI-generated responses.
 
-In **V2** (current), AI tools are auto-discovered on the machine at startup. The generalized CLI executor (`claude-code-executor.ts`) can run any CLI tool by setting the `command` option. You typically don't need to write a new provider — just ensure the AI CLI is installed and OpenBridge will discover it.
+In **V2** (current), AI tools are auto-discovered on the machine at startup. The `AgentRunner` (`src/core/agent-runner.ts`) is the unified CLI executor that handles spawning, retries, model fallback, and tool restrictions. You typically don't need to write a new provider — just ensure the AI CLI is installed and OpenBridge will discover it.
 
 In **V0** (legacy), providers are manually registered and configured in `config.json`.
 
