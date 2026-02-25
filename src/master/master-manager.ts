@@ -3548,6 +3548,21 @@ ${currentContent}
       },
     };
 
+    // Inject memory briefing as system prompt so the worker starts with project context (OB-723)
+    if (this.memory) {
+      try {
+        const briefing = await this.memory.buildBriefing(body.prompt);
+        if (briefing) {
+          spawnOpts.systemPrompt = briefing;
+        }
+      } catch (briefingErr) {
+        logger.warn(
+          { workerId, error: briefingErr },
+          'Failed to build worker briefing — proceeding without context',
+        );
+      }
+    }
+
     try {
       // Note: We cannot get the actual PID from spawn() because it's an async call
       // that returns a promise. We mark it as running without a PID for now.
