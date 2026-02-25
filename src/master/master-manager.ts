@@ -1889,12 +1889,53 @@ export class MasterManager {
     const lower = content.toLowerCase();
 
     // Complex task keywords — multi-step work requiring planning and delegation
-    const complexKeywords = ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'];
-    if (complexKeywords.some((kw) => lower.includes(kw))) {
+    const complexKeywords = [
+      'implement',
+      'build',
+      'refactor',
+      'develop',
+      'set up',
+      'setup',
+      'redesign',
+      'migrate',
+      'overhaul',
+    ];
+    // Word-boundary keywords — must match as whole words (e.g. "architect" not "architecture")
+    const complexWordBoundary = [/\barchitect\b/];
+    if (
+      complexKeywords.some((kw) => lower.includes(kw)) ||
+      complexWordBoundary.some((re) => re.test(lower))
+    ) {
       return {
         class: 'complex-task',
         maxTurns: MESSAGE_MAX_TURNS_PLANNING,
         reason: 'keyword match: complex-task',
+      };
+    }
+
+    // Compound action pattern — two verbs joined by "and" signal multi-step work
+    // e.g. "review X and add Y", "analyze tests and fix the failures"
+    const actionVerbs = [
+      'review',
+      'analyze',
+      'audit',
+      'check',
+      'fix',
+      'add',
+      'update',
+      'create',
+      'remove',
+      'test',
+      'write',
+      'optimize',
+      'improve',
+    ];
+    const matchedVerbs = actionVerbs.filter((v) => lower.includes(v));
+    if (matchedVerbs.length >= 2 && lower.includes(' and ')) {
+      return {
+        class: 'complex-task',
+        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        reason: `keyword match: complex-task (compound: ${matchedVerbs.join('+')})`,
       };
     }
 
