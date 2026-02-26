@@ -807,6 +807,13 @@ export class MasterManager {
     // Trigger exploration (Master-driven or fallback)
     if (!this.skipAutoExploration) {
       await this.explore();
+      // Check whether exploration produced a valid workspace map
+      if (this.explorationSummary?.status !== 'completed') {
+        logger.warn(
+          { status: this.explorationSummary?.status },
+          'Exploration did not produce a workspace map — will re-explore on next startup',
+        );
+      }
     } else {
       logger.info('Auto-exploration disabled, entering ready state');
       this.state = 'ready';
@@ -2862,11 +2869,14 @@ Work silently — do not output conversational text, just explore and write the 
         gitInitialized: true,
       };
     } else {
-      // Master didn't write a map — still mark as completed with minimal info
+      // Master didn't write a map — mark as failed so next startup triggers re-exploration
+      logger.warn(
+        'Exploration completed but workspace map is empty — will re-explore on next startup',
+      );
       this.explorationSummary = {
         startedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
-        status: 'completed',
+        status: 'failed',
         filesScanned: 0,
         directoriesExplored: 0,
         frameworks: [],
