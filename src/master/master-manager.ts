@@ -361,6 +361,8 @@ export class MasterManager {
   private readonly classificationCache = new Map<string, ClassificationCacheEntry>();
   /** Whether the classification cache has been loaded from disk */
   private cacheLoaded = false;
+  /** Abort handles for running worker processes — keyed by workerId (OB-873). Used by killWorker(). */
+  private readonly workerAbortHandles: Map<string, () => void> = new Map();
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -4894,10 +4896,16 @@ ${currentContent}
     }
 
     try {
-      // Note: We cannot get the actual PID from spawn() because it's an async call
-      // that returns a promise. We mark it as running without a PID for now.
-      // A future enhancement could expose the child process from AgentRunner.
-      this.workerRegistry.markRunning(workerId, -1); // -1 indicates PID not available
+      // Use spawnWithHandle() to capture the real PID and abort function (OB-873).
+      // spawnWithHandle() starts the child process synchronously so we can record
+      // the PID and store the abort handle before we await the result.
+      let currentHandle = workerRunner.spawnWithHandle(spawnOpts);
+      this.workerAbortHandles.set(workerId, currentHandle.abort);
+      this.workerRegistry.markRunning(workerId, currentHandle.pid);
+      logger.debug(
+        { workerId, pid: currentHandle.pid },
+        'Worker process started — real PID captured',
+      );
 
       // UPDATE agent_activity to 'running' now that spawn is about to start (OB-742)
       if (this.memory) {
@@ -4915,9 +4923,18 @@ ${currentContent}
       const maxWorkerRetries = body.retries ?? 2;
       let workerRetryCount = 0;
       let result: AgentResult;
+      let isFirstWorkerAttempt = true;
 
       while (true) {
-        result = await workerRunner.spawn(spawnOpts);
+        if (isFirstWorkerAttempt) {
+          result = await currentHandle.promise;
+          isFirstWorkerAttempt = false;
+        } else {
+          // Worker-level retry — spawn a new process and update the abort handle (OB-873)
+          currentHandle = workerRunner.spawnWithHandle(spawnOpts);
+          this.workerAbortHandles.set(workerId, currentHandle.abort);
+          result = await currentHandle.promise;
+        }
 
         if (result.exitCode === 0) {
           break; // Success — no retry needed
@@ -5021,7 +5038,10 @@ ${currentContent}
           'Turn-escalation retry: re-spawning with higher turn budget',
         );
 
-        result = await workerRunner.spawn(escalatedSpawnOpts);
+        // Use spawnWithHandle() so the abort handle stays current during escalation (OB-873)
+        const escalationHandle = workerRunner.spawnWithHandle(escalatedSpawnOpts);
+        this.workerAbortHandles.set(workerId, escalationHandle.abort);
+        result = await escalationHandle.promise;
 
         if (result.turnsExhausted) {
           logger.warn(
@@ -5030,6 +5050,9 @@ ${currentContent}
           );
         }
       }
+
+      // Clean up abort handle — worker has finished (OB-873)
+      this.workerAbortHandles.delete(workerId);
 
       // Update registry based on final result
       if (result.exitCode === 0) {
@@ -5117,6 +5140,9 @@ ${currentContent}
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
+      // Clean up abort handle — worker has finished with exception (OB-873)
+      this.workerAbortHandles.delete(workerId);
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedResult: AgentResult = {
         exitCode: -1,

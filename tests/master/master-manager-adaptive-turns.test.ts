@@ -3,7 +3,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -11,6 +11,7 @@ import * as path from 'node:path';
 
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 
 vi.mock('../../src/core/agent-runner.js', () => {
   const profiles: Record<string, string[]> = {
@@ -32,6 +33,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     AgentRunner: vi.fn().mockImplementation(() => ({
       spawn: mockSpawn,
       stream: mockStream,
+      spawnWithHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],
@@ -114,6 +116,13 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
     vi.clearAllMocks();
     mockSpawn.mockReset();
     mockStream.mockReset();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: SpawnOptions) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockResolvedValue('tool-use');
 

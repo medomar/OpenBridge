@@ -3,7 +3,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -15,6 +15,7 @@ function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
 // Mock AgentRunner (used by MasterManager)
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => {
   const profiles: Record<string, string[]> = {
     'read-only': ['Read', 'Glob', 'Grep'],
@@ -35,6 +36,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     AgentRunner: vi.fn().mockImplementation(() => ({
       spawn: mockSpawn,
       stream: mockStream,
+      spawnWithHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],
@@ -112,6 +114,13 @@ describe('MasterManager - SPAWN Task Decomposition', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: SpawnOptions) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // Use keyword-based classification by default so tests don't consume spawn mocks
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(

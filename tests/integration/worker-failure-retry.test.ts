@@ -18,6 +18,7 @@ import { MasterManager } from '../../src/master/master-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { AgentResult } from '../../src/core/agent-runner.js';
 
 // ---------------------------------------------------------------------------
 // Module-level mocks
@@ -34,6 +35,7 @@ vi.mock('../../src/core/logger.js', () => ({
 
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 
 vi.mock('../../src/core/agent-runner.js', () => {
   const profiles: Record<string, string[]> = {
@@ -55,6 +57,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     AgentRunner: vi.fn().mockImplementation(() => ({
       spawn: mockSpawn,
       stream: mockStream,
+      spawnWithHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],
@@ -148,6 +151,13 @@ describe('Integration: worker retry on failure with real MemoryManager (OB-910)'
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: Parameters<typeof mockSpawn>[0]) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // Use /tmp to stay outside the project git repo (avoids git hook interference)
     testWorkspace = path.join(

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -10,6 +10,7 @@ import * as path from 'node:path';
 // Mock AgentRunner (used by MasterManager)
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => {
   const profiles: Record<string, string[]> = {
     'read-only': ['Read', 'Glob', 'Grep'],
@@ -30,6 +31,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     AgentRunner: vi.fn().mockImplementation(() => ({
       spawn: mockSpawn,
       stream: mockStream,
+      spawnWithHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],
@@ -113,6 +115,13 @@ describe('MasterManager - Worker-Level Retry', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: Parameters<typeof mockSpawn>[0]) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // Use keyword-based classification by default
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(
