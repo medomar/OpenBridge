@@ -897,6 +897,16 @@ export class MasterManager {
       return;
     }
 
+    // Close any stale active sessions before creating a new one
+    if (this.memory) {
+      try {
+        await this.memory.closeActiveSessions();
+        logger.info('Closed stale active sessions before creating new Master session');
+      } catch (error) {
+        logger.warn({ error }, 'Failed to close stale sessions — continuing anyway');
+      }
+    }
+
     // Create new session — use raw UUID (Claude CLI requires valid UUID format)
     const sessionId = randomUUID();
     const now = new Date().toISOString();

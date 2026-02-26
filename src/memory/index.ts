@@ -41,6 +41,7 @@ import {
   updateWorkspaceState as _updateWorkspaceState,
   getSession as _getSession,
   upsertSession as _upsertSession,
+  closeActiveSessions as _closeActiveSessions,
   type WorkspaceState,
   type SessionRecord,
 } from './migration.js';
@@ -463,6 +464,12 @@ export class MemoryManager {
   upsertSession(session: SessionRecord): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _upsertSession(this.db, session);
+    return Promise.resolve();
+  }
+
+  closeActiveSessions(): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _closeActiveSessions(this.db);
     return Promise.resolve();
   }
 
