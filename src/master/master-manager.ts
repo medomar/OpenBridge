@@ -572,10 +572,22 @@ export class MasterManager {
   }
 
   /**
-   * Retrieve relevant past conversation history for the given user message (OB-731).
-   * Returns a formatted "## Previous context:" section or null when no history exists.
+   * Retrieve conversation context for the Master's system prompt (OB-731, OB-1022).
+   * Primary: load memory.md (Master's curated brain — always small, always relevant).
+   * Fallback: FTS5 keyword search when memory.md is empty or missing.
    */
   private async buildConversationContext(userMessage: string): Promise<string | null> {
+    // Primary: load memory.md (OB-1022)
+    try {
+      const memoryContent = await this.dotFolder.readMemoryFile();
+      if (memoryContent && memoryContent.trim().length > 0) {
+        return '## Memory:\n' + memoryContent.trim();
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to read memory.md for context injection');
+    }
+
+    // Fallback: FTS5 keyword search when memory.md is empty or missing
     if (!this.memory) return null;
     try {
       const history = await this.memory.findRelevantHistory(userMessage, 5);
