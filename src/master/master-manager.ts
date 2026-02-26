@@ -2664,11 +2664,6 @@ export class MasterManager {
       // Write agents.json (coordinator writes its own, but ensure consistency)
       await this.writeAgentsRegistry();
 
-      // Write analysis marker for incremental change detection on next startup
-      const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.writeAnalysisMarkerToStore(fullMarker);
-      this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
-
       // Load the workspace map into memory for system prompt injection
       await this.loadExplorationSummary();
 
@@ -2676,6 +2671,17 @@ export class MasterManager {
       const map = await this.readWorkspaceMapFromStore();
       if (map) {
         this.workspaceMapSummary = this.buildMapSummary(map);
+      }
+
+      // Write analysis marker only if exploration produced a valid workspace map
+      if (this.explorationSummary?.status === 'completed' && map) {
+        const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+        await this.writeAnalysisMarkerToStore(fullMarker);
+        this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
+      } else {
+        logger.warn(
+          'Skipping analysis marker update — exploration did not produce a valid workspace map',
+        );
       }
 
       if (this.memory) {
@@ -2836,14 +2842,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     // Write agents.json
     await this.writeAgentsRegistry();
 
-    // Write analysis marker for incremental change detection on next startup
-    const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-    await this.writeAnalysisMarkerToStore(fullMarker);
-    this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
-
     logger.info('Monolithic exploration completed successfully');
 
     await this.loadExplorationSummary();
+
+    // Write analysis marker only if exploration produced a valid workspace map
+    const monoMap = await this.readWorkspaceMapFromStore();
+    if (this.explorationSummary?.status === 'completed' && monoMap) {
+      const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+      await this.writeAnalysisMarkerToStore(fullMarker);
+      this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
+    } else {
+      logger.warn(
+        'Skipping analysis marker update — monolithic exploration did not produce a valid workspace map',
+      );
+    }
   }
 
   /**
