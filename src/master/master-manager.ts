@@ -1432,6 +1432,110 @@ export class MasterManager {
   }
 
   /**
+   * Kill a running worker by ID.
+   *
+   * Retrieves the abort handle stored in workerAbortHandles, calls it
+   * (SIGTERM → 5s grace → SIGKILL), then marks the worker as cancelled in
+   * WorkerRegistry and agent_activity.
+   *
+   * Edge cases handled:
+   *   - Invalid / unknown workerId → success:false
+   *   - Worker already completed / failed / cancelled → success:false
+   *   - No abort handle (legacy PID -1) → log warning, still mark cancelled
+   */
+  public async killWorker(workerId: string): Promise<{ success: boolean; message: string }> {
+    const worker = this.workerRegistry.getWorker(workerId);
+
+    if (!worker) {
+      return { success: false, message: `Worker ${workerId} not found.` };
+    }
+
+    if (
+      worker.status === 'completed' ||
+      worker.status === 'failed' ||
+      worker.status === 'cancelled'
+    ) {
+      return { success: false, message: `Worker ${workerId} has already ${worker.status}.` };
+    }
+
+    // Invoke the abort handle (SIGTERM → grace period → SIGKILL)
+    const abortHandle = this.workerAbortHandles.get(workerId);
+    if (abortHandle) {
+      abortHandle();
+      this.workerAbortHandles.delete(workerId);
+    } else {
+      // Legacy / PID -1 case — no handle available, mark cancelled without sending a signal
+      logger.warn(
+        { workerId, pid: worker.pid ?? -1 },
+        'killWorker: no abort handle found (legacy PID -1?) — marking cancelled without kill signal',
+      );
+    }
+
+    // Mark cancelled in WorkerRegistry
+    try {
+      this.workerRegistry.markCancelled(workerId, 'Cancelled by user');
+    } catch (err) {
+      logger.warn({ workerId, err }, 'killWorker: failed to mark worker as cancelled in registry');
+    }
+
+    // Update agent_activity in DB
+    if (this.memory) {
+      try {
+        await this.memory.updateActivity(workerId, {
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+        });
+      } catch (actErr) {
+        logger.warn({ workerId, error: actErr }, 'killWorker: failed to update agent_activity');
+      }
+    }
+
+    // Build descriptive message: "Stopped worker <shortId> (<model>, '<summary>', <elapsed>)"
+    const shortId = workerId.split('-').pop() ?? workerId;
+    const model = worker.taskManifest.model ?? 'default';
+    const summary = worker.taskManifest.prompt.slice(0, 40).replace(/\n/g, ' ');
+    const elapsedMs = worker.startedAt
+      ? Date.now() - new Date(worker.startedAt).getTime()
+      : undefined;
+    const elapsedStr = elapsedMs !== undefined ? `${Math.round(elapsedMs / 1000)}s` : 'unknown';
+
+    const message = `Stopped worker ${shortId} (${model}, '${summary}', ${elapsedStr})`;
+    logger.info({ workerId, pid: worker.pid }, 'Worker killed by user request');
+
+    return { success: true, message };
+  }
+
+  /**
+   * Kill all currently running workers.
+   *
+   * Calls killWorker() for each running worker and aggregates the results.
+   * Returns an object with the list of stopped worker IDs and a human-readable
+   * summary message.
+   */
+  public async killAllWorkers(): Promise<{ stopped: string[]; message: string }> {
+    const running = this.workerRegistry.getRunningWorkers();
+
+    if (running.length === 0) {
+      return { stopped: [], message: 'No workers are currently running.' };
+    }
+
+    const stopped: string[] = [];
+    const lines: string[] = [];
+
+    for (const worker of running) {
+      const result = await this.killWorker(worker.id);
+      if (result.success) {
+        stopped.push(worker.id);
+        lines.push(`- ${result.message}`);
+      }
+    }
+
+    const count = stopped.length;
+    const message = `Stopped ${count} worker${count !== 1 ? 's' : ''}:\n${lines.join('\n')}`;
+    return { stopped, message };
+  }
+
+  /**
    * Set the Router so pending messages can be routed after exploration completes.
    * Bridge calls this after setMaster() so the Master can deliver queued messages.
    */
