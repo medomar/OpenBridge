@@ -33,6 +33,7 @@ export interface ActivityRecord {
   status: 'starting' | 'running' | 'completing' | 'done' | 'failed';
   progress_pct?: number;
   parent_id?: string;
+  pid?: number;
   cost_usd?: number;
   started_at: string;
   updated_at: string;
@@ -42,7 +43,7 @@ export interface ActivityRecord {
 export type ActivityUpdate = Partial<
   Pick<
     ActivityRecord,
-    'status' | 'progress_pct' | 'cost_usd' | 'completed_at' | 'task_summary' | 'model'
+    'status' | 'progress_pct' | 'cost_usd' | 'completed_at' | 'task_summary' | 'model' | 'pid'
   >
 > & { updated_at?: string };
 
@@ -55,9 +56,9 @@ export function insertActivity(db: Database.Database, activity: ActivityRecord):
   db.prepare(
     `INSERT OR IGNORE INTO agent_activity
        (id, type, model, profile, task_summary, status, progress_pct,
-        parent_id, cost_usd, started_at, updated_at, completed_at)
+        parent_id, pid, cost_usd, started_at, updated_at, completed_at)
      VALUES
-       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     activity.id,
     activity.type,
@@ -67,6 +68,7 @@ export function insertActivity(db: Database.Database, activity: ActivityRecord):
     activity.status,
     activity.progress_pct ?? null,
     activity.parent_id ?? null,
+    activity.pid ?? null,
     activity.cost_usd ?? null,
     activity.started_at,
     activity.updated_at,
@@ -103,6 +105,10 @@ export function updateActivity(db: Database.Database, id: string, updates: Activ
   if (updates.model !== undefined) {
     fields.push('model = ?');
     values.push(updates.model);
+  }
+  if (updates.pid !== undefined) {
+    fields.push('pid = ?');
+    values.push(updates.pid);
   }
 
   values.push(id);

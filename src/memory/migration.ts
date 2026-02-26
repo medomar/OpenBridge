@@ -18,6 +18,28 @@ import { storeChunks } from './chunk-store.js';
 import { recordTask, recordLearning } from './task-store.js';
 
 // ---------------------------------------------------------------------------
+// Schema migrations (ALTER TABLE for existing databases)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply incremental schema changes to an existing database.
+ * Each ALTER TABLE is guarded by a column-existence check so it is safe
+ * to call on both fresh and pre-existing databases.
+ */
+export function applySchemaChanges(db: Database.Database): void {
+  const hasPidColumn =
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('agent_activity') WHERE name='pid'`)
+        .get() as { c: number }
+    ).c > 0;
+
+  if (!hasPidColumn) {
+    db.exec('ALTER TABLE agent_activity ADD COLUMN pid INTEGER');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Types for workspace_state and sessions tables
 // ---------------------------------------------------------------------------
 
