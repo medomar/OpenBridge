@@ -324,6 +324,7 @@ describe('DotFolderManager', () => {
         totalFiles: 65,
         scannedAt: new Date().toISOString(),
         durationMs: 1500,
+        splitDirs: {},
       };
 
       await manager.writeStructureScan(testScan);

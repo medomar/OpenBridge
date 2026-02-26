@@ -55,12 +55,37 @@ import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { Chunk } from '../memory/chunk-store.js';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
 
 const logger = createLogger('exploration-coordinator');
 
 const PHASE_TIMEOUT = 300_000; // 5 minutes per phase (large workspaces need more time)
 const DIRECTORY_DIVE_TIMEOUT = 180_000; // 3 minutes per directory dive
+const MAX_DIRECTORY_DIVE_TIMEOUT = 600_000; // 10 minutes max per directory dive
 const MAX_RETRIES = 3;
+
+/** Directories with more files than this threshold are split into subdirectories. */
+const FILE_COUNT_THRESHOLD = 25;
+
+/** Directories that should never be explored (matches structure scan skip list). */
+const SKIPPED_SUBDIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  '.next',
+  'build',
+  'coverage',
+  'target',
+  '.cache',
+  '.openbridge',
+  '__pycache__',
+  '.tox',
+  '.venv',
+  'venv',
+  '.mypy_cache',
+  '.pytest_cache',
+]);
 
 /**
  * Progress callback for exploration phases.
@@ -355,6 +380,88 @@ export class ExplorationCoordinator {
     if (totalFiles < 100 && dirCount <= 5) return 2; // Small project
     if (totalFiles < 500 && dirCount <= 15) return 3; // Medium project
     return 5; // Large project — maximize parallelism
+  }
+
+  /**
+   * Expand large directories into their immediate subdirectories.
+   *
+   * For each top-level directory whose file count exceeds `FILE_COUNT_THRESHOLD`,
+   * read its immediate children, filter out skipped dirs, and return a mapping
+   * of parent → sub-paths.  The sub-paths replace the parent in the dive list
+   * so each gets its own worker with a manageable scope.
+   *
+   * Mutates `structureScan.splitDirs` with the mapping and updates
+   * `structureScan.directoryCounts` with estimated file counts for subdirs.
+   */
+  async expandLargeDirectories(structureScan: StructureScan): Promise<string[]> {
+    const expandedDirs: string[] = [];
+
+    for (const dir of structureScan.topLevelDirs) {
+      const fileCount = structureScan.directoryCounts[dir] ?? 0;
+
+      if (fileCount <= FILE_COUNT_THRESHOLD) {
+        // Small enough — keep as single dive target
+        expandedDirs.push(dir);
+        continue;
+      }
+
+      // Large directory — read immediate subdirectories
+      const fullDirPath = path.join(this.workspacePath, dir);
+      try {
+        const entries = await readdir(fullDirPath, { withFileTypes: true });
+        const subDirs: string[] = [];
+
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          if (SKIPPED_SUBDIRS.has(entry.name)) continue;
+          if (entry.name.startsWith('.')) continue; // skip hidden dirs
+
+          const subPath = `${dir}/${entry.name}`;
+          subDirs.push(subPath);
+
+          // Estimate file count for the subdirectory via stat
+          try {
+            const subFullPath = path.join(fullDirPath, entry.name);
+            const subEntries = await readdir(subFullPath, { withFileTypes: true });
+            const subFileCount =
+              subEntries.filter((e) => e.isFile()).length +
+              subEntries.filter((e) => e.isDirectory() && !SKIPPED_SUBDIRS.has(e.name)).length * 5;
+            structureScan.directoryCounts[subPath] = subFileCount;
+          } catch {
+            // If we can't read it, give it a default estimate
+            structureScan.directoryCounts[subPath] = 10;
+          }
+        }
+
+        if (subDirs.length > 0) {
+          structureScan.splitDirs[dir] = subDirs;
+          expandedDirs.push(...subDirs);
+          logger.info(
+            { dir, fileCount, subDirs: subDirs.length },
+            'Large directory split into subdirectories for exploration',
+          );
+        } else {
+          // No valid subdirs found — keep original
+          expandedDirs.push(dir);
+        }
+      } catch (err) {
+        logger.warn({ err, dir }, 'Failed to read directory for splitting — keeping original');
+        expandedDirs.push(dir);
+      }
+    }
+
+    return expandedDirs;
+  }
+
+  /**
+   * Calculate a per-directory timeout based on its file count.
+   * Floors at DIRECTORY_DIVE_TIMEOUT (3 min), caps at MAX_DIRECTORY_DIVE_TIMEOUT (10 min).
+   */
+  calculateDiveTimeout(dirFileCount: number): number {
+    return Math.max(
+      DIRECTORY_DIVE_TIMEOUT,
+      Math.min(MAX_DIRECTORY_DIVE_TIMEOUT, dirFileCount * 4000),
+    );
   }
 
   /**
@@ -690,16 +797,25 @@ export class ExplorationCoordinator {
     }
 
     // Identify significant directories (exclude root, include dirs with files > 0)
-    const significantDirs = structureScan.topLevelDirs.filter(
-      (dir) => (structureScan.directoryCounts[dir] ?? 0) > 0,
-    );
+    // Then expand large directories into subdirectories to avoid timeout (OB-F26)
+    const significantDirs = await this.expandLargeDirectories(structureScan);
+
+    // Persist splitDirs so incremental explore can use 2-level scopes
+    if (Object.keys(structureScan.splitDirs).length > 0) {
+      await this.writeStructureScanToStore(structureScan);
+      logger.info(
+        { splitDirs: structureScan.splitDirs },
+        'Structure scan updated with split directories',
+      );
+    }
 
     // Initialize directory dive tracking if not already present
     if (state.directoryDives.length === 0) {
       state.directoryDives = significantDirs.map((dir) => ({
         path: dir,
-        status: 'pending',
+        status: 'pending' as const,
         attempts: 0,
+        fileCount: structureScan.directoryCounts[dir] ?? 0,
       }));
       await this.writeExplorationState(state);
     }
@@ -849,10 +965,15 @@ export class ExplorationCoordinator {
     const prompt = generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
     const startTime = Date.now();
 
+    // Scale timeout based on directory file count (OB-F26 / OB-943)
+    const dirFileCount = state.directoryDives.find((d) => d.path === dirPath)?.fileCount ?? 0;
+    const diveTimeout =
+      dirFileCount > 0 ? this.calculateDiveTimeout(dirFileCount) : DIRECTORY_DIVE_TIMEOUT;
+
     const result = await this.agentRunner.spawn({
       prompt,
       workspacePath: this.workspacePath,
-      timeout: DIRECTORY_DIVE_TIMEOUT,
+      timeout: diveTimeout,
       allowedTools: [...TOOLS_READ_ONLY],
       maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
       retries: 0,
