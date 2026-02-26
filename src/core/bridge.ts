@@ -1,3 +1,4 @@
+import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppConfig, EmailConfig } from '../types/config.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
@@ -48,6 +49,7 @@ export class Bridge {
   private master: MasterManager | null = null;
   private memory: MemoryManager | null = null;
   private fileServer: FileServer | null = null;
+  private readonly workspacePath: string | undefined;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -74,6 +76,7 @@ export class Bridge {
     this.orchestrator = new AgentOrchestrator(config.defaultProvider);
 
     if (options?.workspacePath) {
+      this.workspacePath = options.workspacePath;
       const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
       this.memory = new MemoryManager(dbPath);
       this.fileServer = new FileServer(options.workspacePath);
@@ -125,6 +128,11 @@ export class Bridge {
         );
         this.memory = null;
       }
+    }
+
+    // Clean up legacy .openbridge/ artifacts that were migrated to SQLite
+    if (this.memory && this.workspacePath) {
+      await this.cleanLegacyDotFolderArtifacts(this.workspacePath, this.memory);
     }
 
     // Schedule periodic DB eviction — run once on startup, then every 24 hours
@@ -554,5 +562,67 @@ export class Bridge {
 
     void this.auditLogger.logInbound(cleaned);
     void this.queue.enqueue(cleaned);
+  }
+
+  /**
+   * Remove legacy .openbridge/ artifacts that have been migrated to SQLite.
+   * Called on startup after memory.init() and memory.migrate() succeed.
+   * Only deletes files/dirs when the corresponding data exists in the DB,
+   * to avoid data loss on the first run before migration has occurred.
+   */
+  private async cleanLegacyDotFolderArtifacts(
+    workspacePath: string,
+    memory: MemoryManager,
+  ): Promise<void> {
+    const dotFolderPath = path.join(workspacePath, '.openbridge');
+
+    try {
+      await fs.access(dotFolderPath);
+    } catch {
+      return; // .openbridge/ doesn't exist yet — nothing to clean
+    }
+
+    // 1. exploration.log — logging is now in the DB
+    try {
+      await fs.unlink(path.join(dotFolderPath, 'exploration.log'));
+      logger.info('Removed legacy .openbridge/exploration.log');
+    } catch {
+      // File doesn't exist — no-op
+    }
+
+    // 2. exploration/ directory — exploration state is now in system_config
+    try {
+      await fs.access(path.join(dotFolderPath, 'exploration'));
+      await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
+      logger.info('Removed legacy .openbridge/exploration/ directory');
+    } catch {
+      // Directory doesn't exist — no-op
+    }
+
+    // 3. prompts/ directory — only remove when memory already holds the manifest,
+    //    to avoid deleting prompt data before it has been migrated to the DB.
+    try {
+      await fs.access(path.join(dotFolderPath, 'prompts'));
+      const manifest = await memory.getPromptManifest();
+      if (manifest !== null) {
+        await fs.rm(path.join(dotFolderPath, 'prompts'), { recursive: true, force: true });
+        logger.info('Removed legacy .openbridge/prompts/ directory');
+      }
+    } catch {
+      // Directory doesn't exist — no-op
+    }
+
+    // 4. *.migrated backup files — safe to delete (migration has already run)
+    try {
+      const entries = await fs.readdir(dotFolderPath);
+      for (const entry of entries) {
+        if (entry.endsWith('.migrated')) {
+          await fs.unlink(path.join(dotFolderPath, entry));
+          logger.info({ file: entry }, 'Removed legacy .migrated backup file');
+        }
+      }
+    } catch {
+      // Best-effort — ignore readdir or unlink errors
+    }
   }
 }
