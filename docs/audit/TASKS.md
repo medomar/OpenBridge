@@ -1,7 +1,7 @@
 # OpenBridge — Task List
 
-> **Pending:** 50 | **In Progress:** 0 | **Done:** 0
-> **Last Updated:** 2026-02-26
+> **Pending:** 37 | **In Progress:** 0 | **Done:** 13
+> **Last Updated:** 2026-02-27
 
 <details>
 <summary>Archive (385 tasks completed across Phases 1–50)</summary>
@@ -28,21 +28,21 @@
 
 > **Priority:** Highest — unblocks CI. Fixes 47 test failures, 20 TS errors, 264 lint errors.
 
-| #   | Task ID | Finding | Description                                                                                                                                                                                                                           | Status    |
-| --- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1000 | OB-F32  | Implement `readPromptManifest()` on `DotFolderManager` — read `.openbridge/prompts/manifest.json`, return `PromptManifest \| null`, validate with `PromptManifestSchema`                                                              | ◻ Pending |
-| 2   | OB-1001 | OB-F32  | Implement `writePromptManifest(manifest)` on `DotFolderManager` — validate with `PromptManifestSchema`, write to `.openbridge/prompts/manifest.json`, create dir if needed                                                            | ◻ Pending |
-| 3   | OB-1002 | OB-F32  | Implement `writePromptTemplate(filename, content, metadata)` — write `.md` file to `.openbridge/prompts/`, create/update manifest entry, preserve `createdAt` on update, set `previousVersion`/`previousSuccessRate` when overwriting | ◻ Pending |
-| 4   | OB-1003 | OB-F32  | Implement `getPromptTemplate(id)` — lookup by id in manifest, return `PromptTemplate \| null`                                                                                                                                         | ◻ Pending |
-| 5   | OB-1004 | OB-F32  | Implement `recordPromptUsage(id, success)` — increment `usageCount`/`successCount`, recalculate `successRate = successCount / usageCount`, update `lastUsedAt`                                                                        | ◻ Pending |
-| 6   | OB-1005 | OB-F32  | Implement `getLowPerformingPrompts(threshold)` — filter manifest prompts where `usageCount >= 3` AND `successRate < threshold`                                                                                                        | ◻ Pending |
-| 7   | OB-1006 | OB-F32  | Implement `resetPromptStats(id)` — zero `usageCount`/`successCount`/`successRate`, preserve `previousSuccessRate` from current `successRate`                                                                                          | ◻ Pending |
-| 8   | OB-1007 | OB-F33  | Verify `npm run typecheck` passes — all 20 TS errors in `master-manager.ts` should auto-resolve once prompt library methods are implemented                                                                                           | ◻ Pending |
-| 9   | OB-1008 | OB-F34  | Verify `npm run lint` passes — 264 ESLint errors should auto-resolve. Fix any remaining individually.                                                                                                                                 | ◻ Pending |
-| 10  | OB-1009 | OB-F32  | Run prompt library tests — verify all 39 failures in `prompt-library.test.ts`, `prompt-effectiveness.test.ts`, `prompt-degradation.test.ts` now pass                                                                                  | ◻ Pending |
-| 11  | OB-1010 | OB-F27  | Implement JSONL flat-file output in `AuditLogger` — store `logPath` in constructor, add `mkdir` + `appendFile` in `write()`, wrap in try-catch                                                                                        | ◻ Pending |
-| 12  | OB-1011 | OB-F27  | Run audit logger tests — verify all 8 failures in `audit-logger.test.ts` now pass                                                                                                                                                     | ◻ Pending |
-| 13  | OB-1012 | —       | Run full test suite — confirm 2143/2143 passing (0 failures), `npm run typecheck` clean, `npm run lint` clean                                                                                                                         | ◻ Pending |
+| #   | Task ID | Finding | Description                                                                                                                                                                                                                           | Status  |
+| --- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1000 | OB-F32  | Implement `readPromptManifest()` on `DotFolderManager` — read `.openbridge/prompts/manifest.json`, return `PromptManifest \| null`, validate with `PromptManifestSchema`                                                              | ✅ Done |
+| 2   | OB-1001 | OB-F32  | Implement `writePromptManifest(manifest)` on `DotFolderManager` — validate with `PromptManifestSchema`, write to `.openbridge/prompts/manifest.json`, create dir if needed                                                            | ✅ Done |
+| 3   | OB-1002 | OB-F32  | Implement `writePromptTemplate(filename, content, metadata)` — write `.md` file to `.openbridge/prompts/`, create/update manifest entry, preserve `createdAt` on update, set `previousVersion`/`previousSuccessRate` when overwriting | ✅ Done |
+| 4   | OB-1003 | OB-F32  | Implement `getPromptTemplate(id)` — lookup by id in manifest, return `PromptTemplate \| null`                                                                                                                                         | ✅ Done |
+| 5   | OB-1004 | OB-F32  | Implement `recordPromptUsage(id, success)` — increment `usageCount`/`successCount`, recalculate `successRate = successCount / usageCount`, update `lastUsedAt`                                                                        | ✅ Done |
+| 6   | OB-1005 | OB-F32  | Implement `getLowPerformingPrompts(threshold)` — filter manifest prompts where `usageCount >= 3` AND `successRate < threshold`                                                                                                        | ✅ Done |
+| 7   | OB-1006 | OB-F32  | Implement `resetPromptStats(id)` — zero `usageCount`/`successCount`/`successRate`, preserve `previousSuccessRate` from current `successRate`                                                                                          | ✅ Done |
+| 8   | OB-1007 | OB-F33  | Verify `npm run typecheck` passes — all 20 TS errors in `master-manager.ts` should auto-resolve once prompt library methods are implemented                                                                                           | ✅ Done |
+| 9   | OB-1008 | OB-F34  | Verify `npm run lint` passes — 264 ESLint errors should auto-resolve. Fix any remaining individually.                                                                                                                                 | ✅ Done |
+| 10  | OB-1009 | OB-F32  | Run prompt library tests — verify all 39 failures in `prompt-library.test.ts`, `prompt-effectiveness.test.ts`, `prompt-degradation.test.ts` now pass                                                                                  | ✅ Done |
+| 11  | OB-1010 | OB-F27  | Implement JSONL flat-file output in `AuditLogger` — store `logPath` in constructor, add `mkdir` + `appendFile` in `write()`, wrap in try-catch                                                                                        | ✅ Done |
+| 12  | OB-1011 | OB-F27  | Run audit logger tests — verify all 8 failures in `audit-logger.test.ts` now pass                                                                                                                                                     | ✅ Done |
+| 13  | OB-1012 | —       | Run full test suite — confirm 2143/2143 passing (0 failures), `npm run typecheck` clean, `npm run lint` clean                                                                                                                         | ✅ Done |
 
 ---
 
