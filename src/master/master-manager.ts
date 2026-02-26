@@ -4950,16 +4950,61 @@ ${currentContent}
       }
 
       // Detect max-turns exhaustion: Claude exits 0 but work may be incomplete (OB-900)
+      // Auto-retry with an escalated turn budget (OB-903): max 1 turn-escalation retry.
       if (result.turnsExhausted) {
+        const originalMaxTurns = spawnOpts.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
         logger.warn(
           {
             workerId,
-            maxTurns: spawnOpts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+            maxTurns: originalMaxTurns,
             model: result.model,
             durationMs: result.durationMs,
           },
-          'Worker hit max-turns limit — result may be incomplete. Master should treat this as partial output.',
+          'Worker hit max-turns limit — attempting turn-escalation retry',
         );
+
+        const escalatedMaxTurns = Math.min(Math.ceil(originalMaxTurns * 1.5), 50);
+        const partialOutput = result.stdout.trim();
+
+        // Extract [INCOMPLETE: step X/Y] marker injected by the worker (OB-901)
+        const incompleteMatch = partialOutput.match(/\[INCOMPLETE:\s*([^\]]+)\]/i);
+        const incompleteHint =
+          incompleteMatch && incompleteMatch[1] ? incompleteMatch[1].trim() : null;
+
+        const continuationNote = incompleteHint
+          ? `Previous attempt was incomplete: ${incompleteHint}. Continue from where it left off.`
+          : 'Previous attempt hit the turn limit before completing. Continue from where it left off.';
+
+        // Append partial output (last 2 000 chars) as context so the worker can resume
+        const escalationPrompt = [
+          body.prompt,
+          '',
+          '---',
+          'CONTEXT FROM PREVIOUS ATTEMPT (partial output):',
+          partialOutput.slice(-2000),
+          '---',
+          continuationNote,
+        ].join('\n');
+
+        const escalatedSpawnOpts: SpawnOptions = {
+          ...spawnOpts,
+          prompt: escalationPrompt,
+          maxTurns: escalatedMaxTurns,
+        };
+
+        logger.info(
+          { workerId, originalMaxTurns, escalatedMaxTurns, incompleteHint },
+          'Turn-escalation retry: re-spawning with higher turn budget',
+        );
+
+        result = await workerRunner.spawn(escalatedSpawnOpts);
+
+        if (result.turnsExhausted) {
+          logger.warn(
+            { workerId, escalatedMaxTurns },
+            'Turn-escalation retry also exhausted — returning partial result',
+          );
+        }
       }
 
       // Update registry based on final result

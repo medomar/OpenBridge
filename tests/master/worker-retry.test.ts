@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
+import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -422,6 +423,221 @@ describe('MasterManager - Worker-Level Retry', () => {
       const worker = registry.getAllWorkers()[0];
       expect(worker?.status).toBe('failed');
       expect(worker?.workerRetries).toBe(0);
+    });
+  });
+
+  describe('Turn-Escalation Retry (OB-903)', () => {
+    it('should re-spawn with 1.5x turns when turnsExhausted=true', async () => {
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Fix the bug","model":"sonnet","maxTurns":10}[/SPAWN]`;
+
+      // Call 1: Master returns SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: responseWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Worker hits max-turns (exits 0 but turnsExhausted=true)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Partial output — analyzed 5 of 10 files.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 800,
+        turnsExhausted: true,
+      });
+
+      // Call 3: Turn-escalation retry succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Bug fixed — all 10 files analyzed.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 600,
+      });
+
+      // Call 4: Feedback to Master
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Done.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      await masterManager.processMessage(makeMessage('Fix the bug'));
+
+      // Master (1) + Worker hits turns (2) + Escalation retry (3) + Feedback (4)
+      expect(mockSpawn).toHaveBeenCalledTimes(4);
+
+      // Verify escalation call used ceil(10 * 1.5) = 15 turns
+      const escalationCall = mockSpawn.mock.calls[2] as [SpawnOptions];
+      expect(escalationCall[0].maxTurns).toBe(15);
+    });
+
+    it('should include partial output as context in the escalation prompt', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Analyze files","model":"haiku","maxTurns":8}[/SPAWN]`;
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: responseWithSpawn,
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Analyzed: file1.ts, file2.ts. [INCOMPLETE: step 2/4]',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 400,
+          turnsExhausted: true,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Analysis complete.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 400,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Files analyzed.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+
+      await masterManager.processMessage(makeMessage('Analyze files'));
+
+      const escalationCall = mockSpawn.mock.calls[2] as [SpawnOptions];
+      const escalationPrompt: string = escalationCall[0].prompt;
+
+      // Should include original prompt
+      expect(escalationPrompt).toContain('Analyze files');
+      // Should include partial output context
+      expect(escalationPrompt).toContain('CONTEXT FROM PREVIOUS ATTEMPT');
+      expect(escalationPrompt).toContain('Analyzed: file1.ts, file2.ts');
+      // Should extract and use the INCOMPLETE marker hint
+      expect(escalationPrompt).toContain('step 2/4');
+    });
+
+    it('should cap escalated turns at 50', async () => {
+      // maxTurns=40 → 40 * 1.5 = 60 → capped at 50
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Big task","model":"opus","maxTurns":40}[/SPAWN]`;
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: responseWithSpawn,
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Partial...',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 1000,
+          turnsExhausted: true,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Done.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 500,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Complete.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+
+      await masterManager.processMessage(makeMessage('Run big task'));
+
+      const escalationCall = mockSpawn.mock.calls[2] as [SpawnOptions];
+      expect(escalationCall[0].maxTurns).toBe(50); // capped at 50
+    });
+
+    it('should only do ONE turn-escalation retry even if escalation also exhausts turns', async () => {
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Huge task","model":"sonnet","maxTurns":10}[/SPAWN]`;
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: responseWithSpawn,
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Partial output A.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 800,
+          turnsExhausted: true,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Partial output B (still incomplete).',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 1000,
+          turnsExhausted: true,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Task ran out of turns.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+
+      await masterManager.processMessage(makeMessage('Run huge task'));
+
+      // Master (1) + Worker (2) + Escalation (3) + Feedback (4) — no second escalation
+      expect(mockSpawn).toHaveBeenCalledTimes(4);
+    });
+
+    it('should NOT escalate when turnsExhausted is false', async () => {
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Quick read","model":"haiku","maxTurns":5}[/SPAWN]`;
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: responseWithSpawn,
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Read complete.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 200,
+          // turnsExhausted not set (undefined / falsy)
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: 'Done.',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        });
+
+      await masterManager.processMessage(makeMessage('Quick read'));
+
+      // Only 3 calls: Master + Worker (no escalation) + Feedback
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
     });
   });
 
