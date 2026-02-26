@@ -72,6 +72,12 @@ function getMimeType(filename: string): {
   return mimeMap[ext] ?? { mimeType: 'application/octet-stream', mediaType: 'document' };
 }
 
+/** Pending stop-all confirmation entry, keyed by sender ID. */
+interface PendingConfirmation {
+  action: 'kill-all';
+  expiresAt: number;
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -84,6 +90,8 @@ export class Router {
   private workspacePath?: string;
   private emailConfig?: EmailConfig;
   private memory?: MemoryManager;
+  /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
+  private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
 
   constructor(
     defaultProvider: string,
@@ -216,6 +224,15 @@ export class Router {
     if (message.content.trim().toLowerCase() === 'status') {
       await this.handleStatusCommand(message, connector);
       return;
+    }
+
+    // Handle "confirm" for a pending stop-all confirmation — intercept before routing to Master AI
+    if (message.content.trim().toLowerCase() === 'confirm') {
+      const pending = this.pendingStopConfirmations.get(message.sender);
+      if (pending) {
+        await this.handleConfirmCommand(message, connector, pending);
+        return;
+      }
     }
 
     // Handle built-in "stop" command — intercept before routing to Master AI
@@ -713,12 +730,56 @@ export class Router {
   }
 
   /**
+   * Handle a "confirm" message that follows a pending "stop all" request.
+   * Executes killAllWorkers() if the confirmation arrived within the 30-second window;
+   * otherwise reports that it has expired.
+   */
+  private async handleConfirmCommand(
+    message: InboundMessage,
+    connector: Connector,
+    pending: PendingConfirmation,
+  ): Promise<void> {
+    // Always remove the pending entry — one shot regardless of outcome
+    this.pendingStopConfirmations.delete(message.sender);
+
+    if (Date.now() > pending.expiresAt) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: "Confirmation expired. Send 'stop all' again to retry.",
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Stop all confirmation expired');
+      return;
+    }
+
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Stop command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const result = await this.master.killAllWorkers();
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: result.message,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Stop all confirmed and executed');
+  }
+
+  /**
    * Handle the built-in "stop" command.
    *
    * Syntax:
-   *   "stop"        → kill all running workers
-   *   "stop all"    → kill all running workers
-   *   "stop <id>"   → kill the worker whose ID ends with <id> (partial match)
+   *   "stop"        → request confirmation then kill all running workers
+   *   "stop all"    → request confirmation then kill all running workers
+   *   "stop <id>"   → kill the worker whose ID ends with <id> (partial match, no confirmation)
    *
    * Requires the Master AI to be configured. Returns a plain-text response
    * that works on all channels.
@@ -755,9 +816,17 @@ export class Router {
     let responseText: string;
 
     if (rest === '' || rest === 'all') {
-      // "stop" or "stop all" — kill every running worker
-      const result = await this.master.killAllWorkers();
-      responseText = result.message;
+      // "stop" or "stop all" — require confirmation before killing all workers
+      const running = this.master.getWorkerRegistry().getRunningWorkers();
+      if (running.length === 0) {
+        responseText = 'No workers are currently running.';
+      } else {
+        this.pendingStopConfirmations.set(message.sender, {
+          action: 'kill-all',
+          expiresAt: Date.now() + 30_000,
+        });
+        responseText = `This will terminate ${running.length} running worker${running.length !== 1 ? 's' : ''}. Reply 'confirm' within 30 seconds to proceed.`;
+      }
     } else {
       // "stop <partialId>" — find a worker whose ID ends with the partial ID
       const partialId = rest;
