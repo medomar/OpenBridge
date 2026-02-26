@@ -218,6 +218,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "stop" command — intercept before routing to Master AI
+    if (/^stop(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleStopCommand(message, connector);
+      return;
+    }
+
     const useMaster = !!this.master;
     const useOrchestrator = !useMaster && !!this.orchestrator;
     logger.info(
@@ -704,6 +710,66 @@ export class Router {
       replyTo: message.id,
     });
     logger.info({ sender: message.sender }, 'Status command handled');
+  }
+
+  /**
+   * Handle the built-in "stop" command.
+   *
+   * Syntax:
+   *   "stop"        → kill all running workers
+   *   "stop all"    → kill all running workers
+   *   "stop <id>"   → kill the worker whose ID ends with <id> (partial match)
+   *
+   * Requires the Master AI to be configured. Returns a plain-text response
+   * that works on all channels.
+   */
+  private async handleStopCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Stop command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const trimmed = message.content.trim();
+    // Extract everything after "stop" (and optional whitespace)
+    const rest = trimmed.slice(4).trim().toLowerCase();
+
+    let responseText: string;
+
+    if (rest === '' || rest === 'all') {
+      // "stop" or "stop all" — kill every running worker
+      const result = await this.master.killAllWorkers();
+      responseText = result.message;
+    } else {
+      // "stop <partialId>" — find a worker whose ID ends with the partial ID
+      const partialId = rest;
+      const registry = this.master.getWorkerRegistry();
+      const allWorkers = registry.getAllWorkers();
+
+      // Match: exact ID, or ID ends with "-<partialId>", or ID contains <partialId>
+      const matched = allWorkers.find(
+        (w) => w.id === partialId || w.id.endsWith(`-${partialId}`) || w.id.includes(partialId),
+      );
+
+      if (!matched) {
+        responseText = `Worker '${partialId}' not found. Use 'status' to list active workers.`;
+      } else {
+        const result = await this.master.killWorker(matched.id);
+        responseText = result.message;
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: responseText,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender, command: trimmed }, 'Stop command handled');
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */
