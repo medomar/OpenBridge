@@ -6,6 +6,7 @@ import {
   searchChunks,
   markStale,
   deleteStaleChunks,
+  deleteChunksByScope,
   type Chunk,
 } from '../../src/memory/chunk-store.js';
 
@@ -214,6 +215,60 @@ describe('chunk-store.ts', () => {
         }
       ).c;
       expect(count).toBeGreaterThan(0);
+    });
+  });
+
+  describe('deleteChunksByScope', () => {
+    beforeEach(() => {
+      storeChunks(db, [
+        makeChunk({ scope: 'target-scope', content: 'old structure chunk' }),
+        makeChunk({ scope: 'target-scope', category: 'config', content: 'old config chunk' }),
+        makeChunk({ scope: 'keep-scope', content: 'should stay' }),
+      ]);
+    });
+
+    it('removes all chunks with the given scope', () => {
+      deleteChunksByScope(db, 'target-scope');
+      const remaining = db.prepare('SELECT scope FROM context_chunks').all() as {
+        scope: string;
+      }[];
+      expect(remaining.map((r) => r.scope)).toEqual(['keep-scope']);
+    });
+
+    it('removes the corresponding FTS5 entries', () => {
+      deleteChunksByScope(db, 'target-scope');
+      const ftsRows = db
+        .prepare("SELECT * FROM context_chunks_fts WHERE content MATCH 'old'")
+        .all();
+      expect(ftsRows).toHaveLength(0);
+    });
+
+    it('does not affect chunks from other scopes', () => {
+      deleteChunksByScope(db, 'target-scope');
+      const count = (
+        db
+          .prepare('SELECT COUNT(*) as c FROM context_chunks WHERE scope = ?')
+          .get('keep-scope') as { c: number }
+      ).c;
+      expect(count).toBe(1);
+    });
+
+    it('removes stale and non-stale chunks alike', () => {
+      markStale(db, ['target-scope']);
+      deleteChunksByScope(db, 'target-scope');
+      const count = (
+        db
+          .prepare('SELECT COUNT(*) as c FROM context_chunks WHERE scope = ?')
+          .get('target-scope') as { c: number }
+      ).c;
+      expect(count).toBe(0);
+    });
+
+    it('is a no-op when the scope has no chunks', () => {
+      deleteChunksByScope(db, 'nonexistent-scope');
+      const count = (db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number })
+        .c;
+      expect(count).toBe(3);
     });
   });
 });

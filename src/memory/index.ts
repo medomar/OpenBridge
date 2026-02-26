@@ -12,6 +12,7 @@ import {
   storeChunks as _storeChunks,
   markStale as _markStale,
   deleteStaleChunks as _deleteStaleChunks,
+  deleteChunksByScope as _deleteChunksByScope,
 } from './chunk-store.js';
 import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
 import type { TaskRecord, LearnedParams } from './task-store.js';
@@ -195,6 +196,13 @@ export class MemoryManager {
   deleteStaleChunks(): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _deleteStaleChunks(this.db);
+    return Promise.resolve();
+  }
+
+  /** Delete all chunks for the given scope (fresh and stale) and their FTS5 entries. */
+  deleteChunksByScope(scope: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _deleteChunksByScope(this.db, scope);
     return Promise.resolve();
   }
 

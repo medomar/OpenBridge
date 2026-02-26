@@ -329,6 +329,7 @@ export class ExplorationCoordinator {
         source_hash: sourceHash || undefined,
       }));
 
+      await this.memory.deleteChunksByScope(scope);
       await this.memory.storeChunks(chunks);
       logger.debug(
         { scope, category, chunkCount: chunks.length },

@@ -135,6 +135,29 @@ export function markStale(db: Database.Database, scopes: string[]): void {
 }
 
 /**
+ * Delete all chunks (regardless of stale flag) for the given scope and their
+ * corresponding FTS5 entries. Runs inside a transaction so the two tables stay
+ * in sync. Used before re-inserting fresh exploration data to prevent unbounded
+ * chunk growth across incremental exploration runs.
+ */
+export function deleteChunksByScope(db: Database.Database, scope: string): void {
+  const rows = db.prepare('SELECT id FROM context_chunks WHERE scope = ?').all(scope) as {
+    id: number;
+  }[];
+
+  if (rows.length === 0) return;
+
+  const deleteAll = db.transaction(() => {
+    for (const { id } of rows) {
+      db.prepare('DELETE FROM context_chunks_fts WHERE rowid = ?').run(id);
+    }
+    db.prepare('DELETE FROM context_chunks WHERE scope = ?').run(scope);
+  });
+
+  deleteAll();
+}
+
+/**
  * Delete all stale chunks and their corresponding FTS5 entries.
  * Runs inside a transaction so the two tables stay in sync.
  */
