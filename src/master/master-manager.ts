@@ -2688,9 +2688,24 @@ export class MasterManager {
       // Mark affected memory chunks as stale so the search index reflects
       // that these directory scopes need refreshed data.
       if (this.memory) {
+        // Load splitDirs from stored structure scan for 2-level scope matching
+        let splitDirs: Record<string, string[]> | undefined;
+        try {
+          const rawScan = await this.memory.getStructureScan();
+          if (rawScan) {
+            const parsed = JSON.parse(rawScan) as { splitDirs?: Record<string, string[]> };
+            if (parsed.splitDirs && Object.keys(parsed.splitDirs).length > 0) {
+              splitDirs = parsed.splitDirs;
+            }
+          }
+        } catch {
+          // ignore — fall back to 1-level scopes
+        }
+
         const changedScopes = this.changeTracker.extractChangedScopes(
           changes.changedFiles,
           changes.deletedFiles,
+          splitDirs,
         );
         if (changedScopes.length > 0) {
           try {
