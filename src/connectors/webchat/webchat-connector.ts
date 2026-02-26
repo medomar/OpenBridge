@@ -92,15 +92,23 @@ const CHAT_HTML = `<!DOCTYPE html>
     .s-running { background: #d1fae5; color: #065f46; }
     .s-completing { background: #dbeafe; color: #1e40af; }
     .dash-cost { padding: 4px 0 0; color: #5f6368; border-top: 1px solid #e8eaed; margin-top: 4px; }
+    .stop-btn { background: #ff5252; color: #fff; border: none; border-radius: 4px; padding: 1px 7px; font-size: 12px; cursor: pointer; flex-shrink: 0; line-height: 1.6; }
+    .stop-btn:hover { background: #d32f2f; }
+    .stop-all-btn { background: #ff5252; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .stop-all-btn:hover { background: #d32f2f; }
+    .stop-all-btn:disabled { background: #e57373; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <div class="chat-wrap">
     <div class="header">
       <h1>OpenBridge WebChat</h1>
-      <div class="conn-status">
-        <div class="conn-dot" id="dot"></div>
-        <span id="connLabel">Connecting...</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="stop-all-btn" id="stop-all-btn" disabled onclick="stopAll()">Stop All</button>
+        <div class="conn-status">
+          <div class="conn-dot" id="dot"></div>
+          <span id="connLabel">Connecting...</span>
+        </div>
       </div>
     </div>
     <div id="dash" class="hidden">
@@ -252,7 +260,8 @@ const CHAT_HTML = `<!DOCTYPE html>
 
     function updateDashboard(agents) {
       var dash = document.getElementById('dash');
-      if (!agents || agents.length === 0) { dash.classList.add('hidden'); return; }
+      var stopAllBtn = document.getElementById('stop-all-btn');
+      if (!agents || agents.length === 0) { dash.classList.add('hidden'); stopAllBtn.disabled = true; return; }
       dash.classList.remove('hidden');
       var master = null;
       var workers = [];
@@ -267,21 +276,25 @@ const CHAT_HTML = `<!DOCTYPE html>
       var workersDiv = document.getElementById('dash-workers');
       if (workers.length === 0) {
         workersDiv.innerHTML = '';
+        stopAllBtn.disabled = true;
       } else {
+        stopAllBtn.disabled = false;
         var h = '<div style="font-weight:500;padding:2px 0">Workers (' + workers.length + '):</div>';
         for (var j = 0; j < workers.length; j++) {
           var w = workers[j];
           var pct = w.progress_pct || 0;
           var sc = 's-' + (w.status || 'running');
           var elapsed = w.started_at ? Math.floor((Date.now() - new Date(w.started_at).getTime()) / 1000) + 's' : '';
+          var wid = String(w.id);
           h += '<div class="agent-row">' +
-            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + String(w.id).slice(0, 8) + '</span>' +
+            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + wid.slice(0, 8) + '</span>' +
             '<span class="abadge ' + sc + '">' + (w.model || '\u2014') + '</span>' +
             '<span style="color:#9aa0a6;flex-shrink:0">' + (w.profile || '\u2014') + '</span>' +
             '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124">' + (w.task_summary || '\u2014') + '</span>' +
             '<div class="prog-wrap"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
             '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0">' + pct + '%</span>' +
             '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0;min-width:32px;text-align:right">' + elapsed + '</span>' +
+            '<button class="stop-btn" title="Stop this worker" onclick="stopWorker(' + JSON.stringify(wid) + ')">&#x2715;</button>' +
             '</div>';
         }
         workersDiv.innerHTML = h;
@@ -291,6 +304,16 @@ const CHAT_HTML = `<!DOCTYPE html>
       document.getElementById('dash-cost').innerHTML =
         '<div class="dash-cost">Cost: $' + totalCost.toFixed(4) + ' &nbsp;|&nbsp; Active workers: ' + workers.length + '</div>';
       document.getElementById('dash-lbl').textContent = 'Agent Status (' + agents.length + ' active)';
+    }
+
+    function stopWorker(workerId) {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'stop-worker', workerId: workerId }));
+    }
+
+    function stopAll() {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'stop-all' }));
     }
 
     function setOnline(online) {
@@ -477,9 +500,13 @@ export class WebChatConnector implements Connector {
       this.clients.add(socket);
 
       socket.on('message', (raw: Buffer | string) => {
-        let payload: { type: string; content?: string };
+        let payload: { type: string; content?: string; workerId?: string };
         try {
-          payload = JSON.parse(raw.toString()) as { type: string; content?: string };
+          payload = JSON.parse(raw.toString()) as {
+            type: string;
+            content?: string;
+            workerId?: string;
+          };
         } catch {
           return;
         }
@@ -492,6 +519,29 @@ export class WebChatConnector implements Connector {
             sender: 'webchat-user',
             rawContent: payload.content,
             content: payload.content,
+            timestamp: new Date(),
+          };
+          this.emit('message', message);
+        } else if (payload.type === 'stop-worker' && typeof payload.workerId === 'string') {
+          this.messageCounter++;
+          const content = `stop ${payload.workerId}`;
+          const message: InboundMessage = {
+            id: `webchat-${this.messageCounter.toString()}`,
+            source: 'webchat',
+            sender: 'webchat-user',
+            rawContent: content,
+            content,
+            timestamp: new Date(),
+          };
+          this.emit('message', message);
+        } else if (payload.type === 'stop-all') {
+          this.messageCounter++;
+          const message: InboundMessage = {
+            id: `webchat-${this.messageCounter.toString()}`,
+            source: 'webchat',
+            sender: 'webchat-user',
+            rawContent: 'stop all',
+            content: 'stop all',
             timestamp: new Date(),
           };
           this.emit('message', message);
