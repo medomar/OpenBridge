@@ -977,7 +977,7 @@ export class ExplorationCoordinator {
       schemaVersion: '1.0.0',
     };
 
-    // Write workspace map to DB (OB-810: JSON fallback removed).
+    // Write workspace map to DB (primary) and JSON file (safety net fallback).
     if (this.memory) {
       await this.memory.storeChunks([
         {
@@ -987,7 +987,13 @@ export class ExplorationCoordinator {
         },
       ]);
     } else {
-      logger.warn('Memory not available — skipping workspace map write in Phase 4');
+      logger.warn('Memory not available — workspace map will only be saved to JSON fallback');
+    }
+    // Always write JSON fallback so workspace-map.json exists on disk regardless of memory state.
+    try {
+      await this.dotFolder.writeWorkspaceMap(workspaceMap);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to write workspace-map.json JSON fallback');
     }
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';

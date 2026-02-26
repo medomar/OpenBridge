@@ -15,6 +15,7 @@ import type {
   LearningsRegistry,
   WorkspaceAnalysisMarker,
   ClassificationCache,
+  WorkspaceMap,
 } from '../types/master.js';
 import {
   AgentsRegistrySchema,
@@ -29,6 +30,7 @@ import {
   LearningsRegistrySchema,
   WorkspaceAnalysisMarkerSchema,
   ClassificationCacheSchema,
+  WorkspaceMapSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -71,6 +73,29 @@ export class DotFolderManager {
    */
   public getMapPath(): string {
     return path.join(this.dotFolderPath, 'workspace-map.json');
+  }
+
+  /**
+   * Read workspace map from .openbridge/workspace-map.json.
+   * Returns null if the file doesn't exist or is invalid.
+   */
+  public async readWorkspaceMap(): Promise<WorkspaceMap | null> {
+    try {
+      const content = await fs.readFile(this.getMapPath(), 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return WorkspaceMapSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write workspace map to .openbridge/workspace-map.json as a JSON safety net.
+   * Primary storage is the DB (via memory.storeChunks); this is the fallback.
+   */
+  public async writeWorkspaceMap(map: WorkspaceMap): Promise<void> {
+    const validated = WorkspaceMapSchema.parse(map);
+    await fs.writeFile(this.getMapPath(), JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
