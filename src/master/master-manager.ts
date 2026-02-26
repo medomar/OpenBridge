@@ -3907,6 +3907,24 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       status += `\nProcessing: ${processingTasks} task(s) in progress\n`;
     }
 
+    // Show exploration progress table from memory (OB-894)
+    if (this.memory) {
+      try {
+        const progressRows = await this.memory.getExplorationProgress();
+        if (progressRows.length > 0) {
+          status += `\nExploration Progress:\n`;
+          for (const row of progressRows) {
+            const label = row.target ? `${row.phase} (${row.target})` : row.phase;
+            const pct = Math.round(row.progress_pct);
+            const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10));
+            status += `  ${label}: ${bar} ${pct}% [${row.status}]\n`;
+          }
+        }
+      } catch {
+        // memory not available — skip
+      }
+    }
+
     return status;
   }
 

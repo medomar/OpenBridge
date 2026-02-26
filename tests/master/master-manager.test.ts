@@ -854,6 +854,76 @@ describe('MasterManager', () => {
       expect(status).toContain('Session Messages: 0');
       expect(status).toContain('Tasks:');
     });
+
+    it('should include exploration progress table when memory has in-progress rows (OB-894)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const explorationId = 'test-exploration-id';
+      // Insert parent agent_activity row (required by FK constraint)
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      // Insert phase-level rows
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'structure_scan',
+        target: null,
+        status: 'completed',
+        progress_pct: 100,
+        files_processed: 20,
+        files_total: 20,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      });
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'classification',
+        target: null,
+        status: 'in_progress',
+        progress_pct: 50,
+        files_processed: 5,
+        files_total: 10,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+      // Insert a directory-level row
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'directory-dive',
+        target: 'src',
+        status: 'in_progress',
+        progress_pct: 30,
+        files_processed: 3,
+        files_total: 10,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+
+      await masterManager.shutdown();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const status = await masterManager.getStatus();
+
+      expect(status).toContain('Exploration Progress:');
+      expect(status).toContain('classification');
+      expect(status).toContain('50%');
+      expect(status).toContain('directory-dive (src)');
+      expect(status).toContain('30%');
+    });
   });
 
   describe('Master Tool Access Control (OB-155)', () => {
