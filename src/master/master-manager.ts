@@ -2674,7 +2674,21 @@ export class MasterManager {
       });
     }
 
+    let explorationId: string | undefined;
     try {
+      if (this.memory) {
+        explorationId = randomUUID();
+        const now = new Date().toISOString();
+        await this.memory.insertActivity({
+          id: explorationId,
+          type: 'explorer',
+          status: 'running',
+          task_summary: 'Workspace exploration',
+          started_at: now,
+          updated_at: now,
+        });
+      }
+
       const coordinator = new ExplorationCoordinator({
         workspacePath: this.workspacePath,
         masterTool: this.masterTool,
@@ -2684,6 +2698,7 @@ export class MasterManager {
           await this.emitExplorationProgress(event);
         },
         memory: this.memory ?? undefined,
+        explorationId,
       });
 
       const summary = await coordinator.explore();
@@ -2742,12 +2757,29 @@ export class MasterManager {
         },
         'Multi-agent exploration completed successfully',
       );
+
+      if (this.memory && explorationId) {
+        const completedAt = new Date().toISOString();
+        await this.memory.updateActivity(explorationId, {
+          status: 'done',
+          progress_pct: 100,
+          completed_at: completedAt,
+        });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn(
         { error: errorMessage },
         'Multi-agent exploration failed, falling back to monolithic exploration',
       );
+
+      if (this.memory && explorationId) {
+        const failedAt = new Date().toISOString();
+        await this.memory.updateActivity(explorationId, {
+          status: 'failed',
+          completed_at: failedAt,
+        });
+      }
 
       if (this.memory) {
         await this.memory.logExploration({
