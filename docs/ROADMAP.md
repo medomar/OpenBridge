@@ -1,6 +1,6 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-02-26 | **Current Version:** v0.0.1
+> **Last Updated:** 2026-02-26 | **Current Version:** v0.0.2
 
 This document outlines the vision and planned features for OpenBridge. Features move from **Backlog** to **Planned** to **In Progress** to **Released** as they mature.
 
@@ -8,32 +8,36 @@ Two parallel development tracks exist: **Track A (Memory & Intelligence)** build
 
 ---
 
-## Released (v0.0.1)
+## Released (v0.0.1 — v0.0.2)
 
-Everything that shipped — 310 tasks across 44 phases.
+Everything that shipped — 352 tasks across 48 phases.
 
-| Feature                                                             | Phase | Status  |
-| ------------------------------------------------------------------- | ----- | ------- |
-| Bridge Core (router, auth, queue, config)                           | 1–5   | Shipped |
-| WhatsApp + Console connectors                                       | 1–5   | Shipped |
-| Claude Code provider                                                | 1–5   | Shipped |
-| AI tool auto-discovery                                              | 6–10  | Shipped |
-| Incremental workspace exploration (5-pass)                          | 11–14 | Shipped |
-| MVP release                                                         | 15    | Shipped |
-| Agent Runner (--allowedTools, --max-turns, --model, retries)        | 16–18 | Shipped |
-| Self-governing Master AI                                            | 18–21 | Shipped |
-| Tool profiles (read-only, code-edit, full-access, master)           | 16–17 | Shipped |
-| Worker orchestration + SPAWN markers                                | 19–21 | Shipped |
-| Self-improvement (prompt tracking, model selection learning)        | 20–21 | Shipped |
-| WebChat, Telegram, Discord connectors                               | 22–24 | Shipped |
-| AI-powered intent classification                                    | 29    | Shipped |
-| Live progress events across all connectors                          | 29    | Shipped |
-| Production hardening + v0.0.1 tag                                   | 30    | Shipped |
-| Memory wiring (MemoryManager integration across all modules)        | 40    | Shipped |
-| Memory & startup fixes (race condition, prompt guards)              | 41    | Shipped |
-| Exploration pipeline fixes (JSON fallbacks, chunk dedup)            | 42    | Shipped |
-| Exploration reliability & change detection (throttling, markers)    | 43    | Shipped |
-| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup) | 44    | Shipped |
+| Feature                                                                        | Phase | Version | Status  |
+| ------------------------------------------------------------------------------ | ----- | ------- | ------- |
+| Bridge Core (router, auth, queue, config)                                      | 1–5   | v0.0.1  | Shipped |
+| WhatsApp + Console connectors                                                  | 1–5   | v0.0.1  | Shipped |
+| Claude Code provider                                                           | 1–5   | v0.0.1  | Shipped |
+| AI tool auto-discovery                                                         | 6–10  | v0.0.1  | Shipped |
+| Incremental workspace exploration (5-pass)                                     | 11–14 | v0.0.1  | Shipped |
+| MVP release                                                                    | 15    | v0.0.1  | Shipped |
+| Agent Runner (--allowedTools, --max-turns, --model, retries)                   | 16–18 | v0.0.1  | Shipped |
+| Self-governing Master AI                                                       | 18–21 | v0.0.1  | Shipped |
+| Tool profiles (read-only, code-edit, full-access, master)                      | 16–17 | v0.0.1  | Shipped |
+| Worker orchestration + SPAWN markers                                           | 19–21 | v0.0.1  | Shipped |
+| Self-improvement (prompt tracking, model selection learning)                   | 20–21 | v0.0.1  | Shipped |
+| WebChat, Telegram, Discord connectors                                          | 22–24 | v0.0.1  | Shipped |
+| AI-powered intent classification                                               | 29    | v0.0.1  | Shipped |
+| Live progress events across all connectors                                     | 29    | v0.0.1  | Shipped |
+| Production hardening + v0.0.1 tag                                              | 30    | v0.0.1  | Shipped |
+| Memory wiring (MemoryManager integration across all modules)                   | 40    | v0.0.1  | Shipped |
+| Memory & startup fixes (race condition, prompt guards)                         | 41    | v0.0.1  | Shipped |
+| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                       | 42    | v0.0.1  | Shipped |
+| Exploration reliability & change detection (throttling, markers)               | 43    | v0.0.1  | Shipped |
+| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)            | 44    | v0.0.1  | Shipped |
+| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)  | 47    | v0.0.2  | Shipped |
+| Worker resilience: max-turns detection, adaptive budgets, failure recovery     | 48    | v0.0.2  | Shipped |
+| Worker control: stop/stop-all commands, PID capture, WebChat buttons           | 46    | v0.1.1  | Shipped |
+| Responsive Master: priority queue, fast-path responder, queue depth visibility | 49    | v0.2.0  | Shipped |
 
 ---
 
@@ -560,107 +564,107 @@ Sync via DB:
 
 ## Current Work
 
-> **Execution order:** ① Phase 47 → ② Phase 48 → ③ Phase 46 → ④ Phase 49 → ⑤ Phase 45 (docs last)
+> **Status:** Phases 47, 48, 46, 49 complete. Phase 45 (documentation audit) is the active work.
 
-### ① Phase 47: Exploration Progress Tracking Fix _(v0.0.2 — do first)_
+### ✅ Phase 47: Exploration Progress Tracking Fix _(v0.0.2 — complete)_
 
-> **Goal:** Fix the `exploration_progress` table being permanently empty. The root cause is that `explorationId` is never passed to `ExplorationCoordinator`, so all progress writes are silently skipped. This breaks the `/status` command's exploration display. See [OB-F23](docs/audit/FINDINGS.md).
+> **Goal:** Fixed the `exploration_progress` table being permanently empty. `explorationId` is now wired from `agent_activity` rows through to `ExplorationCoordinator` for all 5 phases. `/status` command now shows live exploration progress. See [OB-F23](docs/audit/FINDINGS.md).
 >
-> **Milestone:** v0.0.2 (bug fix) | **No dependencies** | 7 tasks
+> **Milestone:** v0.0.2 | 7 tasks — all shipped
 
 | Task                                                                     | ID     | Priority | Status  |
 | ------------------------------------------------------------------------ | ------ | :------: | :-----: |
-| Create `agent_activity` row (type `explorer`) in `masterDrivenExplore()` | OB-890 | 🔴 High  | Pending |
-| Create `agent_activity` row in `incrementalExplore()` stale dir path     | OB-891 | 🔴 High  | Pending |
-| Verify phase rows created for all 5 exploration phases                   | OB-892 | 🔴 High  | Pending |
-| Verify directory-level progress rows created for each dive               | OB-893 | 🔴 High  | Pending |
-| Verify `/status` command shows exploration progress                      | OB-894 | 🔴 High  | Pending |
-| Integration test: exploration_progress populated after explore()         | OB-895 | 🔴 High  | Pending |
-| Regression guard in existing exploration tests                           | OB-896 |  🟡 Med  | Pending |
+| Create `agent_activity` row (type `explorer`) in `masterDrivenExplore()` | OB-890 | 🔴 High  | Shipped |
+| Create `agent_activity` row in `incrementalExplore()` stale dir path     | OB-891 | 🔴 High  | Shipped |
+| Verify phase rows created for all 5 exploration phases                   | OB-892 | 🔴 High  | Shipped |
+| Verify directory-level progress rows created for each dive               | OB-893 | 🔴 High  | Shipped |
+| Verify `/status` command shows exploration progress                      | OB-894 | 🔴 High  | Shipped |
+| Integration test: exploration_progress populated after explore()         | OB-895 | 🔴 High  | Shipped |
+| Regression guard in existing exploration tests                           | OB-896 |  🟡 Med  | Shipped |
 
 ---
 
-### ② Phase 48: Worker Resilience — Max-Turns + Failure Recovery _(v0.0.2 — after Phase 47)_
+### ✅ Phase 48: Worker Resilience — Max-Turns + Failure Recovery _(v0.0.2 — complete)_
 
-> **Goal:** Fix two worker failure modes: (1) workers that silently exhaust max-turns are treated as success — need detection, adaptive budgets, and auto-retry. (2) Workers that fail due to auth/rate-limit/crash errors default to 0 retries — need error classification, default retries, and master-driven re-delegation. See [OB-F24](docs/audit/FINDINGS.md) and [OB-F25](docs/audit/FINDINGS.md).
+> **Goal:** Fixed two worker failure modes: (1) workers that silently exhaust max-turns now detected, auto-retried with adaptive turn budget, and context-injected on retry. (2) Worker failures now classified (rate-limit/auth/timeout/crash/context-overflow), default retries set to 2, and Master re-delegates on persistent failure. See [OB-F24](docs/audit/FINDINGS.md) and [OB-F25](docs/audit/FINDINGS.md).
 >
-> **Milestone:** v0.0.2 (resilience) | **No dependencies** | 12 tasks
+> **Milestone:** v0.0.2 | 12 tasks — all shipped
 
 | Task                                                                 | ID     | Priority | Status  |
 | -------------------------------------------------------------------- | ------ | :------: | :-----: |
-| Detect max-turns exhaustion in worker output                         | OB-900 | 🔴 High  | Pending |
-| Add turn-budget warning to worker prompt injection                   | OB-901 | 🔴 High  | Pending |
-| Adaptive max-turns based on prompt length (capped at 50)             | OB-902 |  🟡 Med  | Pending |
-| Auto-retry on max-turns exhaustion with higher budget                | OB-903 | 🔴 High  | Pending |
-| Classify worker exit errors (rate-limit, auth, timeout, crash, etc.) | OB-904 | 🔴 High  | Pending |
-| Change default worker retries from 0 to 2                            | OB-905 | 🔴 High  | Pending |
-| Master-driven worker re-delegation on persistent failure             | OB-906 |  🟡 Med  | Pending |
-| Record worker failure patterns in learnings table                    | OB-907 |  🟡 Med  | Pending |
-| Unit tests for error classification                                  | OB-908 | 🔴 High  | Pending |
-| Unit tests for adaptive max-turns                                    | OB-909 | 🔴 High  | Pending |
-| Integration test for worker retry on failure                         | OB-910 | 🔴 High  | Pending |
-| Verify all tests pass                                                | OB-911 | 🔴 High  | Pending |
+| Detect max-turns exhaustion in worker output                         | OB-900 | 🔴 High  | Shipped |
+| Add turn-budget warning to worker prompt injection                   | OB-901 | 🔴 High  | Shipped |
+| Adaptive max-turns based on prompt length (capped at 50)             | OB-902 |  🟡 Med  | Shipped |
+| Auto-retry on max-turns exhaustion with higher budget                | OB-903 | 🔴 High  | Shipped |
+| Classify worker exit errors (rate-limit, auth, timeout, crash, etc.) | OB-904 | 🔴 High  | Shipped |
+| Change default worker retries from 0 to 2                            | OB-905 | 🔴 High  | Shipped |
+| Master-driven worker re-delegation on persistent failure             | OB-906 |  🟡 Med  | Shipped |
+| Record worker failure patterns in learnings table                    | OB-907 |  🟡 Med  | Shipped |
+| Unit tests for error classification                                  | OB-908 | 🔴 High  | Shipped |
+| Unit tests for adaptive max-turns                                    | OB-909 | 🔴 High  | Shipped |
+| Integration test for worker retry on failure                         | OB-910 | 🔴 High  | Shipped |
+| Verify all tests pass                                                | OB-911 | 🔴 High  | Shipped |
 
 ---
 
-### ③ Phase 46: Worker Control Commands _(v0.1.1 — after Phase 48)_
+### ✅ Phase 46: Worker Control Commands _(v0.1.1 — complete)_
 
-> **Goal:** Give users the ability to see real-time worker details, stop individual workers by ID, or emergency-stop all workers — from any channel. Captures real PIDs, adds kill mechanisms, stop commands, WebChat stop buttons, and cross-channel broadcast.
+> **Goal:** Users can now stop individual workers by ID or all workers at once from any channel. Real PIDs captured from spawned processes, abort function stored per worker, `killWorker()` / `killAllWorkers()` wired to Router stop commands, WebChat stop buttons added, cross-channel broadcast on kill, and Master AI notified to prevent re-spawning.
 >
-> **Milestone:** v0.1.1 (worker control) | **Benefits from Phase 48** (error classification reused) | 17 tasks
+> **Milestone:** v0.1.1 | 17 tasks — all shipped
 
 #### Phase 46a: Worker Kill Infrastructure
 
 | Task                                                             | ID     | Priority | Status  |
 | ---------------------------------------------------------------- | ------ | :------: | :-----: |
-| Expose ChildProcess handle from `execOnce()` — return PID + kill | OB-871 | 🔴 High  | Pending |
-| Add `spawnWithHandle()` to AgentRunner — PID + abort function    | OB-872 | 🔴 High  | Pending |
-| Capture real PID in `MasterManager.spawnWorker()`                | OB-873 | 🔴 High  | Pending |
-| Add `killWorker()` + `killAllWorkers()` to MasterManager         | OB-874 | 🔴 High  | Pending |
-| Add PID column to `agent_activity` table                         | OB-875 |  🟡 Med  | Pending |
-| Unit tests for worker kill infrastructure                        | OB-876 | 🔴 High  | Pending |
+| Expose ChildProcess handle from `execOnce()` — return PID + kill | OB-871 | 🔴 High  | Shipped |
+| Add `spawnWithHandle()` to AgentRunner — PID + abort function    | OB-872 | 🔴 High  | Shipped |
+| Capture real PID in `MasterManager.spawnWorker()`                | OB-873 | 🔴 High  | Shipped |
+| Add `killWorker()` + `killAllWorkers()` to MasterManager         | OB-874 | 🔴 High  | Shipped |
+| Add PID column to `agent_activity` table                         | OB-875 |  🟡 Med  | Shipped |
+| Unit tests for worker kill infrastructure                        | OB-876 | 🔴 High  | Shipped |
 
 #### Phase 46b: Stop Command Handling
 
 | Task                                                              | ID     | Priority | Status  |
 | ----------------------------------------------------------------- | ------ | :------: | :-----: |
-| Add `handleStopCommand()` to Router — stop / stop all / stop <id> | OB-877 | 🔴 High  | Pending |
-| Add access control for stop — owner/admin only                    | OB-878 | 🔴 High  | Pending |
-| Add confirmation flow for `stop all` — 30s timeout                | OB-879 |  🟡 Med  | Pending |
-| Format stop command responses                                     | OB-880 |  🟡 Med  | Pending |
-| Unit tests for stop command handling                              | OB-881 | 🔴 High  | Pending |
+| Add `handleStopCommand()` to Router — stop / stop all / stop <id> | OB-877 | 🔴 High  | Shipped |
+| Add access control for stop — owner/admin only                    | OB-878 | 🔴 High  | Shipped |
+| Add confirmation flow for `stop all` — 30s timeout                | OB-879 |  🟡 Med  | Shipped |
+| Format stop command responses                                     | OB-880 |  🟡 Med  | Shipped |
+| Unit tests for stop command handling                              | OB-881 | 🔴 High  | Shipped |
 
 #### Phase 46c: UI, Broadcast & Integration
 
 | Task                                                  | ID     | Priority | Status  |
 | ----------------------------------------------------- | ------ | :------: | :-----: |
-| Add stop buttons to WebChat dashboard                 | OB-882 |  🟡 Med  | Pending |
-| Broadcast worker stop events to all channels          | OB-883 |  🟡 Med  | Pending |
-| Notify Master AI on worker kill — prevent re-spawning | OB-884 | 🔴 High  | Pending |
-| Integration test for stop command flow                | OB-885 | 🔴 High  | Pending |
-| E2E test for stop all with confirmation               | OB-886 | 🔴 High  | Pending |
-| Verify all tests pass                                 | OB-887 | 🔴 High  | Pending |
+| Add stop buttons to WebChat dashboard                 | OB-882 |  🟡 Med  | Shipped |
+| Broadcast worker stop events to all channels          | OB-883 |  🟡 Med  | Shipped |
+| Notify Master AI on worker kill — prevent re-spawning | OB-884 | 🔴 High  | Shipped |
+| Integration test for stop command flow                | OB-885 | 🔴 High  | Shipped |
+| E2E test for stop all with confirmation               | OB-886 | 🔴 High  | Shipped |
+| Verify all tests pass                                 | OB-887 | 🔴 High  | Shipped |
 
 ---
 
-### ④ Phase 49: Responsive Master — Message Handling During Processing _(v0.2.0 — after Phase 48)_
+### ✅ Phase 49: Responsive Master — Message Handling During Processing _(v0.2.0 — complete)_
 
-> **Goal:** When Master AI is busy processing a complex task, users currently wait with no meaningful response. Add queue visibility (position + ETA), message priority classification (quick-answers jump ahead), and a fast-path responder that handles simple questions immediately via a lightweight AI call — without blocking the Master.
+> **Goal:** Master is no longer silent while busy. Queued messages show queue position and estimated wait time. Quick-answer messages are classified and jump ahead in queue. Fast-path responder handles simple questions immediately via a lightweight `claude --print` call without blocking the Master session. `FastPathResponder` class manages a pool of up to 2 concurrent fast-path agents.
 >
-> **Milestone:** v0.2.0 (smart system) | **Depends on Phase 48** | 6 tasks
+> **Milestone:** v0.2.0 (partial) | 6 tasks — all shipped
 
 | Task                                                                       | ID     | Priority | Status  |
 | -------------------------------------------------------------------------- | ------ | :------: | :-----: |
-| Add queue depth + estimated wait time to queued message acknowledgment     | OB-920 | 🔴 High  | Pending |
-| Implement message priority classification (quick/tool-use/complex)         | OB-921 | 🔴 High  | Pending |
-| Add fast-path responder for quick-answer messages during Master processing | OB-922 | 🔴 High  | Pending |
-| Expose processing state + queue depth in `status` command                  | OB-923 |  🟡 Med  | Pending |
-| Sub-master delegation for concurrent queries (FastPathResponder class)     | OB-924 |  🟡 Med  | Pending |
-| Tests for responsive Master (priority queue, fast-path, queue depth)       | OB-925 | 🔴 High  | Pending |
+| Add queue depth + estimated wait time to queued message acknowledgment     | OB-920 | 🔴 High  | Shipped |
+| Implement message priority classification (quick/tool-use/complex)         | OB-921 | 🔴 High  | Shipped |
+| Add fast-path responder for quick-answer messages during Master processing | OB-922 | 🔴 High  | Shipped |
+| Expose processing state + queue depth in `status` command                  | OB-923 |  🟡 Med  | Shipped |
+| Sub-master delegation for concurrent queries (FastPathResponder class)     | OB-924 |  🟡 Med  | Shipped |
+| Tests for responsive Master (priority queue, fast-path, queue depth)       | OB-925 | 🔴 High  | Shipped |
 
 ---
 
-### ⑤ Phase 45: Documentation Audit _(v0.0.2-post — do last)_
+### ⑤ Phase 45: Documentation Audit _(v0.0.2-post — active)_
 
 > **Goal:** Align every documentation file with the real codebase state. Runs **after all code phases** so docs reflect the final state including exploration fix, worker resilience, worker control, and responsive Master.
 >
@@ -710,15 +714,15 @@ These are ideas captured for future consideration. Not yet scoped or scheduled.
 ## Dependency Graph
 
 ```
-Phase 45: Documentation Audit (housekeeping, no deps)
-
-Phase 47: Exploration Progress Fix (bug fix, no deps — do first)
+✅ Phase 47: Exploration Progress Fix (shipped v0.0.2)
     │
-Phase 48: Worker Resilience (bug fix, no deps — do after 47)
+✅ Phase 48: Worker Resilience (shipped v0.0.2)
     │
-    └──► Phase 49: Responsive Master (depends on 48 for fast-path stability)
+    └──► ✅ Phase 49: Responsive Master (shipped, partial v0.2.0 feature)
 
-Phase 46: Worker Control Commands (independent, can start now)
+✅ Phase 46: Worker Control Commands (shipped v0.1.1)
+
+◻  Phase 45: Documentation Audit (active — aligns docs with shipped phases above)
 
 Phase 31: Memory Foundation
     │
@@ -745,17 +749,17 @@ Phase 31: Memory Foundation
 
 ## Version Milestones
 
-| Version         | Target | Key Features                                                                                                               | Milestone Doc                                           |
-| --------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **v0.0.1**      | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                | [release notes](docs/releases/release-notes-v0.0.1.md)  |
-| **v0.0.1-post** | Next   | Documentation audit — align all docs with codebase (Phase 45)                                                              | —                                                       |
-| **v0.0.2**      | Next   | Bug fixes — exploration progress tracking (Phase 47), worker resilience: max-turns detection + failure recovery (Phase 48) | —                                                       |
-| **v0.1.1**      | TBD    | Worker Control — stop commands, WebChat buttons, PID capture (Phase 46)                                                    | —                                                       |
-| **v0.1.0**      | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                    | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
-| **v0.2.0**      | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phase 49)                                        | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
-| **v0.3.0**      | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                          | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
-| **v0.4.0**      | TBD    | Scale — access control, hierarchical masters, server deployment                                                            | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
-| **v1.0.0**      | TBD    | Team — agent orchestration, role-based workers, stable API                                                                 | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
+| Version         | Target | Key Features                                                                                                                                 | Milestone Doc                                           |
+| --------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **v0.0.1**      | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                                  | [release notes](docs/releases/release-notes-v0.0.1.md)  |
+| **v0.0.2**      | Done   | Bug fixes — exploration progress tracking (Phase 47) + worker resilience: max-turns detection, adaptive budgets, failure recovery (Phase 48) | —                                                       |
+| **v0.1.1**      | Done   | Worker control — stop/stop-all commands, PID capture, WebChat stop buttons, cross-channel broadcast (Phase 46)                               | —                                                       |
+| **v0.0.2-post** | Next   | Documentation audit — align all docs with codebase post-Phases 47–49 (Phase 45)                                                              | —                                                       |
+| **v0.1.0**      | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                                      | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
+| **v0.2.0**      | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phases 33, 34, 35, 49 shipped portion)                             | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
+| **v0.3.0**      | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                                            | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
+| **v0.4.0**      | TBD    | Scale — access control, hierarchical masters, server deployment                                                                              | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
+| **v1.0.0**      | TBD    | Team — agent orchestration, role-based workers, stable API                                                                                   | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
 
 ---
 
