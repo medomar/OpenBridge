@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 36 tasks | **In Progress:** 0
+> **Pending:** 35 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-26
 > **Execution order:** Phase 47 → 48 → 46 → 49 → 45 (docs last — reflects all code changes)
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md) | [Memory + Scale (Phases 31–38)](archive/v9/TASKS-v9-memory-scale.md) | [Memory Wiring (Phase 40)](archive/v10/TASKS-v10-memory-wiring.md) | [Memory Fixes (Phases 41–44)](archive/v11/TASKS-v11-memory-fixes.md)
@@ -55,7 +55,7 @@
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | :------: | :-------: |
 | 354 | **Unit tests for error classification.** Test `classifyError()` correctly categorizes rate-limit, auth, timeout, crash, context-overflow, and unknown errors. Test with real stderr samples from Claude CLI. | OB-908 | 🔴 High  |  ✅ Done  |
 | 355 | **Unit tests for adaptive max-turns.** Test that prompt length scaling works. Test that explicit SPAWN marker maxTurns overrides adaptive. Test the 50-turn cap.                                             | OB-909 | 🔴 High  |  ✅ Done  |
-| 356 | **Integration test for worker retry on failure.** Mock a worker that fails once then succeeds. Verify retry fires, verify learnings updated, verify Master receives the successful result.                   | OB-910 | 🔴 High  | ◻ Pending |
+| 356 | **Integration test for worker retry on failure.** Mock a worker that fails once then succeeds. Verify retry fires, verify learnings updated, verify Master receives the successful result.                   | OB-910 | 🔴 High  |  ✅ Done  |
 | 357 | **Verify all tests pass.** Run `npm run lint && npm run typecheck && npm test && npm run build`.                                                                                                             | OB-911 | 🔴 High  | ◻ Pending |
 
 ---
