@@ -18,7 +18,7 @@ No API keys. No per-request fees. No complex setup. OpenBridge auto-discovers Cl
 - **Always up-to-date context** — OpenBridge explores your workspace, detects changes, and keeps its knowledge current. Multi-turn conversations remember everything.
 - **Zero extra cost** — runs locally, uses your existing AI subscriptions. No API keys, no new bills.
 
-**Under the hood:** A self-governing Master AI picks the best model, tools, and strategy for each task. It spawns short-lived worker agents with bounded permissions. Everything the AI learns is stored in `.openbridge/` with git tracking. The Master refines its own prompts over time.
+**Under the hood:** A self-governing Master AI picks the best model, tools, and strategy for each task. It spawns short-lived worker agents with bounded permissions. Everything the AI learns is stored in `openbridge.db` (SQLite + FTS5) inside `.openbridge/`. Workers receive context briefings from the database before each task. The Master refines its own prompts over time.
 
 ## How It Works
 
@@ -42,9 +42,8 @@ openbridge init
    - Register others as worker candidates
 4. Launch Master AI as long-lived session:
    - Explore workspace via worker agents (read-only, haiku model)
-   - Create .openbridge/ folder
-   - Generate workspace understanding
-   - Init local git repo for tracking
+   - Create .openbridge/ folder with openbridge.db (SQLite)
+   - Generate workspace understanding (stored as context chunks)
 5. Ready. Waiting for messages.
 ```
 
@@ -86,21 +85,24 @@ Master AI (long-lived session, opus)
     │   1. Read current auth code
     │   2. Implement JWT
     │   3. Run tests"
+    │ queries openbridge.db: similar past tasks, workspace chunks, model learnings
     │
     ├──► Worker 1: { model: "haiku", profile: "read-only", task: "read auth files" }
-    │         └──► returns file contents
+    │         briefed with: relevant workspace chunks from openbridge.db (FTS5)
+    │         └──► returns file contents → stored as context_chunks in DB
     │
     ├──► Master analyzes, plans the change
     │
     ├──► Worker 2: { model: "sonnet", profile: "code-edit", task: "implement JWT" }
-    │         └──► returns diff + result
+    │         briefed with: auth file contents + past similar task results
+    │         └──► returns diff + result → task record saved to DB
     │
     ├──► Worker 3: { model: "haiku", profile: "code-edit", task: "run tests" }
     │         └──► returns test output
     │
     ▼
 Master: "Done. Refactored to JWT. 4 files modified, all tests pass."
-    │
+    │ records learnings: model/task-type performance updated in DB
     ▼
 User (WhatsApp) ← response
 ```
@@ -111,7 +113,7 @@ User (WhatsApp) ← response
 
 > _"/ai what changed since yesterday?"_
 
-The Master checks `.openbridge/.git` and your project's git log, then summarizes recent changes — files modified, commits made, current branch status.
+The Master queries `openbridge.db` for recent task history and checks your project's git log, then summarizes recent changes — files modified, commits made, current branch status.
 
 ### Explore Unfamiliar Codebases
 
@@ -123,7 +125,7 @@ The Master already explored the workspace on startup. It knows the file structur
 
 > _"/ai run the tests and fix any failures"_
 
-The Master spawns a worker to run tests, another to read failing code, another to fix it. All changes tracked in `.openbridge/.git`.
+The Master spawns a worker to run tests, another to read failing code, another to fix it. Each worker receives a focused briefing from `openbridge.db` with relevant workspace context.
 
 ### Multi-AI Collaboration
 
@@ -241,17 +243,20 @@ The self-governing autonomous agent:
 - **`.openbridge/` Folder** — the AI's brain, stored inside your target project:
   ```
   .openbridge/
-  ├── workspace-map.json   ← auto-generated project understanding
-  ├── master-session.json  ← Master session ID for resume across restarts
-  ├── profiles.json        ← custom tool profiles created by Master
-  ├── learnings.json       ← what worked, what didn't, model selection patterns
-  ├── exploration/         ← incremental exploration state
-  ├── logs/                ← full worker execution logs
-  ├── agents.json          ← discovered AI tools + roles
-  ├── workers.json         ← active worker registry
-  └── tasks/               ← task history
+  ├── openbridge.db        ← SQLite database (all persistent state)
+  │   ├── context_chunks   ← workspace knowledge, FTS5-indexed for fast retrieval
+  │   ├── conversations    ← every user↔Master message, FTS5-indexed
+  │   ├── tasks            ← full task history (type, model, result, cost, timing)
+  │   ├── learnings        ← model/task-type performance stats (drives model selection)
+  │   ├── prompts          ← versioned prompt library with effectiveness tracking
+  │   ├── sessions         ← Master session state (replaces master-session.json)
+  │   ├── agent_activity   ← real-time worker status with PID tracking
+  │   ├── exploration_progress ← per-phase exploration tracking
+  │   ├── access_control   ← per-user RBAC (owner/admin/developer/viewer)
+  │   └── system_config    ← discovered AI tools, tool profiles (key-value)
+  ├── exploration/         ← incremental exploration state (JSON checkpoints)
+  └── logs/                ← full worker execution logs
   ```
-  > **v0.1.0** will replace all JSON files with a single `openbridge.db` (SQLite + FTS5).
 - **Self-improvement** — Master tracks prompt effectiveness, refines strategies, creates custom profiles
 - **Silent by default** — only speaks when the user sends a message
 
@@ -284,6 +289,9 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 | Worker Orchestration    | ✅ Stable — parallel workers, registry, depth limiting, task history, timeout + cleanup   |
 | Incremental Exploration | ✅ Stable — 5-pass with checkpointing, git + timestamp change detection, freshness track  |
 | Self-Improvement        | ✅ Stable — prompt library, learnings store, effectiveness tracking, idle self-refinement |
+| Memory System           | ✅ Stable — SQLite + FTS5, context chunks, conversation history, worker briefings, RBAC   |
+| Worker Control          | ✅ Stable — PID capture, kill/stop commands, confirmation flow, cross-channel broadcast   |
+| Responsive Master       | ✅ Stable — priority queue, fast-path responder, queue depth reporting, wait estimates    |
 
 ## Tech Stack
 
@@ -295,4 +303,5 @@ OpenBridge is open source (Apache 2.0). The tool is free; the expertise to confi
 - **Git hooks:** Husky v9 + lint-staged + commitlint (conventional commits)
 - **Config validation:** Zod
 - **Logging:** Pino
+- **Database:** better-sqlite3 (SQLite + FTS5)
 - **License:** Apache 2.0
