@@ -734,6 +734,20 @@ export class Router {
       return;
     }
 
+    // Access control — only owner and admin may stop workers
+    if (this.auth) {
+      const accessResult = this.auth.checkAccessControl(message.sender, message.source, 'stop');
+      if (!accessResult.allowed) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to use the stop command.',
+          replyTo: message.id,
+        });
+        return;
+      }
+    }
+
     const trimmed = message.content.trim();
     // Extract everything after "stop" (and optional whitespace)
     const rest = trimmed.slice(4).trim().toLowerCase();

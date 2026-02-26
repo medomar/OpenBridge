@@ -223,6 +223,11 @@ describe('AuthService — access control', () => {
       const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'deploy to production');
       expect(result.allowed).toBe(true);
     });
+
+    it('allows stop action', () => {
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
+      expect(result.allowed).toBe(true);
+    });
   });
 
   describe('owner role', () => {
@@ -232,6 +237,43 @@ describe('AuthService — access control', () => {
 
     it('allows all actions', () => {
       const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'deploy the app');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows stop action', () => {
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
+      expect(result.allowed).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Stop action — owner/admin only
+  // -------------------------------------------------------------------------
+
+  describe('stop action access control', () => {
+    it('denies stop for viewer role', () => {
+      setAccess(db, { user_id: '+1234567890', channel: 'whatsapp', role: 'viewer' });
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toMatch(/not permitted/i);
+    });
+
+    it('denies stop for developer role', () => {
+      setAccess(db, { user_id: '+1234567890', channel: 'whatsapp', role: 'developer' });
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toMatch(/not permitted/i);
+    });
+
+    it('allows stop for admin role', () => {
+      setAccess(db, { user_id: '+1234567890', channel: 'whatsapp', role: 'admin' });
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows stop for owner role', () => {
+      setAccess(db, { user_id: '+1234567890', channel: 'whatsapp', role: 'owner' });
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'stop');
       expect(result.allowed).toBe(true);
     });
   });
