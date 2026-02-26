@@ -38,6 +38,7 @@ import { openDatabase, closeDatabase } from '../memory/database.js';
 import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
+import { parseAIResult } from './result-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
@@ -2786,11 +2787,11 @@ export class MasterManager {
 
     const explorationPrompt = `Explore the workspace at \`${this.workspacePath}\` and create a comprehensive understanding.
 
-You are in charge of the exploration strategy. Use your tools (Read, Glob, Grep) to understand the project, then write your findings to \`.openbridge/workspace-map.json\` using the Write tool.
+You are in charge of the exploration strategy. Use your tools (Read, Glob, Grep) to understand the project.
 
 Follow the "Workspace Exploration" section in your system prompt for the schema and recommended strategy. Adapt the depth of exploration to the project's size and complexity.
 
-Work silently — do not output conversational text, just explore and write the map file.`;
+When done, output ONLY the workspace map as a JSON object to stdout — no other text, no markdown fences, just the raw JSON. Do NOT write any files.`;
 
     const spawnOpts = this.buildMasterSpawnOptions(
       explorationPrompt,
@@ -2814,13 +2815,22 @@ Work silently — do not output conversational text, just explore and write the 
       throw new Error(errorMessage);
     }
 
-    // Persist workspace map written by the agent to memory store (OB-833)
-    const diskMap = await this.dotFolder.readWorkspaceMap();
-    if (diskMap) {
-      await this.writeWorkspaceMapToStore(diskMap);
-      logger.info('Monolithic workspace map persisted to memory store');
+    // Parse workspace map from stdout and store in memory + JSON fallback (OB-838)
+    const parsed = parseAIResult<unknown>(result.stdout, 'monolithic workspace map');
+    if (parsed.success) {
+      try {
+        const map = WorkspaceMapSchema.parse(parsed.data);
+        await this.writeWorkspaceMapToStore(map);
+        await this.dotFolder.writeWorkspaceMap(map); // JSON safety net
+        logger.info({ method: parsed.method }, 'Monolithic workspace map stored in memory');
+      } catch (err) {
+        logger.warn({ error: String(err) }, 'Monolithic workspace map schema validation failed');
+      }
     } else {
-      logger.warn('Monolithic exploration agent did not write workspace-map.json');
+      logger.warn(
+        { rawOutput: result.stdout.slice(0, 200) },
+        'Monolithic exploration: could not extract workspace map from stdout',
+      );
     }
 
     // Write agents.json
