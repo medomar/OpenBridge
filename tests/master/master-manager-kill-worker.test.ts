@@ -382,7 +382,9 @@ describe('MasterManager — Worker Kill Infrastructure (OB-876)', () => {
 
       const result = await masterManager.killAllWorkers();
 
-      expect(result.message).toContain('Stopped worker');
+      // Each line format: "- <shortId> (<model>, '<summary>', <elapsed>)"
+      const shortId = workerId.split('-').pop();
+      expect(result.message).toContain(`- ${shortId}`);
       expect(result.message).toContain('sonnet');
     });
   });
