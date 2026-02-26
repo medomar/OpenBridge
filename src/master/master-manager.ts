@@ -2808,6 +2808,15 @@ Work silently — do not output conversational text, just explore and write the 
       throw new Error(errorMessage);
     }
 
+    // Persist workspace map written by the agent to memory store (OB-833)
+    const diskMap = await this.dotFolder.readWorkspaceMap();
+    if (diskMap) {
+      await this.writeWorkspaceMapToStore(diskMap);
+      logger.info('Monolithic workspace map persisted to memory store');
+    } else {
+      logger.warn('Monolithic exploration agent did not write workspace-map.json');
+    }
+
     // Write agents.json
     await this.writeAgentsRegistry();
 
