@@ -4922,6 +4922,19 @@ ${currentContent}
         workerRecord.workerRetries = workerRetryCount;
       }
 
+      // Detect max-turns exhaustion: Claude exits 0 but work may be incomplete (OB-900)
+      if (result.turnsExhausted) {
+        logger.warn(
+          {
+            workerId,
+            maxTurns: spawnOpts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+            model: result.model,
+            durationMs: result.durationMs,
+          },
+          'Worker hit max-turns limit — result may be incomplete. Master should treat this as partial output.',
+        );
+      }
+
       // Update registry based on final result
       if (result.exitCode === 0) {
         this.workerRegistry.markCompleted(workerId, result);

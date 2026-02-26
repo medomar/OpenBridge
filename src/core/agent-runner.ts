@@ -60,12 +60,37 @@ const RATE_LIMIT_PATTERNS = [
 ];
 
 /**
+ * Patterns in stdout that indicate the Claude CLI hit its --max-turns limit.
+ * Claude exits with code 0 when max-turns is reached, so we must scan stdout
+ * to distinguish a complete run from a turn-budget exhaustion.
+ * Matched case-insensitively against stdout.
+ */
+export const MAX_TURNS_PATTERNS = [
+  'max turns reached',
+  'maximum turns reached',
+  'turn limit',
+  'turn budget',
+  'turns exhausted',
+  'max_turns',
+];
+
+/**
  * Check whether the stderr output from a failed attempt indicates a rate-limit
  * or model-unavailability error that warrants falling back to a different model.
  */
 export function isRateLimitError(stderr: string): boolean {
   const lower = stderr.toLowerCase();
   return RATE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+/**
+ * Check whether the stdout from a completed agent run indicates that the
+ * Claude CLI hit its --max-turns limit. Claude exits with code 0 when
+ * max-turns is reached, so we must inspect stdout to detect incomplete work.
+ */
+export function isMaxTurnsExhausted(stdout: string): boolean {
+  const lower = stdout.toLowerCase();
+  return MAX_TURNS_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
 /**
@@ -266,6 +291,12 @@ export interface AgentResult {
   modelFallbacks?: string[];
   /** Estimated cost in USD for this agent run */
   costUsd?: number;
+  /**
+   * True when the Claude CLI exited with code 0 but stdout contains a
+   * max-turns indicator, meaning the worker ran out of its turn budget
+   * before completing the task. The result is incomplete.
+   */
+  turnsExhausted?: boolean;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -741,6 +772,8 @@ export class AgentRunner {
       throw new AgentExhaustedError(attemptRecords, durationMs);
     }
 
+    const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
+
     const result: AgentResult = {
       stdout: lastResult.stdout,
       stderr: lastResult.stderr,
@@ -750,7 +783,15 @@ export class AgentRunner {
       model: currentModel,
       modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
       costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+      turnsExhausted: turnsExhausted || undefined,
     };
+
+    if (turnsExhausted) {
+      logger.warn(
+        { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
+        'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+      );
+    }
 
     logger.info(
       {
@@ -760,6 +801,7 @@ export class AgentRunner {
         retryCount: result.retryCount,
         modelFallbacks: result.modelFallbacks,
         costUsd: result.costUsd,
+        turnsExhausted: result.turnsExhausted,
       },
       'Agent completed',
     );
@@ -856,6 +898,7 @@ export class AgentRunner {
       if (streamResult!.exitCode === 0) {
         const durationMs = Date.now() - startTime;
         const retryCount = attempt;
+        const turnsExhausted = isMaxTurnsExhausted(stdout);
 
         const result: AgentResult = {
           stdout,
@@ -866,7 +909,18 @@ export class AgentRunner {
           model: currentModel,
           modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
           costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
+          turnsExhausted: turnsExhausted || undefined,
         };
+
+        if (turnsExhausted) {
+          logger.warn(
+            {
+              model: currentModel ?? 'default',
+              maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+            },
+            'Stream exited with code 0 but max-turns was exhausted — result may be incomplete',
+          );
+        }
 
         logger.info(
           {
@@ -876,6 +930,7 @@ export class AgentRunner {
             retryCount,
             modelFallbacks: result.modelFallbacks,
             costUsd: result.costUsd,
+            turnsExhausted: result.turnsExhausted,
           },
           'Stream completed',
         );
