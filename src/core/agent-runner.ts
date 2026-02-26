@@ -75,6 +75,56 @@ export const MAX_TURNS_PATTERNS = [
 ];
 
 /**
+ * Patterns indicating authentication / authorization failures.
+ * These are non-retryable — retrying with the same credentials will fail again.
+ */
+const AUTH_PATTERNS = [
+  'api key',
+  'api_key',
+  'invalid api',
+  'unauthorized',
+  'unauthenticated',
+  'authentication failed',
+  'permission denied',
+  'access denied',
+  'invalid token',
+  'forbidden',
+  '401',
+  '403',
+];
+
+/**
+ * Patterns indicating the prompt or context exceeded the model's context window.
+ * These are non-retryable with the same prompt — the task must be split.
+ */
+const CONTEXT_OVERFLOW_PATTERNS = [
+  'context too long',
+  'context window',
+  'context length',
+  'context_length_exceeded',
+  'prompt too long',
+  'maximum context',
+  'token limit',
+  'too many tokens',
+  'context overflow',
+  'context_overflow',
+];
+
+/**
+ * Categories of worker exit errors.
+ * Used by callers to decide retry strategy:
+ *   retryable:     'rate-limit', 'timeout', 'crash'
+ *   non-retryable: 'auth', 'context-overflow', 'unknown'
+ */
+export type ErrorCategory =
+  | 'rate-limit'
+  | 'auth'
+  | 'timeout'
+  | 'crash'
+  | 'context-overflow'
+  | 'unknown';
+
+/**
  * Check whether the stderr output from a failed attempt indicates a rate-limit
  * or model-unavailability error that warrants falling back to a different model.
  */
@@ -91,6 +141,28 @@ export function isRateLimitError(stderr: string): boolean {
 export function isMaxTurnsExhausted(stdout: string): boolean {
   const lower = stdout.toLowerCase();
   return MAX_TURNS_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+/**
+ * Classify the category of a worker exit error from stderr output and exit code.
+ *
+ * Priority order (highest to lowest):
+ *   1. rate-limit   — recoverable, retry with model fallback
+ *   2. auth         — non-retryable, report to user
+ *   3. context-overflow — non-retryable, split the task
+ *   4. timeout      — exit code 143/137 or "timeout" in stderr
+ *   5. crash        — any other non-zero exit
+ *   6. unknown      — exit code 0 with unrecognised stderr
+ */
+export function classifyError(stderr: string, exitCode: number): ErrorCategory {
+  const lower = stderr.toLowerCase();
+
+  if (isRateLimitError(stderr)) return 'rate-limit';
+  if (AUTH_PATTERNS.some((p) => lower.includes(p))) return 'auth';
+  if (CONTEXT_OVERFLOW_PATTERNS.some((p) => lower.includes(p))) return 'context-overflow';
+  if (exitCode === 143 || exitCode === 137 || lower.includes('timeout')) return 'timeout';
+  if (exitCode !== 0) return 'crash';
+  return 'unknown';
 }
 
 /**
