@@ -1,7 +1,11 @@
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { ExplorationLogEntry } from '../types/master.js';
+import {
+  PromptManifestSchema,
+  type ExplorationLogEntry,
+  type PromptManifest,
+} from '../types/master.js';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
 import {
@@ -389,6 +393,28 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _createPromptVersion(this.db, name, content);
     return Promise.resolve();
+  }
+
+  /** Read the prompt manifest stored in system_config under key 'prompt_manifest'. Returns null if not stored. */
+  getPromptManifest(): Promise<PromptManifest | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    interface ConfigRow {
+      value: string;
+    }
+    const row = this.db
+      .prepare('SELECT value FROM system_config WHERE key = ?')
+      .get('prompt_manifest') as ConfigRow | undefined;
+    if (!row?.value) return Promise.resolve(null);
+    try {
+      return Promise.resolve(PromptManifestSchema.parse(JSON.parse(row.value)));
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  /** Persist the prompt manifest to system_config under key 'prompt_manifest'. */
+  setPromptManifest(manifest: PromptManifest): Promise<void> {
+    return this.setSystemConfig('prompt_manifest', JSON.stringify(manifest));
   }
 
   // -------------------------------------------------------------------------
