@@ -350,6 +350,20 @@ export function estimateCostUsd(model: string | undefined, outputBytes: number):
   return 0.01 + outputKb * 0.001;
 }
 
+/**
+ * Handle returned by AgentRunner.spawnWithHandle().
+ * Provides the result promise, the PID of the initial child process,
+ * and an abort function that sends SIGTERM → 5s grace → SIGKILL.
+ */
+export interface SpawnHandle {
+  /** Promise that resolves to the final AgentResult (after retries if any) */
+  promise: Promise<AgentResult>;
+  /** PID of the initial child process (-1 if the OS did not assign one) */
+  pid: number;
+  /** Abort the currently-running execution (SIGTERM → 5s grace period → SIGKILL) */
+  abort: () => void;
+}
+
 /** Result returned from AgentRunner.spawn() */
 export interface AgentResult {
   stdout: string;
@@ -914,6 +928,178 @@ export class AgentRunner {
     }
 
     return result;
+  }
+
+  /**
+   * Spawn an AI CLI agent and immediately return a handle with the child PID
+   * and an abort function, without waiting for the run to complete.
+   *
+   * The returned `promise` resolves to the same `AgentResult` that `spawn()`
+   * would produce (including retries and model fallback). The `abort()` function
+   * always targets the *currently running* child process — it updates across
+   * retry boundaries so a late abort still kills an in-progress retry.
+   *
+   * Use this instead of `spawn()` when the caller needs to:
+   *   - record the worker PID in a registry before the run finishes
+   *   - cancel a long-running worker in response to a user "stop" command
+   *
+   * Keep `spawn()` unchanged for backward compatibility.
+   */
+  spawnWithHandle(opts: SpawnOptions): SpawnHandle {
+    const retries = opts.retries ?? 3;
+    const retryDelay = opts.retryDelay ?? 10_000;
+    let currentModel = opts.model;
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
+    const startTime = Date.now();
+    const modelFallbacks: string[] = [];
+
+    // Mutable reference to the kill function of the currently-running process.
+    // Updated on each retry so abort() always terminates the live child.
+    let currentKill: (() => void) | undefined;
+
+    const abort = (): void => {
+      currentKill?.();
+    };
+
+    // Launch the first execution immediately — this lets us capture its PID
+    // synchronously before the async retry loop begins.
+    const firstHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+    currentKill = firstHandle.kill;
+    const initialPid = firstHandle.pid;
+
+    logger.debug(
+      {
+        workspacePath: opts.workspacePath,
+        model: opts.model,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        timeout: opts.timeout,
+        retries,
+        pid: initialPid,
+        sessionId: opts.resumeSessionId ?? opts.sessionId,
+      },
+      'Spawning agent with handle',
+    );
+
+    const promise = (async (): Promise<AgentResult> => {
+      const attemptRecords: AttemptRecord[] = [];
+      let lastResult: { stdout: string; stderr: string; exitCode: number } | undefined;
+      let attempt = 0;
+
+      // The first iteration uses the already-started handle; subsequent
+      // iterations create new execOnce() calls for each retry.
+      let currentHandle: ExecOnceHandle = firstHandle;
+
+      for (attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) {
+          logger.warn(
+            { attempt, maxRetries: retries, delay: retryDelay },
+            'Retrying agent after non-zero exit',
+          );
+          await sleep(retryDelay);
+          currentHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+          currentKill = currentHandle.kill;
+        }
+
+        try {
+          lastResult = await currentHandle.promise;
+        } catch (error) {
+          logger.error({ error, attempt }, 'Agent spawn error');
+          attemptRecords.push({
+            attempt,
+            exitCode: -1,
+            stderr: error instanceof Error ? error.message : String(error),
+          });
+          if (attempt < retries) {
+            continue;
+          }
+          throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+        }
+
+        if (lastResult.exitCode === 0) {
+          break;
+        }
+
+        logger.warn(
+          { exitCode: lastResult.exitCode, attempt, stderr: lastResult.stderr.slice(0, 500) },
+          'Agent exited with non-zero code',
+        );
+
+        attemptRecords.push({
+          attempt,
+          exitCode: lastResult.exitCode,
+          stderr: lastResult.stderr,
+        });
+
+        // Rate-limit / model unavailability — fall back to next model
+        if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
+          const nextModel = getNextFallbackModel(currentModel);
+          if (nextModel) {
+            logger.warn(
+              { from: currentModel, to: nextModel, attempt },
+              'Model rate-limited — falling back to next model in chain',
+            );
+            modelFallbacks.push(currentModel);
+            currentModel = nextModel;
+            currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
+          }
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      const retryCount = Math.min(attempt, retries);
+
+      if (!lastResult || lastResult.exitCode !== 0) {
+        throw new AgentExhaustedError(attemptRecords, durationMs);
+      }
+
+      const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
+
+      const result: AgentResult = {
+        stdout: lastResult.stdout,
+        stderr: lastResult.stderr,
+        exitCode: lastResult.exitCode,
+        durationMs,
+        retryCount,
+        model: currentModel,
+        modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+        costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+        turnsExhausted: turnsExhausted || undefined,
+      };
+
+      if (turnsExhausted) {
+        logger.warn(
+          { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
+          'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+        );
+      }
+
+      logger.info(
+        {
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          model: result.model ?? 'default',
+          retryCount: result.retryCount,
+          modelFallbacks: result.modelFallbacks,
+          costUsd: result.costUsd,
+          turnsExhausted: result.turnsExhausted,
+        },
+        'Agent completed',
+      );
+
+      if (opts.logFile) {
+        try {
+          await writeLogFile(opts.logFile, opts, result);
+          logger.debug({ logFile: opts.logFile }, 'Agent log written to disk');
+        } catch (logError) {
+          logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write agent log');
+        }
+      }
+
+      return result;
+    })();
+
+    return { promise, pid: initialPid, abort };
   }
 
   /**
