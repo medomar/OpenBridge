@@ -472,105 +472,130 @@ export function buildArgs(opts: SpawnOptions): string[] {
  */
 const SIGTERM_GRACE_PERIOD_MS = 5000;
 
+/** Handle returned by execOnce() — exposes the result promise, process PID, and a kill function. */
+interface ExecOnceHandle {
+  promise: Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  pid: number;
+  kill: () => void;
+}
+
 /** Execute a single agent attempt. Returns stdout, stderr, exitCode. */
-function execOnce(
-  config: CLISpawnConfig,
-  workspacePath: string,
-  timeout?: number,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    const child = nodeSpawn(config.binary, config.args, {
-      cwd: workspacePath,
-      env: config.env,
-      stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
-    });
+function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: number): ExecOnceHandle {
+  const child = nodeSpawn(config.binary, config.args, {
+    cwd: workspacePath,
+    env: config.env,
+    stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
+  });
 
-    logger.debug(
-      { pid: child.pid, binary: config.binary, argCount: config.args.length },
-      'Spawned child process',
-    );
+  logger.debug(
+    { pid: child.pid, binary: config.binary, argCount: config.args.length },
+    'Spawned child process',
+  );
 
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let timeoutTimer: NodeJS.Timeout | undefined;
-    let gracePeriodTimer: NodeJS.Timeout | undefined;
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+  let timeoutTimer: NodeJS.Timeout | undefined;
+  let gracePeriodTimer: NodeJS.Timeout | undefined;
 
-    // Manual timeout handling with SIGTERM → SIGKILL progression
-    if (timeout && timeout > 0) {
-      timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        logger.warn(
-          { timeout, pid: child.pid },
-          'Worker timeout exceeded — sending SIGTERM (5s grace period)',
+  const promise = new Promise<{ stdout: string; stderr: string; exitCode: number }>(
+    (resolve, reject) => {
+      // Manual timeout handling with SIGTERM → SIGKILL progression
+      if (timeout && timeout > 0) {
+        timeoutTimer = setTimeout(() => {
+          timedOut = true;
+          logger.warn(
+            { timeout, pid: child.pid },
+            'Worker timeout exceeded — sending SIGTERM (5s grace period)',
+          );
+
+          // Send SIGTERM for graceful shutdown
+          const terminated = child.kill('SIGTERM');
+
+          if (!terminated) {
+            logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to worker');
+            // Resolve immediately if kill failed
+            resolve({
+              stdout,
+              stderr: stderr + '\nTimeout: failed to terminate process',
+              exitCode: 143,
+            });
+            return;
+          }
+
+          // Set up grace period timer for SIGKILL
+          gracePeriodTimer = setTimeout(() => {
+            logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
+            child.kill('SIGKILL');
+          }, SIGTERM_GRACE_PERIOD_MS);
+        }, timeout);
+      }
+
+      child.stdout!.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+        stdout += chunk;
+        logger.debug(
+          { pid: child.pid, chunkLen: chunk.length, totalLen: stdout.length },
+          'stdout data received',
+        );
+      });
+
+      child.stderr!.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (code, signal) => {
+        // Clear both timers
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+        logger.debug(
+          { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
+          'Child process closed',
         );
 
-        // Send SIGTERM for graceful shutdown
-        const terminated = child.kill('SIGTERM');
-
-        if (!terminated) {
-          logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to worker');
-          // Resolve immediately if kill failed
+        if (timedOut) {
+          // Process was terminated due to timeout
+          const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
           resolve({
             stdout,
-            stderr: stderr + '\nTimeout: failed to terminate process',
-            exitCode: 143,
+            stderr:
+              stderr +
+              `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
+            exitCode,
           });
-          return;
+        } else {
+          resolve({ stdout, stderr, exitCode: code ?? 1 });
         }
+      });
 
-        // Set up grace period timer for SIGKILL
+      child.on('error', (error) => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+        reject(error);
+      });
+    },
+  );
+
+  return {
+    promise,
+    pid: child.pid ?? -1,
+    kill: (): void => {
+      // Clear timers if kill is called manually
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+      // Graceful shutdown with SIGTERM
+      const terminated = child.kill('SIGTERM');
+
+      if (terminated) {
+        // Set up grace period for SIGKILL
         gracePeriodTimer = setTimeout(() => {
-          logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
           child.kill('SIGKILL');
         }, SIGTERM_GRACE_PERIOD_MS);
-      }, timeout);
-    }
-
-    child.stdout!.on('data', (data: Buffer) => {
-      const chunk = data.toString();
-      stdout += chunk;
-      logger.debug(
-        { pid: child.pid, chunkLen: chunk.length, totalLen: stdout.length },
-        'stdout data received',
-      );
-    });
-
-    child.stderr!.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code, signal) => {
-      // Clear both timers
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
-
-      logger.debug(
-        { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
-        'Child process closed',
-      );
-
-      if (timedOut) {
-        // Process was terminated due to timeout
-        const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
-        resolve({
-          stdout,
-          stderr:
-            stderr +
-            `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
-          exitCode,
-        });
-      } else {
-        resolve({ stdout, stderr, exitCode: code ?? 1 });
       }
-    });
-
-    child.on('error', (error) => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
-      reject(error);
-    });
-  });
+    },
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -792,7 +817,8 @@ export class AgentRunner {
       }
 
       try {
-        lastResult = await execOnce(currentConfig, opts.workspacePath, opts.timeout);
+        const { promise: execPromise } = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+        lastResult = await execPromise;
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
         attemptRecords.push({
