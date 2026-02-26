@@ -1615,7 +1615,9 @@ export class MasterManager {
 
       const isValid = this.validateWorkerOutput(promptId, result, taskRecord);
 
-      await this.dotFolder.recordPromptUsage(promptId, isValid);
+      if (!this.memory) {
+        await this.dotFolder.recordPromptUsage(promptId, isValid);
+      }
 
       if (this.memory) {
         await this.memory.recordPromptOutcome(promptId, isValid);
@@ -4023,7 +4025,9 @@ ${currentContent}
       if (manifest && existingEntry) {
         existingEntry.previousVersion = currentContent;
         manifest.updatedAt = new Date().toISOString();
-        await this.dotFolder.writePromptManifest(manifest);
+        if (!this.memory) {
+          await this.dotFolder.writePromptManifest(manifest);
+        }
       }
 
       // Update the prompt — write to DB (primary) or file (fallback)
@@ -4089,7 +4093,9 @@ ${currentContent}
           prompt.previousSuccessRate = undefined;
           prompt.updatedAt = new Date().toISOString();
 
-          await this.dotFolder.writePromptManifest(manifest);
+          if (!this.memory) {
+            await this.dotFolder.writePromptManifest(manifest);
+          }
 
           logger.info({ promptId: prompt.id }, 'Successfully rolled back degraded prompt');
         } catch (error) {
