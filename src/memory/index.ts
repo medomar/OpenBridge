@@ -704,17 +704,41 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Exploration log (agent_activity table — OB-802)
+  // Exploration log (exploration_progress table — OB-835)
   // -------------------------------------------------------------------------
 
   /**
    * Append an exploration log entry to the DB.
-   * Uses agent_activity with type='log' so no schema change is needed.
+   *
+   * When `explorationId` is provided (a valid agent_activity.id), inserts a
+   * structured row into `exploration_progress` — keeping all exploration-related
+   * records in the same table that `insertExplorationProgress` uses.
+   *
+   * When `explorationId` is absent, falls back to writing a `type='log'` row in
+   * `agent_activity` for backward compatibility with callers that have no
+   * exploration context (e.g. lifecycle events in MasterManager).
+   *
    * Replaces dotFolder.appendLog() calls.
    */
-  logExploration(entry: ExplorationLogEntry): Promise<void> {
+  logExploration(entry: ExplorationLogEntry, explorationId?: string): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     const now = entry.timestamp ?? new Date().toISOString();
+
+    if (explorationId) {
+      _insertExplorationProgress(this.db, {
+        exploration_id: explorationId,
+        phase: entry.message,
+        target: entry.data !== undefined ? JSON.stringify(entry.data) : null,
+        status: entry.level === 'error' ? 'failed' : 'completed',
+        progress_pct: 100,
+        files_processed: 0,
+        started_at: now,
+        completed_at: now,
+      });
+      return Promise.resolve();
+    }
+
+    // Fallback: no exploration context — write to agent_activity with type='log'
     this.db
       .prepare(
         `INSERT INTO agent_activity
