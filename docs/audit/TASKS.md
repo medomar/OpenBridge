@@ -1,8 +1,8 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 tasks | **Done:** 47 tasks | **In Progress:** 0
+> **Pending:** 13 tasks | **Done:** 48 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-26
-> **Execution order:** Phase 47 → 48 → 46 → 49 → 45 (docs last — reflects all code changes)
+> **Execution order:** Phase 47 → 48 → 46 → 49 → 50 → 45 (docs last — reflects all code changes)
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md) | [Memory + Scale (Phases 31–38)](archive/v9/TASKS-v9-memory-scale.md) | [Memory Wiring (Phase 40)](archive/v10/TASKS-v10-memory-wiring.md) | [Memory Fixes (Phases 41–44)](archive/v11/TASKS-v11-memory-fixes.md)
 
 ---
@@ -130,7 +130,7 @@
 | 313 | **Update OVERVIEW.md.** Remove all references to `.openbridge/.git` (replaced by SQLite). Add memory system description (SQLite + FTS5, worker briefings). Update `.openbridge/` folder contents to show `openbridge.db` instead of JSON files. Update "How the Master Governs Workers" section to mention worker briefings from memory. | OB-862 | 🔴 High  |  ✅ Done  |
 | 314 | **Create HEALTH.md.** No current `docs/audit/HEALTH.md` exists — only an archived v4 at score 7.050. Create a fresh HEALTH.md with updated scoring reflecting all completed work.                                                                                                                                                        | OB-863 | 🔴 High  |  ✅ Done  |
 | 315 | **Update CHANGELOG.md.** Fill empty `[Unreleased]` section with all features shipped since v0.0.1: SQLite memory, media support, SHARE/VOICE markers, file server, email sender, GitHub Pages publisher, access control, agent dashboard, exploration progress fix, worker resilience, worker control, responsive Master.                | OB-864 | 🔴 High  |  ✅ Done  |
-| 316 | **Update CLAUDE.md (both workspace root and OpenBridge/).** Add missing modules, fix LOC counts, update test counts, update "Current Development Focus" section to reflect post-Phase 49 state.                                                                                                                                          | OB-865 | 🔴 High  | ◻ Pending |
+| 316 | **Update CLAUDE.md (both workspace root and OpenBridge/).** Add missing modules, fix LOC counts, update test counts, update "Current Development Focus" section to reflect post-Phase 49 state.                                                                                                                                          | OB-865 | 🔴 High  |  ✅ Done  |
 | 317 | **Update MEMORY.md.** Fix task/test counts. Mark all shipped systems. Update phase statuses. Update architecture section.                                                                                                                                                                                                                | OB-866 | 🔴 High  | ◻ Pending |
 | 318 | **Audit milestone specs.** Update `v0.1.0-memory-system.md`, `v0.2.0-smart-system.md`, `v0.3.0-visibility.md`, `v0.4.0-scale.md`. Mark shipped items. Redraw milestone boundaries if needed.                                                                                                                                             | OB-867 |  🟡 Med  | ◻ Pending |
 | 319 | **Audit FINDINGS.md.** Verify open/fixed counts are accurate. Check if any new bugs were introduced during Phases 46–49. Update "Last Audit" date.                                                                                                                                                                                       | OB-868 |  🟡 Med  | ◻ Pending |
@@ -166,10 +166,47 @@
    Depends on Phase 48 (fast-path agents need resilient spawning).
    Benefits from Phase 46 (killable handles for fast-path agents).
        ↓
-⑤ Phase 45: Documentation Audit (11 tasks)
-   LAST — one clean pass capturing all code changes from 47→48→46→49.
+⑤ Phase 50: Large Directory Splitting (8 tasks)
+   No deps on 46/49. Fixes src/ exploration timeout.
+   Touches exploration-coordinator, workspace-change-tracker, master-manager.
+       ↓
+⑥ Phase 45: Documentation Audit (11 tasks)
+   LAST — one clean pass capturing all code changes from 47→48→46→49→50.
    Avoids re-doing docs after each code phase.
 ```
+
+---
+
+## ⑥ Phase 50: Large Directory Splitting for Exploration _(v0.0.3 — after Phase 45)_
+
+> **Problem:** When a top-level directory like `src/` contains 40+ files across deep nesting, the single AI worker assigned to explore it times out at the 3-minute `DIRECTORY_DIVE_TIMEOUT` (exit code 143). The `src/` scope never gets explored, leaving a gap in the workspace map. Observed in production logs — see `AgentExhaustedError` at `exploration-coordinator.ts:852`.
+>
+> **Fix:** Before diving, check each directory's file count against a threshold (25 files). Large directories get split into their immediate subdirectories (`src/core/`, `src/master/`, `src/connectors/`, etc.), each explored by its own parallel worker. This applies to both initial exploration (Phase 3) and incremental re-exploration. Scope tracking is updated to use 2-level scopes (e.g., `src/core` instead of `src`), so incremental changes only re-explore the affected subdirectory.
+>
+> **Why after Phase 45:** No code dependencies on other pending phases. Documentation audit (Phase 45) should capture this phase's changes.
+
+### Phase 50a: Schema & Infrastructure
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                         | ID     | Priority |  Status   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 364 | **Add `splitDirs` field to `StructureScanSchema`.** In `src/types/master.ts` (after line 348), add `splitDirs: z.record(z.array(z.string())).default({})`. Maps parent directory to its subdirectory paths (e.g., `{ "src": ["src/core", "src/master", "src/connectors"] }`). Default `{}` ensures backward compatibility.                                                                                                   | OB-932 | 🔴 High  | ◻ Pending |
+| 365 | **Add filesystem helpers for directory size detection.** In `src/master/exploration-coordinator.ts`, add `LARGE_DIR_FILE_THRESHOLD = 25` constant. Add `getSubdirectoryCounts(workspacePath, dirPath, excludedDirs)` and `countFilesRecursive(dirPath, excludedDirs)` helper functions using `fs.readdir`. No AI calls needed — pure filesystem scan (<50ms). Reuse `EXCLUDED_DIRS` list from `workspace-change-tracker.ts`. | OB-933 | 🔴 High  | ◻ Pending |
+| 366 | **Add `expandLargeDirectories()` method to `ExplorationCoordinator`.** New private method. For each directory, check file count against threshold. If above: scan subdirectories, replace parent with subdirs in dive list. If parent has root-level files (e.g., `src/index.ts`), keep parent for a fast dive covering only root files. Return `{ expandedDirs: string[], splitDirs: Record<string, string[]> }`.           | OB-934 | 🔴 High  | ◻ Pending |
+
+### Phase 50b: Exploration Pipeline Integration
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | ID     | Priority |  Status   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 367 | **Update Phase 3 to use directory splitting.** In `src/master/exploration-coordinator.ts` `executePhase3DirectoryDives()` (line 692), call `expandLargeDirectories()` on the filtered significant dirs. Use the expanded list for dive tracking and batch processing. Persist `splitDirs` back to the StructureScan store. No changes needed in `executeSingleDirectoryDive()`, `storeExplorationChunks()`, or the dive prompt — they already handle arbitrary directory paths.                             | OB-935 | 🔴 High  | ◻ Pending |
+| 368 | **Update `extractChangedScopes()` for 2-level scopes.** In `src/master/workspace-change-tracker.ts` (line 358), add optional 3rd parameter `splitDirs: Record<string, string[]> = {}`. For files in split directories (e.g., `src/core/bridge.ts` where `src` is split): emit `src/core`. For files directly in split parent (e.g., `src/index.ts`): emit `src`. For non-split directories: emit top-level name as before. Backward compatible — existing callers without `splitDirs` get the old behavior. | OB-936 | 🔴 High  | ◻ Pending |
+| 369 | **Pass `splitDirs` during incremental explore.** In `src/master/master-manager.ts` (line 2691), read StructureScan from memory via `this.memory.getStructureScan()` (or fallback `this.dotFolder.readStructureScan()`) to get `splitDirs`. Pass as 3rd argument to `extractChangedScopes()`. Ensures that changing `src/core/bridge.ts` only marks `src/core` stale — not all of `src/`.                                                                                                                    | OB-937 | 🔴 High  | ◻ Pending |
+
+### Phase 50c: Tests & Verification
+
+| #   | Task                                                                                                                                                                                                                                                                                                                                                                                                            | ID     | Priority |  Status   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
+| 370 | **Unit tests for directory splitting.** Test `expandLargeDirectories()`: dir below threshold (no split), dir above threshold with subdirs (splits), flat dir with no subdirs (no split), subdirs with 0 files (excluded). Test updated `extractChangedScopes()`: with `splitDirs` param (2-level scopes), without `splitDirs` (backward compatible), root-level files in split parent, files in non-split dirs. | OB-938 | 🔴 High  | ◻ Pending |
+| 371 | **Verify all tests pass.** Run `npm run lint && npm run typecheck && npm test && npm run build`. Fix any regressions. All CI checks must pass.                                                                                                                                                                                                                                                                  | OB-939 | 🔴 High  | ◻ Pending |
 
 ---
 
