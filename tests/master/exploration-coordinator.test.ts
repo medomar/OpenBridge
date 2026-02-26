@@ -1364,6 +1364,50 @@ describe('ExplorationCoordinator', () => {
     });
   });
 
+  describe('Regression guard: insertExplorationProgress called (OB-896)', () => {
+    it('calls insertExplorationProgress for each phase when memory and explorationId are provided', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const insertSpy = vi.spyOn(memory, 'insertExplorationProgress');
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      expect(insertSpy).toHaveBeenCalled();
+
+      // Verify all expected phases were tracked
+      const calledPhases = insertSpy.mock.calls.map((call) => call[0].phase);
+      expect(calledPhases).toContain('structure');
+      expect(calledPhases).toContain('classification');
+      expect(calledPhases).toContain('directory-dive');
+      expect(calledPhases).toContain('assembly');
+    });
+
+    it('does not throw when no memory is provided (no DB tracking)', async () => {
+      // Coordinator without memory — no insertExplorationProgress calls expected
+      setupCompleteExploration();
+      const summary = await coordinator.explore();
+      expect(summary.status).toBe('completed');
+    });
+  });
+
   // Helper function to setup mocks for remaining phases
   function setupMockRemainingPhases(startFrom: number = 0, directories: string[] = ['src']) {
     const classification: Classification = {
