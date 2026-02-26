@@ -15,7 +15,8 @@ import type { MessageQueue } from './queue.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
-import { AgentRunner, TOOLS_READ_ONLY } from './agent-runner.js';
+import { AgentRunner } from './agent-runner.js';
+import { FastPathResponder } from './fast-path-responder.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
@@ -180,8 +181,8 @@ export class Router {
   private queue?: MessageQueue;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
-  /** AgentRunner instance used exclusively for fast-path quick-answer responses. */
-  private readonly agentRunner = new AgentRunner();
+  /** Pool of short-lived read-only agents for quick-answer responses during Master processing. */
+  private readonly fastPathResponder = new FastPathResponder(new AgentRunner());
 
   constructor(
     defaultProvider: string,
@@ -221,9 +222,10 @@ export class Router {
     this.emailConfig = config;
   }
 
-  /** Set the MemoryManager — enables the "status" command */
+  /** Set the MemoryManager — enables the "status" command and fast-path context chunks */
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
+    this.fastPathResponder.setMemory(memory);
     logger.info('Router configured with MemoryManager (status command enabled)');
   }
 
@@ -762,44 +764,20 @@ export class Router {
       return;
     }
 
-    const contextStr = await this.buildWorkspaceContext();
-    const promptParts = [
-      'You are a helpful assistant with read-only access to a codebase. Answer the question concisely (1–3 paragraphs). Do not modify any files.',
-    ];
-    if (contextStr) {
-      promptParts.push(`\nWorkspace context:\n${contextStr}`);
-    }
-    promptParts.push(`\nUser question: ${message.content}`);
-    const prompt = promptParts.join('');
+    const workspaceContext = await this.buildWorkspaceContext();
+    const reply = await this.fastPathResponder.answer({
+      question: message.content,
+      workspacePath: this.workspacePath,
+      workspaceContext: workspaceContext || undefined,
+    });
 
-    try {
-      const result = await this.agentRunner.spawn({
-        prompt,
-        workspacePath: this.workspacePath,
-        allowedTools: [...TOOLS_READ_ONLY],
-        maxTurns: 3,
-        retries: 0,
-        timeout: 30_000,
-      });
-
-      const reply = result.stdout.trim() || 'No response — please try again.';
-      await connector.sendMessage({
-        target: message.source,
-        recipient: message.sender,
-        content: reply,
-        replyTo: message.id,
-      });
-      logger.info({ sender: message.sender }, 'Fast-path response delivered');
-    } catch (err) {
-      logger.warn({ err, sender: message.sender }, 'Fast-path responder failed');
-      await connector.sendMessage({
-        target: message.source,
-        recipient: message.sender,
-        content:
-          'The AI is busy and could not answer right now. Your question will be processed shortly.',
-        replyTo: message.id,
-      });
-    }
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: reply,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Fast-path response delivered');
   }
 
   /**
