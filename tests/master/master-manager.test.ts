@@ -6,7 +6,7 @@ import type { InboundMessage } from '../../src/types/message.js';
 import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -18,10 +18,12 @@ function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
 // Mock AgentRunner (used by MasterManager, DelegationCoordinator)
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => ({
   AgentRunner: vi.fn().mockImplementation(() => ({
     spawn: mockSpawn,
     stream: mockStream,
+    spawnWithHandle: mockSpawnWithHandle,
   })),
   TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
   TOOLS_CODE_EDIT: [
@@ -148,6 +150,13 @@ describe('MasterManager', () => {
 
     // Clear mock call history
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: Parameters<typeof mockSpawn>[0]) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // By default, make classifyTask use keyword heuristics (no AI call) so that
     // processMessage tests aren't affected by the classifier consuming spawn mocks.
