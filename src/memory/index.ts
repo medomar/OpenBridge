@@ -157,6 +157,11 @@ export class MemoryManager {
 
   close(): Promise<void> {
     if (this.db) {
+      try {
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch {
+        // WAL checkpoint is best-effort — in-memory DBs and read-only mounts may skip
+      }
       closeDatabase(this.db);
       this.db = null;
     }
