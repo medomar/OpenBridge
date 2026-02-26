@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 44 tasks | **In Progress:** 0
+> **Pending:** 43 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-26
 > **Execution order:** Phase 47 → 48 → 46 → 49 → 45 (docs last — reflects all code changes)
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md) | [Memory + Scale (Phases 31–38)](archive/v9/TASKS-v9-memory-scale.md) | [Memory Wiring (Phase 40)](archive/v10/TASKS-v10-memory-wiring.md) | [Memory Fixes (Phases 41–44)](archive/v11/TASKS-v11-memory-fixes.md)
@@ -37,7 +37,7 @@
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | :------: | :-------: |
 | 346 | **Detect max-turns exhaustion in worker output.** In `master-manager.ts` `processWorkerResult()`, scan worker stdout for Claude CLI's max-turns indicator (e.g., `"max turns reached"`, `"turn limit"`). Add a `turnsExhausted: boolean` flag to `AgentResult`.                                          | OB-900 | 🔴 High  |  ✅ Done  |
 | 347 | **Add turn-budget warning to worker system prompt injection.** In `master-system-prompt.ts` worker instructions, tell the Master to include in SPAWN marker prompts: "You have N turns. If you cannot finish, output `[INCOMPLETE: step X/Y]` so the system can retry with a higher budget."             | OB-901 | 🔴 High  |  ✅ Done  |
-| 348 | **Adaptive max-turns based on prompt length.** In `spawnWorker()`, compute `maxTurns = baselineTurns + Math.ceil(promptLength / 1000)` capped at 50. Override only if the SPAWN marker didn't explicitly set `maxTurns`. Log the computed value.                                                         | OB-902 |  🟡 Med  | ◻ Pending |
+| 348 | **Adaptive max-turns based on prompt length.** In `spawnWorker()`, compute `maxTurns = baselineTurns + Math.ceil(promptLength / 1000)` capped at 50. Override only if the SPAWN marker didn't explicitly set `maxTurns`. Log the computed value.                                                         | OB-902 |  🟡 Med  |  ✅ Done  |
 | 349 | **Auto-retry on max-turns exhaustion.** When `turnsExhausted=true` and retry budget allows, re-spawn the worker with `maxTurns * 1.5` (rounded up). Inject the partial output as context in the retry prompt: "Previous attempt completed X steps. Continue from step X+1." Max 1 turn-escalation retry. | OB-903 | 🔴 High  | ◻ Pending |
 
 ### Phase 48b: Worker Failure Classification & Recovery
