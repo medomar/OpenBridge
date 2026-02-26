@@ -607,10 +607,30 @@ export class ExplorationCoordinator {
 
     logger.info({ staleScopes }, 'Partial re-exploration: found stale scopes');
 
+    // Track the overall stale-reexplore phase in exploration_progress
+    let parentRowId = 0;
+    if (this.memory && this.explorationId) {
+      try {
+        parentRowId = await this.memory.insertExplorationProgress({
+          exploration_id: this.explorationId,
+          phase: 'stale-reexplore',
+          target: null,
+          status: 'in_progress',
+          progress_pct: 0,
+          files_processed: 0,
+          files_total: null,
+          started_at: new Date().toISOString(),
+        });
+      } catch {
+        // ignore — progress tracking is best-effort
+      }
+    }
+
     // Classification is required for the dive prompts (project type + frameworks)
     const classification = await this.readClassificationFromStore();
     if (!classification) {
       logger.warn('No classification found for partial re-exploration — skipping');
+      await this.failPhaseRow(parentRowId);
       return;
     }
 
@@ -635,11 +655,32 @@ export class ExplorationCoordinator {
       const batch = dirScopes.slice(i, i + batchSize);
       await Promise.allSettled(
         batch.map(async (scope) => {
+          // Insert a per-directory progress row
+          let dirRowId = 0;
+          if (this.memory && this.explorationId) {
+            try {
+              dirRowId = await this.memory.insertExplorationProgress({
+                exploration_id: this.explorationId,
+                phase: 'directory-dive',
+                target: scope,
+                status: 'in_progress',
+                progress_pct: 0,
+                files_processed: 0,
+                files_total: null,
+                started_at: new Date().toISOString(),
+              });
+            } catch {
+              // ignore — progress tracking is best-effort
+            }
+          }
+
           try {
             await this.executeSingleDirectoryDive(scope, context, state);
             logger.info({ scope }, 'Stale scope successfully re-explored');
+            await this.completePhaseRow(dirRowId);
           } catch (err) {
             logger.warn({ err, scope }, 'Failed to re-explore stale scope — continuing');
+            await this.failPhaseRow(dirRowId);
           }
         }),
       );
@@ -652,6 +693,9 @@ export class ExplorationCoordinator {
     } catch (err) {
       logger.warn({ err }, 'Failed to delete stale chunks after re-exploration');
     }
+
+    // Mark the parent stale-reexplore phase as completed
+    await this.completePhaseRow(parentRowId);
   }
 
   /**

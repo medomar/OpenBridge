@@ -1679,4 +1679,216 @@ describe('Router', () => {
       expect(connector.typingIndicators[0]).toBe('+1234567890');
     });
   });
+
+  // ── Explore command handling (OB-954) ───────────────────────────────────
+
+  describe('explore command handling (OB-954)', () => {
+    function createExploreMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'msg-explore-954',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterForExplore(state: string = 'ready') {
+      return {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => state),
+        reExplore: vi.fn().mockResolvedValue(undefined),
+        fullReExplore: vi.fn().mockResolvedValue(undefined),
+        getExplorationSummary: vi.fn().mockReturnValue({
+          status: 'completed',
+          projectType: 'node',
+          frameworks: ['typescript', 'vitest'],
+          directoriesExplored: 12,
+          filesScanned: 150,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          insights: [],
+          gitInitialized: true,
+        }),
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue([]),
+          getAllWorkers: vi.fn().mockReturnValue([]),
+        }),
+      } as unknown as MasterManager;
+    }
+
+    it('should return "not available" when no master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    it('should call reExplore() for bare "explore" command', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(master.reExplore).toHaveBeenCalledOnce();
+      expect(master.fullReExplore).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toContain('quick');
+      expect(connector.sentMessages[1]?.content).toContain('completed');
+    });
+
+    it('should call fullReExplore() for "explore full" command', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore full'));
+
+      expect(master.fullReExplore).toHaveBeenCalledOnce();
+      expect(master.reExplore).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toContain('full');
+    });
+
+    it('should be case-insensitive for "EXPLORE FULL"', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('EXPLORE FULL'));
+
+      expect(master.fullReExplore).toHaveBeenCalledOnce();
+    });
+
+    it('should return "already in progress" when Master is exploring', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('exploring');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('already in progress');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should return state-blocked message when Master is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('processing');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('processing');
+    });
+
+    it('should send error message when exploration fails', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+      (master.reExplore as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Exploration timeout'),
+      );
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('failed');
+      expect(connector.sentMessages[1]?.content).toContain('Exploration timeout');
+    });
+
+    it('should show exploration summary for "explore status"', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore status'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Exploration Status');
+      expect(connector.sentMessages[0]?.content).toContain('node');
+      expect(connector.sentMessages[0]?.content).toContain('typescript');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should deny explore when auth denies access', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({
+          allowed: false,
+          reason: 'Not permitted.',
+        }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Not permitted');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should include project info in completion message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      const completion = connector.sentMessages[1]?.content ?? '';
+      expect(completion).toContain('node');
+      expect(completion).toContain('typescript');
+      expect(completion).toContain('12');
+    });
+  });
 });

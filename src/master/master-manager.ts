@@ -749,6 +749,9 @@ export class MasterManager {
     // Initialize Master session FIRST — so exploration can use it
     await this.initMasterSession();
 
+    // Clean up stuck agent_activity rows from previous crashes (OB-962)
+    await this.cleanupStuckActivities();
+
     // Load worker registry from disk (if exists)
     await this.loadWorkerRegistry();
 
@@ -833,6 +836,43 @@ export class MasterManager {
 
     // Start idle detection timer for self-improvement cycle (OB-173)
     this.startIdleDetection();
+  }
+
+  /**
+   * Mark stuck agent_activity rows as failed at startup.
+   *
+   * When the process crashes or is killed, running activities are never
+   * transitioned to a terminal status. On the next startup we scan for
+   * rows with status in ('starting', 'running', 'completing') whose
+   * started_at is older than 1 hour and mark them as failed so they
+   * don't pollute the active-agents list or confuse the dashboard.
+   */
+  private async cleanupStuckActivities(): Promise<void> {
+    if (!this.memory) return;
+
+    try {
+      const active = await this.memory.getActiveAgents();
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const now = new Date().toISOString();
+      let cleaned = 0;
+
+      for (const activity of active) {
+        const startedMs = new Date(activity.started_at).getTime();
+        if (startedMs < oneHourAgo) {
+          await this.memory.updateActivity(activity.id, {
+            status: 'failed',
+            completed_at: now,
+          });
+          cleaned++;
+        }
+      }
+
+      if (cleaned > 0) {
+        logger.info({ cleaned }, 'Cleaned up stuck agent_activity rows from previous session');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to clean up stuck agent_activity rows');
+    }
   }
 
   /**
@@ -2658,6 +2698,25 @@ export class MasterManager {
       'Starting incremental workspace exploration',
     );
 
+    // Create an agent_activity row for this incremental exploration
+    let incrementalExplorationId: string | undefined;
+    if (this.memory) {
+      try {
+        incrementalExplorationId = randomUUID();
+        await this.memory.insertActivity({
+          id: incrementalExplorationId,
+          type: 'explorer',
+          status: 'running',
+          task_summary: 'Incremental exploration',
+          started_at: startedAt,
+          updated_at: startedAt,
+        });
+      } catch {
+        incrementalExplorationId = undefined;
+        // activity tracking is best-effort — continue without it
+      }
+    }
+
     if (this.memory) {
       await this.memory.logExploration({
         timestamp: startedAt,
@@ -2813,8 +2872,33 @@ export class MasterManager {
         { filesChanged: totalChanged, durationMs: result.durationMs },
         'Incremental exploration completed',
       );
+
+      // Mark the incremental exploration activity as done
+      if (this.memory && incrementalExplorationId) {
+        try {
+          await this.memory.updateActivity(incrementalExplorationId, {
+            status: 'done',
+            progress_pct: 100,
+            completed_at: new Date().toISOString(),
+          });
+        } catch {
+          // activity tracking is best-effort
+        }
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Mark the incremental exploration activity as failed
+      if (this.memory && incrementalExplorationId) {
+        try {
+          await this.memory.updateActivity(incrementalExplorationId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+          });
+        } catch {
+          // activity tracking is best-effort
+        }
+      }
 
       if (this.memory) {
         await this.memory.logExploration({
@@ -3245,6 +3329,76 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     } catch (error) {
       logger.error({ err: error }, 'Workspace re-exploration failed');
       this.state = 'ready'; // Return to ready state even on failure
+      throw error;
+    }
+  }
+
+  /**
+   * Full re-exploration of the workspace using the 5-phase ExplorationCoordinator.
+   * Unlike reExplore() which sends a lightweight prompt to the Master session,
+   * this method runs the complete structure scan → classification → directory dives
+   * → assembly → finalization pipeline with progress tracking in exploration_progress.
+   *
+   * State guard: Must be in 'ready' state. Sets state to 'exploring' for the duration.
+   * Returns to 'ready' even on failure.
+   */
+  public async fullReExplore(): Promise<void> {
+    if (this.state !== 'ready') {
+      logger.warn(
+        { currentState: this.state },
+        'Cannot full re-explore: Master not in ready state',
+      );
+      return;
+    }
+
+    this.state = 'exploring';
+    const startedAt = new Date().toISOString();
+
+    logger.info(
+      { workspacePath: this.workspacePath },
+      'Starting full workspace re-exploration (user-triggered)',
+    );
+
+    try {
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: startedAt,
+          level: 'info',
+          message: 'Full workspace re-exploration started (user-triggered)',
+        });
+
+        // Clear exploration state so ExplorationCoordinator doesn't skip completed phases
+        await this.memory.upsertExplorationState(null);
+      }
+
+      // Clear dotfolder exploration state as well
+      try {
+        await this.dotFolder.writeExplorationState(null as unknown as ExplorationState);
+      } catch {
+        // ignore — dotfolder may not exist yet, or null fails Zod validation
+      }
+
+      // Run the full 5-phase exploration pipeline
+      await this.masterDrivenExplore();
+
+      // Refresh in-memory state
+      await this.loadExplorationSummary();
+      await this.writeAgentsRegistry();
+
+      this.state = 'ready';
+
+      if (this.memory) {
+        await this.memory.logExploration({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Full workspace re-exploration completed (user-triggered)',
+        });
+      }
+
+      logger.info('Full workspace re-exploration completed');
+    } catch (error) {
+      logger.error({ err: error }, 'Full workspace re-exploration failed');
+      this.state = 'ready';
       throw error;
     }
   }

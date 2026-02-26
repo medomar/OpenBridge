@@ -2,36 +2,29 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 1 | **Fixed:** 14 | **Last Audit:** 2026-02-26
+> **Open:** 0 | **Fixed:** 15 | **Last Audit:** 2026-02-26
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
 
 ## Open Findings
 
-### OB-F26 — Large directory exploration times out (src/ exceeds 3-min dive budget)
-
-**Discovered:** 2026-02-26 (production logs)
-**Component:** `src/master/exploration-coordinator.ts` (line 852), `src/master/workspace-change-tracker.ts` (line 358)
-**Severity:** 🟠 High
-**Affects:** Workspace map incomplete — `src/` scope never explored, workers spawned without `src/` context
-
-**Root cause:** Each top-level directory gets a single AI worker with `DIRECTORY_DIVE_TIMEOUT = 180_000` (3 minutes). For directories with 40+ files and deep nesting (e.g., `src/` containing `core/`, `master/`, `connectors/`, `providers/`, `discovery/`, `types/`), the worker cannot finish reading, analyzing, and producing structured JSON within the time budget. The worker is killed with SIGTERM (exit code 143, `AgentExhaustedError`). The exploration continues without `src/` data — subsequent incremental re-exploration retries the same single-worker approach and fails again.
-
-**Proposed fix:** Split large directories into subdirectories before diving. Add a file count threshold (~25 files). Directories exceeding it get their immediate subdirectories explored as separate parallel workers (`src/core/`, `src/master/`, etc.) instead of one monolithic `src/` dive. Update scope tracking to use 2-level scopes (`src/core` instead of `src`) for finer-grained incremental re-exploration.
-
-**Key files to modify:**
-
-- `src/types/master.ts` — add `splitDirs` field to `StructureScanSchema`
-- `src/master/exploration-coordinator.ts` — add `expandLargeDirectories()`, filesystem helpers, update Phase 3
-- `src/master/workspace-change-tracker.ts` — update `extractChangedScopes()` for 2-level scopes
-- `src/master/master-manager.ts` — pass `splitDirs` to `extractChangedScopes()` during incremental explore
-
-**Tracked:** Not yet scheduled (will be Phase 50 after current phases complete)
+_No open findings._
 
 ---
 
 ## Fixed Findings (Recent)
+
+### OB-F26 — Large directory exploration times out (src/ exceeds 3-min dive budget) ✅
+
+**Discovered:** 2026-02-26 (production logs)
+**Fixed:** 2026-02-26 (Phase 50, OB-940 through OB-946)
+**Component:** `src/master/exploration-coordinator.ts`, `src/master/workspace-change-tracker.ts`
+**Severity:** 🟠 High → ✅ Fixed
+
+**Fix applied:** Added `expandLargeDirectories()` to `ExplorationCoordinator` — directories with >25 files are split into their immediate subdirectories before Phase 3 dives. Each subdirectory gets its own worker. Per-directory timeout scales with file count (`max(180s, min(600s, fileCount * 4s))`). `StructureScanSchema` now has a `splitDirs` field mapping parent → sub-paths. `extractChangedScopes()` produces 2-level scopes (e.g., `src/core` instead of `src`) when split directories are active. User-triggered re-exploration available via `explore` / `explore full` commands from any channel.
+
+---
 
 ### OB-F23 — exploration_progress table is always empty (explorationId never passed) ✅
 

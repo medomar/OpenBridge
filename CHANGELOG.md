@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] — 2026-02-26
+
+### Added
+
+#### Exploration Overhaul (Phase 50)
+
+- **`explore` command** — users can trigger workspace re-exploration from any messaging channel (WhatsApp, Console, WebChat, Telegram, Discord). Syntax: `explore` (quick refresh), `explore full` (5-phase re-exploration), `explore status` (show progress)
+- **`fullReExplore()` on MasterManager** — public method that clears exploration state and runs the complete 5-phase ExplorationCoordinator pipeline; accessible from any channel via the `explore full` command
+- **Large directory splitting (OB-F26)** — directories exceeding 25 files are automatically split into subdirectories before Phase 3 dives. Each subdirectory gets its own worker. `src/` with 8 subdirs no longer times out
+- **Per-directory timeout scaling** — dive timeout scales with file count: `max(180s, min(600s, fileCount * 4s))`. Small dirs get 3 min, large dirs up to 10 min
+- **2-level scopes for incremental re-exploration** — `extractChangedScopes()` produces `src/core` instead of `src` when split directories are active, enabling finer-grained stale scope detection
+- **`splitDirs` field on `StructureScanSchema`** — records which top-level directories were split and into which subdirectories, persisted for incremental scope matching
+- **`fileCount` field on `DirectoryDiveStatusSchema`** — stores estimated file count per dive target for timeout scaling
+- **Stale re-exploration progress tracking** — `reexploreStaleDirs()` now inserts `exploration_progress` rows for the parent operation and each directory dive
+- **Incremental exploration activity tracking** — `incrementalExplore()` creates an `agent_activity` row (type `explorer`) with start/completion tracking
+- **Stuck activity cleanup** — MasterManager marks `agent_activity` rows stuck in `running` for over 1 hour as `failed` on startup
+
+### Fixed
+
+- Large directory exploration times out (OB-F26) — `src/` with 40+ files across 8 subdirs is now split into separate workers (`src/core`, `src/master`, etc.) instead of one monolithic 3-minute dive
+
 ## [Unreleased]
 
 ### Added
