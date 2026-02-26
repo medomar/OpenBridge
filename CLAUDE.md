@@ -144,6 +144,11 @@ The bridge will:
 | `src/discovery/index.ts`                 | `scanForAITools()` export — combines CLI + VS Code scans                                   |
 | `src/core/agent-runner.ts`               | Unified CLI executor (--allowedTools, --max-turns, --model, retries, error classification) |
 | `src/core/model-selector.ts`             | Model recommendation per task type                                                         |
+| `src/core/model-registry.ts`             | Provider-agnostic model tier resolution (fast/balanced/powerful → concrete model IDs)      |
+| `src/core/cli-adapter.ts`                | CLIAdapter interface — translates SpawnOptions to tool-specific binary + args + env        |
+| `src/core/adapter-registry.ts`           | Maps discovered tool names to CLIAdapter instances (lazy-loads built-ins)                  |
+| `src/core/adapters/`                     | CLIAdapter implementations: ClaudeAdapter, CodexAdapter, AiderAdapter                      |
+| `src/core/agent-orchestrator.ts`         | Agent orchestration layer — manages TaskAgent lifecycle, wired into Bridge + Router        |
 | `src/core/fast-path-responder.ts`        | Quick-answer agent pool for low-latency responses during Master processing                 |
 | `src/core/email-sender.ts`               | Outbound email delivery (SHARE email outputs)                                              |
 | `src/core/file-server.ts`                | Static file server for media/file outputs                                                  |
@@ -183,6 +188,7 @@ The bridge will:
 | `src/connectors/discord/`                | Discord connector                                                                          |
 | `src/providers/claude-code/`             | Claude Code CLI provider — streaming, sessions, errors (uses AgentRunner)                  |
 | `src/cli/init.ts`                        | CLI config generator — 3 questions for V2 config                                           |
+| `src/cli/access.ts`                      | CLI access control tool — `openbridge access add/remove/list` (role management)            |
 
 ### How `workspacePath` Works
 
@@ -236,7 +242,8 @@ src/
 ├── index.ts                    Entry point (V0 + V2 startup flows)
 ├── cli/                        CLI tools
 │   ├── index.ts                CLI entry
-│   └── init.ts                 Config generator (3 questions for V2)
+│   ├── init.ts                 Config generator (3 questions for V2)
+│   └── access.ts               Access control management (openbridge access)
 ├── types/                      Interfaces + Zod schemas
 │   ├── connector.ts            Connector interface
 │   ├── provider.ts             AIProvider interface
@@ -256,6 +263,11 @@ src/
 │   ├── config-watcher.ts       Hot-reload
 │   ├── agent-runner.ts         Unified CLI executor (retries, error classification, adaptive turns)
 │   ├── model-selector.ts       Model recommendation per task type
+│   ├── model-registry.ts       Provider-agnostic model tiers (fast/balanced/powerful)
+│   ├── cli-adapter.ts          CLIAdapter interface (SpawnOptions → binary + args + env)
+│   ├── adapter-registry.ts     Maps tool names to CLIAdapter instances
+│   ├── adapters/               CLIAdapter implementations (claude, codex, aider)
+│   ├── agent-orchestrator.ts   TaskAgent lifecycle management (Bridge + Router)
 │   ├── fast-path-responder.ts  Quick-answer agent pool (max 2 concurrent, maxTurns=3)
 │   ├── email-sender.ts         Outbound email for SHARE outputs
 │   ├── file-server.ts          Static file server for media outputs
@@ -294,6 +306,10 @@ src/
 │   ├── retrieval.ts            semantic + FTS5 search helpers
 │   ├── eviction.ts             LRU eviction for chunk cache
 │   └── sub-master-store.ts     sub-master session state
+├── orchestrator/               Task orchestration layer (experimental)
+│   ├── index.ts                Exports TaskAgentRuntime + ScriptCoordinator
+│   ├── task-agent-runtime.ts   Runs TaskAgent step-by-step (AI + API execution)
+│   └── script-coordinator.ts   Multi-step script execution with step tracking
 └── master/                     Master AI management
     ├── index.ts                Module exports
     ├── master-manager.ts       Master AI lifecycle + self-governing + worker spawning + kill infra (5710 LOC)
