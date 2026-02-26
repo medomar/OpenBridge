@@ -515,6 +515,7 @@ export class DotFolderManager {
 
   /**
    * Get the path to the prompts manifest file
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public getPromptManifestPath(): string {
     return path.join(this.promptsPath, 'manifest.json');
@@ -522,6 +523,7 @@ export class DotFolderManager {
 
   /**
    * Read the prompt library manifest from .openbridge/prompts/manifest.json
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public async readPromptManifest(): Promise<PromptManifest | null> {
     const manifestPath = this.getPromptManifestPath();
@@ -537,6 +539,7 @@ export class DotFolderManager {
 
   /**
    * Write the prompt library manifest to .openbridge/prompts/manifest.json
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public async writePromptManifest(manifest: PromptManifest): Promise<void> {
     const validated = PromptManifestSchema.parse(manifest);
@@ -548,6 +551,7 @@ export class DotFolderManager {
   /**
    * Write a prompt template file to .openbridge/prompts/<filename>
    * Also updates the manifest with metadata.
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public async writePromptTemplate(
     filename: string,
@@ -598,6 +602,7 @@ export class DotFolderManager {
 
   /**
    * Record prompt usage (increments usage count and updates lastUsedAt)
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public async recordPromptUsage(promptId: string, success: boolean): Promise<void> {
     const manifest = await this.readPromptManifest();
@@ -636,6 +641,7 @@ export class DotFolderManager {
   /**
    * Reset usage statistics for a prompt (e.g., after rewriting it).
    * Keeps the version number but resets counts to give the new version a fresh start.
+   * @deprecated TODO: remove once JSON fallback is fully retired (OB-836)
    */
   public async resetPromptStats(promptId: string): Promise<void> {
     const manifest = await this.readPromptManifest();
