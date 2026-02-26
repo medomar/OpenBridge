@@ -2704,3 +2704,153 @@ describe('classifyError', () => {
     });
   });
 });
+
+// ── AgentRunner.spawnWithHandle() ────────────────────────────────────
+
+describe('AgentRunner.spawnWithHandle()', () => {
+  it('returns the PID of the spawned child process', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+    expect(handle.pid).toBe(child.pid);
+    expect(handle.pid).toBeGreaterThanOrEqual(0);
+
+    resolveChild(child, 'done', 0);
+    await handle.promise;
+  });
+
+  it('returns a number as PID (handle exposes process identifier)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    expect(typeof handle.pid).toBe('number');
+
+    const child = lastChild();
+    resolveChild(child, 'done', 0);
+    await handle.promise;
+  });
+
+  it('abort() is a function on the returned handle', () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    expect(typeof handle.abort).toBe('function');
+
+    // Emit close to let the promise settle
+    const child = lastChild();
+    child.emit('close', 0, null);
+  });
+
+  it('promise resolves to AgentResult on success (exit code 0)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'do task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+    resolveChild(child, 'task result', 0);
+
+    const result = await handle.promise;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('task result');
+  });
+
+  it('abort() sends SIGTERM immediately when called', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'long running task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+
+    handle.abort();
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    // Emit close to settle the promise — exit 143 means SIGTERM, so the promise rejects
+    child.emit('close', 143, 'SIGTERM');
+    await handle.promise.catch(() => {}); // AgentExhaustedError expected — swallow it
+  });
+
+  it('abort() sends SIGKILL after the 5-second grace period elapses', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const runner = new AgentRunner();
+      const handle = runner.spawnWithHandle({
+        prompt: 'long running task',
+        workspacePath: '/tmp/ws',
+        retries: 0,
+      });
+
+      const child = lastChild();
+
+      // Call abort — SIGTERM is sent immediately
+      handle.abort();
+      expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(child.kill).toHaveBeenCalledTimes(1);
+
+      // Advance past the 5-second grace period
+      vi.advanceTimersByTime(5100);
+
+      // SIGKILL should now have fired
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(child.kill).toHaveBeenCalledTimes(2);
+
+      // Emit close to let the promise settle
+      child.emit('close', 137, 'SIGKILL');
+      await handle.promise.catch(() => {});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('abort() does NOT send SIGKILL if the process exits before the grace period', async () => {
+    vi.useFakeTimers();
+
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+
+    // Call abort — SIGTERM is sent, grace period timer is set
+    handle.abort();
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // Process exits gracefully before the 5-second grace period
+    child.emit('close', 0, null);
+
+    // Advance time past the grace period — the timer was cleared by the close handler
+    vi.advanceTimersByTime(6000);
+
+    // Only SIGTERM was sent — SIGKILL was never triggered
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+
+    // Promise should resolve because exit code was 0
+    await handle.promise;
+  });
+});
