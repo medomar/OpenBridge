@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { ExplorationCoordinator } from '../../src/master/exploration-coordinator.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
@@ -927,6 +928,142 @@ describe('ExplorationCoordinator', () => {
       const summary = await coordinator.explore();
 
       expect(summary.status).toBe('completed');
+    });
+  });
+
+  describe('exploration_progress tracking (OB-892)', () => {
+    it('creates exploration_progress rows for structure, classification, directory-dive, and assembly phases', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const phases = rows.map((r) => r.phase);
+      expect(phases).toContain('structure');
+      expect(phases).toContain('classification');
+      expect(phases).toContain('directory-dive');
+      expect(phases).toContain('assembly');
+    });
+
+    it('marks phase rows as completed with progress_pct=100 after successful phases', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const phaseRows = rows.filter((r) =>
+        ['structure', 'classification', 'assembly'].includes(r.phase),
+      );
+
+      expect(phaseRows.length).toBe(3);
+      for (const row of phaseRows) {
+        expect(row.status).toBe('completed');
+        expect(row.progress_pct).toBe(100);
+      }
+    });
+
+    it('marks phase row as failed via failPhaseRow when a phase fails', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      // Make structure scan fail with non-zero exit code
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'AI execution failed',
+        retryCount: 0,
+        durationMs: 0,
+      });
+
+      await expect(coordinatorWithMemory.explore()).rejects.toThrow(
+        'Structure scan failed with exit code 1',
+      );
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const structureRow = rows.find((r) => r.phase === 'structure');
+      expect(structureRow).toBeDefined();
+      expect(structureRow?.status).toBe('failed');
+    });
+
+    it('auto-registers an explorer activity when memory is provided without explorationId', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        // no explorationId — coordinator auto-registers one
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      // The auto-registered explorer activity stays 'running' (MasterManager owns the update)
+      const activeAgents = await memory.getActiveAgents();
+      const explorerAgent = activeAgents.find((a) => a.type === 'explorer');
+      expect(explorerAgent).toBeDefined();
+
+      // Its auto-generated explorationId should have exploration_progress rows
+      const rows = await memory.getExplorationProgressByExplorationId(explorerAgent!.id);
+      const phases = rows.map((r) => r.phase);
+      expect(phases).toContain('structure');
+      expect(phases).toContain('classification');
+      expect(phases).toContain('directory-dive');
+      expect(phases).toContain('assembly');
     });
   });
 
