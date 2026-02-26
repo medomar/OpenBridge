@@ -14,6 +14,7 @@ import type { MemoryManager, ActivityRecord, ExplorationProgressRow } from '../m
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
+import { AgentRunner, TOOLS_READ_ONLY } from './agent-runner.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
@@ -177,6 +178,8 @@ export class Router {
   private memory?: MemoryManager;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
+  /** AgentRunner instance used exclusively for fast-path quick-answer responses. */
+  private readonly agentRunner = new AgentRunner();
 
   constructor(
     defaultProvider: string,
@@ -323,6 +326,14 @@ export class Router {
     // Handle built-in "stop" command — intercept before routing to Master AI
     if (/^stop(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleStopCommand(message, connector);
+      return;
+    }
+
+    // Fast-path: when Master is processing a complex task and a quick-answer message arrives,
+    // spawn a lightweight read-only agent to answer immediately without waiting for Master.
+    const messagePriority = classifyMessagePriority(message.content);
+    if (messagePriority === 1 && this.master?.getState() === 'processing') {
+      await this.runFastPath(message, connector);
       return;
     }
 
@@ -711,6 +722,112 @@ export class Router {
       logger.info({ filePath, pagesUrl: pagesUrl || '(unknown)' }, 'SHARE:github-pages dispatched');
     } catch (err) {
       logger.warn({ filePath, err }, 'SHARE:github-pages: publish failed');
+    }
+  }
+
+  /**
+   * Fast-path responder for quick-answer messages that arrive while Master is processing.
+   *
+   * Spawns a lightweight `claude --print` call with read-only tools (Read, Glob, Grep)
+   * and maxTurns=3. Injects a compact workspace context from the cached workspace map
+   * so the agent can answer questions about the project without waiting for Master.
+   *
+   * Falls back to a "Master is busy" message if the workspace path is not set or if
+   * the fast-path agent itself fails.
+   */
+  private async runFastPath(message: InboundMessage, connector: Connector): Promise<void> {
+    logger.info(
+      { sender: message.sender },
+      'Fast-path: Master is processing, routing quick-answer directly',
+    );
+
+    if (connector.sendTypingIndicator) {
+      await connector.sendTypingIndicator(message.sender);
+    }
+
+    if (!this.workspacePath) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'The AI is busy processing a task. Please wait a moment before asking again.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const contextStr = await this.buildWorkspaceContext();
+    const promptParts = [
+      'You are a helpful assistant with read-only access to a codebase. Answer the question concisely (1–3 paragraphs). Do not modify any files.',
+    ];
+    if (contextStr) {
+      promptParts.push(`\nWorkspace context:\n${contextStr}`);
+    }
+    promptParts.push(`\nUser question: ${message.content}`);
+    const prompt = promptParts.join('');
+
+    try {
+      const result = await this.agentRunner.spawn({
+        prompt,
+        workspacePath: this.workspacePath,
+        allowedTools: [...TOOLS_READ_ONLY],
+        maxTurns: 3,
+        retries: 0,
+        timeout: 30_000,
+      });
+
+      const reply = result.stdout.trim() || 'No response — please try again.';
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: reply,
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Fast-path response delivered');
+    } catch (err) {
+      logger.warn({ err, sender: message.sender }, 'Fast-path responder failed');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          'The AI is busy and could not answer right now. Your question will be processed shortly.',
+        replyTo: message.id,
+      });
+    }
+  }
+
+  /**
+   * Build a compact workspace context string from the cached workspace map.
+   * Used by the fast-path responder to give the lightweight agent project awareness.
+   * Returns an empty string if no map is available.
+   */
+  private async buildWorkspaceContext(): Promise<string> {
+    if (!this.master) return '';
+    try {
+      const map = await this.master.getWorkspaceMap();
+      if (!map) return '';
+
+      const lines: string[] = [];
+      lines.push(`Project: ${map.projectName} (${map.projectType})`);
+      if (map.frameworks.length > 0) {
+        lines.push(`Frameworks: ${map.frameworks.join(', ')}`);
+      }
+      if (map.summary) {
+        lines.push(`Summary: ${map.summary}`);
+      }
+      const commandEntries = Object.entries(map.commands);
+      if (commandEntries.length > 0) {
+        lines.push(`Commands: ${commandEntries.map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      }
+      if (map.keyFiles.length > 0) {
+        const filesSummary = map.keyFiles
+          .slice(0, 10)
+          .map((f) => `  ${f.path}: ${f.purpose}`)
+          .join('\n');
+        lines.push(`Key files:\n${filesSummary}`);
+      }
+      return lines.join('\n');
+    } catch {
+      return '';
     }
   }
 
