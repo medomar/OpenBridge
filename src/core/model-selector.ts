@@ -17,8 +17,8 @@
 import type { TaskManifest } from '../types/agent.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { LearningEntry } from '../types/master.js';
-import { ModelRegistry, createModelRegistry } from './model-registry.js';
-import type { ModelTier } from './model-registry.js';
+import { createModelRegistry } from './model-registry.js';
+import type { ModelTier, ModelRegistry } from './model-registry.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('model-selector');
@@ -97,10 +97,7 @@ export interface ModelRecommendation {
  * - 'full-access'  → balanced tier (capability, not complexity)
  * - unknown        → balanced tier (safe default)
  */
-export function recommendByProfile(
-  profile: string,
-  registry?: ModelRegistry,
-): ModelRecommendation {
+export function recommendByProfile(profile: string, registry?: ModelRegistry): ModelRecommendation {
   const reg = registry ?? getDefaultRegistry();
 
   switch (profile) {
@@ -190,7 +187,7 @@ export async function getRecommendedModel(
       'Adaptive model selected from learnings',
     );
     return {
-      model: learned.model as ModelAlias,
+      model: learned.model,
       reason: `learned: ${successPct}% success rate over ${learned.total_tasks} tasks`,
     };
   } catch {

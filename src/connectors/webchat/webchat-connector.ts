@@ -311,6 +311,19 @@ const CHAT_HTML = `<!DOCTYPE html>
           if (data.type === 'response') {
             hideStatus();
             addBubble(data.content, 'ai');
+          } else if (data.type === 'download') {
+            hideStatus();
+            var div = document.createElement('div');
+            div.className = 'bubble ai';
+            if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
+            var link = document.createElement('a');
+            link.href = data.url;
+            link.download = data.filename || 'download';
+            link.className = 'download-link';
+            link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
+            div.appendChild(link);
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
           } else if (data.type === 'typing') {
             showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
           } else if (data.type === 'progress') {
@@ -325,44 +338,13 @@ const CHAT_HTML = `<!DOCTYPE html>
               var label = progressLabel(data.event);
               if (label) showStatus(label);
             }
+          } else if (data.type === 'agent-status') {
+            updateDashboard(data.agents);
           }
         } catch(ex) {}
       };
     }
     connectWs();
-    ws.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (data.type === 'response') {
-          hideStatus();
-          addBubble(data.content, 'ai');
-        } else if (data.type === 'download') {
-          hideStatus();
-          var div = document.createElement('div');
-          div.className = 'bubble ai';
-          if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
-          var link = document.createElement('a');
-          link.href = data.url;
-          link.download = data.filename || 'download';
-          link.className = 'download-link';
-          link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
-          div.appendChild(link);
-          msgs.appendChild(div);
-          msgs.scrollTop = msgs.scrollHeight;
-        } else if (data.type === 'typing') {
-          showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
-        } else if (data.type === 'progress') {
-          if (data.event && data.event.type === 'complete') {
-            hideStatus();
-          } else if (data.event) {
-            var label = progressLabel(data.event);
-            if (label) showStatus(label);
-          }
-        } else if (data.type === 'agent-status') {
-          updateDashboard(data.agents);
-        }
-      } catch(ex) {}
-    };
     form.onsubmit = function(e) {
       e.preventDefault();
       var text = inp.value.trim();

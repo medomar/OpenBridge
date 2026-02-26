@@ -865,6 +865,24 @@ export class MasterManager {
         { sessionId: existing.sessionId, messageCount: existing.messageCount },
         'Loaded existing Master session',
       );
+
+      // Re-register master activity so the dashboard shows on restart (OB-742)
+      if (this.memory) {
+        try {
+          const now = new Date().toISOString();
+          await this.memory.insertActivity({
+            id: existing.sessionId,
+            type: 'master',
+            model: this.masterTool.name,
+            task_summary: 'Master AI session resumed',
+            status: 'running',
+            started_at: existing.createdAt ?? now,
+            updated_at: now,
+          });
+        } catch {
+          // INSERT OR IGNORE — silently skipped if row already exists
+        }
+      }
       return;
     }
 
@@ -1062,10 +1080,7 @@ export class MasterManager {
       byType.set(entry.taskType, group);
     }
 
-    const lines: string[] = [
-      `Based on ${recent.length} recent task executions:`,
-      '',
-    ];
+    const lines: string[] = [`Based on ${recent.length} recent task executions:`, ''];
 
     for (const [taskType, group] of byType) {
       if (group.length < 3) continue; // Not enough data to summarize
@@ -3195,16 +3210,23 @@ Work silently — do not output conversational text, just explore and write the 
           // (4) Emit worker-progress + worker-result events as each worker completes
           const feedbackPrompt = await this.handleSpawnMarkers(
             spawnResult.markers,
-            async (completed: number, total: number, workerResult?: AgentResult, workerMarker?: ParsedSpawnMarker): Promise<void> => {
+            async (
+              completed: number,
+              total: number,
+              workerResult?: AgentResult,
+              workerMarker?: ParsedSpawnMarker,
+            ): Promise<void> => {
               await progress?.({ type: 'worker-progress', completed, total });
 
               // Stream each worker's output to the user immediately
               if (workerResult && workerMarker) {
-                const raw = workerResult.exitCode === 0
-                  ? workerResult.stdout.trim()
-                  : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
+                const raw =
+                  workerResult.exitCode === 0
+                    ? workerResult.stdout.trim()
+                    : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
                 const maxLen = 2000;
-                const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...(truncated)' : raw;
+                const content =
+                  raw.length > maxLen ? raw.slice(0, maxLen) + '\n...(truncated)' : raw;
                 await progress?.({
                   type: 'worker-result',
                   workerIndex: completed,
@@ -3237,7 +3259,8 @@ Work silently — do not output conversational text, just explore and write the 
 
             if (result.exitCode !== 0) {
               logger.warn({ exitCode: result.exitCode }, 'Synthesis failed — returning fallback');
-              response = 'All subtask results were shown above. The summary step could not complete.';
+              response =
+                'All subtask results were shown above. The summary step could not complete.';
             } else {
               response = result.stdout.trim() || feedbackPrompt;
             }
@@ -3534,13 +3557,19 @@ Work silently — do not output conversational text, just explore and write the 
           await streamProgress?.({ type: 'spawning', workerCount: streamN });
 
           // Callback that emits both worker-progress and worker-result events
-          const workerCallback = async (completed: number, total: number, workerResult?: AgentResult, workerMarker?: ParsedSpawnMarker): Promise<void> => {
+          const workerCallback = async (
+            completed: number,
+            total: number,
+            workerResult?: AgentResult,
+            workerMarker?: ParsedSpawnMarker,
+          ): Promise<void> => {
             await streamProgress?.({ type: 'worker-progress', completed, total });
 
             if (workerResult && workerMarker) {
-              const raw = workerResult.exitCode === 0
-                ? workerResult.stdout.trim()
-                : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
+              const raw =
+                workerResult.exitCode === 0
+                  ? workerResult.stdout.trim()
+                  : `Error: ${(workerResult.stderr || workerResult.stdout).trim().slice(0, 500)}`;
               const maxLen = 2000;
               const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...(truncated)' : raw;
               await streamProgress?.({
@@ -3572,10 +3601,7 @@ Work silently — do not output conversational text, just explore and write the 
             feedbackPrompt = progressIter.value;
           } else {
             // Single worker — emit worker-progress on completion
-            feedbackPrompt = await this.handleSpawnMarkers(
-              spawnResult.markers,
-              workerCallback,
-            );
+            feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers, workerCallback);
           }
 
           // (5) Emit synthesizing event — Master is combining worker results
@@ -4065,16 +4091,9 @@ ${currentContent}
 
           await this.dotFolder.writePromptManifest(manifest);
 
-          await this.dotFolder.commitChanges(
-            `fix(master): revert degraded prompt ${prompt.id}`,
-          );
-
           logger.info({ promptId: prompt.id }, 'Successfully rolled back degraded prompt');
         } catch (error) {
-          logger.error(
-            { err: error, promptId: prompt.id },
-            'Failed to rollback degraded prompt',
-          );
+          logger.error({ err: error, promptId: prompt.id }, 'Failed to rollback degraded prompt');
         }
       }
     }
@@ -4311,7 +4330,12 @@ ${currentContent}
    */
   private async handleSpawnMarkers(
     markers: ParsedSpawnMarker[],
-    onProgress?: (completed: number, total: number, result?: AgentResult, marker?: ParsedSpawnMarker) => Promise<void>,
+    onProgress?: (
+      completed: number,
+      total: number,
+      result?: AgentResult,
+      marker?: ParsedSpawnMarker,
+    ) => Promise<void>,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -4411,7 +4435,12 @@ ${currentContent}
    */
   private async *handleSpawnMarkersWithProgress(
     markers: ParsedSpawnMarker[],
-    onProgress?: (completed: number, total: number, result?: AgentResult, marker?: ParsedSpawnMarker) => Promise<void>,
+    onProgress?: (
+      completed: number,
+      total: number,
+      result?: AgentResult,
+      marker?: ParsedSpawnMarker,
+    ) => Promise<void>,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -4525,9 +4554,19 @@ ${currentContent}
         );
       } else {
         workerRunner = new AgentRunner(toolAdapter);
-        logger.info(
-          { requestedTool, workerId },
-          'Worker using tool-specific adapter',
+        logger.info({ requestedTool, workerId }, 'Worker using tool-specific adapter');
+      }
+    }
+
+    // Adaptive model selection (OB-724): marker override → learned best model → heuristics
+    if (!resolvedModel && this.memory) {
+      const taskType = this.classifyTaskType(body.prompt);
+      const learned = await getRecommendedModel(this.memory, taskType);
+      if (learned) {
+        resolvedModel = learned.model;
+        logger.debug(
+          { workerId, model: learned.model, reason: learned.reason },
+          'Adaptive model selected for worker',
         );
       }
     }
@@ -4535,9 +4574,10 @@ ${currentContent}
     // Always resolve model tiers to concrete model IDs for the target provider.
     // This handles "fast" → "haiku" (claude), "fast" → "codex-mini" (codex), etc.
     if (resolvedModel) {
-      const providerName = (requestedTool && this.resolveDiscoveredTool(requestedTool))
-        ? requestedTool
-        : this.masterTool.name;
+      const providerName =
+        requestedTool && this.resolveDiscoveredTool(requestedTool)
+          ? requestedTool
+          : this.masterTool.name;
       const modelRegistry = createModelRegistry(providerName);
       resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
     }
@@ -4554,20 +4594,6 @@ ${currentContent}
       },
       'Spawning worker from SPAWN marker',
     );
-
-    // Adaptive model selection (OB-724): marker override → learned best model → heuristics
-    let resolvedModel = body.model;
-    if (!resolvedModel && this.memory) {
-      const taskType = this.classifyTaskType(body.prompt);
-      const learned = await getRecommendedModel(this.memory, taskType);
-      if (learned) {
-        resolvedModel = learned.model;
-        logger.debug(
-          { workerId, model: learned.model, reason: learned.reason },
-          'Adaptive model selected for worker',
-        );
-      }
-    }
 
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     const spawnOpts = manifestToSpawnOptions(
@@ -4674,7 +4700,6 @@ ${currentContent}
       let workerRetryCount = 0;
       let result: AgentResult;
 
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         result = await workerRunner.spawn(spawnOpts);
 
