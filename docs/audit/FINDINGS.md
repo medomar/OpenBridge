@@ -2,53 +2,12 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 11 | **Last Audit:** 2026-02-26
+> **Open:** 1 | **Fixed:** 14 | **Last Audit:** 2026-02-26
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md)
 
 ---
 
 ## Open Findings
-
-### OB-F23 — exploration_progress table is always empty (explorationId never passed)
-
-**Discovered:** 2026-02-26 (database audit)
-**Component:** `src/master/master-manager.ts` (lines 2678, 2591)
-**Severity:** 🟠 High
-**Affects:** `/status` command shows no exploration progress, no phase-by-phase tracking
-
-**Root cause:** `MasterManager` creates `ExplorationCoordinator` in two places (`masterDrivenExplore()` line 2678 and `incrementalExplore()` line 2591) but never passes the `explorationId` option. The coordinator's constructor accepts `explorationId?: string` and uses it to guard all `exploration_progress` writes (`if (this.memory && this.explorationId)`). Since it's always `undefined`, zero rows are ever inserted.
-
-**Fix:** Create an `agent_activity` row (type `explorer`) before each exploration, pass its `id` as `explorationId`. Update the activity to `done`/`failed` when exploration finishes. Add integration test to prevent regression.
-
-**Tracked:** Phase 47 (OB-890 through OB-896)
-
----
-
-### OB-F24 — Worker max-turns exhaustion is silent (no retry, no detection)
-
-**Discovered:** 2026-02-26 (failure analysis)
-**Component:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`
-**Severity:** 🟡 Medium
-**Affects:** Workers that hit max-turns exit with code 0 — Master treats incomplete work as success
-
-**Root cause:** Claude CLI returns exit 0 when max-turns is reached. The worker output may contain partial results but there's no detection mechanism. Default retries are 0. No turn-budget warning is injected into worker prompts. Static turn budgets don't scale with task complexity.
-
-**Tracked:** Phase 48 (OB-900 through OB-907)
-
----
-
-### OB-F25 — Worker auth/crash failures not retried or delegated
-
-**Discovered:** 2026-02-26 (failure analysis)
-**Component:** `src/master/master-manager.ts` (spawnWorker), `src/core/agent-runner.ts`
-**Severity:** 🟡 Medium
-**Affects:** Workers that fail due to auth errors, rate limits, or crashes are reported to Master but not automatically retried or delegated
-
-**Root cause:** Default `retries: 0` in SPAWN markers means workers don't retry. No error categorization (rate limit vs auth vs file-not-found). No master-driven re-spawn on failure. `isRateLimitError()` detection exists in agent-runner but only for the Master fallback path, not for workers.
-
-**Tracked:** Phase 48 (OB-900 through OB-907)
-
----
 
 ### OB-F26 — Large directory exploration times out (src/ exceeds 3-min dive budget)
 
@@ -72,14 +31,38 @@
 
 ---
 
-### OB-F18 — Test suite has 7 failures due to git hook race condition ✅
+## Fixed Findings (Recent)
 
-**Discovered:** 2026-02-22 (post-automation audit)
-**Fixed:** 2026-02-23 (OB-430)
-**Component:** `tests/master/dotfolder-manager.test.ts`
+### OB-F23 — exploration_progress table is always empty (explorationId never passed) ✅
+
+**Discovered:** 2026-02-26 (database audit)
+**Fixed:** 2026-02-26 (Phase 47, OB-890 through OB-896)
+**Component:** `src/master/master-manager.ts`
+**Severity:** 🟠 High → ✅ Fixed
+
+**Fix applied:** `MasterManager` now creates an `agent_activity` row (type `explorer`) before each `ExplorationCoordinator` invocation and passes its UUID as `explorationId`. Both `masterDrivenExplore()` and `incrementalExplore()` paths are covered. `exploration_progress` table is now populated for all 5 phases and each directory dive. Regression test added in `tests/integration/exploration-progress.test.ts`.
+
+---
+
+### OB-F24 — Worker max-turns exhaustion is silent (no retry, no detection) ✅
+
+**Discovered:** 2026-02-26 (failure analysis)
+**Fixed:** 2026-02-26 (Phase 48, OB-900 through OB-907)
+**Component:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`
 **Severity:** 🟡 Medium → ✅ Fixed
 
-**Fix applied:** Changed `dotfolder-manager.test.ts` to use `fs.mkdtemp(path.join(os.tmpdir(), 'openbridge-dfm-test-'))` instead of `path.join(process.cwd(), 'test-workspace-' + Date.now())`. This creates unique isolated temp directories outside the project git repo, eliminating `.git/hooks` race conditions during parallel test execution. 1114 tests passing.
+**Fix applied:** Added `turnsExhausted` flag to `AgentResult`. `processWorkerResult()` detects max-turns stdout indicator. Worker prompts now include a turn-budget warning ("If you cannot finish, output `[INCOMPLETE: step X/Y]`"). Adaptive `maxTurns` scales with prompt length (capped at 50). On exhaustion, worker is automatically re-spawned with `maxTurns * 1.5` and the partial output injected as context.
+
+---
+
+### OB-F25 — Worker auth/crash failures not retried or delegated ✅
+
+**Discovered:** 2026-02-26 (failure analysis)
+**Fixed:** 2026-02-26 (Phase 48, OB-900 through OB-907)
+**Component:** `src/master/master-manager.ts`, `src/core/agent-runner.ts`
+**Severity:** 🟡 Medium → ✅ Fixed
+
+**Fix applied:** `classifyError(stderr, exitCode)` added to `agent-runner.ts` — returns `'rate-limit' | 'auth' | 'timeout' | 'crash' | 'context-overflow' | 'unknown'`. Default retries changed from `0` to `2` for workers; auth and context-overflow errors are excluded from retry. Master system prompt updated to instruct re-delegation on failure. Worker failure patterns recorded in `learnings` table; model selection prefers models with <50% failure rate for the task type.
 
 ---
 
@@ -94,7 +77,16 @@
 
 ---
 
-## Fixed Findings (Recent)
+### OB-F18 — Test suite has 7 failures due to git hook race condition ✅
+
+**Discovered:** 2026-02-22 (post-automation audit)
+**Fixed:** 2026-02-23 (OB-430)
+**Component:** `tests/master/dotfolder-manager.test.ts`
+**Severity:** 🟡 Medium → ✅ Fixed
+
+**Fix applied:** Changed `dotfolder-manager.test.ts` to use `fs.mkdtemp(path.join(os.tmpdir(), 'openbridge-dfm-test-'))` instead of `path.join(process.cwd(), 'test-workspace-' + Date.now())`. This creates unique isolated temp directories outside the project git repo, eliminating `.git/hooks` race conditions during parallel test execution. 1114 tests passing.
+
+---
 
 ### OB-F21 — Master session ID uses invalid UUID format ✅
 
