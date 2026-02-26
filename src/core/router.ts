@@ -78,6 +78,91 @@ interface PendingConfirmation {
   expiresAt: number;
 }
 
+/**
+ * Message priority levels used for queue ordering.
+ * Lower number = higher priority (processed first).
+ *
+ * 1 = quick-answer  — status, list, simple questions (no file changes)
+ * 2 = tool-use      — generate, create, fix, single-file edits
+ * 3 = complex-task  — implement, refactor, multi-step work
+ */
+export type MessagePriority = 1 | 2 | 3;
+
+/**
+ * Classify a message by priority using keyword heuristics.
+ * Returns 1 (quick-answer), 2 (tool-use), or 3 (complex-task).
+ * Runs synchronously — no AI calls, safe to call before enqueueing.
+ */
+export function classifyMessagePriority(content: string): MessagePriority {
+  const lower = content.toLowerCase().trim();
+
+  // Complex-task keywords — multi-step work requiring planning and delegation
+  const complexKeywords = [
+    'implement',
+    'build',
+    'refactor',
+    'develop',
+    'set up',
+    'setup',
+    'redesign',
+    'migrate',
+    'overhaul',
+  ];
+  if (complexKeywords.some((kw) => lower.includes(kw)) || /\barchitect\b/.test(lower)) {
+    return 3;
+  }
+
+  // Compound action pattern — two verbs joined by "and" signal multi-step work
+  const actionVerbs = [
+    'review',
+    'analyze',
+    'audit',
+    'check',
+    'fix',
+    'add',
+    'update',
+    'create',
+    'remove',
+    'test',
+    'write',
+    'optimize',
+    'improve',
+  ];
+  const matchedVerbs = actionVerbs.filter((v) => lower.includes(v));
+  if (matchedVerbs.length >= 2 && lower.includes(' and ')) {
+    return 3;
+  }
+
+  // Tool-use keywords — single-action file generation or targeted edits
+  const toolUseKeywords = ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'];
+  if (toolUseKeywords.some((kw) => lower.includes(kw))) {
+    return 2;
+  }
+
+  // Quick-answer patterns — questions and lookups (no file changes needed)
+  const questionPatterns = [
+    'what is',
+    'what are',
+    'how does',
+    'how do',
+    'explain',
+    'describe',
+    'show me',
+    'list all',
+    'list the',
+    'tell me',
+    'status',
+  ];
+  const isShortQuestion = lower.endsWith('?') && lower.length <= 80;
+  const hasQuestionKeyword = questionPatterns.some((qp) => lower.includes(qp));
+  if (isShortQuestion || (hasQuestionKeyword && lower.length <= 120)) {
+    return 1;
+  }
+
+  // Default: tool-use — most non-question messages require file operations
+  return 2;
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
