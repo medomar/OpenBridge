@@ -1459,7 +1459,10 @@ export class MasterManager {
    *   - Worker already completed / failed / cancelled → success:false
    *   - No abort handle (legacy PID -1) → log warning, still mark cancelled
    */
-  public async killWorker(workerId: string): Promise<{ success: boolean; message: string }> {
+  public async killWorker(
+    workerId: string,
+    cancelledBy = 'user',
+  ): Promise<{ success: boolean; message: string }> {
     const worker = this.workerRegistry.getWorker(workerId);
 
     if (!worker) {
@@ -1511,6 +1514,20 @@ export class MasterManager {
     const message = `Stopped worker ${this.formatWorkerSummary(worker)}`;
     logger.info({ workerId, pid: worker.pid }, 'Worker killed by user request');
 
+    // Broadcast cancellation to all connected channels (OB-883)
+    if (this.router) {
+      const shortId = workerId.split('-').pop() ?? workerId;
+      try {
+        await this.router.broadcastProgress({
+          type: 'worker-cancelled',
+          workerId: shortId,
+          cancelledBy,
+        });
+      } catch (broadcastErr) {
+        logger.warn({ workerId, broadcastErr }, 'killWorker: failed to broadcast cancellation');
+      }
+    }
+
     return { success: true, message };
   }
 
@@ -1521,7 +1538,9 @@ export class MasterManager {
    * Returns an object with the list of stopped worker IDs and a human-readable
    * summary message.
    */
-  public async killAllWorkers(): Promise<{ stopped: string[]; message: string }> {
+  public async killAllWorkers(
+    cancelledBy = 'user',
+  ): Promise<{ stopped: string[]; message: string }> {
     const running = this.workerRegistry.getRunningWorkers();
 
     if (running.length === 0) {
@@ -1532,7 +1551,7 @@ export class MasterManager {
     const lines: string[] = [];
 
     for (const worker of running) {
-      const result = await this.killWorker(worker.id);
+      const result = await this.killWorker(worker.id, cancelledBy);
       if (result.success) {
         stopped.push(worker.id);
         lines.push(`- ${this.formatWorkerSummary(worker)}`);

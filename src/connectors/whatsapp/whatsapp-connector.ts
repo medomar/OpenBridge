@@ -540,13 +540,26 @@ export class WhatsAppConnector implements Connector {
       const icon = event.success ? '✅' : '❌';
       const header = `${icon} Subtask ${event.workerIndex}/${event.total} (${event.profile}):`;
       const maxLen = 4000;
-      const body = event.content.length > maxLen
-        ? event.content.slice(0, maxLen) + '\n...(truncated)'
-        : event.content;
+      const body =
+        event.content.length > maxLen
+          ? event.content.slice(0, maxLen) + '\n...(truncated)'
+          : event.content;
       try {
         await this.client.sendMessage(chatId, `${header}\n${body}`);
       } catch (err: unknown) {
         logger.debug({ chatId, err }, 'Failed to send WhatsApp worker result');
+      }
+    }
+
+    // Notify all connected chats when a worker is cancelled (OB-883)
+    if (event.type === 'worker-cancelled') {
+      try {
+        await this.client.sendMessage(
+          chatId,
+          `🛑 Worker ${event.workerId} was stopped by ${event.cancelledBy}.`,
+        );
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp worker-cancelled notification');
       }
     }
   }

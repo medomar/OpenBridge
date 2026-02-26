@@ -48,6 +48,8 @@ function formatProgressEvent(event: ProgressEvent): string {
       return `🗺️ ${event.phase}${event.detail ? ` — ${event.detail}` : ''}...`;
     case 'exploring-directory':
       return `📂 Exploring directories: ${event.completed.toString()}/${event.total.toString()}${event.directory ? ` (${event.directory})` : ''}...`;
+    case 'worker-cancelled':
+      return `🛑 Worker ${event.workerId} was stopped by ${event.cancelledBy}.`;
     default:
       return `⏳ Processing (${event.type})...`;
   }

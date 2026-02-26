@@ -357,6 +357,8 @@ const CHAT_HTML = `<!DOCTYPE html>
               var toolLabel = data.event.tool ? ' \u00b7 ' + data.event.tool : '';
               var header = icon + ' **Subtask ' + data.event.workerIndex + '/' + data.event.total + '** (' + data.event.profile + toolLabel + '):\\n\\n';
               addBubble(header + data.event.content, 'ai');
+            } else if (data.event && data.event.type === 'worker-cancelled') {
+              addBubble('\uD83D\uDED1 Worker ' + data.event.workerId + ' was stopped by ' + data.event.cancelledBy + '.', 'sys');
             } else if (data.event) {
               var label = progressLabel(data.event);
               if (label) showStatus(label);

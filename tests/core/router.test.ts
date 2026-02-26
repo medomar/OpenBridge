@@ -1137,7 +1137,7 @@ describe('Router', () => {
       await router.route(createStopMsg('stop w8f3'));
 
       expect(mockKillWorker).toHaveBeenCalledOnce();
-      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
     });
 
     it('should match worker by exact ID', async () => {
@@ -1153,7 +1153,7 @@ describe('Router', () => {
       await router.route(createStopMsg(`stop ${workerId}`));
 
       expect(mockKillWorker).toHaveBeenCalledOnce();
-      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
     });
 
     it('should match worker by substring', async () => {
@@ -1170,7 +1170,7 @@ describe('Router', () => {
       await router.route(createStopMsg('stop 1708123456789'));
 
       expect(mockKillWorker).toHaveBeenCalledOnce();
-      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
     });
 
     it('should return "Worker not found" when partial ID has no match', async () => {
