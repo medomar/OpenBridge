@@ -42,6 +42,31 @@ vi.mock('../../src/core/agent-runner.js', () => {
     MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
     AgentExhaustedError: class AgentExhaustedError extends Error {},
     resolveProfile: (profileName: string) => profiles[profileName],
+    classifyError: (stderr: string, exitCode: number): string => {
+      const lower = stderr.toLowerCase();
+      if (
+        lower.includes('rate limit') ||
+        lower.includes('rate_limit') ||
+        lower.includes('too many requests')
+      )
+        return 'rate-limit';
+      if (
+        lower.includes('context window') ||
+        lower.includes('context length') ||
+        lower.includes('context_length') ||
+        lower.includes('too many tokens')
+      )
+        return 'context-overflow';
+      if (
+        lower.includes('invalid api key') ||
+        lower.includes('unauthorized') ||
+        lower.includes('authentication failed')
+      )
+        return 'auth';
+      if (exitCode === 143 || exitCode === 137 || lower.includes('timeout')) return 'timeout';
+      if (exitCode !== 0) return 'crash';
+      return 'unknown';
+    },
     manifestToSpawnOptions: (manifest: Record<string, unknown>) => {
       const profile = manifest.profile as string | undefined;
       const allowedTools =
@@ -263,7 +288,7 @@ describe('MasterManager - Worker-Level Retry', () => {
       expect(worker?.workerRetries).toBe(2);
     });
 
-    it('should default to 0 retries when retries not specified in SPAWN body', async () => {
+    it('should default to 2 retries when retries not specified in SPAWN body (OB-905)', async () => {
       const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Read files","model":"haiku"}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
@@ -275,7 +300,7 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 200,
       });
 
-      // Call 2: Worker fails — no retry (default retries = 0)
+      // Call 2: Worker fails (attempt 1 of 3) — classified as 'crash' (retryable)
       mockSpawn.mockResolvedValueOnce({
         exitCode: 1,
         stdout: '',
@@ -284,10 +309,28 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 100,
       });
 
-      // Call 3: Feedback
+      // Call 3: Worker fails (retry 1 of 2)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Transient error',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // Call 4: Worker fails (retry 2 of 2 — exhausted)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Transient error',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // Call 5: Feedback
       mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
-        stdout: 'Worker failed.',
+        stdout: 'Worker failed after retries.',
         stderr: '',
         retryCount: 0,
         durationMs: 200,
@@ -298,13 +341,14 @@ describe('MasterManager - Worker-Level Retry', () => {
       const registry = masterManager.getWorkerRegistry();
       const worker = registry.getAllWorkers()[0];
       expect(worker?.status).toBe('failed');
-      expect(worker?.workerRetries).toBe(0); // default 0 retries
+      expect(worker?.workerRetries).toBe(2); // default 2 retries exhausted
     });
   });
 
   describe('Non-Retryable Failures', () => {
-    it('should NOT retry on timeout (SIGTERM exit code 143)', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Slow task","model":"sonnet","retries":3,"timeout":5000}[/SPAWN]`;
+    it('should retry on timeout (SIGTERM exit code 143) (OB-905)', async () => {
+      // timeout is classified as a retryable error category (OB-904/OB-905)
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Slow task","model":"sonnet","retries":1,"timeout":5000}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -315,7 +359,7 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 200,
       });
 
-      // Call 2: Worker times out with SIGTERM — should NOT retry
+      // Call 2: Worker times out with SIGTERM — classified as 'timeout' (retryable)
       mockSpawn.mockResolvedValueOnce({
         exitCode: 143,
         stdout: 'partial output',
@@ -324,10 +368,19 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 5100,
       });
 
-      // Call 3: Feedback (no retry calls in between)
+      // Call 3: Retry succeeds
       mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
-        stdout: 'Worker timed out.',
+        stdout: 'Task completed on retry.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 4000,
+      });
+
+      // Call 4: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Worker succeeded after timeout retry.',
         stderr: '',
         retryCount: 0,
         durationMs: 200,
@@ -335,17 +388,18 @@ describe('MasterManager - Worker-Level Retry', () => {
 
       await masterManager.processMessage(makeMessage('Run slow task'));
 
-      // Only 3 calls: Master + Worker (no retry) + Feedback
-      expect(mockSpawn).toHaveBeenCalledTimes(3);
+      // 4 calls: Master + Worker (timeout) + Retry (success) + Feedback
+      expect(mockSpawn).toHaveBeenCalledTimes(4);
 
       const registry = masterManager.getWorkerRegistry();
       const worker = registry.getAllWorkers()[0];
-      expect(worker?.status).toBe('failed');
-      expect(worker?.workerRetries).toBe(0);
+      expect(worker?.status).toBe('completed');
+      expect(worker?.workerRetries).toBe(1);
     });
 
-    it('should NOT retry on SIGKILL (exit code 137)', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"OOM task","model":"sonnet","retries":3}[/SPAWN]`;
+    it('should retry on SIGKILL (exit code 137) (OB-905)', async () => {
+      // exit code 137 is classified as 'timeout' (retryable) by classifyError
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"OOM task","model":"sonnet","retries":1}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -356,7 +410,7 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 200,
       });
 
-      // Call 2: Worker killed with SIGKILL — should NOT retry
+      // Call 2: Worker killed with SIGKILL — classified as 'timeout' (retryable)
       mockSpawn.mockResolvedValueOnce({
         exitCode: 137,
         stdout: '',
@@ -365,10 +419,19 @@ describe('MasterManager - Worker-Level Retry', () => {
         durationMs: 3000,
       });
 
-      // Call 3: Feedback
+      // Call 3: Retry succeeds
       mockSpawn.mockResolvedValueOnce({
         exitCode: 0,
-        stdout: 'Worker was killed.',
+        stdout: 'Task completed on retry.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 2000,
+      });
+
+      // Call 4: Feedback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Worker succeeded after SIGKILL retry.',
         stderr: '',
         retryCount: 0,
         durationMs: 200,
@@ -376,12 +439,13 @@ describe('MasterManager - Worker-Level Retry', () => {
 
       await masterManager.processMessage(makeMessage('Run OOM task'));
 
-      expect(mockSpawn).toHaveBeenCalledTimes(3);
+      // 4 calls: Master + Worker (SIGKILL) + Retry (success) + Feedback
+      expect(mockSpawn).toHaveBeenCalledTimes(4);
 
       const registry = masterManager.getWorkerRegistry();
       const worker = registry.getAllWorkers()[0];
-      expect(worker?.status).toBe('failed');
-      expect(worker?.workerRetries).toBe(0);
+      expect(worker?.status).toBe('completed');
+      expect(worker?.workerRetries).toBe(1);
     });
 
     it('should NOT retry on context overflow (dead session pattern)', async () => {

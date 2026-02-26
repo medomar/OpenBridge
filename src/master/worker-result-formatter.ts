@@ -9,7 +9,8 @@
  * Master session as follow-up messages — no polling required.
  */
 
-import type { AgentResult } from '../core/agent-runner.js';
+import type { AgentResult, ErrorCategory } from '../core/agent-runner.js';
+import { classifyError } from '../core/agent-runner.js';
 
 /**
  * Metadata about a completed worker execution.
@@ -33,6 +34,12 @@ export interface WorkerResultMeta {
   exitCode: number;
   /** Number of retries that occurred */
   retryCount: number;
+  /**
+   * Classified error category for failed workers (from classifyError).
+   * When present, formatWorkerError uses the [WORKER FAILED: <category>] format
+   * so the Master AI can take category-specific re-delegation actions.
+   */
+  errorCategory?: ErrorCategory;
 }
 
 /**
@@ -53,16 +60,34 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
 /**
  * Format a failed worker result for injection into the Master session.
  *
- * Output format:
- *   Worker error (sonnet, code-edit, worker 2/3, 0.5s, exit 1):
+ * When `meta.errorCategory` is set (worker failed after retries), uses the
+ * [WORKER FAILED: <category>] format so the Master AI can take category-specific
+ * re-delegation actions (e.g., retry with different model, split task, report to user).
+ *
+ * When no errorCategory is set (e.g., exception thrown before execution), falls back
+ * to the generic [WORKER ERROR] format.
+ *
+ * Output format (with category):
+ *   [WORKER FAILED: rate-limit (sonnet, code-edit, worker 2/3, 0.5s, exit 1)]
  *   <error details>
+ *   [/WORKER FAILED]
+ *
+ * Output format (without category):
+ *   [WORKER ERROR (sonnet, code-edit, worker 2/3, 0.5s, exit 1)]
+ *   <error details>
+ *   [/WORKER ERROR]
  */
 export function formatWorkerError(meta: WorkerResultMeta, error: string): string {
   const modelLabel = formatModelLabel(meta.tool, meta.model);
   const durationLabel = formatDuration(meta.durationMs);
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
+  const details = `${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel}, exit ${meta.exitCode}`;
 
-  return `[WORKER ERROR (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel}, exit ${meta.exitCode})]\n${error.trim()}\n[/WORKER ERROR]`;
+  if (meta.errorCategory) {
+    return `[WORKER FAILED: ${meta.errorCategory} (${details})]\n${error.trim()}\n[/WORKER FAILED]`;
+  }
+
+  return `[WORKER ERROR (${details})]\n${error.trim()}\n[/WORKER ERROR]`;
 }
 
 /**
@@ -102,6 +127,9 @@ export function formatWorkerBatch(
         success: result.exitCode === 0,
         exitCode: result.exitCode,
         retryCount: result.retryCount,
+        // Classify the error so the Master can take category-specific re-delegation actions
+        errorCategory:
+          result.exitCode !== 0 ? classifyError(result.stderr, result.exitCode) : undefined,
       };
 
       if (result.exitCode === 0) {
@@ -122,6 +150,8 @@ export function formatWorkerBatch(
         success: false,
         exitCode: -1,
         retryCount: 0,
+        // Exceptions (spawn failures) are treated as crash-category failures
+        errorCategory: 'crash',
       };
       formattedResults.push(formatWorkerError(meta, errorMsg));
     }

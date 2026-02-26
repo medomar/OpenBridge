@@ -47,6 +47,25 @@ vi.mock('../../src/core/agent-runner.js', () => {
     MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
     AgentExhaustedError: class AgentExhaustedError extends Error {},
     resolveProfile: (profileName: string) => profiles[profileName],
+    classifyError: (stderr: string, exitCode: number): string => {
+      const lower = stderr.toLowerCase();
+      if (
+        lower.includes('context window') ||
+        lower.includes('context length') ||
+        lower.includes('context_length') ||
+        lower.includes('too many tokens')
+      )
+        return 'context-overflow';
+      if (
+        lower.includes('invalid api key') ||
+        lower.includes('unauthorized') ||
+        lower.includes('authentication failed')
+      )
+        return 'auth';
+      if (exitCode === 143 || exitCode === 137 || lower.includes('timeout')) return 'timeout';
+      if (exitCode !== 0) return 'crash';
+      return 'unknown';
+    },
     manifestToSpawnOptions: (manifest: Record<string, unknown>) => {
       const profile = manifest.profile as string | undefined;
       const allowedTools =
@@ -256,7 +275,7 @@ Working on both tasks.`;
 
   describe('Worker Failure Handling', () => {
     it('should handle worker failure and feed error back to Master', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run the tests","model":"sonnet"}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run the tests","model":"sonnet","retries":0}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -289,9 +308,9 @@ Working on both tasks.`;
 
       expect(response).toBe('The worker encountered an error: test command not found.');
 
-      // Verify error was included in feedback
+      // Verify error was included in feedback (format: [WORKER FAILED: <category>])
       const feedbackCall = getSpawnCallOpts(2);
-      expect(feedbackCall?.prompt).toContain('WORKER ERROR');
+      expect(feedbackCall?.prompt).toContain('WORKER FAILED');
       expect(feedbackCall?.prompt).toContain('Test command not found');
     });
 
@@ -324,7 +343,7 @@ Working on both tasks.`;
       expect(response).toBe('Worker failed to start. I cannot complete this task.');
 
       const feedbackCall = getSpawnCallOpts(2);
-      expect(feedbackCall?.prompt).toContain('WORKER ERROR');
+      expect(feedbackCall?.prompt).toContain('WORKER FAILED');
       expect(feedbackCall?.prompt).toContain('Process spawn failed');
     });
   });
@@ -437,7 +456,7 @@ Working on both tasks.`;
     });
 
     it('should include error metadata with exit code in failure feedback', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet"}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet","retries":0}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -469,7 +488,7 @@ Working on both tasks.`;
       await masterManager.processMessage(makeMessage('Run tests'));
 
       const feedbackCall = getSpawnCallOpts(2);
-      expect(feedbackCall?.prompt).toContain('WORKER ERROR');
+      expect(feedbackCall?.prompt).toContain('WORKER FAILED');
       expect(feedbackCall?.prompt).toContain('sonnet');
       expect(feedbackCall?.prompt).toContain('code-edit');
       expect(feedbackCall?.prompt).toContain('exit 1');
@@ -688,7 +707,7 @@ Working on both tasks.`;
     });
 
     it('should track failed workers without crashing Master', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet"}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run tests","model":"sonnet","retries":0}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -779,7 +798,7 @@ Working on both tasks.`;
 
   describe('Worker Timeout Handling (OB-163)', () => {
     it('should detect SIGTERM timeout (exit code 143) and mark worker as timeout failure', async () => {
-      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run slow task","model":"sonnet","timeout":5000}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:code-edit]{"prompt":"Run slow task","model":"sonnet","timeout":5000,"retries":0}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -824,7 +843,7 @@ Working on both tasks.`;
     });
 
     it('should detect SIGKILL timeout (exit code 137) and mark worker as timeout failure', async () => {
-      const responseWithSpawn = `[SPAWN:full-access]{"prompt":"Very slow task","model":"opus","timeout":10000}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:full-access]{"prompt":"Very slow task","model":"opus","timeout":10000,"retries":0}[/SPAWN]`;
 
       // Call 1: Master returns SPAWN marker
       mockSpawn.mockResolvedValueOnce({
@@ -870,8 +889,8 @@ Working on both tasks.`;
 
     it('should distinguish timeout failures from other failures', async () => {
       const responseWithMultiSpawn = `
-[SPAWN:code-edit]{"prompt":"Normal failure","model":"sonnet"}[/SPAWN]
-[SPAWN:code-edit]{"prompt":"Timeout failure","model":"sonnet","timeout":3000}[/SPAWN]
+[SPAWN:code-edit]{"prompt":"Normal failure","model":"sonnet","retries":0}[/SPAWN]
+[SPAWN:code-edit]{"prompt":"Timeout failure","model":"sonnet","timeout":3000,"retries":0}[/SPAWN]
 `;
 
       // Call 1: Master processes message
@@ -932,7 +951,7 @@ Working on both tasks.`;
     });
 
     it('should persist timeout failures to disk', async () => {
-      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Slow scan","model":"haiku","timeout":2000}[/SPAWN]`;
+      const responseWithSpawn = `[SPAWN:read-only]{"prompt":"Slow scan","model":"haiku","timeout":2000,"retries":0}[/SPAWN]`;
 
       mockSpawn.mockResolvedValueOnce({
         exitCode: 0,

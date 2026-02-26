@@ -87,7 +87,7 @@ describe('Worker Result Formatter', () => {
   });
 
   describe('formatWorkerError', () => {
-    it('should format a worker error with exit code', () => {
+    it('should format a worker error with exit code (no category → generic format)', () => {
       const meta: WorkerResultMeta = {
         workerIndex: 2,
         totalWorkers: 3,
@@ -111,7 +111,70 @@ describe('Worker Result Formatter', () => {
       expect(result).toContain('[/WORKER ERROR]');
     });
 
-    it('should handle exception errors (exit -1)', () => {
+    it('should format a categorised failure with [WORKER FAILED: <category>] format', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 2,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 500,
+        success: false,
+        exitCode: 1,
+        retryCount: 2,
+        errorCategory: 'rate-limit',
+      };
+
+      const result = formatWorkerError(meta, 'Too many requests');
+
+      expect(result).toContain('[WORKER FAILED: rate-limit');
+      expect(result).toContain('sonnet');
+      expect(result).toContain('code-edit');
+      expect(result).toContain('worker 1/2');
+      expect(result).toContain('exit 1');
+      expect(result).toContain('Too many requests');
+      expect(result).toContain('[/WORKER FAILED]');
+      expect(result).not.toContain('[WORKER ERROR');
+    });
+
+    it('should use [WORKER FAILED: auth] format for auth errors', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'read-only',
+        model: 'haiku',
+        durationMs: 100,
+        success: false,
+        exitCode: 1,
+        retryCount: 0,
+        errorCategory: 'auth',
+      };
+
+      const result = formatWorkerError(meta, 'Invalid API key');
+
+      expect(result).toContain('[WORKER FAILED: auth');
+      expect(result).toContain('[/WORKER FAILED]');
+    });
+
+    it('should use [WORKER FAILED: context-overflow] for context overflow errors', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'full-access',
+        model: 'opus',
+        durationMs: 300,
+        success: false,
+        exitCode: 1,
+        retryCount: 0,
+        errorCategory: 'context-overflow',
+      };
+
+      const result = formatWorkerError(meta, 'Context length exceeded');
+
+      expect(result).toContain('[WORKER FAILED: context-overflow');
+      expect(result).toContain('[/WORKER FAILED]');
+    });
+
+    it('should handle exception errors (exit -1, no category)', () => {
       const meta: WorkerResultMeta = {
         workerIndex: 1,
         totalWorkers: 1,
@@ -127,6 +190,7 @@ describe('Worker Result Formatter', () => {
 
       expect(result).toContain('exit -1');
       expect(result).toContain('Process spawn failed');
+      expect(result).toContain('[WORKER ERROR');
     });
   });
 
@@ -232,12 +296,59 @@ describe('Worker Result Formatter', () => {
       expect(formattedResults).toHaveLength(2);
       expect(formattedResults[0]).toContain('WORKER RESULT');
       expect(formattedResults[0]).toContain('Success output');
-      expect(formattedResults[1]).toContain('WORKER ERROR');
+      // formatWorkerBatch classifies errors → uses [WORKER FAILED: crash] for exit 1 with generic stderr
+      expect(formattedResults[1]).toContain('WORKER FAILED');
       expect(formattedResults[1]).toContain('Command failed');
       expect(formattedResults[1]).toContain('exit 1');
     });
 
-    it('should handle rejected promises (exceptions)', () => {
+    it('should include error category in [WORKER FAILED] format for rate-limit errors', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: '',
+            stderr: 'rate limit exceeded, retry after 60 seconds',
+            exitCode: 1,
+            durationMs: 200,
+            retryCount: 2,
+          },
+        },
+      ];
+
+      const markers = [{ profile: 'code-edit', body: { model: 'sonnet' } }];
+
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+
+      expect(formattedResults).toHaveLength(1);
+      expect(formattedResults[0]).toContain('[WORKER FAILED: rate-limit');
+      expect(formattedResults[0]).toContain('[/WORKER FAILED]');
+    });
+
+    it('should include error category in [WORKER FAILED] format for context-overflow errors', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: '',
+            stderr: 'context window exceeded',
+            exitCode: 1,
+            durationMs: 300,
+            retryCount: 0,
+          },
+        },
+      ];
+
+      const markers = [{ profile: 'read-only', body: { model: 'opus' } }];
+
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+
+      expect(formattedResults).toHaveLength(1);
+      expect(formattedResults[0]).toContain('[WORKER FAILED: context-overflow');
+      expect(formattedResults[0]).toContain('[/WORKER FAILED]');
+    });
+
+    it('should handle rejected promises (exceptions → crash category)', () => {
       const outcomes: PromiseSettledResult<AgentResult>[] = [
         {
           status: 'rejected',
@@ -250,7 +361,8 @@ describe('Worker Result Formatter', () => {
       const { formattedResults } = formatWorkerBatch(outcomes, markers);
 
       expect(formattedResults).toHaveLength(1);
-      expect(formattedResults[0]).toContain('WORKER ERROR');
+      // Rejected promises are classified as 'crash'
+      expect(formattedResults[0]).toContain('[WORKER FAILED: crash');
       expect(formattedResults[0]).toContain('Process spawn failed');
       expect(formattedResults[0]).toContain('exit -1');
     });

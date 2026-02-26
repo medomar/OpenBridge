@@ -13,6 +13,7 @@ import {
   TOOLS_READ_ONLY,
   TOOLS_CODE_EDIT,
   DEFAULT_MAX_TURNS_TASK,
+  classifyError,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
@@ -4884,11 +4885,11 @@ ${currentContent}
         }
       }
 
-      // Worker-level retry with exponential backoff.
-      // Retries on transient failures (non-zero exit) but NOT on:
-      // - Timeout kills (SIGTERM=143, SIGKILL=137)
-      // - Context overflow / dead session patterns
-      const maxWorkerRetries = body.retries ?? 0;
+      // Worker-level retry with exponential backoff (OB-905).
+      // Default retries = 2. Only retry on retryable error categories:
+      //   retryable:     'rate-limit', 'timeout', 'crash'
+      //   non-retryable: 'auth', 'context-overflow', 'unknown'
+      const maxWorkerRetries = body.retries ?? 2;
       let workerRetryCount = 0;
       let result: AgentResult;
 
@@ -4899,25 +4900,24 @@ ${currentContent}
           break; // Success — no retry needed
         }
 
-        // Check if this failure is non-retryable
-        const isTimeout = result.exitCode === 143 || result.exitCode === 137;
-        const isDeadSession =
-          result.exitCode === 1 &&
-          SESSION_DEAD_PATTERNS.some((p) => result.stderr.toLowerCase().includes(p));
+        // Classify the error to decide retry strategy (OB-904, OB-905)
+        const errorCategory = classifyError(result.stderr, result.exitCode);
+        const isRetryable =
+          errorCategory === 'rate-limit' ||
+          errorCategory === 'timeout' ||
+          errorCategory === 'crash';
 
-        if (isTimeout || isDeadSession) {
-          // Non-retryable failure — break immediately
-          if (isTimeout) {
-            logger.warn(
-              {
-                workerId,
-                exitCode: result.exitCode,
-                timeout: body.timeout,
-                durationMs: result.durationMs,
-              },
-              'Worker terminated due to timeout (non-retryable)',
-            );
-          }
+        if (!isRetryable) {
+          // Non-retryable failure (auth, context-overflow, unknown) — break immediately
+          logger.warn(
+            {
+              workerId,
+              exitCode: result.exitCode,
+              errorCategory,
+              durationMs: result.durationMs,
+            },
+            'Worker failed with non-retryable error',
+          );
           break;
         }
 
@@ -4935,6 +4935,7 @@ ${currentContent}
             workerRetry: workerRetryCount,
             maxWorkerRetries,
             exitCode: result.exitCode,
+            errorCategory,
             delayMs: delay,
             stderrPreview: result.stderr.slice(0, 150),
           },
