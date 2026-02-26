@@ -338,6 +338,8 @@ export class MasterManager {
   private restartCount = 0;
   /** Timestamp of last user message (for idle detection) */
   private lastMessageTimestamp: number | null = null;
+  /** Timestamp of the last exploration run (incremental or full) — used to throttle re-exploration (OB-849) */
+  private lastExplorationAt: number | null = null;
   /** Idle detection timer (runs self-improvement when idle for >5 min) */
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
@@ -2412,6 +2414,15 @@ export class MasterManager {
   private async checkWorkspaceChanges(
     existingMap: WorkspaceMap,
   ): Promise<'no-changes' | 'incremental' | 'full-reexplore'> {
+    const MIN_EXPLORATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    if (this.lastExplorationAt !== null) {
+      const elapsed = Math.floor((Date.now() - this.lastExplorationAt) / 1000);
+      if (Date.now() - this.lastExplorationAt < MIN_EXPLORATION_INTERVAL_MS) {
+        logger.info(`Skipping re-exploration — last run was ${elapsed}s ago`);
+        return 'no-changes';
+      }
+    }
+
     const marker = await this.readAnalysisMarkerFromStore();
 
     // No marker but valid map exists = upgrade from before incremental tracking.
@@ -2446,10 +2457,12 @@ export class MasterManager {
     }
 
     if (changes.tooLargeForIncremental) {
+      this.lastExplorationAt = Date.now();
       return 'full-reexplore';
     }
 
     // Perform incremental exploration
+    this.lastExplorationAt = Date.now();
     await this.incrementalExplore(existingMap, changes);
     return 'incremental';
   }
