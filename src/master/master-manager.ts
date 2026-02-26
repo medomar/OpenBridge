@@ -364,6 +364,8 @@ export class MasterManager {
   private cacheLoaded = false;
   /** Abort handles for running worker processes — keyed by workerId (OB-873). Used by killWorker(). */
   private readonly workerAbortHandles: Map<string, () => void> = new Map();
+  /** Cancellation notifications queued for injection into the next Master call (OB-884). */
+  private readonly pendingCancellationNotifications: string[] = [];
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -1057,6 +1059,17 @@ export class MasterManager {
         (opts.systemPrompt ?? '') + '\n\n## Learnings from Past Tasks\n\n' + this.learningsSummary;
     }
 
+    // Drain pending cancellation notifications (OB-884).
+    // These are queued by killWorker() so the Master learns about cancelled workers
+    // on its next call and does not attempt to re-spawn them.
+    if (this.pendingCancellationNotifications.length > 0) {
+      const notifications = this.pendingCancellationNotifications.splice(0);
+      opts.systemPrompt =
+        (opts.systemPrompt ?? '') +
+        '\n\n## IMPORTANT — Worker Cancellation Events\n\n' +
+        notifications.join('\n');
+    }
+
     return opts;
   }
 
@@ -1513,6 +1526,15 @@ export class MasterManager {
     // Build descriptive message: "Stopped worker <shortId> (<model>, '<summary>', <elapsed>)"
     const message = `Stopped worker ${this.formatWorkerSummary(worker)}`;
     logger.info({ workerId, pid: worker.pid }, 'Worker killed by user request');
+
+    // Queue cancellation notification for the Master AI (OB-884).
+    // On the next Master call, buildMasterSpawnOptions() will inject this so the
+    // Master knows not to re-spawn this worker unless the user explicitly asks.
+    const shortId = workerId.split('-').pop() ?? workerId;
+    const taskSummary = worker.taskManifest.prompt.slice(0, 80).replace(/\n/g, ' ');
+    this.pendingCancellationNotifications.push(
+      `Worker ${shortId} was CANCELLED by user ${cancelledBy}. Task: "${taskSummary}". Do NOT retry this task unless the user explicitly asks.`,
+    );
 
     // Broadcast cancellation to all connected channels (OB-883)
     if (this.router) {
