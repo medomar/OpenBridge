@@ -10,6 +10,7 @@ import { MockProvider } from '../helpers/mock-provider.js';
 import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MasterManager } from '../../src/master/master-manager.js';
+import type { AuthService } from '../../src/core/auth.js';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { publishToGitHubPages } from '../../src/core/github-publisher.js';
 import { join } from 'node:path';
@@ -899,6 +900,329 @@ describe('Router', () => {
       // Single-worker stop should execute immediately
       expect(mockKillWorker).toHaveBeenCalledOnce();
       expect(connector.sentMessages[0]?.content).toContain('Stopped worker');
+    });
+  });
+
+  describe('stop command handling (OB-881)', () => {
+    function createStopMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'msg-stop-881',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterWithNamedWorkers(
+      workers: Array<{ id: string; status?: 'running' | 'done' }>,
+    ) {
+      const runningWorkers = workers
+        .filter((w) => (w.status ?? 'running') === 'running')
+        .map((w) => ({
+          id: w.id,
+          status: 'running' as const,
+          pid: 9000,
+          model: 'claude-sonnet',
+          profile: 'code-edit',
+          task_summary: 'Fix auth bug',
+          started_at: new Date(Date.now() - 45_000).toISOString(),
+        }));
+
+      const allWorkers = workers.map((w) => ({
+        id: w.id,
+        status: w.status ?? 'running',
+        pid: 9000,
+        model: 'claude-sonnet',
+        profile: 'code-edit',
+        task_summary: 'Fix auth bug',
+        started_at: new Date(Date.now() - 45_000).toISOString(),
+      }));
+
+      const mockKillWorker = vi.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          success: true,
+          message: `Stopped worker ${id} (sonnet, 'Fix auth bug', 45s)`,
+        }),
+      );
+
+      const mockKillAllWorkers = vi.fn().mockResolvedValue({
+        stopped: runningWorkers.map((w) => w.id),
+        message: `Stopped ${runningWorkers.length} worker${runningWorkers.length !== 1 ? 's' : ''}.`,
+      });
+
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'ready' as const),
+        killWorker: mockKillWorker,
+        killAllWorkers: mockKillAllWorkers,
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue(runningWorkers),
+          getAllWorkers: vi.fn().mockReturnValue(allWorkers),
+        }),
+      } as unknown as MasterManager;
+
+      return { master, mockKillWorker, mockKillAllWorkers };
+    }
+
+    // ── Access control ────────────────────────────────────────────────────────
+
+    it('should return permission-denied when auth denies stop action', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({
+          allowed: false,
+          reason: 'That action is not permitted for your role.',
+        }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not permitted');
+    });
+
+    it('should use default denial message when auth denies without a reason', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({ allowed: false }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('permission');
+    });
+
+    it('should allow stop when auth grants access', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-abc123' },
+      ]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({ allowed: true }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+    });
+
+    it('should allow stop when no auth service is configured', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-abc123' },
+      ]);
+
+      // No auth set
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+    });
+
+    // ── No master ─────────────────────────────────────────────────────────────
+
+    it('should return "Stop command not available" when no master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-123'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    it('should return "Stop command not available" for "stop all" when no master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    // ── Case-insensitive interception ─────────────────────────────────────────
+
+    it('should intercept "STOP ALL" (uppercase) without routing to Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithNamedWorkers([{ id: 'worker-1' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('STOP ALL'));
+
+      // Master processMessage should NOT be called
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      // Should have gotten a confirmation prompt (not routed to master)
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+    });
+
+    it('should intercept "Stop" (mixed case) without routing to Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-1' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('Stop'));
+
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      expect(connector.sentMessages).toHaveLength(1);
+    });
+
+    // ── Partial ID matching ───────────────────────────────────────────────────
+
+    it('should match worker by suffix (stop w8f3 → worker-1708123456789-w8f3)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-w8f3';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop w8f3'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+    });
+
+    it('should match worker by exact ID', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-w8f3';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg(`stop ${workerId}`));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+    });
+
+    it('should match worker by substring', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-abc';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // "1708123456789" is a substring of the full ID
+      await router.route(createStopMsg('stop 1708123456789'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId);
+    });
+
+    it('should return "Worker not found" when partial ID has no match', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-1708123456789-abc' },
+      ]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop zzzzz'));
+
+      expect(mockKillWorker).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain("'zzzzz' not found");
+      expect(connector.sentMessages[0]?.content).toContain('status');
+    });
+
+    // ── Response formatting ───────────────────────────────────────────────────
+
+    it('should include worker details in single-stop response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(connector.sentMessages[0]?.content).toContain('Stopped worker');
+      expect(connector.sentMessages[0]?.content).toContain('worker-abc123');
+    });
+
+    it('should pass replyTo from the original message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      const msg = createStopMsg('stop worker-abc123');
+      msg.id = 'original-msg-id';
+      await router.route(msg);
+
+      expect(connector.sentMessages[0]?.replyTo).toBe('original-msg-id');
     });
   });
 
