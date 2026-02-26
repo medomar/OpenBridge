@@ -22,6 +22,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { DotFolderManager } from './dotfolder-manager.js';
 import {
   generateStructureScanPrompt,
@@ -110,7 +111,7 @@ export class ExplorationCoordinator {
   private readonly onProgress?: ExplorationProgressCallback;
   private readonly batchSizeOverride?: number;
   private readonly memory?: MemoryManager;
-  private readonly explorationId?: string;
+  private explorationId?: string;
   /** Maps directory path → exploration_progress row id for the directory-dive phase. */
   private readonly dirProgressIds = new Map<string, number>();
   /** Set to true if any storeExplorationChunks() call fails — checked at end of explore(). */
@@ -374,6 +375,24 @@ export class ExplorationCoordinator {
     // Ensure .openbridge/ and exploration/ directories exist
     await this.dotFolder.initialize();
     await this.dotFolder.createExplorationDir();
+
+    // Auto-register an agent_activity row so exploration_progress rows have a
+    // valid FK parent.  Only needed when the caller did not supply explorationId.
+    if (this.memory && !this.explorationId) {
+      const id = randomUUID();
+      try {
+        await this.memory.insertActivity({
+          id,
+          type: 'explorer',
+          status: 'running',
+          started_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        this.explorationId = id;
+      } catch {
+        // exploration_progress tracking unavailable — continue without it
+      }
+    }
 
     // Load or create exploration state
     let state = await this.readExplorationStateFromStore();
@@ -1056,17 +1075,21 @@ export class ExplorationCoordinator {
 
     // Log entry
     if (this.memory) {
-      await this.memory.logExploration({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Incremental exploration completed successfully',
-        data: {
-          totalCalls: state.totalCalls,
-          totalAITimeMs: state.totalAITimeMs,
-          phases: state.phases,
-          directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
+      await this.memory.logExploration(
+        {
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Incremental exploration completed successfully',
+          data: {
+            totalCalls: state.totalCalls,
+            totalAITimeMs: state.totalAITimeMs,
+            phases: state.phases,
+            directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed')
+              .length,
+          },
         },
-      });
+        this.explorationId,
+      );
     } else {
       await this.dotFolder.appendLog({
         timestamp: new Date().toISOString(),
