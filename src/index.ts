@@ -214,18 +214,21 @@ async function startV2Flow(
     logger.info('Email config wired into bridge');
   }
 
-  // Step 4: Start Master AI BEFORE bridge — so it's ready when messages arrive.
+  // Step 4: Start bridge first — this initializes MemoryManager (SQLite) via memory.init().
+  // MasterManager holds a reference to the MemoryManager but must not use it until init() completes.
+  // Running bridge.start() first eliminates the race condition where MasterManager reads from
+  // the DB before it is open (this.db would be null, causing 'MemoryManager not initialised' errors).
+  await bridge.start();
+
+  // Step 5: Start Master AI in the background — bridge is already serving messages.
   // This loads workspace-map.json and transitions from 'idle' to 'ready'.
-  // Runs in parallel with bridge.start() so neither blocks the other.
-  const masterStartPromise = masterManager.start().catch((error) => {
+  // masterManager.start() can take minutes (workspace exploration) so we don't await it.
+  masterManager.start().catch((error: unknown) => {
     logger.error(
       { err: error },
       'Master AI exploration failed — bridge continues running without workspace context',
     );
   });
-
-  // Step 5: Start bridge (connectors + queue handler)
-  await Promise.all([masterStartPromise, bridge.start()]);
 
   // Step 6: Start remote workspace polling (no-op for local workspaces)
   workspaceManager.startPolling();
