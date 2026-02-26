@@ -18,13 +18,6 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
 
-const PROGRESS_MESSAGES = [
-  'Still working on it...',
-  'This is taking a moment — hang tight...',
-  'Still processing your request...',
-  'Almost there — still working...',
-];
-
 /** Pattern matching [SEND:channel]recipient|content[/SEND] markers in AI output */
 const SEND_MARKER_RE = /\[SEND:([^\]]+)\]([^|]+)\|([^[]*)\[\/SEND\]/g;
 
@@ -78,7 +71,6 @@ function getMimeType(filename: string): {
   };
   return mimeMap[ext] ?? { mimeType: 'application/octet-stream', mediaType: 'document' };
 }
-
 
 export class Router {
   private readonly connectors = new Map<string, Connector>();
@@ -330,7 +322,6 @@ export class Router {
     logger.info({ messageId: message.id }, 'Message processed and response sent');
   }
 
-<<<<<<< HEAD
   /**
    * Parse [SEND:channel]recipient|content[/SEND] markers from AI output,
    * dispatch proactive messages to whitelisted recipients, and return
@@ -713,35 +704,6 @@ export class Router {
       replyTo: message.id,
     });
     logger.info({ sender: message.sender }, 'Status command handled');
-  }
-
-  /** Start sending periodic progress updates, returns a stop function */
-  private startProgressUpdates(connector: Connector, message: InboundMessage): () => void {
-    let tickCount = 0;
-    const timer = setInterval(() => {
-      const progressMsg = PROGRESS_MESSAGES[tickCount % PROGRESS_MESSAGES.length]!;
-      tickCount++;
-
-      const update: OutboundMessage = {
-        target: message.source,
-        recipient: message.sender,
-        content: progressMsg,
-        replyTo: message.id,
-      };
-
-      connector.sendMessage(update).catch((err: unknown) => {
-        logger.warn({ err, messageId: message.id }, 'Failed to send progress update');
-      });
-
-      // Refresh typing indicator (best-effort)
-      if (connector.sendTypingIndicator) {
-        connector.sendTypingIndicator(message.sender).catch(() => {
-          // best-effort
-        });
-      }
-    }, this.progressIntervalMs);
-
-    return () => clearInterval(timer);
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */
