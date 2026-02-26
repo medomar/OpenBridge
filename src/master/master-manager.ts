@@ -4020,12 +4020,16 @@ ${currentContent}
       }
 
       // Store the previous version content for rollback before overwriting
-      const manifest = await this.dotFolder.readPromptManifest();
+      const manifest = this.memory
+        ? await this.memory.getPromptManifest()
+        : await this.dotFolder.readPromptManifest();
       const existingEntry = manifest?.prompts[prompt.id];
       if (manifest && existingEntry) {
         existingEntry.previousVersion = currentContent;
         manifest.updatedAt = new Date().toISOString();
-        if (!this.memory) {
+        if (this.memory) {
+          await this.memory.setPromptManifest(manifest);
+        } else {
           await this.dotFolder.writePromptManifest(manifest);
         }
       }
@@ -4056,7 +4060,9 @@ ${currentContent}
    * - It has been used 5+ times since the rewrite (enough signal)
    */
   private async rollbackDegradedPrompts(): Promise<void> {
-    const manifest = await this.dotFolder.readPromptManifest();
+    const manifest = this.memory
+      ? await this.memory.getPromptManifest()
+      : await this.dotFolder.readPromptManifest();
     if (!manifest) return;
 
     for (const prompt of Object.values(manifest.prompts)) {
@@ -4098,7 +4104,9 @@ ${currentContent}
           prompt.previousSuccessRate = undefined;
           prompt.updatedAt = new Date().toISOString();
 
-          if (!this.memory) {
+          if (this.memory) {
+            await this.memory.setPromptManifest(manifest);
+          } else {
             await this.dotFolder.writePromptManifest(manifest);
           }
 
