@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
+import { applySchemaChanges } from './migration.js';
 
 /**
  * Opens (or creates) the SQLite database at the given path.
@@ -17,6 +18,7 @@ export function openDatabase(dbPath: string): Database.Database {
   db.pragma('foreign_keys=ON');
 
   createSchema(db);
+  applySchemaChanges(db);
 
   return db;
 }
@@ -153,6 +155,7 @@ function createSchema(db: Database.Database): void {
       status       TEXT    NOT NULL,
       progress_pct INTEGER,
       parent_id    TEXT,
+      pid          INTEGER,
       cost_usd     REAL,
       started_at   TEXT    NOT NULL,
       updated_at   TEXT    NOT NULL,
