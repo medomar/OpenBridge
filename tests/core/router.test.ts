@@ -15,6 +15,7 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { publishToGitHubPages } from '../../src/core/github-publisher.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { ActivityRecord } from '../../src/memory/index.js';
 
 function createMessage(): InboundMessage {
   return {
@@ -1324,6 +1325,115 @@ describe('Router', () => {
       const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
       const finalReply = textMsgs[textMsgs.length - 1];
       expect(finalReply?.content).toBe('');
+    });
+  });
+
+  describe('status command queue depth display (OB-923)', () => {
+    function createStatusMsg(): InboundMessage {
+      return {
+        id: 'msg-status',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'status',
+        content: 'status',
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMemory(agents: Partial<ActivityRecord>[] = []) {
+      return {
+        getActiveAgents: vi.fn().mockResolvedValue(agents),
+        getExplorationProgress: vi.fn().mockResolvedValue([]),
+        getDailyCost: vi.fn().mockResolvedValue(0),
+      };
+    }
+
+    function setupRouter() {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      router.addConnector(connector);
+      router.addProvider(provider);
+      return { router, connector };
+    }
+
+    it('should show "Queue: idle" when no messages are waiting', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({ getQueueSnapshot: vi.fn().mockReturnValue([]) } as never);
+
+      await router.route(createStatusMsg());
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Queue: idle');
+    });
+
+    it('should show per-user queue depth when messages are waiting', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 2, estimatedWaitMs: 60_000 }]),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('Queue:');
+      expect(content).toContain('2 messages waiting');
+    });
+
+    it('should show estimated wait time in seconds when under 1 minute', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 1, estimatedWaitMs: 30_000 }]),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('~30s');
+    });
+
+    it('should show estimated wait time in minutes when >= 1 minute', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 3, estimatedWaitMs: 90_000 }]),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('~2m');
+    });
+
+    it('should omit queue section when setQueue is not called', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      // No setQueue call
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).not.toContain('Queue:');
     });
   });
 });
