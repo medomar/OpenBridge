@@ -338,6 +338,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "explore" command — intercept before routing to Master AI
+    if (/^explore(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleExploreCommand(message, connector);
+      return;
+    }
+
     // Fast-path: when Master is processing a complex task and a quick-answer message arrives,
     // spawn a lightweight read-only agent to answer immediately without waiting for Master.
     const messagePriority = classifyMessagePriority(message.content);
@@ -1063,6 +1069,176 @@ export class Router {
       replyTo: message.id,
     });
     logger.info({ sender: message.sender, command: trimmed }, 'Stop command handled');
+  }
+
+  /**
+   * Handle the built-in "explore" command.
+   * Triggers workspace re-exploration from any channel.
+   *
+   * Syntax:
+   *   "explore"        -> quick re-exploration via Master session prompt
+   *   "explore full"   -> full 5-phase re-exploration with ExplorationCoordinator
+   *   "explore status" -> show current exploration state and progress
+   */
+  private async handleExploreCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Explore command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Access control — exploration classifies as 'read' action
+    if (this.auth) {
+      const accessResult = this.auth.checkAccessControl(message.sender, message.source, 'explore');
+      if (!accessResult.allowed) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to trigger exploration.',
+          replyTo: message.id,
+        });
+        return;
+      }
+    }
+
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice(7).trim().toLowerCase(); // slice past "explore"
+
+    if (rest === 'status') {
+      await this.handleExploreStatusSubcommand(message, connector);
+      return;
+    }
+
+    const currentState = this.master.getState();
+
+    if (currentState === 'exploring') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Exploration is already in progress. Use "explore status" to check progress.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (currentState !== 'ready') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Cannot start exploration — Master is currently in '${currentState}' state. Please wait until it is ready.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const isFull = rest === 'full';
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: isFull
+        ? 'Starting full workspace re-exploration (5 phases). This may take a few minutes...'
+        : 'Starting quick workspace re-exploration...',
+      replyTo: message.id,
+    });
+
+    try {
+      if (isFull) {
+        await this.master.fullReExplore();
+      } else {
+        await this.master.reExplore();
+      }
+
+      const summary = this.master.getExplorationSummary();
+      const completionParts = ['Workspace re-exploration completed.'];
+      if (summary?.projectType) {
+        completionParts.push(`Project type: ${summary.projectType}`);
+      }
+      if (summary?.frameworks && summary.frameworks.length > 0) {
+        completionParts.push(`Frameworks: ${summary.frameworks.join(', ')}`);
+      }
+      if (summary?.directoriesExplored !== undefined) {
+        completionParts.push(`Directories explored: ${summary.directoriesExplored}`);
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: completionParts.join('\n'),
+        replyTo: message.id,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Exploration failed: ${errorMsg}`,
+        replyTo: message.id,
+      });
+    }
+
+    logger.info(
+      { sender: message.sender, mode: isFull ? 'full' : 'quick' },
+      'Explore command handled',
+    );
+  }
+
+  /**
+   * Handle the "explore status" subcommand.
+   * Shows last exploration timestamp, project type, and any in-progress phases.
+   */
+  private async handleExploreStatusSubcommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const lines: string[] = ['*Exploration Status*'];
+
+    const state = this.master!.getState();
+    lines.push(`Master state: ${state}`);
+
+    const summary = this.master!.getExplorationSummary();
+    if (summary) {
+      if (summary.completedAt) {
+        lines.push(`Last exploration: ${summary.completedAt}`);
+      }
+      if (summary.projectType) {
+        lines.push(`Project type: ${summary.projectType}`);
+      }
+      if (summary.frameworks && summary.frameworks.length > 0) {
+        lines.push(`Frameworks: ${summary.frameworks.join(', ')}`);
+      }
+      lines.push(`Directories explored: ${summary.directoriesExplored}`);
+      lines.push(`Files scanned: ${summary.filesScanned}`);
+    } else {
+      lines.push('No exploration has been completed yet.');
+    }
+
+    if (this.memory) {
+      try {
+        const progress = await this.memory.getExplorationProgress();
+        if (progress.length > 0) {
+          lines.push('\nPhase progress:');
+          for (const ep of progress) {
+            const bar = makeProgressBar(ep.progress_pct ?? 0);
+            const label = ep.target ?? ep.phase;
+            lines.push(` ${label}: [${bar}] ${ep.progress_pct ?? 0}%`);
+          }
+        }
+      } catch {
+        // Silently skip if DB query fails
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */

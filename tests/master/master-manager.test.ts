@@ -112,7 +112,6 @@ vi.mock('../../src/core/logger.js', () => ({
 }));
 
 /** Original classifyTask method — captured before any spy is applied */
-// eslint-disable-next-line @typescript-eslint/unbound-method
 const _originalClassifyTask = MasterManager.prototype.classifyTask;
 
 describe('MasterManager', () => {
@@ -2487,6 +2486,132 @@ describe('MasterManager', () => {
       };
 
       await expect(masterManager.processMessage(message)).resolves.toBe('response');
+    });
+  });
+
+  describe('Stuck Activity Cleanup (OB-962)', () => {
+    it('should mark stuck agent_activity rows as failed on startup', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+
+      // Insert a stuck activity (older than 1 hour, still "running")
+      await memory.insertActivity({
+        id: 'stuck-worker-1',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Stuck task from previous session',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+      });
+
+      // Insert a stuck activity with status "starting"
+      await memory.insertActivity({
+        id: 'stuck-worker-2',
+        type: 'worker',
+        status: 'starting',
+        task_summary: 'Another stuck task',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+      });
+
+      // Insert a recent running activity (should NOT be cleaned up)
+      await memory.insertActivity({
+        id: 'recent-worker',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Recent task',
+        started_at: now,
+        updated_at: now,
+      });
+
+      // Insert an already-completed activity (should NOT be touched)
+      await memory.insertActivity({
+        id: 'done-worker',
+        type: 'worker',
+        status: 'done',
+        task_summary: 'Completed task',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+        completed_at: twoHoursAgo,
+      });
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      // Verify stuck activities were marked as failed
+      const activeAgents = await memory.getActiveAgents();
+      const activeIds = activeAgents.map((a) => a.id);
+
+      // Only the recent worker should remain active
+      expect(activeIds).toContain('recent-worker');
+      expect(activeIds).not.toContain('stuck-worker-1');
+      expect(activeIds).not.toContain('stuck-worker-2');
+
+      // The recent worker should still be running
+      const recentAgent = activeAgents.find((a) => a.id === 'recent-worker');
+      expect(recentAgent?.status).toBe('running');
+    });
+
+    it('should not fail when memory is null', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        // No memory — cleanupStuckActivities should return early
+      };
+
+      masterManager = new MasterManager(options);
+
+      // Should not throw
+      await expect(masterManager.start()).resolves.not.toThrow();
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('should not clean up activities started less than 1 hour ago', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+      await memory.insertActivity({
+        id: 'recent-running',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Recently started task',
+        started_at: thirtyMinutesAgo,
+        updated_at: thirtyMinutesAgo,
+      });
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const activeAgents = await memory.getActiveAgents();
+      // The recent-running worker should still be active (not cleaned up).
+      // initMasterSession also inserts a master activity row, so filter to workers.
+      const activeWorkers = activeAgents.filter((a) => a.type === 'worker');
+      expect(activeWorkers).toHaveLength(1);
+      expect(activeWorkers[0].id).toBe('recent-running');
+      expect(activeWorkers[0].status).toBe('running');
     });
   });
 });
