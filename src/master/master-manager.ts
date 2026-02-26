@@ -1837,10 +1837,6 @@ export class MasterManager {
 
       const isValid = this.validateWorkerOutput(promptId, result, taskRecord);
 
-      if (!this.memory) {
-        await this.dotFolder.recordPromptUsage(promptId, isValid);
-      }
-
       if (this.memory) {
         await this.memory.recordPromptOutcome(promptId, isValid);
       }
@@ -4359,7 +4355,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // Task 0: Detect degraded prompts (rewrites that made things worse) and rollback
       await this.rollbackDegradedPrompts();
 
-      // Task 1: Identify and rewrite low-performing prompts
+      // Task 1: Identify and rewrite low-performing prompts via dot-folder manifest
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
       if (lowPerformingPrompts.length > 0) {
         logger.info(

@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 (0 critical, 5 medium, 4 low) | **Fixed:** 24 | **Last Audit:** 2026-02-26
+> **Open:** 6 (0 critical, 2 medium, 4 low) | **Fixed:** 27 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md)
 
 ---
@@ -11,13 +11,13 @@
 
 | #   | Finding | Severity  | Impact                                            | Why this order                                                                                  |
 | --- | ------- | --------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | OB-F32  | 🟡 Medium | 39 test failures + 20 TS errors + 264 lint errors | **Breaks the build.** `typecheck` and `lint` fail. Blocks CI. Fixes F33 and F34 as side effect. |
-| 2   | OB-F33  | 🟡 Medium | 20 TypeScript errors                              | Cascades from F32 — auto-resolves when F32 is fixed.                                            |
-| 3   | OB-F27  | 🟡 Medium | 8 test failures                                   | Incomplete feature — tests written, implementation missing.                                     |
-| 4   | OB-F29  | 🟡 Medium | Core UX gap                                       | Every session starts fresh — biggest user-facing improvement.                                   |
-| 5   | OB-F35  | 🟡 Medium | Missing feature                                   | No way to browse past conversations — pairs with F29.                                           |
-| 6   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                     |
-| 7   | OB-F34  | 🟢 Low    | 264 lint errors                                   | Auto-resolves when F32 is fixed. No independent action needed.                                  |
+| 1   | OB-F32  | ✅ Fixed  | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                     |
+| 2   | OB-F33  | ✅ Fixed  | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager. |
+| 3   | OB-F27  | ✅ Fixed  | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                         |
+| 4   | OB-F34  | ✅ Fixed  | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                    |
+| 5   | OB-F29  | 🟡 Medium | Core UX gap                                       | Every session starts fresh — biggest user-facing improvement.                                   |
+| 6   | OB-F35  | 🟡 Medium | Missing feature                                   | No way to browse past conversations — pairs with F29.                                           |
+| 7   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                     |
 | 8   | OB-F30  | 🟢 Low    | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                      |
 | 9   | OB-F31  | 🟢 Low    | Polish                                            | Master can't pause/resume — edge case for power users.                                          |
 
@@ -27,9 +27,9 @@
 
 ### #1 — OB-F32 — Prompt library methods missing from DotFolderManager (39 test failures)
 
-**Discovered:** 2026-02-26 (code audit), **Updated:** 2026-02-26 (test validation)
+**Discovered:** 2026-02-26 (code audit), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/master/dotfolder-manager.ts`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Backlog:** OB-836
 **Test failures:** 39 across 3 files (`prompt-library.test.ts`, `prompt-effectiveness.test.ts`, `prompt-degradation.test.ts`)
 **Blocks:** OB-F33 (TypeScript errors), OB-F34 (ESLint errors)
@@ -42,9 +42,9 @@
 
 ### #2 — OB-F33 — TypeScript compilation errors in master-manager.ts (20 errors)
 
-**Discovered:** 2026-02-26 (typecheck validation)
+**Discovered:** 2026-02-26 (typecheck validation), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/master/master-manager.ts` (lines 4538–4585)
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Backlog:** OB-990
 **Blocked by:** OB-F32
 
@@ -56,9 +56,9 @@
 
 ### #3 — OB-F27 — Audit logger missing JSONL flat-file output (8 test failures)
 
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-26 (test validation)
+**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/core/audit-logger.ts`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Backlog:** OB-820 | **Health Impact:** +0.05
 **Test failures:** 8 in `tests/core/audit-logger.test.ts`
 
