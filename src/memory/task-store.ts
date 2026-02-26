@@ -99,7 +99,10 @@ export function recordTask(db: Database.Database, task: TaskRecord): void {
      ON CONFLICT(id) DO UPDATE SET
        status       = excluded.status,
        response     = excluded.response,
+       model        = COALESCE(excluded.model, model),
+       profile      = COALESCE(excluded.profile, profile),
        turns_used   = excluded.turns_used,
+       max_turns    = COALESCE(excluded.max_turns, max_turns),
        duration_ms  = excluded.duration_ms,
        exit_code    = excluded.exit_code,
        retries      = excluded.retries,

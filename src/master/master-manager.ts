@@ -231,6 +231,10 @@ function masterTaskToMemoryTask(
     status: statusMap[task.status] ?? 'failed',
     prompt: task.userMessage,
     response: task.result,
+    model: task.metadata?.['model'] as string | undefined,
+    profile: task.metadata?.['profile'] as string | undefined,
+    exit_code: task.metadata?.['exitCode'] as number | undefined,
+    max_turns: task.metadata?.['maxTurns'] as number | undefined,
     duration_ms: task.durationMs,
     created_at: task.createdAt,
     completed_at: task.completedAt,
@@ -3377,6 +3381,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       task.result = response;
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
+      task.metadata = {
+        ...task.metadata,
+        model: result.model,
+        exitCode: result.exitCode,
+        maxTurns: maxTurnsToUse,
+      };
 
       await this.recordTaskToStore(task);
 
@@ -4887,6 +4897,7 @@ ${currentContent}
           response: taskRecord.result,
           model: (taskRecord.metadata?.['modelUsed'] as string | undefined) ?? spawnOpts.model,
           profile,
+          max_turns: spawnOpts.maxTurns,
           duration_ms: taskRecord.durationMs,
           exit_code: (taskRecord.metadata?.['exitCode'] as number | undefined) ?? result.exitCode,
           retries: result.retryCount,
@@ -4962,6 +4973,7 @@ ${currentContent}
           prompt: taskRecord.userMessage,
           model: taskRecord.metadata?.['modelUsed'] as string | undefined,
           profile,
+          max_turns: spawnOpts.maxTurns,
           duration_ms: 0,
           exit_code: -1,
           retries: 0,
