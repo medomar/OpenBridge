@@ -7,6 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Memory System (SQLite + FTS5)
+
+- **`src/memory/` module** — full SQLite + FTS5 memory layer replacing all `.openbridge/` JSON files. Single database file: `.openbridge/openbridge.db` (WAL mode)
+- **`database.ts`** — DB initialisation, WAL mode, PRAGMA tuning, schema creation
+- **`chunk-store.ts`** — workspace knowledge chunks (~500 tokens each) with FTS5 full-text search
+- **`conversation-store.ts`** — every user↔Master message exchange with FTS5 search and 30/90-day eviction policy
+- **`task-store.ts`** — task execution records + aggregated model/task-type performance learnings
+- **`prompt-store.ts`** — versioned prompts with effectiveness tracking (usage_count, success_count)
+- **`retrieval.ts`** — hybrid search: FTS5 layer + AI-powered semantic reranking (top-20 → top-5 via haiku call)
+- **`worker-briefing.ts`** — context packages built for each worker before spawn: relevant chunks, past task history, learned patterns
+- **`activity-store.ts`** — real-time `agent_activity` and `exploration_progress` table CRUD for agent dashboard
+- **`migration.ts`** — one-time JSON → SQLite migration for existing `.openbridge/` installs
+- **`eviction.ts`** — configurable data lifecycle (30 day full / 90 day summary / 365 day archive / 500 MB hard cap)
+- **`access-store.ts`** — role-based access control DB layer (owner/admin/developer/viewer/custom roles)
+- **`sub-master-store.ts`** — `sub_masters` registry table for hierarchical master management
+
+#### Media & Proactive Messaging
+
+- **`OutboundMessage.media`** — optional attachment field (`{ type, data, mimeType, filename? }`) — every connector now supports sending documents, images, audio, and video alongside text
+- **`[SEND:channel]recipient|content[/SEND]` marker** — Master AI can proactively message specific users on any channel; only whitelisted numbers can be targeted
+- **`[VOICE]text[/VOICE]` marker** — Master AI wraps text in VOICE markers for connectors that support TTS delivery
+
+#### Content Publishing & Sharing
+
+- **`[SHARE:channel]/path/to/file[/SHARE]` marker** — Master AI output triggers file delivery via the named channel (whatsapp/webchat/email)
+- **`src/core/file-server.ts`** — local HTTP file server; generated content available at `http://localhost:3000/shared/<file>` instantly, zero config
+- **`src/core/email-sender.ts`** — SMTP integration; Master can email generated files to a configured address using `[SHARE:email]` markers
+- **`src/core/github-publisher.ts`** — pushes HTML/static content to a `gh-pages` branch; Master can publish reports to GitHub Pages using `[SHARE:github-pages]` markers
+
+#### Access Control
+
+- **Role-based access control** — per-user roles (owner/admin/developer/viewer/custom) enforced in the auth layer. Roles control allowed actions, workspace scopes, and daily cost budget
+- **`npx openbridge access`** — CLI subcommands: `access add <number> --role <role>`, `access list`, `access remove <number>`, `access update <number> --role <role>`
+- **`stop` command restricted to owner/admin** — viewer and developer roles receive a permission-denied response
+
+#### Agent Dashboard & Exploration Progress
+
+- **`agent_activity` table** — every Master session, worker spawn, and exploration run recorded with real-time status, model, PID, and cost. Powers the `/status` command
+- **`exploration_progress` table** — per-phase (structure_scan/classification/directory_dives/assembly/finalization) and per-directory progress rows with `progress_pct` 0→100
+- **`explorationId` wired through** — `masterDrivenExplore()` and `incrementalExplore()` now create an `agent_activity` row (type `explorer`) and pass its ID to `ExplorationCoordinator`, so all 5 exploration phases are tracked
+- **WebChat agent dashboard** — live activity view in the browser UI: worker rows with model/profile/status/elapsed time; stop buttons per worker and a "Stop All" header button; exploration progress bars during startup
+
+#### Worker Resilience — Max-Turns + Failure Recovery
+
+- **Max-turns exhaustion detection** — worker stdout scanned for Claude CLI's turn-limit indicator; `AgentResult.turnsExhausted` flag set on detection
+- **Adaptive turn budget** — `spawnWorker()` computes `maxTurns = baselineTurns + ⌈promptLength / 1000⌉` capped at 50; explicit SPAWN marker `maxTurns` overrides adaptive value
+- **Turn-budget warning injected into worker prompts** — workers instructed to output `[INCOMPLETE: step X/Y]` if they cannot finish within their budget
+- **Auto-retry on turns exhaustion** — `turnsExhausted=true` triggers one retry with `maxTurns * 1.5`; partial output injected as context ("Previous attempt completed X steps. Continue from step X+1.")
+- **`classifyError(stderr, exitCode): ErrorCategory`** — returns `'rate-limit' | 'auth' | 'timeout' | 'crash' | 'context-overflow' | 'unknown'` via stderr pattern matching
+- **Default retries 0 → 2** — workers now retry twice by default; retries fire only for `rate-limit`, `timeout`, and `crash` — not for `auth` or `context-overflow`
+- **Master-driven re-delegation** — persistent worker failure formatted as `[WORKER FAILED: <category>]`; Master instructed to retry with a different model on rate-limit, split tasks on context-overflow, and report to user on auth errors
+- **Worker failure patterns recorded** — `memory.recordLearning({ task_type, model, success: false })` after each failure; models with >50% failure rate for a task type are deprioritised on next spawn
+
+#### Worker Control Commands
+
+- **Real PID capture** — `AgentRunner.spawnWithHandle()` returns `{ promise, pid, abort }`; `spawnWorker()` records the actual process PID instead of -1
+- **`killWorker(workerId)`** — calls stored abort handle (SIGTERM → 5s grace → SIGKILL), marks worker cancelled in WorkerRegistry + `agent_activity` table
+- **`killAllWorkers()`** — iterates all running workers and kills each
+- **`stop` / `stop all` / `stop <id>` commands** — intercepted by Router before Master AI routing; partial worker ID matching supported (e.g., `stop w8f3` matches `worker-…-w8f3`)
+- **`stop all` confirmation flow** — replies "This will terminate N running workers. Reply 'confirm' within 30 seconds to proceed."; pending confirmation stored in `Map<sender, { action, expiresAt }>` with 30s TTL; single-worker stops execute immediately without confirmation
+- **Cross-channel broadcast on kill** — `worker-cancelled` progress event broadcast to all connectors when any worker is stopped
+- **Master AI notified on kill** — cancellation injected into Master session: "Worker <id> was CANCELLED by user <sender>. Do NOT retry this task unless the user asks."
+- **`pid` column added to `agent_activity`** — `ALTER TABLE agent_activity ADD COLUMN pid INTEGER` migration
+
+#### Responsive Master — Message Handling During Processing
+
+- **Queue depth + wait time acknowledgment** — queued messages receive: "You're #N in queue (~Xs). I'll get to your message shortly." based on rolling average of recent processing times
+- **Message priority classification** — messages classified as `quick-answer` (priority 1), `tool-use` (priority 2), or `complex-task` (priority 3) before queuing; quick-answer messages jump ahead
+- **Fast-path responder** — when Master is in `processing` state and a `quick-answer` message arrives, a lightweight `claude --print` call (read-only profile, maxTurns=3, cached workspace context) returns a response immediately without waiting for Master
+- **`FastPathResponder` class** — manages a pool of up to 2 concurrent fast-path agent sessions; configurable `maxConcurrent`
+- **`status` command enhanced** — shows current task being processed, queue depth per user, estimated completion time, active worker count, and exploration progress table
+
+#### Intelligent Retrieval & Worker Briefing
+
+- **Hybrid FTS5 search** — sub-millisecond full-text search over context chunks; for ambiguous queries (>10 results) an optional haiku reranking call filters down to the top 5
+- **Worker briefing** — every worker spawned by Master receives a context package: relevant project chunks, past similar tasks + outcomes, and project-specific guidelines (detected framework, test runner, etc.)
+- **Adaptive model selection** — learnings table queried before each spawn; if a model has >50% failure rate for a task type, a different model is preferred
+
+#### Conversation Memory & Prompt Evolution
+
+- **Conversation recording** — all user↔Master messages stored in `conversations` table with FTS5 index; past context retrieved and injected for follow-up queries ("do the same for payments")
+- **`prompt-evolver.ts`** — underperforming prompts (effectiveness < 0.7) auto-flagged every 50 tasks; Master proposes improved variation; new version runs in parallel until it earns its place
+
+#### Hierarchical Masters (Sub-Masters)
+
+- **`sub-master-detector.ts`** — detects large sub-projects by file count/complexity and flags them for sub-master creation
+- **`sub-master-manager.ts`** — spawns and manages independent sub-master DB sessions per sub-project; root Master delegates cross-cutting tasks
+- **`sub_masters` registry table** — root DB tracks all active sub-masters with paths, models, and status
+
+### Fixed
+
+- `exploration_progress` table always empty — `explorationId` never passed to `ExplorationCoordinator`; now wired from `agent_activity` row through all 5 exploration phases (OB-F23)
+- Workers hitting max-turns silently succeeded — exit code 0 mistaken for complete work; now detected, logged, and retried with larger budget (OB-F24)
+- Worker failures not retried — default `retries: 0` meant all errors were final; changed to 2, with error classification driving retry strategy (OB-F25)
+
 ## [0.0.1] — 2026-02-23
 
 ### Added
