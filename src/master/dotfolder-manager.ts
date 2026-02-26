@@ -885,4 +885,19 @@ export class DotFolderManager {
       return null;
     }
   }
+
+  /**
+   * Write the Master's curated memory to `.openbridge/context/memory.md`.
+   * Validates that content is at most 200 lines — throws if exceeded.
+   */
+  public async writeMemoryFile(content: string): Promise<void> {
+    const lines = content.split('\n');
+    if (lines.length > 200) {
+      throw new Error(
+        `memory.md exceeds 200-line limit (${lines.length} lines). Trim content before writing.`,
+      );
+    }
+    await fs.mkdir(this.contextPath, { recursive: true });
+    await fs.writeFile(this.getMemoryFilePath(), content, 'utf-8');
+  }
 }
