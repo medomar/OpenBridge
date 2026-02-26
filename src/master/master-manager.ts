@@ -17,7 +17,7 @@ import {
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
-import { getRecommendedModel } from '../core/model-selector.js';
+import { getRecommendedModel, avoidHighFailureModel } from '../core/model-selector.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import { AdapterRegistry } from '../core/adapter-registry.js';
 import type { Router } from '../core/router.js';
@@ -4767,6 +4767,29 @@ ${currentContent}
           : this.masterTool.name;
       const modelRegistry = createModelRegistry(providerName);
       resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
+    }
+
+    // Avoid high-failure-rate models (OB-907): if the resolved model has >50% failure rate
+    // for this task type (with ≥3 data points), prefer a better-performing alternative.
+    if (resolvedModel && this.memory) {
+      const taskTypeForAvoidance = this.classifyTaskType(body.prompt);
+      const alternative = await avoidHighFailureModel(
+        this.memory,
+        taskTypeForAvoidance,
+        resolvedModel,
+      );
+      if (alternative) {
+        logger.info(
+          {
+            workerId,
+            previousModel: resolvedModel,
+            newModel: alternative.model,
+            reason: alternative.reason,
+          },
+          'Model replaced due to high failure rate in learnings',
+        );
+        resolvedModel = alternative.model;
+      }
     }
 
     // Adaptive max-turns (OB-902): scale budget by prompt length when the SPAWN marker

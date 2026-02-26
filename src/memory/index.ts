@@ -15,13 +15,14 @@ import {
   deleteChunksByScope as _deleteChunksByScope,
 } from './chunk-store.js';
 import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
-import type { TaskRecord, LearnedParams } from './task-store.js';
+import type { TaskRecord, LearnedParams, ModelStats } from './task-store.js';
 import {
   recordTask as _recordTask,
   getTasksByType as _getTasksByType,
   getSimilarTasks as _getSimilarTasks,
   getLearnedParams as _getLearnedParams,
   recordLearning as _recordLearning,
+  getModelStatsForTask as _getModelStatsForTask,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
@@ -85,7 +86,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export type { Chunk };
-export type { TaskRecord, LearnedParams };
+export type { TaskRecord, LearnedParams, ModelStats };
 
 export interface ConversationEntry {
   id?: number;
@@ -240,6 +241,11 @@ export class MemoryManager {
   getLearnedParams(taskType: string): Promise<LearnedParams | null> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getLearnedParams(this.db, taskType));
+  }
+
+  getModelStatsForTask(taskType: string, model: string): Promise<ModelStats | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getModelStatsForTask(this.db, taskType, model));
   }
 
   getSimilarTasks(prompt: string, limit?: number): Promise<TaskRecord[]> {

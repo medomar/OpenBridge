@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   recommendByProfile,
   recommendByDescription,
   recommendModel,
   recommendFromLearnings,
+  avoidHighFailureModel,
 } from '../../src/core/model-selector.js';
 import { createModelRegistry } from '../../src/core/model-registry.js';
+import { MemoryManager } from '../../src/memory/index.js';
 import type { TaskManifest } from '../../src/types/agent.js';
 import type { LearningEntry } from '../../src/types/master.js';
 
@@ -352,5 +354,80 @@ describe('Provider-agnostic selection (with ModelRegistry)', () => {
 
     const rec2 = recommendByDescription('Debug the issue');
     expect(rec2.model).toBe('opus');
+  });
+});
+
+// ── avoidHighFailureModel ────────────────────────────────────────
+
+describe('avoidHighFailureModel', () => {
+  let memory: MemoryManager;
+
+  beforeEach(async () => {
+    memory = new MemoryManager(':memory:');
+    await memory.init();
+  });
+
+  afterEach(async () => {
+    await memory.close();
+  });
+
+  it('returns null when no data exists for the model', async () => {
+    const result = await avoidHighFailureModel(memory, 'feature', 'claude-sonnet-4-6');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when data is below MIN_TASKS_FOR_AVOIDANCE (3)', async () => {
+    // 2 failures — below threshold
+    await memory.recordLearning('bug-fix', 'claude-haiku-4-5', false, 3, 1000);
+    await memory.recordLearning('bug-fix', 'claude-haiku-4-5', false, 3, 1000);
+    const result = await avoidHighFailureModel(memory, 'bug-fix', 'claude-haiku-4-5');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when failure rate is exactly 50%', async () => {
+    await memory.recordLearning('testing', 'claude-sonnet-4-6', true, 5, 2000);
+    await memory.recordLearning('testing', 'claude-sonnet-4-6', true, 5, 2000);
+    await memory.recordLearning('testing', 'claude-sonnet-4-6', false, 5, 2000);
+    await memory.recordLearning('testing', 'claude-sonnet-4-6', false, 5, 2000);
+    // 50% failure rate — not above threshold
+    const result = await avoidHighFailureModel(memory, 'testing', 'claude-sonnet-4-6');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when failure rate is below 50%', async () => {
+    await memory.recordLearning('refactoring', 'claude-sonnet-4-6', true, 5, 2000);
+    await memory.recordLearning('refactoring', 'claude-sonnet-4-6', true, 5, 2000);
+    await memory.recordLearning('refactoring', 'claude-sonnet-4-6', true, 5, 2000);
+    await memory.recordLearning('refactoring', 'claude-sonnet-4-6', false, 5, 2000);
+    // 25% failure rate — acceptable
+    const result = await avoidHighFailureModel(memory, 'refactoring', 'claude-sonnet-4-6');
+    expect(result).toBeNull();
+  });
+
+  it('returns alternative model when failure rate exceeds 50% and a better model exists', async () => {
+    // haiku has 80% failure rate (1 success, 4 failures)
+    await memory.recordLearning('feature', 'claude-haiku-4-5', true, 3, 1000);
+    for (let i = 0; i < 4; i++) {
+      await memory.recordLearning('feature', 'claude-haiku-4-5', false, 3, 1000);
+    }
+    // sonnet has 100% success rate (5 successes) — will be chosen as alternative
+    for (let i = 0; i < 5; i++) {
+      await memory.recordLearning('feature', 'claude-sonnet-4-6', true, 5, 2000);
+    }
+
+    const result = await avoidHighFailureModel(memory, 'feature', 'claude-haiku-4-5');
+    expect(result).not.toBeNull();
+    expect(result!.model).toBe('claude-sonnet-4-6');
+    expect(result!.reason).toContain('claude-haiku-4-5');
+    expect(result!.reason).toContain('failure rate');
+  });
+
+  it('returns null when the high-failure model is also the best available', async () => {
+    // Only one model in learnings — it fails a lot but there is nothing better
+    for (let i = 0; i < 3; i++) {
+      await memory.recordLearning('complex', 'claude-opus-4-6', false, 10, 5000);
+    }
+    const result = await avoidHighFailureModel(memory, 'complex', 'claude-opus-4-6');
+    expect(result).toBeNull(); // No alternative available
   });
 });
