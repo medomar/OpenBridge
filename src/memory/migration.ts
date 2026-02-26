@@ -34,7 +34,7 @@ export interface WorkspaceState {
 export interface SessionRecord {
   id: string;
   type: 'master' | 'exploration';
-  status: 'active' | 'ended' | 'crashed';
+  status: 'active' | 'ended' | 'crashed' | 'closed';
   restart_count?: number;
   message_count?: number;
   allowed_tools?: string;
@@ -118,7 +118,7 @@ export function getSession(db: Database.Database, type: string): SessionRecord |
   return {
     id: row.id,
     type: row.type as 'master' | 'exploration',
-    status: row.status as 'active' | 'ended' | 'crashed',
+    status: row.status as 'active' | 'ended' | 'crashed' | 'closed',
     restart_count: row.restart_count,
     message_count: row.message_count,
     allowed_tools: row.allowed_tools ?? undefined,
@@ -141,6 +141,13 @@ export function upsertSession(db: Database.Database, session: SessionRecord): vo
     session.allowed_tools ?? null,
     session.created_at,
     session.last_used_at,
+  );
+}
+
+export function closeActiveSessions(db: Database.Database): void {
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE sessions SET status = 'closed', last_used_at = ? WHERE status = 'active'`).run(
+    now,
   );
 }
 
