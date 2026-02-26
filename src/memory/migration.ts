@@ -237,17 +237,11 @@ function migrateExplorationState(db: Database.Database, filePath: string): void 
   const result = ExplorationStateSchema.safeParse(JSON.parse(raw));
   if (!result.success) return;
 
-  const state = result.data;
-  db.prepare(
-    `INSERT OR REPLACE INTO exploration_state
-       (id, current_phase, status, directory_dives, started_at, completed_at)
-     VALUES (1, ?, ?, ?, ?, ?)`,
-  ).run(
-    state.currentPhase,
-    state.status,
-    JSON.stringify(state.directoryDives),
-    state.startedAt,
-    state.completedAt ?? null,
+  const now = new Date().toISOString();
+  db.prepare(`INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, ?)`).run(
+    'exploration_state',
+    JSON.stringify(result.data),
+    now,
   );
 }
 
@@ -444,6 +438,9 @@ function mapMasterTaskStatus(status: string): 'running' | 'completed' | 'failed'
  * If no JSON files exist (fresh install), returns silently.
  */
 export function migrateJsonToSqlite(db: Database.Database, dotfolderPath: string): Promise<void> {
+  // Drop the exploration_state table — exploration state is now stored in system_config
+  db.exec('DROP TABLE IF EXISTS exploration_state');
+
   const migratedFiles: string[] = [];
 
   function tryMigrate(filePath: string, migrateFn: () => void): void {

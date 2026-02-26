@@ -42,7 +42,7 @@ describe('database.ts', () => {
       expect(fk).toBe(1);
     });
 
-    it('creates all 9 base tables', () => {
+    it('creates all base tables', () => {
       db = openDatabase(':memory:');
       const tables = db
         .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)
@@ -55,8 +55,8 @@ describe('database.ts', () => {
       expect(names).toContain('prompts');
       expect(names).toContain('sessions');
       expect(names).toContain('workspace_state');
-      expect(names).toContain('exploration_state');
       expect(names).toContain('system_config');
+      expect(names).not.toContain('exploration_state');
     });
 
     it('creates both FTS5 virtual tables', () => {

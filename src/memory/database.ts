@@ -136,16 +136,6 @@ function createSchema(db: Database.Database): void {
       files_changed    INTEGER DEFAULT 0
     );
 
-    -- exploration_state: resumability (replaces exploration-state.json)
-    CREATE TABLE IF NOT EXISTS exploration_state (
-      id              INTEGER PRIMARY KEY DEFAULT 1,
-      current_phase   TEXT    NOT NULL,
-      status          TEXT    NOT NULL,
-      directory_dives TEXT,
-      started_at      TEXT,
-      completed_at    TEXT
-    );
-
     -- system_config: key-value store (replaces agents.json, profiles.json)
     CREATE TABLE IF NOT EXISTS system_config (
       key        TEXT PRIMARY KEY,
