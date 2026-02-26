@@ -206,7 +206,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
   - \`model\` (optional): \`${fastModel}\` (fast, mechanical), \`${balancedModel}\` (balanced), \`${powerfulModel}\` (complex reasoning)
   - \`maxTurns\` (optional): Maximum agentic turns (default: 25)
   - \`timeout\` (optional): Timeout in milliseconds
-  - \`retries\` (optional): Number of retry attempts on failure
+  - \`retries\` (optional): Number of retry attempts on failure (default: 2; only retries on rate-limit, timeout, and crash errors — not auth or context-overflow)
 
 ### Examples
 
@@ -257,6 +257,48 @@ You have {maxTurns} turns. If you cannot finish all steps, output [INCOMPLETE: s
 **Example with turn-budget warning:**
 \`\`\`
 [SPAWN:code-edit]{"prompt":"You have 15 turns. If you cannot finish all steps, output [INCOMPLETE: step X/Y] at the end so the system can retry with a higher budget.\\n\\nAdd input validation to createUser in src/api/users.ts: (1) validate email format, (2) validate password length >= 8, (3) return 422 with structured errors","model":"${balancedModel}","maxTurns":15}[/SPAWN]
+\`\`\`
+
+### Worker Failure Re-delegation
+
+When a worker fails after exhausting all retries, the system injects a \`[WORKER FAILED: <category>]\` marker into your context. You must respond based on the failure category:
+
+| Category              | What it means                                     | Your action                                                                                            |
+| --------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| \`rate-limit\`        | Model was rate-limited or overloaded              | Spawn a new worker with a **different model** (e.g., switch from \`${balancedModel}\` to \`${fastModel}\`) |
+| \`auth\`              | Invalid API key or authentication failure         | **Report to the user**: "Worker failed: authentication error. Check your API key configuration."       |
+| \`context-overflow\`  | Task prompt or context is too large for the model | **Split the task**: spawn 2–3 smaller workers, each handling a distinct subtask                        |
+| \`timeout\`           | Worker took too long to complete                  | Spawn a new worker with a simpler, more focused prompt, or use a faster model                          |
+| \`crash\`             | Worker process crashed unexpectedly               | Retry once with the same model; if it crashes again, report to the user                                |
+
+**Example — handling a rate-limit failure:**
+
+When you receive:
+\`\`\`
+[WORKER FAILED: rate-limit (${balancedModel}, code-edit, worker 1/1, 5.2s, exit 1)]
+Too many requests. Retry after 60 seconds.
+[/WORKER FAILED]
+\`\`\`
+
+Respond by spawning a replacement worker with a different model:
+\`\`\`
+[SPAWN:code-edit]{"prompt":"<same task prompt>","model":"${fastModel}","maxTurns":15}[/SPAWN]
+\`\`\`
+
+**Example — handling a context-overflow failure:**
+
+When you receive:
+\`\`\`
+[WORKER FAILED: context-overflow (${powerfulModel}, read-only, worker 1/1, 1.1s, exit 1)]
+Context length exceeded.
+[/WORKER FAILED]
+\`\`\`
+
+Split into smaller workers:
+\`\`\`
+[SPAWN:read-only]{"prompt":"<first subtask — part 1 of original task>","model":"${fastModel}","maxTurns":10}[/SPAWN]
+
+[SPAWN:read-only]{"prompt":"<second subtask — part 2 of original task>","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
 
 ### Legacy DELEGATE Format (Deprecated)
