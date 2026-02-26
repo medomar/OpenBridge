@@ -418,9 +418,11 @@ export class MasterManager {
       } catch {
         // ignore — map not yet stored
       }
-      return null;
+    } else {
+      logger.warn('Memory not available — falling back to JSON for workspace map read');
     }
-    logger.warn('Memory not available — cannot read workspace map from DB');
+    const jsonMap = await this.dotFolder.readWorkspaceMap();
+    if (jsonMap) return jsonMap;
     return null;
   }
 
