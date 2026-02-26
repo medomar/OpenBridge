@@ -241,6 +241,24 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
 ${formatToolSelectionGuidelines(context.discoveredTools, context.masterToolName)}
+### Turn-Budget Warnings
+
+For multi-step tasks, include a turn-budget notice at the start of the worker \`prompt\`:
+
+\`\`\`
+You have {maxTurns} turns. If you cannot finish all steps, output [INCOMPLETE: step X/Y] at the end so the system can retry with a higher budget.
+\`\`\`
+
+- Replace \`{maxTurns}\` with the actual \`maxTurns\` value you set for this worker (e.g., 15)
+- The system detects \`[INCOMPLETE: step X/Y]\` and automatically re-spawns the worker with a larger turn budget
+- Use this for tasks with 5+ steps or uncertain scope
+- Single-step tasks (read a file, check a config) do not need this notice
+
+**Example with turn-budget warning:**
+\`\`\`
+[SPAWN:code-edit]{"prompt":"You have 15 turns. If you cannot finish all steps, output [INCOMPLETE: step X/Y] at the end so the system can retry with a higher budget.\\n\\nAdd input validation to createUser in src/api/users.ts: (1) validate email format, (2) validate password length >= 8, (3) return 422 with structured errors","model":"${balancedModel}","maxTurns":15}[/SPAWN]
+\`\`\`
+
 ### Legacy DELEGATE Format (Deprecated)
 
 The older [DELEGATE:tool-name] format is still supported but SPAWN is preferred:
@@ -323,10 +341,7 @@ function formatToolNames(tools: DiscoveredTool[], masterToolName: string): strin
   return names.join(', ');
 }
 
-function formatToolSelectionGuidelines(
-  tools: DiscoveredTool[],
-  masterToolName: string,
-): string {
+function formatToolSelectionGuidelines(tools: DiscoveredTool[], masterToolName: string): string {
   const availableTools = tools.filter((t) => t.available);
   // Only show guidelines when multiple tools are available
   if (availableTools.length <= 1) return '';
