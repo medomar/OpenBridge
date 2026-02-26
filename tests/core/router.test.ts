@@ -3,7 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../src/core/github-publisher.js', () => ({
   publishToGitHubPages: vi.fn().mockResolvedValue('https://owner.github.io/repo/report.html'),
 }));
-import { Router } from '../../src/core/router.js';
+
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: vi.fn().mockResolvedValue({ stdout: 'Fast-path answer', stderr: '', exitCode: 0 }),
+    spawnWithHandle: vi.fn(),
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+}));
+
+import { Router, classifyMessagePriority } from '../../src/core/router.js';
 import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
@@ -1434,6 +1443,240 @@ describe('Router', () => {
 
       const content = connector.sentMessages[0]?.content ?? '';
       expect(content).not.toContain('Queue:');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // OB-925: Tests for responsive Master
+  // ---------------------------------------------------------------------------
+
+  describe('classifyMessagePriority (OB-921)', () => {
+    it('should classify "implement auth" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('implement auth')).toBe(3);
+    });
+
+    it('should classify "refactor the login system" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('refactor the login system')).toBe(3);
+    });
+
+    it('should classify "build a REST API" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('build a REST API')).toBe(3);
+    });
+
+    it('should classify compound action with "and" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('review code and add tests')).toBe(3);
+    });
+
+    it('should classify "architect a new service" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('architect a new service')).toBe(3);
+    });
+
+    it('should classify "fix the login bug" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('fix the login bug')).toBe(2);
+    });
+
+    it('should classify "create config.ts" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('create config.ts')).toBe(2);
+    });
+
+    it('should classify "update the README" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('update the README')).toBe(2);
+    });
+
+    it('should classify "what is the entry point?" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('what is the entry point?')).toBe(1);
+    });
+
+    it('should classify "how does authentication work?" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('how does authentication work?')).toBe(1);
+    });
+
+    it('should classify "status" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('status')).toBe(1);
+    });
+
+    it('should classify "list all modules" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('list all modules')).toBe(1);
+    });
+
+    it('should classify "explain the router" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('explain the router')).toBe(1);
+    });
+
+    it('should default to tool-use (priority 2) for unclassified messages', () => {
+      expect(classifyMessagePriority('do something with the code')).toBe(2);
+    });
+
+    it('should classify short questions ending in "?" as quick-answer (priority 1)', () => {
+      // Short generic question — no keywords needed, just "?" + short length
+      expect(classifyMessagePriority('Where is the config?')).toBe(1);
+    });
+  });
+
+  describe('fast-path responder during Master processing (OB-925)', () => {
+    function createQuickMsg(content = 'what is the entry point?'): InboundMessage {
+      return {
+        id: 'msg-fp',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createProcessingMaster(withWorkspaceMap = false) {
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'processing' as const),
+        getWorkspaceMap: vi.fn().mockResolvedValue(
+          withWorkspaceMap
+            ? {
+                projectName: 'my-app',
+                projectType: 'nodejs',
+                frameworks: ['express'],
+                summary: 'A Node.js API',
+                commands: { dev: 'npm run dev' },
+              }
+            : null,
+        ),
+      } as unknown as MasterManager;
+      return master;
+    }
+
+    it('should use fast-path when master is processing and message is quick-answer (priority 1)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Master.processMessage must NOT be called — fast-path handles it
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    });
+
+    it('should send fast-path response to the connector', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      // Should contain the fast-path agent response (mocked AgentRunner returns "Fast-path answer")
+      expect(connector.sentMessages[0]?.content).toBe('Fast-path answer');
+    });
+
+    it('should route priority-2 messages to Master even when it is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      // "fix the bug" is priority 2 (tool-use), should NOT go through fast-path
+      const toolUseMsg: InboundMessage = {
+        id: 'msg-tool',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'fix the login bug',
+        content: 'fix the login bug',
+        timestamp: new Date(),
+      };
+      await router.route(toolUseMsg);
+
+      // Master.processMessage IS called because priority != 1
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    });
+
+    it('should route quick-answer to Master when it is ready (not processing)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Master is READY, not processing
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master quick-answer'),
+        getState: vi.fn(() => 'ready' as const),
+        getWorkspaceMap: vi.fn().mockResolvedValue(null),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Master.processMessage IS called because state is not 'processing'
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+      expect(connector.sentMessages[1]?.content).toBe('Master quick-answer');
+    });
+
+    it('should send "busy" message when workspace path is not set and master is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      // Deliberately do NOT set workspacePath
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Should get a "busy" fallback (no workspacePath means fast-path can't run)
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('busy');
+
+      // Master.processMessage must NOT be called
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    });
+
+    it('should include workspace context in fast-path prompt when workspace map is available', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster(true); // pass true to return workspace map
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what frameworks are used?'));
+
+      // The response goes through fast-path (master.processMessage NOT called)
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      // Workspace map was requested to build context
+      expect((master.getWorkspaceMap as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    });
+
+    it('should send typing indicator during fast-path response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      expect(connector.typingIndicators).toHaveLength(1);
+      expect(connector.typingIndicators[0]).toBe('+1234567890');
     });
   });
 });
