@@ -2588,16 +2588,36 @@ export class MasterManager {
       // This replaces the stale memory data with up-to-date content without
       // triggering a full 5-phase re-exploration.
       if (this.memory) {
+        const staleExplorationId = randomUUID();
+        const staleNow = new Date().toISOString();
+        await this.memory.insertActivity({
+          id: staleExplorationId,
+          type: 'explorer',
+          status: 'running',
+          task_summary: 'Stale directory re-exploration',
+          started_at: staleNow,
+          updated_at: staleNow,
+        });
         const coordinator = new ExplorationCoordinator({
           workspacePath: this.workspacePath,
           masterTool: this.masterTool,
           discoveredTools: this.discoveredTools,
           memory: this.memory,
+          explorationId: staleExplorationId,
         });
         try {
           await coordinator.reexploreStaleDirs();
+          await this.memory.updateActivity(staleExplorationId, {
+            status: 'done',
+            progress_pct: 100,
+            completed_at: new Date().toISOString(),
+          });
         } catch (err) {
           logger.warn({ err }, 'Stale dir re-exploration failed — continuing');
+          await this.memory.updateActivity(staleExplorationId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+          });
         }
       }
 
