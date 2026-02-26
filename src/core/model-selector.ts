@@ -160,6 +160,9 @@ export function recommendByDescription(
 /** Minimum completed tasks required before trusting learning data. */
 const MIN_TASKS_FOR_LEARNING = 5;
 
+/** Minimum tasks for a specific model before acting on its failure rate. */
+const MIN_TASKS_FOR_AVOIDANCE = 3;
+
 /**
  * Query the learnings store for the best model for a given task type.
  *
@@ -193,6 +196,56 @@ export async function getRecommendedModel(
   } catch {
     // No data or memory error — caller will use heuristic fallback
     return null;
+  }
+}
+
+/**
+ * If the given model has a >50% failure rate for the task type (with at least
+ * MIN_TASKS_FOR_AVOIDANCE samples), return a ModelRecommendation for a better model.
+ *
+ * Returns null when:
+ * - The model's failure rate is acceptable (≤50%)
+ * - There is insufficient data for the (taskType, model) pair
+ * - No better alternative can be found in learnings
+ */
+export async function avoidHighFailureModel(
+  memory: MemoryManager,
+  taskType: string,
+  currentModel: string,
+): Promise<ModelRecommendation | null> {
+  try {
+    const stats = await memory.getModelStatsForTask(taskType, currentModel);
+    if (!stats || stats.total_tasks < MIN_TASKS_FOR_AVOIDANCE) {
+      return null; // Insufficient data — do not penalise
+    }
+
+    const failureRate = 1 - stats.success_rate;
+    if (failureRate <= 0.5) {
+      return null; // Model is performing acceptably
+    }
+
+    logger.debug(
+      {
+        taskType,
+        currentModel,
+        failureRate: failureRate.toFixed(2),
+        totalTasks: stats.total_tasks,
+      },
+      'Model has >50% failure rate — seeking alternative',
+    );
+
+    // Find the best-performing alternative from learnings
+    const best = await getRecommendedModel(memory, taskType);
+    if (best && best.model !== currentModel) {
+      return {
+        model: best.model,
+        reason: `avoided "${currentModel}" (${(failureRate * 100).toFixed(0)}% failure rate for "${taskType}") — using "${best.model}" instead`,
+      };
+    }
+
+    return null; // No better alternative available
+  } catch {
+    return null; // Non-blocking — caller continues with original model
   }
 }
 

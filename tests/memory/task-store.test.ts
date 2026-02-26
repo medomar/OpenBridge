@@ -7,6 +7,7 @@ import {
   getSimilarTasks,
   recordLearning,
   getLearnedParams,
+  getModelStatsForTask,
   type TaskRecord,
 } from '../../src/memory/task-store.js';
 
@@ -200,6 +201,41 @@ describe('task-store.ts', () => {
     it('returns null when no learning data exists for that task type', () => {
       const params = getLearnedParams(db, 'nonexistent-type');
       expect(params).toBeNull();
+    });
+  });
+
+  describe('getModelStatsForTask', () => {
+    it('returns stats for an existing (taskType, model) pair', () => {
+      recordLearning(db, 'feature', 'claude-sonnet-4-6', true, 5, 2000);
+      recordLearning(db, 'feature', 'claude-sonnet-4-6', false, 5, 2000);
+      const stats = getModelStatsForTask(db, 'feature', 'claude-sonnet-4-6');
+      expect(stats).not.toBeNull();
+      expect(stats!.model).toBe('claude-sonnet-4-6');
+      expect(stats!.total_tasks).toBe(2);
+      expect(stats!.success_rate).toBeCloseTo(0.5);
+    });
+
+    it('returns null when no data exists for the (taskType, model) pair', () => {
+      const stats = getModelStatsForTask(db, 'bug-fix', 'unknown-model');
+      expect(stats).toBeNull();
+    });
+
+    it('returns null when a different model is queried', () => {
+      recordLearning(db, 'testing', 'claude-haiku-4-5', true, 2, 1000);
+      const stats = getModelStatsForTask(db, 'testing', 'claude-sonnet-4-6');
+      expect(stats).toBeNull();
+    });
+
+    it('computes correct failure rate for a high-failure model', () => {
+      // 1 success, 4 failures → 20% success rate → 80% failure rate
+      recordLearning(db, 'refactoring', 'claude-haiku-4-5', true, 3, 1000);
+      for (let i = 0; i < 4; i++) {
+        recordLearning(db, 'refactoring', 'claude-haiku-4-5', false, 3, 1000);
+      }
+      const stats = getModelStatsForTask(db, 'refactoring', 'claude-haiku-4-5');
+      expect(stats).not.toBeNull();
+      expect(stats!.total_tasks).toBe(5);
+      expect(1 - stats!.success_rate).toBeCloseTo(0.8);
     });
   });
 });

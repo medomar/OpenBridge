@@ -190,6 +190,43 @@ export function recordLearning(
   ).run(taskType, model, success ? 1 : 0, success ? 0 : 1, turns, durationMs, now);
 }
 
+export interface ModelStats {
+  model: string;
+  success_rate: number;
+  total_tasks: number;
+}
+
+/**
+ * Return the success_rate and total task count for a specific (task_type, model) pair.
+ * Returns null when no learning data exists for that combination.
+ */
+export function getModelStatsForTask(
+  db: Database.Database,
+  taskType: string,
+  model: string,
+): ModelStats | null {
+  interface StatsRow {
+    model: string;
+    success_rate: number;
+    total_tasks: number;
+  }
+  const row = db
+    .prepare(
+      `SELECT model, success_rate, (success_count + failure_count) AS total_tasks
+       FROM learnings
+       WHERE task_type = ? AND model = ?`,
+    )
+    .get(taskType, model) as StatsRow | undefined;
+
+  if (!row) return null;
+
+  return {
+    model: row.model,
+    success_rate: row.success_rate,
+    total_tasks: row.total_tasks,
+  };
+}
+
 /**
  * Return the best model for a given task type, ranked by success_rate.
  * Returns null when no learning data exists for that task type.
