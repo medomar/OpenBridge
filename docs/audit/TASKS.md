@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 48 tasks | **In Progress:** 0
+> **Pending:** 47 tasks | **In Progress:** 0
 > **Last Updated:** 2026-02-26
 > **Execution order:** Phase 47 → 48 → 46 → 49 → 45 (docs last — reflects all code changes)
 > **Completed work:** [V0 (Phases 1–5)](archive/v0/TASKS-v0.md) | [V1 (Phases 6–10)](archive/v1/TASKS-v1.md) | [V2 (Phases 11–14)](archive/v2/TASKS-v2.md) | [MVP (Phase 15)](archive/v3/TASKS-v3-mvp.md) | [Self-Governing (Phases 16–21)](archive/v4/TASKS-v4-self-governing.md) | [E2E + Channels (Phases 22–24)](archive/v5/TASKS-v5-e2e-channels.md) | [Smart Orchestration (Phases 25–28)](archive/v6/TASKS-v6-smart-orchestration.md) | [AI Classification (Phase 29)](archive/v7/TASKS-v7-ai-classification.md) | [Production Readiness (Phase 30)](archive/v8/TASKS-v8-production-readiness.md) | [Memory + Scale (Phases 31–38)](archive/v9/TASKS-v9-memory-scale.md) | [Memory Wiring (Phase 40)](archive/v10/TASKS-v10-memory-wiring.md) | [Memory Fixes (Phases 41–44)](archive/v11/TASKS-v11-memory-fixes.md)
@@ -20,7 +20,7 @@
 | 341 | **Verify `insertPhaseRow()` / `completePhaseRow()` / `failPhaseRow()` work end-to-end.** With `explorationId` now set, confirm that `exploration_progress` rows are created for each of the 5 phases (structure_scan, classification, directory_dives, assembly, finalization) during a full exploration.             | OB-892 | 🔴 High  |  ✅ Done  |
 | 342 | **Verify directory-level progress rows are created.** Confirm that each directory dive creates an `exploration_progress` row with `phase='directory-dive'`, `target=<dir>`, and that `progress_pct` updates from 0→100 as the dive completes.                                                                         | OB-893 | 🔴 High  |  ✅ Done  |
 | 343 | **Verify `/status` command shows exploration progress.** Run the bridge, trigger exploration, send `status` command via Console connector. Confirm the response includes the exploration progress table (phases, directories, percentages).                                                                           | OB-894 | 🔴 High  |  ✅ Done  |
-| 344 | **Integration test: exploration_progress populated after explore().** Create `tests/integration/exploration-progress.test.ts`. Use in-memory SQLite + mock AgentRunner. Call `coordinator.explore()` with an `explorationId`. Assert `exploration_progress` table has rows for all phases and directories.            | OB-895 | 🔴 High  | ◻ Pending |
+| 344 | **Integration test: exploration_progress populated after explore().** Create `tests/integration/exploration-progress.test.ts`. Use in-memory SQLite + mock AgentRunner. Call `coordinator.explore()` with an `explorationId`. Assert `exploration_progress` table has rows for all phases and directories.            | OB-895 | 🔴 High  |  ✅ Done  |
 | 345 | **Regression guard: add assertion to existing exploration tests.** In `tests/master/exploration-coordinator.test.ts`, add assertions that when `memory` and `explorationId` are provided, `insertExplorationProgress` is called. This prevents future regressions.                                                    | OB-896 |  🟡 Med  | ◻ Pending |
 
 ---
