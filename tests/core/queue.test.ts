@@ -367,4 +367,105 @@ describe('MessageQueue', () => {
     expect(queue.deadLetterSize).toBe(0);
     expect(queue.deadLetters).toEqual([]);
   });
+
+  // --- Queue notification (onQueued) tests ---
+
+  it('averageProcessingTimeMs returns 30000 when no messages have been processed', () => {
+    const queue = new MessageQueue();
+    expect(queue.averageProcessingTimeMs).toBe(30_000);
+  });
+
+  it('averageProcessingTimeMs reflects processing duration after messages complete', async () => {
+    const queue = new MessageQueue({ maxRetries: 0 });
+    queue.onMessage(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    await queue.enqueue(createMessage('t1'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Should be close to 20ms — allow generous range due to timer imprecision
+    expect(queue.averageProcessingTimeMs).toBeGreaterThanOrEqual(5);
+    expect(queue.averageProcessingTimeMs).toBeLessThan(500);
+  });
+
+  it('onQueued is NOT called when a message is processed immediately', async () => {
+    const queue = new MessageQueue({ maxRetries: 0 });
+    const queuedCb = vi.fn();
+
+    queue.onMessage(async () => {});
+    queue.onQueued(queuedCb);
+
+    await queue.enqueue(createMessage('immediate'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(queuedCb).not.toHaveBeenCalled();
+  });
+
+  it('onQueued fires with position=1 when a second message arrives while first is in-flight', async () => {
+    const queue = new MessageQueue({ maxRetries: 0 });
+    const queuedCb = vi.fn();
+    let resolveFirst!: () => void;
+
+    queue.onMessage(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    queue.onQueued(queuedCb);
+
+    // Start processing first message
+    void queue.enqueue(createMessage('first', '+111'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Enqueue second — should trigger onQueued
+    void queue.enqueue(createMessage('second', '+111'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(queuedCb).toHaveBeenCalledOnce();
+    const [msg, position, estimatedWaitMs] = queuedCb.mock.calls[0] as [
+      InboundMessage,
+      number,
+      number,
+    ];
+    expect(msg.id).toBe('second');
+    expect(position).toBe(1);
+    expect(estimatedWaitMs).toBeGreaterThan(0);
+
+    resolveFirst();
+  });
+
+  it('onQueued fires with position=2 for the third message behind two in-flight', async () => {
+    const queue = new MessageQueue({ maxRetries: 0 });
+    const queuedCb = vi.fn();
+    let resolveFirst!: () => void;
+
+    queue.onMessage(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    queue.onQueued(queuedCb);
+
+    // Start processing first message
+    void queue.enqueue(createMessage('first', '+111'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Second and third arrive while first is still processing
+    void queue.enqueue(createMessage('second', '+111'));
+    void queue.enqueue(createMessage('third', '+111'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(queuedCb).toHaveBeenCalledTimes(2);
+    const secondCall = queuedCb.mock.calls[0] as [InboundMessage, number, number];
+    const thirdCall = queuedCb.mock.calls[1] as [InboundMessage, number, number];
+    expect(secondCall[1]).toBe(1); // second is position 1
+    expect(thirdCall[1]).toBe(2); // third is position 2
+    // Third's estimated wait should be twice second's
+    expect(thirdCall[2]).toBe(secondCall[2] * 2);
+
+    resolveFirst();
+  });
 });

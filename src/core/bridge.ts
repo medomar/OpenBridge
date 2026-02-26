@@ -216,6 +216,17 @@ export class Bridge {
       }
     });
 
+    // Notify users when their message must wait behind an in-flight message.
+    // Includes queue position and estimated wait based on recent processing times.
+    this.queue.onQueued((message, position, estimatedWaitMs) => {
+      const waitStr =
+        estimatedWaitMs < 60_000
+          ? `~${Math.ceil(estimatedWaitMs / 1000)}s`
+          : `~${Math.round(estimatedWaitMs / 60_000)}m`;
+      const content = `You're #${position} in queue (${waitStr}). I'll get to your message shortly.`;
+      void this.router.sendDirect(message.source, message.sender, content, message.id);
+    });
+
     // Initialize connectors in parallel — slow connectors (WhatsApp/Puppeteer)
     // must not block fast connectors (Console) from starting.
     const connectorPromises: Promise<void>[] = [];
