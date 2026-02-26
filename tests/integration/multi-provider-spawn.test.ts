@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { AgentRunner } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
-import { AdapterRegistry, createAdapterRegistry } from '../../src/core/adapter-registry.js';
+import { createAdapterRegistry } from '../../src/core/adapter-registry.js';
 import { ClaudeAdapter } from '../../src/core/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../src/core/adapters/codex-adapter.js';
 import { AiderAdapter } from '../../src/core/adapters/aider-adapter.js';

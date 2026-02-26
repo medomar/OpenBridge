@@ -107,14 +107,22 @@ export class CodexAdapter implements CLIAdapter {
     return cleaned;
   }
 
-  mapCapabilityLevel(level: CapabilityLevel): string[] | undefined {
+  mapCapabilityLevel(_level: CapabilityLevel): string[] | undefined {
     // Codex doesn't use tool lists — it uses sandbox modes.
     // Return undefined; the sandbox mode is set in buildSpawnConfig via inferSandboxMode.
     return undefined;
   }
 
   isValidModel(model: string): boolean {
-    const codexModels = ['codex-mini', 'codex', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini', 'o4-mini'];
+    const codexModels = [
+      'codex-mini',
+      'codex',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'o1',
+      'o3-mini',
+      'o4-mini',
+    ];
     if (codexModels.includes(model)) return true;
     // Accept OpenAI-style model IDs
     return /^(gpt-|o[0-9]|codex)/.test(model);
