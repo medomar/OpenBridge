@@ -470,7 +470,7 @@ export class MasterManager {
         const state = await this.memory.getWorkspaceState();
         return workspaceStateToMarker(state);
       } catch {
-        return null;
+        /* fall through to dotFolder */
       }
     }
     return this.dotFolder.readAnalysisMarker();
@@ -480,7 +480,6 @@ export class MasterManager {
   private async writeAnalysisMarkerToStore(marker: WorkspaceAnalysisMarker): Promise<void> {
     if (this.memory) {
       await this.memory.updateWorkspaceState(markerToWorkspaceState(marker));
-      return;
     }
     await this.dotFolder.writeAnalysisMarker(marker);
   }
