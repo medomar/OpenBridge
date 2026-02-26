@@ -165,6 +165,9 @@ export class Bridge {
       this.router.setMemory(this.memory);
     }
 
+    // Wire message queue into router for queue-depth display in "status" command
+    this.router.setQueue(this.queue);
+
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
       this.router.setMaster(this.master);

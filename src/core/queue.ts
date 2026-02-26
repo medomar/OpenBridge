@@ -258,4 +258,23 @@ export class MessageQueue {
   flushDeadLetters(): DeadLetterItem[] {
     return this.dlq.splice(0);
   }
+
+  /**
+   * Returns a per-user snapshot of queued (waiting) messages.
+   * Only includes users that have at least one pending message.
+   * `estimatedWaitMs` is computed as `averageProcessingTimeMs × pending`.
+   */
+  getQueueSnapshot(): Array<{ sender: string; pending: number; estimatedWaitMs: number }> {
+    const result: Array<{ sender: string; pending: number; estimatedWaitMs: number }> = [];
+    for (const [sender, items] of this.userQueues) {
+      if (items.length > 0) {
+        result.push({
+          sender,
+          pending: items.length,
+          estimatedWaitMs: this.averageProcessingTimeMs * items.length,
+        });
+      }
+    }
+    return result;
+  }
 }

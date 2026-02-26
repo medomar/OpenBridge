@@ -468,4 +468,58 @@ describe('MessageQueue', () => {
 
     resolveFirst();
   });
+
+  describe('getQueueSnapshot (OB-923)', () => {
+    it('should return empty array when no messages are waiting', () => {
+      const queue = new MessageQueue();
+      expect(queue.getQueueSnapshot()).toEqual([]);
+    });
+
+    it('should return pending count and estimated wait for a waiting user', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      let resolveFirst!: () => void;
+      let callCount = 0;
+
+      queue.onMessage(
+        () =>
+          new Promise<void>((resolve) => {
+            callCount++;
+            if (callCount === 1) {
+              // Block the first message so second/third queue up
+              resolveFirst = resolve;
+            } else {
+              resolve();
+            }
+          }),
+      );
+
+      void queue.enqueue(createMessage('first', '+111'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      void queue.enqueue(createMessage('second', '+111'));
+      void queue.enqueue(createMessage('third', '+111'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const snapshot = queue.getQueueSnapshot();
+      expect(snapshot).toHaveLength(1);
+      expect(snapshot[0]?.sender).toBe('+111');
+      expect(snapshot[0]?.pending).toBe(2);
+      expect(snapshot[0]?.estimatedWaitMs).toBeGreaterThan(0);
+
+      resolveFirst();
+      await queue.drain();
+    });
+
+    it('should not include users with empty queues', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      queue.onMessage(() => Promise.resolve());
+
+      // Enqueue and let it complete
+      await queue.enqueue(createMessage('msg', '+999'));
+      await queue.drain();
+
+      // Queue is now empty — snapshot should be empty
+      expect(queue.getQueueSnapshot()).toEqual([]);
+    });
+  });
 });

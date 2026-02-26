@@ -11,6 +11,7 @@ import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
 import type { MemoryManager, ActivityRecord, ExplorationProgressRow } from '../memory/index.js';
+import type { MessageQueue } from './queue.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
@@ -176,6 +177,7 @@ export class Router {
   private workspacePath?: string;
   private emailConfig?: EmailConfig;
   private memory?: MemoryManager;
+  private queue?: MessageQueue;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** AgentRunner instance used exclusively for fast-path quick-answer responses. */
@@ -223,6 +225,11 @@ export class Router {
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
     logger.info('Router configured with MemoryManager (status command enabled)');
+  }
+
+  /** Set the MessageQueue — enables queue depth display in the "status" command */
+  setQueue(queue: MessageQueue): void {
+    this.queue = queue;
   }
 
   /** Register an active connector */
@@ -905,6 +912,29 @@ export class Router {
         const bar = makeProgressBar(ep.progress_pct ?? 0);
         const label = ep.target ?? ep.phase;
         lines.push(` ${label}: [${bar}] ${ep.progress_pct ?? 0}%`);
+      }
+    }
+
+    // Queue depth + estimated completion time section (OB-923)
+    if (this.queue) {
+      const queueSnapshot = this.queue.getQueueSnapshot();
+      if (queueSnapshot.length > 0) {
+        lines.push('\nQueue:');
+        for (const entry of queueSnapshot) {
+          const waitStr =
+            entry.estimatedWaitMs < 60_000
+              ? `~${Math.ceil(entry.estimatedWaitMs / 1000)}s`
+              : `~${Math.round(entry.estimatedWaitMs / 60_000)}m`;
+          const shortSender =
+            entry.sender.length > 12
+              ? `${entry.sender.slice(0, 6)}…${entry.sender.slice(-4)}`
+              : entry.sender;
+          lines.push(
+            ` • ${shortSender}: ${entry.pending} message${entry.pending !== 1 ? 's' : ''} waiting (est. ${waitStr})`,
+          );
+        }
+      } else {
+        lines.push('\nQueue: idle');
       }
     }
 
