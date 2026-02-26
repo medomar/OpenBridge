@@ -4076,14 +4076,19 @@ ${currentContent}
         );
 
         try {
-          const promptPath = path.join(
-            this.dotFolder.getDotFolderPath(),
-            'prompts',
-            prompt.filePath,
-          );
+          if (!this.memory) {
+            const promptPath = path.join(
+              this.dotFolder.getDotFolderPath(),
+              'prompts',
+              prompt.filePath,
+            );
 
-          // Restore the previous version content
-          await fs.writeFile(promptPath, prompt.previousVersion, 'utf-8');
+            // Restore the previous version content to disk (no memory available)
+            await fs.writeFile(promptPath, prompt.previousVersion, 'utf-8');
+          } else {
+            // Restore version through DB when memory is available
+            await this.memory.createPromptVersion(prompt.id, prompt.previousVersion);
+          }
 
           // Restore previous success rate and clear rollback fields
           prompt.successRate = prompt.previousSuccessRate;
