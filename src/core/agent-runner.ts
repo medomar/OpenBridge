@@ -424,7 +424,7 @@ function execOnce(
       }, timeout);
     }
 
-    child.stdout.on('data', (data: Buffer) => {
+    child.stdout!.on('data', (data: Buffer) => {
       const chunk = data.toString();
       stdout += chunk;
       logger.debug(
@@ -433,7 +433,7 @@ function execOnce(
       );
     });
 
-    child.stderr.on('data', (data: Buffer) => {
+    child.stderr!.on('data', (data: Buffer) => {
       stderr += data.toString();
     });
 
@@ -554,7 +554,7 @@ function execOnceStreaming(
     }, timeout);
   }
 
-  child.stderr.on('data', (data: Buffer) => {
+  child.stderr!.on('data', (data: Buffer) => {
     stderr += data.toString();
   });
 
@@ -571,7 +571,7 @@ function execOnceStreaming(
     });
   }
 
-  child.stdout.on('data', (data: Buffer) => {
+  child.stdout!.on('data', (data: Buffer) => {
     chunkQueue.push(data.toString());
     notify?.();
   });

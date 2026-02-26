@@ -89,7 +89,7 @@ export class AiderAdapter implements CLIAdapter {
     return cleaned;
   }
 
-  mapCapabilityLevel(level: CapabilityLevel): string[] | undefined {
+  mapCapabilityLevel(_level: CapabilityLevel): string[] | undefined {
     // Aider doesn't use tool lists — it manages its own file access.
     return undefined;
   }

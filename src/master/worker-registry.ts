@@ -251,7 +251,7 @@ export class WorkerRegistry {
         reject(new Error(`Timed out waiting for worker slot after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      const onSlotFree = () => {
+      const onSlotFree = (): void => {
         clearTimeout(timer);
         resolve();
       };

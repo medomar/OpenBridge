@@ -16,6 +16,7 @@ export default tseslint.config(
       'tests/types/**',
       'test-workspace-*/',
       'ob-smoke-test/',
+      'scripts/**/*.ts',
     ],
   },
 
