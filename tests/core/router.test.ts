@@ -677,6 +677,231 @@ describe('Router', () => {
     });
   });
 
+  describe('stop all confirmation flow (OB-879)', () => {
+    function createStopMessage(content: string): InboundMessage {
+      return {
+        id: 'msg-stop',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterWithWorkers(runningCount: number) {
+      const runningWorkers = Array.from({ length: runningCount }, (_, i) => ({
+        id: `worker-${i + 1}`,
+        status: 'running' as const,
+        pid: 1000 + i,
+        model: 'claude-sonnet',
+        profile: 'code-edit',
+        task_summary: `Task ${i + 1}`,
+        started_at: new Date().toISOString(),
+      }));
+
+      const mockKillAllWorkers = vi.fn().mockResolvedValue({
+        stopped: runningWorkers.map((w) => w.id),
+        message: `Stopped ${runningCount} worker${runningCount !== 1 ? 's' : ''}.`,
+      });
+
+      const mockKillWorker = vi.fn().mockResolvedValue({
+        success: true,
+        message: 'Stopped worker worker-1.',
+      });
+
+      const mockGetWorkerRegistry = vi.fn().mockReturnValue({
+        getRunningWorkers: vi.fn().mockReturnValue(runningWorkers),
+        getAllWorkers: vi.fn().mockReturnValue(runningWorkers),
+      });
+
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'ready' as const),
+        killAllWorkers: mockKillAllWorkers,
+        killWorker: mockKillWorker,
+        getWorkerRegistry: mockGetWorkerRegistry,
+      } as unknown as MasterManager;
+
+      return { master, mockKillAllWorkers, mockKillWorker, mockGetWorkerRegistry };
+    }
+
+    it('should ask for confirmation when "stop all" is sent with running workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(3);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+
+      // Should NOT have killed workers yet
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+
+      // Should have sent a confirmation prompt
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('3 running workers');
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+      expect(connector.sentMessages[0]?.content).toContain('30 seconds');
+    });
+
+    it('should ask for confirmation when bare "stop" is sent with running workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toContain('1 running worker');
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+    });
+
+    it('should reply "No workers are currently running" when stop all with 0 workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(0);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toBe('No workers are currently running.');
+    });
+
+    it('should execute kill when "confirm" is received within the timeout', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // Step 1: send "stop all"
+      await router.route(createStopMessage('stop all'));
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+
+      // Step 2: send "confirm" within 30 seconds
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+      expect(connector.sentMessages[1]?.content).toContain('Stopped 2 workers');
+    });
+
+    it('should execute kill when "CONFIRM" (case-insensitive) is received', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+      await router.route(createStopMessage('CONFIRM'));
+
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+    });
+
+    it('should report confirmation expired after 30 seconds', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // Step 1: send "stop all"
+      await router.route(createStopMessage('stop all'));
+
+      // Advance time past the 30-second timeout
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // Step 2: send "confirm" after timeout
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[1]?.content).toContain('Confirmation expired');
+      expect(connector.sentMessages[1]?.content).toContain("'stop all'");
+    });
+
+    it('should only honour the confirmation once (one-shot)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+      // First confirm → executes kill
+      await router.route(createStopMessage('confirm'));
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+
+      // Second "confirm" → no pending confirmation, routes to Master
+      await router.route(createStopMessage('confirm'));
+      // Master's processMessage is called (not killAllWorkers a second time)
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+    });
+
+    it('should not intercept "confirm" when there is no pending confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const mockProcessMessage = vi.fn().mockResolvedValue('Master confirm response');
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: vi.fn(() => 'ready' as const),
+        killAllWorkers: vi.fn(),
+        killWorker: vi.fn(),
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue([]),
+          getAllWorkers: vi.fn().mockReturnValue([]),
+        }),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // "confirm" with no pending stop — should fall through to Master
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockProcessMessage).toHaveBeenCalledOnce();
+      // ack + master response (not a confirmation prompt)
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    });
+
+    it('should execute single-worker stop immediately without confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop worker-1'));
+
+      // Single-worker stop should execute immediately
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(connector.sentMessages[0]?.content).toContain('Stopped worker');
+    });
+  });
+
   describe('SHARE:github-pages marker processing (OB-613)', () => {
     let workspaceDir: string;
     let generatedDir: string;
