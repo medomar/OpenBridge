@@ -10,6 +10,8 @@ interface QueueItem {
   message: InboundMessage;
   addedAt: Date;
   attempts: number;
+  /** 1 = quick-answer (highest), 2 = tool-use, 3 = complex-task (lowest) */
+  priority: 1 | 2 | 3;
 }
 
 export interface DeadLetterItem {
@@ -77,8 +79,14 @@ export class MessageQueue {
     return Math.round(sum / this.recentProcessingTimes.length);
   }
 
-  /** Add a message to the queue */
-  async enqueue(message: InboundMessage): Promise<void> {
+  /**
+   * Add a message to the queue.
+   *
+   * @param message - The inbound message to queue.
+   * @param priority - Queue priority: 1 (quick-answer, highest) · 2 (tool-use, default) · 3 (complex-task, lowest).
+   *   Quick-answer messages (priority 1) jump ahead of pending tool-use and complex-task messages.
+   */
+  async enqueue(message: InboundMessage, priority: 1 | 2 | 3 = 2): Promise<void> {
     const sender = message.sender;
 
     let queue = this.userQueues.get(sender);
@@ -86,10 +94,27 @@ export class MessageQueue {
       queue = [];
       this.userQueues.set(sender, queue);
     }
-    queue.push({ message, addedAt: new Date(), attempts: 0 });
+
+    const item: QueueItem = { message, addedAt: new Date(), attempts: 0, priority };
+
+    // Insert in priority order — find the first existing item with lower priority (higher number)
+    // and insert before it so that higher-priority messages are processed first.
+    // Within the same priority, FIFO order is preserved (insert before any equal-priority item
+    // that was already in the queue at the time of insertion is NOT done — we only jump ahead of
+    // lower-priority items to keep same-priority ordering stable).
+    const insertAt = queue.findIndex((existing) => existing.priority > item.priority);
+    if (insertAt === -1) {
+      queue.push(item);
+    } else {
+      queue.splice(insertAt, 0, item);
+    }
+
     this.metrics?.recordEnqueued();
 
-    logger.debug({ messageId: message.id, sender, queueSize: queue.length }, 'Message enqueued');
+    logger.debug(
+      { messageId: message.id, sender, queueSize: queue.length, priority },
+      'Message enqueued',
+    );
 
     if (!this.activeUsers.has(sender)) {
       await this.processNextForUser(sender);

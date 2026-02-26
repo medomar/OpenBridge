@@ -16,7 +16,7 @@ import { MessageQueue } from './queue.js';
 import { MetricsCollector, MetricsServer } from './metrics.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
-import { Router } from './router.js';
+import { Router, classifyMessagePriority } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
 import { createLogger } from './logger.js';
 
@@ -572,7 +572,8 @@ export class Bridge {
     };
 
     void this.auditLogger.logInbound(cleaned);
-    void this.queue.enqueue(cleaned);
+    const priority = classifyMessagePriority(cleaned.content);
+    void this.queue.enqueue(cleaned, priority);
   }
 
   /**
