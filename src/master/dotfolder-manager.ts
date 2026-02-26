@@ -52,6 +52,7 @@ export class DotFolderManager {
   private readonly explorationPath: string;
   private readonly explorationDirsPath: string;
   private readonly promptsPath: string;
+  private readonly contextPath: string;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -60,6 +61,7 @@ export class DotFolderManager {
     this.explorationPath = path.join(this.dotFolderPath, 'exploration');
     this.explorationDirsPath = path.join(this.explorationPath, 'dirs');
     this.promptsPath = path.join(this.dotFolderPath, 'prompts');
+    this.contextPath = path.join(this.dotFolderPath, 'context');
   }
 
   /**
@@ -689,6 +691,8 @@ export class DotFolderManager {
     if (!folderExists) {
       await this.createFolder();
     }
+
+    await fs.mkdir(this.contextPath, { recursive: true });
   }
 
   // ── Classification Cache ──────────────────────────────────────
@@ -859,5 +863,26 @@ export class DotFolderManager {
 
     manifest.updatedAt = new Date().toISOString();
     await this.writePromptManifest(manifest);
+  }
+
+  // ── Memory File ───────────────────────────────────────────────
+
+  /**
+   * Get the path to the memory file.
+   */
+  public getMemoryFilePath(): string {
+    return path.join(this.contextPath, 'memory.md');
+  }
+
+  /**
+   * Read the Master's curated memory from `.openbridge/context/memory.md`.
+   * Returns null if the file does not exist.
+   */
+  public async readMemoryFile(): Promise<string | null> {
+    try {
+      return await fs.readFile(this.getMemoryFilePath(), 'utf-8');
+    } catch {
+      return null;
+    }
   }
 }

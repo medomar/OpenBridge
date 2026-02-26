@@ -174,15 +174,16 @@ describe('Clean .openbridge/ directory (OB-840)', () => {
       expect(existsSync(join(dotFolderPath, 'generated'))).toBe(true);
     });
 
-    it('.openbridge/ contains only database files and generated/ — no legacy JSON', () => {
+    it('.openbridge/ contains only database files, generated/, and context/ — no legacy JSON', () => {
       const entries = readdirSync(dotFolderPath);
 
-      // Everything in .openbridge/ must be a db file or the generated/ directory
+      // Everything in .openbridge/ must be a db file, the generated/ directory, or context/
       const allowedNames = new Set([
         'openbridge.db',
         'openbridge.db-wal',
         'openbridge.db-shm',
         'generated',
+        'context',
       ]);
       const unexpected = entries.filter((e) => !allowedNames.has(e));
       expect(
@@ -326,6 +327,7 @@ describe('Clean .openbridge/ directory (OB-840)', () => {
         'openbridge.db-wal',
         'openbridge.db-shm',
         'generated',
+        'context',
       ]);
       const unexpected = entries.filter((e) => !allowedNames.has(e));
       expect(
