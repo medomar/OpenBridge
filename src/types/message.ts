@@ -10,17 +10,27 @@
  * - complete            — Processing finished
  * - exploring           — Workspace exploration phase transition
  * - exploring-directory — Per-directory progress during exploration
+ * - worker-cancelled    — A worker was stopped by a user (broadcast to all channels)
  */
 export type ProgressEvent =
   | { type: 'classifying' }
   | { type: 'planning' }
   | { type: 'spawning'; workerCount: number }
   | { type: 'worker-progress'; completed: number; total: number; workerName?: string }
-  | { type: 'worker-result'; workerIndex: number; total: number; profile: string; tool?: string; content: string; success: boolean }
+  | {
+      type: 'worker-result';
+      workerIndex: number;
+      total: number;
+      profile: string;
+      tool?: string;
+      content: string;
+      success: boolean;
+    }
   | { type: 'synthesizing' }
   | { type: 'complete' }
   | { type: 'exploring'; phase: string; detail?: string }
-  | { type: 'exploring-directory'; directory: string; completed: number; total: number };
+  | { type: 'exploring-directory'; directory: string; completed: number; total: number }
+  | { type: 'worker-cancelled'; workerId: string; cancelledBy: string };
 
 /**
  * A message received from a messaging connector.

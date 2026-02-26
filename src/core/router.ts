@@ -763,7 +763,7 @@ export class Router {
       return;
     }
 
-    const result = await this.master.killAllWorkers();
+    const result = await this.master.killAllWorkers(message.sender);
     await connector.sendMessage({
       target: message.source,
       recipient: message.sender,
@@ -841,7 +841,7 @@ export class Router {
       if (!matched) {
         responseText = `Worker '${partialId}' not found. Use 'status' to list active workers.`;
       } else {
-        const result = await this.master.killWorker(matched.id);
+        const result = await this.master.killWorker(matched.id, message.sender);
         responseText = result.message;
       }
     }
