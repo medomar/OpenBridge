@@ -42,6 +42,7 @@ import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { parseAIResult } from './result-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
+import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
 import type {
   MasterState,
@@ -1432,6 +1433,21 @@ export class MasterManager {
   }
 
   /**
+   * Format a concise worker summary string for stop command responses.
+   * Returns "<shortId> (<model>, '<task preview>', <elapsed>)".
+   */
+  private formatWorkerSummary(worker: WorkerRecord): string {
+    const shortId = worker.id.split('-').pop() ?? worker.id;
+    const model = worker.taskManifest.model ?? 'default';
+    const summary = worker.taskManifest.prompt.slice(0, 40).replace(/\n/g, ' ');
+    const elapsedMs = worker.startedAt
+      ? Date.now() - new Date(worker.startedAt).getTime()
+      : undefined;
+    const elapsedStr = elapsedMs !== undefined ? `${Math.round(elapsedMs / 1000)}s` : 'unknown';
+    return `${shortId} (${model}, '${summary}', ${elapsedStr})`;
+  }
+
+  /**
    * Kill a running worker by ID.
    *
    * Retrieves the abort handle stored in workerAbortHandles, calls it
@@ -1455,7 +1471,8 @@ export class MasterManager {
       worker.status === 'failed' ||
       worker.status === 'cancelled'
     ) {
-      return { success: false, message: `Worker ${workerId} has already ${worker.status}.` };
+      const shortId = workerId.split('-').pop() ?? workerId;
+      return { success: false, message: `Worker ${shortId} has already ${worker.status}.` };
     }
 
     // Invoke the abort handle (SIGTERM → grace period → SIGKILL)
@@ -1491,15 +1508,7 @@ export class MasterManager {
     }
 
     // Build descriptive message: "Stopped worker <shortId> (<model>, '<summary>', <elapsed>)"
-    const shortId = workerId.split('-').pop() ?? workerId;
-    const model = worker.taskManifest.model ?? 'default';
-    const summary = worker.taskManifest.prompt.slice(0, 40).replace(/\n/g, ' ');
-    const elapsedMs = worker.startedAt
-      ? Date.now() - new Date(worker.startedAt).getTime()
-      : undefined;
-    const elapsedStr = elapsedMs !== undefined ? `${Math.round(elapsedMs / 1000)}s` : 'unknown';
-
-    const message = `Stopped worker ${shortId} (${model}, '${summary}', ${elapsedStr})`;
+    const message = `Stopped worker ${this.formatWorkerSummary(worker)}`;
     logger.info({ workerId, pid: worker.pid }, 'Worker killed by user request');
 
     return { success: true, message };
@@ -1526,7 +1535,7 @@ export class MasterManager {
       const result = await this.killWorker(worker.id);
       if (result.success) {
         stopped.push(worker.id);
-        lines.push(`- ${result.message}`);
+        lines.push(`- ${this.formatWorkerSummary(worker)}`);
       }
     }
 
