@@ -39,6 +39,12 @@ export class MessageQueue {
   private drainResolvers: (() => void)[] = [];
   private readonly dlq: DeadLetterItem[] = [];
   private readonly metrics?: MetricsCollector;
+  /** Rolling window of the last 10 message processing durations (ms). */
+  private readonly recentProcessingTimes: number[] = [];
+  /** Called when a message must wait in queue — provides position and estimated wait. */
+  private queuedHandler:
+    | ((message: InboundMessage, position: number, estimatedWaitMs: number) => void)
+    | null = null;
 
   constructor(config: Partial<QueueConfig> = {}, metrics?: MetricsCollector) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -48,6 +54,27 @@ export class MessageQueue {
   /** Register the message handler */
   onMessage(handler: (message: InboundMessage) => Promise<void>): void {
     this.handler = handler;
+  }
+
+  /**
+   * Register a callback invoked when a message is queued behind another in-flight message.
+   * Receives the queued message, its 1-based position in the waiting queue, and the
+   * estimated wait time in milliseconds based on recent processing durations.
+   */
+  onQueued(
+    handler: (message: InboundMessage, position: number, estimatedWaitMs: number) => void,
+  ): void {
+    this.queuedHandler = handler;
+  }
+
+  /**
+   * Rolling average of recent message processing times (ms).
+   * Returns 30 000 ms as a default when no history is available.
+   */
+  get averageProcessingTimeMs(): number {
+    if (this.recentProcessingTimes.length === 0) return 30_000;
+    const sum = this.recentProcessingTimes.reduce((a, b) => a + b, 0);
+    return Math.round(sum / this.recentProcessingTimes.length);
   }
 
   /** Add a message to the queue */
@@ -66,6 +93,11 @@ export class MessageQueue {
 
     if (!this.activeUsers.has(sender)) {
       await this.processNextForUser(sender);
+    } else if (this.queuedHandler) {
+      // Another message for this sender is already in-flight — notify about queue position.
+      const position = queue.length; // 1-based: how many messages are waiting (including this one)
+      const estimatedWaitMs = this.averageProcessingTimeMs * position;
+      this.queuedHandler(message, position, estimatedWaitMs);
     }
   }
 
@@ -93,6 +125,7 @@ export class MessageQueue {
 
     this.activeUsers.add(sender);
     const item = queue.shift()!;
+    const processingStart = Date.now();
 
     logger.info({ messageId: item.message.id, sender }, 'Processing message');
 
@@ -127,6 +160,13 @@ export class MessageQueue {
 
         if (isPermanent) break;
       }
+    }
+
+    // Record elapsed time (including any retries) for rolling average used by onQueued.
+    const elapsed = Date.now() - processingStart;
+    this.recentProcessingTimes.push(elapsed);
+    if (this.recentProcessingTimes.length > 10) {
+      this.recentProcessingTimes.shift();
     }
 
     if (lastError !== undefined) {
