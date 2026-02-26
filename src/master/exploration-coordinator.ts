@@ -113,6 +113,8 @@ export class ExplorationCoordinator {
   private readonly explorationId?: string;
   /** Maps directory path → exploration_progress row id for the directory-dive phase. */
   private readonly dirProgressIds = new Map<string, number>();
+  /** Set to true if any storeExplorationChunks() call fails — checked at end of explore(). */
+  private memoryWriteFailed = false;
 
   constructor(options: ExplorationOptions) {
     this.workspacePath = options.workspacePath;
@@ -334,6 +336,7 @@ export class ExplorationCoordinator {
       );
     } catch (err) {
       logger.warn({ err, scope, category }, 'Failed to store exploration chunks — continuing');
+      this.memoryWriteFailed = true;
     }
   }
 
@@ -428,6 +431,12 @@ export class ExplorationCoordinator {
         },
         'Exploration completed successfully',
       );
+
+      if (this.memoryWriteFailed) {
+        logger.error(
+          'Exploration completed but memory writes failed — results may be incomplete. JSON fallback on disk was used.',
+        );
+      }
 
       return this.buildSummary(state);
     } catch (error) {
