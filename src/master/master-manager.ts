@@ -4478,6 +4478,27 @@ ${currentContent}
   }
 
   /**
+   * Compute adaptive max-turns for a worker based on profile baseline + prompt length (OB-902).
+   *
+   * If the SPAWN marker explicitly set maxTurns, that value is used directly (caller's
+   * responsibility). This method only computes the fallback value when maxTurns is absent.
+   *
+   * Formula: baselineTurns + ceil(promptLength / 1000), capped at 50.
+   * A 2 000-char prompt on code-edit (baseline 15) → 15 + 2 = 17 turns.
+   * A 20 000-char prompt on code-edit              → 15 + 20 = 35 turns.
+   */
+  private computeAdaptiveMaxTurns(profile: string, prompt: string): number {
+    const baselineTurns = this.defaultMaxTurnsForProfile(profile);
+    const promptExtra = Math.ceil(prompt.length / 1000);
+    const adaptive = Math.min(baselineTurns + promptExtra, 50);
+    logger.debug(
+      { profile, baselineTurns, promptLength: prompt.length, promptExtra, adaptive },
+      'Computed adaptive max-turns for worker',
+    );
+    return adaptive;
+  }
+
+  /**
    * Handle SPAWN markers found in Master output.
    * Spawns worker agents via AgentRunner based on parsed task manifests,
    * collects results, and returns a structured feedback prompt for injection
@@ -4747,6 +4768,11 @@ ${currentContent}
       resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
     }
 
+    // Adaptive max-turns (OB-902): scale budget by prompt length when the SPAWN marker
+    // didn't explicitly specify maxTurns. A longer prompt usually means a more complex
+    // task that needs more turns to complete.
+    const resolvedMaxTurns = body.maxTurns ?? this.computeAdaptiveMaxTurns(profile, body.prompt);
+
     logger.info(
       {
         workerId,
@@ -4754,7 +4780,8 @@ ${currentContent}
         profile,
         model: resolvedModel,
         tool: toolUsed,
-        maxTurns: body.maxTurns,
+        maxTurns: resolvedMaxTurns,
+        maxTurnsSource: body.maxTurns != null ? 'spawn-marker' : 'adaptive',
         promptLength: body.prompt.length,
       },
       'Spawning worker from SPAWN marker',
@@ -4767,7 +4794,7 @@ ${currentContent}
         workspacePath: this.workspacePath,
         profile,
         model: resolvedModel,
-        maxTurns: body.maxTurns ?? this.defaultMaxTurnsForProfile(profile),
+        maxTurns: resolvedMaxTurns,
         timeout: body.timeout,
         retries: body.retries,
         maxBudgetUsd: body.maxBudgetUsd,
@@ -4790,7 +4817,7 @@ ${currentContent}
         profile,
         model: resolvedModel,
         tool: toolUsed,
-        maxTurns: body.maxTurns,
+        maxTurns: resolvedMaxTurns,
         timeout: body.timeout,
         retries: body.retries,
         manifest: {
