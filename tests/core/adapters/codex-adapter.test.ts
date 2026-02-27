@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { CodexAdapter, parseCodexJsonlOutput } from '../../../src/core/adapters/codex-adapter.js';
 
 const adapter = new CodexAdapter();
@@ -38,20 +39,21 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args[0]).toBe('exec');
   });
 
-  it('builds minimal args: exec + --skip-git-repo-check + --sandbox read-only + --ephemeral + --json + prompt', () => {
+  it('builds minimal args: exec + --skip-git-repo-check + --sandbox read-only + --ephemeral + --json + -o <file> + prompt', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'List all files',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).toEqual([
-      'exec',
-      '--skip-git-repo-check',
-      '--sandbox',
-      'read-only',
-      '--ephemeral',
-      '--json',
-      'List all files',
-    ]);
+    // Core flags must be present in order; -o <tempFile> is injected before the prompt
+    expect(config.args[0]).toBe('exec');
+    expect(config.args[1]).toBe('--skip-git-repo-check');
+    expect(config.args).toContain('--sandbox');
+    expect(config.args).toContain('read-only');
+    expect(config.args).toContain('--ephemeral');
+    expect(config.args).toContain('--json');
+    expect(config.args).toContain('-o');
+    // Prompt must be last
+    expect(config.args[config.args.length - 1]).toBe('List all files');
   });
 
   it('always includes --skip-git-repo-check (required for non-git workspaces)', () => {
@@ -198,12 +200,90 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(promptIdx).toBeGreaterThan(jsonIdx);
   });
 
-  it('sets parseOutput to parseCodexJsonlOutput', () => {
+  it('includes -o <tempFile> for reliable output capture', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    const oIdx = config.args.indexOf('-o');
+    expect(oIdx).toBeGreaterThanOrEqual(0);
+    const tempFile = config.args[oIdx + 1];
+    expect(tempFile).toBeTruthy();
+    expect(tempFile).toMatch(/ob-codex-\d+-[0-9a-f]+\.txt$/);
+  });
+
+  it('places -o before the prompt', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    const oIdx = config.args.indexOf('-o');
+    const promptIdx = config.args.indexOf('Task');
+    expect(oIdx).toBeGreaterThanOrEqual(0);
+    expect(promptIdx).toBeGreaterThan(oIdx + 1); // -o <file> <prompt>
+  });
+
+  it('sets parseOutput to a function', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Task',
       workspacePath: '/tmp/test',
     });
     expect(typeof config.parseOutput).toBe('function');
+  });
+
+  it('parseOutput reads from -o temp file when it exists', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    const oIdx = config.args.indexOf('-o');
+    const tempFile = config.args[oIdx + 1];
+
+    // Simulate Codex writing the final answer to the temp file
+    writeFileSync(tempFile, 'Answer from temp file\n', 'utf-8');
+
+    try {
+      const result = config.parseOutput!('raw stdout content');
+      expect(result).toBe('Answer from temp file');
+      // Temp file should be cleaned up after read
+      expect(existsSync(tempFile)).toBe(false);
+    } finally {
+      // Safety cleanup in case the test failed before cleanup
+      try {
+        unlinkSync(tempFile);
+      } catch {
+        /* already gone */
+      }
+    }
+  });
+
+  it('parseOutput falls back to JSONL parsing when temp file is missing', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    // Do NOT write the temp file — simulate Codex not writing it
+
+    const jsonlStdout = JSON.stringify({ type: 'message', content: 'JSONL answer' });
+    const result = config.parseOutput!(jsonlStdout);
+    expect(result).toBe('JSONL answer');
+  });
+
+  it('parseOutput falls back to raw stdout when temp file missing and no JSONL', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    const raw = 'plain text output';
+    expect(config.parseOutput!(raw)).toBe(raw);
+  });
+
+  it('each buildSpawnConfig call generates a unique temp file path', () => {
+    const config1 = adapter.buildSpawnConfig({ prompt: 'T1', workspacePath: '/tmp/test' });
+    const config2 = adapter.buildSpawnConfig({ prompt: 'T2', workspacePath: '/tmp/test' });
+    const oIdx1 = config1.args.indexOf('-o');
+    const oIdx2 = config2.args.indexOf('-o');
+    expect(config1.args[oIdx1 + 1]).not.toBe(config2.args[oIdx2 + 1]);
   });
 
   it('throws when OPENAI_API_KEY is missing', () => {
