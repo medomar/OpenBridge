@@ -1275,14 +1275,54 @@ export class Router {
     const trimmed = message.content.trim();
     const rest = trimmed.slice(7).trim(); // slice past "history"
 
-    // history search <query> — OB-1034 (not yet implemented)
+    // history search <query> — OB-1034
     if (rest.toLowerCase().startsWith('search')) {
+      const query = rest.slice(6).trim(); // slice past "search"
+      if (!query) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'Usage: history search <keyword>',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (!this.memory) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History search not available — memory system not initialized.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      let sessions: SessionSummary[];
+      try {
+        sessions = await this.memory.searchSessions(query, 10);
+      } catch (err) {
+        logger.warn({ err }, 'handleHistoryCommand: failed to search sessions');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History search temporarily unavailable — could not query sessions.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const content =
+        sessions.length === 0
+          ? `*Conversation History*\n\nNo sessions found matching "${query}".`
+          : this.formatSessionList(sessions, connector.name);
       await connector.sendMessage({
         target: message.source,
         recipient: message.sender,
-        content: "Use 'history' to list your past conversations. Keyword search coming soon.",
+        content,
         replyTo: message.id,
       });
+      logger.info({ sender: message.sender, query }, 'History search command handled');
       return;
     }
 
