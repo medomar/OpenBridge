@@ -136,6 +136,21 @@ export const V2WorkspaceSchema = z.object({
   pullInterval: z.number().int().positive().optional(),
 });
 
+/** Schema for a single MCP server definition */
+export const MCPServerSchema = z.object({
+  name: z.string().min(1),
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+});
+
+/** Schema for the MCP configuration block */
+export const MCPConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  servers: z.array(MCPServerSchema).default([]),
+  configPath: z.string().optional(),
+});
+
 /** Schema for email (SMTP) configuration */
 export const EmailConfigSchema = z.object({
   host: z.string().min(1),
@@ -154,6 +169,7 @@ export const V2ConfigSchema = z
     auth: V2AuthSchema,
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
+    mcp: MCPConfigSchema.optional(),
     email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
     router: RouterConfigSchema.optional(),
@@ -168,5 +184,7 @@ export type V2Channel = z.infer<typeof V2ChannelSchema>;
 export type V2Auth = z.infer<typeof V2AuthSchema>;
 export type V2Master = z.infer<typeof V2MasterSchema>;
 export type V2Workspace = z.infer<typeof V2WorkspaceSchema>;
+export type MCPServer = z.infer<typeof MCPServerSchema>;
+export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type EmailConfig = z.infer<typeof EmailConfigSchema>;
 export type V2Config = z.infer<typeof V2ConfigSchema>;
