@@ -7,6 +7,7 @@ import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
+import type { MemoryManager } from '../../memory/index.js';
 
 const logger = createLogger('webchat');
 
@@ -416,9 +417,15 @@ export class WebChatConnector implements Connector {
     error: [],
     disconnected: [],
   };
+  private memory: MemoryManager | null = null;
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
+  }
+
+  /** Wire the SQLite memory manager — enables the /api/sessions REST endpoint. */
+  setMemory(memory: MemoryManager): void {
+    this.memory = memory;
   }
 
   async initialize(): Promise<void> {
@@ -478,6 +485,33 @@ export class WebChatConnector implements Connector {
         res.end(entry.data);
         return;
       }
+
+      // /api/sessions — JSON list of sessions for the WebChat history view
+      if (url === '/api/sessions' || url.startsWith('/api/sessions?')) {
+        void (async (): Promise<void> => {
+          if (!this.memory) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Memory not available' }));
+            return;
+          }
+          try {
+            const parsed = new URL(url, 'http://localhost');
+            const limitParam = parseInt(parsed.searchParams.get('limit') ?? '20', 10);
+            const offsetParam = parseInt(parsed.searchParams.get('offset') ?? '0', 10);
+            const limit = Number.isFinite(limitParam) ? Math.min(100, Math.max(1, limitParam)) : 20;
+            const offset = Number.isFinite(offsetParam) ? Math.max(0, offsetParam) : 0;
+            const sessions = await this.memory.listSessions(limit, offset);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(sessions));
+          } catch (err) {
+            logger.error({ err }, 'GET /api/sessions failed');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        })();
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
