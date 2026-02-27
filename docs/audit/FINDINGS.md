@@ -2,31 +2,32 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 34 | **Last Audit:** 2026-02-27
+> **Open:** 3 | **Fixed:** 35 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding | Severity  | Impact                                       | Status                                                                                                 |
-| --- | ------- | --------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1   | OB-F37  | ✅ Fixed  | Codex workers broken + no Codex provider     | Fixed in Phases 57–59 (21 tasks, OB-1091–OB-1112). Codex adapter flags corrected, CodexProvider added. |
-| 2   | OB-F39  | 🟠 High   | memory.md never updates (--print mode)       | Master runs stateless — triggerMemoryUpdate() can't persist anything                                   |
-| 3   | OB-F38  | 🟡 Medium | FTS5 syntax error on special characters      | Cross-session conversation context silently fails                                                      |
-| 4   | OB-F40  | 🟡 Medium | Ungraceful shutdown — Ctrl+C kills instantly | Memory update + session persist skipped on force-kill                                                  |
-| 5   | OB-F36  | 🟡 Medium | Feature gap — no MCP integration             | Workers can't access external services via MCP. **Tasks:** Phases 60–62 (20 tasks, OB-1070–OB-1090)    |
+| #   | Finding | Severity  | Impact                                       | Status                                                                                                                         |
+| --- | ------- | --------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | OB-F37  | ✅ Fixed  | Codex workers broken + no Codex provider     | Fixed in Phases 57–59 (21 tasks, OB-1091–OB-1112). Codex adapter flags corrected, CodexProvider added.                         |
+| 2   | OB-F39  | 🟠 High   | memory.md never updates (--print mode)       | Master runs stateless — triggerMemoryUpdate() can't persist anything                                                           |
+| 3   | OB-F38  | 🟡 Medium | FTS5 syntax error on special characters      | Cross-session conversation context silently fails                                                                              |
+| 4   | OB-F40  | 🟡 Medium | Ungraceful shutdown — Ctrl+C kills instantly | Memory update + session persist skipped on force-kill                                                                          |
+| 5   | OB-F36  | ✅ Fixed  | Feature gap — no MCP integration             | Fixed in Phases 60–62 (20 tasks, OB-1070–OB-1090). MCP core pipeline, Master awareness, health checks, CLI init, docs shipped. |
 
 ---
 
 ## Open Findings
 
-### #1 — OB-F36 — No MCP (Model Context Protocol) support — workers can't use external services
+### #1 — OB-F36 — ✅ Fixed — No MCP (Model Context Protocol) support — workers can't use external services
 
 **Discovered:** 2026-02-27 (WebChat conversation + feasibility analysis)
 **Reviewed:** 2026-02-27 (architecture review — lifecycle, security, scope gaps identified)
+**Fixed:** 2026-02-27 (Phases 60–62: 20 tasks, OB-1070–OB-1090)
 **Component:** `src/core/agent-runner.ts`, `src/core/adapters/claude-adapter.ts`, `src/types/config.ts`, `src/master/master-system-prompt.ts`, `src/master/master-manager.ts`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed (was 🟡 Medium)
 **Health Impact:** +0.15
 
 **Problem:** OpenBridge has **zero MCP support**. The Claude CLI adapter (`claude-adapter.ts`) passes `--print`, `--session-id`, `--resume`, `--model`, `--max-turns`, `--allowedTools`, `--append-system-prompt`, and `--max-budget-usd` — but never `--mcp-config` or any MCP-related flags. `SpawnOptions` has no MCP fields. The entire `src/` directory contains no references to "MCP" or "Model Context Protocol".

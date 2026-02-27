@@ -73,7 +73,9 @@ vi.mock('../../src/core/agent-runner.js', () => {
     isValidModel: vi.fn(() => true),
     MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
     AgentExhaustedError: class AgentExhaustedError extends Error {},
-    manifestToSpawnOptions: vi.fn((m: unknown) => m),
+    manifestToSpawnOptions: vi.fn((m: unknown) =>
+      Promise.resolve({ spawnOptions: m, cleanup: async () => {} }),
+    ),
   };
 });
 
