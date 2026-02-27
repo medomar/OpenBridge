@@ -5289,10 +5289,25 @@ ${currentContent}
     }
 
     try {
-      // Use spawnWithHandle() to capture the real PID and abort function (OB-873).
-      // spawnWithHandle() starts the child process synchronously so we can record
-      // the PID and store the abort handle before we await the result.
-      let currentHandle = workerRunner.spawnWithHandle(spawnOpts);
+      // Build a streaming progress callback — broadcasts worker-turn-progress events
+      // to all connectors as each agent turn is parsed from stdout (OB-1051).
+      const routerRef = this.router;
+      const workerMaxTurns = spawnOpts.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
+      const onTurnProgress = routerRef
+        ? (indicator: { turnsUsed: number; lastAction?: string }): void => {
+            void routerRef.broadcastProgress({
+              type: 'worker-turn-progress',
+              workerId,
+              turnsUsed: indicator.turnsUsed,
+              turnsMax: workerMaxTurns,
+              lastAction: indicator.lastAction,
+            });
+          }
+        : undefined;
+
+      // Use spawnWithStreamingHandle() to capture the real PID and abort function (OB-873)
+      // and broadcast real-time turn progress via worker-turn-progress events (OB-1051).
+      let currentHandle = workerRunner.spawnWithStreamingHandle(spawnOpts, onTurnProgress);
       this.workerAbortHandles.set(workerId, currentHandle.abort);
       this.workerRegistry.markRunning(workerId, currentHandle.pid);
       logger.debug(
@@ -5324,7 +5339,7 @@ ${currentContent}
           isFirstWorkerAttempt = false;
         } else {
           // Worker-level retry — spawn a new process and update the abort handle (OB-873)
-          currentHandle = workerRunner.spawnWithHandle(spawnOpts);
+          currentHandle = workerRunner.spawnWithStreamingHandle(spawnOpts, onTurnProgress);
           this.workerAbortHandles.set(workerId, currentHandle.abort);
           result = await currentHandle.promise;
         }
@@ -5431,8 +5446,22 @@ ${currentContent}
           'Turn-escalation retry: re-spawning with higher turn budget',
         );
 
-        // Use spawnWithHandle() so the abort handle stays current during escalation (OB-873)
-        const escalationHandle = workerRunner.spawnWithHandle(escalatedSpawnOpts);
+        // Use spawnWithStreamingHandle() so the abort handle stays current during escalation (OB-873)
+        // Pass a dedicated callback with the escalated max-turns value (OB-1051).
+        const escalationHandle = workerRunner.spawnWithStreamingHandle(
+          escalatedSpawnOpts,
+          routerRef
+            ? (indicator): void => {
+                void routerRef.broadcastProgress({
+                  type: 'worker-turn-progress',
+                  workerId,
+                  turnsUsed: indicator.turnsUsed,
+                  turnsMax: escalatedMaxTurns,
+                  lastAction: indicator.lastAction,
+                });
+              }
+            : undefined,
+        );
         this.workerAbortHandles.set(workerId, escalationHandle.abort);
         result = await escalationHandle.promise;
 
