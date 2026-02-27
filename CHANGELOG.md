@@ -30,6 +30,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### MCP Integration — Model Context Protocol (Phases 60–62)
+
+- **`MCPServerSchema` + `MCPConfigSchema`** in `src/types/config.ts` — `MCPServerSchema`: `name`, `command`, `args?`, `env?`. `MCPConfigSchema`: `enabled` (default true), `servers` (default []), `configPath?`. Added `mcp: MCPConfigSchema.optional()` to `V2ConfigSchema`. Exported `MCPServer`, `MCPConfig` types
+- **`mcpConfigPath` + `strictMcpConfig` in `SpawnOptions`** — new fields on `AgentRunner.SpawnOptions`: `mcpConfigPath?: string` (path to MCP config JSON) and `strictMcpConfig?: boolean` (enables `--strict-mcp-config` isolation)
+- **`mcpServers` in `TaskManifestSchema`** — `mcpServers: z.array(MCPServerSchema).optional()` in `src/types/agent.ts`; Master AI specifies per-worker MCP servers in TaskManifests
+- **Per-worker MCP isolation** in `manifestToSpawnOptions()` — when `manifest.mcpServers` is non-empty, generates a per-worker temp JSON config containing only the requested servers, sets `strictMcpConfig: true`. Temp file deleted after worker exits. Workers only see the MCP servers they need
+- **`--mcp-config` + `--strict-mcp-config` in `ClaudeAdapter`** — `buildSpawnConfig()` passes `--mcp-config <path>` and `--strict-mcp-config` to the Claude CLI when `mcpConfigPath`/`strictMcpConfig` are set in `SpawnOptions`
+- **Global MCP config writer** in `src/core/config.ts` — on Bridge startup, when `V2Config.mcp` has servers or a `configPath`: validates and writes `.openbridge/mcp-config.json`. `getMcpConfigPath(): string | null` helper exported for other modules. Supports inline servers, `configPath` import, and merged configs
+- **MCP server health checks** in `src/core/health.ts` — `HealthStatus.mcp` field: `{ enabled, servers: [{ name, status: 'configured' | 'error', command }] }`. Verifies each configured MCP server's command exists on PATH via `which`. Section omitted when MCP is not configured
+- **MCP step in `npx openbridge init`** — after auth config, optional prompt: "Enable MCP servers? (y/N)". If yes: asks for server name + command (repeatable); also asks for Claude Desktop config import path. Generates valid `mcp` section in output JSON
+- **Master MCP awareness** — `MasterSystemPromptContext.mcpServers?: MCPServer[]` added; `generateMasterSystemPrompt()` renders an "Available MCP Servers" section listing each server name. Master instructed to include `mcpServers` in worker TaskManifests when external services are needed. Section omitted when no servers are configured
+- **MCP context wired to Master** — `MasterManager` reads `V2Config.mcp.servers` (merged with `configPath` imports) and passes them into `MasterSystemPromptContext.mcpServers`. Master autonomously decides which workers get which MCP servers
+- **`config.example.json` MCP section** — inline filesystem server example + external service with `env` vars; `configPath` commented-out example pointing to Claude Desktop config
+- **MCP unit + integration tests** — `tests/core/mcp-config.test.ts`: schema validation, `manifestToSpawnOptions()` temp file generation/cleanup, `ClaudeAdapter` flag placement; `tests/master/mcp-awareness.test.ts`: system prompt MCP section rendering, Master context passthrough; `tests/core/mcp-health.test.ts` + `tests/cli/init-mcp.test.ts`: health endpoint + CLI init MCP step
+
+#### Codex Provider + Adapter Fixes (Phases 57–59)
+
+- **`CodexProvider`** at `src/providers/codex/codex-provider.ts` — implements `AIProvider` interface using `AgentRunner` + `CodexAdapter` internally. `processMessage()` runs `codex exec`; output parsed via `--json` JSONL or `-o` output file
+- **`CodexConfig` schema** at `src/providers/codex/codex-config.ts` — Zod schema: `workspacePath`, `timeout` (default 120000), `model?`, `sandbox?`
+- **`CodexSessionManager`** at `src/providers/codex/session-manager.ts` — session state for multi-turn Codex conversations; first message uses `--ephemeral`, follow-ups use `codex exec resume --last`
+- **Codex provider registered** in `src/providers/index.ts` — `registry.registerProvider('codex', ...)` alongside `claude-code`
+- **Provider-aware Master selection** in `src/index.ts` — when `selectedMaster.name === 'codex'`, `CodexProvider` is used instead of `ClaudeCodeProvider`
+- **`--skip-git-repo-check` always present** in `CodexAdapter` — fixes the #1 cause of Codex worker failures (exit code 1 from non-git or untrusted directories)
+- **Default sandbox `read-only`** in `CodexAdapter.inferSandboxMode()` — when `allowedTools` is empty/undefined, `--sandbox read-only` is passed; workers with no explicit tool profile are restricted, not permissive
+- **`OPENAI_API_KEY` validation before spawn** in `CodexAdapter` — missing key logs a clear error and throws (classified as `'auth'` by AgentRunner retry logic, preventing confusing timeout errors)
+- **`--json` flag for structured output** in `CodexAdapter` — Codex outputs JSONL events; `agent-runner.ts` detects JSONL format and extracts final message content
+- **`-o` output file for reliable result capture** in `CodexAdapter` — temp file path generated per spawn; result read from file after completion; falls back to stdout if file is missing; temp file cleaned up after read
+- **`stdin` removed from Codex spawn config** — `codex exec --ephemeral` is non-interactive; removing the `stdin` field prevents hangs on some Codex versions
+- **Codex model list updated** — `isValidModel()` now includes current v0.104.0 models: `gpt-5.2-codex`, `o3`, `o4-mini`; stale entries removed
+- **Codex MCP passthrough** — when `opts.mcpConfigPath` is set, MCP servers passed to Codex via its config system; enables MCP support for Codex workers alongside Claude workers
+
 #### Prompt Library — DotFolderManager (Phase 51)
 
 - **`readPromptManifest()`** on `DotFolderManager` — reads `.openbridge/prompts/manifest.json`, validates with `PromptManifestSchema`, returns `PromptManifest | null`
