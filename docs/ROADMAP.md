@@ -1,6 +1,6 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-02-27 | **Current Version:** v0.0.2
+> **Last Updated:** 2026-02-27 | **Current Version:** v0.0.4
 
 This document outlines the vision and planned features for OpenBridge. Features move from **Backlog** to **Planned** to **In Progress** to **Released** as they mature.
 
@@ -12,37 +12,43 @@ Two parallel development tracks exist: **Track A (Memory & Intelligence)** build
 
 Everything that shipped — 392 tasks across 53 phases.
 
-| Feature                                                                        | Phase | Version     | Status  |
-| ------------------------------------------------------------------------------ | ----- | ----------- | ------- |
-| Bridge Core (router, auth, queue, config)                                      | 1–5   | v0.0.1      | Shipped |
-| WhatsApp + Console connectors                                                  | 1–5   | v0.0.1      | Shipped |
-| Claude Code provider                                                           | 1–5   | v0.0.1      | Shipped |
-| AI tool auto-discovery                                                         | 6–10  | v0.0.1      | Shipped |
-| Incremental workspace exploration (5-pass)                                     | 11–14 | v0.0.1      | Shipped |
-| MVP release                                                                    | 15    | v0.0.1      | Shipped |
-| Agent Runner (--allowedTools, --max-turns, --model, retries)                   | 16–18 | v0.0.1      | Shipped |
-| Self-governing Master AI                                                       | 18–21 | v0.0.1      | Shipped |
-| Tool profiles (read-only, code-edit, full-access, master)                      | 16–17 | v0.0.1      | Shipped |
-| Worker orchestration + SPAWN markers                                           | 19–21 | v0.0.1      | Shipped |
-| Self-improvement (prompt tracking, model selection learning)                   | 20–21 | v0.0.1      | Shipped |
-| WebChat, Telegram, Discord connectors                                          | 22–24 | v0.0.1      | Shipped |
-| AI-powered intent classification                                               | 29    | v0.0.1      | Shipped |
-| Live progress events across all connectors                                     | 29    | v0.0.1      | Shipped |
-| Production hardening + v0.0.1 tag                                              | 30    | v0.0.1      | Shipped |
-| Memory wiring (MemoryManager integration across all modules)                   | 40    | v0.0.1      | Shipped |
-| Memory & startup fixes (race condition, prompt guards)                         | 41    | v0.0.1      | Shipped |
-| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                       | 42    | v0.0.1      | Shipped |
-| Exploration reliability & change detection (throttling, markers)               | 43    | v0.0.1      | Shipped |
-| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)            | 44    | v0.0.1      | Shipped |
-| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)  | 47    | v0.0.2      | Shipped |
-| Worker resilience: max-turns detection, adaptive budgets, failure recovery     | 48    | v0.0.2      | Shipped |
-| Worker control: stop/stop-all commands, PID capture, WebChat buttons           | 46    | v0.1.1      | Shipped |
-| Responsive Master: priority queue, fast-path responder, queue depth visibility | 49    | v0.2.0      | Shipped |
-| Prompt library (7 methods on DotFolderManager) + audit logger JSONL output     | 51    | post-v0.0.2 | Shipped |
-| Conversation continuity — memory.md cross-session pattern (read/write/inject)  | 52    | post-v0.0.2 | Shipped |
-| Conversation history — /history command, listSessions, searchSessions, REST    | 53    | post-v0.0.2 | Shipped |
-| Schema versioning — schema_versions table + transactional migrations           | 54    | post-v0.0.2 | Shipped |
-| Worker streaming progress + session checkpointing/resume + priority queue      | 55    | post-v0.0.2 | Shipped |
+| Feature                                                                                                                         | Phase | Version     | Status  |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----- | ----------- | ------- |
+| Bridge Core (router, auth, queue, config)                                                                                       | 1–5   | v0.0.1      | Shipped |
+| WhatsApp + Console connectors                                                                                                   | 1–5   | v0.0.1      | Shipped |
+| Claude Code provider                                                                                                            | 1–5   | v0.0.1      | Shipped |
+| AI tool auto-discovery                                                                                                          | 6–10  | v0.0.1      | Shipped |
+| Incremental workspace exploration (5-pass)                                                                                      | 11–14 | v0.0.1      | Shipped |
+| MVP release                                                                                                                     | 15    | v0.0.1      | Shipped |
+| Agent Runner (--allowedTools, --max-turns, --model, retries)                                                                    | 16–18 | v0.0.1      | Shipped |
+| Self-governing Master AI                                                                                                        | 18–21 | v0.0.1      | Shipped |
+| Tool profiles (read-only, code-edit, full-access, master)                                                                       | 16–17 | v0.0.1      | Shipped |
+| Worker orchestration + SPAWN markers                                                                                            | 19–21 | v0.0.1      | Shipped |
+| Self-improvement (prompt tracking, model selection learning)                                                                    | 20–21 | v0.0.1      | Shipped |
+| WebChat, Telegram, Discord connectors                                                                                           | 22–24 | v0.0.1      | Shipped |
+| AI-powered intent classification                                                                                                | 29    | v0.0.1      | Shipped |
+| Live progress events across all connectors                                                                                      | 29    | v0.0.1      | Shipped |
+| Production hardening + v0.0.1 tag                                                                                               | 30    | v0.0.1      | Shipped |
+| Memory wiring (MemoryManager integration across all modules)                                                                    | 40    | v0.0.1      | Shipped |
+| Memory & startup fixes (race condition, prompt guards)                                                                          | 41    | v0.0.1      | Shipped |
+| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                                                                        | 42    | v0.0.1      | Shipped |
+| Exploration reliability & change detection (throttling, markers)                                                                | 43    | v0.0.1      | Shipped |
+| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)                                                             | 44    | v0.0.1      | Shipped |
+| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)                                                   | 47    | v0.0.2      | Shipped |
+| Worker resilience: max-turns detection, adaptive budgets, failure recovery                                                      | 48    | v0.0.2      | Shipped |
+| Worker control: stop/stop-all commands, PID capture, WebChat buttons                                                            | 46    | v0.1.1      | Shipped |
+| Responsive Master: priority queue, fast-path responder, queue depth visibility                                                  | 49    | v0.2.0      | Shipped |
+| Prompt library (7 methods on DotFolderManager) + audit logger JSONL output                                                      | 51    | post-v0.0.2 | Shipped |
+| Conversation continuity — memory.md cross-session pattern (read/write/inject)                                                   | 52    | post-v0.0.2 | Shipped |
+| Conversation history — /history command, listSessions, searchSessions, REST                                                     | 53    | post-v0.0.2 | Shipped |
+| Schema versioning — schema_versions table + transactional migrations                                                            | 54    | post-v0.0.2 | Shipped |
+| Worker streaming progress + session checkpointing/resume + priority queue                                                       | 55    | post-v0.0.2 | Shipped |
+| Codex adapter fixes: --skip-git-repo-check, sandbox, OPENAI_API_KEY, --json, -o                                                 | 57    | v0.0.4      | Shipped |
+| Codex provider: CodexProvider, CodexConfig, session manager, provider registry                                                  | 58    | v0.0.4      | Shipped |
+| Codex documentation: ARCHITECTURE, API_REFERENCE, CONFIGURATION, TROUBLESHOOTING, WRITING_A_PROVIDER                            | 59    | v0.0.4      | Shipped |
+| MCP core pipeline: MCPServerSchema, SpawnOptions, TaskManifest, per-worker isolation, ClaudeAdapter flags, global config writer | 60    | v0.0.4      | Shipped |
+| MCP UX polish: health checks, config.example.json, CLI init MCP step                                                            | 61    | v0.0.4      | Shipped |
+| MCP documentation: ARCHITECTURE, CONFIGURATION, API_REFERENCE, CLAUDE.md, CHANGELOG, ROADMAP                                    | 62    | v0.0.4      | Shipped |
 
 ---
 
@@ -569,7 +575,7 @@ Sync via DB:
 
 ## Current Work
 
-> **Status:** Phases 46–49, 51–55 complete. Phase 56 (documentation update) is the active work.
+> **Status:** Phases 46–49, 51–55, 57–62 complete. v0.0.4 shipped (Codex provider + MCP integration). Next: memory system (Phase 31) and sub-master pools.
 
 ### ✅ Phase 47: Exploration Progress Tracking Fix _(v0.0.2 — complete)_
 
@@ -669,7 +675,7 @@ Sync via DB:
 
 ---
 
-### ⑥ Phase 56: Documentation Update _(v0.0.2-post — active)_
+### ✅ Phase 56: Documentation Update _(v0.0.2-post — complete)_
 
 > **Goal:** Align every documentation file with the final codebase state after Phases 51–55. Covers prompt library, memory.md pattern, conversation history, schema versioning, worker streaming, and session checkpointing.
 >
@@ -678,15 +684,63 @@ Sync via DB:
 | Task                                                             | ID      | Priority | Status  |
 | ---------------------------------------------------------------- | ------- | :------: | :-----: |
 | Update ARCHITECTURE.md — reflect v0.0.2 final state              | OB-1060 | 🔴 High  | Shipped |
-| Update ROADMAP.md — mark Phases 51–55 shipped, update milestones | OB-1061 | 🔴 High  | Pending |
-| Update CHANGELOG.md — add all new features across Phases 51–55   | OB-1062 | 🔴 High  | Pending |
-| Update CLAUDE.md (workspace root) — new modules, LOC counts      | OB-1063 | 🔴 High  | Pending |
-| Update CLAUDE.md (OpenBridge repo) — sync key files list         | OB-1064 | 🔴 High  | Pending |
-| Update HEALTH.md — recalculate score, set open findings to 0     | OB-1065 | 🔴 High  | Pending |
-| Update README.md — add memory + history as feature highlights    | OB-1066 |  🟡 Med  | Pending |
-| Update API_REFERENCE.md — new DotFolderManager methods + REST    | OB-1067 |  🟡 Med  | Pending |
-| Update FINDINGS.md — mark all 9 findings fixed, archive          | OB-1068 |  🟡 Med  | Pending |
-| Final validation — test, typecheck, lint, format                 | OB-1069 | 🔴 High  | Pending |
+| Update ROADMAP.md — mark Phases 51–55 shipped, update milestones | OB-1061 | 🔴 High  | Shipped |
+| Update CHANGELOG.md — add all new features across Phases 51–55   | OB-1062 | 🔴 High  | Shipped |
+| Update CLAUDE.md (workspace root) — new modules, LOC counts      | OB-1063 | 🔴 High  | Shipped |
+| Update CLAUDE.md (OpenBridge repo) — sync key files list         | OB-1064 | 🔴 High  | Shipped |
+| Update HEALTH.md — recalculate score, set open findings to 0     | OB-1065 | 🔴 High  | Shipped |
+| Update README.md — add memory + history as feature highlights    | OB-1066 |  🟡 Med  | Shipped |
+| Update API_REFERENCE.md — new DotFolderManager methods + REST    | OB-1067 |  🟡 Med  | Shipped |
+| Update FINDINGS.md — mark all 9 findings fixed, archive          | OB-1068 |  🟡 Med  | Shipped |
+| Final validation — test, typecheck, lint, format                 | OB-1069 | 🔴 High  | Shipped |
+
+---
+
+### ✅ Phase 57: Fix Codex Worker Failures _(v0.0.4 — complete)_
+
+> **Goal:** Fixed all Codex adapter failures: `--skip-git-repo-check` resolves exit code 1 from non-git dirs, default sandbox set to `read-only`, `OPENAI_API_KEY` validated before spawn, `--json` and `-o` flags added for reliable output capture.
+>
+> **Milestone:** v0.0.4 | 8 tasks — all shipped
+
+---
+
+### ✅ Phase 58: Codex Provider _(v0.0.4 — complete)_
+
+> **Goal:** OpenBridge now supports Codex-only users. `CodexProvider` implements `AIProvider`, `CodexConfig` schema added, session manager for multi-turn conversations, provider registered and wired to Master selection in `src/index.ts`.
+>
+> **Milestone:** v0.0.4 | 7 tasks — all shipped
+
+---
+
+### ✅ Phase 59: Codex Documentation + Validation _(v0.0.4 — complete)_
+
+> **Goal:** All docs updated to reflect Codex fixes and new Codex provider. ARCHITECTURE.md, API_REFERENCE.md, CONFIGURATION.md, TROUBLESHOOTING.md, WRITING_A_PROVIDER.md updated. OB-F37 closed.
+>
+> **Milestone:** v0.0.4 | 6 tasks — all shipped
+
+---
+
+### ✅ Phase 60: MCP Core Pipeline + Master Awareness _(v0.0.4 — complete)_
+
+> **Goal:** Full MCP integration into the core pipeline. Workers can now access external services (Gmail, Canva, Slack, etc.) via Claude's `--mcp-config`. Each worker receives only the MCP servers it needs via per-worker temp configs. Master AI knows which servers are available and autonomously assigns them via TaskManifests.
+>
+> **Milestone:** v0.0.4 | 9 tasks — all shipped
+
+---
+
+### ✅ Phase 61: MCP UX Polish _(v0.0.4 — complete)_
+
+> **Goal:** MCP server health checks in `/health` endpoint, `config.example.json` updated with MCP section, `npx openbridge init` now guides users through MCP server setup.
+>
+> **Milestone:** v0.0.4 | 4 tasks — all shipped
+
+---
+
+### ✅ Phase 62: MCP Documentation + Validation _(v0.0.4 — complete)_
+
+> **Goal:** All docs updated to reflect MCP integration. ARCHITECTURE.md, CONFIGURATION.md, API_REFERENCE.md, CLAUDE.md, CHANGELOG.md, ROADMAP.md, USE_CASES.md updated. OB-F36 closed.
+>
+> **Milestone:** v0.0.4 | 7 tasks — 5 shipped, 2 pending (OB-1089 final validation, OB-1090 USE_CASES.md)
 
 ---
 
@@ -727,7 +781,10 @@ These are ideas captured for future consideration. Not yet scoped or scheduled.
 
 ✅ Phase 46: Worker Control Commands (shipped v0.1.1)
 
-◻  Phase 56: Documentation Update (active — aligns docs with all shipped phases above)
+✅ Phase 56: Documentation Update (shipped — aligns docs with all shipped phases above)
+
+✅ Phases 57–59: Codex adapter fixes + CodexProvider + Codex docs (shipped v0.0.4)
+✅ Phases 60–62: MCP integration — core pipeline, UX polish, documentation (shipped v0.0.4)
 
 Phase 31: Memory Foundation
     │
@@ -754,17 +811,18 @@ Phase 31: Memory Foundation
 
 ## Version Milestones
 
-| Version         | Target | Key Features                                                                                                                                                 | Milestone Doc                                           |
-| --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| **v0.0.1**      | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                                                  | [release notes](docs/releases/release-notes-v0.0.1.md)  |
-| **v0.0.2**      | Done   | Bug fixes — exploration progress tracking (Phase 47) + worker resilience: max-turns detection, adaptive budgets, failure recovery (Phase 48)                 | —                                                       |
-| **v0.1.1**      | Done   | Worker control — stop/stop-all commands, PID capture, WebChat stop buttons, cross-channel broadcast (Phase 46)                                               | —                                                       |
-| **v0.0.2-post** | Active | Prompt library, memory.md continuity, history access, schema versioning, worker streaming, checkpointing (Phases 51–55 shipped); docs in progress (Phase 56) | —                                                       |
-| **v0.1.0**      | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                                                      | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
-| **v0.2.0**      | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phases 33, 34, 35, 49 shipped portion)                                             | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
-| **v0.3.0**      | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                                                            | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
-| **v0.4.0**      | TBD    | Scale — access control, hierarchical masters, server deployment                                                                                              | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
-| **v1.0.0**      | TBD    | Team — agent orchestration, role-based workers, stable API                                                                                                   | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
+| Version    | Target | Key Features                                                                                                                                                                   | Milestone Doc                                           |
+| ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| **v0.0.1** | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                                                                    | [release notes](docs/releases/release-notes-v0.0.1.md)  |
+| **v0.0.2** | Done   | Bug fixes — exploration progress tracking (Phase 47) + worker resilience: max-turns detection, adaptive budgets, failure recovery (Phase 48)                                   | —                                                       |
+| **v0.1.1** | Done   | Worker control — stop/stop-all commands, PID capture, WebChat stop buttons, cross-channel broadcast (Phase 46)                                                                 | —                                                       |
+| **v0.0.3** | Done   | Prompt library, memory.md continuity, history access, schema versioning, worker streaming, checkpointing (Phases 51–55); docs (Phase 56)                                       | —                                                       |
+| **v0.0.4** | Done   | Codex provider + adapter fixes (Phases 57–59) + MCP integration: config schema, Claude adapter flags, per-worker isolation, Master MCP awareness, health checks (Phases 60–62) | —                                                       |
+| **v0.1.0** | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                                                                        | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
+| **v0.2.0** | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phases 33, 34, 35, 49 shipped portion)                                                               | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
+| **v0.3.0** | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                                                                              | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
+| **v0.4.0** | TBD    | Scale — access control, hierarchical masters, server deployment                                                                                                                | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
+| **v1.0.0** | TBD    | Team — agent orchestration, role-based workers, stable API                                                                                                                     | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
 
 ---
 

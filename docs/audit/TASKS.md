@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 4 | **In Progress:** 0 | **Done:** 37
+> **Pending:** 3 | **In Progress:** 0 | **Done:** 38
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -121,7 +121,7 @@
 | 36  | OB-1085 | **Update `docs/CONFIGURATION.md`** — add full `mcp` config section: schema reference, all fields explained, examples for popular MCP servers (filesystem, git, Gmail, Slack), `configPath` import from Claude Desktop/Code, `--strict-mcp-config` isolation, security model (per-worker temp configs), link to MCP ecosystem. Note: MCP is Claude-only (Codex has native MCP support wired separately).                                                             | ✅ Done   |
 | 37  | OB-1086 | **Update `docs/API_REFERENCE.md`** — add `MCPServerSchema`, `MCPConfigSchema` types, `getMcpConfigPath()` helper, updated `SpawnOptions` with `mcpConfigPath` + `strictMcpConfig`, updated `TaskManifestSchema` with `mcpServers`, updated `HealthStatus` with `mcp` field, updated `MasterSystemPromptContext` with `mcpServers`.                                                                                                                                  | ✅ Done   |
 | 38  | OB-1087 | **Update `CLAUDE.md` (both workspace root + OpenBridge repo)** — add MCP to project structure, add MCP to "Key Architecture" and "Important Design Decisions" sections (per-worker isolation, Master-driven assignment, Claude-only scope), update `config.example.json` description, add v0.0.4 milestone. Update `README.md` feature list with MCP support.                                                                                                       | ✅ Done   |
-| 39  | OB-1088 | **Update `CHANGELOG.md` + `ROADMAP.md`** — add `[Unreleased]` entries for MCP support: config schema, Claude adapter `--mcp-config`, Master MCP awareness, per-worker isolation, health checks, CLI init. Update roadmap to mark MCP as shipped, update version milestones.                                                                                                                                                                                         | ◻ Pending |
+| 39  | OB-1088 | **Update `CHANGELOG.md` + `ROADMAP.md`** — add `[Unreleased]` entries for MCP support: config schema, Claude adapter `--mcp-config`, Master MCP awareness, per-worker isolation, health checks, CLI init. Update roadmap to mark MCP as shipped, update version milestones.                                                                                                                                                                                         | ✅ Done   |
 | 40  | OB-1089 | **Final MCP validation** — run `npm run test`, `npm run typecheck`, `npm run lint`, `npm run format:check`. Confirm 0 failures across all checks. Mark OB-F36 as Fixed in `FINDINGS.md`. Update open/fixed counters.                                                                                                                                                                                                                                                | ◻ Pending |
 | 41  | OB-1090 | **Update `docs/USE_CASES.md`** — add MCP use case section: "Connecting OpenBridge to External Services" with end-to-end examples (send WhatsApp -> Master -> Worker + Canva MCP -> banner created -> result back to WhatsApp). Include setup steps for one real MCP server.                                                                                                                                                                                         | ◻ Pending |
 
@@ -136,7 +136,7 @@
 | **59** | Codex Documentation + Validation            | 6 (6✅) | OB-F37         | HIGH     | Small–Medium |
 | **60** | MCP Core Pipeline + Master Awareness        | 9 (3✅) | OB-F36         | Medium   | Medium       |
 | **61** | MCP UX Polish (health, CLI, example config) | 4 (4✅) | OB-F36         | Medium   | Small        |
-| **62** | MCP Documentation + Validation              | 7 (4✅) | OB-F36         | Medium   | Small–Medium |
+| **62** | MCP Documentation + Validation              | 7 (5✅) | OB-F36         | Medium   | Small–Medium |
 |        | **Total**                                   | **41**  | **2 findings** |          |              |
 
 ---
