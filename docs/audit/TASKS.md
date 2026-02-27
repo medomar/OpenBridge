@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 18 | **In Progress:** 0 | **Done:** 32
+> **Pending:** 17 | **In Progress:** 0 | **Done:** 33
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -89,7 +89,7 @@
 | --- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 31  | OB-1040 | OB-F28  | Create `schema_versions` table (`version INTEGER PRIMARY KEY, applied_at TEXT, description TEXT`) in `database.ts`                                                | ✅ Done   |
 | 32  | OB-1041 | OB-F28  | Number all existing migrations in `migration.ts` — assign version 1 through N to current `ALTER TABLE` sequences                                                  | ✅ Done   |
-| 33  | OB-1042 | OB-F28  | Update migration runner — on startup, query `MAX(version)` from `schema_versions`, only run migrations with version > max. Wrap each in transaction for rollback. | ◻ Pending |
+| 33  | OB-1042 | OB-F28  | Update migration runner — on startup, query `MAX(version)` from `schema_versions`, only run migrations with version > max. Wrap each in transaction for rollback. | ✅ Done   |
 | 34  | OB-1043 | OB-F28  | Add migration tests — verify idempotency (running twice is safe), verify version tracking, verify rollback on failure                                             | ◻ Pending |
 
 ---

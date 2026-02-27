@@ -71,19 +71,37 @@ const MIGRATIONS: Migration[] = [
 
 /**
  * Apply all numbered schema migrations to the database.
- * Each migration is idempotent (guarded by column-existence check) and its
- * version is recorded in schema_versions (INSERT OR IGNORE) so the table
- * reflects which migrations have been applied.
+ *
+ * On each startup, queries MAX(version) from schema_versions to determine
+ * the highest migration already applied. Only migrations with a version
+ * greater than that maximum are executed. Each migration is wrapped in a
+ * transaction so that a failure rolls back both the DDL change and the
+ * schema_versions insert, leaving the database in a consistent state.
  */
 export function applySchemaChanges(db: Database.Database): void {
   const now = new Date().toISOString();
+
+  // Determine the highest migration version already recorded.
+  const row = db.prepare('SELECT MAX(version) AS max_version FROM schema_versions').get() as
+    | { max_version: number | null }
+    | undefined;
+  const maxVersion = row?.max_version ?? 0;
+
   const recordVersion = db.prepare(
     `INSERT OR IGNORE INTO schema_versions (version, applied_at, description) VALUES (?, ?, ?)`,
   );
 
   for (const migration of MIGRATIONS) {
-    migration.apply(db);
-    recordVersion.run(migration.version, now, migration.description);
+    if (migration.version <= maxVersion) {
+      continue; // Already applied — skip
+    }
+
+    // Wrap the migration and version recording in a single transaction so
+    // a failure rolls back both the DDL change and the version record.
+    db.transaction((): void => {
+      migration.apply(db);
+      recordVersion.run(migration.version, now, migration.description);
+    })();
   }
 }
 
