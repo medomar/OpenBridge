@@ -345,7 +345,18 @@ async function main(): Promise<void> {
       logger.info('Shutting down...');
       workspaceManager?.stopPolling();
       if (bridge) {
-        await bridge.stop();
+        await Promise.race([
+          bridge.stop(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Shutdown timeout')), 10_000),
+          ),
+        ]).catch((err: unknown) => {
+          if (err instanceof Error && err.message === 'Shutdown timeout') {
+            console.error('Shutdown timeout exceeded (10s) — forcing exit');
+            process.exit(1);
+          }
+          throw err;
+        });
       }
       process.exit(0);
     };
