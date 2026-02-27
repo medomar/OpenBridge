@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 (0 critical, 1 medium, 4 low) | **Fixed:** 28 | **Last Audit:** 2026-02-27
+> **Open:** 4 (0 critical, 0 medium, 4 low) | **Fixed:** 29 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md)
 
 ---
@@ -16,7 +16,7 @@
 | 3   | OB-F27  | ✅ Fixed  | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                                           |
 | 4   | OB-F34  | ✅ Fixed  | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                                      |
 | 5   | OB-F29  | ✅ Fixed  | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests. |
-| 6   | OB-F35  | 🟡 Medium | Missing feature                                   | No way to browse past conversations — pairs with F29.                                                             |
+| 6   | OB-F35  | ✅ Fixed  | Missing feature                                   | Full conversation history feature shipped: listSessions, searchSessions, /history command, REST endpoints, tests. |
 | 7   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                                       |
 | 8   | OB-F30  | 🟢 Low    | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                                        |
 | 9   | OB-F31  | 🟢 Low    | Polish                                            | Master can't pause/resume — edge case for power users.                                                            |
@@ -160,9 +160,9 @@ Inspired by how Claude Code maintains its own `MEMORY.md` file — a single cura
 
 ### #5 — OB-F35 — No conversation history access for users (no list, no search, no browse)
 
-**Discovered:** 2026-02-26 (feature gap analysis)
+**Discovered:** 2026-02-26 (feature gap analysis), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/memory/conversation-store.ts`, `src/connectors/webchat/`, `src/core/router.ts`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Backlog:** OB-992 | **Health Impact:** +0.10
 **Related:** OB-F29 (conversation continuity — Master side). This is the **user side**.
 

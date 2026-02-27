@@ -6,6 +6,8 @@ import {
   findRelevantHistory,
   getSessionHistory,
   deleteOldConversations,
+  listSessions,
+  searchSessions,
 } from '../../src/memory/conversation-store.js';
 import type { ConversationEntry } from '../../src/memory/index.js';
 
@@ -200,6 +202,223 @@ describe('conversation-store.ts', () => {
       const count = (db.prepare('SELECT COUNT(*) as c FROM conversations').get() as { c: number })
         .c;
       expect(count).toBe(1);
+    });
+  });
+
+  describe('listSessions', () => {
+    it('returns empty array when no messages', () => {
+      expect(listSessions(db)).toHaveLength(0);
+    });
+
+    it('returns a session summary for each distinct session_id', () => {
+      recordMessage(db, makeEntry({ session_id: 'sess-1', content: 'hello' }));
+      recordMessage(db, makeEntry({ session_id: 'sess-2', content: 'world' }));
+      const sessions = listSessions(db);
+      expect(sessions).toHaveLength(2);
+      expect(sessions.map((s) => s.session_id).sort()).toEqual(['sess-1', 'sess-2']);
+    });
+
+    it('aggregates message_count correctly', () => {
+      recordMessage(db, makeEntry({ session_id: 'sess-count', content: 'msg1' }));
+      recordMessage(db, makeEntry({ session_id: 'sess-count', content: 'msg2' }));
+      recordMessage(db, makeEntry({ session_id: 'sess-count', content: 'msg3' }));
+      const [session] = listSessions(db);
+      expect(session).toBeDefined();
+      expect(session!.message_count).toBe(3);
+    });
+
+    it('orders sessions by most recent activity (last_message_at DESC)', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'old-sess',
+          content: 'old',
+          created_at: '2026-01-01T00:00:00.000Z',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'new-sess',
+          content: 'new',
+          created_at: '2026-03-01T00:00:00.000Z',
+        }),
+      );
+      const sessions = listSessions(db);
+      expect(sessions[0]!.session_id).toBe('new-sess');
+      expect(sessions[1]!.session_id).toBe('old-sess');
+    });
+
+    it('respects limit parameter', () => {
+      for (let i = 0; i < 5; i++) {
+        recordMessage(db, makeEntry({ session_id: `sess-${i}`, content: `message ${i}` }));
+      }
+      const sessions = listSessions(db, 3);
+      expect(sessions).toHaveLength(3);
+    });
+
+    it('respects offset parameter', () => {
+      for (let i = 0; i < 4; i++) {
+        recordMessage(
+          db,
+          makeEntry({
+            session_id: `sess-${i}`,
+            content: `message ${i}`,
+            created_at: `2026-0${i + 1}-01T00:00:00.000Z`,
+          }),
+        );
+      }
+      const all = listSessions(db, 4, 0);
+      const paged = listSessions(db, 4, 2);
+      expect(paged).toHaveLength(2);
+      expect(paged[0]!.session_id).toBe(all[2]!.session_id);
+    });
+
+    it('sets title from the first user message of each session', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'titled-sess',
+          role: 'user',
+          content: 'User asked a question here',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'titled-sess', role: 'master', content: 'AI replied' }),
+      );
+      const [session] = listSessions(db);
+      expect(session!.title).toBe('User asked a question here');
+    });
+
+    it('truncates title to 50 characters', () => {
+      const longContent = 'A'.repeat(80);
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'long-title-sess', role: 'user', content: longContent }),
+      );
+      const [session] = listSessions(db);
+      expect(session!.title).toHaveLength(50);
+    });
+
+    it('returns correct channel and user_id', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'meta-sess',
+          channel: 'telegram',
+          user_id: '+9876543210',
+          content: 'test',
+        }),
+      );
+      const [session] = listSessions(db);
+      expect(session!.channel).toBe('telegram');
+      expect(session!.user_id).toBe('+9876543210');
+    });
+
+    it('returns correct first_message_at and last_message_at', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'time-sess',
+          content: 'first',
+          created_at: '2026-01-01T08:00:00.000Z',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'time-sess',
+          content: 'last',
+          created_at: '2026-01-01T20:00:00.000Z',
+        }),
+      );
+      const [session] = listSessions(db);
+      expect(session!.first_message_at).toBe('2026-01-01T08:00:00.000Z');
+      expect(session!.last_message_at).toBe('2026-01-01T20:00:00.000Z');
+    });
+  });
+
+  describe('searchSessions', () => {
+    it('returns empty array for empty query', () => {
+      recordMessage(db, makeEntry({ content: 'some content' }));
+      expect(searchSessions(db, '')).toHaveLength(0);
+    });
+
+    it('returns empty array for whitespace-only query', () => {
+      recordMessage(db, makeEntry({ content: 'some content' }));
+      expect(searchSessions(db, '   ')).toHaveLength(0);
+    });
+
+    it('returns sessions whose messages match the query', () => {
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'match-sess', content: 'Deploy the authentication service' }),
+      );
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'no-match-sess', content: 'Unrelated database migration' }),
+      );
+      const results = searchSessions(db, 'authentication');
+      expect(results).toHaveLength(1);
+      expect(results[0]!.session_id).toBe('match-sess');
+    });
+
+    it('returns empty array when no sessions match', () => {
+      recordMessage(db, makeEntry({ session_id: 'some-sess', content: 'Unrelated content' }));
+      const results = searchSessions(db, 'xyzzy-no-match');
+      expect(results).toHaveLength(0);
+    });
+
+    it('groups results by session — multiple matching messages in same session count as one', () => {
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'multi-match', content: 'First mention of authentication' }),
+      );
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'multi-match', content: 'Second mention of authentication flow' }),
+      );
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'other-sess', content: 'Single authentication reference' }),
+      );
+      const results = searchSessions(db, 'authentication');
+      // Both sessions match — multi-match should rank first (2 matches)
+      expect(results).toHaveLength(2);
+      expect(results[0]!.session_id).toBe('multi-match');
+    });
+
+    it('respects limit parameter', () => {
+      for (let i = 0; i < 5; i++) {
+        recordMessage(
+          db,
+          makeEntry({ session_id: `search-sess-${i}`, content: 'matching keyword here' }),
+        );
+      }
+      const results = searchSessions(db, 'keyword', 3);
+      expect(results.length).toBeLessThanOrEqual(3);
+    });
+
+    it('returns correct session metadata (message_count, channel, user_id)', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'full-meta-sess',
+          content: 'unique-search-term',
+          channel: 'discord',
+          user_id: 'user123',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({ session_id: 'full-meta-sess', content: 'another message', channel: 'discord' }),
+      );
+      const results = searchSessions(db, 'unique-search-term');
+      expect(results).toHaveLength(1);
+      expect(results[0]!.message_count).toBe(2);
+      expect(results[0]!.channel).toBe('discord');
+      expect(results[0]!.user_id).toBe('user123');
     });
   });
 });
