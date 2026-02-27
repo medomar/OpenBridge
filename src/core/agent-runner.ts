@@ -373,6 +373,8 @@ export interface SpawnOptions {
   systemPrompt?: string;
   /** Maximum spend in USD for this agent run (passed as --max-budget-usd) */
   maxBudgetUsd?: number;
+  /** Path to MCP config JSON file — passed to Codex via -c flag when set */
+  mcpConfigPath?: string;
 }
 
 /**
