@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 (0 critical, 0 medium, 2 low) | **Fixed:** 31 | **Last Audit:** 2026-02-27
-> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md)
+> **Open:** 0 | **Fixed:** 33 | **Last Audit:** 2026-02-27
+> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md)
 
 ---
 
@@ -18,12 +18,12 @@
 | 5   | OB-F29  | ✅ Fixed | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests.         |
 | 6   | OB-F35  | ✅ Fixed | Missing feature                                   | Full conversation history feature shipped: listSessions, searchSessions, /history command, REST endpoints, tests.         |
 | 7   | OB-F28  | ✅ Fixed | Technical debt                                    | schema_versions table added, migrations numbered + transactional, idempotency tests added.                                |
-| 8   | OB-F30  | 🟢 Low   | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                                                |
+| 8   | OB-F30  | ✅ Fixed | Polish                                            | Worker streaming implemented: execOnceStreaming(), worker-progress events, WebChat progress display.                      |
 | 9   | OB-F31  | ✅ Fixed | Polish                                            | Checkpoint/resume wired to priority queue via `onUrgentEnqueued`; urgent messages trigger checkpoint-handle-resume cycle. |
 
 ---
 
-## Open Findings
+## Findings (All Fixed — see [V6 archive](archive/v6/FINDINGS-v6.md) for full details)
 
 ### #1 — OB-F32 — Prompt library methods missing from DotFolderManager (39 test failures)
 
@@ -238,9 +238,9 @@ Compare with what users already have:
 
 ### #7 — OB-F34 — ESLint reports 264 errors (cascading from OB-F32/F33)
 
-**Discovered:** 2026-02-26 (lint validation)
+**Discovered:** 2026-02-26 (lint validation), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/master/master-manager.ts`, `tests/master/prompt-*.test.ts`
-**Severity:** 🟢 Low
+**Severity:** ✅ Fixed
 **Backlog:** OB-991
 **Blocked by:** OB-F32
 
@@ -252,14 +252,14 @@ Compare with what users already have:
 
 ### #8 — OB-F30 — No real-time worker streaming progress
 
-**Discovered:** 2026-02-26 (health score audit)
+**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`
-**Severity:** 🟢 Low
+**Severity:** ✅ Fixed
 **Backlog:** OB-930 | **Health Impact:** +0.05
 
 **Problem:** Active workers appear as "running" in the status command and WebChat dashboard with no granularity. Users can't see how many turns a worker has consumed, what it's currently doing, or how close it is to finishing. The only visibility is start time and elapsed duration.
 
-**Recommended fix:** Stream stdout chunks from active workers via `execOnceStreaming()`. Parse turn indicators from Claude CLI output to extract real-time turn count. Broadcast `worker-progress` events to all connectors with `{ workerId, turnsUsed, turnsMax, lastAction }`. Update the WebChat dashboard to show a progress bar per worker.
+**Fix:** Implemented `execOnceStreaming()` in AgentRunner, turn parsing from CLI output, `worker-progress` event broadcasting with `{ workerId, turnsUsed, turnsMax, lastAction }`, and WebChat progress display. Tests added in Phase 55 (OB-1050–OB-1052).
 
 ---
 
