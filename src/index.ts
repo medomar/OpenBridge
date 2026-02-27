@@ -156,9 +156,27 @@ async function startV2Flow(
     throw new Error('No Master AI tool available for V2 flow');
   }
 
+  // Provider-aware master selection: map the discovered master tool name to the registered
+  // provider factory that will handle its processMessage() calls.
+  // Supported: 'claude' / 'claude-code' → 'claude-code', 'codex' → 'codex'.
+  // Fail early with a clear error if the selected master has no matching provider.
+  const MASTER_PROVIDER_MAP: Record<string, string> = {
+    claude: 'claude-code',
+    'claude-code': 'claude-code',
+    codex: 'codex',
+  };
+  const masterProviderName = MASTER_PROVIDER_MAP[selectedMaster.name];
+  if (masterProviderName === undefined) {
+    throw new Error(
+      `No AI provider available for master tool '${selectedMaster.name}'. ` +
+        `Supported options: 'claude' (requires Claude Code CLI) or 'codex' (requires Codex CLI + OPENAI_API_KEY).`,
+    );
+  }
+
   logger.info(
     {
       master: selectedMaster.name,
+      provider: masterProviderName,
       totalTools: scanResult.totalDiscovered,
       cliTools: scanResult.cliTools.length,
       vscodeExtensions: scanResult.vscodeExtensions.length,
