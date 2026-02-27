@@ -7,7 +7,7 @@
  *   codex exec [OPTIONS] <PROMPT>
  *
  * Codex exec flags:
- *   -m, --model <MODEL>           Model to use (codex-mini, o4-mini, gpt-4o, etc.)
+ *   -m, --model <MODEL>           Model to use (gpt-5.2-codex, o3, o4-mini, etc.)
  *   -s, --sandbox <MODE>          read-only | workspace-write | danger-full-access
  *   --full-auto                   Auto-approve all actions (convenience flag)
  *   --skip-git-repo-check         Skip git repo trust check (required for non-git workspaces)
@@ -189,17 +189,14 @@ export class CodexAdapter implements CLIAdapter {
   }
 
   isValidModel(model: string): boolean {
+    // Current models for Codex CLI v0.104.0
     const codexModels = [
-      'codex-mini',
-      'codex',
-      'gpt-4o',
-      'gpt-4o-mini',
-      'o1',
-      'o3-mini',
+      'gpt-5.2-codex', // default in v0.104.0
+      'o3',
       'o4-mini',
     ];
     if (codexModels.includes(model)) return true;
-    // Accept OpenAI-style model IDs
+    // Accept OpenAI-style model IDs for forward compatibility
     return /^(gpt-|o[0-9]|codex)/.test(model);
   }
 
