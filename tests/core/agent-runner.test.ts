@@ -28,10 +28,12 @@ import type { TaskManifest } from '../../src/types/agent.js';
 
 const mockMkdir = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockWriteFile = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockRm = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 vi.mock('node:fs/promises', () => ({
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  rm: (...args: unknown[]) => mockRm(...args),
 }));
 
 // ── Mock child_process.spawn ────────────────────────────────────────
@@ -96,6 +98,7 @@ beforeEach(() => {
   mockChildren = [];
   mockMkdir.mockClear();
   mockWriteFile.mockClear();
+  mockRm.mockClear();
 });
 
 afterEach(() => {
@@ -1436,35 +1439,47 @@ describe('manifestToSpawnOptions', () => {
     workspacePath: '/tmp/project',
   };
 
-  it('maps basic manifest fields to SpawnOptions', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('maps basic manifest fields to SpawnOptions', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.prompt).toBe('explore the project');
     expect(opts.workspacePath).toBe('/tmp/project');
   });
 
-  it('resolves profile to allowedTools', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' });
+  it('resolves profile to allowedTools', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'read-only',
+    });
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('resolves code-edit profile to code editing tools', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'code-edit' });
+  it('resolves code-edit profile to code editing tools', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'code-edit',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['code-edit'].tools);
   });
 
-  it('resolves full-access profile to full tool set', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'full-access' });
+  it('resolves full-access profile to full tool set', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'full-access',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['full-access'].tools);
   });
 
-  it('resolves master profile to file management tools without Bash', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'master' });
+  it('resolves master profile to file management tools without Bash', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'master',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES.master.tools);
     expect(opts.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
   });
 
-  it('explicit allowedTools override profile', () => {
-    const opts = manifestToSpawnOptions({
+  it('explicit allowedTools override profile', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
       ...baseManifest,
       profile: 'read-only',
       allowedTools: ['Read', 'Edit', 'Write'],
@@ -1472,8 +1487,8 @@ describe('manifestToSpawnOptions', () => {
     expect(opts.allowedTools).toEqual(['Read', 'Edit', 'Write']);
   });
 
-  it('passes through model, maxTurns, timeout, retries, retryDelay', () => {
-    const opts = manifestToSpawnOptions({
+  it('passes through model, maxTurns, timeout, retries, retryDelay', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
       ...baseManifest,
       model: 'haiku',
       maxTurns: 10,
@@ -1488,54 +1503,68 @@ describe('manifestToSpawnOptions', () => {
     expect(opts.retryDelay).toBe(5000);
   });
 
-  it('leaves allowedTools undefined when no profile or tools specified', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('leaves allowedTools undefined when no profile or tools specified', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.allowedTools).toBeUndefined();
   });
 
-  it('leaves allowedTools undefined for unrecognized profile', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'custom-unknown' });
+  it('leaves allowedTools undefined for unrecognized profile', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'custom-unknown',
+    });
     expect(opts.allowedTools).toBeUndefined();
   });
 
-  it('resolves custom profile when provided', () => {
+  it('resolves custom profile when provided', async () => {
     const customProfiles = {
       'test-runner': {
         name: 'test-runner',
         tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
       },
     };
-    const opts = manifestToSpawnOptions(
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
       { ...baseManifest, profile: 'test-runner' },
       customProfiles,
     );
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Bash(npm:test)']);
   });
 
-  it('resolves previously unknown profile when custom profiles are provided', () => {
+  it('resolves previously unknown profile when custom profiles are provided', async () => {
     const customProfiles = {
       'doc-writer': {
         name: 'doc-writer',
         tools: ['Read', 'Write', 'Glob'],
       },
     };
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'doc-writer' }, customProfiles);
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
+      { ...baseManifest, profile: 'doc-writer' },
+      customProfiles,
+    );
     expect(opts.allowedTools).toEqual(['Read', 'Write', 'Glob']);
   });
 
-  it('still resolves built-in profiles when custom profiles are provided', () => {
+  it('still resolves built-in profiles when custom profiles are provided', async () => {
     const customProfiles = {
       'test-runner': { name: 'test-runner', tools: ['Read'] },
     };
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' }, customProfiles);
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
+      { ...baseManifest, profile: 'read-only' },
+      customProfiles,
+    );
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('does not include session-related fields', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('does not include session-related fields', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.resumeSessionId).toBeUndefined();
     expect(opts.sessionId).toBeUndefined();
     expect(opts.logFile).toBeUndefined();
+  });
+
+  it('returns a no-op cleanup when no mcpServers specified', async () => {
+    const { cleanup } = await manifestToSpawnOptions(baseManifest);
+    await expect(cleanup()).resolves.toBeUndefined();
   });
 });
 
@@ -1561,6 +1590,9 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    // spawnFromManifest awaits manifestToSpawnOptions (async) before spawning —
+    // yield a microtask so the child is created before resolveChild is called.
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     const result = await promise;
 
@@ -1583,6 +1615,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     await promise;
 
@@ -1602,6 +1635,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     const result = await promise;
 
@@ -1620,6 +1654,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'done', 0);
     await promise;
 
@@ -1655,6 +1690,9 @@ describe('AgentRunner.streamFromManifest()', () => {
 
     const resultPromise = drainStream(gen);
 
+    // streamFromManifest awaits manifestToSpawnOptions (async) before spawning —
+    // yield a microtask so the child is created before we interact with it.
+    await Promise.resolve();
     const child = lastChild();
     child.stdout.emit('data', Buffer.from('chunk1'));
     child.stdout.emit('data', Buffer.from('chunk2'));
@@ -1682,6 +1720,7 @@ describe('AgentRunner.streamFromManifest()', () => {
     });
 
     const resultPromise = drainStream(gen);
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     await resultPromise;
 
