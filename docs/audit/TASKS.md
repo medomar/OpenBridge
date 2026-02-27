@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 | **In Progress:** 0 | **Done:** 33
+> **Pending:** 7 | **In Progress:** 0 | **Done:** 34
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -117,7 +117,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 35  | OB-1084 | **Update `docs/ARCHITECTURE.md`** — add MCP as layer 6 in the architecture overview. Diagram: Channel -> Router -> Master -> Worker + MCP -> External Service. Explain: (a) MCP servers are external processes spawned by Claude CLI per worker invocation, (b) per-worker isolation via temp config + `--strict-mcp-config`, (c) Master decides which workers get which MCP servers, (d) Claude-only scope initially, Codex MCP via native `codex mcp` (Phase 58). | ◻ Pending |
+| 35  | OB-1084 | **Update `docs/ARCHITECTURE.md`** — add MCP as layer 6 in the architecture overview. Diagram: Channel -> Router -> Master -> Worker + MCP -> External Service. Explain: (a) MCP servers are external processes spawned by Claude CLI per worker invocation, (b) per-worker isolation via temp config + `--strict-mcp-config`, (c) Master decides which workers get which MCP servers, (d) Claude-only scope initially, Codex MCP via native `codex mcp` (Phase 58). | ✅ Done   |
 | 36  | OB-1085 | **Update `docs/CONFIGURATION.md`** — add full `mcp` config section: schema reference, all fields explained, examples for popular MCP servers (filesystem, git, Gmail, Slack), `configPath` import from Claude Desktop/Code, `--strict-mcp-config` isolation, security model (per-worker temp configs), link to MCP ecosystem. Note: MCP is Claude-only (Codex has native MCP support wired separately).                                                             | ◻ Pending |
 | 37  | OB-1086 | **Update `docs/API_REFERENCE.md`** — add `MCPServerSchema`, `MCPConfigSchema` types, `getMcpConfigPath()` helper, updated `SpawnOptions` with `mcpConfigPath` + `strictMcpConfig`, updated `TaskManifestSchema` with `mcpServers`, updated `HealthStatus` with `mcp` field, updated `MasterSystemPromptContext` with `mcpServers`.                                                                                                                                  | ◻ Pending |
 | 38  | OB-1087 | **Update `CLAUDE.md` (both workspace root + OpenBridge repo)** — add MCP to project structure, add MCP to "Key Architecture" and "Important Design Decisions" sections (per-worker isolation, Master-driven assignment, Claude-only scope), update `config.example.json` description, add v0.0.4 milestone. Update `README.md` feature list with MCP support.                                                                                                       | ◻ Pending |
@@ -136,7 +136,7 @@
 | **59** | Codex Documentation + Validation            | 6 (6✅) | OB-F37         | HIGH     | Small–Medium |
 | **60** | MCP Core Pipeline + Master Awareness        | 9 (3✅) | OB-F36         | Medium   | Medium       |
 | **61** | MCP UX Polish (health, CLI, example config) | 4 (4✅) | OB-F36         | Medium   | Small        |
-| **62** | MCP Documentation + Validation              | 7       | OB-F36         | Medium   | Small–Medium |
+| **62** | MCP Documentation + Validation              | 7 (1✅) | OB-F36         | Medium   | Small–Medium |
 |        | **Total**                                   | **41**  | **2 findings** |          |              |
 
 ---
