@@ -20,7 +20,8 @@
  * Feature mapping (lossy — Codex doesn't support these):
  *   --max-turns        → dropped (codex runs to completion)
  *   --max-budget-usd   → dropped
- *   --session-id       → dropped (use --ephemeral)
+ *   --session-id       → new named session (omits --ephemeral so Codex saves state)
+ *   --resume-session   → `codex exec resume --last` (or explicit session ID)
  *   --append-system-prompt → prepended to prompt text
  *   --allowedTools     → mapped to --sandbox via heuristic
  */
@@ -106,8 +107,24 @@ export class CodexAdapter implements CLIAdapter {
       }
     }
 
-    // No session persistence for worker spawning
-    args.push('--ephemeral');
+    // Session management:
+    //   - resumeSessionId set → resume last session via `exec resume --last` (or explicit ID)
+    //   - sessionId set       → new named session start (no --ephemeral so Codex saves state)
+    //   - neither set         → ephemeral (no session persistence, current worker behavior)
+    if (opts.resumeSessionId) {
+      // Insert `resume --last` (or explicit session ID) after `exec`.
+      // codex exec resume --last [OPTIONS] <PROMPT>
+      args.splice(
+        1,
+        0,
+        'resume',
+        opts.resumeSessionId === '__last__' ? '--last' : opts.resumeSessionId,
+      );
+    } else if (!opts.sessionId) {
+      // Worker spawn path — stateless, no session saved.
+      args.push('--ephemeral');
+    }
+    // When sessionId is set (new provider session), omit --ephemeral so Codex saves state.
 
     // Enable JSONL structured output — each event is a JSON object on its own line.
     // AgentRunner applies parseOutput() to extract the final message content.
@@ -137,10 +154,6 @@ export class CodexAdapter implements CLIAdapter {
         'codex: --max-budget-usd not supported, ignoring',
       );
     }
-    if (opts.resumeSessionId || opts.sessionId) {
-      logger.debug('codex: sessions not supported, ignoring session options');
-    }
-
     return {
       binary: 'codex',
       args,
