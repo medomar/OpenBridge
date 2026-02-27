@@ -209,6 +209,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No DB schema versioning — migrations ran ad-hoc `ALTER TABLE` sequences with no version tracking; `schema_versions` table added, all migrations numbered and transactional (OB-F28)
 - Session checkpointing not wired — `checkpointSession()` and `resumeSession()` on `MasterManager` now integrated with priority queue so urgent messages trigger a safe checkpoint-handle-resume cycle (OB-F31)
 
+#### Bug Fixes — v0.0.5 (Phases 63–66)
+
+- FTS5 syntax errors crash cross-session context injection silently — `searchConversations()` in `retrieval.ts` now calls `sanitizeFts5Query()` before the MATCH clause; queries with `'`, `"`, `(`, `)`, `*`, `AND`, `OR`, `NOT` no longer throw `SqliteError`; shared sanitizer moved to `retrieval.ts` and imported by `conversation-store.ts` (OB-F38)
+- `memory.md` never updates — Master runs `--print` mode (stateless) with no conversation context; `triggerMemoryUpdate()` now calls `getRecentMessages(20)` from SQLite and injects the last 20 entries (formatted as `[timestamp] Role: content`) into the prompt so the stateless AI has actual context to write meaningful notes (OB-F39)
+- Memory-update prompt hardcodes `Write` tool name — Codex uses different tool naming; prompt now uses generic language (`Write your updated notes to ${memoryPath}`) instead of `Use the Write tool` — works with both Claude and Codex as Master (OB-F39)
+- `getRecentMessages()` missing from `conversation-store.ts` — new function queries `conversations` table for `user`/`master` roles ordered chronologically; exposed on `MemoryManager` facade as `getRecentMessages(limit?)` (OB-F39)
+- Ungraceful shutdown — Ctrl+C force-kills before session state and memory are saved; `shutdown()` in `src/index.ts` now prints `Shutting down gracefully... please wait`, wraps `bridge.stop()` in a 10-second `Promise.race` timeout, and calls `process.exit(1)` with a clear message if timeout fires (OB-F40)
+- Session state lost on rapid shutdown — `MasterManager.shutdown()` now runs `saveMasterSessionToStore()` (fast SQLite write, <100ms) before `triggerMemoryUpdate()` (slow AI spawn, 10–30s); session state is always persisted even if the memory update is interrupted (OB-F40)
+- Documentation lag — `docs/API_REFERENCE.md`, `docs/ARCHITECTURE.md`, `docs/TROUBLESHOOTING.md`, `CONTRIBUTING.md`, and `docs/ROADMAP.md` updated to document FTS5 sanitization, context-aware memory updates, graceful shutdown flow, and Phases 63–66 as shipped in v0.0.5
+
 ## [0.0.1] — 2026-02-23
 
 ### Added
