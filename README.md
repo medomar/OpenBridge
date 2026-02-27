@@ -32,13 +32,17 @@ Claude, Codex, Gemini — working together on your tasks. OpenBridge discovers e
 
 Send a WhatsApp message, and a team of AI agents gets to work on your project. OpenBridge supports **5 channels** — WhatsApp, Telegram, Discord, WebChat, and Console. Break complex tasks into subtasks, check progress, ask follow-up questions — all from your phone. Session continuity means the AI remembers every previous conversation.
 
+### Persistent Memory Across Sessions
+
+The Master AI maintains a curated `memory.md` file (≤ 200 lines) inside your workspace. It is loaded on every session start so the AI picks up exactly where you left off — no re-explaining your project, no lost context. The AI updates the file itself: merging topics, discarding stale info, keeping it focused. Use `/history` to browse past conversations, search by keyword, or retrieve a full transcript.
+
 ### You Control What AI Can Access
 
 Three access levels keep you in control: **read-only** (browse files), **code-edit** (modify files and run tests), and **full-access** (everything). The AI only touches the workspace folder you point it at — nothing else on your machine. A phone whitelist ensures only authorized users can send commands.
 
 ### Always Up-to-Date Project Context
 
-On startup, OpenBridge explores your workspace and builds a knowledge base inside your project. It detects git commits and file changes, then re-explores incrementally — so the AI's understanding is always current. Multi-turn conversations maintain context across messages: ask a question, get an answer, follow up — the AI remembers.
+On startup, OpenBridge explores your workspace and builds a knowledge base inside your project. It detects git commits and file changes, then re-explores incrementally — so the AI's understanding is always current. Multi-turn conversations maintain context across messages: ask a question, get an answer, follow up — the AI remembers. Across sessions, persistent `memory.md` ensures key decisions, findings, and preferences survive restarts without bloating the context window.
 
 ### Zero Extra Cost
 
@@ -149,6 +153,25 @@ AI:     Top 5 from sales_weekly.csv:
         3. Americano (97 sold)
         4. Cold Brew (89 sold)
         5. Mocha (76 sold)
+```
+
+### Conversation History
+
+```
+You:    /history
+AI:     Recent conversations (last 10):
+        1. [2026-02-25] "Refactor auth to JWT" — 8 messages
+        2. [2026-02-24] "Fix failing tests in checkout" — 12 messages
+        3. [2026-02-20] "What's in this project?" — 4 messages
+
+You:    /history search authentication
+AI:     Found 3 sessions matching "authentication":
+        1. [2026-02-25] "Refactor auth to JWT"
+        2. [2026-02-18] "Add OAuth support" — 15 messages
+        3. [2026-02-10] "JWT token expiry bug" — 6 messages
+
+You:    /history 2026-02-25-auth-refactor
+AI:     [Full conversation transcript...]
 ```
 
 ### Multi-AI Task Delegation
