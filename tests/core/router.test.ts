@@ -1371,7 +1371,10 @@ describe('Router', () => {
       await connector.initialize();
 
       router.setMemory(createMockMemory() as never);
-      router.setQueue({ getQueueSnapshot: vi.fn().mockReturnValue([]) } as never);
+      router.setQueue({
+        getQueueSnapshot: vi.fn().mockReturnValue([]),
+        onUrgentEnqueued: vi.fn(),
+      } as never);
 
       await router.route(createStatusMsg());
 
@@ -1388,6 +1391,7 @@ describe('Router', () => {
         getQueueSnapshot: vi
           .fn()
           .mockReturnValue([{ sender: '+1234567890', pending: 2, estimatedWaitMs: 60_000 }]),
+        onUrgentEnqueued: vi.fn(),
       } as never);
 
       await router.route(createStatusMsg());
@@ -1407,6 +1411,7 @@ describe('Router', () => {
         getQueueSnapshot: vi
           .fn()
           .mockReturnValue([{ sender: '+1234567890', pending: 1, estimatedWaitMs: 30_000 }]),
+        onUrgentEnqueued: vi.fn(),
       } as never);
 
       await router.route(createStatusMsg());
@@ -1424,6 +1429,7 @@ describe('Router', () => {
         getQueueSnapshot: vi
           .fn()
           .mockReturnValue([{ sender: '+1234567890', pending: 3, estimatedWaitMs: 90_000 }]),
+        onUrgentEnqueued: vi.fn(),
       } as never);
 
       await router.route(createStatusMsg());

@@ -47,6 +47,12 @@ export class MessageQueue {
   private queuedHandler:
     | ((message: InboundMessage, position: number, estimatedWaitMs: number) => void)
     | null = null;
+  /**
+   * Called when a priority-1 message is enqueued for a sender whose previous message
+   * is still being processed.  The Router uses this to trigger a checkpoint-handle-resume
+   * cycle so that session state is saved before the urgent message is handled.
+   */
+  private urgentEnqueuedHandler: ((message: InboundMessage) => void) | null = null;
 
   constructor(config: Partial<QueueConfig> = {}, metrics?: MetricsCollector) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -67,6 +73,18 @@ export class MessageQueue {
     handler: (message: InboundMessage, position: number, estimatedWaitMs: number) => void,
   ): void {
     this.queuedHandler = handler;
+  }
+
+  /**
+   * Register a callback invoked when a priority-1 (urgent) message is enqueued for a sender
+   * whose previous message is still in flight.
+   *
+   * Used by the Router to trigger a checkpoint-handle-resume cycle: the session is
+   * checkpointed before the urgent message is processed and restored afterwards, preserving
+   * the pre-interruption Master context for subsequent messages.
+   */
+  onUrgentEnqueued(handler: (message: InboundMessage) => void): void {
+    this.urgentEnqueuedHandler = handler;
   }
 
   /**
@@ -115,6 +133,12 @@ export class MessageQueue {
       { messageId: message.id, sender, queueSize: queue.length, priority },
       'Message enqueued',
     );
+
+    // Notify when a priority-1 message is enqueued for a sender whose current message is
+    // still in flight.  The Router uses this to trigger a checkpoint-handle-resume cycle.
+    if (priority === 1 && this.activeUsers.has(sender) && this.urgentEnqueuedHandler) {
+      this.urgentEnqueuedHandler(message);
+    }
 
     if (!this.activeUsers.has(sender)) {
       await this.processNextForUser(sender);

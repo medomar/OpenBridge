@@ -196,6 +196,11 @@ export class Router {
   private queue?: MessageQueue;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
+  /**
+   * IDs of priority-1 messages that should trigger a checkpoint-handle-resume cycle.
+   * Populated by the `onUrgentEnqueued` queue callback; consumed in `route()`.
+   */
+  private readonly urgentCycleMessageIds = new Set<string>();
   /** Pool of short-lived read-only agents for quick-answer responses during Master processing. */
   private readonly fastPathResponder = new FastPathResponder(new AgentRunner());
 
@@ -247,6 +252,17 @@ export class Router {
   /** Set the MessageQueue — enables queue depth display in the "status" command */
   setQueue(queue: MessageQueue): void {
     this.queue = queue;
+    // Register urgent-message callback: when a priority-1 message is enqueued while
+    // the sender already has a message in flight, mark it for checkpoint-handle-resume.
+    queue.onUrgentEnqueued((msg) => {
+      if (this.master) {
+        this.urgentCycleMessageIds.add(msg.id);
+        logger.info(
+          { messageId: msg.id },
+          'Urgent message detected — session will be checkpointed before handling',
+        );
+      }
+    });
   }
 
   /** Register an active connector */
@@ -365,6 +381,19 @@ export class Router {
       return;
     }
 
+    // Checkpoint-handle-resume cycle for urgent messages.
+    // When a priority-1 message was flagged by the queue (sender had a message in flight when
+    // this arrived), checkpoint session state before processing so that:
+    //   1. A crash during urgent handling is recoverable from the checkpoint.
+    //   2. After the urgent message completes, we can restore pre-interruption context.
+    const isUrgentCycle = this.urgentCycleMessageIds.has(message.id);
+    if (isUrgentCycle) {
+      this.urgentCycleMessageIds.delete(message.id);
+      if (this.master) {
+        await this.master.checkpointSession();
+      }
+    }
+
     // Fast-path: when Master is processing a complex task and a quick-answer message arrives,
     // spawn a lightweight read-only agent to answer immediately without waiting for Master.
     const messagePriority = classifyMessagePriority(message.content);
@@ -408,6 +437,12 @@ export class Router {
         // Route through Master AI
         const response = await this.master.processMessage(message);
         result = { content: response };
+        // Resume from checkpoint after urgent message is fully handled — restores the
+        // pre-interruption Master context (worker history, pending messages) so that
+        // subsequent messages continue with the correct session state.
+        if (isUrgentCycle) {
+          await this.master.resumeSession();
+        }
       } else if (this.orchestrator) {
         const orchestratorResult = await this.orchestrator.process(message);
         result = orchestratorResult.result;
