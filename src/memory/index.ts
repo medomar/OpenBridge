@@ -14,7 +14,11 @@ import {
   deleteStaleChunks as _deleteStaleChunks,
   deleteChunksByScope as _deleteChunksByScope,
 } from './chunk-store.js';
-import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
+import {
+  hybridSearch as _hybridSearch,
+  searchConversations as _searchConversations,
+  type SearchOptions,
+} from './retrieval.js';
 import type { TaskRecord, LearnedParams, ModelStats } from './task-store.js';
 import {
   recordTask as _recordTask,
@@ -80,6 +84,14 @@ import {
   type SubMasterEntry,
   type SubMasterStatus,
 } from './sub-master-store.js';
+import {
+  insertAuditEntry as _insertAuditEntry,
+  queryAuditEntries as _queryAuditEntries,
+  searchAuditLog as _searchAuditLog,
+  countAuditByEvent as _countAuditByEvent,
+  type AuditRecord,
+  type AuditSearchOptions,
+} from './audit-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -121,6 +133,7 @@ export type {
 } from './activity-store.js';
 export type { AccessControlEntry, AccessRole } from './access-store.js';
 export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
+export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -226,6 +239,12 @@ export class MemoryManager {
   findRelevantHistory(query: string, limit?: number): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_findRelevantHistory(this.db, query, limit));
+  }
+
+  /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
+  searchConversations(query: string, limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchConversations(this.db, query, limit));
   }
 
   // -------------------------------------------------------------------------
@@ -640,6 +659,35 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _removeSubMaster(this.db, id);
     return Promise.resolve();
+  }
+
+  // -------------------------------------------------------------------------
+  // Audit log (audit-store.ts — OB-820)
+  // -------------------------------------------------------------------------
+
+  /** Insert a structured audit log entry into the audit_log table. */
+  insertAuditEntry(entry: AuditRecord): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _insertAuditEntry(this.db, entry);
+    return Promise.resolve();
+  }
+
+  /** Query audit log entries with optional filters (event type, sender, time range). */
+  queryAuditEntries(options?: AuditSearchOptions): Promise<AuditRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_queryAuditEntries(this.db, options));
+  }
+
+  /** Full-text search across audit log entries. */
+  searchAuditLog(query: string, limit?: number): Promise<AuditRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchAuditLog(this.db, query, limit));
+  }
+
+  /** Count audit entries grouped by event type, optionally filtered by time. */
+  countAuditByEvent(since?: string): Promise<{ event: string; count: number }[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_countAuditByEvent(this.db, since));
   }
 
   // -------------------------------------------------------------------------
