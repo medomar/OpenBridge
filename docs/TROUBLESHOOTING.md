@@ -6,16 +6,19 @@
 
 ## Quick Reference
 
-| Symptom                              | Jump to                                       |
-| ------------------------------------ | --------------------------------------------- |
-| Bridge won't start                   | [Startup Errors](#startup-errors)             |
-| QR code won't scan / session expired | [WhatsApp Issues](#whatsapp-issues)           |
-| Messages not being processed         | [Message Flow Issues](#message-flow-issues)   |
-| AI responses failing                 | [AI Tool Issues](#ai-tool-issues)             |
-| Codex worker exits / Codex errors    | [Codex Issues](#codex-issues)                 |
-| No AI tools discovered               | [Discovery Issues](#discovery-issues)         |
-| Config changes not taking effect     | [Configuration Issues](#configuration-issues) |
-| Health check returning 503           | [Monitoring Issues](#monitoring-issues)       |
+| Symptom                                    | Jump to                                             |
+| ------------------------------------------ | --------------------------------------------------- |
+| Bridge won't start                         | [Startup Errors](#startup-errors)                   |
+| QR code won't scan / session expired       | [WhatsApp Issues](#whatsapp-issues)                 |
+| Messages not being processed               | [Message Flow Issues](#message-flow-issues)         |
+| AI responses failing                       | [AI Tool Issues](#ai-tool-issues)                   |
+| Codex worker exits / Codex errors          | [Codex Issues](#codex-issues)                       |
+| No AI tools discovered                     | [Discovery Issues](#discovery-issues)               |
+| Config changes not taking effect           | [Configuration Issues](#configuration-issues)       |
+| Health check returning 503                 | [Monitoring Issues](#monitoring-issues)             |
+| SqliteError: fts5: syntax error            | [FTS5 / Database Errors](#fts5--database-errors)    |
+| memory.md unchanged across sessions        | [Memory Not Updating](#memory-not-updating)         |
+| `[tsx] Previous process hasn't exited yet` | [Shutdown / Ctrl+C Issues](#shutdown--ctrlc-issues) |
 
 ---
 
@@ -419,6 +422,87 @@ For production (JSON logs), pipe through pino-pretty:
 ```bash
 node dist/index.js | npx pino-pretty
 ```
+
+---
+
+## FTS5 / Database Errors
+
+### `SqliteError: fts5: syntax error near "'"`
+
+**Symptom:** The following error appears in logs (as a WARN, not a fatal error):
+
+```
+SqliteError: fts5: syntax error near "'"
+```
+
+**Cause:** A search query derived from a user message contained FTS5 special characters (`'`, `"`, `*`, `AND`, `OR`, `NOT`, `(`, `)`, etc.). Before v0.0.5, these were passed directly to the SQLite FTS5 `MATCH` clause without escaping, causing a syntax error.
+
+**Impact:** Non-critical — the error was caught and logged. The Master AI continued processing, but cross-session conversation history was silently not injected, degrading response quality without any user-visible indication.
+
+**Resolution:** Fixed in v0.0.5. The `sanitizeFts5Query()` function is now applied to all FTS5 search queries before they reach the `MATCH` clause. Special characters are stripped and tokens are quoted. If you see this error on v0.0.5 or later, upgrade to the latest version.
+
+```bash
+npm update
+```
+
+If you are running an older version and need a workaround, avoid sending messages that start with `"`, `'`, or contain `AND`/`OR`/`NOT` as the first word.
+
+---
+
+## Memory Not Updating
+
+### `memory.md` unchanged across sessions
+
+**Symptom:** After multiple sessions, `.openbridge/context/memory.md` shows no meaningful updates. The file either stays empty, contains only generic boilerplate, or does not reflect discussions that happened in the session.
+
+**Cause:** Before v0.0.5, the memory-update agent ran in stateless `--print` mode with no conversation context. The prompt asked the AI to "update your memory file" but provided no information about what was discussed. The stateless AI had nothing meaningful to write.
+
+**Resolution:** Fixed in v0.0.5. The `triggerMemoryUpdate()` function now fetches the last 20 conversation entries from SQLite and injects them into the memory-update prompt as a `## Recent conversation history:` section. The stateless `--print` agent now has concrete context to write meaningful notes.
+
+**Verify the fix is active:** Look for this log line when a memory update triggers:
+
+```
+{"level":"info","messageCount":20,"msg":"Starting memory update"}
+```
+
+If `messageCount` is 0, it means no conversation history was stored yet (normal on first run).
+
+**If memory.md is still not updating after v0.0.5:**
+
+1. Check that conversation messages are being saved: look for `info` logs mentioning `conversation` or `storeMessage`.
+2. Verify `openbridge.db` exists in your `.openbridge/` folder: `ls .openbridge/openbridge.db`.
+3. Check for memory-update error logs: `warn` lines containing `Memory update prompt failed` or `Memory update prompt returned non-zero exit`.
+
+---
+
+## Shutdown / Ctrl+C Issues
+
+### `[tsx] Previous process hasn't exited yet. Force killing...`
+
+**Symptom:** When running `npm run dev` and pressing Ctrl+C, the terminal shows:
+
+```
+[tsx] Previous process hasn't exited yet. Force killing...
+```
+
+This is followed by the process being killed immediately, before graceful shutdown completes.
+
+**Cause:** `tsx` (the TypeScript executor used in development) has its own process-lifecycle management. When it detects that the Node process has not exited within its internal deadline, it sends `SIGKILL`. This bypasses graceful shutdown, which means in-flight session state or memory updates may not complete.
+
+**Resolution:** Fixed in v0.0.5. The shutdown sequence now:
+
+1. Prints `Shutting down gracefully... please wait` immediately when Ctrl+C is pressed.
+2. Saves session state to SQLite first (fast, <100ms) before attempting the memory update (slow, 10–30s AI spawn).
+3. Enforces a 10-second timeout — if shutdown does not complete in 10 seconds, logs `Shutdown timeout exceeded (10s) — forcing exit` and exits.
+
+**Workaround (all versions):**
+
+- Press Ctrl+C **once** and wait for the `Shutting down gracefully... please wait` message before closing the terminal.
+- Do not press Ctrl+C multiple times in quick succession — each additional press may accelerate the `tsx` force-kill.
+
+**If session state is lost after a force-kill:**
+
+Session state (conversation history, task counts) is saved to SQLite as the first step of shutdown (critical-first ordering since v0.0.5). In most cases, state is preserved even if `tsx` force-kills before the memory update completes. The memory.md update may be lost, but it will re-run on the next session end or every 10 completed tasks.
 
 ---
 
