@@ -206,6 +206,73 @@ export function listSessions(db: Database.Database, limit = 20, offset = 0): Ses
 }
 
 /**
+ * FTS5 search over conversations returning session-level results grouped by `session_id`.
+ * Sessions are ranked by the number of matching messages (most relevant first),
+ * then by most-recent activity. Returns up to `limit` sessions (default 10).
+ */
+export function searchSessions(db: Database.Database, query: string, limit = 10): SessionSummary[] {
+  if (!query.trim()) return [];
+
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  interface SessionSearchRow {
+    session_id: string;
+    title: string | null;
+    first_message_at: string;
+    last_message_at: string;
+    message_count: number;
+    channel: string | null;
+    user_id: string | null;
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT
+         matched.session_id,
+         all_msgs.title,
+         all_msgs.first_message_at,
+         all_msgs.last_message_at,
+         all_msgs.message_count,
+         all_msgs.channel,
+         all_msgs.user_id
+       FROM (
+         SELECT c.session_id, COUNT(*) AS match_count
+         FROM conversations c
+         INNER JOIN (
+           SELECT rowid FROM conversations_fts WHERE conversations_fts MATCH ?
+         ) fts ON c.id = fts.rowid
+         GROUP BY c.session_id
+       ) matched
+       INNER JOIN (
+         SELECT
+           session_id,
+           MAX(title)      AS title,
+           MIN(created_at) AS first_message_at,
+           MAX(created_at) AS last_message_at,
+           COUNT(*)        AS message_count,
+           MAX(channel)    AS channel,
+           MAX(user_id)    AS user_id
+         FROM conversations
+         GROUP BY session_id
+       ) all_msgs ON matched.session_id = all_msgs.session_id
+       ORDER BY matched.match_count DESC, all_msgs.last_message_at DESC
+       LIMIT ?`,
+    )
+    .all(sanitized, limit) as SessionSearchRow[];
+
+  return rows.map((r) => ({
+    session_id: r.session_id,
+    title: r.title,
+    first_message_at: r.first_message_at,
+    last_message_at: r.last_message_at,
+    message_count: r.message_count,
+    channel: r.channel,
+    user_id: r.user_id,
+  }));
+}
+
+/**
  * Delete all conversations created before `cutoffDate` and their FTS5 entries.
  * Runs inside a transaction so both tables stay in sync.
  */

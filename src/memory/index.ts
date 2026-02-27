@@ -32,6 +32,7 @@ import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
   listSessions as _listSessions,
+  searchSessions as _searchSessions,
   type SessionSummary,
 } from './conversation-store.js';
 import {
@@ -248,6 +249,12 @@ export class MemoryManager {
   listSessions(limit?: number, offset?: number): Promise<SessionSummary[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_listSessions(this.db, limit, offset));
+  }
+
+  /** FTS5 session-level search — returns sessions ranked by number of matching messages (OB-1032). */
+  searchSessions(query: string, limit?: number): Promise<SessionSummary[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchSessions(this.db, query, limit));
   }
 
   /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
