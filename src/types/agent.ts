@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MCPServerSchema } from './config.js';
+
 // ── Agent Status ─────────────────────────────────────────────────
 
 /** Possible lifecycle states for an agent */
@@ -283,6 +285,8 @@ export const TaskManifestSchema = z.object({
   retryDelay: z.number().int().nonnegative().optional(),
   /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
   maxBudgetUsd: z.number().positive().optional(),
+  /** MCP servers this worker is allowed to use (per-worker isolation) */
+  mcpServers: z.array(MCPServerSchema).optional(),
 });
 
 // ── Inferred Types ───────────────────────────────────────────────
