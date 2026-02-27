@@ -512,6 +512,34 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/sessions/:id — full conversation JSON for one session
+      const sessionMatch = url.match(/^\/api\/sessions\/([^/?#]+)(?:\?.*)?$/);
+      if (sessionMatch) {
+        const sessionId = decodeURIComponent(sessionMatch[1]!);
+        void (async (): Promise<void> => {
+          if (!this.memory) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Memory not available' }));
+            return;
+          }
+          try {
+            const parsed = new URL(url, 'http://localhost');
+            const limitParam = parseInt(parsed.searchParams.get('limit') ?? '100', 10);
+            const limit = Number.isFinite(limitParam)
+              ? Math.min(500, Math.max(1, limitParam))
+              : 100;
+            const messages = await this.memory.getSessionHistory(sessionId, limit);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ session_id: sessionId, messages }));
+          } catch (err) {
+            logger.error({ err }, 'GET /api/sessions/:id failed');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        })();
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
