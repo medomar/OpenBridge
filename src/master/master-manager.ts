@@ -886,7 +886,7 @@ export class MasterManager {
       `Keep it under 200 lines. Remove outdated info. Merge related topics.\n` +
       `Only write what is worth remembering across sessions: user preferences, ` +
       `project state, decisions made, active threads, and known issues.\n` +
-      `Use the Write tool to write your updated notes to ${memoryPath}.`;
+      `Write your updated notes to ${memoryPath}.`;
 
     try {
       const opts = this.buildMasterSpawnOptions(prompt, undefined, MEMORY_UPDATE_MAX_TURNS);
