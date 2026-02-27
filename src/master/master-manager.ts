@@ -992,11 +992,12 @@ export class MasterManager {
     // Initialize .openbridge folder early so we can create the Master session
     await this.dotFolder.initialize();
 
-    // Initialize Master session FIRST — so exploration can use it
-    await this.initMasterSession();
+    // Clean up stale agent_activity rows from previous process BEFORE
+    // creating the new master session, so the fresh 'running' row isn't wiped.
+    this.cleanupStuckActivities();
 
-    // Clean up stuck agent_activity rows from previous crashes (OB-962)
-    await this.cleanupStuckActivities();
+    // Initialize Master session — so exploration can use it
+    await this.initMasterSession();
 
     // Load worker registry from disk (if exists)
     await this.loadWorkerRegistry();
@@ -1093,28 +1094,14 @@ export class MasterManager {
    * started_at is older than 1 hour and mark them as failed so they
    * don't pollute the active-agents list or confuse the dashboard.
    */
-  private async cleanupStuckActivities(): Promise<void> {
+  private cleanupStuckActivities(): void {
     if (!this.memory) return;
 
     try {
-      const active = await this.memory.getActiveAgents();
-      const oneHourAgo = Date.now() - 60 * 60 * 1000;
-      const now = new Date().toISOString();
-      let cleaned = 0;
-
-      for (const activity of active) {
-        const startedMs = new Date(activity.started_at).getTime();
-        if (startedMs < oneHourAgo) {
-          await this.memory.updateActivity(activity.id, {
-            status: 'failed',
-            completed_at: now,
-          });
-          cleaned++;
-        }
-      }
-
+      // On startup every in-flight row is stale — the previous process is gone.
+      const cleaned = this.memory.markStaleActivityDone();
       if (cleaned > 0) {
-        logger.info({ cleaned }, 'Cleaned up stuck agent_activity rows from previous session');
+        logger.info({ cleaned }, 'Marked stale agent_activity rows as done on startup');
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to clean up stuck agent_activity rows');

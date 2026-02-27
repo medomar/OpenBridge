@@ -127,6 +127,23 @@ export function getActiveAgents(db: Database.Database): ActivityRecord[] {
 }
 
 /**
+ * Mark all in-flight agent_activity rows as 'done' on startup.
+ * Any row still 'starting', 'running', or 'completing' from a previous
+ * process is stale — the process that owned it is no longer alive.
+ */
+export function markStaleActivityDone(db: Database.Database): number {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      `UPDATE agent_activity
+       SET status = 'done', completed_at = ?, updated_at = ?
+       WHERE status IN ('starting', 'running', 'completing')`,
+    )
+    .run(now, now);
+  return result.changes;
+}
+
+/**
  * Delete agent_activity rows whose completed_at is older than cutoffHours.
  * Rows with no completed_at (still running) are never deleted.
  */

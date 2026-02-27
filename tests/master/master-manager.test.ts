@@ -2553,18 +2553,15 @@ describe('MasterManager', () => {
       masterManager = new MasterManager(options);
       await masterManager.start();
 
-      // Verify stuck activities were marked as failed
+      // Verify ALL previous in-flight activities were marked as done on startup.
+      // On a fresh process start, every row from the old process is stale.
       const activeAgents = await memory.getActiveAgents();
       const activeIds = activeAgents.map((a) => a.id);
 
-      // Only the recent worker should remain active
-      expect(activeIds).toContain('recent-worker');
+      // None of the old workers should remain active
+      expect(activeIds).not.toContain('recent-worker');
       expect(activeIds).not.toContain('stuck-worker-1');
       expect(activeIds).not.toContain('stuck-worker-2');
-
-      // The recent worker should still be running
-      const recentAgent = activeAgents.find((a) => a.id === 'recent-worker');
-      expect(recentAgent?.status).toBe('running');
     });
 
     it('should not fail when memory is null', async () => {
@@ -2583,7 +2580,7 @@ describe('MasterManager', () => {
       expect(masterManager.getState()).toBe('ready');
     });
 
-    it('should not clean up activities started less than 1 hour ago', async () => {
+    it('should clean up all in-flight activities regardless of age', async () => {
       const memory = new MemoryManager(':memory:');
       await memory.init();
 
@@ -2610,12 +2607,9 @@ describe('MasterManager', () => {
       await masterManager.start();
 
       const activeAgents = await memory.getActiveAgents();
-      // The recent-running worker should still be active (not cleaned up).
-      // initMasterSession also inserts a master activity row, so filter to workers.
+      // On startup ALL previous in-flight rows are stale — the old process is gone.
       const activeWorkers = activeAgents.filter((a) => a.type === 'worker');
-      expect(activeWorkers).toHaveLength(1);
-      expect(activeWorkers[0].id).toBe('recent-running');
-      expect(activeWorkers[0].status).toBe('running');
+      expect(activeWorkers).toHaveLength(0);
     });
   });
 });

@@ -61,6 +61,7 @@ import {
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
   cleanupOldActivity as _cleanupOldActivity,
+  markStaleActivityDone as _markStaleActivityDone,
   getDailyCost as _getDailyCost,
   insertExplorationProgress as _insertExplorationProgress,
   updateExplorationProgressById as _updateExplorationProgressById,
@@ -566,6 +567,12 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _cleanupOldActivity(this.db, cutoffHours);
     return Promise.resolve();
+  }
+
+  /** Mark all in-flight activity rows as 'done' — call once on startup. */
+  markStaleActivityDone(): number {
+    if (!this.db) return 0;
+    return _markStaleActivityDone(this.db);
   }
 
   /**
