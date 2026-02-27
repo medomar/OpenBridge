@@ -41,6 +41,17 @@ export class CodexAdapter implements CLIAdapter {
   readonly name = 'codex';
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
+    // Validate OPENAI_API_KEY before attempting spawn — Codex requires it for all operations.
+    // Fail early with a clear message rather than letting Codex exit with a confusing auth error.
+    if (!process.env['OPENAI_API_KEY']) {
+      logger.error(
+        'Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file.',
+      );
+      throw new Error(
+        'Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file.',
+      );
+    }
+
     // Start with `exec` subcommand for non-interactive mode
     const args: string[] = ['exec', '--skip-git-repo-check'];
 

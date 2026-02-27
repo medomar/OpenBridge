@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 39 | **In Progress:** 0 | **Done:** 2
+> **Pending:** 38 | **In Progress:** 0 | **Done:** 3
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -35,7 +35,7 @@
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 1   | OB-1091 | **Add `--skip-git-repo-check` to Codex adapter** in `src/core/adapters/codex-adapter.ts` (line 44) — always push `'--skip-git-repo-check'` after `'exec'`. OpenBridge already validates workspace path separately (`workspace-manager.ts`). Without this flag, Codex exits immediately with code 1 from non-git or untrusted directories. This is the **#1 cause** of all Codex worker failures.                         | ✅ Done   |
 | 2   | OB-1092 | **Default sandbox to `read-only` when no tools specified** in `src/core/adapters/codex-adapter.ts` (line 139-140) — change `inferSandboxMode()` to return `'read-only'` instead of `undefined` when `allowedTools` is empty/undefined. Currently, no `--sandbox` flag is passed, letting Codex use its default (permissive). Workers with no explicit tool profile should be restricted, not unrestricted.               | ✅ Done   |
-| 3   | OB-1093 | **Validate OPENAI_API_KEY before spawn** in `src/core/adapters/codex-adapter.ts` — in `buildSpawnConfig()`, check `process.env['OPENAI_API_KEY']` exists. If missing, log a clear error: `"Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file."` and throw `Error` (caught by AgentRunner retry logic, classified as 'auth'). Prevents confusing timeout/crash errors.                | ◻ Pending |
+| 3   | OB-1093 | **Validate OPENAI_API_KEY before spawn** in `src/core/adapters/codex-adapter.ts` — in `buildSpawnConfig()`, check `process.env['OPENAI_API_KEY']` exists. If missing, log a clear error: `"Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file."` and throw `Error` (caught by AgentRunner retry logic, classified as 'auth'). Prevents confusing timeout/crash errors.                | ✅ Done   |
 | 4   | OB-1094 | **Add `--json` flag for structured output** in `src/core/adapters/codex-adapter.ts` — push `'--json'` to args. This makes Codex output JSONL events to stdout (like `{"type":"message","content":"..."}`) instead of mixed terminal output. Update `execOnce()` result parsing in `agent-runner.ts` to detect JSONL format and extract the final message content. Enables reliable output capture vs. scraping raw text. | ◻ Pending |
 | 5   | OB-1095 | **Add `-o` output file for reliable result capture** in `src/core/adapters/codex-adapter.ts` — generate a temp file path, push `'-o', tempFilePath` to args. After spawn completes, read the temp file for the agent's final answer. Falls back to stdout parsing if temp file is missing. Clean up temp file after read. This is Codex's recommended way to capture output reliably.                                    | ◻ Pending |
 | 6   | OB-1096 | **Fix stdin to `'ignore'`** in `src/core/adapters/codex-adapter.ts` (line 91) — change `stdin: 'pipe'` to remove the `stdin` field entirely (defaults to `'ignore'` in `execOnce()`). `codex exec --ephemeral` is non-interactive; piped stdin is unnecessary and may cause hangs on some Codex versions. Matches Claude and Aider adapter behavior.                                                                     | ◻ Pending |
@@ -131,7 +131,7 @@
 
 | Phase  | Name                                        | Tasks   | Finding        | Priority | Effort       |
 | ------ | ------------------------------------------- | ------- | -------------- | -------- | ------------ |
-| **57** | Fix Codex Worker Failures (Track A)         | 8 (1✅) | OB-F37         | HIGH     | Medium       |
+| **57** | Fix Codex Worker Failures (Track A)         | 8 (3✅) | OB-F37         | HIGH     | Medium       |
 | **58** | Codex Provider (Track B)                    | 7       | OB-F37         | HIGH     | Large        |
 | **59** | Codex Documentation + Validation            | 6       | OB-F37         | HIGH     | Small–Medium |
 | **60** | MCP Core Pipeline + Master Awareness        | 9       | OB-F36         | Medium   | Medium       |
