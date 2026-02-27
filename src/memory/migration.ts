@@ -21,32 +21,69 @@ import { recordTask, recordLearning } from './task-store.js';
 // Schema migrations (ALTER TABLE for existing databases)
 // ---------------------------------------------------------------------------
 
+interface Migration {
+  version: number;
+  description: string;
+  apply: (db: Database.Database) => void;
+}
+
 /**
- * Apply incremental schema changes to an existing database.
- * Each ALTER TABLE is guarded by a column-existence check so it is safe
- * to call on both fresh and pre-existing databases.
+ * Numbered schema migrations. Each entry maps to a row in schema_versions.
+ * Migrations are guarded by column-existence checks so they are safe to
+ * call on both fresh and pre-existing databases.
+ */
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    description: 'Add pid column to agent_activity',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('agent_activity') WHERE name='pid'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE agent_activity ADD COLUMN pid INTEGER');
+      }
+    },
+  },
+  {
+    version: 2,
+    description: 'Add title column to conversations',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('conversations') WHERE name='title'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE conversations ADD COLUMN title TEXT');
+      }
+    },
+  },
+];
+
+/**
+ * Apply all numbered schema migrations to the database.
+ * Each migration is idempotent (guarded by column-existence check) and its
+ * version is recorded in schema_versions (INSERT OR IGNORE) so the table
+ * reflects which migrations have been applied.
  */
 export function applySchemaChanges(db: Database.Database): void {
-  const hasPidColumn =
-    (
-      db
-        .prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('agent_activity') WHERE name='pid'`)
-        .get() as { c: number }
-    ).c > 0;
+  const now = new Date().toISOString();
+  const recordVersion = db.prepare(
+    `INSERT OR IGNORE INTO schema_versions (version, applied_at, description) VALUES (?, ?, ?)`,
+  );
 
-  if (!hasPidColumn) {
-    db.exec('ALTER TABLE agent_activity ADD COLUMN pid INTEGER');
-  }
-
-  const hasTitleColumn =
-    (
-      db
-        .prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('conversations') WHERE name='title'`)
-        .get() as { c: number }
-    ).c > 0;
-
-  if (!hasTitleColumn) {
-    db.exec('ALTER TABLE conversations ADD COLUMN title TEXT');
+  for (const migration of MIGRATIONS) {
+    migration.apply(db);
+    recordVersion.run(migration.version, now, migration.description);
   }
 }
 
