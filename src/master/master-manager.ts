@@ -576,28 +576,33 @@ export class MasterManager {
   }
 
   /**
-   * Retrieve conversation context for the Master's system prompt (OB-731, OB-1022).
+   * Retrieve conversation context for the Master's system prompt (OB-731, OB-1022, OB-1025).
    * Primary: load memory.md (Master's curated brain — always small, always relevant).
-   * Fallback: FTS5 keyword search when memory.md is empty or missing.
+   * Explicit fallback: BM25-ranked cross-session FTS5 via searchConversations() (OB-1025).
+   *   - When memory.md is present: supplements with cross-session hits not yet in memory.md.
+   *   - When memory.md is absent/empty: serves as the sole context source.
    */
   private async buildConversationContext(userMessage: string): Promise<string | null> {
     // Primary: load memory.md (OB-1022)
+    let memorySection: string | null = null;
     try {
       const memoryContent = await this.dotFolder.readMemoryFile();
       if (memoryContent && memoryContent.trim().length > 0) {
-        return '## Memory:\n' + memoryContent.trim();
+        memorySection = '## Memory:\n' + memoryContent.trim();
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to read memory.md for context injection');
     }
 
-    // Fallback: FTS5 keyword search when memory.md is empty or missing
-    if (!this.memory) return null;
+    // Explicit fallback: cross-session FTS5 search via searchConversations() (OB-1025).
+    // When memory.md is present this supplements topics not yet captured there.
+    // When memory.md is absent this is the primary context source.
+    if (!this.memory) return memorySection;
     try {
-      const history = await this.memory.findRelevantHistory(userMessage, 5);
+      const crossSession = await this.memory.searchConversations(userMessage, 5);
       // Only include user and master turns — skip worker/system noise
-      const relevant = history.filter((e) => e.role === 'user' || e.role === 'master');
-      if (relevant.length === 0) return null;
+      const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
+      if (relevant.length === 0) return memorySection;
 
       const lines = relevant.map((e) => {
         const dateStr = e.created_at
@@ -608,10 +613,17 @@ export class MasterManager {
         return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
       });
 
-      return '## Previous context:\n' + lines.join('\n');
+      const crossSessionSection = '## Related past conversations:\n' + lines.join('\n');
+      if (memorySection) {
+        return memorySection + '\n\n' + crossSessionSection;
+      }
+      return crossSessionSection;
     } catch (err) {
-      logger.warn({ err }, 'Failed to retrieve conversation history for context injection');
-      return null;
+      logger.warn(
+        { err },
+        'Failed to retrieve cross-session conversation history for context injection',
+      );
+      return memorySection;
     }
   }
 
