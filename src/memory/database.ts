@@ -207,6 +207,23 @@ function createSchema(db: Database.Database): void {
       status         TEXT    NOT NULL DEFAULT 'active'
     );
 
+    -- audit_log: structured audit trail (replaces flat-file JSONL)
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp      TEXT    NOT NULL,
+      event          TEXT    NOT NULL,
+      message_id     TEXT,
+      sender         TEXT,
+      source         TEXT,
+      recipient      TEXT,
+      content_length INTEGER,
+      error          TEXT,
+      metadata       TEXT
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS audit_log_fts
+      USING fts5(event, sender, source, recipient, error);
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
@@ -220,5 +237,8 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_agent_activity_type    ON agent_activity(type);
     CREATE INDEX IF NOT EXISTS idx_exploration_id         ON exploration_progress(exploration_id);
     CREATE INDEX IF NOT EXISTS idx_exploration_status     ON exploration_progress(status);
+    CREATE INDEX IF NOT EXISTS idx_audit_event            ON audit_log(event);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp        ON audit_log(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_sender           ON audit_log(sender);
   `);
 }

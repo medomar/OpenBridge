@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 31 | **In Progress:** 0 | **Done:** 19
+> **Pending:** 30 | **In Progress:** 0 | **Done:** 20
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -58,7 +58,7 @@
 | 17  | OB-1023 | OB-F29  | Add "update memory" prompt on session end — when Master session ends or after N messages, send final prompt: "Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics." Master writes via worker with `Write` tool | ✅ Done   |
 | 18  | OB-1024 | OB-F29  | Add `memory.md` instructions to Master system prompt (`master-system-prompt.ts`) — what to remember, what not to remember, 200-line cap, merge topics guidance                                                                                       | ✅ Done   |
 | 19  | OB-1025 | OB-F29  | Wire `searchConversations()` as explicit fallback — when Master detects current topic not covered by `memory.md`, query FTS5 for cross-session results                                                                                               | ✅ Done   |
-| 20  | OB-1026 | OB-F29  | Schedule `evictOldData()` on Bridge startup + `setInterval(24h)` — wire existing eviction system in `bridge.ts` or `index.ts`                                                                                                                        | ◻ Pending |
+| 20  | OB-1026 | OB-F29  | Schedule `evictOldData()` on Bridge startup + `setInterval(24h)` — wire existing eviction system in `bridge.ts` or `index.ts`                                                                                                                        | ✅ Done   |
 | 21  | OB-1027 | OB-F29  | Add unit tests for `readMemoryFile()` / `writeMemoryFile()` + integration test for memory context injection in Master prompt                                                                                                                         | ◻ Pending |
 
 ---
