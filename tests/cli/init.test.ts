@@ -114,6 +114,58 @@ describe('buildConfig', () => {
       },
     });
   });
+
+  it('should include mcp section when mcpServers provided', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      mcpServers: [{ name: 'canva', command: 'npx -y @anthropic/canva-mcp-server' }],
+    });
+
+    expect(config).toHaveProperty('mcp');
+    const mcp = config['mcp'] as Record<string, unknown>;
+    expect(mcp['enabled']).toBe(true);
+    expect(mcp['servers']).toEqual([
+      { name: 'canva', command: 'npx -y @anthropic/canva-mcp-server' },
+    ]);
+    expect(mcp).not.toHaveProperty('configPath');
+  });
+
+  it('should include mcp section when mcpConfigPath provided', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      mcpConfigPath: '~/.claude/claude_desktop_config.json',
+    });
+
+    expect(config).toHaveProperty('mcp');
+    const mcp = config['mcp'] as Record<string, unknown>;
+    expect(mcp['enabled']).toBe(true);
+    expect(mcp['servers']).toEqual([]);
+    expect(mcp['configPath']).toBe('~/.claude/claude_desktop_config.json');
+  });
+
+  it('should include both servers and configPath in mcp section', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      mcpServers: [{ name: 'gmail', command: 'npx -y @anthropic/gmail-mcp-server' }],
+      mcpConfigPath: '~/.claude/claude_desktop_config.json',
+    });
+
+    const mcp = config['mcp'] as Record<string, unknown>;
+    expect(mcp['servers']).toHaveLength(1);
+    expect(mcp['configPath']).toBe('~/.claude/claude_desktop_config.json');
+  });
+
+  it('should not include mcp section when no mcp data provided', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).not.toHaveProperty('mcp');
+  });
 });
 
 describe('runInit', () => {
@@ -139,6 +191,7 @@ describe('runInit', () => {
       '/home/user/my-project', // workspace path
       '+1234567890', // whitelist
       '/ai', // prefix
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -162,6 +215,7 @@ describe('runInit', () => {
     const { input, output } = createLineFeeder([
       'console', // connector
       '/home/user/my-project', // workspace path
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -179,6 +233,7 @@ describe('runInit', () => {
     const { input, output } = createLineFeeder([
       '', // empty = default console
       '/home/user/project', // workspace path
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -196,6 +251,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '+555', // whitelist
       '', // prefix — default /ai
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -258,6 +314,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '+1234567890', // whitelist
       '', // prefix
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -274,6 +331,7 @@ describe('runInit', () => {
       'telegram', // connector
       '/home/user/project', // workspace path
       '123456:ABC-DEF', // bot token
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -302,6 +360,7 @@ describe('runInit', () => {
       'discord', // connector
       '/home/user/project', // workspace path
       'MTk4NjIy.discord-token', // bot token
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -326,11 +385,99 @@ describe('runInit', () => {
   });
 
   it('should show updated success message with both start options', async () => {
-    const { input, output } = createLineFeeder(['console', '/home/user/project']);
+    const { input, output } = createLineFeeder([
+      'console',
+      '/home/user/project',
+      'n', // MCP: skip
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
     expect(output.data).toContain('npm run dev');
     expect(output.data).toContain('node dist/index.js');
+  });
+
+  it('should generate mcp section when user enables MCP with servers', async () => {
+    const { input, output } = createLineFeeder([
+      'console', // connector
+      '/home/user/project', // workspace path
+      'y', // Enable MCP
+      'canva', // server name
+      'npx -y @anthropic/canva-mcp-server', // command
+      'done', // finish servers
+      '', // skip configPath
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).toHaveProperty('mcp');
+    const mcp = config['mcp'] as Record<string, unknown>;
+    expect(mcp['enabled']).toBe(true);
+    const servers = mcp['servers'] as Array<{ name: string; command: string }>;
+    expect(servers).toHaveLength(1);
+    expect(servers[0]?.name).toBe('canva');
+    expect(servers[0]?.command).toBe('npx -y @anthropic/canva-mcp-server');
+    expect(mcp).not.toHaveProperty('configPath');
+  });
+
+  it('should generate mcp section with configPath when provided', async () => {
+    const { input, output } = createLineFeeder([
+      'console', // connector
+      '/home/user/project', // workspace path
+      'y', // Enable MCP
+      'done', // no servers
+      '~/.claude/claude_desktop_config.json', // configPath
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).toHaveProperty('mcp');
+    const mcp = config['mcp'] as Record<string, unknown>;
+    expect(mcp['configPath']).toBe('~/.claude/claude_desktop_config.json');
+    expect(mcp['servers']).toEqual([]);
+  });
+
+  it('should not add mcp section when user enables MCP but provides nothing', async () => {
+    const { input, output } = createLineFeeder([
+      'console', // connector
+      '/home/user/project', // workspace path
+      'y', // Enable MCP
+      'done', // no servers
+      '', // skip configPath
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).not.toHaveProperty('mcp');
+  });
+
+  it('should generate mcp section with multiple servers', async () => {
+    const { input, output } = createLineFeeder([
+      'console', // connector
+      '/home/user/project', // workspace path
+      'y', // Enable MCP
+      'canva', // server 1 name
+      'npx -y @anthropic/canva-mcp-server', // server 1 command
+      'gmail', // server 2 name
+      'npx -y @anthropic/gmail-mcp-server', // server 2 command
+      'done', // finish servers
+      '', // skip configPath
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const mcp = config['mcp'] as Record<string, unknown>;
+    const servers = mcp['servers'] as Array<{ name: string; command: string }>;
+    expect(servers).toHaveLength(2);
+    expect(servers[0]?.name).toBe('canva');
+    expect(servers[1]?.name).toBe('gmail');
   });
 });

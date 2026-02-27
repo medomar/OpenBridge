@@ -10,11 +10,18 @@ export interface InitOptions {
   outputPath?: string;
 }
 
+interface McpServerEntry {
+  name: string;
+  command: string;
+}
+
 interface Answers {
   connector: string;
   workspacePath: string;
   whitelist?: string[];
   prefix?: string;
+  mcpServers?: McpServerEntry[];
+  mcpConfigPath?: string;
 }
 
 const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
@@ -38,6 +45,17 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
       whitelist: answers.whitelist,
       prefix: answers.prefix ?? '/ai',
     };
+  }
+
+  if (answers.mcpServers?.length || answers.mcpConfigPath) {
+    const mcp: Record<string, unknown> = {
+      enabled: true,
+      servers: answers.mcpServers ?? [],
+    };
+    if (answers.mcpConfigPath) {
+      mcp['configPath'] = answers.mcpConfigPath;
+    }
+    config['mcp'] = mcp;
   }
 
   return config;
@@ -130,6 +148,36 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       discordChannels[0]!['botToken'] = botToken;
     } else {
       config = buildConfig({ connector, workspacePath });
+    }
+
+    // Optional: MCP server configuration
+    write('\n');
+    const mcpAnswer = await ask(rl, '  Enable MCP servers for external service access? (y/N): ');
+    if (mcpAnswer.toLowerCase() === 'y') {
+      const servers: McpServerEntry[] = [];
+      write("  Add MCP servers. Enter 'done' as server name to finish.\n");
+      for (;;) {
+        const serverName = await ask(rl, "  Server name (or 'done' to finish): ");
+        if (!serverName || serverName.toLowerCase() === 'done') break;
+        const command = await ask(rl, '  Command (e.g. npx -y @anthropic/canva-mcp-server): ');
+        if (command) {
+          servers.push({ name: serverName, command });
+        }
+      }
+      const configPathAnswer = await ask(
+        rl,
+        '  Import MCP config from Claude Desktop? (path or skip): ',
+      );
+      if (servers.length > 0 || configPathAnswer) {
+        const mcp: Record<string, unknown> = {
+          enabled: true,
+          servers,
+        };
+        if (configPathAnswer) {
+          mcp['configPath'] = configPathAnswer;
+        }
+        config['mcp'] = mcp;
+      }
     }
 
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');

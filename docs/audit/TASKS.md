@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 10 | **In Progress:** 0 | **Done:** 31
+> **Pending:** 9 | **In Progress:** 0 | **Done:** 32
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -106,7 +106,7 @@
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 31  | OB-1079 | **Add MCP server health checks** in `src/core/health.ts` — extend `HealthStatus` with `mcp: { enabled: boolean, servers: Array<{ name: string, status: 'configured' \| 'error', command: string }> }`. On health check, verify each configured MCP server's command exists on PATH via `which`. Report in `/health` endpoint. Gracefully handle case where `mcp` is not configured (omit section or show `enabled: false`). | ✅ Done   |
 | 32  | OB-1081 | **Update `config.example.json`** — add `mcp` section with two example servers: one inline (filesystem) and one showing `env` vars (generic external service). Add `configPath` example (commented out) pointing to Claude Desktop config. Keep minimal — users should understand it in 10 seconds.                                                                                                                          | ✅ Done   |
-| 33  | OB-1082 | **Update `npx openbridge init`** in `src/cli/init.ts` — add optional step after auth config: "Enable MCP servers for external service access? (y/N)". If yes: ask for server name + command (loop until 'done'). Also ask: "Import existing MCP config from Claude Desktop? (path or skip)". Generate `mcp` section in output. Keep simple — advanced users edit JSON directly.                                             | ◻ Pending |
+| 33  | OB-1082 | **Update `npx openbridge init`** in `src/cli/init.ts` — add optional step after auth config: "Enable MCP servers for external service access? (y/N)". If yes: ask for server name + command (loop until 'done'). Also ask: "Import existing MCP config from Claude Desktop? (path or skip)". Generate `mcp` section in output. Keep simple — advanced users edit JSON directly.                                             | ✅ Done   |
 | 34  | OB-1080 | **Unit tests for UX polish** — (a) health endpoint includes MCP status when configured, omits when not, correctly reports `which` results; (b) CLI init generates valid MCP config, skipping produces no `mcp` field, multiple servers work, `configPath` import works. Target: `tests/core/mcp-health.test.ts` + `tests/cli/init-mcp.test.ts`.                                                                             | ◻ Pending |
 
 ---
@@ -135,7 +135,7 @@
 | **58** | Codex Provider (Track B)                    | 7 (7✅) | OB-F37         | HIGH     | Large        |
 | **59** | Codex Documentation + Validation            | 6 (6✅) | OB-F37         | HIGH     | Small–Medium |
 | **60** | MCP Core Pipeline + Master Awareness        | 9 (3✅) | OB-F36         | Medium   | Medium       |
-| **61** | MCP UX Polish (health, CLI, example config) | 4 (2✅) | OB-F36         | Medium   | Small        |
+| **61** | MCP UX Polish (health, CLI, example config) | 4 (3✅) | OB-F36         | Medium   | Small        |
 | **62** | MCP Documentation + Validation              | 7       | OB-F36         | Medium   | Small–Medium |
 |        | **Total**                                   | **41**  | **2 findings** |          |              |
 
