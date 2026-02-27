@@ -22,12 +22,19 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args[0]).toBe('exec');
   });
 
-  it('builds minimal args: exec + --skip-git-repo-check + --ephemeral + prompt', () => {
+  it('builds minimal args: exec + --skip-git-repo-check + --sandbox read-only + --ephemeral + prompt', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'List all files',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).toEqual(['exec', '--skip-git-repo-check', '--ephemeral', 'List all files']);
+    expect(config.args).toEqual([
+      'exec',
+      '--skip-git-repo-check',
+      '--sandbox',
+      'read-only',
+      '--ephemeral',
+      'List all files',
+    ]);
   });
 
   it('always includes --skip-git-repo-check (required for non-git workspaces)', () => {
@@ -80,12 +87,13 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).not.toContain('--sandbox');
   });
 
-  it('does not add --sandbox when no tools specified', () => {
+  it('defaults to --sandbox read-only when no tools specified (safe default)', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Do something',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).not.toContain('--sandbox');
+    expect(config.args).toContain('--sandbox');
+    expect(config.args).toContain('read-only');
     expect(config.args).not.toContain('--full-auto');
   });
 

@@ -135,10 +135,10 @@ export class CodexAdapter implements CLIAdapter {
    * Heuristic:
    *   - Bash(*) present        → danger-full-access (unrestricted)
    *   - Edit or Write present  → workspace-write (file modifications)
-   *   - Otherwise              → read-only
+   *   - Otherwise (incl. empty/undefined) → read-only (safe default)
    */
-  private inferSandboxMode(allowedTools?: string[]): string | undefined {
-    if (!allowedTools || allowedTools.length === 0) return undefined;
+  private inferSandboxMode(allowedTools?: string[]): string {
+    if (!allowedTools || allowedTools.length === 0) return 'read-only';
 
     const hasUnrestrictedBash = allowedTools.some((t) => t === 'Bash(*)');
     const hasEditWrite = allowedTools.some((t) => t === 'Edit' || t === 'Write');
