@@ -12,6 +12,7 @@
  *   --full-auto                   Auto-approve all actions (convenience flag)
  *   --skip-git-repo-check         Skip git repo trust check (required for non-git workspaces)
  *   --json                        Output JSONL events to stdout (structured output)
+ *   -o, --output-last-message <FILE>  Write final answer to file (reliable capture)
  *   -C, --cd <DIR>                Working directory
  *   --ephemeral                   No session persistence
  *   <prompt>                      Positional argument (after exec)
@@ -24,6 +25,10 @@
  *   --allowedTools     → mapped to --sandbox via heuristic
  */
 
+import { readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../cli-adapter.js';
 import type { SpawnOptions } from '../agent-runner.js';
 import { sanitizePrompt } from '../agent-runner.js';
@@ -108,6 +113,11 @@ export class CodexAdapter implements CLIAdapter {
     // AgentRunner applies parseOutput() to extract the final message content.
     args.push('--json');
 
+    // -o / --output-last-message: Codex's recommended way to capture the final answer reliably.
+    // Generates a unique temp file; parseOutput reads it after process exit and cleans up.
+    const tempFile = join(tmpdir(), `ob-codex-${Date.now()}-${randomBytes(4).toString('hex')}.txt`);
+    args.push('-o', tempFile);
+
     // systemPrompt: prepend to the prompt text (codex has no --append-system-prompt)
     let prompt = sanitizePrompt(opts.prompt);
     if (opts.systemPrompt) {
@@ -136,7 +146,25 @@ export class CodexAdapter implements CLIAdapter {
       args,
       env: this.cleanEnv({ ...process.env }),
       stdin: 'pipe', // codex checks for TTY
-      parseOutput: parseCodexJsonlOutput,
+      parseOutput: (stdout: string): string => {
+        // Prefer the -o temp file — Codex writes the final answer there reliably.
+        // Falls back to --json JSONL parsing if the file is missing or unreadable
+        // (older Codex versions, unsupported flag, or process crash before write).
+        try {
+          const content = readFileSync(tempFile, 'utf-8').trim();
+          if (content) {
+            try {
+              unlinkSync(tempFile);
+            } catch {
+              // Best-effort cleanup — not critical if it fails
+            }
+            return content;
+          }
+        } catch {
+          // Temp file not found or unreadable — fall through to JSONL parsing
+        }
+        return parseCodexJsonlOutput(stdout);
+      },
     };
   }
 
