@@ -155,6 +155,7 @@ describe('MasterManager.resumeSession() (OB-1054)', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (masterManager) {
       await masterManager.shutdown();
     }
