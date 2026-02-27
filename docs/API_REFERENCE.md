@@ -46,13 +46,20 @@ This document covers every public interface, class, and configuration schema in 
   - [AuditConfig](#auditconfig)
   - [HealthConfig](#healthconfig)
   - [MetricsConfig](#metricsconfig)
+- [Memory Classes](#memory-classes)
+  - [ConversationStore](#conversationstore)
+- [Master AI Classes](#master-ai-classes)
+  - [DotFolderManager](#dotfoldermanager)
 - [Utility Functions](#utility-functions)
   - [loadConfig()](#loadconfig)
   - [scanForAITools()](#scanforaitools)
   - [createLogger()](#createlogger)
+- [Built-in Commands](#built-in-commands)
+  - [/history](#history-command)
 - [HTTP Endpoints](#http-endpoints)
   - [Health Check](#health-check-endpoint)
   - [Metrics](#metrics-endpoint)
+  - [Sessions (WebChat)](#sessions-endpoints-webchat)
 
 ---
 
@@ -564,6 +571,205 @@ The original config format. Still fully supported — auto-detected by the confi
 
 ---
 
+## Memory Classes
+
+### ConversationStore
+
+_Source: `src/memory/conversation-store.ts`_
+
+Functions for querying conversation history stored in the SQLite memory database.
+
+#### listSessions()
+
+```typescript
+function listSessions(db: Database.Database, limit?: number, offset?: number): SessionSummary[];
+```
+
+Returns a paginated list of conversation sessions ordered by most recent activity.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `limit`   | `number`            | `20`    | Maximum sessions to return |
+| `offset`  | `number`            | `0`     | Pagination offset          |
+
+**Returns:** `SessionSummary[]` — sessions ordered by `last_message_at DESC`.
+
+**SessionSummary:**
+
+| Property           | Type             | Description                                   |
+| ------------------ | ---------------- | --------------------------------------------- |
+| `session_id`       | `string`         | Unique session identifier                     |
+| `title`            | `string \| null` | Session title (first user message, ≤50 chars) |
+| `first_message_at` | `string`         | ISO 8601 timestamp of first message           |
+| `last_message_at`  | `string`         | ISO 8601 timestamp of most recent message     |
+| `message_count`    | `number`         | Total messages in the session                 |
+| `channel`          | `string \| null` | Channel that originated the session           |
+| `user_id`          | `string \| null` | Sender identifier                             |
+
+#### searchSessions()
+
+```typescript
+function searchSessions(db: Database.Database, query: string, limit?: number): SessionSummary[];
+```
+
+Full-text search over conversation content returning session-level results via FTS5.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `query`   | `string`            | —       | Search query string        |
+| `limit`   | `number`            | `10`    | Maximum sessions to return |
+
+**Returns:** `SessionSummary[]` ranked by number of matching messages, then by recency. Returns `[]` if query is empty or no matches found. FTS5 special characters are sanitized before querying.
+
+#### getSessionHistory()
+
+```typescript
+function getSessionHistory(
+  db: Database.Database,
+  sessionId: string,
+  limit?: number,
+): ConversationEntry[];
+```
+
+Retrieves the full message transcript for one conversation session.
+
+| Parameter   | Type                | Default | Description                                                 |
+| ----------- | ------------------- | ------- | ----------------------------------------------------------- |
+| `db`        | `Database.Database` | —       | SQLite database instance                                    |
+| `sessionId` | `string`            | —       | Session ID to retrieve                                      |
+| `limit`     | `number`            | `50`    | Maximum messages to return (most recent, then oldest-first) |
+
+**Returns:** `ConversationEntry[]` in chronological order (oldest first). Returns `[]` if session not found.
+
+**ConversationEntry:**
+
+| Property     | Type                                         | Description                      |
+| ------------ | -------------------------------------------- | -------------------------------- |
+| `id`         | `number`                                     | Auto-increment row ID            |
+| `session_id` | `string`                                     | Parent session identifier        |
+| `role`       | `'user' \| 'master' \| 'worker' \| 'system'` | Who sent this message            |
+| `content`    | `string`                                     | Message text                     |
+| `channel`    | `string \| undefined`                        | Channel that carried the message |
+| `user_id`    | `string \| undefined`                        | Sender identifier                |
+| `created_at` | `string`                                     | ISO 8601 timestamp               |
+
+---
+
+## Master AI Classes
+
+### DotFolderManager
+
+_Source: `src/master/dotfolder-manager.ts`_
+
+Manages the `.openbridge/` folder in the target workspace: exploration state, context memory, and the prompt library.
+
+#### Prompt Library Methods
+
+##### readPromptManifest()
+
+```typescript
+readPromptManifest(): Promise<PromptManifest | null>
+```
+
+Reads `.openbridge/prompts/manifest.json` and returns the parsed manifest, or `null` if the file does not exist or fails to parse.
+
+##### writePromptManifest()
+
+```typescript
+writePromptManifest(manifest: PromptManifest): Promise<void>
+```
+
+Validates and writes the manifest to `.openbridge/prompts/manifest.json`. Creates the `prompts/` directory if needed.
+
+##### writePromptTemplate()
+
+```typescript
+writePromptTemplate(
+  filename: string,
+  content: string,
+  metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt'>,
+): Promise<void>
+```
+
+Writes a prompt template `.md` file to `.openbridge/prompts/<filename>` and creates or updates its entry in the manifest. Preserves `createdAt` when overwriting; sets `previousVersion` and `previousSuccessRate` when updating an existing entry.
+
+##### getPromptTemplate()
+
+```typescript
+getPromptTemplate(id: string): Promise<PromptTemplate | null>
+```
+
+Looks up a prompt template by ID in the manifest. Returns `null` if the manifest does not exist or the ID is not found.
+
+##### recordPromptUsage()
+
+```typescript
+recordPromptUsage(id: string, success: boolean): Promise<void>
+```
+
+Increments `usageCount`, conditionally increments `successCount`, recalculates `successRate = successCount / usageCount`, and updates `lastUsedAt`. No-op if the prompt ID is not found.
+
+##### getLowPerformingPrompts()
+
+```typescript
+getLowPerformingPrompts(threshold: number): Promise<PromptTemplate[]>
+```
+
+Returns all prompts where `usageCount >= 3` AND `successRate < threshold`. Used by the prompt evolver to identify candidates for refinement.
+
+##### resetPromptStats()
+
+```typescript
+resetPromptStats(id: string): Promise<void>
+```
+
+Zeros `usageCount`, `successCount`, and `successRate`. Preserves the previous value in `previousSuccessRate` before resetting. No-op if the ID is not found.
+
+#### Memory File Methods
+
+##### readMemoryFile()
+
+```typescript
+readMemoryFile(): Promise<string | null>
+```
+
+Reads `.openbridge/context/memory.md` and returns its content as a string, or `null` if the file does not exist. This file is the Master AI's curated cross-session memory.
+
+##### writeMemoryFile()
+
+```typescript
+writeMemoryFile(content: string): Promise<void>
+```
+
+Writes content to `.openbridge/context/memory.md`. Validates that content is at most 200 lines — throws if exceeded. Creates the `context/` directory if it doesn't exist.
+
+**Prompt Types** — _Source: `src/types/master.ts`_
+
+| Type             | Description                                   |
+| ---------------- | --------------------------------------------- |
+| `PromptManifest` | `{ prompts: Record<string, PromptTemplate> }` |
+| `PromptTemplate` | Full metadata object for one prompt template  |
+
+**PromptTemplate fields:**
+
+| Property              | Type             | Description                                    |
+| --------------------- | ---------------- | ---------------------------------------------- |
+| `id`                  | `string`         | Unique prompt identifier                       |
+| `name`                | `string`         | Human-readable name                            |
+| `filePath`            | `string`         | Path to the `.md` file                         |
+| `usageCount`          | `number`         | Total times this prompt was used               |
+| `successCount`        | `number`         | Times the prompt produced a successful outcome |
+| `successRate`         | `number`         | `successCount / usageCount` (0–1)              |
+| `createdAt`           | `string`         | ISO 8601 creation timestamp                    |
+| `updatedAt`           | `string`         | ISO 8601 last-modified timestamp               |
+| `lastUsedAt`          | `string \| null` | ISO 8601 last-used timestamp                   |
+| `previousVersion`     | `string \| null` | Content of the previous version (on update)    |
+| `previousSuccessRate` | `number \| null` | Success rate before last reset                 |
+
+---
+
 ## Utility Functions
 
 ### loadConfig()
@@ -595,6 +801,77 @@ function createLogger(name: string, level?: string): pino.Logger;
 ```
 
 Creates a [Pino](https://getpino.io) logger instance. Uses `pino-pretty` in non-production environments.
+
+---
+
+## Built-in Commands
+
+Built-in commands are intercepted by the Router before any message reaches the Master AI. They require the memory system to be initialized.
+
+### /history Command
+
+_Source: `src/core/router.ts`_
+
+Provides access to past conversation sessions. Three subcommands:
+
+#### `/history` (bare)
+
+Lists the last 10 conversation sessions with title, message count, and date.
+
+```
+/history
+```
+
+**Response (WhatsApp/Telegram/Discord):**
+
+```
+1. What is the project structure? — 12 msgs — 2026-01-15
+2. Fix the auth bug — 4 msgs — 2026-01-14
+...
+```
+
+**Response (Console):** ASCII table with aligned columns.
+
+**Response (WebChat):** HTML table with `<tr>/<td>` cells.
+
+#### `/history search <query>`
+
+Full-text search across all past sessions by keyword. Returns up to 10 matching sessions ranked by relevance.
+
+```
+/history search authentication
+```
+
+**Error:** Returns an error message if `query` is empty.
+
+#### `/history <session-id>`
+
+Displays the full conversation transcript for one session (up to 50 messages, oldest first).
+
+```
+/history a1b2c3d4-...
+```
+
+**Response (WhatsApp/Telegram/Discord):**
+
+```
+[2026-01-15 10:30] User: What is the project structure?
+[2026-01-15 10:30] Master: The project has src/, tests/, and docs/ directories...
+```
+
+**Response (Console):** Plain text with separator lines.
+
+**Response (WebChat):** HTML `<div class="msg">` bubbles with time and role.
+
+**Error responses:**
+
+| Condition                         | Message                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| Memory not initialized            | `History not available — memory system not initialized`                  |
+| DB query failure                  | `History search/list temporarily unavailable — could not query sessions` |
+| No sessions found (bare)          | `No past sessions found`                                                 |
+| No sessions found (search)        | `No sessions found matching <query>`                                     |
+| Session ID not found (transcript) | `No conversation found for session: <id>`                                |
 
 ---
 
@@ -651,3 +928,94 @@ Enabled via `metrics.enabled: true` in config. Default port: `9090`.
   "errors": { "total": 3, "transient": 2, "permanent": 1 }
 }
 ```
+
+---
+
+### Sessions Endpoints (WebChat)
+
+_Source: `src/connectors/webchat/webchat-connector.ts`_
+
+Available when the WebChat connector is enabled. Requires the memory system to be initialized (memory must be wired via `setMemory()` on the connector).
+
+#### GET /api/sessions
+
+Returns a paginated list of conversation sessions.
+
+**Query Parameters:**
+
+| Parameter | Type     | Default | Description                               |
+| --------- | -------- | ------- | ----------------------------------------- |
+| `limit`   | `number` | `20`    | Max sessions to return (clamped to 1–100) |
+| `offset`  | `number` | `0`     | Pagination offset (min 0)                 |
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "session_id": "uuid-or-sender-id",
+    "title": "What is the project structure?",
+    "first_message_at": "2026-01-15T10:30:00.000Z",
+    "last_message_at": "2026-01-15T11:45:30.000Z",
+    "message_count": 12,
+    "channel": "whatsapp",
+    "user_id": "+1234567890"
+  }
+]
+```
+
+**Error Responses:**
+
+| Status | Body                                | Condition               |
+| ------ | ----------------------------------- | ----------------------- |
+| `503`  | `{"error":"Memory not available"}`  | MemoryManager not wired |
+| `500`  | `{"error":"Internal server error"}` | DB query error          |
+
+#### GET /api/sessions/:id
+
+Returns the full conversation transcript for one session.
+
+**URL Parameter:** `id` — the session ID (URL-decoded).
+
+**Query Parameters:**
+
+| Parameter | Type     | Default | Description                               |
+| --------- | -------- | ------- | ----------------------------------------- |
+| `limit`   | `number` | `100`   | Max messages to return (clamped to 1–500) |
+
+**Response (200 OK):**
+
+```json
+{
+  "session_id": "uuid-or-sender-id",
+  "messages": [
+    {
+      "id": 1,
+      "session_id": "uuid-or-sender-id",
+      "role": "user",
+      "content": "What is the project structure?",
+      "channel": "whatsapp",
+      "user_id": "+1234567890",
+      "created_at": "2026-01-15T10:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "session_id": "uuid-or-sender-id",
+      "role": "master",
+      "content": "The project has src/, tests/, and docs/ directories...",
+      "channel": null,
+      "user_id": null,
+      "created_at": "2026-01-15T10:30:15.000Z"
+    }
+  ]
+}
+```
+
+Messages are in chronological order (oldest first).
+
+**Error Responses:**
+
+| Status | Body                                | Condition               |
+| ------ | ----------------------------------- | ----------------------- |
+| `503`  | `{"error":"Memory not available"}`  | MemoryManager not wired |
+| `500`  | `{"error":"Internal server error"}` | DB query error          |
