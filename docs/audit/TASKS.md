@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 35 | **In Progress:** 0 | **Done:** 6
+> **Pending:** 34 | **In Progress:** 0 | **Done:** 7
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -39,7 +39,7 @@
 | 4   | OB-1094 | **Add `--json` flag for structured output** in `src/core/adapters/codex-adapter.ts` — push `'--json'` to args. This makes Codex output JSONL events to stdout (like `{"type":"message","content":"..."}`) instead of mixed terminal output. Update `execOnce()` result parsing in `agent-runner.ts` to detect JSONL format and extract the final message content. Enables reliable output capture vs. scraping raw text. | ✅ Done   |
 | 5   | OB-1095 | **Add `-o` output file for reliable result capture** in `src/core/adapters/codex-adapter.ts` — generate a temp file path, push `'-o', tempFilePath` to args. After spawn completes, read the temp file for the agent's final answer. Falls back to stdout parsing if temp file is missing. Clean up temp file after read. This is Codex's recommended way to capture output reliably.                                    | ✅ Done   |
 | 6   | OB-1096 | **Fix stdin to `'ignore'`** in `src/core/adapters/codex-adapter.ts` (line 91) — change `stdin: 'pipe'` to remove the `stdin` field entirely (defaults to `'ignore'` in `execOnce()`). `codex exec --ephemeral` is non-interactive; piped stdin is unnecessary and may cause hangs on some Codex versions. Matches Claude and Aider adapter behavior.                                                                     | ✅ Done   |
-| 7   | OB-1097 | **Update Codex model list** in `src/core/adapters/codex-adapter.ts` (line 117-129) — update `isValidModel()` to include current Codex v0.104.0 models: `gpt-5.2-codex` (the new default), `o3`, `o4-mini`. Remove stale entries. Verify with `codex exec --help` output.                                                                                                                                                 | ◻ Pending |
+| 7   | OB-1097 | **Update Codex model list** in `src/core/adapters/codex-adapter.ts` (line 117-129) — update `isValidModel()` to include current Codex v0.104.0 models: `gpt-5.2-codex` (the new default), `o3`, `o4-mini`. Remove stale entries. Verify with `codex exec --help` output.                                                                                                                                                 | ✅ Done   |
 | 8   | OB-1098 | **Unit tests for Codex adapter fixes** — test: (a) `--skip-git-repo-check` always present in args, (b) default sandbox is `read-only` when no tools, (c) OPENAI_API_KEY validation throws on missing key, (d) `--json` flag present, (e) `-o` temp file arg present, (f) no `stdin` field in config (defaults to ignore), (g) updated model validation. Target: `tests/core/adapters/codex-adapter.test.ts`.             | ◻ Pending |
 
 ---
@@ -131,7 +131,7 @@
 
 | Phase  | Name                                        | Tasks   | Finding        | Priority | Effort       |
 | ------ | ------------------------------------------- | ------- | -------------- | -------- | ------------ |
-| **57** | Fix Codex Worker Failures (Track A)         | 8 (6✅) | OB-F37         | HIGH     | Medium       |
+| **57** | Fix Codex Worker Failures (Track A)         | 8 (7✅) | OB-F37         | HIGH     | Medium       |
 | **58** | Codex Provider (Track B)                    | 7       | OB-F37         | HIGH     | Large        |
 | **59** | Codex Documentation + Validation            | 6       | OB-F37         | HIGH     | Small–Medium |
 | **60** | MCP Core Pipeline + Master Awareness        | 9       | OB-F36         | Medium   | Medium       |
