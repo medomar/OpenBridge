@@ -1,6 +1,6 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-02-27 | **Current Version:** v0.0.4
+> **Last Updated:** 2026-02-27 | **Current Version:** v0.0.5
 
 This document outlines the vision and planned features for OpenBridge. Features move from **Backlog** to **Planned** to **In Progress** to **Released** as they mature.
 
@@ -49,6 +49,10 @@ Everything that shipped — 392 tasks across 53 phases.
 | MCP core pipeline: MCPServerSchema, SpawnOptions, TaskManifest, per-worker isolation, ClaudeAdapter flags, global config writer | 60    | v0.0.4      | Shipped |
 | MCP UX polish: health checks, config.example.json, CLI init MCP step                                                            | 61    | v0.0.4      | Shipped |
 | MCP documentation: ARCHITECTURE, CONFIGURATION, API_REFERENCE, CLAUDE.md, CHANGELOG, ROADMAP                                    | 62    | v0.0.4      | Shipped |
+| FTS5 query sanitization — `sanitizeFts5Query()` in `retrieval.ts`, prevents SqliteError on special chars (OB-F38)               | 63    | v0.0.5      | Shipped |
+| memory.md context injection — recent conversation history (last 20 msgs) injected into memory-update prompt (OB-F39)            | 64    | v0.0.5      | Shipped |
+| Graceful shutdown — 10s timeout, session state saved before memory update, user-facing shutdown message (OB-F40)                | 65    | v0.0.5      | Shipped |
+| v0.0.5 documentation — API_REFERENCE, ARCHITECTURE, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG, ROADMAP, CLAUDE.md                | 66    | v0.0.5      | Shipped |
 
 ---
 
