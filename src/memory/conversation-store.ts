@@ -132,6 +132,65 @@ export function getSessionHistory(
   return rows.reverse().map(rowToEntry);
 }
 
+// ---------------------------------------------------------------------------
+// Session listing
+// ---------------------------------------------------------------------------
+
+/** Aggregated summary of a single conversation session. */
+export interface SessionSummary {
+  session_id: string;
+  /** Session title — populated once the `title` column is added via migration (OB-1031). Null until then. */
+  title: string | null;
+  first_message_at: string;
+  last_message_at: string;
+  message_count: number;
+  channel: string | null;
+  user_id: string | null;
+}
+
+/**
+ * Return a paginated list of distinct conversation sessions ordered by most recent activity.
+ * Groups all messages by `session_id` and aggregates metadata.
+ */
+export function listSessions(db: Database.Database, limit = 20, offset = 0): SessionSummary[] {
+  interface SessionRow {
+    session_id: string;
+    title: string | null;
+    first_message_at: string;
+    last_message_at: string;
+    message_count: number;
+    channel: string | null;
+    user_id: string | null;
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT
+         session_id,
+         NULL AS title,
+         MIN(created_at) AS first_message_at,
+         MAX(created_at) AS last_message_at,
+         COUNT(*)        AS message_count,
+         MAX(channel)    AS channel,
+         MAX(user_id)    AS user_id
+       FROM conversations
+       GROUP BY session_id
+       ORDER BY last_message_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as SessionRow[];
+
+  return rows.map((r) => ({
+    session_id: r.session_id,
+    title: r.title,
+    first_message_at: r.first_message_at,
+    last_message_at: r.last_message_at,
+    message_count: r.message_count,
+    channel: r.channel,
+    user_id: r.user_id,
+  }));
+}
+
 /**
  * Delete all conversations created before `cutoffDate` and their FTS5 entries.
  * Runs inside a transaction so both tables stay in sync.
