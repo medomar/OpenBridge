@@ -373,8 +373,18 @@ export interface SpawnOptions {
   systemPrompt?: string;
   /** Maximum spend in USD for this agent run (passed as --max-budget-usd) */
   maxBudgetUsd?: number;
-  /** Path to MCP config JSON file — passed to Codex via -c flag when set */
+  /**
+   * Path to an MCP config JSON file to pass to the agent CLI.
+   * For Claude: passed as `--mcp-config <path>` so the worker can use MCP tools.
+   * For Codex: passed via the `-c` flag when set.
+   */
   mcpConfigPath?: string;
+  /**
+   * When true, passes `--strict-mcp-config` to the Claude CLI, isolating the worker
+   * from any globally configured MCP servers (e.g. ~/.claude/claude_desktop_config.json).
+   * Only the servers listed in `mcpConfigPath` will be available to the worker.
+   */
+  strictMcpConfig?: boolean;
 }
 
 /**
