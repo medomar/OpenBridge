@@ -187,6 +187,7 @@ The bridge will:
 | `src/connectors/telegram/`               | Telegram connector                                                                            |
 | `src/connectors/discord/`                | Discord connector                                                                             |
 | `src/providers/claude-code/`             | Claude Code CLI provider — streaming, sessions, errors (uses AgentRunner)                     |
+| `src/providers/codex/`                   | Codex provider — `CodexProvider`, `CodexConfig` schema, session manager (ephemeral + resume)  |
 | `src/cli/init.ts`                        | CLI config generator — 3 questions for V2 config                                              |
 | `src/cli/access.ts`                      | CLI access control tool — `openbridge access add/remove/list` (role management)               |
 
@@ -300,7 +301,8 @@ src/
 │   └── discord/                Discord
 ├── providers/
 │   ├── index.ts                Registry
-│   └── claude-code/            Claude Code CLI provider (uses AgentRunner)
+│   ├── claude-code/            Claude Code CLI provider (uses AgentRunner)
+│   └── codex/                  Codex provider (CodexProvider, CodexConfig, session-manager)
 ├── discovery/                  AI tool auto-discovery
 │   ├── index.ts                scanForAITools() export
 │   ├── tool-scanner.ts         CLI tool detection
