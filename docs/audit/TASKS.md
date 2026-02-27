@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 | **In Progress:** 0 | **Done:** 28
+> **Pending:** 21 | **In Progress:** 0 | **Done:** 29
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -76,7 +76,7 @@
 | 26  | OB-1034 | OB-F35  | Add `/history search <query>` command to `router.ts` — search past conversations by keyword via `searchSessions()`                                                                                     | ✅ Done   |
 | 27  | OB-1035 | OB-F35  | Add `/history <session-id>` command to `router.ts` — show full conversation transcript for a session via `getSessionHistory()`                                                                         | ✅ Done   |
 | 28  | OB-1036 | OB-F35  | Add `/api/sessions` REST endpoint to WebChat connector — JSON list of sessions for frontend                                                                                                            | ✅ Done   |
-| 29  | OB-1037 | OB-F35  | Add `/api/sessions/:id` REST endpoint to WebChat connector — full conversation JSON for one session                                                                                                    | ◻ Pending |
+| 29  | OB-1037 | OB-F35  | Add `/api/sessions/:id` REST endpoint to WebChat connector — full conversation JSON for one session                                                                                                    | ✅ Done   |
 | 30  | OB-1038 | OB-F35  | Add unit tests for `listSessions()`, `searchSessions()`, `/history` command parsing, REST endpoints                                                                                                    | ◻ Pending |
 
 ---
