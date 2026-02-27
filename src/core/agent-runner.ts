@@ -1,5 +1,7 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
@@ -283,6 +285,21 @@ export function resolveProfile(
 }
 
 /**
+ * Result returned by manifestToSpawnOptions().
+ * Contains the resolved SpawnOptions and a cleanup function that deletes
+ * any temporary files created for per-worker MCP isolation.
+ */
+export interface ManifestSpawnResult {
+  /** Resolved spawn options ready for AgentRunner.spawn() */
+  spawnOptions: SpawnOptions;
+  /**
+   * Async cleanup function — call after spawn completes (success or failure).
+   * Deletes the per-worker MCP temp file if one was created; no-op otherwise.
+   */
+  cleanup: () => Promise<void>;
+}
+
+/**
  * Convert a TaskManifest into SpawnOptions.
  *
  * Resolution rules:
@@ -290,11 +307,19 @@ export function resolveProfile(
  * - If only `profile` is provided, resolve it via custom profiles then built-in
  * - If neither is provided, no tools restriction is applied
  * - All other fields map directly to SpawnOptions equivalents
+ *
+ * Per-worker MCP isolation:
+ * - When `manifest.mcpServers` is non-empty, a temporary JSON file is written
+ *   containing only those servers (not all globally configured servers).
+ * - `spawnOptions.mcpConfigPath` is set to the temp file path and
+ *   `strictMcpConfig` is set to `true` so the worker cannot access any
+ *   globally configured MCP servers.
+ * - Call `cleanup()` after the spawn completes to delete the temp file.
  */
-export function manifestToSpawnOptions(
+export async function manifestToSpawnOptions(
   manifest: TaskManifest,
   customProfiles?: Record<string, ToolProfile>,
-): SpawnOptions {
+): Promise<ManifestSpawnResult> {
   let allowedTools: string[] | undefined = manifest.allowedTools;
 
   if (!allowedTools && manifest.profile) {
@@ -309,7 +334,7 @@ export function manifestToSpawnOptions(
     }
   }
 
-  return {
+  const baseOptions: SpawnOptions = {
     prompt: manifest.prompt,
     workspacePath: manifest.workspacePath,
     model: manifest.model,
@@ -319,6 +344,56 @@ export function manifestToSpawnOptions(
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
     maxBudgetUsd: manifest.maxBudgetUsd,
+  };
+
+  // No MCP servers requested — return immediately with a no-op cleanup
+  if (!manifest.mcpServers || manifest.mcpServers.length === 0) {
+    return {
+      spawnOptions: baseOptions,
+      cleanup: async (): Promise<void> => {
+        /* no-op */
+      },
+    };
+  }
+
+  // Per-worker MCP isolation: write a temp file with ONLY the requested servers.
+  // This ensures each worker sees only the MCP servers it needs, not all
+  // globally configured servers (security: least-privilege per worker).
+  const tempFilePath = `${tmpdir()}/ob-mcp-${randomUUID()}.json`;
+
+  const mcpServersConfig: Record<
+    string,
+    { command: string; args?: string[]; env?: Record<string, string> }
+  > = {};
+  for (const server of manifest.mcpServers) {
+    mcpServersConfig[server.name] = {
+      command: server.command,
+      ...(server.args !== undefined ? { args: server.args } : {}),
+      ...(server.env !== undefined ? { env: server.env } : {}),
+    };
+  }
+
+  await writeFile(tempFilePath, JSON.stringify({ mcpServers: mcpServersConfig }, null, 2), 'utf-8');
+
+  logger.debug(
+    { tempFilePath, serverCount: manifest.mcpServers.length },
+    'Wrote per-worker MCP config — worker sees only its requested servers',
+  );
+
+  return {
+    spawnOptions: {
+      ...baseOptions,
+      mcpConfigPath: tempFilePath,
+      strictMcpConfig: true,
+    },
+    cleanup: async (): Promise<void> => {
+      try {
+        await rm(tempFilePath, { force: true });
+        logger.debug({ tempFilePath }, 'Cleaned up per-worker MCP temp file');
+      } catch (err) {
+        logger.warn({ tempFilePath, err }, 'Failed to clean up MCP temp file');
+      }
+    },
   };
 }
 
@@ -1539,7 +1614,12 @@ export class AgentRunner {
     manifest: TaskManifest,
     customProfiles?: Record<string, ToolProfile>,
   ): Promise<AgentResult> {
-    return this.spawn(manifestToSpawnOptions(manifest, customProfiles));
+    const { spawnOptions, cleanup } = await manifestToSpawnOptions(manifest, customProfiles);
+    try {
+      return await this.spawn(spawnOptions);
+    } finally {
+      await cleanup();
+    }
   }
 
   /**
@@ -1552,6 +1632,11 @@ export class AgentRunner {
     manifest: TaskManifest,
     customProfiles?: Record<string, ToolProfile>,
   ): AsyncGenerator<string, AgentResult> {
-    return yield* this.stream(manifestToSpawnOptions(manifest, customProfiles));
+    const { spawnOptions, cleanup } = await manifestToSpawnOptions(manifest, customProfiles);
+    try {
+      return yield* this.stream(spawnOptions);
+    } finally {
+      await cleanup();
+    }
   }
 }
