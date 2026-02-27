@@ -867,6 +867,8 @@ export class MasterManager {
 
     const recentMessages = (await this.memory?.getRecentMessages(20)) ?? [];
 
+    logger.info({ messageCount: recentMessages.length }, 'Starting memory update');
+
     const memoryPath = this.dotFolder.getMemoryFilePath();
 
     let historySection = '';
