@@ -94,6 +94,53 @@ const AUTH_PATTERNS = [
 ];
 
 /**
+ * Patterns in streaming stdout that indicate a new agent turn has started.
+ * Matched against each chunk to extract the current turn number.
+ * Claude CLI emits these markers at the beginning of each agentic turn.
+ */
+const TURN_INDICATOR_PATTERNS: RegExp[] = [
+  /\bturn\s+(\d+)\b/i, // "Turn 1", "Turn 2", "agentic turn 3"
+  /"turn":\s*(\d+)/, // JSON: "turn": 1
+  /\((\d+)\s+agentic\s+turn/i, // "(3 agentic turns used)"
+  /step\s+(\d+)\s+of\s+\d+/i, // "Step 1 of 25"
+];
+
+/**
+ * Result of parsing a turn indicator from a streaming stdout chunk.
+ */
+export interface TurnIndicator {
+  /** Number of agentic turns used so far */
+  turnsUsed: number;
+  /** The last action text extracted from the chunk, if detectable */
+  lastAction?: string;
+}
+
+/**
+ * Parse a turn indicator from a chunk of Claude CLI streaming stdout.
+ *
+ * Returns a `TurnIndicator` if a turn marker is found in the chunk,
+ * or `null` if the chunk contains no recognizable turn information.
+ * Used by workers streaming real-time progress via `execOnceStreaming()`.
+ */
+export function parseTurnIndicator(chunk: string): TurnIndicator | null {
+  for (const pattern of TURN_INDICATOR_PATTERNS) {
+    const match = chunk.match(pattern);
+    if (match?.[1]) {
+      const turnsUsed = parseInt(match[1], 10);
+      if (!isNaN(turnsUsed) && turnsUsed > 0) {
+        // Extract a short lastAction hint from the first non-empty line of the chunk
+        const firstLine = chunk
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => l.length > 0);
+        return { turnsUsed, lastAction: firstLine };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Patterns indicating the prompt or context exceeded the model's context window.
  * These are non-retryable with the same prompt — the task must be split.
  */
