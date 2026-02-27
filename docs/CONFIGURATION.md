@@ -1,6 +1,6 @@
 # OpenBridge — Configuration Guide
 
-> **Last Updated:** 2026-02-23
+> **Last Updated:** 2026-02-27
 
 ---
 
@@ -190,6 +190,16 @@ Override the auto-detected Master AI settings. By default, OpenBridge scans your
 
 OpenBridge will skip auto-detection and use `aider` if it's installed.
 
+**Force Codex as Master:**
+
+```json
+"master": {
+  "tool": "codex"
+}
+```
+
+Codex requires `OPENAI_API_KEY` to be set in your environment — see [AI Provider Requirements](#ai-provider-requirements) below.
+
 **Use a specific Claude installation:**
 
 ```json
@@ -292,13 +302,69 @@ V0 config runs the legacy startup flow (direct provider routing, no discovery, n
 
 ---
 
+## AI Provider Requirements
+
+OpenBridge auto-discovers AI tools on your machine. Each tool has its own authentication model:
+
+| Tool       | Auth Method                          | Requirement                                   |
+| ---------- | ------------------------------------ | --------------------------------------------- |
+| **Claude** | Local CLI auth (`claude auth login`) | None — uses your existing Claude subscription |
+| **Codex**  | API key via environment variable     | `OPENAI_API_KEY` must be set before starting  |
+| **Aider**  | API key via environment variable     | Depends on the underlying model provider      |
+
+### Claude
+
+Claude Code authenticates via your local Claude subscription. Run `claude auth login` once to set it up. No API keys or environment variables required for OpenBridge.
+
+### Codex
+
+Codex requires a valid OpenAI API key. Set it in your environment before starting OpenBridge:
+
+**Option 1 — Shell environment (recommended):**
+
+```bash
+export OPENAI_API_KEY="sk-..."
+npm run dev
+```
+
+**Option 2 — `.env` file in the OpenBridge directory:**
+
+```bash
+# .env
+OPENAI_API_KEY=sk-...
+```
+
+OpenBridge reads `.env` automatically on startup (via Node.js `--env-file` or dotenv if present).
+
+> **Note:** If `OPENAI_API_KEY` is missing, Codex workers will fail immediately with an auth error. OpenBridge logs a clear message: `"Codex requires OPENAI_API_KEY environment variable"` — no retries are wasted.
+
+#### Codex Sandbox Modes
+
+Codex workers run in a sandboxed environment that controls what actions they can take. The sandbox mode is inferred from the worker's tool profile:
+
+| Sandbox Mode | Codex Flag             | What the Worker Can Do                                                                             |
+| ------------ | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `read-only`  | `--sandbox read-only`  | Read files, run read-only commands. No writes or edits. Default when no tool profile is specified. |
+| `read-write` | `--sandbox read-write` | Read and write files. Cannot run arbitrary shell commands.                                         |
+| `full-auto`  | `--full-auto`          | Full access — read, write, run commands. Use with caution.                                         |
+
+OpenBridge maps tool profiles to sandbox modes automatically:
+
+- `read-only` tool profile → `read-only` sandbox
+- `code-edit` tool profile → `read-write` sandbox
+- `full-access` tool profile → `full-auto` sandbox
+- No profile specified → `read-only` sandbox (safe default)
+
+---
+
 ## Environment Variables
 
-| Variable      | Description                              | Default       |
-| ------------- | ---------------------------------------- | ------------- |
-| `CONFIG_PATH` | Path to config file                      | `config.json` |
-| `LOG_LEVEL`   | Override log level from config           | from config   |
-| `NODE_ENV`    | Environment (`development`/`production`) | `development` |
+| Variable         | Description                                                    | Default       |
+| ---------------- | -------------------------------------------------------------- | ------------- |
+| `CONFIG_PATH`    | Path to config file                                            | `config.json` |
+| `LOG_LEVEL`      | Override log level from config                                 | from config   |
+| `NODE_ENV`       | Environment (`development`/`production`)                       | `development` |
+| `OPENAI_API_KEY` | OpenAI API key — required when using Codex as Master or worker | _(none)_      |
 
 ---
 
