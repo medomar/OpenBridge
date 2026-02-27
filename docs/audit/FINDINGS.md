@@ -2,24 +2,24 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 (0 critical, 2 medium, 4 low) | **Fixed:** 27 | **Last Audit:** 2026-02-27
+> **Open:** 5 (0 critical, 1 medium, 4 low) | **Fixed:** 28 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding | Severity  | Impact                                            | Why this order                                                                                  |
-| --- | ------- | --------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | OB-F32  | ✅ Fixed  | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                     |
-| 2   | OB-F33  | ✅ Fixed  | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager. |
-| 3   | OB-F27  | ✅ Fixed  | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                         |
-| 4   | OB-F34  | ✅ Fixed  | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                    |
-| 5   | OB-F29  | 🟡 Medium | Core UX gap                                       | Every session starts fresh — biggest user-facing improvement.                                   |
-| 6   | OB-F35  | 🟡 Medium | Missing feature                                   | No way to browse past conversations — pairs with F29.                                           |
-| 7   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                     |
-| 8   | OB-F30  | 🟢 Low    | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                      |
-| 9   | OB-F31  | 🟢 Low    | Polish                                            | Master can't pause/resume — edge case for power users.                                          |
+| #   | Finding | Severity  | Impact                                            | Why this order                                                                                                    |
+| --- | ------- | --------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | OB-F32  | ✅ Fixed  | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                                       |
+| 2   | OB-F33  | ✅ Fixed  | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager.                   |
+| 3   | OB-F27  | ✅ Fixed  | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                                           |
+| 4   | OB-F34  | ✅ Fixed  | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                                      |
+| 5   | OB-F29  | ✅ Fixed  | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests. |
+| 6   | OB-F35  | 🟡 Medium | Missing feature                                   | No way to browse past conversations — pairs with F29.                                                             |
+| 7   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                                       |
+| 8   | OB-F30  | 🟢 Low    | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                                        |
+| 9   | OB-F31  | 🟢 Low    | Polish                                            | Master can't pause/resume — edge case for power users.                                                            |
 
 ---
 
@@ -70,9 +70,9 @@
 
 ### #4 — OB-F29 — Conversation continuity is shallow (no cross-session memory, no topic merging)
 
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-26 (design review)
+**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/master/master-manager.ts`, `src/memory/conversation-store.ts`, `src/memory/eviction.ts`
-**Severity:** 🟡 Medium (upgraded from Low — core UX gap)
+**Severity:** ✅ Fixed
 **Backlog:** OB-822 | **Health Impact:** +0.10
 
 **Problem:** The Master AI treats every session as nearly fresh. `buildConversationContext()` retrieves only 5 keyword-matched messages via FTS5 — no full session recall, no cross-session awareness, no topic continuity. Two specific issues:
