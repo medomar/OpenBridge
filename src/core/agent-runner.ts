@@ -702,6 +702,7 @@ function execOnceStreaming(
 ): {
   chunks: AsyncGenerator<string, { exitCode: number; stderr: string }>;
   abort: () => void;
+  pid: number;
 } {
   const child = nodeSpawn(config.binary, config.args, {
     cwd: workspacePath,
@@ -811,6 +812,7 @@ function execOnceStreaming(
 
   return {
     chunks: generate(),
+    pid: child.pid ?? -1,
     abort: (): void => {
       // Clear timers if abort is called manually
       if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -1144,6 +1146,197 @@ export class AgentRunner {
       }
 
       return result;
+    })();
+
+    return { promise, pid: initialPid, abort };
+  }
+
+  /**
+   * Spawn an AI CLI agent with real-time streaming progress via turn-indicator parsing.
+   *
+   * Identical to spawnWithHandle() — returns pid, abort, and a result promise —
+   * but uses execOnceStreaming() internally so that stdout chunks are inspected
+   * as they arrive. Whenever parseTurnIndicator() detects a new agent turn in a
+   * chunk, the optional onProgress callback is invoked with the TurnIndicator.
+   *
+   * Use this instead of spawnWithHandle() when the caller needs real-time turn
+   * visibility (e.g. to broadcast worker-turn-progress events to connectors).
+   */
+  spawnWithStreamingHandle(
+    opts: SpawnOptions,
+    onProgress?: (indicator: TurnIndicator) => void,
+  ): SpawnHandle {
+    const retries = opts.retries ?? 3;
+    const retryDelay = opts.retryDelay ?? 10_000;
+    let currentModel = opts.model;
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
+    const startTime = Date.now();
+    const modelFallbacks: string[] = [];
+
+    // Mutable reference to the abort function of the currently-running stream.
+    // Updated on each retry so abort() always terminates the live child.
+    let currentAbort: (() => void) | undefined;
+    const abort = (): void => {
+      currentAbort?.();
+    };
+
+    // Launch the first execution immediately — this lets us capture its PID
+    // synchronously before the async retry loop begins.
+    const firstStreaming = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+    currentAbort = firstStreaming.abort;
+    const initialPid = firstStreaming.pid;
+
+    logger.debug(
+      {
+        workspacePath: opts.workspacePath,
+        model: opts.model,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        timeout: opts.timeout,
+        retries,
+        pid: initialPid,
+        sessionId: opts.resumeSessionId ?? opts.sessionId,
+      },
+      'Spawning agent with streaming handle',
+    );
+
+    const promise = (async (): Promise<AgentResult> => {
+      const attemptRecords: AttemptRecord[] = [];
+      let attempt = 0;
+
+      // The first iteration uses the already-started streaming handle.
+      let currentStreaming: ReturnType<typeof execOnceStreaming> = firstStreaming;
+
+      for (attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) {
+          logger.warn(
+            { attempt, maxRetries: retries, delay: retryDelay },
+            'Retrying streaming agent after non-zero exit',
+          );
+          await sleep(retryDelay);
+          currentStreaming = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+          currentAbort = currentStreaming.abort;
+        }
+
+        let stdout = '';
+        let streamResult: { exitCode: number; stderr: string } | undefined;
+        let spawnError: Error | undefined;
+
+        try {
+          // Drain all chunks — accumulate stdout and report turn progress
+          let iterResult = await currentStreaming.chunks.next();
+          while (!iterResult.done) {
+            const chunk = iterResult.value;
+            stdout += chunk;
+            if (onProgress) {
+              const indicator = parseTurnIndicator(chunk);
+              if (indicator) {
+                onProgress(indicator);
+              }
+            }
+            iterResult = await currentStreaming.chunks.next();
+          }
+          streamResult = iterResult.value;
+        } catch (error) {
+          logger.error({ error, attempt }, 'Agent streaming handle error');
+          spawnError = error instanceof Error ? error : new Error(String(error));
+        }
+
+        if (spawnError) {
+          attemptRecords.push({
+            attempt,
+            exitCode: -1,
+            stderr: spawnError.message,
+          });
+          if (attempt < retries) continue;
+          throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+        }
+
+        if (streamResult!.exitCode === 0) {
+          const durationMs = Date.now() - startTime;
+          const retryCount = attempt;
+          const turnsExhausted = isMaxTurnsExhausted(stdout);
+
+          const result: AgentResult = {
+            stdout,
+            stderr: streamResult!.stderr,
+            exitCode: 0,
+            durationMs,
+            retryCount,
+            model: currentModel,
+            modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+            costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
+            turnsExhausted: turnsExhausted || undefined,
+          };
+
+          if (turnsExhausted) {
+            logger.warn(
+              {
+                model: currentModel ?? 'default',
+                maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+              },
+              'Streaming agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+            );
+          }
+
+          logger.info(
+            {
+              exitCode: 0,
+              durationMs,
+              model: currentModel ?? 'default',
+              retryCount,
+              modelFallbacks: result.modelFallbacks,
+              costUsd: result.costUsd,
+              turnsExhausted: result.turnsExhausted,
+            },
+            'Streaming agent completed',
+          );
+
+          if (opts.logFile) {
+            try {
+              await writeLogFile(opts.logFile, opts, result);
+              logger.debug({ logFile: opts.logFile }, 'Streaming agent log written to disk');
+            } catch (logError) {
+              logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write agent log');
+            }
+          }
+
+          return result;
+        }
+
+        // Non-zero exit — record and possibly retry
+        logger.warn(
+          {
+            exitCode: streamResult!.exitCode,
+            attempt,
+            stderr: streamResult!.stderr.slice(0, 500),
+          },
+          'Streaming agent exited with non-zero code',
+        );
+
+        attemptRecords.push({
+          attempt,
+          exitCode: streamResult!.exitCode,
+          stderr: streamResult!.stderr,
+        });
+
+        // Rate-limit / model unavailability — fall back to next model
+        if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
+          const nextModel = getNextFallbackModel(currentModel);
+          if (nextModel) {
+            logger.warn(
+              { from: currentModel, to: nextModel, attempt },
+              'Model rate-limited — falling back to next model in chain',
+            );
+            modelFallbacks.push(currentModel);
+            currentModel = nextModel;
+            currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
+          }
+        }
+      }
+
+      // All retries exhausted
+      throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
     })();
 
     return { promise, pid: initialPid, abort };

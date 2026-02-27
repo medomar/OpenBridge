@@ -58,6 +58,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
       spawn: mockSpawn,
       stream: mockStream,
       spawnWithHandle: mockSpawnWithHandle,
+      spawnWithStreamingHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],

@@ -11,6 +11,7 @@
  * - exploring           — Workspace exploration phase transition
  * - exploring-directory — Per-directory progress during exploration
  * - worker-cancelled    — A worker was stopped by a user (broadcast to all channels)
+ * - worker-turn-progress — Real-time turn count update for a running worker
  */
 export type ProgressEvent =
   | { type: 'classifying' }
@@ -30,7 +31,14 @@ export type ProgressEvent =
   | { type: 'complete' }
   | { type: 'exploring'; phase: string; detail?: string }
   | { type: 'exploring-directory'; directory: string; completed: number; total: number }
-  | { type: 'worker-cancelled'; workerId: string; cancelledBy: string };
+  | { type: 'worker-cancelled'; workerId: string; cancelledBy: string }
+  | {
+      type: 'worker-turn-progress';
+      workerId: string;
+      turnsUsed: number;
+      turnsMax: number;
+      lastAction?: string;
+    };
 
 /**
  * A message received from a messaging connector.
