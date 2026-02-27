@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 38 | **Last Audit:** 2026-02-27
+> **Open:** 1 | **Fixed:** 39 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md)
 
 ---
@@ -11,7 +11,7 @@
 
 | #   | Finding | Severity  | Impact                                       | Status |
 | --- | ------- | --------- | -------------------------------------------- | ------ |
-| 1   | OB-F39  | 🟠 High   | memory.md never updates (--print mode)       | Open   |
+| 1   | OB-F39  | ✅ Fixed  | memory.md never updates (--print mode)       | Fixed  |
 | 2   | OB-F38  | ✅ Fixed  | FTS5 syntax error on special characters      | Fixed  |
 | 3   | OB-F40  | 🟡 Medium | Ungraceful shutdown — Ctrl+C kills instantly | Open   |
 
@@ -23,7 +23,7 @@
 
 **Discovered:** 2026-02-27 (user report — "big discussion" not reflected in memory.md + code analysis)
 **Component:** `src/master/master-manager.ts:1297-1355` (`buildMasterSpawnOptions()`), `src/core/agent-runner.ts:484-490` (`buildArgs()`)
-**Severity:** 🟠 High
+**Severity:** ✅ Fixed
 **Health Impact:** +0.15
 
 **Problem:** The Master AI session is fundamentally stateless. Despite `initMasterSession()` creating a session object with a UUID (`sessionId`), `buildMasterSpawnOptions()` **never sets `sessionId` or `resumeSessionId`** on the `SpawnOptions` it returns. This means `buildArgs()` in `agent-runner.ts` defaults to `--print` mode for every Master invocation.
