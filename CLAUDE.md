@@ -245,8 +245,8 @@ The **`memory.md` pattern** is how the Master AI maintains continuity across ses
 - **File:** `.openbridge/context/memory.md` (≤200 lines, plain Markdown)
 - **On session start:** Loaded by `buildConversationContext()` in `MasterManager` and injected into the system prompt as primary context.
 - **During session:** Master updates the file when asked to remember something, or when key decisions/findings are made.
-- **On session end:** Master sends a final prompt ("Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics.") and writes the updated file via a worker with the `Write` tool.
-- **FTS5 fallback:** When `memory.md` is empty or missing, `buildConversationContext()` falls back to `searchConversations()` FTS5 search for cross-session results.
+- **On session end:** `triggerMemoryUpdate()` fetches the last 20 conversation entries from SQLite and injects them into the prompt (as `## Recent conversation history:`), then spawns a stateless `--print` agent to write updated notes. This ensures the agent has real conversation context to produce meaningful memory updates (fixed in v0.0.5, OB-F39).
+- **FTS5 fallback:** When `memory.md` is empty or missing, `buildConversationContext()` falls back to `searchConversations()` FTS5 search for cross-session results. All FTS5 queries are sanitized via `sanitizeFts5Query()` to prevent `SqliteError` on special characters (fixed in v0.0.5, OB-F38).
 - **Why this works:** The Master AI is the curator — no complex summarizer pipelines, no topic clustering workers. Same pattern used by Claude Code's own `MEMORY.md`.
 
 ### Adding a New Connector
@@ -367,6 +367,15 @@ benchmarks/                     Performance benchmarks
 docs/                           Documentation + audit tracking
 scripts/                        Task runner utilities
 ```
+
+## Current Version
+
+**v0.0.5** — All findings resolved. Phases 63–66 shipped:
+
+- Phase 63: FTS5 query sanitization (`sanitizeFts5Query()` in `retrieval.ts`) — fixes `SqliteError` on special characters (OB-F38)
+- Phase 64: memory.md context-aware updates — recent conversation history injected into memory-update prompt (OB-F39)
+- Phase 65: Graceful shutdown — 10s timeout, session state saved before memory update, user-facing shutdown message (OB-F40)
+- Phase 66: Documentation — API_REFERENCE, ARCHITECTURE, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG, ROADMAP
 
 ## Conventions
 
