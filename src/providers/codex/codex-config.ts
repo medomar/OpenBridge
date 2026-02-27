@@ -16,6 +16,7 @@ export const CodexConfigSchema = z.object({
   timeout: z.number().positive().default(120_000), // 2 minutes
   model: z.string().optional(),
   sandbox: z.string().optional(),
+  sessionTtlMs: z.number().int().nonnegative().default(1_800_000), // 30 minutes
 });
 
 export type CodexConfig = z.infer<typeof CodexConfigSchema>;

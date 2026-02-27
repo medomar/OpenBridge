@@ -9,19 +9,25 @@ import { CodexConfigSchema } from './codex-config.js';
 import type { CodexConfig } from './codex-config.js';
 import { AgentRunner } from '../../core/agent-runner.js';
 import { CodexAdapter } from '../../core/adapters/codex-adapter.js';
+import { CodexSessionManager } from './session-manager.js';
 import { ProviderError, classifyError } from '../claude-code/provider-error.js';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('codex');
 
+/** Sentinel used as resumeSessionId when we want `codex exec resume --last`. */
+const RESUME_LAST = '__last__';
+
 export class CodexProvider implements AIProvider {
   readonly name = 'codex';
   private config: CodexConfig;
   private runner: AgentRunner;
+  private sessionManager: CodexSessionManager;
 
   constructor(options: Record<string, unknown>) {
     this.config = CodexConfigSchema.parse(options);
     this.runner = new AgentRunner(new CodexAdapter());
+    this.sessionManager = new CodexSessionManager(this.config.sessionTtlMs);
   }
 
   async initialize(): Promise<void> {
@@ -39,19 +45,29 @@ export class CodexProvider implements AIProvider {
   ): Promise<ProviderResult> {
     const startTime = Date.now();
     const workspacePath = this.resolveWorkspace(message);
+    const sessionKey = this.sessionKey(message.sender, workspacePath);
+    const { isNew, sessionId } = this.sessionManager.getOrCreate(sessionKey);
 
     logger.info(
-      { messageId: message.id, content: message.content, workspacePath },
+      { messageId: message.id, content: message.content, isNew, workspacePath },
       'Processing with Codex',
     );
 
-    const result = await this.runner.spawn({
+    // Build SpawnOptions with session wiring:
+    //   isNew: true  → sessionId set (omits --ephemeral, lets Codex save state)
+    //   isNew: false → resumeSessionId set (triggers `codex exec resume --last` or explicit ID)
+    const spawnOpts = {
       prompt: message.content,
       workspacePath,
       timeout: this.config.timeout,
       model: this.config.model,
       retries: 0,
-    });
+      ...(isNew
+        ? { sessionId: sessionId ?? sessionKey }
+        : { resumeSessionId: sessionId ?? RESUME_LAST }),
+    };
+
+    const result = await this.runner.spawn(spawnOpts);
 
     const durationMs = Date.now() - startTime;
 
@@ -102,6 +118,7 @@ export class CodexProvider implements AIProvider {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async shutdown(): Promise<void> {
+    this.sessionManager.clearAll();
     logger.info('Codex provider shut down');
   }
 
@@ -112,5 +129,10 @@ export class CodexProvider implements AIProvider {
       return override;
     }
     return this.config.workspacePath;
+  }
+
+  /** Build a session key scoped to sender + workspace to isolate sessions per project */
+  private sessionKey(sender: string, workspacePath: string): string {
+    return `${sender}:${workspacePath}`;
   }
 }
