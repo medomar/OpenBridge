@@ -1,6 +1,6 @@
 # OpenBridge — Architecture
 
-> **Last Updated:** 2026-02-23
+> **Last Updated:** 2026-02-27
 
 ---
 
@@ -94,20 +94,20 @@ The engine that wires everything together. Lives in `src/core/`.
 
 ### Components
 
-| Component          | File                | Purpose                                                                          |
-| ------------------ | ------------------- | -------------------------------------------------------------------------------- |
-| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI          |
-| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates |
-| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                  |
-| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue            |
-| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                  |
-| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats            |
-| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                     |
-| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                      |
-| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                  |
-| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                     |
-| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                            |
-| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                            |
+| Component          | File                | Purpose                                                                                                                                                                                          |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI                                                                                                                          |
+| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates. Built-in commands: `/history`, `/history search <q>`, `/history <session-id>`, `/stop`, `/stop-all`, `/status` |
+| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                                                                                                                                  |
+| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue                                                                                                                            |
+| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                                                                                                                                  |
+| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats                                                                                                                            |
+| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                                                                                                                                     |
+| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                                                                                                                                      |
+| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                                                                                                                                  |
+| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                                                                                                                                     |
+| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                                                                                                                                            |
+| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                                                                                                                                            |
 
 ### Message Flow (V2 with Master AI)
 
@@ -228,6 +228,19 @@ Session Continuity:
   - Subsequent messages: resumes with --resume <session-id>
   - Preserves context across multi-turn conversations
   - Cleans up expired sessions automatically
+
+Conversation Context (memory.md pattern — v0.0.2):
+  - On session start: buildConversationContext() loads .openbridge/context/memory.md
+    into the Master's system prompt (always small, always relevant)
+  - Fallback: findRelevantHistory() FTS5 search when memory.md is empty/missing
+  - On session end: Master receives "update memory" prompt and writes its own
+    memory.md (keep under 200 lines, remove outdated info, merge related topics)
+  - Dual-layer: memory.md = curated brain; SQLite conversations = raw archive
+
+Session Checkpointing (v0.0.2):
+  - checkpointSession(): serializes pending workers + accumulated results to DB
+  - resumeSession(): restores state and continues processing
+  - Integrated with priority queue: urgent messages trigger checkpoint-handle-resume
 ```
 
 ### Incremental Exploration Architecture
@@ -367,6 +380,15 @@ target-project/
     │     },
     │     "exploredAt": "2026-02-21T10:05:30.000Z"
     │   }
+    ├── context/                 ← Master AI memory (added in v0.0.2)
+    │   └── memory.md            ← Master's curated brain — decisions, preferences,
+    │                               project state, active threads. Cap: 200 lines.
+    │                               Read on every session start. Updated by Master
+    │                               at session end via "update memory" prompt.
+    ├── prompts/                 ← Prompt library (added in v0.0.2)
+    │   ├── manifest.json        ← Prompt registry: id, filename, usageCount,
+    │   │                           successRate, lastUsedAt, previousVersion
+    │   └── *.md                 ← Individual prompt template files
     ├── exploration.log          ← Timestamped scan history
     │   2026-02-21T10:00:00Z | Exploration started
     │   2026-02-21T10:01:30Z | Pass 1 (structure_scan) completed in 90s
@@ -379,28 +401,24 @@ target-project/
     │       { "name": "codex", "path": "/usr/local/bin/codex" }
     │     ]
     │   }
-    └── tasks/                   ← Task history (one JSON per task)
-        ├── task-001.json
-        │   {
-        │     "id": "task-001",
-        │     "description": "Run tests and fix failures",
-        │     "status": "completed",
-        │     "startedAt": "...",
-        │     "completedAt": "...",
-        │     "result": "47/47 tests passing"
-        │   }
-        └── task-002.json
+    ├── tasks/                   ← Task history JSON (superseded by openbridge.db)
+    │   ├── task-001.json
+    │   └── task-002.json
+    └── openbridge.db            ← SQLite memory (shipped in v0.0.2)
+                                    Tables: workspace_chunks (FTS5), conversation_messages (FTS5),
+                                    tasks, learnings, agent_activity (PID tracking), prompts,
+                                    prompt_versions, access_control, sessions, schema_versions
 ```
 
 ### Exploration Components
 
-| Module                     | File                         | Purpose                                                                                       |
-| -------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress |
-| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)         |
-| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)         |
-| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD operations, exploration state management, git operations                  |
-| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                               |
+| Module                     | File                         | Purpose                                                                                                                                                                                                                                                        |
+| -------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress                                                                                                                                                                  |
+| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)                                                                                                                                                                          |
+| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)                                                                                                                                                                          |
+| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD, exploration state, git ops, prompt library (readPromptManifest, writePromptManifest, writePromptTemplate, getPromptTemplate, recordPromptUsage, getLowPerformingPrompts, resetPromptStats), memory file (readMemoryFile, writeMemoryFile) |
+| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                                                                                                                                                                                                |
 
 ### Delegation
 
@@ -454,6 +472,43 @@ for await (const chunk of stream) {
 ```
 
 Features: `--allowedTools` for tool restrictions, `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
+
+---
+
+## SQLite Memory System (v0.0.2)
+
+The memory system lives at `.openbridge/openbridge.db` inside the target workspace. It provides persistent storage across sessions via 13 store modules, all exposed through a single `MemoryManager` facade (`src/memory/index.ts`).
+
+### Store Modules
+
+| Module                | File                    | Tables                              | Purpose                                           |
+| --------------------- | ----------------------- | ----------------------------------- | ------------------------------------------------- |
+| **ActivityStore**     | `activity-store.ts`     | `agent_activity`                    | Worker PID tracking, status, turn counts          |
+| **TaskStore**         | `task-store.ts`         | `tasks`, `learnings`                | Task history, model success rates, retry patterns |
+| **ConversationStore** | `conversation-store.ts` | `conversation_messages` (FTS5)      | Full conversation archive, FTS5 search            |
+| **ChunkStore**        | `chunk-store.ts`        | `workspace_chunks` (FTS5)           | Workspace file chunks, semantic retrieval         |
+| **PromptStore**       | `prompt-store.ts`       | `prompts`, `prompt_versions`        | Prompt effectiveness tracking in SQLite           |
+| **AccessStore**       | `access-store.ts`       | `access_control`                    | Role-based permissions per sender                 |
+| **SubMasterStore**    | `sub-master-store.ts`   | `sessions`                          | Sub-master session state + checkpoints            |
+| **WorkerBriefing**    | `worker-briefing.ts`    | (reads multiple tables)             | Assembles per-worker context before spawn         |
+| **Retrieval**         | `retrieval.ts`          | (reads chunk + conversation tables) | Semantic + FTS5 search helpers                    |
+| **Eviction**          | `eviction.ts`           | (writes multiple tables)            | LRU eviction + AI-powered conversation compaction |
+
+### Schema Versioning
+
+`schema_versions` table tracks applied migrations (version INTEGER, applied_at, description). The migration runner only applies versions > MAX(version), wrapped in transactions for rollback safety.
+
+### Conversation History Commands
+
+The router (`src/core/router.ts`) handles built-in `/history` commands — intercepted before routing to Master AI:
+
+| Command                  | Description                                        |
+| ------------------------ | -------------------------------------------------- |
+| `history`                | List last 10 sessions (title, date, message count) |
+| `history search <query>` | FTS5 search across all past conversations          |
+| `history <session-id>`   | Show full transcript for one session               |
+
+WebChat connector also exposes `/api/sessions` (list) and `/api/sessions/:id` (full session) REST endpoints.
 
 ---
 
@@ -558,7 +613,7 @@ Scenario 4: First run (no .openbridge/)
 
 2. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI focused prompts and let it figure out the project. This is simpler and more powerful.
 
-3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. Currently uses JSON files; v0.1.0 will migrate to a single SQLite database (`openbridge.db`).
+3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. Uses a SQLite database (`openbridge.db`, shipped in v0.0.2) alongside JSON files for exploration state. JSON files remain for exploration checkpointing; `openbridge.db` stores conversations, tasks, prompts, agent activity, access control, and schema versions.
 
 4. **Session continuity enables multi-turn conversations.** The Master tracks sessions per sender with 30-minute TTL. First message creates a session, subsequent messages resume it. This enables natural business conversations: "which invoices are overdue?" → "send reminders to those clients".
 
@@ -624,10 +679,12 @@ src/
 │   └── vscode-scanner.ts       ← VS Code extension detection
 └── master/
     ├── index.ts                ← Module exports
-    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions
-    ├── master-system-prompt.ts ← Master AI system prompt builder
+    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions +
+    │                              checkpointSession() / resumeSession() (5710+ LOC)
+    ├── master-system-prompt.ts ← Master AI system prompt builder (includes memory.md guidance)
     ├── worker-registry.ts      ← Active worker tracking + concurrency limits
-    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + exploration state
+    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + exploration state + prompt library +
+    │                              readMemoryFile() / writeMemoryFile() (866+ LOC)
     ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
     ├── exploration-prompts.ts  ← Pass-specific prompt generators
     ├── exploration-prompt.ts   ← Legacy monolithic exploration prompt (V0)
@@ -636,5 +693,8 @@ src/
     ├── spawn-parser.ts         ← Parse worker spawn requests from Master output
     ├── worker-result-formatter.ts ← Format worker results for Master
     ├── workspace-change-tracker.ts ← Git-based workspace change detection
+    ├── prompt-evolver.ts       ← Prompt effectiveness tracking + self-improvement
+    ├── sub-master-detector.ts  ← Sub-master capability detection
+    ├── sub-master-manager.ts   ← Sub-master session pool management
     └── delegation.ts           ← Multi-AI task delegation
 ```

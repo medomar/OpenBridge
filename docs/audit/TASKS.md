@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 10 | **In Progress:** 0 | **Done:** 40
+> **Pending:** 9 | **In Progress:** 0 | **Done:** 41
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -115,7 +115,7 @@
 
 | #   | Task ID | Finding | Description                                                                                                                                                                                                                                                                                                           | Status    |
 | --- | ------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 41  | OB-1060 | —       | Update `ARCHITECTURE.md` — fix `.openbridge/` folder spec (add `context/memory.md`, `openbridge.db` documentation, correct "v0.1.0 will migrate to SQLite" → "v0.0.2 migrated to SQLite"), add DotFolderManager prompt library methods, conversation history commands                                                 | ◻ Pending |
+| 41  | OB-1060 | —       | Update `ARCHITECTURE.md` — fix `.openbridge/` folder spec (add `context/memory.md`, `openbridge.db` documentation, correct "v0.1.0 will migrate to SQLite" → "v0.0.2 migrated to SQLite"), add DotFolderManager prompt library methods, conversation history commands                                                 | ✅ Done   |
 | 42  | OB-1061 | —       | Update `ROADMAP.md` — mark Phases 51–55 with task counts and status, move implemented backlog items from backlog to shipped, update version milestones table                                                                                                                                                          | ◻ Pending |
 | 43  | OB-1062 | —       | Update `CHANGELOG.md` — add [Unreleased] entries for all new features: prompt library (Phase 51), `memory.md` conversation continuity (Phase 52), `/history` command + REST endpoints (Phase 53), schema versioning (Phase 54), worker streaming + checkpointing (Phase 55). Add Fixed entries for all open findings. | ◻ Pending |
 | 44  | OB-1063 | —       | Update `CLAUDE.md` (workspace root) — add `.openbridge/context/` to project structure, add new DotFolderManager methods, update LOC counts for modified files, add `/history` to router commands                                                                                                                      | ◻ Pending |
