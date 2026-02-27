@@ -469,6 +469,103 @@ describe('MessageQueue', () => {
     resolveFirst();
   });
 
+  // --- Urgent enqueue callback (OB-1055) ---
+
+  describe('onUrgentEnqueued', () => {
+    it('fires when a priority-1 message is enqueued while same sender has in-flight message', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      const urgentCb = vi.fn();
+      let resolveFirst!: () => void;
+
+      queue.onMessage(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+      queue.onUrgentEnqueued(urgentCb);
+
+      // Start processing first message
+      void queue.enqueue(createMessage('first', '+111'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Enqueue priority-1 message while first is in-flight — should fire callback
+      void queue.enqueue(createMessage('urgent', '+111'), 1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(urgentCb).toHaveBeenCalledOnce();
+      const [msg] = urgentCb.mock.calls[0] as [InboundMessage];
+      expect(msg.id).toBe('urgent');
+
+      resolveFirst();
+    });
+
+    it('does NOT fire when priority-1 message is dispatched immediately (no in-flight message)', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      const urgentCb = vi.fn();
+
+      queue.onMessage(async () => {});
+      queue.onUrgentEnqueued(urgentCb);
+
+      await queue.enqueue(createMessage('urgent', '+111'), 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(urgentCb).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire for priority-2 or priority-3 messages even when in-flight', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      const urgentCb = vi.fn();
+      let resolveFirst!: () => void;
+
+      queue.onMessage(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+      queue.onUrgentEnqueued(urgentCb);
+
+      void queue.enqueue(createMessage('first', '+111'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      void queue.enqueue(createMessage('tool-use', '+111'), 2);
+      void queue.enqueue(createMessage('complex', '+111'), 3);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(urgentCb).not.toHaveBeenCalled();
+
+      resolveFirst();
+    });
+
+    it('does NOT fire for priority-1 from a different sender', async () => {
+      const queue = new MessageQueue({ maxRetries: 0 });
+      const urgentCb = vi.fn();
+      let resolveFirst!: () => void;
+
+      queue.onMessage(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+      queue.onUrgentEnqueued(urgentCb);
+
+      // Start processing for sender A
+      void queue.enqueue(createMessage('a-msg', '+111'));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Priority-1 from a DIFFERENT sender — different queue, dispatched immediately
+      void queue.enqueue(createMessage('b-urgent', '+222'), 1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Callback should not fire because '+222' is not in activeUsers
+      expect(urgentCb).not.toHaveBeenCalled();
+
+      resolveFirst();
+    });
+  });
+
   describe('getQueueSnapshot (OB-923)', () => {
     it('should return empty array when no messages are waiting', () => {
       const queue = new MessageQueue();
