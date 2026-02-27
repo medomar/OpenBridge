@@ -1,31 +1,29 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.20/10 | **Target:** 9.5/10
-> **Last Audit:** 2026-02-26 | **Previous Score:** 7.050 (archived in [v4/HEALTH-v4.md](archive/v4/HEALTH-v4.md))
-> **Open Findings:** 3 (0 critical, 1 high, 2 medium) — see note below
-> **Pending Tasks:** 8 (Phase 45 documentation audit)
+> **Current Score:** 9.45/10 | **Target:** 9.5/10
+> **Last Audit:** 2026-02-27 | **Previous Score:** 9.20 (Phase 49)
+> **Open Findings:** 0 (all code work resolved — FINDINGS.md cleanup pending in OB-1068)
+> **Pending Tasks:** 4 (Phase 56 documentation — OB-1066 through OB-1069)
 > **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [V4 health](archive/v4/HEALTH-v4.md)
-
-> **Note on open findings:** FINDINGS.md shows 3 open (OB-F23, OB-F24, OB-F25) but all three have been resolved by Phases 47 and 48. FINDINGS.md audit (OB-868) is pending in Phase 45 and will mark them ✅ Fixed.
 
 ---
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                    |
-| -------------------- | :------: | :----: | :-------: | ---------------------------------------------------------------------------------------- |
-| Architecture         |    5%    | 9.5/10 |   0.475   | 5-layer design proven, SQLite backbone, plugin system, 48 phases completed               |
-| Core Engine          |    5%    | 9.5/10 |   0.475   | Priority queue, fast-path responder, stop commands, rate limiting, all hardened          |
-| Connectors           |    5%    | 8.5/10 |   0.425   | 5 connectors working. WebChat stop buttons + dashboard. Cross-channel broadcast          |
-| Agent Runner         |   20%    | 9.5/10 |   1.900   | spawnWithHandle, error classification, adaptive turns, retries, streaming, full coverage |
-| Tool Profiles        |   10%    | 9.0/10 |   0.900   | 4 built-in profiles, custom profile registry, model fallback chain                       |
-| Master AI (self-gov) |   25%    | 9.5/10 |   2.375   | Exploration, session, memory-backed, responsive fast-path, worker control                |
-| Worker Orchestration |   10%    | 9.0/10 |   0.900   | PID capture, kill infra, retry resilience, learnings-based model selection               |
-| Self-Improvement     |    5%    | 9.0/10 |   0.450   | SQLite learnings, prompt tracking, model selection learning, effectiveness scores        |
-| Configuration        |    5%    | 9.5/10 |   0.475   | V2 config, CLI init, hot-reload, DB migrations, WAL mode                                 |
-| Testing              |    5%    | 9.5/10 |   0.475   | 2093 tests passing, 96 test files, unit + integration + E2E                              |
-| Documentation        |    5%    | 7.5/10 |   0.375   | Phase 45 in progress — 8 tasks pending (HEALTH, CHANGELOG, CLAUDE.md, milestones)        |
-| **TOTAL**            | **100%** |   —    | **9.225** | **Rounded to 9.20/10**                                                                   |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                 |
+| -------------------- | :------: | :----: | :-------: | ----------------------------------------------------------------------------------------------------- |
+| Architecture         |    5%    | 9.5/10 |   0.475   | 5-layer design proven, SQLite backbone, plugin system, 55 phases completed                            |
+| Core Engine          |    5%    | 9.5/10 |   0.475   | Priority queue, fast-path responder, audit logger JSONL, schema versioning, all hardened              |
+| Connectors           |    5%    | 8.7/10 |   0.435   | 5 connectors working. WebChat history endpoints (/api/sessions). Cross-channel broadcast              |
+| Agent Runner         |   20%    | 9.5/10 |   1.900   | spawnWithHandle, error classification, adaptive turns, retries, streaming, full coverage              |
+| Tool Profiles        |   10%    | 9.0/10 |   0.900   | 4 built-in profiles, custom profile registry, model fallback chain                                    |
+| Master AI (self-gov) |   25%    | 9.8/10 |   2.450   | Exploration, session, memory.md continuity, history access, responsive fast-path, checkpointing       |
+| Worker Orchestration |   10%    | 9.3/10 |   0.930   | PID capture, kill infra, retry resilience, streaming progress events, learnings-based model selection |
+| Self-Improvement     |    5%    | 9.3/10 |   0.465   | SQLite learnings, prompt library (7 methods), prompt effectiveness tracking, model selection learning |
+| Configuration        |    5%    | 9.7/10 |   0.485   | V2 config, CLI init, hot-reload, schema versioning (schema_versions table), WAL mode                  |
+| Testing              |    5%    | 9.7/10 |   0.485   | 2263 tests passing, 103 test files, unit + integration + E2E                                          |
+| Documentation        |    5%    | 9.0/10 |   0.450   | Phase 56 in progress — 4 tasks pending (README, API_REFERENCE, FINDINGS archive, final validation)    |
+| **TOTAL**            | **100%** |   —    | **9.450** | **Rounded to 9.45/10**                                                                                |
 
 ---
 
@@ -39,21 +37,21 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 9.20** — All 5 architecture layers fully implemented and tested. 352 tasks completed across 48 phases. SQLite memory system with FTS5 full-text search. 5 messaging connectors. Responsive Master AI with fast-path responder. Worker control with PID capture, stop commands, and kill infrastructure. 2093 tests passing. Documentation phase (Phase 45) in progress — completing it will push the score above 9.35.
+**Current state: 9.45** — All 5 architecture layers fully implemented and tested. 402 tasks completed across 55 phases. Full SQLite memory system with FTS5 full-text search. `memory.md` pattern for cross-session continuity. Conversation history access (`/history` command + `/api/sessions` REST endpoints). Schema versioning for safe migrations. Worker streaming progress events. Session checkpointing/resume. Prompt library fully implemented (7 methods). 5 messaging connectors. Responsive Master AI with fast-path responder. Worker control with PID capture, stop commands, and kill infrastructure. 2263 tests passing. Documentation Phase 56 in progress — completing it will push the score to 9.50.
 
 ---
 
 ## Path to 9.5/10
 
-| Milestone                                        |  Impact   | Phase |
-| ------------------------------------------------ | :-------: | :---: |
-| Documentation audit — Phase 45 (8 tasks pending) |   +0.10   |  45   |
-| Streaming worker progress (real-time turn count) |   +0.05   |  930  |
-| Session checkpointing (pause/resume Master)      |   +0.05   |  931  |
-| Audit-logger → SQLite migration                  |   +0.05   |  820  |
-| Conversation context injection from DB           |   +0.05   |  822  |
-| **Total potential gain**                         | **+0.30** |   —   |
-| **Projected score after backlog completion**     |  **9.5**  |   —   |
+| Milestone                                        |  Impact   | Phase | Status    |
+| ------------------------------------------------ | :-------: | :---: | --------- |
+| Audit-logger JSONL output                        |   +0.05   |  51   | ✅ Done   |
+| Conversation context injection (`memory.md`)     |   +0.05   |  52   | ✅ Done   |
+| Streaming worker progress (real-time turn count) |   +0.05   |  55   | ✅ Done   |
+| Session checkpointing (pause/resume Master)      |   +0.05   |  55   | ✅ Done   |
+| Documentation audit — Phase 56 (4 tasks pending) |   +0.10   |  56   | 🔄 Active |
+| **Total potential gain**                         | **+0.30** |   —   |           |
+| **Projected score after backlog completion**     |  **9.5**  |   —   |           |
 
 ---
 
@@ -82,6 +80,12 @@
 | 2026-02-26 | 9.030 |   +0.030    | Phase 48 — Worker resilience: max-turns detection (`turnsExhausted` flag), turn-budget warning in prompts, adaptive max-turns (baselineTurns + ceil(len/1000), cap 50), auto-retry on exhaustion (1.5× budget), error classification (rate-limit/auth/timeout/crash/context-overflow/unknown), default retries 2, learnings-based re-delegation. OB-F24/F25 resolved. 12 tasks. |
 | 2026-02-26 | 9.150 |   +0.120    | Phase 46 — Worker control: PID capture via spawnWithHandle, kill infrastructure (SIGTERM→grace→SIGKILL), killWorker/killAllWorkers, stop/stop-all commands with access control and confirmation flow, WebChat stop buttons, cross-channel broadcast of worker-cancelled events, Master AI notified on kill, pid column in agent_activity. 17 tasks.                             |
 | 2026-02-26 | 9.200 |   +0.050    | Phase 49 — Responsive Master: queue depth + wait time acknowledgment, message priority classification (quick-answer/tool-use/complex-task), fast-path responder for quick-answer messages during Master processing, FastPathResponder pool (max 2 concurrent), queue depth in status command. 6 tasks.                                                                          |
+| 2026-02-27 | 9.250 |   +0.050    | Phase 51 — Build fix: prompt library (7 methods on `DotFolderManager`), audit logger JSONL output restored. OB-F32, OB-F27 resolved. 13 tasks, 2263 tests passing.                                                                                                                                                                                                              |
+| 2026-02-27 | 9.300 |   +0.050    | Phase 52 — `memory.md` pattern: cross-session continuity, `buildConversationContext()` injects memory.md as primary context, session-end update prompt, FTS5 fallback, eviction wired. OB-F29 resolved. 8 tasks.                                                                                                                                                                |
+| 2026-02-27 | 9.350 |   +0.050    | Phase 53 — Conversation history: `listSessions()`, `searchSessions()`, `title` column, `/history` command (list/search/session), `/api/sessions` REST endpoints. OB-F35 resolved. 9 tasks.                                                                                                                                                                                      |
+| 2026-02-27 | 9.370 |   +0.020    | Phase 54 — Schema versioning: `schema_versions` table, numbered migrations (1–N), transactional runner with MAX(version) check, idempotency tests. OB-F28 resolved. 4 tasks.                                                                                                                                                                                                    |
+| 2026-02-27 | 9.420 |   +0.050    | Phase 55 — Worker streaming + session checkpointing: `parseTurnIndicator()`, `worker-turn-progress` broadcast, `checkpointSession()` / `resumeSession()` on MasterManager, priority-queue `onUrgentEnqueued` wiring. OB-F30, OB-F31 resolved. 6 tasks.                                                                                                                          |
+| 2026-02-27 | 9.450 |   +0.030    | Phase 56 (partial) — Documentation: ARCHITECTURE.md, ROADMAP.md, CHANGELOG.md, CLAUDE.md ×2, HEALTH.md updated. 6 of 10 tasks complete.                                                                                                                                                                                                                                         |
 
 ---
 
