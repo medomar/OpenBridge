@@ -124,12 +124,12 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).toContain('--ephemeral');
   });
 
-  it('sets stdin to pipe', () => {
+  it('does not set stdin (defaults to ignore in execOnce)', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Hello',
       workspacePath: '/tmp/test',
     });
-    expect(config.stdin).toBe('pipe');
+    expect(config.stdin).toBeUndefined();
   });
 
   it('prepends systemPrompt to prompt text', () => {
