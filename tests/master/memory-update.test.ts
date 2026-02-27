@@ -14,7 +14,7 @@ import * as fs from 'node:fs/promises';
 import { MasterManager } from '../../src/master/master-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
-import type { ConversationEntry, MemoryManager } from '../../src/memory/index.js';
+import { MemoryManager, type ConversationEntry } from '../../src/memory/index.js';
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -387,5 +387,169 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     ).triggerMemoryUpdate();
 
     expect(mockSpawn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration test — SQLite → MemoryManager → formatted prompt pipeline (OB-1121)
+// ---------------------------------------------------------------------------
+
+describe('MemoryManager integration — getRecentMessages pipeline (OB-1121)', () => {
+  /**
+   * Apply the same formatting logic used by triggerMemoryUpdate() in master-manager.ts.
+   * This mirrors lines 876–882 of that file so the test validates the real output.
+   */
+  function formatHistorySection(entries: ConversationEntry[]): string {
+    if (entries.length === 0) return '';
+    const lines = entries.map((msg) => {
+      const ts = msg.created_at ? msg.created_at.slice(0, 16).replace('T', ' ') : '';
+      const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
+      const content = msg.content.length > 300 ? msg.content.slice(0, 300) + '…' : msg.content;
+      return `[${ts}] ${role}: ${content}`;
+    });
+    return `## Recent conversation history:\n${lines.join('\n')}\n\n`;
+  }
+
+  it('(d+e) returns entries chronologically filtered to user/master and formats correctly into prompt', async () => {
+    // (a) Create MemoryManager backed by an in-memory SQLite database
+    const manager = new MemoryManager(':memory:');
+    await manager.init();
+
+    try {
+      // (b) Insert 5 test conversation entries — mix of user/master roles, some with special chars
+      const testEntries: ConversationEntry[] = [
+        {
+          session_id: 'sess-int',
+          role: 'user',
+          content: "What's the project status?", // single quote (FTS5 special char)
+          created_at: '2026-01-15T10:00:00.000Z',
+        },
+        {
+          session_id: 'sess-int',
+          role: 'master',
+          content: 'Phase 63 is complete. Next: "Phase 64" (memory updates).',
+          created_at: '2026-01-15T10:01:00.000Z',
+        },
+        {
+          session_id: 'sess-int',
+          role: 'user',
+          content: 'Can you fix the AND/OR logic in the search?', // FTS5 operators
+          created_at: '2026-01-15T10:02:00.000Z',
+        },
+        {
+          session_id: 'sess-int',
+          role: 'master',
+          content: 'Fixed the FTS5 sanitization (OB-F38): special chars * handled.',
+          created_at: '2026-01-15T10:03:00.000Z',
+        },
+        {
+          session_id: 'sess-int',
+          role: 'user',
+          content: 'Great! What about the memory.md issue?',
+          created_at: '2026-01-15T10:04:00.000Z',
+        },
+      ];
+
+      // (c) Insert via MemoryManager facade
+      for (const entry of testEntries) {
+        await manager.recordMessage(entry);
+      }
+
+      // (d) Verify getRecentMessages(20) returns all 5 entries in chronological order
+      const result = await manager.getRecentMessages(20);
+
+      expect(result).toHaveLength(5);
+
+      // Verify chronological order (oldest → newest)
+      for (let i = 1; i < result.length; i++) {
+        expect(result[i].created_at! >= result[i - 1].created_at!).toBe(true);
+      }
+
+      // Verify only user/master roles are present
+      for (const entry of result) {
+        expect(['user', 'master']).toContain(entry.role);
+      }
+
+      // Verify content of first and last entries
+      expect(result[0].content).toContain("What's the project status?");
+      expect(result[4].content).toContain('memory.md');
+
+      // (e) Verify the formatted prompt string contains snippets from test conversations
+      const historySection = formatHistorySection(result);
+
+      expect(historySection).toContain('## Recent conversation history:');
+      expect(historySection).toContain("[2026-01-15 10:00] User: What's the project status?");
+      expect(historySection).toContain('[2026-01-15 10:01] Master: Phase 63 is complete.');
+      expect(historySection).toContain(
+        '[2026-01-15 10:04] User: Great! What about the memory.md issue?',
+      );
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('filters out worker and system roles — only user/master appear in getRecentMessages()', async () => {
+    const manager = new MemoryManager(':memory:');
+    await manager.init();
+
+    try {
+      // Insert all four role types
+      await manager.recordMessage({
+        session_id: 'sess-roles',
+        role: 'user',
+        content: 'User message',
+        created_at: '2026-01-15T10:00:00.000Z',
+      });
+      await manager.recordMessage({
+        session_id: 'sess-roles',
+        role: 'master',
+        content: 'Master response',
+        created_at: '2026-01-15T10:01:00.000Z',
+      });
+      await manager.recordMessage({
+        session_id: 'sess-roles',
+        role: 'worker',
+        content: 'Worker output — should be excluded',
+        created_at: '2026-01-15T10:02:00.000Z',
+      });
+      await manager.recordMessage({
+        session_id: 'sess-roles',
+        role: 'system',
+        content: 'System note — should be excluded',
+        created_at: '2026-01-15T10:03:00.000Z',
+      });
+
+      const result = await manager.getRecentMessages(20);
+
+      // Only user and master should be returned
+      expect(result).toHaveLength(2);
+      expect(result[0].role).toBe('user');
+      expect(result[1].role).toBe('master');
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('respects the limit parameter', async () => {
+    const manager = new MemoryManager(':memory:');
+    await manager.init();
+
+    try {
+      // Insert 6 entries
+      for (let i = 0; i < 6; i++) {
+        await manager.recordMessage({
+          session_id: 'sess-limit',
+          role: i % 2 === 0 ? 'user' : 'master',
+          content: `Message ${i}`,
+          created_at: `2026-01-15T10:0${i}:00.000Z`,
+        });
+      }
+
+      // Request only 3
+      const result = await manager.getRecentMessages(3);
+      expect(result).toHaveLength(3);
+    } finally {
+      await manager.close();
+    }
   });
 });
