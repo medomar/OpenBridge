@@ -286,6 +286,39 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config1.args[oIdx1 + 1]).not.toBe(config2.args[oIdx2 + 1]);
   });
 
+  it('passes -c <mcpConfigPath> when mcpConfigPath is set', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+      mcpConfigPath: '/tmp/mcp-config.json',
+    });
+    const cIdx = config.args.indexOf('-c');
+    expect(cIdx).toBeGreaterThanOrEqual(0);
+    expect(config.args[cIdx + 1]).toBe('/tmp/mcp-config.json');
+  });
+
+  it('places -c <mcpConfigPath> before --json and the prompt', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+      mcpConfigPath: '/tmp/mcp-config.json',
+    });
+    const cIdx = config.args.indexOf('-c');
+    const jsonIdx = config.args.indexOf('--json');
+    const promptIdx = config.args.indexOf('Task');
+    expect(cIdx).toBeGreaterThanOrEqual(0);
+    expect(jsonIdx).toBeGreaterThan(cIdx);
+    expect(promptIdx).toBeGreaterThan(jsonIdx);
+  });
+
+  it('does not include -c flag when mcpConfigPath is not set', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.args).not.toContain('-c');
+  });
+
   it('throws when OPENAI_API_KEY is missing', () => {
     const saved = process.env['OPENAI_API_KEY'];
     delete process.env['OPENAI_API_KEY'];

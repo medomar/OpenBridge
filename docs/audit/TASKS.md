@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 28 | **In Progress:** 0 | **Done:** 13
+> **Pending:** 27 | **In Progress:** 0 | **Done:** 14
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -56,7 +56,7 @@
 | 11  | OB-1102 | **Register Codex provider** in `src/providers/index.ts` — add `registry.registerProvider('codex', (options) => new CodexProvider(options))` alongside `claude-code`. Both providers are now available.                                                                                                                                                                                                                                                        | ✅ Done   |
 | 12  | OB-1103 | **Provider-aware Master selection** in `src/index.ts` (lines 151-157) — if `selectedMaster.name === 'codex'`, use `CodexProvider` instead of `ClaudeCodeProvider`. Update the provider lookup to match the discovered master tool name to the correct provider factory. If neither provider matches, throw with a clear error naming available options.                                                                                                       | ✅ Done   |
 | 13  | OB-1104 | **Add Codex session management** at `src/providers/codex/session-manager.ts` — Codex v0.104.0 supports `codex exec resume --last` and session IDs. Implement `getOrCreate(key)` that returns session state. For first message: use `--ephemeral`. For follow-ups: use `codex exec resume --last` or session ID from prior output. Enables multi-turn conversations like Claude's `--session-id`.                                                              | ✅ Done   |
-| 14  | OB-1105 | **Add Codex MCP passthrough** in `src/core/adapters/codex-adapter.ts` — Codex supports MCP natively via `codex mcp add`. When `opts.mcpConfigPath` is set, pass MCP servers via Codex's config system (`-c` flag or pre-configured servers). This enables MCP support for Codex workers alongside Claude workers.                                                                                                                                             | ◻ Pending |
+| 14  | OB-1105 | **Add Codex MCP passthrough** in `src/core/adapters/codex-adapter.ts` — Codex supports MCP natively via `codex mcp add`. When `opts.mcpConfigPath` is set, pass MCP servers via Codex's config system (`-c` flag or pre-configured servers). This enables MCP support for Codex workers alongside Claude workers.                                                                                                                                             | ✅ Done   |
 | 15  | OB-1106 | **Unit tests for Codex provider** — test: (a) `CodexProvider.processMessage()` returns result, (b) `isAvailable()` checks for codex binary, (c) session management creates/resumes sessions, (d) error classification for Codex-specific errors (rate limit, auth, timeout), (e) config validation. Target: `tests/providers/codex/`.                                                                                                                         | ◻ Pending |
 
 ---

@@ -15,6 +15,7 @@
  *   -o, --output-last-message <FILE>  Write final answer to file (reliable capture)
  *   -C, --cd <DIR>                Working directory
  *   --ephemeral                   No session persistence
+ *   -c, --config <FILE>           Config file for MCP server definitions (MCP passthrough)
  *   <prompt>                      Positional argument (after exec)
  *
  * Feature mapping (lossy — Codex doesn't support these):
@@ -125,6 +126,14 @@ export class CodexAdapter implements CLIAdapter {
       args.push('--ephemeral');
     }
     // When sessionId is set (new provider session), omit --ephemeral so Codex saves state.
+
+    // MCP passthrough: Codex supports MCP natively via `codex mcp add`.
+    // When a config path is provided, pass it via the -c flag so Codex can
+    // load MCP server definitions without requiring global pre-configuration.
+    if (opts.mcpConfigPath) {
+      logger.debug({ mcpConfigPath: opts.mcpConfigPath }, 'codex: passing MCP config via -c flag');
+      args.push('-c', opts.mcpConfigPath);
+    }
 
     // Enable JSONL structured output — each event is a JSON object on its own line.
     // AgentRunner applies parseOutput() to extract the final message content.
