@@ -1,6 +1,6 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-02-26 | **Current Version:** v0.0.2
+> **Last Updated:** 2026-02-27 | **Current Version:** v0.0.2
 
 This document outlines the vision and planned features for OpenBridge. Features move from **Backlog** to **Planned** to **In Progress** to **Released** as they mature.
 
@@ -10,34 +10,39 @@ Two parallel development tracks exist: **Track A (Memory & Intelligence)** build
 
 ## Released (v0.0.1 — v0.0.2)
 
-Everything that shipped — 352 tasks across 48 phases.
+Everything that shipped — 392 tasks across 53 phases.
 
-| Feature                                                                        | Phase | Version | Status  |
-| ------------------------------------------------------------------------------ | ----- | ------- | ------- |
-| Bridge Core (router, auth, queue, config)                                      | 1–5   | v0.0.1  | Shipped |
-| WhatsApp + Console connectors                                                  | 1–5   | v0.0.1  | Shipped |
-| Claude Code provider                                                           | 1–5   | v0.0.1  | Shipped |
-| AI tool auto-discovery                                                         | 6–10  | v0.0.1  | Shipped |
-| Incremental workspace exploration (5-pass)                                     | 11–14 | v0.0.1  | Shipped |
-| MVP release                                                                    | 15    | v0.0.1  | Shipped |
-| Agent Runner (--allowedTools, --max-turns, --model, retries)                   | 16–18 | v0.0.1  | Shipped |
-| Self-governing Master AI                                                       | 18–21 | v0.0.1  | Shipped |
-| Tool profiles (read-only, code-edit, full-access, master)                      | 16–17 | v0.0.1  | Shipped |
-| Worker orchestration + SPAWN markers                                           | 19–21 | v0.0.1  | Shipped |
-| Self-improvement (prompt tracking, model selection learning)                   | 20–21 | v0.0.1  | Shipped |
-| WebChat, Telegram, Discord connectors                                          | 22–24 | v0.0.1  | Shipped |
-| AI-powered intent classification                                               | 29    | v0.0.1  | Shipped |
-| Live progress events across all connectors                                     | 29    | v0.0.1  | Shipped |
-| Production hardening + v0.0.1 tag                                              | 30    | v0.0.1  | Shipped |
-| Memory wiring (MemoryManager integration across all modules)                   | 40    | v0.0.1  | Shipped |
-| Memory & startup fixes (race condition, prompt guards)                         | 41    | v0.0.1  | Shipped |
-| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                       | 42    | v0.0.1  | Shipped |
-| Exploration reliability & change detection (throttling, markers)               | 43    | v0.0.1  | Shipped |
-| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)            | 44    | v0.0.1  | Shipped |
-| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)  | 47    | v0.0.2  | Shipped |
-| Worker resilience: max-turns detection, adaptive budgets, failure recovery     | 48    | v0.0.2  | Shipped |
-| Worker control: stop/stop-all commands, PID capture, WebChat buttons           | 46    | v0.1.1  | Shipped |
-| Responsive Master: priority queue, fast-path responder, queue depth visibility | 49    | v0.2.0  | Shipped |
+| Feature                                                                        | Phase | Version     | Status  |
+| ------------------------------------------------------------------------------ | ----- | ----------- | ------- |
+| Bridge Core (router, auth, queue, config)                                      | 1–5   | v0.0.1      | Shipped |
+| WhatsApp + Console connectors                                                  | 1–5   | v0.0.1      | Shipped |
+| Claude Code provider                                                           | 1–5   | v0.0.1      | Shipped |
+| AI tool auto-discovery                                                         | 6–10  | v0.0.1      | Shipped |
+| Incremental workspace exploration (5-pass)                                     | 11–14 | v0.0.1      | Shipped |
+| MVP release                                                                    | 15    | v0.0.1      | Shipped |
+| Agent Runner (--allowedTools, --max-turns, --model, retries)                   | 16–18 | v0.0.1      | Shipped |
+| Self-governing Master AI                                                       | 18–21 | v0.0.1      | Shipped |
+| Tool profiles (read-only, code-edit, full-access, master)                      | 16–17 | v0.0.1      | Shipped |
+| Worker orchestration + SPAWN markers                                           | 19–21 | v0.0.1      | Shipped |
+| Self-improvement (prompt tracking, model selection learning)                   | 20–21 | v0.0.1      | Shipped |
+| WebChat, Telegram, Discord connectors                                          | 22–24 | v0.0.1      | Shipped |
+| AI-powered intent classification                                               | 29    | v0.0.1      | Shipped |
+| Live progress events across all connectors                                     | 29    | v0.0.1      | Shipped |
+| Production hardening + v0.0.1 tag                                              | 30    | v0.0.1      | Shipped |
+| Memory wiring (MemoryManager integration across all modules)                   | 40    | v0.0.1      | Shipped |
+| Memory & startup fixes (race condition, prompt guards)                         | 41    | v0.0.1      | Shipped |
+| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                       | 42    | v0.0.1      | Shipped |
+| Exploration reliability & change detection (throttling, markers)               | 43    | v0.0.1      | Shipped |
+| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)            | 44    | v0.0.1      | Shipped |
+| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)  | 47    | v0.0.2      | Shipped |
+| Worker resilience: max-turns detection, adaptive budgets, failure recovery     | 48    | v0.0.2      | Shipped |
+| Worker control: stop/stop-all commands, PID capture, WebChat buttons           | 46    | v0.1.1      | Shipped |
+| Responsive Master: priority queue, fast-path responder, queue depth visibility | 49    | v0.2.0      | Shipped |
+| Prompt library (7 methods on DotFolderManager) + audit logger JSONL output     | 51    | post-v0.0.2 | Shipped |
+| Conversation continuity — memory.md cross-session pattern (read/write/inject)  | 52    | post-v0.0.2 | Shipped |
+| Conversation history — /history command, listSessions, searchSessions, REST    | 53    | post-v0.0.2 | Shipped |
+| Schema versioning — schema_versions table + transactional migrations           | 54    | post-v0.0.2 | Shipped |
+| Worker streaming progress + session checkpointing/resume + priority queue      | 55    | post-v0.0.2 | Shipped |
 
 ---
 
@@ -564,7 +569,7 @@ Sync via DB:
 
 ## Current Work
 
-> **Status:** Phases 47, 48, 46, 49 complete. Phase 45 (documentation audit) is the active work.
+> **Status:** Phases 46–49, 51–55 complete. Phase 56 (documentation update) is the active work.
 
 ### ✅ Phase 47: Exploration Progress Tracking Fix _(v0.0.2 — complete)_
 
@@ -664,25 +669,24 @@ Sync via DB:
 
 ---
 
-### ⑤ Phase 45: Documentation Audit _(v0.0.2-post — active)_
+### ⑥ Phase 56: Documentation Update _(v0.0.2-post — active)_
 
-> **Goal:** Align every documentation file with the real codebase state. Runs **after all code phases** so docs reflect the final state including exploration fix, worker resilience, worker control, and responsive Master.
+> **Goal:** Align every documentation file with the final codebase state after Phases 51–55. Covers prompt library, memory.md pattern, conversation history, schema versioning, worker streaming, and session checkpointing.
 >
-> **Milestone:** v0.0.2-post (housekeeping) | **After all code phases** | 11 tasks
+> **Milestone:** v0.0.2-post (housekeeping) | 10 tasks
 
-| Task                                                           | ID     | Priority | Status  |
-| -------------------------------------------------------------- | ------ | :------: | :-----: |
-| Update ROADMAP.md — fix task counts, mark shipped phases       | OB-860 | 🔴 High  | Pending |
-| Update TASKS.md header and backlog                             | OB-861 | 🔴 High  | Pending |
-| Update OVERVIEW.md — remove .git refs, add memory system       | OB-862 | 🔴 High  | Pending |
-| Create HEALTH.md — fresh scoring reflecting current state      | OB-863 | 🔴 High  | Pending |
-| Update CHANGELOG.md — fill [Unreleased] with all new features  | OB-864 | 🔴 High  | Pending |
-| Update CLAUDE.md (both) — add missing modules, fix LOC counts  | OB-865 | 🔴 High  | Pending |
-| Update MEMORY.md — fix counts, phase statuses, architecture    | OB-866 | 🔴 High  | Pending |
-| Audit milestone specs — update v0.1.0–v0.4.0 completion status | OB-867 |  🟡 Med  | Pending |
-| Audit FINDINGS.md — verify accuracy, update date               | OB-868 |  🟡 Med  | Pending |
-| Cross-reference code vs docs for gaps                          | OB-869 |  🟡 Med  | Pending |
-| Verify tests pass after doc changes                            | OB-870 | 🔴 High  | Pending |
+| Task                                                             | ID      | Priority | Status  |
+| ---------------------------------------------------------------- | ------- | :------: | :-----: |
+| Update ARCHITECTURE.md — reflect v0.0.2 final state              | OB-1060 | 🔴 High  | Shipped |
+| Update ROADMAP.md — mark Phases 51–55 shipped, update milestones | OB-1061 | 🔴 High  | Pending |
+| Update CHANGELOG.md — add all new features across Phases 51–55   | OB-1062 | 🔴 High  | Pending |
+| Update CLAUDE.md (workspace root) — new modules, LOC counts      | OB-1063 | 🔴 High  | Pending |
+| Update CLAUDE.md (OpenBridge repo) — sync key files list         | OB-1064 | 🔴 High  | Pending |
+| Update HEALTH.md — recalculate score, set open findings to 0     | OB-1065 | 🔴 High  | Pending |
+| Update README.md — add memory + history as feature highlights    | OB-1066 |  🟡 Med  | Pending |
+| Update API_REFERENCE.md — new DotFolderManager methods + REST    | OB-1067 |  🟡 Med  | Pending |
+| Update FINDINGS.md — mark all 9 findings fixed, archive          | OB-1068 |  🟡 Med  | Pending |
+| Final validation — test, typecheck, lint, format                 | OB-1069 | 🔴 High  | Pending |
 
 ---
 
@@ -690,24 +694,19 @@ Sync via DB:
 
 These are ideas captured for future consideration. Not yet scoped or scheduled.
 
-| Feature                        | ID     | Description                                                        | Notes                  |
-| ------------------------------ | ------ | ------------------------------------------------------------------ | ---------------------- |
-| Audit logger → SQLite          | OB-820 | Migrate audit-logger.ts to SQLite (create audit_log table)         | Memory track, med prio |
-| DB schema versioning           | OB-821 | Migration table with version number for schema upgrades            | Memory track, med prio |
-| Conversation context injection | OB-822 | Replace buildConversationContext with DB-backed retrieval          | Memory track, med prio |
-| Docker sandbox                 | OB-193 | Run workers in containers for untrusted workspaces                 | Security isolation     |
-| Interactive AI views           | OB-124 | AI generates live reports/dashboards on local HTTP                 | Needs Phase 34 first   |
-| E2E test: business files       | OB-306 | CSV workspace E2E test                                             | Testing gap            |
-| Scheduled tasks                | —      | Cron-like task scheduling ("run tests every morning at 9am")       | New capability         |
-| AI tool marketplace            | —      | Browse and install community-built connectors and providers        | Plugin ecosystem       |
-| Webhook connector              | —      | HTTP webhook endpoint for CI/CD integration (GitHub Actions, etc.) | New connector type     |
-| PDF generation                 | —      | Built-in HTML-to-PDF conversion for generated reports              | Uses Puppeteer         |
-| Secrets management             | —      | Encrypted storage for Discord/Telegram tokens                      | Security improvement   |
-| WhatsApp session persist       | —      | Avoid re-scan when session expires                                 | UX improvement         |
-| Skill creator                  | OB-192 | Master creates reusable skill templates from successful patterns   | Self-improvement       |
-| Context compaction             | OB-190 | Progressive summarization when context grows large                 | Memory optimization    |
-| Worker streaming progress      | OB-930 | Real-time turn count visibility from active workers                | Needs Phase 48 first   |
-| Session checkpointing          | OB-931 | Pause/resume Master for priority message interrupts                | Needs Phase 49 first   |
+| Feature                  | ID     | Description                                                        | Notes                |
+| ------------------------ | ------ | ------------------------------------------------------------------ | -------------------- |
+| Docker sandbox           | OB-193 | Run workers in containers for untrusted workspaces                 | Security isolation   |
+| Interactive AI views     | OB-124 | AI generates live reports/dashboards on local HTTP                 | Needs Phase 34 first |
+| E2E test: business files | OB-306 | CSV workspace E2E test                                             | Testing gap          |
+| Scheduled tasks          | —      | Cron-like task scheduling ("run tests every morning at 9am")       | New capability       |
+| AI tool marketplace      | —      | Browse and install community-built connectors and providers        | Plugin ecosystem     |
+| Webhook connector        | —      | HTTP webhook endpoint for CI/CD integration (GitHub Actions, etc.) | New connector type   |
+| PDF generation           | —      | Built-in HTML-to-PDF conversion for generated reports              | Uses Puppeteer       |
+| Secrets management       | —      | Encrypted storage for Discord/Telegram tokens                      | Security improvement |
+| WhatsApp session persist | —      | Avoid re-scan when session expires                                 | UX improvement       |
+| Skill creator            | OB-192 | Master creates reusable skill templates from successful patterns   | Self-improvement     |
+| Context compaction       | OB-190 | Progressive summarization when context grows large                 | Memory optimization  |
 
 ---
 
@@ -719,10 +718,16 @@ These are ideas captured for future consideration. Not yet scoped or scheduled.
 ✅ Phase 48: Worker Resilience (shipped v0.0.2)
     │
     └──► ✅ Phase 49: Responsive Master (shipped, partial v0.2.0 feature)
+              │
+              ├──► ✅ Phase 51: Prompt Library + Audit Logger Fix (shipped post-v0.0.2)
+              ├──► ✅ Phase 52: Conversation Continuity — memory.md (shipped post-v0.0.2)
+              ├──► ✅ Phase 53: Conversation History Access (shipped post-v0.0.2)
+              ├──► ✅ Phase 54: Schema Versioning (shipped post-v0.0.2)
+              └──► ✅ Phase 55: Worker Streaming + Checkpointing (shipped post-v0.0.2)
 
 ✅ Phase 46: Worker Control Commands (shipped v0.1.1)
 
-◻  Phase 45: Documentation Audit (active — aligns docs with shipped phases above)
+◻  Phase 56: Documentation Update (active — aligns docs with all shipped phases above)
 
 Phase 31: Memory Foundation
     │
@@ -749,17 +754,17 @@ Phase 31: Memory Foundation
 
 ## Version Milestones
 
-| Version         | Target | Key Features                                                                                                                                 | Milestone Doc                                           |
-| --------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **v0.0.1**      | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                                  | [release notes](docs/releases/release-notes-v0.0.1.md)  |
-| **v0.0.2**      | Done   | Bug fixes — exploration progress tracking (Phase 47) + worker resilience: max-turns detection, adaptive budgets, failure recovery (Phase 48) | —                                                       |
-| **v0.1.1**      | Done   | Worker control — stop/stop-all commands, PID capture, WebChat stop buttons, cross-channel broadcast (Phase 46)                               | —                                                       |
-| **v0.0.2-post** | Next   | Documentation audit — align all docs with codebase post-Phases 47–49 (Phase 45)                                                              | —                                                       |
-| **v0.1.0**      | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                                      | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
-| **v0.2.0**      | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phases 33, 34, 35, 49 shipped portion)                             | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
-| **v0.3.0**      | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                                            | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
-| **v0.4.0**      | TBD    | Scale — access control, hierarchical masters, server deployment                                                                              | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
-| **v1.0.0**      | TBD    | Team — agent orchestration, role-based workers, stable API                                                                                   | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
+| Version         | Target | Key Features                                                                                                                                                 | Milestone Doc                                           |
+| --------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| **v0.0.1**      | Done   | Foundation — 5 connectors, self-governing Master, 310 tasks                                                                                                  | [release notes](docs/releases/release-notes-v0.0.1.md)  |
+| **v0.0.2**      | Done   | Bug fixes — exploration progress tracking (Phase 47) + worker resilience: max-turns detection, adaptive budgets, failure recovery (Phase 48)                 | —                                                       |
+| **v0.1.1**      | Done   | Worker control — stop/stop-all commands, PID capture, WebChat stop buttons, cross-channel broadcast (Phase 46)                                               | —                                                       |
+| **v0.0.2-post** | Active | Prompt library, memory.md continuity, history access, schema versioning, worker streaming, checkpointing (Phases 51–55 shipped); docs in progress (Phase 56) | —                                                       |
+| **v0.1.0**      | TBD    | Memory System — SQLite DB, FTS5 search, worker briefing                                                                                                      | [v0.1.0](docs/audit/milestones/v0.1.0-memory-system.md) |
+| **v0.2.0**      | TBD    | Smart System — media, publishing, conversation memory, responsive Master (Phases 33, 34, 35, 49 shipped portion)                                             | [v0.2.0](docs/audit/milestones/v0.2.0-smart-system.md)  |
+| **v0.3.0**      | TBD    | Visibility — agent dashboard, exploration progress, cost tracking                                                                                            | [v0.3.0](docs/audit/milestones/v0.3.0-visibility.md)    |
+| **v0.4.0**      | TBD    | Scale — access control, hierarchical masters, server deployment                                                                                              | [v0.4.0](docs/audit/milestones/v0.4.0-scale.md)         |
+| **v1.0.0**      | TBD    | Team — agent orchestration, role-based workers, stable API                                                                                                   | [v1.0.0](docs/audit/milestones/v1.0.0-team.md)          |
 
 ---
 
