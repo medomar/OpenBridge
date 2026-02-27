@@ -30,6 +30,8 @@ This document covers every public interface, class, and configuration schema in 
 - [Master AI Types](#master-ai-types)
   - [MasterState](#masterstate)
   - [ExplorationSummary](#explorationsummary)
+  - [TaskManifest](#taskmanifest)
+  - [MasterSystemPromptContext](#mastersystempromptcontext)
 - [Core Classes](#core-classes)
   - [Bridge](#bridge)
   - [Router](#router)
@@ -56,12 +58,15 @@ This document covers every public interface, class, and configuration schema in 
   - [AuditConfig](#auditconfig)
   - [HealthConfig](#healthconfig)
   - [MetricsConfig](#metricsconfig)
+  - [MCPServer](#mcpserver)
+  - [MCPConfig](#mcpconfig)
 - [Memory Classes](#memory-classes)
   - [ConversationStore](#conversationstore)
 - [Master AI Classes](#master-ai-classes)
   - [DotFolderManager](#dotfoldermanager)
 - [Utility Functions](#utility-functions)
   - [loadConfig()](#loadconfig)
+  - [getMcpConfigPath()](#getmcpconfigpath)
   - [scanForAITools()](#scanforaitools)
   - [createLogger()](#createlogger)
 - [Built-in Commands](#built-in-commands)
@@ -173,22 +178,23 @@ _Source: `src/core/agent-runner.ts`_
 
 Options accepted by `AgentRunner.spawn()`. Adapter-specific fields are silently dropped by adapters that don't support them.
 
-| Property           | Type       | Default | Description                                                                          |
-| ------------------ | ---------- | ------- | ------------------------------------------------------------------------------------ |
-| `prompt`           | `string`   | —       | The prompt to send to the AI agent                                                   |
-| `workspacePath`    | `string`   | —       | Working directory for the agent process                                              |
-| `model?`           | `string`   | —       | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                      |
-| `allowedTools?`    | `string[]` | —       | Tools the agent may use. Mapped to `--allowedTools` (Claude) or sandbox mode (Codex) |
-| `maxTurns?`        | `number`   | —       | Max agentic turns before stopping. Claude only — dropped by Codex/Aider adapters     |
-| `timeout?`         | `number`   | —       | Timeout in milliseconds per attempt                                                  |
-| `retries?`         | `number`   | `3`     | Number of retry attempts on non-zero exit codes                                      |
-| `retryDelay?`      | `number`   | `10000` | Delay in milliseconds between retry attempts                                         |
-| `logFile?`         | `string`   | —       | Path to write the full agent log output                                              |
-| `sessionId?`       | `string`   | —       | Start a new named session (`--session-id` for Claude, named session for Codex)       |
-| `resumeSessionId?` | `string`   | —       | Resume a prior session (`--resume` for Claude, `exec resume --last` for Codex)       |
-| `systemPrompt?`    | `string`   | —       | System prompt injected at the top of the agent context                               |
-| `maxBudgetUsd?`    | `number`   | —       | Max spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)             |
-| `mcpConfigPath?`   | `string`   | —       | Path to MCP config JSON (`--mcp-config` for Claude, `-c` for Codex; Aider drops it)  |
+| Property           | Type       | Default | Description                                                                                                                                                                                                                                             |
+| ------------------ | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`           | `string`   | —       | The prompt to send to the AI agent                                                                                                                                                                                                                      |
+| `workspacePath`    | `string`   | —       | Working directory for the agent process                                                                                                                                                                                                                 |
+| `model?`           | `string`   | —       | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                                                                                                                                                                                         |
+| `allowedTools?`    | `string[]` | —       | Tools the agent may use. Mapped to `--allowedTools` (Claude) or sandbox mode (Codex)                                                                                                                                                                    |
+| `maxTurns?`        | `number`   | —       | Max agentic turns before stopping. Claude only — dropped by Codex/Aider adapters                                                                                                                                                                        |
+| `timeout?`         | `number`   | —       | Timeout in milliseconds per attempt                                                                                                                                                                                                                     |
+| `retries?`         | `number`   | `3`     | Number of retry attempts on non-zero exit codes                                                                                                                                                                                                         |
+| `retryDelay?`      | `number`   | `10000` | Delay in milliseconds between retry attempts                                                                                                                                                                                                            |
+| `logFile?`         | `string`   | —       | Path to write the full agent log output                                                                                                                                                                                                                 |
+| `sessionId?`       | `string`   | —       | Start a new named session (`--session-id` for Claude, named session for Codex)                                                                                                                                                                          |
+| `resumeSessionId?` | `string`   | —       | Resume a prior session (`--resume` for Claude, `exec resume --last` for Codex)                                                                                                                                                                          |
+| `systemPrompt?`    | `string`   | —       | System prompt injected at the top of the agent context                                                                                                                                                                                                  |
+| `maxBudgetUsd?`    | `number`   | —       | Max spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)                                                                                                                                                                                |
+| `mcpConfigPath?`   | `string`   | —       | Path to MCP config JSON (`--mcp-config` for Claude, `-c` for Codex; Aider drops it)                                                                                                                                                                     |
+| `strictMcpConfig?` | `boolean`  | —       | When `true`, passes `--strict-mcp-config` to Claude — isolates the worker from any global MCP configs (e.g. `~/.claude/claude_desktop_config.json`). Always set to `true` by `manifestToSpawnOptions()` when a per-worker temp MCP config is generated. |
 
 ---
 
@@ -416,6 +422,41 @@ Summary of the Master AI's workspace exploration.
 | `frameworks`  | `string[]` | Detected frameworks                        |
 | `exploredAt`  | `string`   | ISO 8601 timestamp of exploration          |
 
+### TaskManifest
+
+_Source: `src/types/agent.ts`_
+
+Describes everything needed to spawn a worker agent. The Master AI produces these; `AgentRunner` consumes them via `manifestToSpawnOptions()`.
+
+| Property        | Type          | Description                                                                                                                                           |
+| --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`        | `string`      | The prompt to send to the worker agent (required)                                                                                                     |
+| `workspacePath` | `string`      | Working directory for the worker (required)                                                                                                           |
+| `model?`        | `string`      | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                                                                                       |
+| `profile?`      | `string`      | Named tool profile — resolved to `allowedTools` by `AgentRunner`                                                                                      |
+| `allowedTools?` | `string[]`    | Explicit tools list — overrides `profile` if both are provided                                                                                        |
+| `maxTurns?`     | `number`      | Maximum number of agentic turns                                                                                                                       |
+| `timeout?`      | `number`      | Timeout in milliseconds per attempt                                                                                                                   |
+| `retries?`      | `number`      | Number of retry attempts on failure                                                                                                                   |
+| `retryDelay?`   | `number`      | Delay in milliseconds between retries                                                                                                                 |
+| `maxBudgetUsd?` | `number`      | Maximum spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)                                                                          |
+| `mcpServers?`   | `MCPServer[]` | MCP servers this worker may use. `manifestToSpawnOptions()` writes a per-worker temp config with only these servers and sets `strictMcpConfig: true`. |
+
+### MasterSystemPromptContext
+
+_Source: `src/master/master-system-prompt.ts`_
+
+Context object passed to `generateMasterSystemPrompt()` to build the Master AI's system prompt.
+
+| Property           | Type               | Description                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspacePath`    | `string`           | Absolute path to the target workspace                                                                                                                                                                                                                                                                                |
+| `masterToolName`   | `string`           | The Master AI tool's name (e.g. `'claude'`, `'codex'`)                                                                                                                                                                                                                                                               |
+| `discoveredTools?` | `DiscoveredTool[]` | All AI tools found on the machine                                                                                                                                                                                                                                                                                    |
+| `customProfiles?`  | `object`           | Custom tool profiles for the Master to assign to workers                                                                                                                                                                                                                                                             |
+| `modelRegistry?`   | `ModelRegistry`    | Provider-agnostic model registry for resolving tier aliases                                                                                                                                                                                                                                                          |
+| `mcpServers?`      | `MCPServer[]`      | MCP servers available for workers (sourced from `V2Config.mcp.servers`). When non-empty, the system prompt gains an "Available MCP Servers" section listing each server name. The Master can then assign servers to workers via the `mcpServers` field of `TaskManifest`. Omit or pass `[]` to suppress the section. |
+
 ---
 
 ## Core Classes
@@ -596,13 +637,35 @@ HTTP server exposing bridge health status as JSON.
 
 **HealthStatus** (response shape):
 
-| Property     | Type                                     | Description                  |
-| ------------ | ---------------------------------------- | ---------------------------- |
-| `status`     | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status        |
-| `uptime`     | `number`                                 | Seconds since bridge started |
-| `timestamp`  | `string`                                 | ISO 8601 timestamp           |
-| `connectors` | `ComponentStatus[]`                      | Status of each connector     |
-| `queue`      | `object`                                 | Queue state                  |
+| Property          | Type                                     | Description                                                                            |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `status`          | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status                                                                  |
+| `uptime_seconds`  | `number`                                 | Seconds since bridge started                                                           |
+| `memory_mb`       | `number`                                 | Resident memory usage in MB                                                            |
+| `active_workers`  | `number`                                 | Current number of active worker agents                                                 |
+| `master_status`   | `string`                                 | Master AI lifecycle state                                                              |
+| `db_status`       | `'connected' \| 'disconnected'`          | SQLite memory system status                                                            |
+| `last_message_at` | `string \| null`                         | ISO 8601 timestamp of the most recent message                                          |
+| `timestamp`       | `string`                                 | ISO 8601 timestamp of this health check                                                |
+| `connectors`      | `ComponentStatus[]`                      | Status of each connector                                                               |
+| `providers`       | `ComponentStatus[]`                      | Status of each provider                                                                |
+| `queue`           | `object`                                 | Queue state (`pending`, `processing`, `deadLetterSize`)                                |
+| `mcp?`            | `object`                                 | MCP server health (present only when MCP servers are configured via `setMcpServers()`) |
+
+**`mcp` sub-object:**
+
+| Property  | Type                | Description                                 |
+| --------- | ------------------- | ------------------------------------------- |
+| `enabled` | `boolean`           | Whether MCP is enabled                      |
+| `servers` | `McpServerStatus[]` | Health status of each configured MCP server |
+
+**`McpServerStatus`:**
+
+| Property  | Type                      | Description                                               |
+| --------- | ------------------------- | --------------------------------------------------------- |
+| `name`    | `string`                  | MCP server name (from config)                             |
+| `status`  | `'configured' \| 'error'` | `'configured'` if command found on PATH, `'error'` if not |
+| `command` | `string`                  | The server command being checked (e.g. `npx`)             |
 
 ---
 
@@ -676,18 +739,19 @@ All configuration is validated at startup using [Zod](https://zod.dev) schemas. 
 
 The simplified config format. Three required fields.
 
-| Property        | Type     | Default   | Description                                    |
-| --------------- | -------- | --------- | ---------------------------------------------- |
-| `workspacePath` | `string` | —         | Absolute path to the target project (required) |
-| `channels`      | `array`  | —         | At least one channel config (required)         |
-| `auth`          | `object` | —         | Authentication settings (required)             |
-| `master?`       | `object` | `{}`      | Override auto-detected Master AI settings      |
-| `queue?`        | `object` | see below | Queue retry configuration                      |
-| `router?`       | `object` | see below | Router configuration                           |
-| `audit?`        | `object` | see below | Audit logging configuration                    |
-| `health?`       | `object` | see below | Health check endpoint config                   |
-| `metrics?`      | `object` | see below | Metrics endpoint configuration                 |
-| `logLevel?`     | `string` | `'info'`  | One of: trace, debug, info, warn, error, fatal |
+| Property        | Type        | Default   | Description                                            |
+| --------------- | ----------- | --------- | ------------------------------------------------------ |
+| `workspacePath` | `string`    | —         | Absolute path to the target project (required)         |
+| `channels`      | `array`     | —         | At least one channel config (required)                 |
+| `auth`          | `object`    | —         | Authentication settings (required)                     |
+| `master?`       | `object`    | `{}`      | Override auto-detected Master AI settings              |
+| `mcp?`          | `MCPConfig` | —         | MCP server configuration (see [MCPConfig](#mcpconfig)) |
+| `queue?`        | `object`    | see below | Queue retry configuration                              |
+| `router?`       | `object`    | see below | Router configuration                                   |
+| `audit?`        | `object`    | see below | Audit logging configuration                            |
+| `health?`       | `object`    | see below | Health check endpoint config                           |
+| `metrics?`      | `object`    | see below | Metrics endpoint configuration                         |
+| `logLevel?`     | `string`    | `'info'`  | One of: trace, debug, info, warn, error, fatal         |
 
 **Channel config:**
 
@@ -772,6 +836,33 @@ The original config format. Still fully supported — auto-detected by the confi
 | ---------- | --------- | ------- | ---------------------------------- |
 | `enabled?` | `boolean` | `false` | Enable/disable metrics endpoint    |
 | `port?`    | `number`  | `9090`  | HTTP port for the metrics endpoint |
+
+### MCPServer
+
+_Source: `src/types/config.ts`_
+
+A single MCP server definition, used in the `mcp.servers` array of `AppConfigV2`.
+
+| Property  | Type                     | Description                                                                         |
+| --------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `name`    | `string`                 | Unique server name — used by the Master AI to reference the server                  |
+| `command` | `string`                 | Command to launch the MCP server (e.g. `npx`, `/usr/local/bin/my-mcp`)              |
+| `args?`   | `string[]`               | CLI arguments for the server command (e.g. `['-y', '@anthropic/canva-mcp-server']`) |
+| `env?`    | `Record<string, string>` | Environment variables injected when the MCP server process is started               |
+
+### MCPConfig
+
+_Source: `src/types/config.ts`_
+
+The `mcp` section of `AppConfigV2`. Controls which MCP servers are available to workers.
+
+| Property      | Type          | Default | Description                                                                                                                                      |
+| ------------- | ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled?`    | `boolean`     | `true`  | Enable or disable MCP support. When `false`, no MCP config is written at startup                                                                 |
+| `servers?`    | `MCPServer[]` | `[]`    | Inline server definitions                                                                                                                        |
+| `configPath?` | `string`      | —       | Path to an existing Claude Desktop or Claude Code MCP config file to import. Inline `servers` override same-name entries from the imported file. |
+
+At bridge startup, `loadConfig()` transforms the `mcp` section into a global `.openbridge/mcp-config.json` file in the Claude CLI format. Use `getMcpConfigPath()` to retrieve the resulting file path.
 
 ---
 
@@ -985,6 +1076,18 @@ function loadConfig(configPath?: string): Promise<AppConfig | AppConfigV2>;
 ```
 
 Reads and validates `config.json`. Tries V2 schema first, falls back to V0. Falls back to `CONFIG_PATH` env var, then `./config.json`.
+
+When loading a V2 config with an `mcp` section, `loadConfig()` also writes the global MCP config file (`.openbridge/mcp-config.json`) in the Claude CLI format (`{ mcpServers: { [name]: { command, args?, env? } } }`). If `mcp.configPath` is set, that file is imported and merged with inline `servers` (inline entries win on name conflicts).
+
+### getMcpConfigPath()
+
+_Source: `src/core/config.ts`_
+
+```typescript
+function getMcpConfigPath(): string | null;
+```
+
+Returns the absolute path to the global MCP config file written by `loadConfig()`, or `null` if no MCP config was written (no `mcp` section, `enabled: false`, or no servers defined). Used by `MasterManager` to pass the global MCP config to workers that don't specify per-worker servers.
 
 ### scanForAITools()
 
