@@ -865,8 +865,23 @@ export class MasterManager {
   private async triggerMemoryUpdate(): Promise<void> {
     if (!this.masterSession || this.state === 'shutdown') return;
 
+    const recentMessages = (await this.memory?.getRecentMessages(20)) ?? [];
+
     const memoryPath = this.dotFolder.getMemoryFilePath();
+
+    let historySection = '';
+    if (recentMessages.length > 0) {
+      const lines = recentMessages.map((msg) => {
+        const ts = msg.created_at ? msg.created_at.slice(0, 16).replace('T', ' ') : '';
+        const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
+        const content = msg.content.length > 300 ? msg.content.slice(0, 300) + '…' : msg.content;
+        return `[${ts}] ${role}: ${content}`;
+      });
+      historySection = `## Recent conversation history:\n${lines.join('\n')}\n\n`;
+    }
+
     const prompt =
+      historySection +
       `Update your memory file at ${memoryPath}.\n` +
       `Keep it under 200 lines. Remove outdated info. Merge related topics.\n` +
       `Only write what is worth remembering across sessions: user preferences, ` +
