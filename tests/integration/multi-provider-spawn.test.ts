@@ -5,7 +5,7 @@
  * AgentRunner — correctly routes to different CLI binaries based on the provider.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { AgentRunner } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import { createAdapterRegistry } from '../../src/core/adapter-registry.js';
@@ -14,6 +14,20 @@ import { CodexAdapter } from '../../src/core/adapters/codex-adapter.js';
 import { AiderAdapter } from '../../src/core/adapters/aider-adapter.js';
 import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../../src/core/cli-adapter.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
+
+// CodexAdapter.buildSpawnConfig() requires OPENAI_API_KEY to be set.
+// Stub it for the entire test file so all CodexAdapter calls succeed.
+const ORIGINAL_API_KEY = process.env['OPENAI_API_KEY'];
+beforeAll(() => {
+  process.env['OPENAI_API_KEY'] = 'sk-test-key';
+});
+afterAll(() => {
+  if (ORIGINAL_API_KEY === undefined) {
+    delete process.env['OPENAI_API_KEY'];
+  } else {
+    process.env['OPENAI_API_KEY'] = ORIGINAL_API_KEY;
+  }
+});
 
 // ── Discovery → Adapter resolution ──────────────────────────────────
 
