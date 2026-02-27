@@ -4996,16 +4996,6 @@ ${currentContent}
 
     logger.info('Shutting down MasterManager');
 
-    // Trigger a memory update before state becomes 'shutdown' so the Master
-    // can persist what it learned in this session (OB-1023).
-    if (this.sessionInitialized && this.masterSession && this.masterSession.messageCount > 0) {
-      try {
-        await this.triggerMemoryUpdate();
-      } catch (err) {
-        logger.warn({ err }, 'Memory update on shutdown failed — continuing');
-      }
-    }
-
     this.state = 'shutdown';
 
     // Stop idle detection timer
@@ -5014,12 +5004,23 @@ ${currentContent}
     // Shutdown delegation coordinator
     this.delegationCoordinator.shutdown();
 
-    // Persist Master session before shutdown
+    // Persist Master session first (fast, <100ms SQLite write) — critical data
     if (this.masterSession) {
       try {
         await this.saveMasterSessionToStore(this.masterSession);
       } catch (error) {
         logger.warn({ error }, 'Failed to persist Master session on shutdown');
+      }
+    }
+
+    // Trigger a memory update after session state is saved so the Master
+    // can persist what it learned in this session (OB-1023).
+    // Runs after saveMasterSessionToStore() so a timeout cannot lose session state.
+    if (this.sessionInitialized && this.masterSession && this.masterSession.messageCount > 0) {
+      try {
+        await this.triggerMemoryUpdate();
+      } catch (err) {
+        logger.warn({ err }, 'Memory update on shutdown failed — continuing');
       }
     }
 
