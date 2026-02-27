@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 41 | **In Progress:** 0 | **Done:** 0
+> **Pending:** 40 | **In Progress:** 0 | **Done:** 1
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -33,7 +33,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                              | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1091 | **Add `--skip-git-repo-check` to Codex adapter** in `src/core/adapters/codex-adapter.ts` (line 44) — always push `'--skip-git-repo-check'` after `'exec'`. OpenBridge already validates workspace path separately (`workspace-manager.ts`). Without this flag, Codex exits immediately with code 1 from non-git or untrusted directories. This is the **#1 cause** of all Codex worker failures.                         | ◻ Pending |
+| 1   | OB-1091 | **Add `--skip-git-repo-check` to Codex adapter** in `src/core/adapters/codex-adapter.ts` (line 44) — always push `'--skip-git-repo-check'` after `'exec'`. OpenBridge already validates workspace path separately (`workspace-manager.ts`). Without this flag, Codex exits immediately with code 1 from non-git or untrusted directories. This is the **#1 cause** of all Codex worker failures.                         | ✅ Done   |
 | 2   | OB-1092 | **Default sandbox to `read-only` when no tools specified** in `src/core/adapters/codex-adapter.ts` (line 139-140) — change `inferSandboxMode()` to return `'read-only'` instead of `undefined` when `allowedTools` is empty/undefined. Currently, no `--sandbox` flag is passed, letting Codex use its default (permissive). Workers with no explicit tool profile should be restricted, not unrestricted.               | ◻ Pending |
 | 3   | OB-1093 | **Validate OPENAI_API_KEY before spawn** in `src/core/adapters/codex-adapter.ts` — in `buildSpawnConfig()`, check `process.env['OPENAI_API_KEY']` exists. If missing, log a clear error: `"Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file."` and throw `Error` (caught by AgentRunner retry logic, classified as 'auth'). Prevents confusing timeout/crash errors.                | ◻ Pending |
 | 4   | OB-1094 | **Add `--json` flag for structured output** in `src/core/adapters/codex-adapter.ts` — push `'--json'` to args. This makes Codex output JSONL events to stdout (like `{"type":"message","content":"..."}`) instead of mixed terminal output. Update `execOnce()` result parsing in `agent-runner.ts` to detect JSONL format and extract the final message content. Enables reliable output capture vs. scraping raw text. | ◻ Pending |
@@ -129,15 +129,15 @@
 
 ## Phase Summary
 
-| Phase  | Name                                        | Tasks  | Finding        | Priority | Effort       |
-| ------ | ------------------------------------------- | ------ | -------------- | -------- | ------------ |
-| **57** | Fix Codex Worker Failures (Track A)         | 8      | OB-F37         | HIGH     | Medium       |
-| **58** | Codex Provider (Track B)                    | 7      | OB-F37         | HIGH     | Large        |
-| **59** | Codex Documentation + Validation            | 6      | OB-F37         | HIGH     | Small–Medium |
-| **60** | MCP Core Pipeline + Master Awareness        | 9      | OB-F36         | Medium   | Medium       |
-| **61** | MCP UX Polish (health, CLI, example config) | 4      | OB-F36         | Medium   | Small        |
-| **62** | MCP Documentation + Validation              | 7      | OB-F36         | Medium   | Small–Medium |
-|        | **Total**                                   | **41** | **2 findings** |          |              |
+| Phase  | Name                                        | Tasks   | Finding        | Priority | Effort       |
+| ------ | ------------------------------------------- | ------- | -------------- | -------- | ------------ |
+| **57** | Fix Codex Worker Failures (Track A)         | 8 (1✅) | OB-F37         | HIGH     | Medium       |
+| **58** | Codex Provider (Track B)                    | 7       | OB-F37         | HIGH     | Large        |
+| **59** | Codex Documentation + Validation            | 6       | OB-F37         | HIGH     | Small–Medium |
+| **60** | MCP Core Pipeline + Master Awareness        | 9       | OB-F36         | Medium   | Medium       |
+| **61** | MCP UX Polish (health, CLI, example config) | 4       | OB-F36         | Medium   | Small        |
+| **62** | MCP Documentation + Validation              | 7       | OB-F36         | Medium   | Small–Medium |
+|        | **Total**                                   | **41**  | **2 findings** |          |              |
 
 ---
 

@@ -10,6 +10,7 @@
  *   -m, --model <MODEL>           Model to use (codex-mini, o4-mini, gpt-4o, etc.)
  *   -s, --sandbox <MODE>          read-only | workspace-write | danger-full-access
  *   --full-auto                   Auto-approve all actions (convenience flag)
+ *   --skip-git-repo-check         Skip git repo trust check (required for non-git workspaces)
  *   -C, --cd <DIR>                Working directory
  *   --ephemeral                   No session persistence
  *   <prompt>                      Positional argument (after exec)
@@ -41,7 +42,7 @@ export class CodexAdapter implements CLIAdapter {
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
     // Start with `exec` subcommand for non-interactive mode
-    const args: string[] = ['exec'];
+    const args: string[] = ['exec', '--skip-git-repo-check'];
 
     if (opts.model) {
       args.push('--model', opts.model);
