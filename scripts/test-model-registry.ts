@@ -36,10 +36,14 @@ console.log('\n=== Recommendations ===');
 console.log(`  read-only profile → ${recommendByProfile('read-only', registry).model}`);
 console.log(`  code-edit profile → ${recommendByProfile('code-edit', registry).model}`);
 console.log(`  full-access profile → ${recommendByProfile('full-access', registry).model}`);
-console.log(`  "Debug the auth"  → ${recommendByDescription('Debug the auth module', registry).model}`);
+console.log(
+  `  "Debug the auth"  → ${recommendByDescription('Debug the auth module', registry).model}`,
+);
 console.log(`  "List all files"  → ${recommendByDescription('List all files', registry).model}`);
 console.log(`  "Fix the login"   → ${recommendByDescription('Fix the login bug', registry).model}`);
-console.log(`  "Implement API"   → ${recommendByDescription('Implement the REST API', registry).model}`);
+console.log(
+  `  "Implement API"   → ${recommendByDescription('Implement the REST API', registry).model}`,
+);
 
 // ── Step 4: Show what happens with a different provider ─────────
 console.log('\n=== Simulated: If codex were master ===');

@@ -17,11 +17,7 @@
 
 import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../cli-adapter.js';
 import type { SpawnOptions } from '../agent-runner.js';
-import {
-  sanitizePrompt,
-  MODEL_ALIASES,
-  DEFAULT_MAX_TURNS_TASK,
-} from '../agent-runner.js';
+import { sanitizePrompt, MODEL_ALIASES, DEFAULT_MAX_TURNS_TASK } from '../agent-runner.js';
 import type { ModelAlias } from '../agent-runner.js';
 import { createLogger } from '../logger.js';
 
