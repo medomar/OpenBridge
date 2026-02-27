@@ -86,9 +86,7 @@ describe('ModelRegistry', () => {
 
     it('returns undefined for unregistered tier', () => {
       const registry = new ModelRegistry();
-      registry.registerProvider('custom', [
-        { id: 'only-fast', tier: 'fast', provider: 'custom' },
-      ]);
+      registry.registerProvider('custom', [{ id: 'only-fast', tier: 'fast', provider: 'custom' }]);
 
       expect(registry.resolve('powerful')).toBeUndefined();
     });
