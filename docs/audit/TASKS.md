@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 | **In Progress:** 0 | **Done:** 48
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 49
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -123,7 +123,7 @@
 | 46  | OB-1065 | —       | Update `docs/audit/HEALTH.md` — recalculate health score after all findings resolved, update open findings count to 0, update categories                                                                                                                                                                              | ✅ Done   |
 | 47  | OB-1066 | —       | Update `README.md` — add conversation memory + history browsing as feature highlights, update feature list                                                                                                                                                                                                            | ✅ Done   |
 | 48  | OB-1067 | —       | Update `API_REFERENCE.md` — add new DotFolderManager methods, `/history` command docs, `/api/sessions` REST endpoints, `listSessions()` / `searchSessions()` method signatures                                                                                                                                        | ✅ Done   |
-| 49  | OB-1068 | —       | Update `FINDINGS.md` — mark all 9 findings as fixed, archive to `archive/v6/FINDINGS-v6.md`, reset open count to 0                                                                                                                                                                                                    | ◻ Pending |
+| 49  | OB-1068 | —       | Update `FINDINGS.md` — mark all 9 findings as fixed, archive to `archive/v6/FINDINGS-v6.md`, reset open count to 0                                                                                                                                                                                                    | ✅ Done   |
 | 50  | OB-1069 | —       | Final validation — run `npm run test`, `npm run typecheck`, `npm run lint`, `npm run format:check`. Confirm 0 failures across all checks.                                                                                                                                                                             | ◻ Pending |
 
 ---
