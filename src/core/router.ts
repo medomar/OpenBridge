@@ -10,7 +10,12 @@ import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
-import type { MemoryManager, ActivityRecord, ExplorationProgressRow } from '../memory/index.js';
+import type {
+  MemoryManager,
+  ActivityRecord,
+  ExplorationProgressRow,
+  SessionSummary,
+} from '../memory/index.js';
 import type { MessageQueue } from './queue.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
@@ -44,6 +49,15 @@ function formatDuration(ms: number): string {
 function makeProgressBar(pct: number, width = 5): string {
   const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
   return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/** Escape special HTML characters for safe WebChat output. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** Map file extension to MIME type and media category */
@@ -341,6 +355,12 @@ export class Router {
     // Handle built-in "explore" command — intercept before routing to Master AI
     if (/^explore(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleExploreCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "history" command — intercept before routing to Master AI
+    if (/^history(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleHistoryCommand(message, connector);
       return;
     }
 
@@ -1239,6 +1259,128 @@ export class Router {
       content: lines.join('\n'),
       replyTo: message.id,
     });
+  }
+
+  /**
+   * Handle the built-in "history" command.
+   * Lists the last 10 conversation sessions with title, message count, and date.
+   * Formats output per channel (WhatsApp/Telegram/Discord = numbered list, Console = table, WebChat = HTML).
+   *
+   * Syntax:
+   *   "history"               → list last 10 sessions
+   *   "history search <q>"    → search sessions by keyword (OB-1034)
+   *   "history <session-id>"  → show full transcript (OB-1035)
+   */
+  private async handleHistoryCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice(7).trim(); // slice past "history"
+
+    // history search <query> — OB-1034 (not yet implemented)
+    if (rest.toLowerCase().startsWith('search')) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: "Use 'history' to list your past conversations. Keyword search coming soon.",
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // history <session-id> — OB-1035 (not yet implemented)
+    if (rest.length > 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: "Use 'history' to list your past conversations. Session transcripts coming soon.",
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // bare "history" — list last 10 sessions
+    if (!this.memory) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'History not available — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let sessions: SessionSummary[];
+    try {
+      sessions = await this.memory.listSessions(10, 0);
+    } catch (err) {
+      logger.warn({ err }, 'handleHistoryCommand: failed to list sessions');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'History temporarily unavailable — could not query sessions.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const content = this.formatSessionList(sessions, connector.name);
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'History command handled');
+  }
+
+  /**
+   * Format a session list for the given channel.
+   *   webchat   → HTML table
+   *   console   → ASCII table
+   *   all other → numbered list (WhatsApp, Telegram, Discord)
+   */
+  private formatSessionList(sessions: SessionSummary[], channel: string): string {
+    if (sessions.length === 0) {
+      return '*Conversation History*\n\nNo past sessions found.';
+    }
+
+    const formatDate = (iso: string): string => iso.slice(0, 10); // YYYY-MM-DD
+
+    if (channel === 'webchat') {
+      const rows = sessions
+        .map(
+          (s, i) =>
+            `<tr><td>${i + 1}</td><td>${escapeHtml(s.title ?? 'Untitled')}</td>` +
+            `<td>${s.message_count}</td><td>${formatDate(s.last_message_at)}</td></tr>`,
+        )
+        .join('');
+      return (
+        '<b>Conversation History</b>' +
+        '<table><tr><th>#</th><th>Title</th><th>Msgs</th><th>Date</th></tr>' +
+        rows +
+        '</table>'
+      );
+    }
+
+    if (channel === 'console') {
+      const header = ' # | Title                | Msgs | Date      ';
+      const sep = '---|----------------------|------|----------';
+      const rowLines = sessions.map((s, i) => {
+        const num = String(i + 1).padStart(2, ' ');
+        const title = (s.title ?? 'Untitled').slice(0, 20).padEnd(20, ' ');
+        const msgs = String(s.message_count).padStart(4, ' ');
+        const date = formatDate(s.last_message_at);
+        return `${num} | ${title} | ${msgs} | ${date}`;
+      });
+      return ['*Conversation History*', '', header, sep, ...rowLines].join('\n');
+    }
+
+    // Default: numbered list (WhatsApp, Telegram, Discord)
+    const rowLines = sessions.map((s, i) => {
+      const title = s.title ?? 'Untitled';
+      const msgWord = s.message_count === 1 ? 'msg' : 'msgs';
+      return `${i + 1}. ${title} — ${s.message_count} ${msgWord} — ${formatDate(s.last_message_at)}`;
+    });
+    return ['*Conversation History*', '', ...rowLines].join('\n');
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */
