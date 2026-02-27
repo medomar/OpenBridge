@@ -121,6 +121,9 @@ export class Bridge {
         await this.memory.init();
         await this.memory.migrate();
         logger.info('MemoryManager initialized and migrated');
+
+        // Wire SQLite audit persistence into AuditLogger
+        this.auditLogger.setMemory(this.memory);
       } catch (error) {
         logger.error(
           { err: error },
