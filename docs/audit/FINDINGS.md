@@ -2,24 +2,24 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 (0 critical, 0 medium, 4 low) | **Fixed:** 29 | **Last Audit:** 2026-02-27
+> **Open:** 3 (0 critical, 0 medium, 3 low) | **Fixed:** 30 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding | Severity  | Impact                                            | Why this order                                                                                                    |
-| --- | ------- | --------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 1   | OB-F32  | ✅ Fixed  | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                                       |
-| 2   | OB-F33  | ✅ Fixed  | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager.                   |
-| 3   | OB-F27  | ✅ Fixed  | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                                           |
-| 4   | OB-F34  | ✅ Fixed  | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                                      |
-| 5   | OB-F29  | ✅ Fixed  | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests. |
-| 6   | OB-F35  | ✅ Fixed  | Missing feature                                   | Full conversation history feature shipped: listSessions, searchSessions, /history command, REST endpoints, tests. |
-| 7   | OB-F28  | 🟡 Medium | Technical debt                                    | No immediate breakage, but risky for future schema changes.                                                       |
-| 8   | OB-F30  | 🟢 Low    | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                                        |
-| 9   | OB-F31  | 🟢 Low    | Polish                                            | Master can't pause/resume — edge case for power users.                                                            |
+| #   | Finding | Severity | Impact                                            | Why this order                                                                                                    |
+| --- | ------- | -------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | OB-F32  | ✅ Fixed | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                                       |
+| 2   | OB-F33  | ✅ Fixed | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager.                   |
+| 3   | OB-F27  | ✅ Fixed | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                                           |
+| 4   | OB-F34  | ✅ Fixed | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                                      |
+| 5   | OB-F29  | ✅ Fixed | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests. |
+| 6   | OB-F35  | ✅ Fixed | Missing feature                                   | Full conversation history feature shipped: listSessions, searchSessions, /history command, REST endpoints, tests. |
+| 7   | OB-F28  | ✅ Fixed | Technical debt                                    | schema_versions table added, migrations numbered + transactional, idempotency tests added.                        |
+| 8   | OB-F30  | 🟢 Low   | Polish                                            | Workers show no progress — users wait blind. Nice-to-have.                                                        |
+| 9   | OB-F31  | 🟢 Low   | Polish                                            | Master can't pause/resume — edge case for power users.                                                            |
 
 ---
 
@@ -225,9 +225,9 @@ Compare with what users already have:
 
 ### #6 — OB-F28 — No DB schema versioning (manual ALTER TABLE sequences)
 
-**Discovered:** 2026-02-26 (health score audit)
+**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
 **Component:** `src/memory/migration.ts`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Backlog:** OB-821 | **Health Impact:** +0.05
 
 **Problem:** Schema migrations use ad-hoc `ALTER TABLE` sequences with no version tracking. The migration runner (`migration.ts`) executes all ALTER statements on every startup, relying on SQLite's `ALTER TABLE ADD COLUMN` being idempotent (it errors on duplicate columns, caught silently). No way to know which migrations have been applied, rollback on failure, or skip already-applied migrations.
