@@ -2,277 +2,271 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 0 | **Fixed:** 33 | **Last Audit:** 2026-02-27
-> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md)
+> **Open:** 2 | **Fixed:** 33 | **Last Audit:** 2026-02-27
+> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding | Severity | Impact                                            | Why this order                                                                                                            |
-| --- | ------- | -------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 1   | OB-F32  | ✅ Fixed | 39 test failures + 20 TS errors + 264 lint errors | Implemented 7 prompt library methods on `DotFolderManager`.                                                               |
-| 2   | OB-F33  | ✅ Fixed | 20 TypeScript errors                              | Auto-resolved by OB-F32 fix + corrected `PromptRecord`→`PromptTemplate` type in master-manager.                           |
-| 3   | OB-F27  | ✅ Fixed | 8 test failures                                   | Restored JSONL flat-file output in `AuditLogger` alongside SQLite sink.                                                   |
-| 4   | OB-F34  | ✅ Fixed | 264 lint errors                                   | Auto-resolved by OB-F32 fix.                                                                                              |
-| 5   | OB-F29  | ✅ Fixed | Core UX gap                                       | memory.md pattern implemented: read/write, context injection, session-end update, FTS5 fallback, eviction, tests.         |
-| 6   | OB-F35  | ✅ Fixed | Missing feature                                   | Full conversation history feature shipped: listSessions, searchSessions, /history command, REST endpoints, tests.         |
-| 7   | OB-F28  | ✅ Fixed | Technical debt                                    | schema_versions table added, migrations numbered + transactional, idempotency tests added.                                |
-| 8   | OB-F30  | ✅ Fixed | Polish                                            | Worker streaming implemented: execOnceStreaming(), worker-progress events, WebChat progress display.                      |
-| 9   | OB-F31  | ✅ Fixed | Polish                                            | Checkpoint/resume wired to priority queue via `onUrgentEnqueued`; urgent messages trigger checkpoint-handle-resume cycle. |
+| #   | Finding | Severity  | Impact                                   | Status                                                                                                 |
+| --- | ------- | --------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1   | OB-F37  | 🟠 High   | Codex workers broken + no Codex provider | Users without Claude cannot use OpenBridge at all. **Tasks:** Phases 57–59 (21 tasks, OB-1091–OB-1112) |
+| 2   | OB-F36  | 🟡 Medium | Feature gap — no MCP integration         | Workers can't access external services via MCP. **Tasks:** Phases 60–62 (20 tasks, OB-1070–OB-1090)    |
 
 ---
 
-## Findings (All Fixed — see [V6 archive](archive/v6/FINDINGS-v6.md) for full details)
+## Open Findings
 
-### #1 — OB-F32 — Prompt library methods missing from DotFolderManager (39 test failures)
+### #1 — OB-F36 — No MCP (Model Context Protocol) support — workers can't use external services
 
-**Discovered:** 2026-02-26 (code audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/master/dotfolder-manager.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-836
-**Test failures:** 39 across 3 files (`prompt-library.test.ts`, `prompt-effectiveness.test.ts`, `prompt-degradation.test.ts`)
-**Blocks:** OB-F33 (TypeScript errors), OB-F34 (ESLint errors)
+**Discovered:** 2026-02-27 (WebChat conversation + feasibility analysis)
+**Reviewed:** 2026-02-27 (architecture review — lifecycle, security, scope gaps identified)
+**Component:** `src/core/agent-runner.ts`, `src/core/adapters/claude-adapter.ts`, `src/types/config.ts`, `src/master/master-system-prompt.ts`, `src/master/master-manager.ts`
+**Severity:** 🟡 Medium
+**Health Impact:** +0.15
 
-**Problem:** Seven prompt library methods are referenced by tests and by `master-manager.ts` (line 4535, 4580) but **do not exist** on `DotFolderManager`: `readPromptManifest()`, `writePromptManifest()`, `writePromptTemplate()`, `getPromptTemplate()`, `recordPromptUsage()`, `getLowPerformingPrompts()`, `resetPromptStats()`. The types (`PromptManifest`, `PromptTemplate`) are fully defined in `src/types/master.ts` with Zod schemas. The manifest file path is `.openbridge/prompts/manifest.json`. `MasterManager.rollbackDegradedPrompts()` calls `this.dotFolder.readPromptManifest()` and `this.dotFolder.writePromptManifest()` — causing 20 TypeScript compilation errors and 264 ESLint errors.
+**Problem:** OpenBridge has **zero MCP support**. The Claude CLI adapter (`claude-adapter.ts`) passes `--print`, `--session-id`, `--resume`, `--model`, `--max-turns`, `--allowedTools`, `--append-system-prompt`, and `--max-budget-usd` — but never `--mcp-config` or any MCP-related flags. `SpawnOptions` has no MCP fields. The entire `src/` directory contains no references to "MCP" or "Model Context Protocol".
 
-**Recommended fix:** Implement all 7 methods on `DotFolderManager` using the `PromptManifestSchema` and `PromptTemplateSchema` Zod schemas from `src/types/master.ts`. Methods should read/write `.openbridge/prompts/manifest.json` and individual `.md` files in `.openbridge/prompts/`. `recordPromptUsage(id, success)` should increment `usageCount`/`successCount` and recalculate `successRate`. `resetPromptStats(id)` should preserve `previousSuccessRate`. This is the JSON fallback path for when SQLite memory is unavailable — `master-manager.ts` already has the `if (this.memory) { ... } else { this.dotFolder.* }` branching.
+This means:
 
----
+- **Workers cannot access external services** (Gmail, Canva, Slack, GitHub, databases, etc.) via the MCP ecosystem
+- **Users cannot leverage their existing MCP server configurations** from Claude Desktop or Claude Code
+- **OpenBridge is isolated** from the rapidly growing MCP tool ecosystem that Anthropic is building
+- **Claude.ai Connectors** (cloud-only, tied to browser sessions) are not accessible via CLI — MCP is the open-source equivalent
 
-### #2 — OB-F33 — TypeScript compilation errors in master-manager.ts (20 errors)
+**What exists today vs. what's missing:**
 
-**Discovered:** 2026-02-26 (typecheck validation), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/master/master-manager.ts` (lines 4538–4585)
-**Severity:** ✅ Fixed
-**Backlog:** OB-990
-**Blocked by:** OB-F32
+| Capability                   | Current State                                | With MCP                                                 |
+| ---------------------------- | -------------------------------------------- | -------------------------------------------------------- |
+| Worker tool access           | `--allowedTools` (Read, Write, Bash, etc.)   | `--allowedTools` + MCP server tools (Gmail, Canva, etc.) |
+| External service integration | None                                         | Any MCP-compatible service                               |
+| Config schema                | `config.json` has connectors, provider, auth | Would add `mcp` section                                  |
+| Claude CLI flags             | 8 flags passed                               | + `--mcp-config <path>` + `--strict-mcp-config`          |
+| SpawnOptions                 | 12 fields                                    | + `mcpConfigPath` + `strictMcpConfig`                    |
+| Master awareness             | Knows about AI tools only                    | Also knows which MCP servers are available               |
+| Security                     | Per-user whitelist + tool profiles           | + per-role MCP server access control                     |
 
-**Problem:** `rollbackDegradedPrompts()` iterates `Object.values(manifest.prompts)` but TypeScript infers each value as `unknown` because `readPromptManifest()` doesn't exist on `DotFolderManager` (see OB-F32). This cascades into 20 TS18046 errors ("'prompt' is of type 'unknown'") and 1 TS2339 error ("Property 'writePromptManifest' does not exist on type 'DotFolderManager'"). The `typecheck` command fails, meaning CI would also fail.
-
-**Recommended fix:** Implementing OB-F32 (adding the methods to `DotFolderManager`) will resolve all 20 errors. No independent action needed.
-
----
-
-### #3 — OB-F27 — Audit logger missing JSONL flat-file output (8 test failures)
-
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/core/audit-logger.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-820 | **Health Impact:** +0.05
-**Test failures:** 8 in `tests/core/audit-logger.test.ts`
-
-**Problem:** The `AuditLogger` constructor accepts a `logPath` from `AuditConfig` but never stores or uses it. The `write()` method only logs to Pino (console) and SQLite (if memory is attached), but does NOT write JSONL entries to the flat file at `logPath`. Tests expect: JSONL file creation, parent directory creation, multi-entry appending, and ISO timestamp formatting — none of which are implemented. The `AuditConfig` schema defines `logPath: z.string().default('audit.log')` but the constructor ignores it.
-
-**Recommended fix:** Store `logPath` in the constructor as `private readonly logPath: string`. In `write()`, after Pino logging: (1) `await mkdir(dirname(this.logPath), { recursive: true })`, (2) `await appendFile(this.logPath, JSON.stringify(entry) + '\n', 'utf-8')`. Wrap in try-catch to prevent crashes on write errors. Keep Pino and SQLite as secondary sinks.
-
----
-
-### #4 — OB-F29 — Conversation continuity is shallow (no cross-session memory, no topic merging)
-
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/master/master-manager.ts`, `src/memory/conversation-store.ts`, `src/memory/eviction.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-822 | **Health Impact:** +0.10
-
-**Problem:** The Master AI treats every session as nearly fresh. `buildConversationContext()` retrieves only 5 keyword-matched messages via FTS5 — no full session recall, no cross-session awareness, no topic continuity. Two specific issues:
-
-1. **Weight problem** — As conversations accumulate, injecting raw history into the system prompt will bloat the context window. No compaction, no summarization pipeline is wired (the `evictConversations()` AI summarizer exists in `conversation-store.ts` lines 232–374 but is never called — no scheduled job triggers it).
-
-2. **No topic-aware merging** — When a user revisits a topic discussed in a prior session (e.g., talked about "authentication" last week, now asks about "login flow"), the Master can't merge context from both sessions. Each session's context is isolated. The user has to re-explain everything.
-
-**What exists but is unused:**
-
-- `getSessionHistory()` — full session retrieval, never called
-- `searchConversations()` — cross-session FTS5 search, never called
-- `evictConversations()` — AI-powered summarization (Zone 2: 30–90 days), never scheduled
-- `evictOldData()` — orchestrates all eviction policies, never called
-
-**Recommended fix — `memory.md` pattern (proven, simple, effective):**
-
-Inspired by how Claude Code maintains its own `MEMORY.md` file — a single curated file that the AI reads on every session start and updates itself. No complex pipelines, no separate summarizer workers, no topic clustering. The Master AI is the curator.
-
-**Core mechanism — one file: `.openbridge/context/memory.md`**
+**Architecture — how MCP would fit:**
 
 ```
-.openbridge/context/
-└── memory.md          ← Master reads on start, updates during/after session
+User (WhatsApp/Console/Telegram)
+  → OpenBridge Router
+    → Auth check: does this user's role have access to requested MCP servers?
+    → Master AI (decides: "this needs Gmail/Canva/etc.")
+      → Spawns Worker with MCP tools enabled
+        → claude --print --mcp-config /tmp/ob-mcp-xxx.json --strict-mcp-config --allowedTools "mcp__canva__*" ...
+          → Claude CLI spawns MCP server process (per-worker lifecycle)
+            → MCP server calls external API (Gmail, Canva, etc.)
+          → Worker returns result, MCP server process exits
+        → Master formats response
+      → Router sends back to channel
 ```
 
-**How it works:**
+Key insight: OpenBridge doesn't need to know anything about individual services. We pass `--mcp-config <path>` to the Claude CLI, and Claude handles tool discovery and invocation. The MCP servers are external processes that translate tool calls into API requests.
 
-1. **On session start**: `buildConversationContext()` loads `memory.md` into the Master's system prompt (fixed cost, always small, always relevant)
-2. **During the session**: Master decides what's worth remembering — decisions, user preferences, project state, active threads
-3. **On session end**: Master gets one final prompt: _"Update your memory file with anything worth keeping from this session. Keep it under 200 lines. Remove outdated info. Merge related topics."_
-4. **Topic continuity is automatic**: When the user revisits a topic, it's already in `memory.md` because the Master wrote it there last time
+**What the user would configure in `config.json`:**
 
-**What goes in `memory.md`:**
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "canva",
+        "command": "npx",
+        "args": ["-y", "@anthropic/canva-mcp-server"],
+        "env": { "CANVA_API_KEY": "..." }
+      },
+      {
+        "name": "gmail",
+        "command": "npx",
+        "args": ["-y", "@anthropic/gmail-mcp-server"],
+        "env": { "GMAIL_OAUTH_TOKEN": "..." }
+      }
+    ],
+    "configPath": "~/.claude/claude_desktop_config.json"
+  }
+}
+```
 
-- User preferences ("always uses TypeScript", "prefers short answers")
-- Project state ("authentication implemented with JWT, CORS configured")
-- Decisions made ("chose PostgreSQL over MongoDB for user data")
-- Active threads ("user is building a REST API, /users done, /orders pending")
-- Known issues ("deployment fails on Node 18, need Node 22")
-
-**What does NOT go in `memory.md`:**
-
-- Raw conversation transcripts (too heavy — stay in SQLite)
-- Every worker result (noise)
-- Timestamps for every interaction (clutter)
-
-**Weight control:** Cap at ~200 lines. The Master's "update memory" prompt enforces this: remove outdated info, merge related topics, keep only what matters. File stays small and high-signal forever.
-
-**Dual-layer architecture — `memory.md` + SQLite (keep both, different roles):**
-
-| Layer                            | Role                                     | What it stores                                              | Who reads it                                              |
-| -------------------------------- | ---------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
-| `memory.md` (PRIMARY)            | Master's curated brain — what matters    | Decisions, preferences, project state, active threads       | Master AI on every session start                          |
-| SQLite `conversations` (ARCHIVE) | Raw audit trail — what actually happened | Every message verbatim, with timestamps, channels, user IDs | Worker briefing, status commands, FTS5 deep search, audit |
-
-**Why keep both:** `memory.md` is the Master's fast, curated knowledge (like your brain). SQLite is the full email inbox (everything that was said). The Master loads `memory.md` always. SQLite is the backup for when the Master needs to dig deeper, and it also serves worker briefing (`worker-briefing.ts`), the `/status` command, and the audit trail.
-
-**Role changes after implementation:**
-
-| Component                    | Current role                         | New role                                                                      |
-| ---------------------------- | ------------------------------------ | ----------------------------------------------------------------------------- |
-| `buildConversationContext()` | Primary: FTS5 top-5 keyword match    | Primary: load `memory.md`. Fallback: FTS5 when memory doesn't cover the topic |
-| `conversations` table        | Only context source (and inadequate) | Raw storage + worker briefing + audit trail                                   |
-| `findRelevantHistory()`      | Called every message                 | Called only as fallback when `memory.md` gaps detected                        |
-| `evictOldData()`             | Never called                         | Scheduled on Bridge startup + every 24h (keeps SQLite lean)                   |
-| `getSessionHistory()`        | Never called                         | Available for explicit full session replay                                    |
-| `worker-briefing.ts`         | Uses FTS5 chunks + task history      | Unchanged — workers still get briefed from SQLite                             |
-
-**Implementation phases (task-ready):**
-
-| Phase        | What                                                                                                         | Files touched                                  | Effort                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ---------------------------- |
-| **Phase 1a** | Add `readMemoryFile()` / `writeMemoryFile()` to `DotFolderManager` for `.openbridge/context/memory.md`       | `dotfolder-manager.ts`                         | Small                        |
-| **Phase 1b** | Update `buildConversationContext()` to load `memory.md` as primary context, FTS5 as fallback                 | `master-manager.ts`                            | Small                        |
-| **Phase 1c** | Add "update memory" prompt on session end — Master writes its own `memory.md` via a worker with `Write` tool | `master-manager.ts`, `master-system-prompt.ts` | Small                        |
-| **Phase 1d** | Add `memory.md` instructions to Master system prompt: what to remember, 200-line cap, merge topics           | `master-system-prompt.ts`                      | Small                        |
-| **Phase 2**  | Wire `searchConversations()` as explicit fallback when Master detects topic not in `memory.md`               | `master-manager.ts`                            | Small                        |
-| **Phase 3**  | Schedule `evictOldData()` on Bridge startup + `setInterval(24h)` to keep SQLite lean                         | `bridge.ts` or `index.ts`                      | Small                        |
-| **Phase 4**  | Add topic file splitting only if `memory.md` exceeds 200 lines for very complex workspaces                   | `dotfolder-manager.ts`                         | Medium (likely never needed) |
-
-**Why this works better than complex alternatives:** Claude Code uses this exact pattern across millions of sessions. One curated file beats raw message search because: (1) always loaded, no search latency, (2) curated by the AI itself so signal-to-noise is high, (3) stays small regardless of conversation volume, (4) no extra AI workers or scheduled jobs for Phase 1. The existing SQLite infrastructure stays intact — it just moves from "only mechanism" to "archive + fallback", which is what it's better suited for.
+Note: users can define servers inline OR point to an existing Claude Desktop/Claude Code MCP config file via `configPath` to avoid duplication.
 
 ---
 
-### #5 — OB-F35 — No conversation history access for users (no list, no search, no browse)
+**Key design considerations (from architecture review):**
 
-**Discovered:** 2026-02-26 (feature gap analysis), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/memory/conversation-store.ts`, `src/connectors/webchat/`, `src/core/router.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-992 | **Health Impact:** +0.10
-**Related:** OB-F29 (conversation continuity — Master side). This is the **user side**.
+**1. MCP server lifecycle management**
 
-**Problem:** Every conversation with OpenBridge is fire-and-forget from the user's perspective. There is no way to:
+Claude CLI with `--mcp-config` launches MCP server processes as children of each worker invocation. For short-lived `--print` workers:
 
-- **List past sessions** — no `listSessions()` method exists in the conversation store
-- **Browse a conversation** — `getSessionHistory()` exists but has no user-facing exposure
-- **Search past conversations** — `searchConversations()` exists but isn't wired to any command or UI
-- **Resume a topic** — no session titles, no labels, no way to reference "that conversation from Tuesday"
+- Each worker spawn starts MCP server processes
+- Each worker completion kills them
+- Frequently-used services (Gmail, Slack) incur startup latency per task
 
-Compare with what users already have:
+**Current approach (Phase 57):** Accept per-worker lifecycle. Claude CLI manages it transparently. This matches our bounded-worker philosophy — workers are short-lived by design.
 
-- **Claude in VS Code**: Full conversation list in sidebar, click to resume, scroll history
-- **claude.ai**: Conversation list, search, rename, organize
-- **OpenBridge**: Nothing — messages go into SQLite and disappear from the user's view
+**Future consideration:** If latency becomes an issue, OpenBridge could manage long-running MCP servers that workers connect to via SSE transport. This would be a Phase 61+ optimization, not needed for initial launch.
 
-**What exists but is not exposed to users:**
+**2. Security — per-role MCP access control**
 
-| Method                                | Location                                    | Status                              |
-| ------------------------------------- | ------------------------------------------- | ----------------------------------- |
-| `getSessionHistory(sessionId, limit)` | `conversation-store.ts:116`                 | Exists, never exposed to user       |
-| `searchConversations(query, limit)`   | `conversation-store.ts:96` / `retrieval.ts` | Exists, never exposed to user       |
-| `findRelevantHistory(query, limit)`   | `conversation-store.ts:93`                  | Exists, used only by Master context |
-| `DISTINCT session_id` query           | `conversation-store.ts:358`                 | Only used in eviction               |
-| **`listSessions()`**                  | —                                           | **Does not exist**                  |
-| **Session titles/labels**             | —                                           | **No schema support**               |
+MCP servers receive API keys via `env` in the config. Security implications:
 
-**Recommended fix — conversation history feature (all channels):**
+- Every worker spawned with `--mcp-config` gets access to **all** configured MCP servers in that config file
+- `--allowedTools "mcp__canva__*"` restricts which tools the worker can call, but the MCP server processes are still started
+- A compromised or misbehaving worker could theoretically invoke tools beyond its `--allowedTools` restriction
 
-**Phase 1 — Data layer (conversation-store.ts):**
+**Mitigation (Phase 57):** Generate **per-worker temp MCP config files** containing only the servers that worker needs (not all configured servers). Combined with `--strict-mcp-config` (ignores global MCP configs), this gives true isolation. Ties into existing auth system — the `access-store.ts` already has role-based permissions that can be extended with MCP server allowlists per role.
 
-- Add `listSessions(limit, offset)` → returns `{ session_id, first_message, last_message, message_count, channel, user_id }[]` ordered by `last_message DESC`
-- Add `title` column to `conversations` table (nullable, set on first user message or AI-generated)
-- Add `searchSessions(query)` → FTS5 search that returns session-level results (not individual messages)
+**3. Master awareness is essential (not optional)**
 
-**Phase 2 — Command layer (router.ts):**
+Without MCP awareness in the Master system prompt, the Master AI:
 
-- Add `/history` command → lists last 10 sessions with title + date + preview (works on ALL channels: WhatsApp, Telegram, Discord, Console, WebChat)
-- Add `/history search <query>` → search past conversations by keyword
-- Add `/history <session-id>` → show full conversation transcript
-- Format output per channel (WhatsApp = numbered list, WebChat = HTML, Console = table)
+- Doesn't know which external services are available
+- Can't make intelligent decisions about when to use MCP tools
+- Forces users to explicitly say "use Canva" in every message
 
-**Phase 3 — WebChat UI (webchat-connector.ts):**
+This means change #4 (Master-aware MCP tools) is **required for usable MCP support**, not optional. The Master must see available MCP servers in its system prompt to autonomously decide "this task needs Canva, I'll spawn a worker with that MCP server."
 
-- Add `/api/sessions` REST endpoint → JSON list of sessions
-- Add `/api/sessions/:id` REST endpoint → full conversation for one session
-- Add sidebar or history page to WebChat frontend (session list, click to view, search bar)
-- WebSocket event `session-list-update` for real-time updates
+**4. Config source flexibility**
 
-**Phase 4 — Session management:**
+Users may already have MCP configs in:
 
-- Auto-title sessions using first user message (truncated to 50 chars)
-- Optional: spawn haiku worker to generate a smart title after 3+ messages
-- Add `/history rename <id> <title>` command
-- Add `/history delete <id>` command (with confirmation, like `/stop` uses)
+- `~/.claude/claude_desktop_config.json` (Claude Desktop)
+- `.mcp.json` in project roots (Claude Code project scope)
+- `.claude/settings.json` in project roots (Claude Code)
 
-**Why this matters:** Users who interact via WhatsApp or Telegram can't scroll up indefinitely — messages get buried. This gives them the same experience they're used to from Claude's own interfaces. Combined with OB-F29 (`memory.md`), this creates full conversation continuity — the Master remembers (F29), and the user can browse (F35).
+Supporting `configPath` in the MCP config section avoids forcing users to duplicate their existing setups.
+
+**5. Scope: Claude-only for now**
+
+MCP support via `--mcp-config` is a Claude CLI feature. Other adapters (Codex, Aider) don't support MCP. The `CLIAdapter` abstraction handles this gracefully — other adapters simply ignore the `mcpConfigPath` field. This should be clearly documented.
 
 ---
 
-### #6 — OB-F28 — No DB schema versioning (manual ALTER TABLE sequences)
+**Recommended fix — 5 essential changes (~400 LOC):**
 
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/memory/migration.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-821 | **Health Impact:** +0.05
+| #   | Change                  | File(s)                                                              | What                                                                              |
+| --- | ----------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1   | Zod schemas + config    | `src/types/config.ts`                                                | `MCPServerSchema`, `MCPConfigSchema`, add `mcp` to `V2ConfigSchema`               |
+| 2   | SpawnOptions + manifest | `src/core/agent-runner.ts`, `src/types/agent.ts`                     | `mcpConfigPath` + `strictMcpConfig` on SpawnOptions, `mcpServers` on TaskManifest |
+| 3   | Claude adapter          | `src/core/adapters/claude-adapter.ts`                                | Pass `--mcp-config` + `--strict-mcp-config` flags                                 |
+| 4   | Per-worker MCP config   | `src/core/agent-runner.ts`                                           | Generate temp MCP JSON per worker (only requested servers), cleanup after spawn   |
+| 5   | Master awareness        | `src/master/master-system-prompt.ts`, `src/master/master-manager.ts` | Inject available MCP servers into Master system prompt, pass from V2Config        |
 
-**Problem:** Schema migrations use ad-hoc `ALTER TABLE` sequences with no version tracking. The migration runner (`migration.ts`) executes all ALTER statements on every startup, relying on SQLite's `ALTER TABLE ADD COLUMN` being idempotent (it errors on duplicate columns, caught silently). No way to know which migrations have been applied, rollback on failure, or skip already-applied migrations.
+**Additional work (improves UX, not blocking):**
 
-**Recommended fix:** Add a `schema_versions` table (`version INTEGER PRIMARY KEY, applied_at TEXT, description TEXT`). Number each migration. On startup, query the max applied version and only run newer migrations. Wrap each migration in a transaction for rollback safety. Prevents data loss on failed upgrades.
+| #   | Change               | File(s)              | What                                                           |
+| --- | -------------------- | -------------------- | -------------------------------------------------------------- |
+| 6   | Health checks        | `src/core/health.ts` | Verify MCP server commands exist on PATH                       |
+| 7   | CLI init             | `src/cli/init.ts`    | Interactive MCP server configuration step                      |
+| 8   | Config source import | `src/core/config.ts` | Read existing Claude Desktop/Code MCP configs via `configPath` |
 
----
+**Effort:** Medium for essential (changes 1–5, ~400 LOC), Small for UX polish (changes 6–8, ~200 LOC). Four phases, 19 tasks.
 
-### #7 — OB-F34 — ESLint reports 264 errors (cascading from OB-F32/F33)
+**Value:** Unique in the MCP ecosystem — no other project offers "send a WhatsApp message → Master AI decides which MCP tools to use → worker executes via Claude CLI → result sent back to WhatsApp." This bridges messaging channels to the entire MCP tool ecosystem.
 
-**Discovered:** 2026-02-26 (lint validation), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/master/master-manager.ts`, `tests/master/prompt-*.test.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-991
-**Blocked by:** OB-F32
-
-**Problem:** ESLint's `@typescript-eslint/no-unsafe-*` rules flag 264 errors, all cascading from the same root cause as OB-F32 and OB-F33. The `unknown` type propagation triggers `no-unsafe-member-access`, `no-unsafe-call`, `no-unsafe-assignment`, and `no-unsafe-argument` rules. These are not independent issues — they will auto-resolve when OB-F32 is fixed.
-
-**Recommended fix:** Fix OB-F32 first. Remaining lint errors (if any) should be addressed individually. No independent action needed.
-
----
-
-### #8 — OB-F30 — No real-time worker streaming progress
-
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-930 | **Health Impact:** +0.05
-
-**Problem:** Active workers appear as "running" in the status command and WebChat dashboard with no granularity. Users can't see how many turns a worker has consumed, what it's currently doing, or how close it is to finishing. The only visibility is start time and elapsed duration.
-
-**Fix:** Implemented `execOnceStreaming()` in AgentRunner, turn parsing from CLI output, `worker-progress` event broadcasting with `{ workerId, turnsUsed, turnsMax, lastAction }`, and WebChat progress display. Tests added in Phase 55 (OB-1050–OB-1052).
+**Risk:** Low — all business logic already exists. The MCP layer is protocol plumbing + Master prompt extension. Per-worker config isolation mitigates security concerns.
 
 ---
 
-### #9 — OB-F31 — Session checkpointing not implemented (Master can't pause/resume)
+### #2 — OB-F37 — Codex workers always fail + no Codex provider (users without Claude locked out)
 
-**Discovered:** 2026-02-26 (health score audit), **Updated:** 2026-02-27 (fixed)
-**Component:** `src/master/master-manager.ts`, `src/core/queue.ts`, `src/core/router.ts`
-**Severity:** ✅ Fixed
-**Backlog:** OB-931 | **Health Impact:** +0.05
+**Discovered:** 2026-02-27 (real-world testing + deep pipeline analysis)
+**Component:** `src/core/adapters/codex-adapter.ts`, `src/core/agent-runner.ts`, `src/providers/`, `src/index.ts`
+**Severity:** 🟠 High
+**Health Impact:** +0.20
 
-**Problem:** When the Master AI is processing a complex multi-step task (spawning workers, waiting for results), it can't be interrupted. The fast-path responder (Phase 49) handles simple questions, but tool-use and complex messages must wait in the priority queue. There's no way to checkpoint the Master's current state, handle an urgent request, then resume.
+**Problem:** Users who only have Codex (no Claude) cannot use OpenBridge at all. Multiple issues across the full pipeline:
 
-**Recommended fix:** Add `checkpointSession()` / `resumeSession()` to MasterManager. On checkpoint: serialize current task state (pending workers, accumulated results, message context) to the `sessions` table. On resume: restore state and continue processing. Integrate with the priority queue so that urgent messages (from owners/admins) can trigger a checkpoint-handle-resume cycle.
+**Confirmed failure #1 — Missing `--skip-git-repo-check` flag (CRITICAL)**
+
+Codex CLI v0.104.0 requires the workspace to be inside a trusted Git repository. When `codex exec` is run with `cwd` set to a non-git directory, it exits immediately with:
+
+```
+Not inside a trusted directory and --skip-git-repo-check was not specified.
+EXIT CODE: 1
+```
+
+The Codex adapter (`codex-adapter.ts:42-93`) never passes `--skip-git-repo-check`. The `execOnce()` function (`agent-runner.ts:544-549`) sets `cwd: workspacePath`. If the user's workspace is not a Git repo (or hasn't been added to Codex's trust list), **every Codex worker fails instantly**.
+
+Verified on machine: `codex exec --ephemeral --sandbox read-only "say hello" < /dev/null` returns exit code 1 from non-git directories, exit code 0 from git repos.
+
+**Confirmed failure #2 — No Codex provider (no Master capability)**
+
+`src/providers/` contains only `claude-code/`. There is no Codex provider. This means:
+
+- Codex **cannot be used as Master AI** — no `processMessage()`, no session management, no streaming
+- If Claude is not installed, `index.ts:151-157` throws: `"No Master AI tool available for V2 flow"`
+- Even if Codex is discovered (priority 80), it can never become Master because `registerBuiltInProviders()` only registers `claude-code`
+
+For users with **only Codex installed**, OpenBridge is completely unusable.
+
+**Confirmed failure #3 — Outdated CLI flags in adapter**
+
+The Codex adapter was written for an older version of the Codex CLI. Comparing adapter flags vs actual v0.104.0:
+
+| Adapter Generates        | Actual Codex v0.104.0                                                       |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `codex exec --model <M>` | Correct (`-m, --model <MODEL>`)                                             |
+| `--sandbox <mode>`       | Correct (`-s, --sandbox <MODE>`)                                            |
+| `--full-auto`            | Correct (convenience alias)                                                 |
+| `--ephemeral`            | Correct (session suppression)                                               |
+| _(missing)_              | `--skip-git-repo-check` — required for non-git workspaces                   |
+| _(missing)_              | `--json` — outputs JSONL events to stdout (enables structured parsing)      |
+| _(missing)_              | `-C, --cd <DIR>` — explicit cwd (alternative to process cwd)                |
+| _(missing)_              | `-o, --output-last-message <FILE>` — reliable output capture                |
+| _(not needed)_           | `--dangerously-bypass-approvals-and-sandbox` — we use `--full-auto` instead |
+
+**Additional issues found:**
+
+| #   | Issue                                                                                              | Severity | Location                   | Impact                                                                                        |
+| --- | -------------------------------------------------------------------------------------------------- | -------- | -------------------------- | --------------------------------------------------------------------------------------------- |
+| 4   | `inferSandboxMode()` returns `undefined` when no tools specified — Codex uses default (permissive) | Medium   | `codex-adapter.ts:139-140` | Unexpected access for read-only tasks                                                         |
+| 5   | No OPENAI_API_KEY validation — Codex fails silently with auth error                                | Medium   | `codex-adapter.ts:95-108`  | Confusing error message for users                                                             |
+| 6   | `MODEL_FALLBACK_CHAIN` is Claude-only — Codex rate limits cause no fallback                        | Medium   | `agent-runner.ts:220-227`  | Codex workers don't recover from rate limits (but `ModelRegistry` handles this if registered) |
+| 7   | Codex supports MCP natively (`codex mcp`) — adapter doesn't expose it                              | Low      | `codex-adapter.ts`         | Missed feature parity with Claude MCP                                                         |
+
+**Pipeline failure sequence for Codex-only users:**
+
+```
+1. User installs only Codex (no Claude)
+2. scanForAITools() discovers Codex (priority 80), selects as Master candidate
+3. index.ts tries to create MasterManager with Codex as masterTool
+4. registerBuiltInProviders() only has 'claude-code' → no Codex provider
+5. BUT: MasterManager doesn't use providers directly — it uses AgentRunner + CLIAdapter
+6. MasterManager.startSession() calls AgentRunner.spawn() with CodexAdapter
+7. CodexAdapter.buildSpawnConfig() generates args WITHOUT --skip-git-repo-check
+8. execOnce() spawns: codex exec --ephemeral ... (in workspacePath)
+9. If workspace is not a git repo → immediate exit code 1
+10. Error classified as 'crash', retry 3 times, all fail
+11. Master session never starts → all user messages fail
+```
+
+**Recommended fix — two tracks:**
+
+**Track A: Fix Codex as Worker (critical, unblocks mixed Claude+Codex setups)**
+
+| #   | Change                         | File               | What                                                          |
+| --- | ------------------------------ | ------------------ | ------------------------------------------------------------- |
+| 1   | Add `--skip-git-repo-check`    | `codex-adapter.ts` | Always pass flag (OpenBridge validates workspace separately)  |
+| 2   | Default sandbox to `read-only` | `codex-adapter.ts` | When no tools specified, default to `read-only` not undefined |
+| 3   | Validate OPENAI_API_KEY        | `codex-adapter.ts` | Check env var exists before spawn, log clear error if missing |
+| 4   | Add `--json` output mode       | `codex-adapter.ts` | Enable structured JSONL parsing for better output capture     |
+| 5   | Add `-o` output capture        | `codex-adapter.ts` | Use `--output-last-message` for reliable result extraction    |
+
+**Track B: Add Codex Provider (high, enables Codex-only users)**
+
+| #   | Change                          | File                                     | What                                                              |
+| --- | ------------------------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| 6   | Create `CodexProvider`          | `src/providers/codex/`                   | Implement `AIProvider` interface using `codex exec` with sessions |
+| 7   | Register Codex provider         | `src/providers/index.ts`                 | Add to `registerBuiltInProviders()`                               |
+| 8   | Provider-aware Master selection | `src/index.ts`                           | If Claude not available, use Codex provider as Master             |
+| 9   | Session management              | `src/providers/codex/session-manager.ts` | Codex session resume via `codex exec resume --last`               |
+
+**Effort:** Medium for Track A (~200 LOC), Large for Track B (~600 LOC). Two phases.
+
+**Value:** Track A immediately unblocks Claude+Codex setups. Track B makes OpenBridge usable for OpenAI-only users — a significant expansion of the user base.
 
 ---
 
