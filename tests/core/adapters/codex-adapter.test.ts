@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { CodexAdapter } from '../../../src/core/adapters/codex-adapter.js';
+import { CodexAdapter, parseCodexJsonlOutput } from '../../../src/core/adapters/codex-adapter.js';
 
 const adapter = new CodexAdapter();
 
@@ -38,7 +38,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args[0]).toBe('exec');
   });
 
-  it('builds minimal args: exec + --skip-git-repo-check + --sandbox read-only + --ephemeral + prompt', () => {
+  it('builds minimal args: exec + --skip-git-repo-check + --sandbox read-only + --ephemeral + --json + prompt', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'List all files',
       workspacePath: '/tmp/test',
@@ -49,6 +49,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
       '--sandbox',
       'read-only',
       '--ephemeral',
+      '--json',
       'List all files',
     ]);
   });
@@ -176,6 +177,35 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).not.toContain('--print');
   });
 
+  it('includes --json for structured JSONL output', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.args).toContain('--json');
+  });
+
+  it('places --json after --ephemeral and before the prompt', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    const ephemeralIdx = config.args.indexOf('--ephemeral');
+    const jsonIdx = config.args.indexOf('--json');
+    const promptIdx = config.args.indexOf('Task');
+    expect(ephemeralIdx).toBeGreaterThanOrEqual(0);
+    expect(jsonIdx).toBeGreaterThan(ephemeralIdx);
+    expect(promptIdx).toBeGreaterThan(jsonIdx);
+  });
+
+  it('sets parseOutput to parseCodexJsonlOutput', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Task',
+      workspacePath: '/tmp/test',
+    });
+    expect(typeof config.parseOutput).toBe('function');
+  });
+
   it('throws when OPENAI_API_KEY is missing', () => {
     const saved = process.env['OPENAI_API_KEY'];
     delete process.env['OPENAI_API_KEY'];
@@ -246,5 +276,69 @@ describe('CodexAdapter.isValidModel', () => {
 describe('CodexAdapter.name', () => {
   it('is "codex"', () => {
     expect(adapter.name).toBe('codex');
+  });
+});
+
+// ── parseCodexJsonlOutput ────────────────────────────────────────────
+
+describe('parseCodexJsonlOutput', () => {
+  it('extracts content from a single message event', () => {
+    const jsonl = JSON.stringify({ type: 'message', content: 'Hello, world!' });
+    expect(parseCodexJsonlOutput(jsonl)).toBe('Hello, world!');
+  });
+
+  it('returns the last message content when multiple message events are present', () => {
+    const lines = [
+      JSON.stringify({ type: 'message', content: 'First answer' }),
+      JSON.stringify({ type: 'tool_call', name: 'bash', input: 'ls' }),
+      JSON.stringify({ type: 'tool_result', output: 'file.txt' }),
+      JSON.stringify({ type: 'message', content: 'Final answer' }),
+    ].join('\n');
+    expect(parseCodexJsonlOutput(lines)).toBe('Final answer');
+  });
+
+  it('skips non-message events', () => {
+    const lines = [
+      JSON.stringify({ type: 'tool_call', name: 'bash', input: 'echo hi' }),
+      JSON.stringify({ type: 'tool_result', output: 'hi' }),
+      JSON.stringify({ type: 'message', content: 'Done' }),
+    ].join('\n');
+    expect(parseCodexJsonlOutput(lines)).toBe('Done');
+  });
+
+  it('falls back to raw stdout when no message events are present', () => {
+    const lines = [
+      JSON.stringify({ type: 'tool_call', name: 'bash', input: 'ls' }),
+      JSON.stringify({ type: 'tool_result', output: 'file.txt' }),
+    ].join('\n');
+    expect(parseCodexJsonlOutput(lines)).toBe(lines);
+  });
+
+  it('falls back to raw stdout when output is not JSONL', () => {
+    const raw = 'This is plain text output from codex';
+    expect(parseCodexJsonlOutput(raw)).toBe(raw);
+  });
+
+  it('falls back to raw stdout when output is empty', () => {
+    expect(parseCodexJsonlOutput('')).toBe('');
+  });
+
+  it('handles mixed valid and invalid JSON lines gracefully', () => {
+    const lines = [
+      'not json at all',
+      JSON.stringify({ type: 'message', content: 'Valid message' }),
+      '{broken json',
+    ].join('\n');
+    expect(parseCodexJsonlOutput(lines)).toBe('Valid message');
+  });
+
+  it('ignores message events without a string content field', () => {
+    const lines = [
+      JSON.stringify({ type: 'message', content: 42 }),
+      JSON.stringify({ type: 'message', content: null }),
+      JSON.stringify({ type: 'message' }),
+    ].join('\n');
+    // No valid message events — falls back to raw
+    expect(parseCodexJsonlOutput(lines)).toBe(lines);
   });
 });

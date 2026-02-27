@@ -26,6 +26,14 @@ export interface CLISpawnConfig {
    * (needed by CLIs that check for TTY). Defaults to 'ignore'.
    */
   stdin?: 'ignore' | 'pipe';
+  /**
+   * Optional post-processor for raw stdout. When set, AgentRunner applies this
+   * function to the accumulated stdout after the process exits. Used by adapters
+   * that emit structured output (e.g. Codex `--json` JSONL) to extract the final
+   * human-readable message content before returning the AgentResult.
+   * Falls back to raw stdout if the function returns undefined or throws.
+   */
+  parseOutput?: (stdout: string) => string;
 }
 
 /**

@@ -11,6 +11,7 @@
  *   -s, --sandbox <MODE>          read-only | workspace-write | danger-full-access
  *   --full-auto                   Auto-approve all actions (convenience flag)
  *   --skip-git-repo-check         Skip git repo trust check (required for non-git workspaces)
+ *   --json                        Output JSONL events to stdout (structured output)
  *   -C, --cd <DIR>                Working directory
  *   --ephemeral                   No session persistence
  *   <prompt>                      Positional argument (after exec)
@@ -29,6 +30,36 @@ import { sanitizePrompt } from '../agent-runner.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('codex-adapter');
+
+/**
+ * Extract the final message content from Codex `--json` JSONL output.
+ *
+ * Codex with `--json` emits one JSON object per line to stdout:
+ *   {"type":"message","content":"Hello, world!"}
+ *   {"type":"tool_call","name":"bash","input":"..."}
+ *   {"type":"tool_result","output":"..."}
+ *   {"type":"message","content":"Final answer"}
+ *
+ * We find the last `type === "message"` event and return its `content` field.
+ * Falls back to raw stdout if no parseable message event is found.
+ */
+export function parseCodexJsonlOutput(stdout: string): string {
+  const lines = stdout.split('\n').filter(Boolean);
+  let lastContent: string | undefined;
+
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line) as Record<string, unknown>;
+      if (event['type'] === 'message' && typeof event['content'] === 'string') {
+        lastContent = event['content'];
+      }
+    } catch {
+      // Not valid JSON — skip (could be mixed terminal output or partial lines)
+    }
+  }
+
+  return lastContent ?? stdout;
+}
 
 /** Map capability levels to codex sandbox modes */
 const CAPABILITY_TO_SANDBOX: Record<CapabilityLevel, string> = {
@@ -73,6 +104,10 @@ export class CodexAdapter implements CLIAdapter {
     // No session persistence for worker spawning
     args.push('--ephemeral');
 
+    // Enable JSONL structured output — each event is a JSON object on its own line.
+    // AgentRunner applies parseOutput() to extract the final message content.
+    args.push('--json');
+
     // systemPrompt: prepend to the prompt text (codex has no --append-system-prompt)
     let prompt = sanitizePrompt(opts.prompt);
     if (opts.systemPrompt) {
@@ -101,6 +136,7 @@ export class CodexAdapter implements CLIAdapter {
       args,
       env: this.cleanEnv({ ...process.env }),
       stdin: 'pipe', // codex checks for TTY
+      parseOutput: parseCodexJsonlOutput,
     };
   }
 
