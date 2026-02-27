@@ -13,6 +13,7 @@ import type { EmailConfig } from '../types/config.js';
 import type {
   MemoryManager,
   ActivityRecord,
+  ConversationEntry,
   ExplorationProgressRow,
   SessionSummary,
 } from '../memory/index.js';
@@ -1326,14 +1327,44 @@ export class Router {
       return;
     }
 
-    // history <session-id> — OB-1035 (not yet implemented)
+    // history <session-id> — OB-1035
     if (rest.length > 0) {
+      if (!this.memory) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History not available — memory system not initialized.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const sessionId = rest;
+      let entries: ConversationEntry[];
+      try {
+        entries = await this.memory.getSessionHistory(sessionId, 50);
+      } catch (err) {
+        logger.warn({ err }, 'handleHistoryCommand: failed to get session history');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History temporarily unavailable — could not query session.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const content =
+        entries.length === 0
+          ? `No conversation found for session: ${sessionId}`
+          : this.formatSessionTranscript(entries, connector.name);
       await connector.sendMessage({
         target: message.source,
         recipient: message.sender,
-        content: "Use 'history' to list your past conversations. Session transcripts coming soon.",
+        content,
         replyTo: message.id,
       });
+      logger.info({ sender: message.sender, sessionId }, 'History transcript command handled');
       return;
     }
 
@@ -1421,6 +1452,51 @@ export class Router {
       return `${i + 1}. ${title} — ${s.message_count} ${msgWord} — ${formatDate(s.last_message_at)}`;
     });
     return ['*Conversation History*', '', ...rowLines].join('\n');
+  }
+
+  /**
+   * Format a session transcript for the given channel.
+   *   webchat   → HTML message bubbles
+   *   console   → plain text with separator line
+   *   all other → plain text list (WhatsApp, Telegram, Discord)
+   */
+  private formatSessionTranscript(entries: ConversationEntry[], channel: string): string {
+    const formatTime = (iso: string): string => iso.slice(0, 16).replace('T', ' '); // YYYY-MM-DD HH:MM
+    const formatRole = (role: string): string => {
+      if (role === 'user') return 'You';
+      if (role === 'master' || role === 'worker') return 'AI';
+      return 'System';
+    };
+
+    if (channel === 'webchat') {
+      const items = entries
+        .map((e) => {
+          const time = formatTime(e.created_at ?? '');
+          const role = formatRole(e.role);
+          const content = escapeHtml(e.content.slice(0, 500));
+          const cls = e.role === 'user' ? 'user' : 'ai';
+          return (
+            `<div class="msg ${cls}"><b>${escapeHtml(role)}</b> ` +
+            `<span class="time">${time}</span><p>${content}</p></div>`
+          );
+        })
+        .join('');
+      return `<b>Conversation Transcript</b><div class="transcript">${items}</div>`;
+    }
+
+    const rows = entries.map((e) => {
+      const time = formatTime(e.created_at ?? '');
+      const role = formatRole(e.role);
+      const snippet = e.content.slice(0, 300);
+      return `[${time}] ${role}: ${snippet}`;
+    });
+
+    if (channel === 'console') {
+      return ['*Conversation Transcript*', '─'.repeat(40), ...rows, '─'.repeat(40)].join('\n');
+    }
+
+    // Default: WhatsApp, Telegram, Discord
+    return ['*Conversation Transcript*', '', ...rows].join('\n');
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */
