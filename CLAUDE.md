@@ -116,79 +116,79 @@ The bridge will:
 
 ### Key Files
 
-| File                                     | Purpose                                                                                    |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `config.json`                            | Your runtime config (gitignored)                                                           |
-| `src/index.ts`                           | Entry point — V0 + V2 startup flows                                                        |
-| `src/core/bridge.ts`                     | Orchestrator — wires connectors, auth, queue, Master AI                                    |
-| `src/core/router.ts`                     | Routes messages: connector → Master AI → connector                                         |
-| `src/core/auth.ts`                       | Phone whitelist + prefix + command allow/deny filters                                      |
-| `src/core/queue.ts`                      | Per-user sequential processing, retry, DLQ                                                 |
-| `src/core/registry.ts`                   | Plugin registry — auto-discovers connectors                                                |
-| `src/core/config.ts`                     | Config loader — V2 detection + V0 fallback (Zod validated)                                 |
-| `src/core/config-watcher.ts`             | Config hot-reload (file watcher)                                                           |
-| `src/core/health.ts`                     | Health check HTTP endpoint                                                                 |
-| `src/core/metrics.ts`                    | Message count, latency, error rate metrics                                                 |
-| `src/core/audit-logger.ts`               | Structured audit trail of all message events                                               |
-| `src/core/rate-limiter.ts`               | Per-user rate limiting                                                                     |
-| `src/core/logger.ts`                     | Pino logger                                                                                |
-| `src/types/connector.ts`                 | Interface every connector must implement                                                   |
-| `src/types/provider.ts`                  | Interface every AI provider must implement                                                 |
-| `src/types/message.ts`                   | InboundMessage / OutboundMessage types                                                     |
-| `src/types/config.ts`                    | Zod config schemas (V0 + V2)                                                               |
-| `src/types/discovery.ts`                 | DiscoveredTool, ScanResult Zod schemas                                                     |
-| `src/types/master.ts`                    | MasterState, ExplorationSummary Zod schemas                                                |
-| `src/types/common.ts`                    | Shared types                                                                               |
-| `src/discovery/tool-scanner.ts`          | CLI tool detection (`which claude`, `which codex`, etc.)                                   |
-| `src/discovery/vscode-scanner.ts`        | VS Code AI extension detection                                                             |
-| `src/discovery/index.ts`                 | `scanForAITools()` export — combines CLI + VS Code scans                                   |
-| `src/core/agent-runner.ts`               | Unified CLI executor (--allowedTools, --max-turns, --model, retries, error classification) |
-| `src/core/model-selector.ts`             | Model recommendation per task type                                                         |
-| `src/core/model-registry.ts`             | Provider-agnostic model tier resolution (fast/balanced/powerful → concrete model IDs)      |
-| `src/core/cli-adapter.ts`                | CLIAdapter interface — translates SpawnOptions to tool-specific binary + args + env        |
-| `src/core/adapter-registry.ts`           | Maps discovered tool names to CLIAdapter instances (lazy-loads built-ins)                  |
-| `src/core/adapters/`                     | CLIAdapter implementations: ClaudeAdapter, CodexAdapter, AiderAdapter                      |
-| `src/core/agent-orchestrator.ts`         | Agent orchestration layer — manages TaskAgent lifecycle, wired into Bridge + Router        |
-| `src/core/fast-path-responder.ts`        | Quick-answer agent pool for low-latency responses during Master processing                 |
-| `src/core/email-sender.ts`               | Outbound email delivery (SHARE email outputs)                                              |
-| `src/core/file-server.ts`                | Static file server for media/file outputs                                                  |
-| `src/core/github-publisher.ts`           | GitHub Pages publishing for HTML/report outputs                                            |
-| `src/core/workspace-manager.ts`          | Workspace path validation and helper utilities                                             |
-| `src/memory/database.ts`                 | SQLite DB init, schema creation, migration runner                                          |
-| `src/memory/migration.ts`                | Schema migration runner (ALTER TABLE sequences)                                            |
-| `src/memory/activity-store.ts`           | agent_activity CRUD — PID, status, turn counts, explorationId                              |
-| `src/memory/task-store.ts`               | tasks + learnings tables (model success rates, retry patterns)                             |
-| `src/memory/conversation-store.ts`       | conversation_messages + FTS5 full-text search                                              |
-| `src/memory/chunk-store.ts`              | workspace_chunks + FTS5 semantic retrieval                                                 |
-| `src/memory/prompt-store.ts`             | prompts + prompt_versions — effectiveness tracking                                         |
-| `src/memory/access-store.ts`             | access_control table — role-based permissions per sender                                   |
-| `src/memory/worker-briefing.ts`          | Per-worker context injection from DB before spawn                                          |
-| `src/memory/retrieval.ts`                | Semantic + FTS5 search helpers for context assembly                                        |
-| `src/memory/eviction.ts`                 | LRU eviction policy for workspace chunk cache                                              |
-| `src/memory/sub-master-store.ts`         | Sub-master session state persistence                                                       |
-| `src/memory/index.ts`                    | MemoryManager facade — unified API over all store modules                                  |
-| `src/master/master-manager.ts`           | Master AI lifecycle + self-governing session + worker spawning + kill infra (5710 LOC)     |
-| `src/master/master-system-prompt.ts`     | Master AI system prompt builder                                                            |
-| `src/master/dotfolder-manager.ts`        | `.openbridge/` folder CRUD + exploration state CRUD (866 LOC)                              |
-| `src/master/worker-registry.ts`          | Active worker tracking + concurrency limits                                                |
-| `src/master/exploration-coordinator.ts`  | 5-phase incremental exploration orchestrator with checkpointing + resumability             |
-| `src/master/exploration-prompts.ts`      | Focused prompts (structure scan, classification, directory dive, assembly)                 |
-| `src/master/result-parser.ts`            | Robust JSON extraction from AI output with progressive fallbacks                           |
-| `src/master/spawn-parser.ts`             | Parse worker spawn requests from Master output                                             |
-| `src/master/worker-result-formatter.ts`  | Format worker results for Master consumption                                               |
-| `src/master/workspace-change-tracker.ts` | Git-based workspace change detection                                                       |
-| `src/master/prompt-evolver.ts`           | Prompt effectiveness tracking + self-improvement refinement                                |
-| `src/master/sub-master-detector.ts`      | Sub-master capability detection and selection                                              |
-| `src/master/sub-master-manager.ts`       | Sub-master session pool management                                                         |
-| `src/master/delegation.ts`               | Multi-AI task delegation coordinator                                                       |
-| `src/connectors/whatsapp/`               | WhatsApp connector — auto-reconnect, sessions, typing                                      |
-| `src/connectors/console/`                | Console connector (reference implementation)                                               |
-| `src/connectors/webchat/`                | WebChat connector — HTTP + WebSocket, browser UI                                           |
-| `src/connectors/telegram/`               | Telegram connector                                                                         |
-| `src/connectors/discord/`                | Discord connector                                                                          |
-| `src/providers/claude-code/`             | Claude Code CLI provider — streaming, sessions, errors (uses AgentRunner)                  |
-| `src/cli/init.ts`                        | CLI config generator — 3 questions for V2 config                                           |
-| `src/cli/access.ts`                      | CLI access control tool — `openbridge access add/remove/list` (role management)            |
+| File                                     | Purpose                                                                                       |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `config.json`                            | Your runtime config (gitignored)                                                              |
+| `src/index.ts`                           | Entry point — V0 + V2 startup flows                                                           |
+| `src/core/bridge.ts`                     | Orchestrator — wires connectors, auth, queue, Master AI                                       |
+| `src/core/router.ts`                     | Message routing + `/history` + stop/status/confirm commands (1554 LOC)                        |
+| `src/core/auth.ts`                       | Phone whitelist + prefix + command allow/deny filters                                         |
+| `src/core/queue.ts`                      | Per-user sequential processing, retry, DLQ                                                    |
+| `src/core/registry.ts`                   | Plugin registry — auto-discovers connectors                                                   |
+| `src/core/config.ts`                     | Config loader — V2 detection + V0 fallback (Zod validated)                                    |
+| `src/core/config-watcher.ts`             | Config hot-reload (file watcher)                                                              |
+| `src/core/health.ts`                     | Health check HTTP endpoint                                                                    |
+| `src/core/metrics.ts`                    | Message count, latency, error rate metrics                                                    |
+| `src/core/audit-logger.ts`               | Structured audit trail of all message events                                                  |
+| `src/core/rate-limiter.ts`               | Per-user rate limiting                                                                        |
+| `src/core/logger.ts`                     | Pino logger                                                                                   |
+| `src/types/connector.ts`                 | Interface every connector must implement                                                      |
+| `src/types/provider.ts`                  | Interface every AI provider must implement                                                    |
+| `src/types/message.ts`                   | InboundMessage / OutboundMessage types                                                        |
+| `src/types/config.ts`                    | Zod config schemas (V0 + V2)                                                                  |
+| `src/types/discovery.ts`                 | DiscoveredTool, ScanResult Zod schemas                                                        |
+| `src/types/master.ts`                    | MasterState, ExplorationSummary Zod schemas                                                   |
+| `src/types/common.ts`                    | Shared types                                                                                  |
+| `src/discovery/tool-scanner.ts`          | CLI tool detection (`which claude`, `which codex`, etc.)                                      |
+| `src/discovery/vscode-scanner.ts`        | VS Code AI extension detection                                                                |
+| `src/discovery/index.ts`                 | `scanForAITools()` export — combines CLI + VS Code scans                                      |
+| `src/core/agent-runner.ts`               | Unified CLI executor (--allowedTools, --max-turns, --model, retries, error classification)    |
+| `src/core/model-selector.ts`             | Model recommendation per task type                                                            |
+| `src/core/model-registry.ts`             | Provider-agnostic model tier resolution (fast/balanced/powerful → concrete model IDs)         |
+| `src/core/cli-adapter.ts`                | CLIAdapter interface — translates SpawnOptions to tool-specific binary + args + env           |
+| `src/core/adapter-registry.ts`           | Maps discovered tool names to CLIAdapter instances (lazy-loads built-ins)                     |
+| `src/core/adapters/`                     | CLIAdapter implementations: ClaudeAdapter, CodexAdapter, AiderAdapter                         |
+| `src/core/agent-orchestrator.ts`         | Agent orchestration layer — manages TaskAgent lifecycle, wired into Bridge + Router           |
+| `src/core/fast-path-responder.ts`        | Quick-answer agent pool for low-latency responses during Master processing                    |
+| `src/core/email-sender.ts`               | Outbound email delivery (SHARE email outputs)                                                 |
+| `src/core/file-server.ts`                | Static file server for media/file outputs                                                     |
+| `src/core/github-publisher.ts`           | GitHub Pages publishing for HTML/report outputs                                               |
+| `src/core/workspace-manager.ts`          | Workspace path validation and helper utilities                                                |
+| `src/memory/database.ts`                 | SQLite DB init, schema creation, migration runner                                             |
+| `src/memory/migration.ts`                | Schema migration runner (ALTER TABLE sequences)                                               |
+| `src/memory/activity-store.ts`           | agent_activity CRUD — PID, status, turn counts, explorationId                                 |
+| `src/memory/task-store.ts`               | tasks + learnings tables (model success rates, retry patterns)                                |
+| `src/memory/conversation-store.ts`       | conversation_messages + FTS5 full-text search                                                 |
+| `src/memory/chunk-store.ts`              | workspace_chunks + FTS5 semantic retrieval                                                    |
+| `src/memory/prompt-store.ts`             | prompts + prompt_versions — effectiveness tracking                                            |
+| `src/memory/access-store.ts`             | access_control table — role-based permissions per sender                                      |
+| `src/memory/worker-briefing.ts`          | Per-worker context injection from DB before spawn                                             |
+| `src/memory/retrieval.ts`                | Semantic + FTS5 search helpers for context assembly                                           |
+| `src/memory/eviction.ts`                 | LRU eviction policy for workspace chunk cache                                                 |
+| `src/memory/sub-master-store.ts`         | Sub-master session state persistence                                                          |
+| `src/memory/index.ts`                    | MemoryManager facade — unified API over all store modules                                     |
+| `src/master/master-manager.ts`           | Master AI lifecycle + self-governing session + worker spawning + checkpoint/resume (6155 LOC) |
+| `src/master/master-system-prompt.ts`     | Master AI system prompt builder                                                               |
+| `src/master/dotfolder-manager.ts`        | `.openbridge/` CRUD + exploration state + context/memory.md + prompt library (903 LOC)        |
+| `src/master/worker-registry.ts`          | Active worker tracking + concurrency limits                                                   |
+| `src/master/exploration-coordinator.ts`  | 5-phase incremental exploration orchestrator with checkpointing + resumability                |
+| `src/master/exploration-prompts.ts`      | Focused prompts (structure scan, classification, directory dive, assembly)                    |
+| `src/master/result-parser.ts`            | Robust JSON extraction from AI output with progressive fallbacks                              |
+| `src/master/spawn-parser.ts`             | Parse worker spawn requests from Master output                                                |
+| `src/master/worker-result-formatter.ts`  | Format worker results for Master consumption                                                  |
+| `src/master/workspace-change-tracker.ts` | Git-based workspace change detection                                                          |
+| `src/master/prompt-evolver.ts`           | Prompt effectiveness tracking + self-improvement refinement                                   |
+| `src/master/sub-master-detector.ts`      | Sub-master capability detection and selection                                                 |
+| `src/master/sub-master-manager.ts`       | Sub-master session pool management                                                            |
+| `src/master/delegation.ts`               | Multi-AI task delegation coordinator                                                          |
+| `src/connectors/whatsapp/`               | WhatsApp connector — auto-reconnect, sessions, typing                                         |
+| `src/connectors/console/`                | Console connector (reference implementation)                                                  |
+| `src/connectors/webchat/`                | WebChat connector — HTTP + WebSocket, browser UI                                              |
+| `src/connectors/telegram/`               | Telegram connector                                                                            |
+| `src/connectors/discord/`                | Discord connector                                                                             |
+| `src/providers/claude-code/`             | Claude Code CLI provider — streaming, sessions, errors (uses AgentRunner)                     |
+| `src/cli/init.ts`                        | CLI config generator — 3 questions for V2 config                                              |
+| `src/cli/access.ts`                      | CLI access control tool — `openbridge access add/remove/list` (role management)               |
 
 ### How `workspacePath` Works
 
@@ -217,6 +217,8 @@ my-app/
     │       ├── src.json
     │       ├── tests.json
     │       └── docs.json
+    ├── context/                 ← Cross-session memory
+    │   └── memory.md            ← Master-curated memory (≤200 lines, updated each session)
     ├── workspace-map.json       ← Auto-generated project understanding (legacy)
     ├── agents.json              ← Discovered AI tools + their roles (legacy)
     ├── exploration.log          ← Timestamped scan history (legacy)
@@ -226,6 +228,17 @@ my-app/
 ```
 
 > **Note:** `openbridge.db` (SQLite + FTS5) ships in v0.0.2 and progressively replaces JSON files. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+### memory.md Pattern
+
+The **`memory.md` pattern** is how the Master AI maintains continuity across sessions without bloating the context window:
+
+- **File:** `.openbridge/context/memory.md` (≤200 lines, plain Markdown)
+- **On session start:** Loaded by `buildConversationContext()` in `MasterManager` and injected into the system prompt as primary context.
+- **During session:** Master updates the file when asked to remember something, or when key decisions/findings are made.
+- **On session end:** Master sends a final prompt ("Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics.") and writes the updated file via a worker with the `Write` tool.
+- **FTS5 fallback:** When `memory.md` is empty or missing, `buildConversationContext()` falls back to `searchConversations()` FTS5 search for cross-session results.
+- **Why this works:** The Master AI is the curator — no complex summarizer pipelines, no topic clustering workers. Same pattern used by Claude Code's own `MEMORY.md`.
 
 ### Adding a New Connector
 
@@ -255,7 +268,7 @@ src/
 │   └── master.ts               MasterState, ExplorationSummary schemas
 ├── core/                       Bridge engine
 │   ├── bridge.ts               Main orchestrator (setMaster + lifecycle)
-│   ├── router.ts               Message routing + stop/status/confirm commands (1085 LOC)
+│   ├── router.ts               Message routing + /history + stop/status/confirm commands (1554 LOC)
 │   ├── auth.ts                 Authentication + role-based access control
 │   ├── queue.ts                Message queues (priority queue, fast-path classification)
 │   ├── registry.ts             Plugin registry
@@ -312,10 +325,10 @@ src/
 │   └── script-coordinator.ts   Multi-step script execution with step tracking
 └── master/                     Master AI management
     ├── index.ts                Module exports
-    ├── master-manager.ts       Master AI lifecycle + self-governing + worker spawning + kill infra (5710 LOC)
+    ├── master-manager.ts       Master AI lifecycle + self-governing + worker spawning + checkpoint/resume (6155 LOC)
     ├── master-system-prompt.ts Master AI system prompt builder
     ├── worker-registry.ts      Active worker tracking + concurrency limits
-    ├── dotfolder-manager.ts    .openbridge/ folder CRUD + exploration state (866 LOC)
+    ├── dotfolder-manager.ts    .openbridge/ CRUD + exploration state + context/memory.md + prompt library (903 LOC)
     ├── exploration-coordinator.ts  5-phase incremental exploration orchestrator
     ├── exploration-prompts.ts      Focused prompts (structure, classification, dive, assembly)
     ├── result-parser.ts            Robust JSON extraction from AI output
