@@ -30,6 +30,13 @@ export function closeDatabase(db: Database.Database): void {
 
 function createSchema(db: Database.Database): void {
   db.exec(`
+    -- schema_versions: tracks applied schema migrations
+    CREATE TABLE IF NOT EXISTS schema_versions (
+      version    INTEGER PRIMARY KEY,
+      applied_at TEXT    NOT NULL,
+      description TEXT   NOT NULL
+    );
+
     -- context_chunks: workspace knowledge, chunked for retrieval
     CREATE TABLE IF NOT EXISTS context_chunks (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
