@@ -62,7 +62,14 @@ This document covers every public interface, class, and configuration schema in 
   - [MCPConfig](#mcpconfig)
 - [Memory Classes](#memory-classes)
   - [ConversationStore](#conversationstore)
+    - [listSessions()](#listsessions)
+    - [searchSessions()](#searchsessions)
+    - [searchConversations()](#searchconversations)
+    - [getSessionHistory()](#getsessionhistory)
+    - [getRecentMessages()](#getrecentmessages)
+  - [MemoryManager](#memorymanager)
 - [Master AI Classes](#master-ai-classes)
+  - [MasterManager](#mastermanager)
   - [DotFolderManager](#dotfoldermanager)
 - [Utility Functions](#utility-functions)
   - [loadConfig()](#loadconfig)
@@ -492,6 +499,35 @@ await bridge.stop();
 | `start()`       | `Promise<void>`  | Initialize all plugins, start processing           |
 | `stop()`        | `Promise<void>`  | Drain queue, shut down Master + plugins gracefully |
 
+#### Shutdown Behavior
+
+_Source: `src/index.ts`_
+
+OpenBridge registers `SIGINT` and `SIGTERM` handlers that trigger a graceful shutdown sequence:
+
+1. **Double-shutdown guard** — a module-level `shutdownInProgress` flag is set on the first signal. Subsequent signals (e.g., double Ctrl+C) are ignored with a WARN log rather than force-killing the process.
+2. **User-facing message** — `console.log('\nShutting down gracefully... please wait')` is printed immediately so users know not to press Ctrl+C again.
+3. **10-second timeout** — `bridge.stop()` races against a 10-second `setTimeout`. If the timeout fires first, `console.error('Shutdown timeout exceeded (10s) — forcing exit')` is printed and `process.exit(1)` is called.
+4. **Critical-first ordering** — inside `MasterManager.shutdown()`, `saveMasterSessionToStore()` (fast SQLite write, <100ms) runs **before** `triggerMemoryUpdate()` (slow AI spawn, 10-30s). This ensures session state is always persisted even if the memory update is interrupted by the timeout.
+5. **Memory update failure isolation** — `triggerMemoryUpdate()` on shutdown is wrapped in `try/catch` so its failure cannot block or throw past `MasterManager.shutdown()`.
+
+**Full shutdown sequence:**
+
+```
+SIGINT / SIGTERM
+  → shutdownInProgress guard (no-op if already set)
+  → console.log "Shutting down gracefully..."
+  → workspaceManager.stopPolling()
+  → Promise.race([bridge.stop(), 10s timeout])
+      → bridge.stop()
+          → queue.drain()
+          → MasterManager.shutdown()
+              → saveMasterSessionToStore()   ← always runs (critical)
+              → triggerMemoryUpdate()        ← may be skipped by timeout
+          → connectors[].shutdown()
+  → process.exit(0)
+```
+
 ---
 
 ### Router
@@ -916,7 +952,7 @@ Full-text search over conversation content returning session-level results via F
 | `query`   | `string`            | —       | Search query string        |
 | `limit`   | `number`            | `10`    | Maximum sessions to return |
 
-**Returns:** `SessionSummary[]` ranked by number of matching messages, then by recency. Returns `[]` if query is empty or no matches found. FTS5 special characters are sanitized before querying.
+**Returns:** `SessionSummary[]` ranked by number of matching messages, then by recency. Returns `[]` if query is empty or no matches found. The query is passed through `sanitizeFts5Query()` before the FTS5 `MATCH` clause — special characters (`'`, `"`, `*`, `AND`, `OR`, `NOT`, `(`, `)`, etc.) are stripped and each token is quoted to prevent `SqliteError: fts5: syntax error` (Phase 63 fix).
 
 #### getSessionHistory()
 
@@ -950,9 +986,103 @@ Retrieves the full message transcript for one conversation session.
 | `user_id`    | `string \| undefined`                        | Sender identifier                |
 | `created_at` | `string`                                     | ISO 8601 timestamp               |
 
+#### searchConversations()
+
+_Source: `src/memory/retrieval.ts`_
+
+```typescript
+function searchConversations(
+  db: Database.Database,
+  query: string,
+  limit?: number,
+): ConversationEntry[];
+```
+
+Full-text search over individual conversation messages using the `conversations_fts` FTS5 index. Results are BM25-ranked for relevance, then sorted by recency within equal-relevance groups.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `query`   | `string`            | —       | Search query string        |
+| `limit`   | `number`            | `10`    | Maximum messages to return |
+
+**Returns:** `ConversationEntry[]` BM25-ranked, then by `created_at DESC`. Returns `[]` if query is empty or all special characters. The query is passed through `sanitizeFts5Query()` before the FTS5 `MATCH` clause — this prevents `SqliteError: fts5: syntax error` for messages containing `'`, `"`, `*`, `AND`, `OR`, `NOT`, `(`, `)`, etc. (Phase 63 fix). Previously, special characters in user messages silently caused cross-session context injection to fail.
+
+#### getRecentMessages()
+
+_Source: `src/memory/conversation-store.ts`_
+
+```typescript
+function getRecentMessages(db: Database.Database, limit?: number): ConversationEntry[];
+```
+
+Returns the most recent messages across all sessions, filtered to `user` and `master` roles only, in chronological order (oldest → newest). Used by `triggerMemoryUpdate()` to give the stateless `--print` agent conversation context to write meaningful memory notes.
+
+| Parameter | Type                | Default | Description                                |
+| --------- | ------------------- | ------- | ------------------------------------------ |
+| `db`      | `Database.Database` | —       | SQLite database instance                   |
+| `limit`   | `number`            | `20`    | Maximum messages to return (most recent N) |
+
+**Returns:** `ConversationEntry[]` in chronological order (oldest first). The query selects by `created_at DESC` then `.reverse()` is applied to restore chronological order. Only `role IN ('user', 'master')` — `worker` and `system` messages are excluded.
+
+---
+
+### MemoryManager
+
+_Source: `src/memory/index.ts`_
+
+Facade class over all SQLite store modules. Provides a unified async API for the rest of OpenBridge. Initialized with a `Database.Database` instance; all methods throw if the DB is not initialized.
+
+#### getRecentMessages()
+
+```typescript
+async getRecentMessages(limit?: number): Promise<ConversationEntry[]>
+```
+
+Returns the most recent user + master messages across all sessions in chronological order (oldest → newest). Delegates to the `getRecentMessages()` store function. Called by `MasterManager.triggerMemoryUpdate()` to inject conversation context into the memory-update prompt.
+
+| Parameter | Type     | Default | Description                |
+| --------- | -------- | ------- | -------------------------- |
+| `limit`   | `number` | `20`    | Maximum messages to return |
+
+**Returns:** `Promise<ConversationEntry[]>` — rejects with `Error('MemoryManager not initialised')` if `db` is null.
+
 ---
 
 ## Master AI Classes
+
+### MasterManager
+
+_Source: `src/master/master-manager.ts`_
+
+The core Master AI lifecycle manager. Handles session initialization, worker spawning, exploration coordination, and graceful shutdown. 6155 LOC.
+
+#### triggerMemoryUpdate()
+
+```typescript
+private async triggerMemoryUpdate(): Promise<void>
+```
+
+Spawns a stateless `--print` mode AI agent that reads recent conversation history from SQLite and writes updated notes to `.openbridge/context/memory.md`. Non-blocking — callers fire-and-forget with `void`.
+
+**When triggered:**
+
+| Trigger  | Condition                                                         |
+| -------- | ----------------------------------------------------------------- |
+| Periodic | Every `MEMORY_UPDATE_INTERVAL` (10) completed tasks               |
+| Shutdown | In `MasterManager.shutdown()`, after `saveMasterSessionToStore()` |
+
+**Behavior:**
+
+1. Returns early if no master session or state is `'shutdown'`.
+2. Calls `this.memory?.getRecentMessages(20)` — fetches the last 20 `user`/`master` messages from SQLite.
+3. Logs `{ messageCount }` at INFO level.
+4. Formats each entry as `[YYYY-MM-DD HH:MM] Role: content` (content truncated to 300 chars with `…`).
+5. If messages exist, prepends a `## Recent conversation history:` section to the prompt.
+6. Spawns an agent in `--print` mode with `allowedTools: ['Write']` pointing at `memoryPath`.
+7. Prompt uses generic language ("Write your updated notes to …") — not Claude-specific tool names — so it works with Codex as Master.
+
+**Error handling:** Failures are logged as WARN and do not block the caller. The `triggerMemoryUpdate()` call in `shutdown()` is wrapped in `try/catch` so a failed memory update cannot block session state persistence.
 
 ### DotFolderManager
 
