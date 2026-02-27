@@ -239,6 +239,11 @@ async function startV2Flow(
   // the DB before it is open (this.db would be null, causing 'MemoryManager not initialised' errors).
   await bridge.start();
 
+  // Wire MCP servers into the health endpoint (runs after bridge.start() initialises the health server)
+  if (v2Config.mcp?.enabled !== false && (v2Config.mcp?.servers ?? []).length > 0) {
+    bridge.setMcpServers(v2Config.mcp?.servers ?? []);
+  }
+
   // Step 5: Start Master AI in the background — bridge is already serving messages.
   // This loads workspace-map.json and transitions from 'idle' to 'ready'.
   // masterManager.start() can take minutes (workspace exploration) so we don't await it.

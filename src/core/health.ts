@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { HealthConfig } from '../types/config.js';
+import type { HealthConfig, MCPServer } from '../types/config.js';
 import type { MetricsSnapshot } from './metrics.js';
 import { createLogger } from './logger.js';
 
@@ -8,6 +9,12 @@ const logger = createLogger('health');
 export interface ComponentStatus {
   name: string;
   status: 'healthy' | 'degraded' | 'unhealthy';
+}
+
+export interface McpServerStatus {
+  name: string;
+  status: 'configured' | 'error';
+  command: string;
 }
 
 export interface HealthStatus {
@@ -32,6 +39,42 @@ export interface HealthStatus {
     taskAgents: number;
     byStatus: Record<string, number>;
   };
+  mcp?: {
+    enabled: boolean;
+    servers: McpServerStatus[];
+  };
+}
+
+/**
+ * Check whether a command exists on PATH using `which` (Unix) or `where` (Windows).
+ * Returns true if found, false if not.
+ */
+export function checkCommandOnPath(command: string): boolean {
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(whichCmd, [command], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check health of a list of MCP servers by verifying their commands exist on PATH.
+ * Returns the mcp health section ready to include in HealthStatus.
+ */
+export function checkMcpServersHealth(servers: MCPServer[]): HealthStatus['mcp'] {
+  if (servers.length === 0) {
+    return { enabled: true, servers: [] };
+  }
+  return {
+    enabled: true,
+    servers: servers.map((server) => ({
+      name: server.name,
+      command: server.command,
+      status: checkCommandOnPath(server.command) ? 'configured' : 'error',
+    })),
+  };
 }
 
 export type HealthDataProvider = () => HealthStatus;
@@ -47,6 +90,7 @@ export class HealthServer {
   private dataProvider: HealthDataProvider | null = null;
   private metricsProvider: (() => MetricsSnapshot) | null = null;
   private readinessProvider: (() => boolean) | null = null;
+  private mcpServers: MCPServer[] = [];
 
   constructor(config: Partial<HealthConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -62,6 +106,16 @@ export class HealthServer {
 
   setReadinessProvider(provider: () => boolean): void {
     this.readinessProvider = provider;
+  }
+
+  /**
+   * Configure the MCP servers to health-check on each /health request.
+   * Call this after Bridge.start() with servers from V2Config.mcp.servers.
+   * When servers are set, the /health response includes an `mcp` section
+   * reporting whether each server's command exists on PATH.
+   */
+  setMcpServers(servers: MCPServer[]): void {
+    this.mcpServers = servers;
   }
 
   async start(): Promise<void> {
@@ -123,6 +177,11 @@ export class HealthServer {
     }
 
     const health = this.dataProvider();
+
+    if (this.mcpServers.length > 0) {
+      health.mcp = checkMcpServersHealth(this.mcpServers);
+    }
+
     const statusCode = health.status === 'unhealthy' ? 503 : 200;
 
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });

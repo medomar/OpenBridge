@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import type { AppConfig, EmailConfig } from '../types/config.js';
+import type { AppConfig, EmailConfig, MCPServer } from '../types/config.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
@@ -109,6 +109,17 @@ export class Bridge {
   setEmailConfig(config: EmailConfig): void {
     this.router.setEmailConfig(config);
     logger.info('Email config set on Router');
+  }
+
+  /**
+   * Register MCP servers with the health check endpoint.
+   * Call after bridge.start() with servers from V2Config.mcp.servers.
+   * The /health response will include an `mcp` section reporting whether
+   * each server's command is available on PATH.
+   */
+  setMcpServers(servers: MCPServer[]): void {
+    this.healthServer.setMcpServers(servers);
+    logger.info({ count: servers.length }, 'MCP servers registered for health checks');
   }
 
   /** Start the bridge: initialize all connectors and providers, begin processing */
