@@ -480,6 +480,63 @@ export class MasterManager {
     }
   }
 
+  /**
+   * Checkpoint the current Master session state to the `sessions` table.
+   *
+   * Serializes pending workers, accumulated results, and queued message context
+   * so that a future `resumeSession()` call can restore them without data loss.
+   *
+   * No-op when memory is unavailable (SQLite not configured).
+   *
+   * @returns true if checkpoint was saved, false if skipped (no memory / no session).
+   */
+  public async checkpointSession(): Promise<boolean> {
+    if (!this.memory || !this.masterSession) return false;
+
+    const now = new Date().toISOString();
+
+    // Collect worker state from the in-memory registry
+    const allWorkers = this.workerRegistry.getAllWorkers();
+    const pendingWorkers = allWorkers.filter(
+      (w) => w.status === 'pending' || w.status === 'running',
+    );
+    const completedWorkers = allWorkers.filter(
+      (w) => w.status === 'completed' || w.status === 'failed',
+    );
+
+    // Serialize pending messages — convert Date timestamps to ISO strings
+    const serializedMessages = this.pendingMessages.map((msg) => ({
+      ...msg,
+      timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+    }));
+
+    const checkpoint = {
+      checkpointedAt: now,
+      pendingWorkers,
+      completedWorkers,
+      pendingMessages: serializedMessages,
+    };
+
+    try {
+      const record = masterSessionToSessionRecord(this.masterSession, this.restartCount);
+      record.checkpoint_data = JSON.stringify(checkpoint);
+      await this.memory.upsertSession(record);
+      logger.info(
+        {
+          sessionId: this.masterSession.sessionId,
+          pendingWorkers: pendingWorkers.length,
+          completedWorkers: completedWorkers.length,
+          pendingMessages: serializedMessages.length,
+        },
+        'Session checkpointed',
+      );
+      return true;
+    } catch (error) {
+      logger.warn({ error }, 'Failed to checkpoint session');
+      return false;
+    }
+  }
+
   /** Read analysis marker from memory (workspace_state table) or DotFolderManager (JSON file). */
   private async readAnalysisMarkerFromStore(): Promise<WorkspaceAnalysisMarker | null> {
     if (this.memory) {

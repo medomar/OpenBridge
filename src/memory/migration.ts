@@ -67,6 +67,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 3,
+    description: 'Add checkpoint_data column to sessions',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('sessions') WHERE name='checkpoint_data'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE sessions ADD COLUMN checkpoint_data TEXT');
+      }
+    },
+  },
 ];
 
 /**
@@ -126,6 +143,8 @@ export interface SessionRecord {
   restart_count?: number;
   message_count?: number;
   allowed_tools?: string;
+  /** JSON-serialized checkpoint state (pending workers, results, message context) */
+  checkpoint_data?: string;
   created_at: string;
   last_used_at: string;
 }
@@ -148,6 +167,7 @@ interface SessionRow {
   restart_count: number;
   message_count: number;
   allowed_tools: string | null;
+  checkpoint_data: string | null;
   created_at: string;
   last_used_at: string;
 }
@@ -210,6 +230,7 @@ export function getSession(db: Database.Database, type: string): SessionRecord |
     restart_count: row.restart_count,
     message_count: row.message_count,
     allowed_tools: row.allowed_tools ?? undefined,
+    checkpoint_data: row.checkpoint_data ?? undefined,
     created_at: row.created_at,
     last_used_at: row.last_used_at,
   };
@@ -218,8 +239,8 @@ export function getSession(db: Database.Database, type: string): SessionRecord |
 export function upsertSession(db: Database.Database, session: SessionRecord): void {
   db.prepare(
     `INSERT OR REPLACE INTO sessions
-       (id, type, status, restart_count, message_count, allowed_tools, created_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, type, status, restart_count, message_count, allowed_tools, checkpoint_data, created_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     session.id,
     session.type,
@@ -227,6 +248,7 @@ export function upsertSession(db: Database.Database, session: SessionRecord): vo
     session.restart_count ?? 0,
     session.message_count ?? 0,
     session.allowed_tools ?? null,
+    session.checkpoint_data ?? null,
     session.created_at,
     session.last_used_at,
   );
