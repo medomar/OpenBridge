@@ -256,6 +256,27 @@ export function searchSessions(db: Database.Database, query: string, limit = 10)
 }
 
 /**
+ * Return the most recent `limit` messages across all sessions filtered to
+ * 'user' and 'master' roles, ordered chronologically (oldest → newest).
+ * Used by `triggerMemoryUpdate()` to provide conversation context to the
+ * stateless --print agent.
+ */
+export function getRecentMessages(db: Database.Database, limit = 20): ConversationEntry[] {
+  const rows = db
+    .prepare(
+      `SELECT id, session_id, role, content, channel, user_id, created_at
+       FROM conversations
+       WHERE role IN ('user', 'master')
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as ConversationRow[];
+
+  // Return in chronological order (oldest → newest)
+  return rows.reverse().map(rowToEntry);
+}
+
+/**
  * Delete all conversations created before `cutoffDate` and their FTS5 entries.
  * Runs inside a transaction so both tables stay in sync.
  */
