@@ -275,6 +275,16 @@ export class Bridge {
     // Wait for all connectors to finish (success or failure)
     await Promise.allSettled(connectorPromises);
 
+    // Wire memory into connectors that support the sessions REST API (e.g. WebChat /api/sessions)
+    if (this.memory) {
+      for (const connector of this.connectors) {
+        const c = connector as { setMemory?: (m: MemoryManager) => void };
+        if (typeof c.setMemory === 'function') {
+          c.setMemory(this.memory);
+        }
+      }
+    }
+
     // Start agent status broadcasting to WebChat dashboard (2s poll — best-effort)
     if (this.memory) {
       this.agentStatusInterval = setInterval(() => {
