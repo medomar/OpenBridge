@@ -30,6 +30,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Prompt Library — DotFolderManager (Phase 51)
+
+- **`readPromptManifest()`** on `DotFolderManager` — reads `.openbridge/prompts/manifest.json`, validates with `PromptManifestSchema`, returns `PromptManifest | null`
+- **`writePromptManifest(manifest)`** on `DotFolderManager` — validates + writes manifest file, creates directory if needed
+- **`writePromptTemplate(filename, content, metadata)`** on `DotFolderManager` — writes `.md` file to `.openbridge/prompts/`, creates/updates manifest entry, preserves `createdAt` on update, sets `previousVersion`/`previousSuccessRate` when overwriting
+- **`getPromptTemplate(id)`** on `DotFolderManager` — looks up prompt by id in manifest, returns `PromptTemplate | null`
+- **`recordPromptUsage(id, success)`** on `DotFolderManager` — increments `usageCount`/`successCount`, recalculates `successRate`, updates `lastUsedAt`
+- **`getLowPerformingPrompts(threshold)`** on `DotFolderManager` — filters manifest prompts where `usageCount >= 3` and `successRate < threshold`
+- **`resetPromptStats(id)`** on `DotFolderManager` — zeros usage stats, preserves current `successRate` as `previousSuccessRate`
+- **JSONL flat-file output in `AuditLogger`** — `write()` now appends JSON lines to `logPath` (parent directories auto-created); Pino + SQLite remain as secondary sinks
+
+#### Conversation Continuity — `memory.md` Pattern (Phase 52)
+
+- **`readMemoryFile()`** on `DotFolderManager` — reads `.openbridge/context/memory.md`, returns `string | null`; `.openbridge/context/` created on `initialize()`
+- **`writeMemoryFile(content)`** on `DotFolderManager` — writes to `.openbridge/context/memory.md`, validates content length ≤ 200 lines
+- **`memory.md` context injection** — `buildConversationContext()` loads `memory.md` as primary context on every session start; FTS5 search used only as fallback when memory doesn't cover the topic
+- **Session-end memory update** — when Master session ends or after N messages, a final prompt is sent: _"Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics."_; Master writes via worker with `Write` tool
+- **`memory.md` instructions in Master system prompt** — what to remember (decisions, preferences, project state), what not to remember (raw transcripts, every worker result), 200-line cap, merge topics guidance
+- **`searchConversations()` fallback** — when Master detects the current topic is not in `memory.md`, FTS5 cross-session search is triggered for deeper context
+- **`evictOldData()` scheduled** — called on Bridge startup and on a `setInterval(24h)` to keep SQLite lean; wired into `bridge.ts`
+
+#### Conversation History Access — `/history` Command (Phase 53)
+
+- **`listSessions(limit, offset)`** on `conversation-store.ts` — returns `{ session_id, title, first_message_at, last_message_at, message_count, channel, user_id }[]` ordered by `last_message_at DESC`
+- **`title` column on `conversations` table** — nullable `TEXT`, set to first user message (truncated to 50 chars) on session creation; added via migration
+- **`searchSessions(query, limit)`** on `conversation-store.ts` — FTS5 search returning session-level results grouped by `session_id`, ranked by relevance
+- **`/history` command** — lists the last 10 sessions with title, date, and message count; available on all channels (WhatsApp = numbered list, Console = table, WebChat = HTML)
+- **`/history search <query>` command** — searches past conversations by keyword via `searchSessions()`
+- **`/history <session-id>` command** — shows full conversation transcript for a session via `getSessionHistory()`
+- **`/api/sessions` REST endpoint** (WebChat) — JSON list of sessions for frontend consumption
+- **`/api/sessions/:id` REST endpoint** (WebChat) — full conversation JSON for a single session
+
+#### Schema Versioning (Phase 54)
+
+- **`schema_versions` table** — `(version INTEGER PRIMARY KEY, applied_at TEXT, description TEXT)` tracks every applied migration
+- **Numbered migrations** — all existing `ALTER TABLE` sequences assigned version numbers 1–N in `migration.ts`
+- **Idempotent migration runner** — on startup, queries `MAX(version)` from `schema_versions` and only runs migrations with version > max; each migration wrapped in a transaction for safe rollback
+- **Migration tests** — verify idempotency (running twice is safe), version tracking, and rollback-on-failure behaviour
+
+#### Worker Streaming & Session Checkpointing (Phase 55)
+
+- **Worker progress streaming** — `execOnceStreaming()` streams stdout chunks from active workers; turn indicators parsed from CLI output
+- **`worker-progress` broadcast events** — `{ workerId, turnsUsed, turnsMax, lastAction }` sent to all connectors as workers execute; WebChat displays a live progress bar
+- **`checkpointSession()`** on `MasterManager` — serializes pending workers, accumulated results, and message context to the `sessions` table so state survives restart or preemption
+- **`resumeSession()`** on `MasterManager` — restores session state from the `sessions` table and continues processing from the checkpoint
+- **Checkpoint/resume wired to priority queue** — urgent messages trigger a checkpoint-handle-resume cycle via `onUrgentEnqueued`; urgent messages are handled immediately without losing in-flight work
+
 #### Memory System (SQLite + FTS5)
 
 - **`src/memory/` module** — full SQLite + FTS5 memory layer replacing all `.openbridge/` JSON files. Single database file: `.openbridge/openbridge.db` (WAL mode)
@@ -124,6 +171,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `exploration_progress` table always empty — `explorationId` never passed to `ExplorationCoordinator`; now wired from `agent_activity` row through all 5 exploration phases (OB-F23)
 - Workers hitting max-turns silently succeeded — exit code 0 mistaken for complete work; now detected, logged, and retried with larger budget (OB-F24)
 - Worker failures not retried — default `retries: 0` meant all errors were final; changed to 2, with error classification driving retry strategy (OB-F25)
+- Prompt library methods missing from `DotFolderManager` — 7 methods (`readPromptManifest`, `writePromptManifest`, `writePromptTemplate`, `getPromptTemplate`, `recordPromptUsage`, `getLowPerformingPrompts`, `resetPromptStats`) were referenced but unimplemented; fixed 39 test failures, 20 TypeScript errors, and 264 lint errors (OB-F32, OB-F33, OB-F34)
+- `AuditLogger` missing JSONL flat-file output — constructor accepted `logPath` but never used it; `write()` now appends JSONL lines to disk alongside Pino + SQLite sinks; fixed 8 test failures (OB-F27)
+- Conversation continuity shallow — every session started nearly fresh; `memory.md` pattern implemented so the Master reads a curated 200-line knowledge file on every session start and updates it on session end (OB-F29)
+- No conversation history access for users — `listSessions()` and `searchSessions()` added to `conversation-store.ts`; `/history` command, `/history search`, and `/history <id>` commands added to router; REST endpoints added to WebChat connector (OB-F35)
+- No DB schema versioning — migrations ran ad-hoc `ALTER TABLE` sequences with no version tracking; `schema_versions` table added, all migrations numbered and transactional (OB-F28)
+- Session checkpointing not wired — `checkpointSession()` and `resumeSession()` on `MasterManager` now integrated with priority queue so urgent messages trigger a safe checkpoint-handle-resume cycle (OB-F31)
 
 ## [0.0.1] — 2026-02-23
 
