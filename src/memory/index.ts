@@ -31,6 +31,8 @@ import {
 import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
+  listSessions as _listSessions,
+  type SessionSummary,
 } from './conversation-store.js';
 import {
   getActivePrompt as _getActivePrompt,
@@ -122,6 +124,7 @@ export interface PromptRecord {
   created_at: string;
 }
 
+export type { SessionSummary } from './conversation-store.js';
 export type { WorkspaceState, SessionRecord } from './migration.js';
 export type { EvictionOptions } from './eviction.js';
 export type { SearchOptions } from './retrieval.js';
@@ -239,6 +242,12 @@ export class MemoryManager {
   findRelevantHistory(query: string, limit?: number): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_findRelevantHistory(this.db, query, limit));
+  }
+
+  /** Return a paginated list of distinct conversation sessions ordered by most recent activity. */
+  listSessions(limit?: number, offset?: number): Promise<SessionSummary[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_listSessions(this.db, limit, offset));
   }
 
   /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
