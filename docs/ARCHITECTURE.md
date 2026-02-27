@@ -367,10 +367,14 @@ Session Continuity:
 Conversation Context (memory.md pattern — v0.0.2):
   - On session start: buildConversationContext() loads .openbridge/context/memory.md
     into the Master's system prompt (always small, always relevant)
-  - Fallback: findRelevantHistory() FTS5 search when memory.md is empty/missing
-  - On session end: Master receives "update memory" prompt and writes its own
-    memory.md (keep under 200 lines, remove outdated info, merge related topics)
+  - Fallback: findRelevantHistory() FTS5 search (sanitized via sanitizeFts5Query())
+    when memory.md is empty/missing
+  - Memory updates: triggerMemoryUpdate() fires every 10 completed tasks and on
+    shutdown. It fetches the last 20 user+master messages from SQLite and injects
+    them into the prompt so the stateless --print agent has real context to write
+    meaningful notes (v0.0.5 fix for OB-F39).
   - Dual-layer: memory.md = curated brain; SQLite conversations = raw archive
+  - See "memory.md Update Mechanism" in the SQLite Memory System section for details.
 
 Session Checkpointing (v0.0.2):
   - checkpointSession(): serializes pending workers + accumulated results to DB
@@ -635,6 +639,55 @@ The memory system lives at `.openbridge/openbridge.db` inside the target workspa
 
 `schema_versions` table tracks applied migrations (version INTEGER, applied_at, description). The migration runner only applies versions > MAX(version), wrapped in transactions for rollback safety.
 
+### FTS5 Search Sanitization
+
+All FTS5 `MATCH` queries (in `searchConversations()` and `searchWorkspaceChunks()`) are sanitized via `sanitizeFts5Query()` (exported from `src/memory/retrieval.ts`) before being passed to the FTS5 engine. This prevents `SqliteError: fts5: syntax error near "'"` crashes when user messages or search queries contain FTS5 special characters.
+
+```typescript
+// src/memory/retrieval.ts
+export function sanitizeFts5Query(query: string): string {
+  // Strips FTS5 special characters: " * ( ) { } [ ] : ^ ~ ? @ # $ % & \ | < > = ! + , ;
+  // Quotes each token as a literal phrase
+  const cleaned = query.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return '';
+  return tokens.map((t) => `"${t}"`).join(' ');
+}
+```
+
+If `sanitizeFts5Query()` returns an empty string (e.g. query was only special characters), the search returns `[]` immediately — no SQL is executed.
+
+This fix was applied in Phase 63 (OB-F38). All FTS5 callers in the codebase route through `sanitizeFts5Query()` from the shared location in `retrieval.ts`.
+
+### memory.md Update Mechanism
+
+`triggerMemoryUpdate()` in `MasterManager` (`src/master/master-manager.ts`) drives the memory.md update pipeline:
+
+```
+Triggers:
+  - Every 10 completed tasks (MEMORY_UPDATE_INTERVAL = 10)
+  - On shutdown (before process.exit)
+
+Pipeline:
+  1. Call memory.getRecentMessages(20) → fetch last 20 user+master messages from SQLite
+  2. Format each entry as "[YYYY-MM-DD HH:MM] Role: content" (content truncated at 300 chars)
+  3. Prepend "## Recent conversation history:\n" section to the memory-update prompt
+  4. Spawn a stateless --print agent to write the updated memory.md
+  5. Agent writes updated notes to .openbridge/context/memory.md
+
+Fallbacks:
+  - No messages in SQLite → prompt sent without history section (graceful degradation)
+  - this.memory is null → same fallback (no crash)
+  - Agent exits non-zero → logged as WARN, not fatal
+
+Design rationale:
+  - --print mode is intentional (no TTY hang). The injected conversation history
+    compensates for the stateless context — the agent has enough context to write
+    meaningful notes without needing a persistent session.
+  - Prompt uses generic language ("write your updated notes to <path>") rather than
+    Claude-specific tool names — works with Claude and Codex as Master AI.
+```
+
 ### Conversation History Commands
 
 The router (`src/core/router.ts`) handles built-in `/history` commands — intercepted before routing to Master AI:
@@ -867,6 +920,60 @@ Scenario 4: First run (no .openbridge/)
   → Start 5-pass exploration
   → State: exploring → ready
 ```
+
+---
+
+## Graceful Shutdown
+
+OpenBridge handles `SIGINT` (Ctrl+C) and `SIGTERM` (process manager) with a structured shutdown sequence that ensures session state and memory are preserved before exit.
+
+### Shutdown Flow
+
+```
+SIGINT / SIGTERM received
+  │
+  ├─ shutdownInProgress guard → if already shutting down, ignore signal (no double-shutdown)
+  │
+  ├─ console.log('\nShutting down gracefully... please wait')  ← user-facing message
+  │
+  ├─ logger.info('Shutting down...')                           ← structured log
+  │
+  ├─ Promise.race([
+  │     bridge.stop(),                                         ← clean connector shutdown
+  │     timeout(10_000)                                        ← 10s hard limit
+  │   ])
+  │
+  │   bridge.stop() calls:
+  │     └─ MasterManager.shutdown()
+  │           ├─ saveMasterSessionToStore()   ← FIRST: fast SQLite write (< 100ms)
+  │           │                                  critical state always persisted
+  │           └─ triggerMemoryUpdate()        ← SECOND: slow AI spawn (10–30s)
+  │                                              may be interrupted by 10s timeout
+  │
+  ├─ On success (shutdown completed before timeout):
+  │     process.exit(0)
+  │
+  └─ On timeout (10s exceeded):
+        console.error('Shutdown timeout exceeded (10s) — forcing exit')
+        process.exit(1)
+```
+
+### Critical-First Ordering
+
+`MasterManager.shutdown()` saves session state to SQLite **before** triggering the memory update. This ordering guarantees:
+
+- **SQLite session state** (fast write, < 100ms) — always persisted, even if the memory update is interrupted
+- **memory.md update** (slow AI spawn, 10–30s) — attempted after session state is safe, may be cut short by the 10s timeout
+
+A try/catch wraps `triggerMemoryUpdate()` so its failure cannot block `saveMasterSessionToStore()`.
+
+### shutdownInProgress Guard
+
+`src/index.ts` maintains a `shutdownInProgress` boolean flag. If the signal handler fires a second time while shutdown is in progress (e.g. user presses Ctrl+C twice), the second call is a no-op. This prevents concurrent shutdown races and double-logging.
+
+### `tsx` Force-Kill Behavior
+
+When running via `npm run dev` (which uses `tsx`), `tsx` may print `[tsx] Previous process hasn't exited yet. Force killing...` if it receives a second Ctrl+C or if the 10s timeout fires. This is expected behavior — see `CONTRIBUTING.md` for details on avoiding force-kills.
 
 ---
 
