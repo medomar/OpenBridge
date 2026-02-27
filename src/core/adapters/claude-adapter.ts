@@ -11,6 +11,8 @@
  *   --allowedTools <t>   Tool names (variadic, repeated per tool)
  *   --append-system-prompt <text>  Append to system prompt
  *   --max-budget-usd <n> Maximum spend in USD
+ *   --mcp-config <path>  Path to MCP server config JSON (per-worker isolation)
+ *   --strict-mcp-config  Ignore global/project MCP configs (use only --mcp-config)
  *   --resume <id>        Resume existing session
  *   --session-id <id>    Start new session with specific ID
  */
@@ -57,6 +59,14 @@ export class ClaudeAdapter implements CLIAdapter {
 
     if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd > 0) {
       args.push('--max-budget-usd', String(opts.maxBudgetUsd));
+    }
+
+    if (opts.mcpConfigPath) {
+      args.push('--mcp-config', opts.mcpConfigPath);
+    }
+
+    if (opts.strictMcpConfig) {
+      args.push('--strict-mcp-config');
     }
 
     // Place the prompt BEFORE --allowedTools. Commander.js parses the first
