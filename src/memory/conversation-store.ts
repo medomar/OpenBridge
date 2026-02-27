@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { ConversationEntry } from './index.js';
 import type { AgentRunner } from '../core/agent-runner.js';
+import { sanitizeFts5Query } from './retrieval.js';
 
 // ---------------------------------------------------------------------------
 // Raw row shape returned by better-sqlite3
@@ -26,24 +27,6 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
     user_id: row.user_id ?? undefined,
     created_at: row.created_at,
   };
-}
-
-// ---------------------------------------------------------------------------
-// FTS5 query sanitization
-// ---------------------------------------------------------------------------
-
-/**
- * Sanitize a user-provided string for use in an FTS5 MATCH expression.
- * Strips special FTS5 syntax characters and wraps each token in double quotes.
- * Returns an empty string if no usable tokens remain.
- */
-function sanitizeFts5Query(raw: string): string {
-  // Remove FTS5 operators and special characters
-  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
-  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
-  if (tokens.length === 0) return '';
-  // Quote each token to prevent FTS5 syntax errors
-  return tokens.map((t) => `"${t}"`).join(' ');
 }
 
 // ---------------------------------------------------------------------------
