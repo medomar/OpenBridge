@@ -31,6 +31,14 @@ OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
+│                   CLIADAPTER LAYER                                 │
+│  AdapterRegistry · ClaudeAdapter · CodexAdapter · AiderAdapter    │
+│  Maps discovered tool names to CLI-specific spawn configurations  │
+│  Translates SpawnOptions → binary + args + env per tool           │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
 │                     AGENT RUNNER                                   │
 │  AgentRunner · Model Selector · Tool Profiles                     │
 │  Unified CLI executor: --allowedTools, --max-turns, --model,      │
@@ -202,6 +210,122 @@ interface ScanResult {
 | Aider  | `aider`  |    3     | code-gen, file-editing                         |
 | Cursor | `cursor` |    4     | code-gen, file-editing                         |
 | Cody   | `cody`   |    5     | code-gen, conversation                         |
+
+### Adapter Resolution
+
+After discovery, each `DiscoveredTool` is matched to a `CLIAdapter` in the `AdapterRegistry`. Only tools with a registered adapter can be used to spawn workers. Built-in adapters are provided for `claude`, `codex`, and `aider`. Tools without an adapter (e.g. `cursor`, `cody`) are recorded in `agents.json` but cannot be delegated to at runtime.
+
+```
+scanForAITools()
+  → ScanResult { tools: DiscoveredTool[], master: DiscoveredTool }
+      → adapterRegistry.getForTool(master)
+          → CLIAdapter (ClaudeAdapter | CodexAdapter | AiderAdapter)
+              → used by AgentRunner for every spawn() call
+```
+
+---
+
+## CLIAdapter Layer
+
+Lives in `src/core/cli-adapter.ts`, `src/core/adapter-registry.ts`, and `src/core/adapters/`.
+
+The `CLIAdapter` interface decouples `AgentRunner` from the specific CLI invocation details of each AI tool. When `AgentRunner.spawn()` is called, it asks the appropriate adapter to build a `CLISpawnConfig` and then passes that config directly to `child_process.spawn()`.
+
+### CLIAdapter Interface
+
+```typescript
+interface CLIAdapter {
+  /** Provider name matching DiscoveredTool.name ('claude', 'codex', 'aider') */
+  readonly name: string;
+
+  /**
+   * Translate provider-neutral SpawnOptions into the binary, args, and env
+   * for this CLI. Called once per spawn() or stream() invocation.
+   */
+  buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig;
+
+  /**
+   * Clean the process environment before spawning.
+   * Removes vars that would cause nested-session conflicts
+   * (e.g. CLAUDECODE, CLAUDE_CODE_*, CLAUDE_AGENT_SDK_*).
+   */
+  cleanEnv(env: Record<string, string | undefined>): Record<string, string | undefined>;
+
+  /**
+   * Map a CapabilityLevel to CLI-specific access restrictions.
+   * Claude → tool name lists for --allowedTools.
+   * Codex  → sandbox mode strings (handled in buildSpawnConfig).
+   * Aider  → flags like --yes.
+   * Returns undefined if the CLI has no restriction mechanism.
+   */
+  mapCapabilityLevel(level: CapabilityLevel): string[] | undefined;
+
+  /**
+   * Validate a model string for this provider.
+   * Returns true if recognized or safely passable to the CLI.
+   */
+  isValidModel(model: string): boolean;
+}
+```
+
+### CLISpawnConfig
+
+The output of `buildSpawnConfig()` — everything `child_process.spawn()` needs:
+
+```typescript
+interface CLISpawnConfig {
+  binary: string; // e.g. 'claude', 'codex'
+  args: string[]; // CLI argument array
+  env: Record<string, string | undefined>; // Cleaned environment
+  stdin?: 'ignore' | 'pipe'; // stdin behavior (default: 'ignore')
+  parseOutput?: (stdout: string) => string; // Optional post-processor for raw stdout
+}
+```
+
+The `parseOutput` hook lets adapters that emit structured output (e.g. Codex `--json` JSONL) extract the final human-readable message before `AgentRunner` returns the result.
+
+### CapabilityLevel
+
+Maps tool profiles to CLI-specific access mechanisms:
+
+| Level         | Claude (`--allowedTools`)                  | Codex (`--sandbox`)  |
+| ------------- | ------------------------------------------ | -------------------- |
+| `read-only`   | `Read`, `Glob`, `Grep`                     | `read-only`          |
+| `code-edit`   | `Read`, `Edit`, `Write`, `Glob`, ...       | `workspace-write`    |
+| `full-access` | `Read`, `Edit`, `Write`, `Glob`, `Bash(*)` | `danger-full-access` |
+
+### Built-in Adapters
+
+| Adapter         | File                         | Tool     | Key Flags                                                                                                                       |
+| --------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ClaudeAdapter` | `adapters/claude-adapter.ts` | `claude` | `--print`, `--session-id`, `--resume`, `--model`, `--max-turns`, `--allowedTools`, `--append-system-prompt`, `--max-budget-usd` |
+| `CodexAdapter`  | `adapters/codex-adapter.ts`  | `codex`  | `exec`, `--skip-git-repo-check`, `--model`, `--sandbox`, `--full-auto`, `--ephemeral`, `--json`, `-o <file>`, `-c <mcp-config>` |
+| `AiderAdapter`  | `adapters/aider-adapter.ts`  | `aider`  | `--no-auto-commits`, `--yes`, `--model`, `--message`                                                                            |
+
+**ClaudeAdapter** translates `allowedTools` directly to repeated `--allowedTools <tool>` flags. Session management uses `--print` (worker/stateless), `--session-id <uuid>` (new session), or `--resume <id>` (continue session).
+
+**CodexAdapter** uses the `exec` subcommand for non-interactive execution. Key behaviors:
+
+- Always pushes `--skip-git-repo-check` (required for non-git or untrusted workspaces)
+- Validates `OPENAI_API_KEY` at build time — throws if missing
+- Maps `allowedTools` → sandbox mode heuristically (`Bash(*)` → `danger-full-access`, `Edit/Write` → `workspace-write`, otherwise `read-only`)
+- Emits `--json` (JSONL structured output) + `-o <tempfile>` (reliable final answer capture)
+- Session resume uses `exec resume --last`; new sessions omit `--ephemeral` so Codex saves state
+- MCP passthrough: when `opts.mcpConfigPath` is set, passes it via `-c <path>`
+
+### AdapterRegistry
+
+`AdapterRegistry` (`src/core/adapter-registry.ts`) maps tool names to `CLIAdapter` instances. Built-in adapters are lazy-loaded on first access; custom adapters registered via `register()` take priority.
+
+```typescript
+const registry = createAdapterRegistry(); // pre-registers ClaudeAdapter
+const adapter = registry.get('codex'); // lazy-loads CodexAdapter
+const adapter2 = registry.getForTool(tool); // looks up by DiscoveredTool.name
+registry.has('aider'); // true (built-in exists)
+registry.register('my-tool', myAdapter); // register a custom adapter
+```
+
+`createAdapterRegistry()` is the production factory — it pre-registers `ClaudeAdapter` so the most common case never incurs lazy-load overhead.
 
 ---
 
@@ -448,7 +572,7 @@ When the Master needs help from another AI tool:
 
 ### Agent Runner (Unified CLI Executor)
 
-The `agent-runner.ts` module (`src/core/agent-runner.ts`) is the production-grade CLI executor that replaced the original `claude-code-executor.ts`. It supports:
+The `agent-runner.ts` module (`src/core/agent-runner.ts`) is the production-grade CLI executor that uses `AdapterRegistry` to resolve the correct `CLIAdapter` for each spawn call. It supports:
 
 ```typescript
 const runner = new AgentRunner();
@@ -471,7 +595,9 @@ for await (const chunk of stream) {
 }
 ```
 
-Features: `--allowedTools` for tool restrictions, `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
+Internally, `spawn()` calls `adapterRegistry.get(toolName).buildSpawnConfig(opts)` to produce the binary + args + env for the selected tool. The result is passed to `child_process.spawn()`. If `CLISpawnConfig.parseOutput` is set, `AgentRunner` applies it to accumulated stdout after the process exits — this is how `CodexAdapter` extracts the final message from `--json` JSONL output.
+
+Features: `--allowedTools` for tool restrictions (via adapter), `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
 
 ---
 
@@ -551,19 +677,23 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 ```
 1. loadConfig()                    → detect V2 format
 2. scanForAITools()                → discover claude, codex, etc.
-3. new Bridge(config)              → create bridge with auth, queue, router
-4. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
-5. bridge.start()                  → initialize connectors, health, metrics
-6. new MasterManager(tool, path)   → create Master with discovered tool
-7. bridge.setMaster(master)        → wire Master into router
-8. master.startExploration()       → fire-and-forget incremental exploration
+                                     → ScanResult { tools, master }
+3. adapterRegistry.getForTool(master)
+                                   → resolve master to CLIAdapter
+                                     (ClaudeAdapter, CodexAdapter, or AiderAdapter)
+4. new Bridge(config)              → create bridge with auth, queue, router
+5. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
+6. bridge.start()                  → initialize connectors, health, metrics
+7. new MasterManager(tool, path)   → create Master with discovered tool + adapter
+8. bridge.setMaster(master)        → wire Master into router
+9. master.startExploration()       → fire-and-forget incremental exploration
    ├─ ExplorationCoordinator.explore()
    ├─ Load exploration-state.json (if exists)
    ├─ Skip completed phases
-   ├─ Execute remaining passes
+   ├─ Execute remaining passes (each calls agentRunner.spawn() → adapter.buildSpawnConfig())
    ├─ Checkpoint after each pass
    └─ State transitions: idle → exploring → ready
-9. Ready — waiting for messages with full project context
+10. Ready — waiting for messages with full project context
 ```
 
 ### V0 Flow (legacy — direct provider)
@@ -623,7 +753,9 @@ Scenario 4: First run (no .openbridge/)
 
 7. **AgentRunner replaced the original executor.** The `agent-runner.ts` module provides retries, model fallback, tool restrictions (`--allowedTools`), bounded execution (`--max-turns`), and disk logging — inspired by the bash scripts in `scripts/`.
 
-8. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
+8. **CLIAdapter decouples AgentRunner from per-tool CLI details.** Each tool (`claude`, `codex`, `aider`) has its own `CLIAdapter` that translates provider-neutral `SpawnOptions` into CLI-specific binary + args + env. Lossy translation is intentional — if a CLI doesn't support a feature (e.g. Codex has no `--max-turns`), the adapter silently drops it. This means AgentRunner code never needs to special-case individual tools.
+
+9. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
 
 ---
 
@@ -654,6 +786,13 @@ src/
 │   ├── config-watcher.ts       ← Config hot-reload
 │   ├── agent-runner.ts         ← Unified CLI executor (--allowedTools, --max-turns, --model, retries)
 │   ├── model-selector.ts       ← Model recommendation per task type + profile
+│   ├── cli-adapter.ts          ← CLIAdapter interface + CLISpawnConfig + CapabilityLevel
+│   ├── adapter-registry.ts     ← Maps tool names to CLIAdapter instances (lazy-loads built-ins)
+│   ├── adapters/               ← Built-in CLIAdapter implementations
+│   │   ├── index.ts            ← Re-exports all adapters
+│   │   ├── claude-adapter.ts   ← ClaudeAdapter: --print, --session-id, --resume, --allowedTools
+│   │   ├── codex-adapter.ts    ← CodexAdapter: exec, --skip-git-repo-check, --json, -o, sandbox
+│   │   └── aider-adapter.ts    ← AiderAdapter: --no-auto-commits, --yes, --message
 │   ├── health.ts               ← Health check endpoint
 │   ├── metrics.ts              ← Metrics collection
 │   ├── audit-logger.ts         ← Audit trail
@@ -668,11 +807,15 @@ src/
 │   └── discord/                ← Discord connector (discord.js v14)
 ├── providers/
 │   ├── index.ts                ← Provider registry
-│   └── claude-code/            ← Claude Code CLI provider (V0)
-│       ├── claude-code-provider.ts
-│       ├── claude-code-config.ts
-│       ├── session-manager.ts
-│       └── provider-error.ts
+│   ├── claude-code/            ← Claude Code CLI provider (uses AgentRunner + ClaudeAdapter)
+│   │   ├── claude-code-provider.ts
+│   │   ├── claude-code-config.ts
+│   │   ├── session-manager.ts
+│   │   └── provider-error.ts
+│   └── codex/                  ← Codex CLI provider (uses AgentRunner + CodexAdapter)
+│       ├── codex-provider.ts   ← CodexProvider: processMessage(), streamMessage(), isAvailable()
+│       ├── codex-config.ts     ← CodexConfig Zod schema (workspacePath, timeout, model, sandbox)
+│       └── session-manager.ts  ← Codex session management (ephemeral → named session → resume)
 ├── discovery/
 │   ├── index.ts                ← scanForAITools() export
 │   ├── tool-scanner.ts         ← CLI tool detection (which)
