@@ -2,18 +2,18 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 1 | **Fixed:** 39 | **Last Audit:** 2026-02-27
+> **Open:** 0 | **Fixed:** 40 | **Last Audit:** 2026-02-27
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding | Severity  | Impact                                       | Status |
-| --- | ------- | --------- | -------------------------------------------- | ------ |
-| 1   | OB-F39  | ✅ Fixed  | memory.md never updates (--print mode)       | Fixed  |
-| 2   | OB-F38  | ✅ Fixed  | FTS5 syntax error on special characters      | Fixed  |
-| 3   | OB-F40  | 🟡 Medium | Ungraceful shutdown — Ctrl+C kills instantly | Open   |
+| #   | Finding | Severity | Impact                                       | Status |
+| --- | ------- | -------- | -------------------------------------------- | ------ |
+| 1   | OB-F39  | ✅ Fixed | memory.md never updates (--print mode)       | Fixed  |
+| 2   | OB-F38  | ✅ Fixed | FTS5 syntax error on special characters      | Fixed  |
+| 3   | OB-F40  | ✅ Fixed | Ungraceful shutdown — Ctrl+C kills instantly | Fixed  |
 
 ---
 
@@ -100,7 +100,7 @@ function escapeFts5Query(query: string): string {
 
 **Discovered:** 2026-02-27 (runtime log — `tsx` force-kills process on Ctrl+C)
 **Component:** `src/index.ts:313-329`, `src/master/master-manager.ts:4982-5029`
-**Severity:** 🟡 Medium
+**Severity:** ✅ Fixed
 **Health Impact:** +0.05
 
 **Problem:** When running via `npm run dev` (which uses `tsx`), pressing Ctrl+C causes `tsx` to force-kill the process before the graceful shutdown handler completes. The log shows:
