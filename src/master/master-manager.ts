@@ -537,6 +537,118 @@ export class MasterManager {
     }
   }
 
+  /**
+   * Restore Master session state from the `sessions` table after a checkpoint.
+   *
+   * Reads the latest `master` session with `checkpoint_data`, restores the
+   * `masterSession` object, re-queues interrupted pending messages, and reloads
+   * the worker history.  Workers that were `pending` or `running` at checkpoint
+   * time are marked `failed` (their processes no longer exist); completed/failed
+   * workers are restored for context and stats.
+   *
+   * No-op when memory is unavailable or no checkpointed session exists.
+   *
+   * @returns An object describing what was restored, or `null` if skipped.
+   */
+  public async resumeSession(): Promise<{
+    restored: boolean;
+    pendingMessages: number;
+    restoredWorkers: number;
+    failedWorkers: number;
+  } | null> {
+    if (!this.memory) return null;
+
+    let record: SessionRecord | null;
+    try {
+      record = await this.memory.getSession('master');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to read session for resume');
+      return null;
+    }
+
+    if (!record?.checkpoint_data) return null;
+
+    let checkpoint: {
+      checkpointedAt: string;
+      pendingWorkers: WorkerRecord[];
+      completedWorkers: WorkerRecord[];
+      pendingMessages: Array<Record<string, unknown>>;
+    };
+    try {
+      checkpoint = JSON.parse(record.checkpoint_data) as typeof checkpoint;
+    } catch (error) {
+      logger.warn({ error }, 'Failed to parse checkpoint data');
+      return null;
+    }
+
+    // Restore master session from the stored record
+    this.masterSession = sessionRecordToMasterSession(record);
+    this.sessionInitialized = true;
+
+    // Restore worker history — completed/failed workers kept as-is for context and stats.
+    // Pending/running workers are marked failed (their processes no longer exist).
+    const workersToRestore: Record<string, WorkerRecord> = {};
+
+    for (const worker of checkpoint.completedWorkers ?? []) {
+      workersToRestore[worker.id] = worker;
+    }
+
+    let failedWorkerCount = 0;
+    for (const worker of checkpoint.pendingWorkers ?? []) {
+      workersToRestore[worker.id] = {
+        ...worker,
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: 'Interrupted by session checkpoint',
+      };
+      failedWorkerCount++;
+    }
+
+    if (Object.keys(workersToRestore).length > 0) {
+      try {
+        this.workerRegistry.fromJSON({
+          workers: workersToRestore,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.warn({ error }, 'Failed to restore workers from checkpoint');
+      }
+    }
+
+    // Restore pending messages — deserialize ISO timestamps back to Date objects
+    const restoredMessages: InboundMessage[] = [];
+    for (const rawMsg of checkpoint.pendingMessages ?? []) {
+      try {
+        restoredMessages.push({
+          ...(rawMsg as Omit<InboundMessage, 'timestamp'>),
+          timestamp: new Date(rawMsg['timestamp'] as string),
+        } as InboundMessage);
+      } catch {
+        // Skip malformed messages
+      }
+    }
+    this.pendingMessages = restoredMessages;
+
+    const restoredWorkerCount = Object.keys(workersToRestore).length - failedWorkerCount;
+    logger.info(
+      {
+        sessionId: this.masterSession.sessionId,
+        pendingMessages: restoredMessages.length,
+        restoredWorkers: restoredWorkerCount,
+        failedWorkers: failedWorkerCount,
+        checkpointedAt: checkpoint.checkpointedAt,
+      },
+      'Session resumed from checkpoint',
+    );
+
+    return {
+      restored: true,
+      pendingMessages: restoredMessages.length,
+      restoredWorkers: restoredWorkerCount,
+      failedWorkers: failedWorkerCount,
+    };
+  }
+
   /** Read analysis marker from memory (workspace_state table) or DotFolderManager (JSON file). */
   private async readAnalysisMarkerFromStore(): Promise<WorkspaceAnalysisMarker | null> {
     if (this.memory) {
@@ -843,6 +955,14 @@ export class MasterManager {
    */
   public getMasterSession(): MasterSession | null {
     return this.masterSession;
+  }
+
+  /**
+   * Get the list of pending messages awaiting processing.
+   * Used primarily for testing and diagnostics.
+   */
+  public getPendingMessages(): InboundMessage[] {
+    return [...this.pendingMessages];
   }
 
   /**

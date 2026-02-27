@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 12 | **In Progress:** 0 | **Done:** 38
+> **Pending:** 11 | **In Progress:** 0 | **Done:** 39
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -104,7 +104,7 @@
 | 36  | OB-1051 | OB-F30  | Broadcast `worker-progress` events to all connectors with `{ workerId, turnsUsed, turnsMax, lastAction }`                                | ✅ Done   |
 | 37  | OB-1052 | OB-F30  | Add worker progress tests — verify turn parsing, event broadcasting, WebChat progress display                                            | ✅ Done   |
 | 38  | OB-1053 | OB-F31  | Implement `checkpointSession()` on `MasterManager` — serialize pending workers, accumulated results, message context to `sessions` table | ✅ Done   |
-| 39  | OB-1054 | OB-F31  | Implement `resumeSession()` on `MasterManager` — restore state from `sessions` table and continue processing                             | ◻ Pending |
+| 39  | OB-1054 | OB-F31  | Implement `resumeSession()` on `MasterManager` — restore state from `sessions` table and continue processing                             | ✅ Done   |
 | 40  | OB-1055 | OB-F31  | Integrate checkpoint/resume with priority queue — urgent messages trigger checkpoint-handle-resume cycle                                 | ◻ Pending |
 
 ---
