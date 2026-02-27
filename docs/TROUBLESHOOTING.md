@@ -12,6 +12,7 @@
 | QR code won't scan / session expired | [WhatsApp Issues](#whatsapp-issues)           |
 | Messages not being processed         | [Message Flow Issues](#message-flow-issues)   |
 | AI responses failing                 | [AI Tool Issues](#ai-tool-issues)             |
+| Codex worker exits / Codex errors    | [Codex Issues](#codex-issues)                 |
 | No AI tools discovered               | [Discovery Issues](#discovery-issues)         |
 | Config changes not taking effect     | [Configuration Issues](#configuration-issues) |
 | Health check returning 503           | [Monitoring Issues](#monitoring-issues)       |
@@ -194,6 +195,93 @@ The executor classifies errors automatically:
 - **Permanent** (not retried): invalid API key, permission denied, `400 Bad Request`
 
 If a message fails with a transient error, the queue retries it (up to `queue.maxRetries` times). Permanent errors are sent to the dead letter queue.
+
+---
+
+## Codex Issues
+
+### Codex worker exits with code 1
+
+Codex exits immediately with code 1 when run from a non-git directory or an untrusted workspace.
+
+```
+AgentRunner: codex exited with code 1
+```
+
+OpenBridge passes `--skip-git-repo-check` automatically to all Codex workers, so this should only occur on older OpenBridge versions. If you see it, upgrade to the latest version.
+
+If you are on a current version and still see it, check that the `workspacePath` is accessible and that `codex exec --help` runs without error in your shell.
+
+### Codex auth error — `OPENAI_API_KEY` not set
+
+Codex requires a valid OpenAI API key. If the key is missing, the worker fails with an auth error before any output is produced.
+
+```
+Codex requires OPENAI_API_KEY environment variable
+```
+
+Fix: Set the environment variable in your shell or a `.env` file in the OpenBridge directory.
+
+```bash
+# Set in shell
+export OPENAI_API_KEY="sk-..."
+
+# Or add to .env (loaded automatically on startup)
+echo 'OPENAI_API_KEY=sk-...' >> .env
+```
+
+Verify it is set:
+
+```bash
+echo $OPENAI_API_KEY
+```
+
+### Codex output garbled / unparseable
+
+When Codex runs without the `--json` flag, it emits mixed terminal control codes and text that OpenBridge cannot parse reliably. This is fixed in current builds — `--json` is always passed.
+
+If you see garbled output on an older build, upgrade to the latest version where structured JSONL output is the default.
+
+### Codex model not found
+
+If you override the model in config and specify an unsupported name, Codex rejects it.
+
+```
+Error: unknown model: gpt-4-codex
+```
+
+Valid models for Codex v0.104.0:
+
+| Model           | Notes                    |
+| --------------- | ------------------------ |
+| `gpt-5.2-codex` | Default (recommended)    |
+| `o3`            | Powerful reasoning model |
+| `o4-mini`       | Fast, lower cost         |
+
+Override example in `config.json`:
+
+```json
+{
+  "master": {
+    "tool": "codex",
+    "model": "o4-mini"
+  }
+}
+```
+
+### Codex-only setup fails / no provider found
+
+If you have Codex installed but no Claude, the bridge must use `CodexProvider` as the Master. If you see an error like "no provider found for codex", the version you are running pre-dates Codex provider support.
+
+Fix: Upgrade to OpenBridge v0.0.3 or later, which includes `CodexProvider` and auto-selects it when `master.tool` is `"codex"`.
+
+Verify the detected master after startup:
+
+```
+[info] Master AI selected: codex (CodexProvider)
+```
+
+If the log shows "no provider", confirm your `package.json` version is `0.0.3` or higher and run `npm install` to ensure dependencies are current.
 
 ---
 
