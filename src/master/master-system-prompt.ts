@@ -17,6 +17,7 @@ import type { DiscoveredTool } from '../types/discovery.js';
 import type { ToolProfile } from '../types/agent.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
+import type { MCPServer } from '../types/config.js';
 
 export interface MasterSystemPromptContext {
   /** Absolute path to the target workspace */
@@ -29,6 +30,8 @@ export interface MasterSystemPromptContext {
   customProfiles?: Record<string, ToolProfile>;
   /** Model registry for provider-agnostic model resolution */
   modelRegistry?: ModelRegistry;
+  /** MCP servers available for workers (from V2Config.mcp.servers) */
+  mcpServers?: MCPServer[];
 }
 
 /**
@@ -100,11 +103,18 @@ export function formatLearnedPatternsSection(data: LearnedPatternsData): string 
 export function generateMasterSystemPrompt(context: MasterSystemPromptContext): string {
   const profilesSection = formatProfiles(context.customProfiles);
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
+  const mcpSection = formatMcpServersSection(context.mcpServers);
 
   // Resolve model names from registry (defaults to Claude aliases if no registry)
   const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
   const balancedModel = context.modelRegistry?.resolve('balanced')?.id ?? 'sonnet';
   const powerfulModel = context.modelRegistry?.resolve('powerful')?.id ?? 'opus';
+
+  // Only document mcpServers SPAWN field when servers are actually configured
+  const mcpSpawnField =
+    context.mcpServers && context.mcpServers.length > 0
+      ? `  - \`mcpServers\` (optional): Array of MCP server names to enable for this worker (e.g., \`["canva", "gmail"]\`). Each worker only sees the servers it needs.\n`
+      : '';
 
   return `# Master AI — System Prompt
 
@@ -137,7 +147,7 @@ ${profilesSection}
 ## Discovered AI Tools
 
 ${toolsSection}
-
+${mcpSection}
 ## Workspace Exploration
 
 **You are the sole driver of exploration.** When you receive an exploration prompt (e.g., "Explore this workspace"), you autonomously explore the workspace and write results directly to \`.openbridge/\`. There are no hardcoded phases — you decide the strategy.
@@ -207,6 +217,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
   - \`maxTurns\` (optional): Maximum agentic turns (default: 25)
   - \`timeout\` (optional): Timeout in milliseconds
   - \`retries\` (optional): Number of retry attempts on failure (default: 2; only retries on rate-limit, timeout, and crash errors — not auth or context-overflow)
+${mcpSpawnField}
 
 ### Examples
 
@@ -449,6 +460,41 @@ function formatToolSelectionGuidelines(tools: DiscoveredTool[], masterToolName: 
   lines.push('');
   lines.push(
     '> If the requested tool is unavailable, the worker automatically falls back to the Master tool.',
+  );
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+function formatMcpServersSection(servers?: MCPServer[]): string {
+  if (!servers || servers.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '## Available MCP Servers',
+    '',
+    'The following external services are available via MCP (Model Context Protocol). Workers can call these services when you explicitly grant them access.',
+    '',
+  ];
+
+  for (const server of servers) {
+    const cmd = server.args ? `${server.command} ${server.args.join(' ')}` : server.command;
+    lines.push(`- **${server.name}**: \`${cmd}\``);
+  }
+
+  lines.push('');
+  lines.push(
+    'To use an external service, include `mcpServers` in the worker TaskManifest with only the servers that worker needs:',
+  );
+  lines.push('');
+  lines.push('```');
+  lines.push(
+    '[SPAWN:code-edit]{"prompt":"Draft a reply to the latest email thread","mcpServers":["gmail"],"maxTurns":10}[/SPAWN]',
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    '**Security:** Each worker only sees the MCP servers you explicitly list in its `mcpServers` field. Never grant a worker more server access than the task requires.',
   );
   lines.push('');
 
