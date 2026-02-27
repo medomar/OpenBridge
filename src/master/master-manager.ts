@@ -65,6 +65,7 @@ import {
   ClassificationCacheSchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
+import type { MCPServer } from '../types/config.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createModelRegistry } from '../core/model-registry.js';
 import type { ModelRegistry } from '../core/model-registry.js';
@@ -291,6 +292,8 @@ export interface MasterManagerOptions {
   adapter?: CLIAdapter;
   /** Adapter registry for resolving per-worker CLIAdapters */
   adapterRegistry?: AdapterRegistry;
+  /** MCP servers available for workers (from V2Config.mcp.servers, merged with configPath imports) */
+  mcpServers?: MCPServer[];
 }
 
 /**
@@ -329,6 +332,7 @@ export class MasterManager {
   private readonly modelRegistry: ModelRegistry;
   private readonly adapter?: CLIAdapter;
   private readonly adapterRegistry: AdapterRegistry;
+  private readonly mcpServers: MCPServer[];
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -387,6 +391,7 @@ export class MasterManager {
     this.memory = options.memory ?? null;
     this.workerRetryDelayMs = options.workerRetryDelayMs ?? 5000;
     this.modelRegistry = createModelRegistry(options.masterTool.name);
+    this.mcpServers = options.mcpServers ?? [];
 
     // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
     if (this.memory) {
@@ -1275,6 +1280,7 @@ export class MasterManager {
       discoveredTools: this.discoveredTools,
       customProfiles,
       modelRegistry: this.modelRegistry,
+      mcpServers: this.mcpServers.length > 0 ? this.mcpServers : undefined,
     });
 
     try {
@@ -5384,7 +5390,9 @@ ${currentContent}
     );
 
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
-    const spawnOpts = manifestToSpawnOptions(
+    // manifestToSpawnOptions is async: when manifest.mcpServers is set, it writes a
+    // per-worker temp MCP config file and returns a cleanup callback to delete it.
+    const { spawnOptions: spawnOpts, cleanup: mcpCleanup } = await manifestToSpawnOptions(
       {
         prompt: body.prompt,
         workspacePath: this.workspacePath,
@@ -5736,6 +5744,9 @@ ${currentContent}
       // Record prompt effectiveness (OB-172: prompt effectiveness tracking)
       await this.recordPromptEffectiveness(taskRecord, result);
 
+      // Clean up per-worker MCP temp file (no-op when no MCP servers were requested)
+      await mcpCleanup();
+
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
@@ -5808,6 +5819,9 @@ ${currentContent}
 
       // Record prompt effectiveness even on exception (OB-172: prompt effectiveness tracking)
       await this.recordPromptEffectiveness(taskRecord, failedResult);
+
+      // Clean up per-worker MCP temp file even on exception
+      await mcpCleanup();
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;
