@@ -59,8 +59,8 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
   const createdAt = msg.created_at ?? now;
 
   const insertConv = db.prepare(`
-    INSERT INTO conversations (session_id, role, content, channel, user_id, created_at)
-    VALUES (@session_id, @role, @content, @channel, @user_id, @created_at)
+    INSERT INTO conversations (session_id, role, content, channel, user_id, created_at, title)
+    VALUES (@session_id, @role, @content, @channel, @user_id, @created_at, @title)
   `);
 
   const insertFts = db.prepare(`
@@ -68,7 +68,20 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
     VALUES (?, ?)
   `);
 
+  const countUserMessages = db.prepare(
+    `SELECT COUNT(*) AS c FROM conversations WHERE session_id = ? AND role = 'user'`,
+  );
+
   db.transaction(() => {
+    // Set title on the first user message of a session (truncated to 50 chars)
+    let title: string | null = null;
+    if (msg.role === 'user') {
+      const { c } = countUserMessages.get(msg.session_id) as { c: number };
+      if (c === 0) {
+        title = msg.content.slice(0, 50);
+      }
+    }
+
     const result = insertConv.run({
       session_id: msg.session_id,
       role: msg.role,
@@ -76,6 +89,7 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
       channel: msg.channel ?? null,
       user_id: msg.user_id ?? null,
       created_at: createdAt,
+      title,
     });
     insertFts.run(result.lastInsertRowid, msg.content);
   })();
@@ -167,7 +181,7 @@ export function listSessions(db: Database.Database, limit = 20, offset = 0): Ses
     .prepare(
       `SELECT
          session_id,
-         NULL AS title,
+         MAX(title)      AS title,
          MIN(created_at) AS first_message_at,
          MAX(created_at) AS last_message_at,
          COUNT(*)        AS message_count,

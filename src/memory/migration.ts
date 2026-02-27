@@ -37,6 +37,17 @@ export function applySchemaChanges(db: Database.Database): void {
   if (!hasPidColumn) {
     db.exec('ALTER TABLE agent_activity ADD COLUMN pid INTEGER');
   }
+
+  const hasTitleColumn =
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('conversations') WHERE name='title'`)
+        .get() as { c: number }
+    ).c > 0;
+
+  if (!hasTitleColumn) {
+    db.exec('ALTER TABLE conversations ADD COLUMN title TEXT');
+  }
 }
 
 // ---------------------------------------------------------------------------
