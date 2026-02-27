@@ -615,18 +615,28 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
           'Child process closed',
         );
 
+        // Apply adapter-specific output parsing (e.g. Codex --json JSONL extraction)
+        let parsedStdout = stdout;
+        if (config.parseOutput) {
+          try {
+            parsedStdout = config.parseOutput(stdout);
+          } catch (parseErr) {
+            logger.warn({ parseErr }, 'parseOutput threw — falling back to raw stdout');
+          }
+        }
+
         if (timedOut) {
           // Process was terminated due to timeout
           const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
           resolve({
-            stdout,
+            stdout: parsedStdout,
             stderr:
               stderr +
               `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
             exitCode,
           });
         } else {
-          resolve({ stdout, stderr, exitCode: code ?? 1 });
+          resolve({ stdout: parsedStdout, stderr, exitCode: code ?? 1 });
         }
       });
 
