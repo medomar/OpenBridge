@@ -31,6 +31,7 @@ import {
 import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
+  getSessionHistory as _getSessionHistory,
   listSessions as _listSessions,
   searchSessions as _searchSessions,
   type SessionSummary,
@@ -243,6 +244,12 @@ export class MemoryManager {
   findRelevantHistory(query: string, limit?: number): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_findRelevantHistory(this.db, query, limit));
+  }
+
+  /** Return the most recent messages for a given session, ordered chronologically (OB-1035). */
+  getSessionHistory(sessionId: string, limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSessionHistory(this.db, sessionId, limit));
   }
 
   /** Return a paginated list of distinct conversation sessions ordered by most recent activity. */
