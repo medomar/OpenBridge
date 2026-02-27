@@ -283,7 +283,7 @@ describe('migration.ts', () => {
 
     it('applies only migrations with version > MAX(version) in schema_versions', () => {
       // Build a minimal raw database: schema_versions + the tables touched by migrations,
-      // but only pre-mark v1 as applied. This verifies only v2 runs.
+      // but only pre-mark v1 as applied. This verifies only v2 and v3 run.
       const rawDb = new Database(':memory:');
       rawDb.exec(`
         CREATE TABLE schema_versions (
@@ -305,6 +305,16 @@ describe('migration.ts', () => {
           role       TEXT NOT NULL,
           content    TEXT NOT NULL,
           created_at TEXT NOT NULL
+        );
+        CREATE TABLE sessions (
+          id            TEXT PRIMARY KEY,
+          type          TEXT NOT NULL,
+          status        TEXT NOT NULL,
+          restart_count INTEGER DEFAULT 0,
+          message_count INTEGER DEFAULT 0,
+          allowed_tools TEXT,
+          created_at    TEXT NOT NULL,
+          last_used_at  TEXT NOT NULL
         );
       `);
 
@@ -337,11 +347,21 @@ describe('migration.ts', () => {
       ).c;
       expect(after).toBe(1);
 
-      // Both versions must be recorded in schema_versions
+      // Migration v3 should have run — checkpoint_data column now exists on sessions
+      const checkpointColCount = (
+        rawDb
+          .prepare(
+            `SELECT COUNT(*) as c FROM pragma_table_info('sessions') WHERE name='checkpoint_data'`,
+          )
+          .get() as { c: number }
+      ).c;
+      expect(checkpointColCount).toBe(1);
+
+      // All three versions must be recorded in schema_versions
       const versions = rawDb
         .prepare('SELECT version FROM schema_versions ORDER BY version')
         .all() as { version: number }[];
-      expect(versions.map((r) => r.version)).toEqual([1, 2]);
+      expect(versions.map((r) => r.version)).toEqual([1, 2, 3]);
 
       rawDb.close();
     });
