@@ -22,12 +22,21 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args[0]).toBe('exec');
   });
 
-  it('builds minimal args: exec + --ephemeral + prompt', () => {
+  it('builds minimal args: exec + --skip-git-repo-check + --ephemeral + prompt', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'List all files',
       workspacePath: '/tmp/test',
     });
-    expect(config.args).toEqual(['exec', '--ephemeral', 'List all files']);
+    expect(config.args).toEqual(['exec', '--skip-git-repo-check', '--ephemeral', 'List all files']);
+  });
+
+  it('always includes --skip-git-repo-check (required for non-git workspaces)', () => {
+    const config = adapter.buildSpawnConfig({
+      prompt: 'Do something',
+      workspacePath: '/tmp/test',
+    });
+    expect(config.args).toContain('--skip-git-repo-check');
+    expect(config.args[1]).toBe('--skip-git-repo-check');
   });
 
   it('adds --model when specified', () => {
