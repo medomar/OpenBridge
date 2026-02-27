@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 16 | **In Progress:** 0 | **Done:** 34
+> **Pending:** 15 | **In Progress:** 0 | **Done:** 35
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -100,7 +100,7 @@
 
 | #   | Task ID | Finding | Description                                                                                                                              | Status    |
 | --- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 35  | OB-1050 | OB-F30  | Stream stdout chunks from active workers via `execOnceStreaming()` — parse turn indicators from CLI output                               | ◻ Pending |
+| 35  | OB-1050 | OB-F30  | Stream stdout chunks from active workers via `execOnceStreaming()` — parse turn indicators from CLI output                               | ✅ Done   |
 | 36  | OB-1051 | OB-F30  | Broadcast `worker-progress` events to all connectors with `{ workerId, turnsUsed, turnsMax, lastAction }`                                | ◻ Pending |
 | 37  | OB-1052 | OB-F30  | Add worker progress tests — verify turn parsing, event broadcasting, WebChat progress display                                            | ◻ Pending |
 | 38  | OB-1053 | OB-F31  | Implement `checkpointSession()` on `MasterManager` — serialize pending workers, accumulated results, message context to `sessions` table | ◻ Pending |
