@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 34 | **In Progress:** 0 | **Done:** 16
+> **Pending:** 33 | **In Progress:** 0 | **Done:** 17
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -55,7 +55,7 @@
 | 14  | OB-1020 | OB-F29  | Add `readMemoryFile()` to `DotFolderManager` — read `.openbridge/context/memory.md`, return `string \| null`, create `.openbridge/context/` dir on `initialize()`                                                                                    | ✅ Done   |
 | 15  | OB-1021 | OB-F29  | Add `writeMemoryFile(content)` to `DotFolderManager` — write to `.openbridge/context/memory.md`, validate content length ≤ 200 lines                                                                                                                 | ✅ Done   |
 | 16  | OB-1022 | OB-F29  | Update `buildConversationContext()` in `MasterManager` — load `memory.md` as primary context. If file exists, inject into system prompt. Fall back to `findRelevantHistory()` FTS5 search only when `memory.md` is empty or missing                  | ✅ Done   |
-| 17  | OB-1023 | OB-F29  | Add "update memory" prompt on session end — when Master session ends or after N messages, send final prompt: "Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics." Master writes via worker with `Write` tool | ◻ Pending |
+| 17  | OB-1023 | OB-F29  | Add "update memory" prompt on session end — when Master session ends or after N messages, send final prompt: "Update your memory file. Keep under 200 lines. Remove outdated info. Merge related topics." Master writes via worker with `Write` tool | ✅ Done   |
 | 18  | OB-1024 | OB-F29  | Add `memory.md` instructions to Master system prompt (`master-system-prompt.ts`) — what to remember, what not to remember, 200-line cap, merge topics guidance                                                                                       | ◻ Pending |
 | 19  | OB-1025 | OB-F29  | Wire `searchConversations()` as explicit fallback — when Master detects current topic not covered by `memory.md`, query FTS5 for cross-session results                                                                                               | ◻ Pending |
 | 20  | OB-1026 | OB-F29  | Schedule `evictOldData()` on Bridge startup + `setInterval(24h)` — wire existing eviction system in `bridge.ts` or `index.ts`                                                                                                                        | ◻ Pending |
