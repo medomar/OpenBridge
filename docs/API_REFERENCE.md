@@ -14,6 +14,16 @@ This document covers every public interface, class, and configuration schema in 
   - [ConnectorEvents](#connectorevents)
   - [AIProvider](#aiprovider)
   - [ProviderResult](#providerresult)
+  - [SpawnOptions](#spawnoptions)
+- [CLI Adapter Layer](#cli-adapter-layer)
+  - [CLIAdapter](#cliadapter)
+  - [CLISpawnConfig](#clispawnconfig)
+  - [CapabilityLevel](#capabilitylevel)
+  - [AdapterRegistry](#adapterregistry)
+  - [CodexAdapter](#codexadapter)
+- [Built-in Providers](#built-in-providers)
+  - [CodexProvider](#codexprovider)
+  - [CodexConfig](#codexconfig)
 - [Discovery Types](#discovery-types)
   - [DiscoveredTool](#discoveredtool)
   - [ScanResult](#scanresult)
@@ -156,6 +166,200 @@ Result returned by an AI provider after processing.
 | `durationMs?` | `number`                 | Processing duration in ms         |
 | `usage?`      | `Record<string, number>` | Token count or similar usage data |
 | `[key]`       | `unknown`                | Provider-specific data            |
+
+### SpawnOptions
+
+_Source: `src/core/agent-runner.ts`_
+
+Options accepted by `AgentRunner.spawn()`. Adapter-specific fields are silently dropped by adapters that don't support them.
+
+| Property           | Type       | Default | Description                                                                          |
+| ------------------ | ---------- | ------- | ------------------------------------------------------------------------------------ |
+| `prompt`           | `string`   | —       | The prompt to send to the AI agent                                                   |
+| `workspacePath`    | `string`   | —       | Working directory for the agent process                                              |
+| `model?`           | `string`   | —       | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                      |
+| `allowedTools?`    | `string[]` | —       | Tools the agent may use. Mapped to `--allowedTools` (Claude) or sandbox mode (Codex) |
+| `maxTurns?`        | `number`   | —       | Max agentic turns before stopping. Claude only — dropped by Codex/Aider adapters     |
+| `timeout?`         | `number`   | —       | Timeout in milliseconds per attempt                                                  |
+| `retries?`         | `number`   | `3`     | Number of retry attempts on non-zero exit codes                                      |
+| `retryDelay?`      | `number`   | `10000` | Delay in milliseconds between retry attempts                                         |
+| `logFile?`         | `string`   | —       | Path to write the full agent log output                                              |
+| `sessionId?`       | `string`   | —       | Start a new named session (`--session-id` for Claude, named session for Codex)       |
+| `resumeSessionId?` | `string`   | —       | Resume a prior session (`--resume` for Claude, `exec resume --last` for Codex)       |
+| `systemPrompt?`    | `string`   | —       | System prompt injected at the top of the agent context                               |
+| `maxBudgetUsd?`    | `number`   | —       | Max spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)             |
+| `mcpConfigPath?`   | `string`   | —       | Path to MCP config JSON (`--mcp-config` for Claude, `-c` for Codex; Aider drops it)  |
+
+---
+
+## CLI Adapter Layer
+
+_Source: `src/core/cli-adapter.ts`, `src/core/adapter-registry.ts`, `src/core/adapters/`_
+
+The CLI Adapter layer translates provider-neutral `SpawnOptions` into tool-specific binary, args, and env for each supported AI CLI (`claude`, `codex`, `aider`). This abstraction lets the rest of OpenBridge remain tool-agnostic.
+
+```
+SpawnOptions → CLIAdapter.buildSpawnConfig() → CLISpawnConfig → child_process.spawn()
+```
+
+### CLIAdapter
+
+Interface that every CLI adapter must implement.
+
+| Member                      | Type                                                        | Description                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                      | `readonly string`                                           | Provider name matching `DiscoveredTool.name` (e.g. `'claude'`, `'codex'`, `'aider'`)                                                                    |
+| `buildSpawnConfig(opts)`    | `(opts: SpawnOptions) => CLISpawnConfig`                    | Translate `SpawnOptions` into the binary, args, and env for this CLI                                                                                    |
+| `cleanEnv(env)`             | `(env: Record<string, string \| undefined>) => Record<...>` | Strip env vars that would cause conflicts for this CLI                                                                                                  |
+| `mapCapabilityLevel(level)` | `(level: CapabilityLevel) => string[] \| undefined`         | Map capability level to CLI-specific access restrictions. Returns `undefined` if the CLI doesn't use tool lists (e.g. Codex uses sandbox modes instead) |
+| `isValidModel(model)`       | `(model: string) => boolean`                                | Return `true` if the model string is recognized by this CLI                                                                                             |
+
+### CLISpawnConfig
+
+The output of `CLIAdapter.buildSpawnConfig()` — everything needed to call `child_process.spawn()`.
+
+| Property       | Type                                  | Description                                                                                                                                                           |
+| -------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `binary`       | `string`                              | Command name or absolute path to the binary                                                                                                                           |
+| `args`         | `string[]`                            | CLI arguments array                                                                                                                                                   |
+| `env`          | `Record<string, string \| undefined>` | Environment variables (cleaned of conflicting vars)                                                                                                                   |
+| `stdin?`       | `'ignore' \| 'pipe'`                  | stdin behavior. `'ignore'` closes stdin (default for Claude/Codex). `'pipe'` provides a writable stream for CLIs that require TTY detection.                          |
+| `parseOutput?` | `(stdout: string) => string`          | Optional post-processor for raw stdout. Used by Codex to extract the final message from `--json` JSONL. Falls back to raw stdout if absent or if the function throws. |
+
+### CapabilityLevel
+
+```typescript
+type CapabilityLevel = 'read-only' | 'code-edit' | 'full-access';
+```
+
+Maps tool profiles to CLI-specific access mechanisms:
+
+| Level           | Claude (`--allowedTools`)                                 | Codex (`--sandbox`)         |
+| --------------- | --------------------------------------------------------- | --------------------------- |
+| `'read-only'`   | `Read, Glob, Grep`                                        | `read-only`                 |
+| `'code-edit'`   | `Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(npm:*)` | `workspace-write`           |
+| `'full-access'` | All tools                                                 | `--full-auto` (danger mode) |
+
+### AdapterRegistry
+
+_Source: `src/core/adapter-registry.ts`_
+
+Maps discovered tool names to `CLIAdapter` instances. Built-in adapters (`claude`, `codex`, `aider`) are lazy-loaded on first access. Custom adapters registered via `register()` take priority over built-ins.
+
+**Methods:**
+
+| Method                    | Returns                   | Description                                                         |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------- |
+| `register(name, adapter)` | `void`                    | Register a `CLIAdapter` for a tool name (overrides built-ins)       |
+| `get(name)`               | `CLIAdapter \| undefined` | Get the adapter for a tool name, creating from built-ins if needed  |
+| `getForTool(tool)`        | `CLIAdapter \| undefined` | Get the adapter for a `DiscoveredTool`                              |
+| `has(name)`               | `boolean`                 | Check if an adapter exists for a tool name (registered or built-in) |
+
+**Factory:**
+
+```typescript
+function createAdapterRegistry(): AdapterRegistry;
+```
+
+Creates an `AdapterRegistry` pre-loaded with the `ClaudeAdapter`.
+
+**Built-in adapters:**
+
+| Tool name | Adapter         | Source                                |
+| --------- | --------------- | ------------------------------------- |
+| `claude`  | `ClaudeAdapter` | `src/core/adapters/claude-adapter.ts` |
+| `codex`   | `CodexAdapter`  | `src/core/adapters/codex-adapter.ts`  |
+| `aider`   | `AiderAdapter`  | `src/core/adapters/aider-adapter.ts`  |
+
+### CodexAdapter
+
+_Source: `src/core/adapters/codex-adapter.ts`_
+
+Translates `SpawnOptions` into `codex exec` arguments for non-interactive Codex CLI execution.
+
+**Flags always included:**
+
+| Flag                    | Value                    | Reason                                                                         |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| `--skip-git-repo-check` | (boolean flag)           | Required for non-git or untrusted workspaces — Codex refuses to run without it |
+| `--json`                | (boolean flag)           | Enables JSONL structured output (one JSON event per line to stdout)            |
+| `-o <tempFile>`         | Auto-generated temp path | Reliable final-answer capture. Codex writes the last message to this file      |
+| `--ephemeral`           | (worker spawns only)     | Suppresses session persistence for short-lived worker invocations              |
+
+**Flags set conditionally:**
+
+| Flag               | Condition                             | Value                                                      |
+| ------------------ | ------------------------------------- | ---------------------------------------------------------- |
+| `--model <M>`      | `opts.model` is set                   | Model string passed through                                |
+| `--sandbox <mode>` | `allowedTools` present, not `Bash(*)` | `read-only` or `workspace-write`                           |
+| `--full-auto`      | `Bash(*)` in `allowedTools`           | Enables auto-approve + full sandbox (`danger-full-access`) |
+| `-c <path>`        | `opts.mcpConfigPath` is set           | MCP config file for Codex-native MCP passthrough           |
+
+**Sandbox inference** from `allowedTools`:
+
+| `allowedTools` content               | Sandbox mode                             |
+| ------------------------------------ | ---------------------------------------- |
+| `Bash(*)` present                    | `danger-full-access` (via `--full-auto`) |
+| `Edit` or `Write` present            | `workspace-write`                        |
+| Empty, undefined, or read-only tools | `read-only` (safe default)               |
+
+**Output parsing priority:**
+
+1. Read the `-o` temp file — Codex's most reliable output path
+2. Fall back to `--json` JSONL parsing (`parseCodexJsonlOutput()`) if the temp file is absent
+3. Fall back to raw stdout if no parseable `type: "message"` event is found
+
+**OPENAI_API_KEY validation:** `buildSpawnConfig()` throws immediately if `OPENAI_API_KEY` is not set, preventing confusing downstream auth failures.
+
+**Valid models** (Codex CLI v0.104.0): `gpt-5.2-codex` (default), `o3`, `o4-mini`. Any model ID matching `/^(gpt-|o[0-9]|codex)/` is also accepted for forward compatibility.
+
+---
+
+## Built-in Providers
+
+### CodexProvider
+
+_Source: `src/providers/codex/codex-provider.ts`_
+
+`AIProvider` implementation for the OpenAI Codex CLI. Uses `AgentRunner` + `CodexAdapter` internally — the same pattern as `ClaudeCodeProvider`.
+
+```typescript
+import { CodexProvider } from './providers/codex/index.js';
+
+const provider = new CodexProvider({
+  workspacePath: '/path/to/project',
+  timeout: 120000,
+  model: 'gpt-5.2-codex',
+});
+
+await provider.initialize();
+```
+
+**Methods:**
+
+| Method                    | Returns                                  | Description                                                                                          |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `initialize()`            | `Promise<void>`                          | Validates `workspacePath` is accessible                                                              |
+| `processMessage(message)` | `Promise<ProviderResult>`                | Runs `codex exec` with session wiring and returns the AI response                                    |
+| `streamMessage(message)`  | `AsyncGenerator<string, ProviderResult>` | Falls back to `processMessage()` — yields the result in one chunk (Codex has no real-time streaming) |
+| `isAvailable()`           | `Promise<boolean>`                       | Returns `true` if `codex` binary is on PATH and `OPENAI_API_KEY` is set                              |
+| `shutdown()`              | `Promise<void>`                          | Clears all active sessions                                                                           |
+
+**Session management:** Sessions are scoped by `sender:workspacePath`. The first message in a session window starts a new Codex session; follow-up messages use `codex exec resume --last`. Sessions expire after the configured TTL (default 30 minutes).
+
+### CodexConfig
+
+_Source: `src/providers/codex/codex-config.ts`_
+
+Zod schema for `CodexProvider` constructor options.
+
+| Property        | Type     | Default            | Description                                                                        |
+| --------------- | -------- | ------------------ | ---------------------------------------------------------------------------------- |
+| `workspacePath` | `string` | `'.'`              | Working directory for Codex invocations. Supports `~/` home directory expansion    |
+| `timeout`       | `number` | `120000` (2 min)   | Timeout per invocation in milliseconds                                             |
+| `model?`        | `string` | —                  | Codex model override. Defaults to the Codex CLI's built-in default                 |
+| `sandbox?`      | `string` | —                  | Sandbox mode override (`'read-only'`, `'workspace-write'`, `'danger-full-access'`) |
+| `sessionTtlMs`  | `number` | `1800000` (30 min) | Session inactivity TTL in milliseconds                                             |
 
 ---
 
