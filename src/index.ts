@@ -341,6 +341,7 @@ async function main(): Promise<void> {
         return;
       }
       shutdownInProgress = true;
+      console.log('\nShutting down gracefully... please wait');
       logger.info('Shutting down...');
       workspaceManager?.stopPolling();
       if (bridge) {
