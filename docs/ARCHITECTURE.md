@@ -6,7 +6,7 @@
 
 ## Overview
 
-OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
+OpenBridge is a 6-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy. Workers can access external services (Gmail, Canva, Slack, GitHub, etc.) via the MCP (Model Context Protocol) ecosystem.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -52,7 +52,18 @@ OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to
 │  Self-governing Master, AI task classification, auto-delegation   │
 │  via SPAWN markers, worker orchestration, session continuity,     │
 │  self-improvement, git-tracked knowledge in .openbridge/          │
-└──────────────────────────────────────────────────────────────────┘
+└──────────────────────┬────────────────────────────────────────────┘
+                       │ spawns workers with mcpServers in TaskManifest
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│               MCP (MODEL CONTEXT PROTOCOL)                        │
+│  Per-worker temp config · --mcp-config · --strict-mcp-config      │
+│  Gmail · Canva · Slack · GitHub · Filesystem · any MCP server     │
+│  Claude CLI spawns MCP servers per invocation (bounded lifecycle) │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+                 External Services
 ```
 
 ---
@@ -638,6 +649,126 @@ WebChat connector also exposes `/api/sessions` (list) and `/api/sessions/:id` (f
 
 ---
 
+## Layer 6: MCP Integration
+
+MCP (Model Context Protocol) allows OpenBridge workers to call external services — Gmail, Canva, Slack, GitHub, databases, and any other MCP-compatible API — without OpenBridge needing to know anything about those services. The Claude CLI handles tool discovery and invocation; MCP servers are external processes that translate tool calls into real API requests.
+
+### End-to-End Flow
+
+```
+User (WhatsApp / Console / Telegram)
+  → OpenBridge Router
+    → Master AI (reads available MCP servers from system prompt context)
+      → decides: "this task needs Canva"
+        → includes mcpServers: [{ name: "canva", ... }] in worker TaskManifest
+          → AgentRunner.manifestToSpawnOptions() writes per-worker temp config
+            → claude --print --mcp-config /tmp/ob-mcp-<uuid>.json --strict-mcp-config ...
+              → Claude CLI spawns Canva MCP server process
+                → MCP server calls Canva API
+              → MCP server exits when worker completes
+            → temp config file deleted after spawn
+          → worker returns result
+        → Master formats and sends back to channel
+```
+
+### Per-Worker MCP Isolation (Security)
+
+Each worker receives a **temporary MCP config** containing only the servers it needs, not all configured servers. This prevents cross-contamination of API keys and limits each worker's external access to its task scope.
+
+```typescript
+// manifestToSpawnOptions() in agent-runner.ts
+// When manifest.mcpServers is non-empty:
+//   1. Generate /tmp/ob-mcp-<uuid>.json with ONLY the requested servers
+//   2. Set spawnOpts.mcpConfigPath = temp file path
+//   3. Set strictMcpConfig: true  (ignore global/project MCP configs)
+//   4. Register cleanup: delete temp file after spawn completes
+```
+
+The `--strict-mcp-config` flag ensures workers cannot access MCP servers from the user's global `~/.claude/` or project-level configs — only those explicitly provisioned for the task.
+
+### Master Awareness
+
+The Master AI sees all configured MCP servers in its system prompt (injected via `MasterSystemPromptContext.mcpServers`). This allows the Master to autonomously decide when a task requires an external service and which workers should receive MCP access:
+
+```
+Available MCP Servers:
+- canva: Design creation and editing via Canva API
+- gmail: Send and read Gmail messages
+- filesystem: Read and write local files via MCP protocol
+
+To use an external service, include `mcpServers` in the worker TaskManifest
+with only the servers that worker needs.
+```
+
+### Claude CLI MCP Flags
+
+`ClaudeAdapter` (`src/core/adapters/claude-adapter.ts`) passes MCP flags when `SpawnOptions.mcpConfigPath` is set:
+
+```bash
+claude --print \
+  --mcp-config /tmp/ob-mcp-<uuid>.json \
+  --strict-mcp-config \
+  --allowedTools "Read,mcp__canva__*" \
+  "Create a banner for the Q3 campaign"
+```
+
+### MCP Config Format (what Claude CLI expects)
+
+```json
+{
+  "mcpServers": {
+    "canva": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/canva-mcp-server"],
+      "env": { "CANVA_API_KEY": "sk-..." }
+    }
+  }
+}
+```
+
+### OpenBridge Config Format (what users write in config.json)
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "canva",
+        "command": "npx",
+        "args": ["-y", "@anthropic/canva-mcp-server"],
+        "env": { "CANVA_API_KEY": "sk-..." }
+      }
+    ],
+    "configPath": "~/.claude/claude_desktop_config.json"
+  }
+}
+```
+
+`configPath` lets users import their existing Claude Desktop or Claude Code MCP configuration without duplicating server definitions.
+
+### MCP Scope
+
+- **Claude workers:** `--mcp-config` + `--strict-mcp-config` (implemented in `ClaudeAdapter`)
+- **Codex workers:** native MCP support via `codex mcp` — when `opts.mcpConfigPath` is set, passed via `-c <path>` in `CodexAdapter` (wired in Phase 58, OB-1105)
+- **Aider workers:** no MCP support (Aider has no MCP integration)
+
+### MCP Server Lifecycle
+
+MCP servers are **per-worker processes** spawned by the Claude CLI at invocation time and terminated when the worker completes. This matches OpenBridge's bounded-worker philosophy — no long-lived external service connections. Each worker starts fresh.
+
+### Global MCP Config on Startup
+
+On bridge startup, `src/core/config.ts` writes `.openbridge/mcp-config.json` from `V2Config.mcp`:
+
+- If `configPath` is set: validates + imports the external config file
+- If inline `servers` are defined: transforms them to Claude CLI format and writes the file
+- If both: merges (inline servers override same-name imports from `configPath`)
+
+`getMcpConfigPath()` returns the path to this file (or `null` when MCP is not configured), used by `MasterManager` when building Master session context.
+
+---
+
 ## Configuration Model
 
 ### V2 Config (new — simplified)
@@ -675,25 +806,27 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 ### V2 Flow (with discovery + Master)
 
 ```
-1. loadConfig()                    → detect V2 format
-2. scanForAITools()                → discover claude, codex, etc.
-                                     → ScanResult { tools, master }
-3. adapterRegistry.getForTool(master)
-                                   → resolve master to CLIAdapter
-                                     (ClaudeAdapter, CodexAdapter, or AiderAdapter)
-4. new Bridge(config)              → create bridge with auth, queue, router
-5. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
-6. bridge.start()                  → initialize connectors, health, metrics
-7. new MasterManager(tool, path)   → create Master with discovered tool + adapter
-8. bridge.setMaster(master)        → wire Master into router
-9. master.startExploration()       → fire-and-forget incremental exploration
-   ├─ ExplorationCoordinator.explore()
-   ├─ Load exploration-state.json (if exists)
-   ├─ Skip completed phases
-   ├─ Execute remaining passes (each calls agentRunner.spawn() → adapter.buildSpawnConfig())
-   ├─ Checkpoint after each pass
-   └─ State transitions: idle → exploring → ready
-10. Ready — waiting for messages with full project context
+1.  loadConfig()                    → detect V2 format
+2.  writeMcpConfig(config.mcp)      → if MCP configured: merge inline servers + configPath import,
+                                       write .openbridge/mcp-config.json in Claude CLI format
+3.  scanForAITools()                → discover claude, codex, etc.
+                                       → ScanResult { tools, master }
+4.  adapterRegistry.getForTool(master)
+                                    → resolve master to CLIAdapter
+                                      (ClaudeAdapter, CodexAdapter, or AiderAdapter)
+5.  new Bridge(config)              → create bridge with auth, queue, router
+6.  registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
+7.  bridge.start()                  → initialize connectors, health, metrics
+8.  new MasterManager(tool, path)   → create Master with discovered tool + adapter
+9.  bridge.setMaster(master)        → wire Master into router
+10. master.startExploration()       → fire-and-forget incremental exploration
+    ├─ ExplorationCoordinator.explore()
+    ├─ Load exploration-state.json (if exists)
+    ├─ Skip completed phases
+    ├─ Execute remaining passes (each calls agentRunner.spawn() → adapter.buildSpawnConfig())
+    ├─ Checkpoint after each pass
+    └─ State transitions: idle → exploring → ready
+11. Ready — waiting for messages with full project context and MCP servers available
 ```
 
 ### V0 Flow (legacy — direct provider)
@@ -756,6 +889,12 @@ Scenario 4: First run (no .openbridge/)
 8. **CLIAdapter decouples AgentRunner from per-tool CLI details.** Each tool (`claude`, `codex`, `aider`) has its own `CLIAdapter` that translates provider-neutral `SpawnOptions` into CLI-specific binary + args + env. Lossy translation is intentional — if a CLI doesn't support a feature (e.g. Codex has no `--max-turns`), the adapter silently drops it. This means AgentRunner code never needs to special-case individual tools.
 
 9. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
+
+10. **MCP integration is per-worker and isolated.** Each worker receives a temporary MCP config containing only the servers it needs. Combined with `--strict-mcp-config`, no worker can access more external services than its TaskManifest declares. API keys from one worker never leak to another.
+
+11. **Master drives MCP assignment autonomously.** The Master AI sees available MCP servers in its system prompt context. It decides which workers need external service access based on the task. No hardcoded rules — the Master reasons about this the same way it reasons about tool profiles and model selection.
+
+12. **MCP scope follows CLI capabilities.** `--mcp-config` is a Claude CLI flag. Codex has its own native MCP system (`codex mcp`), wired in Phase 58. Aider has no MCP support. Each adapter translates `mcpConfigPath` to its CLI's native mechanism (or silently drops it if unsupported).
 
 ---
 
