@@ -150,6 +150,10 @@ const MESSAGE_MAX_TURNS_TOOL_USE = 15;
 const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
+/** Memory update call — Master writes memory.md; small budget, file write only. */
+const MEMORY_UPDATE_MAX_TURNS = 5;
+/** Trigger a memory.md update after this many completed tasks. */
+const MEMORY_UPDATE_INTERVAL = 10;
 /**
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
@@ -650,6 +654,7 @@ export class MasterManager {
 
   /**
    * Increment the completed task counter and trigger prompt evolution every 50 tasks (OB-734).
+   * Also triggers a memory.md update every MEMORY_UPDATE_INTERVAL tasks (OB-1023).
    * Runs asynchronously in the background — never blocks the caller.
    */
   private onTaskCompleted(): void {
@@ -658,6 +663,41 @@ export class MasterManager {
       void evolvePrompts(this.memory, this.agentRunner, this.workspacePath).catch((err) => {
         logger.warn({ err }, 'Prompt evolution cycle failed');
       });
+    }
+    if (this.completedTaskCount % MEMORY_UPDATE_INTERVAL === 0) {
+      void this.triggerMemoryUpdate().catch((err) => {
+        logger.warn({ err }, 'Periodic memory update failed');
+      });
+    }
+  }
+
+  /**
+   * Send an "update memory" prompt to the Master session so it can write
+   * `.openbridge/context/memory.md` via its Write tool (OB-1023).
+   * Non-blocking — caller should fire-and-forget with void.
+   */
+  private async triggerMemoryUpdate(): Promise<void> {
+    if (!this.masterSession || this.state === 'shutdown') return;
+
+    const memoryPath = this.dotFolder.getMemoryFilePath();
+    const prompt =
+      `Update your memory file at ${memoryPath}.\n` +
+      `Keep it under 200 lines. Remove outdated info. Merge related topics.\n` +
+      `Only write what is worth remembering across sessions: user preferences, ` +
+      `project state, decisions made, active threads, and known issues.\n` +
+      `Use the Write tool to write your updated notes to ${memoryPath}.`;
+
+    try {
+      const opts = this.buildMasterSpawnOptions(prompt, undefined, MEMORY_UPDATE_MAX_TURNS);
+      const result = await this.agentRunner.spawn(opts);
+      await this.updateMasterSession();
+      if (result.exitCode !== 0) {
+        logger.warn({ exitCode: result.exitCode }, 'Memory update prompt returned non-zero exit');
+      } else {
+        logger.info('Memory update completed');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Memory update prompt failed');
     }
   }
 
@@ -4756,6 +4796,16 @@ ${currentContent}
     }
 
     logger.info('Shutting down MasterManager');
+
+    // Trigger a memory update before state becomes 'shutdown' so the Master
+    // can persist what it learned in this session (OB-1023).
+    if (this.sessionInitialized && this.masterSession && this.masterSession.messageCount > 0) {
+      try {
+        await this.triggerMemoryUpdate();
+      } catch (err) {
+        logger.warn({ err }, 'Memory update on shutdown failed — continuing');
+      }
+    }
 
     this.state = 'shutdown';
 
