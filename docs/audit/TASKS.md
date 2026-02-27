@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 | **In Progress:** 0 | **Done:** 44
+> **Pending:** 5 | **In Progress:** 0 | **Done:** 45
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -119,7 +119,7 @@
 | 42  | OB-1061 | —       | Update `ROADMAP.md` — mark Phases 51–55 with task counts and status, move implemented backlog items from backlog to shipped, update version milestones table                                                                                                                                                          | ✅ Done   |
 | 43  | OB-1062 | —       | Update `CHANGELOG.md` — add [Unreleased] entries for all new features: prompt library (Phase 51), `memory.md` conversation continuity (Phase 52), `/history` command + REST endpoints (Phase 53), schema versioning (Phase 54), worker streaming + checkpointing (Phase 55). Add Fixed entries for all open findings. | ✅ Done   |
 | 44  | OB-1063 | —       | Update `CLAUDE.md` (workspace root) — add `.openbridge/context/` to project structure, add new DotFolderManager methods, update LOC counts for modified files, add `/history` to router commands                                                                                                                      | ✅ Done   |
-| 45  | OB-1064 | —       | Update `CLAUDE.md` (OpenBridge repo) — sync key files list, update LOC counts, add `memory.md` pattern to Key Architecture section                                                                                                                                                                                    | ◻ Pending |
+| 45  | OB-1064 | —       | Update `CLAUDE.md` (OpenBridge repo) — sync key files list, update LOC counts, add `memory.md` pattern to Key Architecture section                                                                                                                                                                                    | ✅ Done   |
 | 46  | OB-1065 | —       | Update `docs/audit/HEALTH.md` — recalculate health score after all findings resolved, update open findings count to 0, update categories                                                                                                                                                                              | ◻ Pending |
 | 47  | OB-1066 | —       | Update `README.md` — add conversation memory + history browsing as feature highlights, update feature list                                                                                                                                                                                                            | ◻ Pending |
 | 48  | OB-1067 | —       | Update `API_REFERENCE.md` — add new DotFolderManager methods, `/history` command docs, `/api/sessions` REST endpoints, `listSessions()` / `searchSessions()` method signatures                                                                                                                                        | ◻ Pending |
