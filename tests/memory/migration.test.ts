@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { openDatabase, closeDatabase } from '../../src/memory/database.js';
 import {
+  applySchemaChanges,
   migrateJsonToSqlite,
   getWorkspaceState,
   updateWorkspaceState,
@@ -215,6 +216,176 @@ describe('migration.ts', () => {
 
       const row = db.prepare("SELECT * FROM tasks WHERE id = 'task-migrate-001'").get();
       expect(row).toBeDefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // applySchemaChanges — version tracking, idempotency, rollback
+  // ---------------------------------------------------------------------------
+
+  describe('applySchemaChanges', () => {
+    // The shared `db` from the outer beforeEach is opened via openDatabase(), which
+    // already called applySchemaChanges() once. Tests in this block verify the
+    // behaviour of calling it again and specific edge cases using raw databases.
+
+    it('records each migration in schema_versions with version, applied_at, and description', () => {
+      const rows = db
+        .prepare('SELECT version, description, applied_at FROM schema_versions ORDER BY version')
+        .all() as { version: number; description: string; applied_at: string }[];
+
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      expect(rows[0].version).toBe(1);
+      expect(rows[0].description).toBe('Add pid column to agent_activity');
+      expect(rows[1].version).toBe(2);
+      expect(rows[1].description).toBe('Add title column to conversations');
+
+      // applied_at must be a valid ISO timestamp
+      expect(new Date(rows[0].applied_at).toISOString()).toBe(rows[0].applied_at);
+    });
+
+    it('is idempotent — calling applySchemaChanges twice does not create duplicate rows', () => {
+      const countBefore = (
+        db.prepare('SELECT COUNT(*) as c FROM schema_versions').get() as { c: number }
+      ).c;
+
+      // Second call — all migrations are already at or below MAX(version)
+      applySchemaChanges(db);
+
+      const countAfter = (
+        db.prepare('SELECT COUNT(*) as c FROM schema_versions').get() as { c: number }
+      ).c;
+      expect(countAfter).toBe(countBefore);
+    });
+
+    it('does not re-apply column additions when database is already migrated', () => {
+      // conversations.title should already exist (added by migration v2 during openDatabase)
+      const titleCount = (
+        db
+          .prepare(
+            `SELECT COUNT(*) as c FROM pragma_table_info('conversations') WHERE name='title'`,
+          )
+          .get() as { c: number }
+      ).c;
+      expect(titleCount).toBe(1);
+
+      applySchemaChanges(db);
+
+      // Still exactly one title column after second call
+      const titleCountAfter = (
+        db
+          .prepare(
+            `SELECT COUNT(*) as c FROM pragma_table_info('conversations') WHERE name='title'`,
+          )
+          .get() as { c: number }
+      ).c;
+      expect(titleCountAfter).toBe(1);
+    });
+
+    it('applies only migrations with version > MAX(version) in schema_versions', () => {
+      // Build a minimal raw database: schema_versions + the tables touched by migrations,
+      // but only pre-mark v1 as applied. This verifies only v2 runs.
+      const rawDb = new Database(':memory:');
+      rawDb.exec(`
+        CREATE TABLE schema_versions (
+          version    INTEGER PRIMARY KEY,
+          applied_at TEXT    NOT NULL,
+          description TEXT   NOT NULL
+        );
+        CREATE TABLE agent_activity (
+          id         TEXT PRIMARY KEY,
+          type       TEXT NOT NULL,
+          status     TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          pid        INTEGER
+        );
+        CREATE TABLE conversations (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          role       TEXT NOT NULL,
+          content    TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+
+      // Pre-mark migration v1 as applied (pid column already present in the schema above)
+      rawDb
+        .prepare(
+          `INSERT INTO schema_versions VALUES (1, '2026-01-01T00:00:00.000Z', 'Add pid column to agent_activity')`,
+        )
+        .run();
+
+      // conversations.title should not exist yet
+      const before = (
+        rawDb
+          .prepare(
+            `SELECT COUNT(*) as c FROM pragma_table_info('conversations') WHERE name='title'`,
+          )
+          .get() as { c: number }
+      ).c;
+      expect(before).toBe(0);
+
+      applySchemaChanges(rawDb);
+
+      // Migration v2 should have run — title column now exists
+      const after = (
+        rawDb
+          .prepare(
+            `SELECT COUNT(*) as c FROM pragma_table_info('conversations') WHERE name='title'`,
+          )
+          .get() as { c: number }
+      ).c;
+      expect(after).toBe(1);
+
+      // Both versions must be recorded in schema_versions
+      const versions = rawDb
+        .prepare('SELECT version FROM schema_versions ORDER BY version')
+        .all() as { version: number }[];
+      expect(versions.map((r) => r.version)).toEqual([1, 2]);
+
+      rawDb.close();
+    });
+
+    it('rolls back schema_versions insert when migration apply() throws', () => {
+      // Build a raw database with schema_versions + agent_activity but WITHOUT conversations.
+      // Migration v2 tries to ALTER TABLE conversations (non-existent) → throws.
+      // The wrapping transaction must roll back so that version 2 is NOT recorded.
+      const rawDb = new Database(':memory:');
+      rawDb.exec(`
+        CREATE TABLE schema_versions (
+          version    INTEGER PRIMARY KEY,
+          applied_at TEXT    NOT NULL,
+          description TEXT   NOT NULL
+        );
+        CREATE TABLE agent_activity (
+          id         TEXT PRIMARY KEY,
+          type       TEXT NOT NULL,
+          status     TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          pid        INTEGER
+        );
+      `);
+
+      // Pre-mark v1 as applied so only v2 runs
+      rawDb
+        .prepare(
+          `INSERT INTO schema_versions VALUES (1, '2026-01-01T00:00:00.000Z', 'Add pid column to agent_activity')`,
+        )
+        .run();
+
+      // conversations table intentionally absent — migration v2 will fail
+      expect(() => applySchemaChanges(rawDb)).toThrow();
+
+      // Version 2 must NOT be present — the transaction was rolled back
+      const v2Row = rawDb.prepare('SELECT version FROM schema_versions WHERE version = 2').get();
+      expect(v2Row).toBeUndefined();
+
+      // Version 1 must still be present — unaffected by the failed transaction
+      const v1Row = rawDb.prepare('SELECT version FROM schema_versions WHERE version = 1').get();
+      expect(v1Row).toBeDefined();
+
+      rawDb.close();
     });
   });
 });
