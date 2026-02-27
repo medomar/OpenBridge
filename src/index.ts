@@ -213,6 +213,7 @@ async function startV2Flow(
     memory: bridge.getMemory() ?? undefined,
     adapter: cliAdapter,
     adapterRegistry,
+    mcpServers: v2Config.mcp?.enabled !== false ? (v2Config.mcp?.servers ?? []) : [],
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
