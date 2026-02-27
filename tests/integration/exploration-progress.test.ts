@@ -80,14 +80,18 @@ vi.mock('../../src/core/agent-runner.js', () => ({
     };
     return profiles[profileName];
   },
-  manifestToSpawnOptions: (manifest: Record<string, unknown>) => ({
-    prompt: manifest.prompt,
-    workspacePath: manifest.workspacePath,
-    model: manifest.model,
-    allowedTools: manifest.allowedTools,
-    maxTurns: manifest.maxTurns,
-    timeout: manifest.timeout,
-  }),
+  manifestToSpawnOptions: (manifest: Record<string, unknown>) =>
+    Promise.resolve({
+      spawnOptions: {
+        prompt: manifest.prompt,
+        workspacePath: manifest.workspacePath,
+        model: manifest.model,
+        allowedTools: manifest.allowedTools,
+        maxTurns: manifest.maxTurns,
+        timeout: manifest.timeout,
+      },
+      cleanup: async () => {},
+    }),
 }));
 
 // ---------------------------------------------------------------------------

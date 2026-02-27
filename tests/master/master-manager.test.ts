@@ -89,16 +89,19 @@ vi.mock('../../src/core/agent-runner.js', () => ({
       (manifest.allowedTools as string[] | undefined) ??
       customAllowedTools ??
       (profile ? profiles[profile] : undefined);
-    return {
-      prompt: manifest.prompt,
-      workspacePath: manifest.workspacePath,
-      model: manifest.model,
-      allowedTools,
-      maxTurns: manifest.maxTurns,
-      timeout: manifest.timeout,
-      retries: manifest.retries,
-      retryDelay: manifest.retryDelay,
-    };
+    return Promise.resolve({
+      spawnOptions: {
+        prompt: manifest.prompt,
+        workspacePath: manifest.workspacePath,
+        model: manifest.model,
+        allowedTools,
+        maxTurns: manifest.maxTurns,
+        timeout: manifest.timeout,
+        retries: manifest.retries,
+        retryDelay: manifest.retryDelay,
+      },
+      cleanup: async () => {},
+    });
   },
 }));
 
