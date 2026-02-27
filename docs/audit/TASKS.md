@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 26 | **In Progress:** 0 | **Done:** 24
+> **Pending:** 25 | **In Progress:** 0 | **Done:** 25
 > **Last Updated:** 2026-02-27
 
 <details>
@@ -72,7 +72,7 @@
 | 22  | OB-1030 | OB-F35  | Add `listSessions(limit, offset)` to `conversation-store.ts` — returns `{ session_id, title, first_message_at, last_message_at, message_count, channel, user_id }[]` ordered by `last_message_at DESC` | ✅ Done   |
 | 23  | OB-1031 | OB-F35  | Add `title` column to `conversations` table via migration — nullable `TEXT`, set to first user message (truncated 50 chars) on session creation                                                        | ✅ Done   |
 | 24  | OB-1032 | OB-F35  | Add `searchSessions(query, limit)` to `conversation-store.ts` — FTS5 search that returns session-level results (grouped by `session_id`, ranked by relevance)                                          | ✅ Done   |
-| 25  | OB-1033 | OB-F35  | Add `/history` command to `router.ts` — lists last 10 sessions with title + date + message count. Format per channel (WhatsApp = numbered list, Console = table, WebChat = HTML)                       | ◻ Pending |
+| 25  | OB-1033 | OB-F35  | Add `/history` command to `router.ts` — lists last 10 sessions with title + date + message count. Format per channel (WhatsApp = numbered list, Console = table, WebChat = HTML)                       | ✅ Done   |
 | 26  | OB-1034 | OB-F35  | Add `/history search <query>` command to `router.ts` — search past conversations by keyword via `searchSessions()`                                                                                     | ◻ Pending |
 | 27  | OB-1035 | OB-F35  | Add `/history <session-id>` command to `router.ts` — show full conversation transcript for a session via `getSessionHistory()`                                                                         | ◻ Pending |
 | 28  | OB-1036 | OB-F35  | Add `/api/sessions` REST endpoint to WebChat connector — JSON list of sessions for frontend                                                                                                            | ◻ Pending |
