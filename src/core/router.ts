@@ -428,6 +428,16 @@ export class Router {
       await connector.sendTypingIndicator(message.sender);
     }
 
+    // Inject attachment context so Master AI and workers know about attached files
+    if (message.attachments && message.attachments.length > 0) {
+      const attachmentLines = message.attachments.map((a) => {
+        const sizeKb = (a.sizeBytes / 1024).toFixed(1);
+        const namePart = a.filename ? ` (${a.filename})` : '';
+        return `- **${a.type}**${namePart}: \`${a.filePath}\` — ${a.mimeType} — ${sizeKb} KB`;
+      });
+      message.content = `${message.content}\n\n## Attachments\n${attachmentLines.join('\n')}`;
+    }
+
     // Process message — through Master, orchestrator, or directly via provider
     let result: ProviderResult;
     const startTime = Date.now();
