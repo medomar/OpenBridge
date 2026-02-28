@@ -396,6 +396,12 @@ export class WhatsAppConnector implements Connector {
       await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
       try {
         const result = await transcribeAudio(tmpPath);
+        if (result) {
+          logger.debug(
+            { backend: result.backend, durationMs: result.durationMs },
+            'Voice transcription complete',
+          );
+        }
         return result?.text ?? null;
       } finally {
         await unlink(tmpPath).catch(() => {});
