@@ -1,9 +1,12 @@
+import https from 'node:https';
+import path from 'node:path';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { TelegramConfigSchema } from './telegram-config.js';
 import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
 import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
+import type { MediaManager } from '../../core/media-manager.js';
 
 const logger = createLogger('telegram');
 
@@ -13,6 +16,7 @@ type EventListeners = {
 
 /** Minimal interface for the grammY Bot needed by this connector */
 interface GrammyBot {
+  token: string;
   on: (event: string, handler: (ctx: GrammyContext) => void) => void;
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -21,7 +25,85 @@ interface GrammyBot {
     sendChatAction: (chatId: string | number, action: string) => Promise<unknown>;
     editMessageText: (chatId: string | number, messageId: number, text: string) => Promise<unknown>;
     deleteMessage: (chatId: string | number, messageId: number) => Promise<unknown>;
+    getFile: (
+      fileId: string,
+    ) => Promise<{ file_id: string; file_path?: string; file_size?: number }>;
   };
+}
+
+/** Maps common file extensions to MIME types for Telegram file downloads */
+const EXT_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.wav': 'audio/wav',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.zip': 'application/zip',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+};
+
+/** Fetch a URL over HTTPS and return the response body as a Buffer */
+function fetchHttpsBuffer(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        res.on('end', () => {
+          resolve(Buffer.concat(chunks));
+        });
+        res.on('error', reject);
+      })
+      .on('error', reject);
+  });
+}
+
+/**
+ * Download a file from Telegram's servers and save it via MediaManager.
+ *
+ * @param bot          grammY Bot instance (needs `token` + `api.getFile`)
+ * @param fileId       Telegram file_id to download
+ * @param mediaManager MediaManager instance for temp storage
+ * @returns            Saved file path, size in bytes, and detected MIME type
+ */
+export async function downloadTelegramFile(
+  bot: GrammyBot,
+  fileId: string,
+  mediaManager: MediaManager,
+): Promise<{ filePath: string; sizeBytes: number; mimeType: string }> {
+  const fileInfo = await bot.api.getFile(fileId);
+
+  const remotePath = fileInfo.file_path;
+  if (!remotePath) {
+    throw new Error(`Telegram API returned no file_path for file_id ${fileId}`);
+  }
+
+  const downloadUrl = `https://api.telegram.org/file/bot${bot.token}/${remotePath}`;
+  const buffer = await fetchHttpsBuffer(downloadUrl);
+
+  const ext = path.extname(remotePath).toLowerCase();
+  const mimeType = EXT_TO_MIME[ext] ?? 'application/octet-stream';
+  const filename = path.basename(remotePath);
+
+  const result = await mediaManager.saveMedia(buffer, mimeType, filename);
+  return { ...result, mimeType };
 }
 
 function formatProgressEvent(event: ProgressEvent): string {

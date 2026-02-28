@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 37 | **In Progress:** 0 | **Done:** 13
+> **Pending:** 36 | **In Progress:** 0 | **Done:** 14
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -59,7 +59,7 @@
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                     | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 13  | OB-1154 | Extend `GrammyContext` interface in `telegram-connector.ts` — add `voice?: {file_id: string, duration: number}`, `photo?: Array<{file_id: string, width: number, height: number}>`, `document?: {file_id: string, file_name?: string, mime_type?: string}`, `video?: {file_id: string}`, `audio?: {file_id: string}`, `caption?: string` to the `message` field | ✅ Done   |
-| 14  | OB-1155 | Implement `downloadTelegramFile(bot, fileId, mediaManager)` helper — use `bot.api.getFile(fileId)` to get file_path, HTTPS GET from `https://api.telegram.org/file/bot<token>/<file_path>`, save Buffer via `MediaManager.saveMedia()`, return `{filePath, sizeBytes, mimeType}`                                                                                | ◻ Pending |
+| 14  | OB-1155 | Implement `downloadTelegramFile(bot, fileId, mediaManager)` helper — use `bot.api.getFile(fileId)` to get file_path, HTTPS GET from `https://api.telegram.org/file/bot<token>/<file_path>`, save Buffer via `MediaManager.saveMedia()`, return `{filePath, sizeBytes, mimeType}`                                                                                | ✅ Done   |
 | 15  | OB-1156 | Add `message:voice` handler — download `.oga` voice file via `downloadTelegramFile()`, transcribe via shared `transcribeAudio()` from `src/core/voice-transcriber.ts`, emit transcription as `InboundMessage.content`; fallback text if Whisper not installed                                                                                                   | ◻ Pending |
 | 16  | OB-1157 | Add `message:photo` handler — download largest photo size (last element in `ctx.message.photo` array), save via MediaManager, attach to `InboundMessage.attachments`, use `ctx.message.caption` as text content                                                                                                                                                 | ◻ Pending |
 | 17  | OB-1158 | Add `message:document` handler — download document file via `downloadTelegramFile()`, save via MediaManager, attach to `InboundMessage.attachments`, use caption as text                                                                                                                                                                                        | ◻ Pending |
