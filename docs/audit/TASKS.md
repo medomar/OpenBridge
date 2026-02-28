@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 | **In Progress:** 0 | **Done:** 42
+> **Pending:** 7 | **In Progress:** 0 | **Done:** 43
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -114,7 +114,7 @@
 | 13  | OB-1181 | Add MCP Dashboard panel to WebChat embedded HTML — collapsible section (reuse Agent Status `dash-hdr` pattern) with header "MCP Servers", showing connected servers as cards with: name, status dot (green = healthy, red = error, gray = unknown), category badge, toggle switch (calls PATCH), remove button (calls DELETE with confirm). Place after Agent Status panel | ✅ Done   |
 | 14  | OB-1182 | Add "Browse Servers" button + catalog modal — button in MCP Dashboard header opens a modal overlay. Modal fetches `GET /api/mcp/catalog` once, renders entries grouped by category with search input for client-side filtering. Each entry shows: name, description, "Connect" button                                                                                      | ✅ Done   |
 | 15  | OB-1183 | Add catalog "Connect" flow — clicking Connect on a catalog entry replaces the modal content with a form showing required env var fields (label = envVar.description, placeholder = envVar.key, red asterisk if required). Submit calls `POST /api/mcp/catalog/:name/connect`. On success: close modal, refresh server list. On error: show inline error message            | ✅ Done   |
-| 16  | OB-1184 | Add "Add Custom Server" form — expandable form at bottom of MCP panel: server name (text), command (text), args (comma-separated text, split on submit), env vars (dynamic key=value rows with + button). Submit calls `POST /api/mcp/servers`. On success: clear form, refresh server list                                                                                | ◻ Pending |
+| 16  | OB-1184 | Add "Add Custom Server" form — expandable form at bottom of MCP panel: server name (text), command (text), args (comma-separated text, split on submit), env vars (dynamic key=value rows with + button). Submit calls `POST /api/mcp/servers`. On success: clear form, refresh server list                                                                                | ✅ Done   |
 | 17  | OB-1185 | Real-time MCP status updates — on receiving WebSocket `mcp-status` event, re-render the MCP server list with updated statuses. Fallback: poll `GET /api/mcp/servers` every 30s if WebSocket is disconnected                                                                                                                                                                | ◻ Pending |
 | 18  | OB-1186 | Add WebSocket `mcp-status` event — add `broadcastMcpStatus(servers)` method to WebChatConnector (same pattern as `broadcastAgentStatus()`). Wire McpRegistry to call this on every add/remove/toggle. Payload format: `{type: 'mcp-status', servers: [{name, enabled, status}]}`                                                                                           | ◻ Pending |
 
