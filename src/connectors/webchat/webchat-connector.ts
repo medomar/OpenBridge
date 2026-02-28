@@ -567,6 +567,79 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/mcp/catalog/:name/connect — POST connect from catalog
+      const mcpCatalogConnectMatch = /^\/api\/mcp\/catalog\/([^/?#]+)\/connect$/.exec(url);
+      if (mcpCatalogConnectMatch && req.method === 'POST') {
+        const mcpReg = this.mcpRegistry;
+        if (!mcpReg) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        const catalogName = decodeURIComponent(mcpCatalogConnectMatch[1] ?? '');
+        const entry = MCP_CATALOG.find((e) => e.name === catalogName);
+        if (!entry) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Catalog entry '${catalogName}' not found` }));
+          return;
+        }
+        void (async (): Promise<void> => {
+          try {
+            const body = await new Promise<string>((resolve, reject) => {
+              const chunks: Buffer[] = [];
+              req.on('data', (chunk) => chunks.push(chunk as Buffer));
+              req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+              req.on('error', reject);
+            });
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(body);
+            } catch {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+              return;
+            }
+            const envVars: Record<string, string> =
+              typeof parsed === 'object' &&
+              parsed !== null &&
+              'envVars' in parsed &&
+              typeof (parsed as Record<string, unknown>)['envVars'] === 'object' &&
+              (parsed as Record<string, unknown>)['envVars'] !== null
+                ? (parsed as { envVars: Record<string, string> })['envVars']
+                : {};
+            const missingKeys = entry.envVars
+              .filter((ev) => ev.required && !envVars[ev.key])
+              .map((ev) => ev.key);
+            if (missingKeys.length > 0) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing required env vars', missing: missingKeys }));
+              return;
+            }
+            const server = {
+              name: entry.name,
+              command: entry.command,
+              args: entry.args,
+              ...(Object.keys(envVars).length > 0 ? { env: envVars } : {}),
+            };
+            mcpReg.addServer(server);
+            const created = mcpReg.getServer(entry.name);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(created));
+          } catch (err) {
+            const message = (err as Error).message;
+            if (message.includes('already exists')) {
+              res.writeHead(409, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: message }));
+            } else {
+              logger.error({ err }, 'POST /api/mcp/catalog/:name/connect failed');
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+          }
+        })();
+        return;
+      }
+
       // /api/mcp/servers — GET list or POST create
       if (url === '/api/mcp/servers') {
         const mcpReg = this.mcpRegistry;
