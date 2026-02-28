@@ -195,8 +195,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('produces no mcp field when user answers n to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'n', // skip MCP
     ]);
 
@@ -210,8 +210,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('produces no mcp field when user answers N (uppercase) to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'N', // skip MCP
     ]);
 
@@ -225,8 +225,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('generates valid mcp config with one server when user provides it', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'y', // enable MCP
       'canva', // server name
       'npx -y @anthropic/canva-mcp-server', // command
@@ -252,8 +252,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('collects multiple servers in the servers array', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'y', // enable MCP
       'canva', // server 1 name
       'npx -y @anthropic/canva-mcp-server', // server 1 command
@@ -280,8 +280,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('captures configPath import from Claude Desktop when provided', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'y', // enable MCP
       'done', // no inline servers
       '~/.claude/claude_desktop_config.json', // configPath
@@ -300,8 +300,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('does not add mcp section when user enables MCP but provides neither servers nor configPath', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'y', // enable MCP
       'done', // no inline servers
       '', // skip configPath
@@ -317,8 +317,8 @@ describe('runInit() — MCP interactive flow', () => {
   it('generates mcp with both servers and configPath when both provided', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      '5', // connector: Console
       '/proj', // workspace path
+      '5', // connector: Console
       'y', // enable MCP
       'gmail', // server name
       'npx -y @anthropic/gmail-mcp-server', // command
