@@ -196,6 +196,31 @@ describe('buildConfig', () => {
 
     expect(config).not.toHaveProperty('mcp');
   });
+
+  it('should include connector options in channel when connectorOptions provided', () => {
+    const config = buildConfig({
+      connector: 'telegram',
+      workspacePath: '/home/user/project',
+      connectorOptions: { token: '123456:ABC' },
+    });
+
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: Record<string, unknown>;
+    }>;
+    expect(channels[0]?.options).toEqual({ token: '123456:ABC' });
+  });
+
+  it('should not include options field when connectorOptions is empty', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      connectorOptions: {},
+    });
+
+    const channels = config['channels'] as Array<{ type: string; options?: unknown }>;
+    expect(channels[0]).not.toHaveProperty('options');
+  });
 });
 
 describe('runInit', () => {
@@ -377,7 +402,7 @@ describe('runInit', () => {
     expect(config).toHaveProperty('auth');
   });
 
-  it('should generate config for telegram connector with bot token', async () => {
+  it('should generate config for telegram connector with bot token in options', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       '2', // connector: Telegram
@@ -390,9 +415,12 @@ describe('runInit', () => {
 
     const raw = await readFile(testConfigPath, 'utf-8');
     const config = JSON.parse(raw) as Record<string, unknown>;
-    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: { token?: string };
+    }>;
     expect(channels[0]?.type).toBe('telegram');
-    expect(channels[0]?.botToken).toBe('123456:ABC-DEF');
+    expect(channels[0]?.options?.token).toBe('123456:ABC-DEF');
   });
 
   it('should abort if telegram bot token is empty', async () => {
@@ -408,12 +436,13 @@ describe('runInit', () => {
     expect(output.data).toContain('bot token is required');
   });
 
-  it('should generate config for discord connector with bot token', async () => {
+  it('should generate config for discord connector with token and applicationId in options', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       '3', // connector: Discord
       '/home/user/project', // workspace path
       'MTk4NjIy.discord-token', // bot token
+      '123456789012345678', // application ID
       'n', // MCP: skip
     ]);
 
@@ -421,9 +450,13 @@ describe('runInit', () => {
 
     const raw = await readFile(testConfigPath, 'utf-8');
     const config = JSON.parse(raw) as Record<string, unknown>;
-    const channels = config['channels'] as Array<{ type: string; botToken?: string }>;
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: { token?: string; applicationId?: string };
+    }>;
     expect(channels[0]?.type).toBe('discord');
-    expect(channels[0]?.botToken).toBe('MTk4NjIy.discord-token');
+    expect(channels[0]?.options?.token).toBe('MTk4NjIy.discord-token');
+    expect(channels[0]?.options?.applicationId).toBe('123456789012345678');
   });
 
   it('should abort if discord bot token is empty', async () => {
@@ -437,6 +470,100 @@ describe('runInit', () => {
     await runInit({ input, output, outputPath: testConfigPath });
 
     expect(output.data).toContain('bot token is required');
+  });
+
+  it('should generate discord config without applicationId when skipped', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '3', // connector: Discord
+      '/home/user/project', // workspace path
+      'some-bot-token', // bot token
+      '', // skip application ID
+      'n', // MCP: skip
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: { token?: string; applicationId?: string };
+    }>;
+    expect(channels[0]?.type).toBe('discord');
+    expect(channels[0]?.options?.token).toBe('some-bot-token');
+    expect(channels[0]?.options).not.toHaveProperty('applicationId');
+  });
+
+  it('should generate webchat config with custom port in options', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '4', // connector: WebChat
+      '/home/user/project', // workspace path
+      '8080', // custom port
+      'n', // MCP: skip
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: { port?: number };
+    }>;
+    expect(channels[0]?.type).toBe('webchat');
+    expect(channels[0]?.options?.port).toBe(8080);
+  });
+
+  it('should use default port 3000 for webchat when no port entered', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '4', // connector: WebChat
+      '/home/user/project', // workspace path
+      '', // empty → default port 3000
+      'n', // MCP: skip
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    const channels = config['channels'] as Array<{
+      type: string;
+      options?: { port?: number };
+    }>;
+    expect(channels[0]?.options?.port).toBe(3000);
+  });
+
+  it('should warn when telegram token format is invalid', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '2', // connector: Telegram
+      '/home/user/project', // workspace path
+      'not-a-valid-token', // invalid token format
+      'n', // MCP: skip
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('format looks unexpected');
+  });
+
+  it('should explain whatsapp QR code flow during setup', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '1', // connector: WhatsApp
+      '/home/user/project', // workspace path
+      '+1234567890', // whitelist
+      '/ai', // prefix
+      'n', // MCP: skip
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    expect(output.data).toContain('QR code');
+    expect(output.data).toContain('No token needed');
   });
 
   it('should show updated success message with both start options', async () => {

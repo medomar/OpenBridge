@@ -35,6 +35,7 @@ interface Answers {
   prefix?: string;
   mcpServers?: McpServerEntry[];
   mcpConfigPath?: string;
+  connectorOptions?: Record<string, unknown>;
 }
 
 type ConnectorType = 'console' | 'whatsapp' | 'webchat' | 'telegram' | 'discord';
@@ -221,9 +222,13 @@ export async function setupClaudeAuth(
 }
 
 export function buildConfig(answers: Answers): Record<string, unknown> {
+  const channel: Record<string, unknown> = { type: answers.connector, enabled: true };
+  if (answers.connectorOptions && Object.keys(answers.connectorOptions).length > 0) {
+    channel['options'] = answers.connectorOptions;
+  }
   const config: Record<string, unknown> = {
     workspacePath: answers.workspacePath,
-    channels: [{ type: answers.connector, enabled: true }],
+    channels: [channel],
   };
 
   if (answers.whitelist !== undefined) {
@@ -404,6 +409,12 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     let config: Record<string, unknown>;
 
     if (connector === 'whatsapp') {
+      write('\n  WhatsApp — First-run setup\n');
+      write(
+        '  On first run, a QR code will be printed in the terminal. Scan it with\n' +
+          '  WhatsApp on your phone (Linked Devices → Link a device). No token needed.\n\n',
+      );
+
       // Question 3: Phone whitelist (WhatsApp only)
       const whitelistRaw = await ask(
         rl,
@@ -430,18 +441,30 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
         write('  Error: bot token is required for Telegram.\n');
         return;
       }
-      config = buildConfig({ connector, workspacePath });
-      const telegramChannels = config['channels'] as Record<string, unknown>[];
-      telegramChannels[0]!['botToken'] = botToken;
+      // Validate Telegram bot token format: digits:alphanumeric
+      if (!/^\d+:[A-Za-z0-9_-]+$/.test(botToken)) {
+        write(
+          '  Warning: token format looks unexpected. Expected format: 123456789:ABCDEFabcdef\n',
+        );
+      }
+      config = buildConfig({ connector, workspacePath, connectorOptions: { token: botToken } });
     } else if (connector === 'discord') {
       const botToken = await ask(rl, '  Discord bot token (from Developer Portal): ');
       if (!botToken) {
         write('  Error: bot token is required for Discord.\n');
         return;
       }
-      config = buildConfig({ connector, workspacePath });
-      const discordChannels = config['channels'] as Record<string, unknown>[];
-      discordChannels[0]!['botToken'] = botToken;
+      const appId = await ask(rl, '  Discord application ID (from Developer Portal): ');
+      const connectorOptions: Record<string, unknown> = { token: botToken };
+      if (appId) {
+        connectorOptions['applicationId'] = appId;
+      }
+      config = buildConfig({ connector, workspacePath, connectorOptions });
+    } else if (connector === 'webchat') {
+      const portAnswer = await ask(rl, '  HTTP port for WebChat server (default: 3000): ');
+      const port = portAnswer ? parseInt(portAnswer, 10) : 3000;
+      const connectorOptions: Record<string, unknown> = { port };
+      config = buildConfig({ connector, workspacePath, connectorOptions });
     } else {
       config = buildConfig({ connector, workspacePath });
     }
