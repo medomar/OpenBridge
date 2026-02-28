@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('openbridge', {
   installAiTool: (tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('setup:installAiTool', tool),
 
+  authenticateTool: (tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('setup:authenticateTool', tool),
+
   startBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:start'),
 
   stopBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:stop'),

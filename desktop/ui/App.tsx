@@ -8,6 +8,7 @@ declare global {
       detectPrerequisites(): Promise<{ os: string; nodeVersion: string; nodeOk: boolean }>;
       detectInstalledTools(): Promise<{ claude: boolean; codex: boolean }>;
       installAiTool(tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }>;
+      authenticateTool(tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }>;
       getConfig(): Promise<unknown>;
       startBridge(): Promise<{ success: boolean }>;
       stopBridge(): Promise<{ success: boolean }>;

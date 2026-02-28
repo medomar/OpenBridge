@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 25 | **In Progress:** 0 | **Done:** 70
+> **Pending:** 24 | **In Progress:** 0 | **Done:** 71
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 12     | ◻      |
-|       | **Total**                                      |         | **95** | **69** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 13     | ◻      |
+|       | **Total**                                      |         | **95** | **70** |        |
 
 ---
 
@@ -231,7 +231,7 @@
 | 10  | OB-1267 | Create `desktop/ui/pages/Setup.tsx` — multi-step wizard container. State: `currentStep` (0–6), `wizardData` (accumulated config from each step). Renders a progress bar at the top showing steps, a content area for the current step component, and Back/Next buttons at the bottom. Next button is disabled until the current step validates                                                                                                                           | ✅ Done   |
 | 11  | OB-1268 | Setup Step 1: Welcome — `desktop/ui/pages/setup/WelcomeStep.tsx`. Shows OpenBridge logo/title, brief description ("AI Bridge connects your messaging apps to AI tools on your machine"), detected OS + Node version (fetched via IPC), "Get Started" button. Auto-advances if prerequisites are met                                                                                                                                                                      | ✅ Done   |
 | 12  | OB-1269 | Setup Step 2: AI Tool Selection — `desktop/ui/pages/setup/AIToolStep.tsx`. Shows cards for Claude Code and Codex with: icon, description, install status (green checkmark or "Not installed" with install button). Install button triggers IPC call to run `npm install -g <package>`, shows spinner during install, success/error state after. At least one tool must be installed to proceed                                                                           | ✅ Done   |
-| 13  | OB-1270 | Setup Step 3: Account Login — `desktop/ui/pages/setup/AccountStep.tsx`. For each installed AI tool, show a login card: tool name, auth status (authenticated/not), "Login" button (triggers OAuth flow via IPC → `claude auth login` or `codex login`), OR "Enter API Key" text input with validation. Show green checkmark when authenticated. Skip button available ("I'll do this later")                                                                             | ◻ Pending |
+| 13  | OB-1270 | Setup Step 3: Account Login — `desktop/ui/pages/setup/AccountStep.tsx`. For each installed AI tool, show a login card: tool name, auth status (authenticated/not), "Login" button (triggers OAuth flow via IPC → `claude auth login` or `codex login`), OR "Enter API Key" text input with validation. Show green checkmark when authenticated. Skip button available ("I'll do this later")                                                                             | ✅ Done   |
 | 14  | OB-1271 | Setup Step 4: Workspace — `desktop/ui/pages/setup/WorkspaceStep.tsx`. Shows a folder path input with a "Browse" button that triggers Electron's `dialog.showOpenDialog({ properties: ['openDirectory'] })` via IPC. Displays resolved absolute path. Validates directory exists and is readable. Default: user's home directory                                                                                                                                          | ◻ Pending |
 | 15  | OB-1272 | Setup Step 5: Connector — `desktop/ui/pages/setup/ConnectorStep.tsx`. Shows visual cards for each connector: WhatsApp (phone icon, "Scans QR code"), Telegram (paper plane icon, "Enter bot token"), Discord (game controller icon, "Enter bot token"), WebChat (globe icon, "Built-in web UI"), Console (terminal icon, "For testing"). Card selection highlights. Connector-specific config inputs appear below the selected card (e.g., bot token field for Telegram) | ◻ Pending |
 | 16  | OB-1273 | Setup Step 6: Access Control — `desktop/ui/pages/setup/AccessStep.tsx`. Phone whitelist input: text area for comma-separated phone numbers, or "Allow everyone" toggle (with security warning). Shows formatted preview of the whitelist. Validates phone number format                                                                                                                                                                                                  | ◻ Pending |
