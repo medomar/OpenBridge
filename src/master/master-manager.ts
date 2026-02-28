@@ -3959,6 +3959,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
                 });
               }
             },
+            message.attachments,
           );
 
           // (5) Emit synthesizing event — Master is combining worker results
@@ -4318,6 +4319,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             const progressGen = this.handleSpawnMarkersWithProgress(
               spawnResult.markers,
               workerCallback,
+              message.attachments,
             );
             let progressIter = await progressGen.next();
             while (!progressIter.done) {
@@ -4328,7 +4330,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             feedbackPrompt = progressIter.value;
           } else {
             // Single worker — emit worker-progress on completion
-            feedbackPrompt = await this.handleSpawnMarkers(spawnResult.markers, workerCallback);
+            feedbackPrompt = await this.handleSpawnMarkers(
+              spawnResult.markers,
+              workerCallback,
+              message.attachments,
+            );
           }
 
           // (5) Emit synthesizing event — Master is combining worker results
@@ -5130,6 +5136,7 @@ ${currentContent}
       result?: AgentResult,
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
+    attachments?: InboundMessage['attachments'],
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5195,7 +5202,7 @@ ${currentContent}
           retryCount: 0,
         } as AgentResult);
       }
-      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles);
+      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles, attachments);
       if (onProgress) {
         return workerPromise.then(async (result) => {
           completedCount++;
@@ -5235,6 +5242,7 @@ ${currentContent}
       result?: AgentResult,
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
+    attachments?: InboundMessage['attachments'],
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5286,7 +5294,7 @@ ${currentContent}
           retryCount: 0,
         } as AgentResult);
       }
-      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles);
+      const workerPromise = this.spawnWorker(workerId, marker, index, customProfiles, attachments);
       if (onProgress) {
         return workerPromise.then(async (result) => {
           progressCompletedCount++;
@@ -5328,8 +5336,23 @@ ${currentContent}
     marker: ParsedSpawnMarker,
     index: number,
     customProfiles?: Record<string, ToolProfile>,
+    attachments?: InboundMessage['attachments'],
   ): Promise<AgentResult> {
     const { profile, body } = marker;
+
+    // If the originating message had attachments, prepend a ## Referenced Files section
+    // so the worker knows which files to read and analyze (OB-1148).
+    let workerPrompt = body.prompt;
+    if (attachments && attachments.length > 0) {
+      const fileLines = attachments
+        .map((att) => {
+          const name = att.filename ? ` (${att.filename})` : '';
+          const sizeMb = (att.sizeBytes / (1024 * 1024)).toFixed(2);
+          return `- **${att.type}**${name}: \`${att.filePath}\` — ${att.mimeType}, ${sizeMb} MB`;
+        })
+        .join('\n');
+      workerPrompt = `## Referenced Files\n\nThe following files were attached to the user's message and are available for analysis:\n\n${fileLines}\n\n---\n\n${body.prompt}`;
+    }
 
     // Resolve per-worker tool and adapter
     let workerRunner = this.agentRunner;
@@ -5423,7 +5446,7 @@ ${currentContent}
     // per-worker temp MCP config file and returns a cleanup callback to delete it.
     const { spawnOptions: spawnOpts, cleanup: mcpCleanup } = await manifestToSpawnOptions(
       {
-        prompt: body.prompt,
+        prompt: workerPrompt,
         workspacePath: this.workspacePath,
         profile,
         model: resolvedModel,
