@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 35 | **In Progress:** 0 | **Done:** 60
+> **Pending:** 34 | **In Progress:** 0 | **Done:** 61
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 2      | ◻      |
-|       | **Total**                                      |         | **95** | **60** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 3      | ◻      |
+|       | **Total**                                      |         | **95** | **61** |        |
 
 ---
 
@@ -211,7 +211,7 @@
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1258 | Create `desktop/` directory structure — `desktop/electron/` (main process), `desktop/ui/` (React frontend), `desktop/public/` (static assets), `desktop/package.json` (separate from OpenBridge core). The desktop app is a separate package that spawns the core bridge as a child process. Add `desktop/tsconfig.json` extending the root config with `jsx: react-jsx`                                                              | ✅ Done   |
 | 2   | OB-1259 | Initialize `desktop/package.json` — name: `openbridge-desktop`, dependencies: `electron` (latest stable), `electron-builder`, `react`, `react-dom`, `react-router-dom`. DevDependencies: `@types/react`, `@types/react-dom`, `vite`, `@vitejs/plugin-react`, `typescript`. Scripts: `dev` (electron + vite dev), `build` (vite build + electron-builder), `preview` (vite preview). Set `"main": "electron/main.js"`                  | ✅ Done   |
-| 3   | OB-1260 | Create `desktop/electron/main.ts` — Electron main process entry point. On app ready: (1) create BrowserWindow (1200x800, minWidth 900, minHeight 600), (2) load vite dev URL in development or `file://` production build, (3) register IPC handlers for bridge control. Enable `nodeIntegration: false`, `contextIsolation: true` for security. Handle `window-all-closed` → quit on non-macOS, hide on macOS                        | ◻ Pending |
+| 3   | OB-1260 | Create `desktop/electron/main.ts` — Electron main process entry point. On app ready: (1) create BrowserWindow (1200x800, minWidth 900, minHeight 600), (2) load vite dev URL in development or `file://` production build, (3) register IPC handlers for bridge control. Enable `nodeIntegration: false`, `contextIsolation: true` for security. Handle `window-all-closed` → quit on non-macOS, hide on macOS                        | ✅ Done   |
 | 4   | OB-1261 | Create `desktop/electron/preload.ts` — IPC bridge between renderer and main process. Expose via `contextBridge.exposeInMainWorld('openbridge', { ... })`: `startBridge()`, `stopBridge()`, `getBridgeStatus()`, `getConfig()`, `saveConfig(config)`, `onBridgeLog(callback)`, `onWorkerUpdate(callback)`, `onMessageReceived(callback)`. All methods use `ipcRenderer.invoke()` for request/response or `ipcRenderer.on()` for events | ◻ Pending |
 | 5   | OB-1262 | Create `desktop/electron/bridge-process.ts` — spawns the OpenBridge bridge as a child process via `child_process.fork()` pointing to the core `dist/index.js`. Pipes stdout/stderr to the renderer via IPC events. Handles: start, stop (SIGTERM with 10s timeout then SIGKILL), restart, status polling. Emits `bridge-log`, `bridge-status-change`, `bridge-error` events to the main window                                        | ◻ Pending |
 
