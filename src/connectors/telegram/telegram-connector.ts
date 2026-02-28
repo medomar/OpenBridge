@@ -434,6 +434,55 @@ export class TelegramConnector implements Connector {
       });
     });
 
+    this.bot.on('message:audio', (ctx: GrammyContext) => {
+      const audio = ctx.message.audio;
+      if (!audio) return;
+
+      const chatId = ctx.chat.id.toString();
+      const sender = ctx.from?.id.toString() ?? 'unknown';
+      const msgId = `telegram-${ctx.message.message_id.toString()}`;
+      const timestamp = new Date(ctx.message.date * 1000);
+      const caption = ctx.message.caption ?? '';
+
+      const bot = this.bot;
+      const mediaManager = this.mediaManager;
+
+      const handleAudio = async (): Promise<void> => {
+        let attachments: InboundMessage['attachments'];
+
+        if (bot && mediaManager) {
+          try {
+            const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
+              bot,
+              audio.file_id,
+              mediaManager,
+            );
+            attachments = [{ type: 'audio', filePath, mimeType, sizeBytes }];
+          } catch (err) {
+            logger.warn({ err, chatId }, 'Failed to download Telegram audio');
+          }
+        }
+
+        const content = caption || '[Audio]';
+        const inbound: InboundMessage = {
+          id: msgId,
+          source: 'telegram',
+          sender,
+          rawContent: content,
+          content,
+          timestamp,
+          attachments,
+          metadata: { chatId },
+        };
+
+        this.emit('message', inbound);
+      };
+
+      handleAudio().catch((err: Error) => {
+        logger.warn({ err, chatId }, 'Unhandled error in Telegram audio handler');
+      });
+    });
+
     // Start long polling — does not await because it runs until bot.stop()
     this.bot.start().catch((err: Error) => {
       logger.error({ err }, 'Telegram bot polling error');
