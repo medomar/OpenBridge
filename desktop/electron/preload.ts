@@ -43,4 +43,26 @@ contextBridge.exposeInMainWorld('openbridge', {
   onMessageReceived: (callback: (message: unknown) => void): void => {
     ipcRenderer.on('message-received', (_event, message: unknown) => callback(message));
   },
+
+  mcpGetServers: (): Promise<unknown> => ipcRenderer.invoke('mcp:getServers'),
+
+  mcpAddServer: (body: unknown): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('mcp:addServer', body),
+
+  mcpToggleServer: (
+    name: string,
+    enabled: boolean,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('mcp:toggleServer', name, enabled),
+
+  mcpRemoveServer: (name: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('mcp:removeServer', name),
+
+  mcpGetCatalog: (): Promise<unknown> => ipcRenderer.invoke('mcp:getCatalog'),
+
+  mcpConnectFromCatalog: (
+    name: string,
+    envVars: Record<string, string>,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('mcp:connectFromCatalog', name, envVars),
 });
