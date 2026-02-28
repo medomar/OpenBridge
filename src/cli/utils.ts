@@ -1,11 +1,19 @@
 import { execFile, spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
 export function isPackagedMode(): boolean {
   return (process as { pkg?: unknown }).pkg !== undefined;
+}
+
+export function getConfigDir(): string {
+  const dir = isPackagedMode() ? join(homedir(), '.openbridge') : process.cwd();
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 export function detectOS(): 'macos' | 'windows' | 'linux' {
