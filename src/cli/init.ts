@@ -37,7 +37,7 @@ interface Answers {
   mcpConfigPath?: string;
 }
 
-const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
+type ConnectorType = 'console' | 'whatsapp' | 'webchat' | 'telegram' | 'discord';
 
 export interface AIToolStatus {
   claude: boolean;
@@ -352,16 +352,31 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
 
     // Question 1: Connector selection
-    const connectorAnswer = await ask(
-      rl,
-      '  Connector type (console/whatsapp/webchat/telegram/discord) [default: console]: ',
+    printStep(4, TOTAL_STEPS, 'Connector Selection');
+    write('\n');
+    write('    1. WhatsApp — Connect via WhatsApp Web (scans QR code on first run)\n');
+    write(
+      '    2. Telegram — Connect via Telegram Bot (needs bot token from @BotFather)  \u26a0 requires token\n',
     );
-    const connector = connectorAnswer || 'console';
+    write(
+      '    3. Discord  — Connect via Discord Bot (needs bot token + app ID)           \u26a0 requires token\n',
+    );
+    write('    4. WebChat  — Built-in web interface (opens in browser)\n');
+    write('    5. Console  — Terminal chat (for testing)\n\n');
 
-    if (!(VALID_CONNECTORS as readonly string[]).includes(connector)) {
-      write(
-        `  Error: invalid connector "${connector}". Choose console, whatsapp, webchat, telegram, or discord.\n`,
-      );
+    const connectorChoice = await ask(rl, '  Your choice (1-5) [default: 5]: ');
+
+    const CONNECTOR_MENU: Record<string, ConnectorType> = {
+      '1': 'whatsapp',
+      '2': 'telegram',
+      '3': 'discord',
+      '4': 'webchat',
+      '5': 'console',
+    };
+
+    const connector = CONNECTOR_MENU[connectorChoice] ?? 'console';
+    if (connectorChoice && !CONNECTOR_MENU[connectorChoice]) {
+      write(`  Error: invalid connector "${connectorChoice}". Enter a number from 1 to 5.\n`);
       return;
     }
 
