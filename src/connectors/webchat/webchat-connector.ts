@@ -101,6 +101,24 @@ const CHAT_HTML = `<!DOCTYPE html>
     .stop-all-btn { background: #ff5252; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
     .stop-all-btn:hover { background: #d32f2f; }
     .stop-all-btn:disabled { background: #e57373; cursor: not-allowed; }
+    #mcp-dash { border-bottom: 1px solid #e8eaed; background: #f8f9fa; flex-shrink: 0; max-height: 200px; overflow-y: auto; }
+    #mcp-dash.hidden { display: none; }
+    #mcp-dash-body { padding: 2px 16px 8px; font-size: 12px; }
+    .mcp-card { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f1f3f4; }
+    .mcp-card:last-child { border-bottom: none; }
+    .mcp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .mcp-dot.healthy { background: #34a853; }
+    .mcp-dot.error { background: #ea4335; }
+    .mcp-dot.unknown { background: #9aa0a6; }
+    .cat-badge { padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 500; flex-shrink: 0; background: #e8f0fe; color: #1a73e8; }
+    .mcp-toggle { position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0; }
+    .mcp-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .mcp-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #bdc1c6; border-radius: 18px; transition: background 0.2s; }
+    .mcp-slider:before { position: absolute; content: ''; height: 12px; width: 12px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+    .mcp-toggle input:checked + .mcp-slider { background: #1a73e8; }
+    .mcp-toggle input:checked + .mcp-slider:before { transform: translateX(14px); }
+    .mcp-remove { background: none; border: none; color: #9aa0a6; cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 2px 4px; line-height: 1; }
+    .mcp-remove:hover { color: #ea4335; }
   </style>
 </head>
 <body>
@@ -124,6 +142,15 @@ const CHAT_HTML = `<!DOCTYPE html>
         <div id="dash-master"></div>
         <div id="dash-workers"></div>
         <div id="dash-cost"></div>
+      </div>
+    </div>
+    <div id="mcp-dash" class="hidden">
+      <div class="dash-hdr" id="mcp-dash-hdr">
+        <span id="mcp-dash-lbl">MCP Servers</span>
+        <span id="mcp-dash-icon">&#9650;</span>
+      </div>
+      <div id="mcp-dash-body">
+        <div id="mcp-server-list"></div>
       </div>
     </div>
     <div id="msgs"></div>
@@ -255,6 +282,60 @@ const CHAT_HTML = `<!DOCTYPE html>
       return null;
     }
 
+    var mcpDashOpen = true;
+    document.getElementById('mcp-dash-hdr').addEventListener('click', function() {
+      mcpDashOpen = !mcpDashOpen;
+      document.getElementById('mcp-dash-body').style.display = mcpDashOpen ? '' : 'none';
+      document.getElementById('mcp-dash-icon').textContent = mcpDashOpen ? '\u25B2' : '\u25BC';
+    });
+
+    function loadMcpServers() {
+      fetch('/api/mcp/servers').then(function(r) { return r.json(); }).then(function(servers) {
+        renderMcpServers(servers);
+      }).catch(function() {});
+    }
+
+    function renderMcpServers(servers) {
+      var mcpDash = document.getElementById('mcp-dash');
+      var list = document.getElementById('mcp-server-list');
+      var lbl = document.getElementById('mcp-dash-lbl');
+      if (!servers || servers.length === 0) { mcpDash.classList.add('hidden'); return; }
+      mcpDash.classList.remove('hidden');
+      lbl.textContent = 'MCP Servers (' + servers.length + ')';
+      var h = '';
+      for (var si = 0; si < servers.length; si++) {
+        var srv = servers[si];
+        var dotCls = srv.status === 'healthy' ? 'healthy' : (srv.status === 'error' ? 'error' : 'unknown');
+        var chk = srv.enabled ? ' checked' : '';
+        var catHtml = srv.category ? '<span class="cat-badge">' + srv.category + '</span>' : '';
+        h += '<div class="mcp-card">' +
+          '<span class="mcp-dot ' + dotCls + '"></span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124;font-weight:500">' + srv.name + '</span>' +
+          catHtml +
+          '<label class="mcp-toggle" title="' + (srv.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable') + '">' +
+            '<input type="checkbox"' + chk + ' onchange="toggleMcpServer(' + JSON.stringify(srv.name) + ', this.checked)">' +
+            '<span class="mcp-slider"></span>' +
+          '</label>' +
+          '<button class="mcp-remove" title="Remove server" onclick="removeMcpServer(' + JSON.stringify(srv.name) + ')">&#x2715;</button>' +
+          '</div>';
+      }
+      list.innerHTML = h;
+    }
+
+    function toggleMcpServer(name, enabled) {
+      fetch('/api/mcp/servers/' + encodeURIComponent(name), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled })
+      }).then(function() { loadMcpServers(); }).catch(function() {});
+    }
+
+    function removeMcpServer(name) {
+      if (!confirm('Remove MCP server "' + name + '"?')) return;
+      fetch('/api/mcp/servers/' + encodeURIComponent(name), { method: 'DELETE' })
+        .then(function() { loadMcpServers(); }).catch(function() {});
+    }
+
     var dashOpen = true;
     document.getElementById('dash-hdr').addEventListener('click', function() {
       dashOpen = !dashOpen;
@@ -330,7 +411,7 @@ const CHAT_HTML = `<!DOCTYPE html>
     var ws;
     function connectWs() {
       ws = new WebSocket('ws://' + location.host);
-      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
+      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); loadMcpServers(); };
       ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
       ws.onmessage = function(e) {
         try {
@@ -369,6 +450,8 @@ const CHAT_HTML = `<!DOCTYPE html>
             }
           } else if (data.type === 'agent-status') {
             updateDashboard(data.agents);
+          } else if (data.type === 'mcp-status') {
+            renderMcpServers(data.servers);
           }
         } catch(ex) {}
       };
