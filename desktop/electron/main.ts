@@ -1,6 +1,10 @@
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const execAsync = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +67,40 @@ ipcMain.handle('setup:detectPrerequisites', async () => {
   const match = /^v(\d+)/.exec(nodeVersion);
   const major = match ? parseInt(match[1], 10) : 0;
   return { os, nodeVersion, nodeOk: major >= 22 };
+});
+
+// IPC handlers for AI tool detection and installation
+ipcMain.handle('setup:detectInstalledTools', async () => {
+  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+
+  const checkTool = async (cmd: string): Promise<boolean> => {
+    try {
+      await execAsync(`${whichCmd} ${cmd}`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const [claude, codex] = await Promise.all([checkTool('claude'), checkTool('codex')]);
+  return { claude, codex };
+});
+
+ipcMain.handle('setup:installAiTool', async (_event, tool: string) => {
+  const packageMap: Record<string, string> = {
+    claude: '@anthropic-ai/claude-code',
+    codex: '@openai/codex',
+  };
+  const pkg = packageMap[tool];
+  if (!pkg) return { success: false, error: 'Unknown tool' };
+
+  try {
+    await execAsync(`npm install -g ${pkg}`, { timeout: 180_000 });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 });
 
 // IPC handlers for bridge control

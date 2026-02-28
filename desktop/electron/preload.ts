@@ -4,6 +4,12 @@ contextBridge.exposeInMainWorld('openbridge', {
   detectPrerequisites: (): Promise<{ os: string; nodeVersion: string; nodeOk: boolean }> =>
     ipcRenderer.invoke('setup:detectPrerequisites'),
 
+  detectInstalledTools: (): Promise<{ claude: boolean; codex: boolean }> =>
+    ipcRenderer.invoke('setup:detectInstalledTools'),
+
+  installAiTool: (tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('setup:installAiTool', tool),
+
   startBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:start'),
 
   stopBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:stop'),
