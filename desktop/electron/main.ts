@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { bridgeProcess } from './bridge-process.js';
+import { trayManager } from './tray.js';
 
 const execAsync = promisify(exec);
 
@@ -49,6 +50,11 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   createWindow();
+
+  trayManager.init(() => mainWindow);
+  bridgeProcess.onStatusChange((status) => {
+    trayManager.update(status);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 7 | **In Progress:** 0 | **Done:** 88
+> **Pending:** 6 | **In Progress:** 0 | **Done:** 89
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 30     | ◻      |
-|       | **Total**                                      |         | **95** | **88** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 31     | ◻      |
+|       | **Total**                                      |         | **95** | **89** |        |
 
 ---
 
@@ -264,7 +264,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                    | Status    |
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 31  | OB-1288 | Create `desktop/electron/tray.ts` — Electron Tray integration. Shows OpenBridge icon in the system tray (macOS menu bar / Windows system tray / Linux notification area). Tray menu items: "Open Dashboard", "Start/Stop Bridge", separator, "Quit OpenBridge". Left-click opens main window, right-click shows context menu. Badge: green dot when bridge is running, red when stopped        | ◻ Pending |
+| 31  | OB-1288 | Create `desktop/electron/tray.ts` — Electron Tray integration. Shows OpenBridge icon in the system tray (macOS menu bar / Windows system tray / Linux notification area). Tray menu items: "Open Dashboard", "Start/Stop Bridge", separator, "Quit OpenBridge". Left-click opens main window, right-click shows context menu. Badge: green dot when bridge is running, red when stopped        | ✅ Done   |
 | 32  | OB-1289 | Add minimize-to-tray behavior — when user closes the main window (red X), minimize to tray instead of quitting (on macOS this is default Electron behavior, on Windows/Linux add `mainWindow.on('close', (e) => { e.preventDefault(); mainWindow.hide(); })`). Show notification "OpenBridge is still running in the background" on first minimize. Quit only from tray menu or Cmd+Q / Alt+F4 | ◻ Pending |
 | 33  | OB-1290 | Add notification badges — when a new message is received while the window is hidden/minimized, show a native OS notification via `new Notification({ title: 'OpenBridge', body: 'New message from {sender} via {channel}' })`. Set app badge count on macOS dock icon (`app.dock.setBadge(count)`). Clear badge when window is focused                                                         | ◻ Pending |
 
