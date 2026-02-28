@@ -7,6 +7,7 @@ import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
 import { transcribeAudio } from '../../core/voice-transcriber.js';
+import type { MediaManager, SaveMediaResult } from '../../core/media-manager.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
@@ -27,8 +28,9 @@ interface WAChat {
 }
 
 interface WAMediaData {
-  data: string; // base64-encoded audio
+  data: string; // base64-encoded media
   mimetype: string;
+  filename?: string; // original filename (present for documents)
 }
 
 interface WAMessage {
@@ -67,6 +69,7 @@ export class WhatsAppConnector implements Connector {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shuttingDown = false;
+  private mediaManager: MediaManager | null = null;
   /** Tracks chat IDs that have received a progress status message (to avoid repeat sends). */
   private readonly progressSent = new Set<string>();
   private readonly listeners: EventListeners = {
@@ -77,8 +80,16 @@ export class WhatsAppConnector implements Connector {
     disconnected: [],
   };
 
+  /** Media types that can be downloaded as file attachments (excludes PTT voice). */
+  private static readonly DOWNLOADABLE_TYPES = new Set(['image', 'document', 'video', 'audio']);
+
   constructor(options: Record<string, unknown>) {
     this.config = WhatsAppConfigSchema.parse(options);
+  }
+
+  /** Wire a MediaManager for saving incoming media attachments to disk. */
+  setMediaManager(manager: MediaManager): void {
+    this.mediaManager = manager;
   }
 
   async initialize(): Promise<void> {
@@ -278,8 +289,49 @@ export class WhatsAppConnector implements Connector {
       this.emit('message', parsed);
       return;
     }
+
+    // Download non-PTT media (image, document, video, audio)
+    const downloadedMedia =
+      msg.hasMedia && msg.type && WhatsAppConnector.DOWNLOADABLE_TYPES.has(msg.type)
+        ? await this.downloadIncomingMedia(msg)
+        : null;
+
     const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
+    if (downloadedMedia) {
+      logger.debug(
+        { filePath: downloadedMedia.result.filePath, type: downloadedMedia.type },
+        'Incoming media downloaded',
+      );
+    }
     this.emit('message', parsed);
+  }
+
+  /**
+   * Download an incoming non-PTT media message and save it via MediaManager.
+   * Returns null if no MediaManager is configured or the download fails.
+   */
+  private async downloadIncomingMedia(msg: WAMessage): Promise<{
+    result: SaveMediaResult;
+    mimeType: string;
+    filename?: string;
+    type: 'image' | 'document' | 'audio' | 'video';
+  } | null> {
+    if (!this.mediaManager) return null;
+
+    const attachmentType = msg.type as 'image' | 'document' | 'audio' | 'video';
+
+    try {
+      const media = await msg.downloadMedia?.();
+      if (!media?.data) return null;
+
+      const buffer = Buffer.from(media.data, 'base64');
+      const result = await this.mediaManager.saveMedia(buffer, media.mimetype, media.filename);
+
+      return { result, mimeType: media.mimetype, filename: media.filename, type: attachmentType };
+    } catch (err) {
+      logger.warn({ err, type: msg.type }, 'Failed to download incoming media');
+      return null;
+    }
   }
 
   private async transcribeVoiceMessage(msg: WAMessage): Promise<string | null> {
