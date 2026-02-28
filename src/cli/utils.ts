@@ -1,7 +1,8 @@
 import { execFile, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -152,6 +153,64 @@ export function writeEnvFile(envPath: string, vars: Record<string, string>): voi
   content += newLines.join('\n') + '\n';
 
   writeFileSync(envPath, content, 'utf8');
+}
+
+export interface UpdateInfo {
+  available: boolean;
+  latest: string;
+  current: string;
+  downloadUrl: string;
+}
+
+function isNewerVersion(latest: string, current: string): boolean {
+  const parse = (v: string): [number, number, number] => {
+    const parts = v.replace(/^v/, '').split('.').map(Number);
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+  const [lMaj, lMin, lPatch] = parse(latest);
+  const [cMaj, cMin, cPatch] = parse(current);
+  if (lMaj !== cMaj) return lMaj > cMaj;
+  if (lMin !== cMin) return lMin > cMin;
+  return lPatch > cPatch;
+}
+
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  try {
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(thisDir, '../../package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+      version: string;
+      repository?: { url?: string };
+    };
+    const current = pkg.version;
+
+    const repoUrl = pkg.repository?.url ?? '';
+    const repoMatch = repoUrl.match(/github\.com[/:]([\w-]+)\/([\w.-]+?)(?:\.git)?$/);
+    if (!repoMatch) return null;
+    const [, owner, repo] = repoMatch;
+
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+    const response = await fetch(apiUrl, {
+      headers: { 'User-Agent': 'OpenBridge-UpdateCheck/1.0' },
+      signal: AbortSignal.timeout(5_000),
+    });
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as {
+      tag_name?: string;
+      html_url?: string;
+    };
+    const tagName = data.tag_name;
+    if (!tagName) return null;
+
+    const latest = tagName.replace(/^v/, '');
+    const downloadUrl = data.html_url ?? `https://github.com/${owner}/${repo}/releases/latest`;
+
+    return { available: isNewerVersion(latest, current), latest, current, downloadUrl };
+  } catch {
+    return null;
+  }
 }
 
 export async function validateApiKey(
