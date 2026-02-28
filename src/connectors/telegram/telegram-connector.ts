@@ -3,6 +3,7 @@ import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types
 import { TelegramConfigSchema } from './telegram-config.js';
 import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
+import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
 
 const logger = createLogger('telegram');
 
@@ -152,7 +153,10 @@ export class TelegramConnector implements Connector {
     if (!this.bot || !this.connected) {
       throw new Error('Telegram connector is not connected');
     }
-    await this.bot.api.sendMessage(message.recipient, message.content);
+    const chunks = splitMessage(message.content, PLATFORM_MAX_LENGTH.telegram);
+    for (const chunk of chunks) {
+      await this.bot.api.sendMessage(message.recipient, chunk);
+    }
   }
 
   async sendTypingIndicator(chatId: string): Promise<void> {

@@ -751,54 +751,78 @@ export class MasterManager {
 
   /**
    * Retrieve conversation context for the Master's system prompt (OB-731, OB-1022, OB-1025).
-   * Primary: load memory.md (Master's curated brain — always small, always relevant).
-   * Explicit fallback: BM25-ranked cross-session FTS5 via searchConversations() (OB-1025).
-   *   - When memory.md is present: supplements with cross-session hits not yet in memory.md.
-   *   - When memory.md is absent/empty: serves as the sole context source.
+   *
+   * Three layers (in order):
+   *   1. Recent session messages — last 10 user+master turns from the current session.
+   *      Gives the Master conversational continuity across stateless --print calls.
+   *   2. memory.md — Master's curated brain (always small, always relevant).
+   *   3. Cross-session FTS5 — BM25-ranked hits from past sessions for supplementary context.
    */
-  private async buildConversationContext(userMessage: string): Promise<string | null> {
-    // Primary: load memory.md (OB-1022)
-    let memorySection: string | null = null;
+  private async buildConversationContext(
+    userMessage: string,
+    sessionId?: string,
+  ): Promise<string | null> {
+    const sections: string[] = [];
+
+    // Layer 1: Recent conversation messages from the CURRENT session
+    if (sessionId && this.memory) {
+      try {
+        const sessionMessages = await this.memory.getSessionHistory(sessionId, 20);
+        // Filter to user and master roles only, take last 10
+        const relevant = sessionMessages
+          .filter((e) => e.role === 'user' || e.role === 'master')
+          .slice(-10);
+        if (relevant.length > 0) {
+          const lines = relevant.map((e) => {
+            const label = e.role === 'user' ? 'User' : 'You';
+            // Truncate individual messages to prevent context bloat
+            const content = e.content.length > 400 ? e.content.slice(0, 400) + '…' : e.content;
+            return `${label}: ${content}`;
+          });
+          sections.push('## Recent conversation (this session):\n' + lines.join('\n'));
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to load session history for context injection');
+      }
+    }
+
+    // Layer 2: load memory.md (OB-1022)
     try {
       const memoryContent = await this.dotFolder.readMemoryFile();
       if (memoryContent && memoryContent.trim().length > 0) {
-        memorySection = '## Memory:\n' + memoryContent.trim();
+        sections.push('## Memory:\n' + memoryContent.trim());
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to read memory.md for context injection');
     }
 
-    // Explicit fallback: cross-session FTS5 search via searchConversations() (OB-1025).
-    // When memory.md is present this supplements topics not yet captured there.
-    // When memory.md is absent this is the primary context source.
-    if (!this.memory) return memorySection;
-    try {
-      const crossSession = await this.memory.searchConversations(userMessage, 5);
-      // Only include user and master turns — skip worker/system noise
-      const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
-      if (relevant.length === 0) return memorySection;
-
-      const lines = relevant.map((e) => {
-        const dateStr = e.created_at
-          ? new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16)
-          : '';
-        const label = e.role === 'user' ? 'User' : 'Master';
-        const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
-        return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
-      });
-
-      const crossSessionSection = '## Related past conversations:\n' + lines.join('\n');
-      if (memorySection) {
-        return memorySection + '\n\n' + crossSessionSection;
+    // Layer 3: cross-session FTS5 search via searchConversations() (OB-1025).
+    // Supplements topics not yet captured in memory.md or current session.
+    if (this.memory) {
+      try {
+        const crossSession = await this.memory.searchConversations(userMessage, 5);
+        // Only include user and master turns — skip worker/system noise
+        const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
+        if (relevant.length > 0) {
+          const lines = relevant.map((e) => {
+            const dateStr = e.created_at
+              ? new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16)
+              : '';
+            const label = e.role === 'user' ? 'User' : 'Master';
+            const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
+            return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
+          });
+          sections.push('## Related past conversations:\n' + lines.join('\n'));
+        }
+      } catch (err) {
+        logger.warn(
+          { err },
+          'Failed to retrieve cross-session conversation history for context injection',
+        );
       }
-      return crossSessionSection;
-    } catch (err) {
-      logger.warn(
-        { err },
-        'Failed to retrieve cross-session conversation history for context injection',
-      );
-      return memorySection;
     }
+
+    return sections.length > 0 ? sections.join('\n\n') : null;
   }
 
   /**
@@ -3780,7 +3804,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
       const [conversationContext, learnedPatternsContext] = await Promise.all([
-        this.buildConversationContext(message.content),
+        this.buildConversationContext(message.content, sessionId),
         this.buildLearnedPatternsContext(),
       ]);
 
@@ -4143,7 +4167,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
       const [streamConversationContext, streamLearnedPatternsContext] = await Promise.all([
-        this.buildConversationContext(message.content),
+        this.buildConversationContext(message.content, streamSessionId),
         this.buildLearnedPatternsContext(),
       ]);
 
