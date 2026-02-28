@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 69 | **In Progress:** 0 | **Done:** 26
+> **Pending:** 68 | **In Progress:** 0 | **Done:** 27
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 16     | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 17     | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **26** |        |
+|       | **Total**                                      |         | **95** | **27** |        |
 
 ---
 
@@ -116,7 +116,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                          | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 17  | OB-1226 | Add `runHealthCheck()` export to `src/core/health.ts` — refactor the existing health check logic into a callable function (not just the HTTP handler). Returns `HealthStatus` object. Checks: (1) config file exists and is valid, (2) at least one AI tool available, (3) workspace path is accessible, (4) selected connector prerequisites met (e.g., Telegram token exists for Telegram). Usable from both CLI and HTTP endpoint | ◻ Pending |
+| 17  | OB-1226 | Add `runHealthCheck()` export to `src/core/health.ts` — refactor the existing health check logic into a callable function (not just the HTTP handler). Returns `HealthStatus` object. Checks: (1) config file exists and is valid, (2) at least one AI tool available, (3) workspace path is accessible, (4) selected connector prerequisites met (e.g., Telegram token exists for Telegram). Usable from both CLI and HTTP endpoint | ✅ Done   |
 | 18  | OB-1227 | Add post-setup health check to `src/cli/init.ts` — after config generation, run `runHealthCheck()` and display results: green checkmarks for passing checks, red X for failures. Print overall status: "All checks passed — you're ready!" or "N issues found — see above". This is the final step of the wizard                                                                                                                     | ◻ Pending |
 | 19  | OB-1228 | Print quick-start summary — at the very end of `init()`, print a formatted summary box with: (1) generated config file path, (2) detected AI tools, (3) selected connector, (4) workspace path, (5) "Next step: run `npm run dev` to start OpenBridge". Include a note about `npm run dev:watch` for development                                                                                                                     | ◻ Pending |
 
