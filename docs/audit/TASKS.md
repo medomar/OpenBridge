@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 47 | **In Progress:** 0 | **Done:** 3
+> **Pending:** 46 | **In Progress:** 0 | **Done:** 4
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -39,7 +39,7 @@
 | 1   | OB-1144 | Add `attachments` array to `InboundMessage` type in `src/types/message.ts` — fields: `type` (image/document/audio/video), `filePath`, `mimeType`, `filename`, `sizeBytes`. Verify no breaking changes in consumers (audit-logger.ts, queue.ts, bridge.ts, conversation-store.ts) — the field is optional so existing code should compile without changes          | ✅ Done   |
 | 2   | OB-1145 | Create `src/core/media-manager.ts` — managed temp directory (`<workspace>/.openbridge/media/`), `saveMedia(data: Buffer, mimeType: string, filename?: string)` → returns `{filePath, sizeBytes}`, TTL-based cleanup (default 1h), size cap (default 100MB), `cleanExpired()` method. Export `MediaManager` class + `createMediaManager(workspacePath)` factory    | ✅ Done   |
 | 3   | OB-1191 | Extract shared voice transcription into `src/core/voice-transcriber.ts` — refactor WhatsApp `transcribeVoiceMessage()` + `findWhisper()` into exported `transcribeAudio(audioPath: string): Promise<string \| null>`. Update WhatsApp connector to import and call the shared module instead of its inline implementation. Must run BEFORE Telegram voice handler | ✅ Done   |
-| 4   | OB-1146 | Add media context injection in `src/core/router.ts` — when `InboundMessage.attachments` is non-empty, append `## Attachments\n` section listing each file (path, type, mimeType, size) to the content string before passing to Master. Insert in `route()` method before the `processMessage()` call                                                              | ◻ Pending |
+| 4   | OB-1146 | Add media context injection in `src/core/router.ts` — when `InboundMessage.attachments` is non-empty, append `## Attachments\n` section listing each file (path, type, mimeType, size) to the content string before passing to Master. Insert in `route()` method before the `processMessage()` call                                                              | ✅ Done   |
 | 5   | OB-1147 | Update `src/master/master-system-prompt.ts` — add `## Media Attachment Processing` section explaining: users may send images/docs/videos, attachment file paths appear in `## Attachments` block, Master should instruct workers to read/analyze files at those paths using the Read tool                                                                         | ◻ Pending |
 | 6   | OB-1148 | Update `src/master/master-manager.ts` — when building worker prompts via `buildPromptForWorker()`, if the originating message had attachments, prepend a `## Referenced Files` section to the worker prompt listing attachment file paths so the worker knows which files to read. No changes to SpawnOptions needed — paths are injected as prompt text          | ◻ Pending |
 
