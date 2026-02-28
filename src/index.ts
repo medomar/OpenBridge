@@ -20,6 +20,7 @@ import { registerBuiltInProviders } from './providers/index.js';
 import { scanForAITools } from './discovery/index.js';
 import { MasterManager } from './master/index.js';
 import { createAdapterRegistry } from './core/adapter-registry.js';
+import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
 
 interface PackageJson {
@@ -188,7 +189,16 @@ async function startV2Flow(
   const config = await loadConfig();
   setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
-  const bridge = new Bridge(config, { configPath, workspacePath: resolvedWorkspacePath });
+
+  // Create MCP registry from config — only when MCP is enabled and servers are configured
+  const mcpServers = v2Config.mcp?.enabled !== false ? (v2Config.mcp?.servers ?? []) : [];
+  const mcpRegistry = new McpRegistry(configPath, mcpServers);
+
+  const bridge = new Bridge(config, {
+    configPath,
+    workspacePath: resolvedWorkspacePath,
+    mcpRegistry,
+  });
 
   // Register built-in plugins
   const registry = bridge.getRegistry();

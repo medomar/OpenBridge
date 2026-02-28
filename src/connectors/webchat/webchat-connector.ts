@@ -8,6 +8,7 @@ import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
+import type { McpRegistry } from '../../core/mcp-registry.js';
 
 const logger = createLogger('webchat');
 
@@ -418,6 +419,7 @@ export class WebChatConnector implements Connector {
     disconnected: [],
   };
   private memory: MemoryManager | null = null;
+  private mcpRegistry: McpRegistry | null = null;
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -426,6 +428,11 @@ export class WebChatConnector implements Connector {
   /** Wire the SQLite memory manager — enables the /api/sessions REST endpoint. */
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
+  }
+
+  /** Wire the MCP registry — enables the MCP management API endpoints. */
+  setMcpRegistry(registry: McpRegistry): void {
+    this.mcpRegistry = registry;
   }
 
   async initialize(): Promise<void> {

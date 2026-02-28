@@ -8,6 +8,7 @@ import type { MasterManager } from '../master/master-manager.js';
 import { MemoryManager } from '../memory/index.js';
 import { createMediaManager } from './media-manager.js';
 import type { MediaManager } from './media-manager.js';
+import type { McpRegistry } from './mcp-registry.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
@@ -33,6 +34,8 @@ export interface BridgeOptions {
   drainTimeoutMs?: number;
   /** Absolute path to the target workspace — when provided, MemoryManager is created for SQLite persistence */
   workspacePath?: string;
+  /** MCP server registry — when provided, exposed via getMcpRegistry() and wired to connectors */
+  mcpRegistry?: McpRegistry;
 }
 
 export class Bridge {
@@ -50,6 +53,7 @@ export class Bridge {
   private readonly orchestrator: AgentOrchestrator;
   private master: MasterManager | null = null;
   private memory: MemoryManager | null = null;
+  private mcpRegistry: McpRegistry | null = null;
   private fileServer: FileServer | null = null;
   private readonly workspacePath: string | undefined;
   private readonly connectors: Connector[] = [];
@@ -84,6 +88,10 @@ export class Bridge {
       this.fileServer = new FileServer(options.workspacePath);
       this.router.setWorkspacePath(options.workspacePath);
     }
+
+    if (options?.mcpRegistry) {
+      this.mcpRegistry = options.mcpRegistry;
+    }
   }
 
   /** Register built-in and external plugins before starting */
@@ -99,6 +107,11 @@ export class Bridge {
   /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
   getMemory(): MemoryManager | null {
     return this.memory;
+  }
+
+  /** Returns the McpRegistry instance (null if no mcpRegistry was provided) */
+  getMcpRegistry(): McpRegistry | null {
+    return this.mcpRegistry;
   }
 
   /** Set the Master AI — must be called before start() to enable Master routing */
@@ -305,6 +318,16 @@ export class Bridge {
         const c = connector as { setMediaManager?: (m: MediaManager) => void };
         if (typeof c.setMediaManager === 'function') {
           c.setMediaManager(mediaManager);
+        }
+      }
+    }
+
+    // Wire McpRegistry into connectors that support the MCP management API (e.g. WebChat)
+    if (this.mcpRegistry) {
+      for (const connector of this.connectors) {
+        const c = connector as { setMcpRegistry?: (r: McpRegistry) => void };
+        if (typeof c.setMcpRegistry === 'function') {
+          c.setMcpRegistry(this.mcpRegistry);
         }
       }
     }
