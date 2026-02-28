@@ -10,6 +10,7 @@ export function parseWhatsAppMessage(
   sender: string,
   body: string,
   timestamp: number,
+  attachments?: InboundMessage['attachments'],
 ): InboundMessage {
   return {
     id,
@@ -18,6 +19,7 @@ export function parseWhatsAppMessage(
     rawContent: body,
     content: body, // Will be cleaned by AuthService
     timestamp: new Date(timestamp * 1000),
+    ...(attachments !== undefined && { attachments }),
   };
 }
 

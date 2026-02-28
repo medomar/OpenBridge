@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 44 | **In Progress:** 0 | **Done:** 6
+> **Pending:** 43 | **In Progress:** 0 | **Done:** 7
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -47,7 +47,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                      | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 7   | OB-1192 | Update `parseWhatsAppMessage()` in `src/connectors/whatsapp/whatsapp-message.ts` — add optional `attachments` parameter to the function signature, pass through to `InboundMessage.attachments`. Keep backward-compatible (param defaults to undefined)                          | ◻ Pending |
+| 7   | OB-1192 | Update `parseWhatsAppMessage()` in `src/connectors/whatsapp/whatsapp-message.ts` — add optional `attachments` parameter to the function signature, pass through to `InboundMessage.attachments`. Keep backward-compatible (param defaults to undefined)                          | ✅ Done   |
 | 8   | OB-1149 | Add media download handler in `whatsapp-connector.ts` `handleIncomingMessage()` — detect `msg.hasMedia` for types `image`, `document`, `video`, `audio` (non-ptt); call `msg.downloadMedia()`; decode base64 to Buffer; save via `MediaManager.saveMedia()`                      | ◻ Pending |
 | 9   | OB-1150 | Populate `InboundMessage.attachments` in WhatsApp `handleIncomingMessage()` — build attachment metadata from MediaManager result, pass to updated `parseWhatsAppMessage()`; use caption (`msg.body`) as text content, fallback to `[Image]`/`[Document]`/`[Video]` if no caption | ◻ Pending |
 | 10  | OB-1151 | Handle WhatsApp sticker messages — detect `msg.type === 'sticker'`, download as `.webp`, attach as image type via same media download path                                                                                                                                       | ◻ Pending |
