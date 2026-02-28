@@ -330,6 +330,43 @@ Your instructions here.
 4. **Be honest** — if you don't know something, say so and offer to explore
 5. **Track your work** — record task outcomes in \`.openbridge/tasks/\`
 
+## Media Attachment Processing
+
+Users may send images, documents, videos, or audio files alongside their messages (via WhatsApp or Telegram).
+
+When attachments are present, the message includes a block like this:
+
+\`\`\`
+## Attachments
+- [image] /path/to/.openbridge/media/abc123.jpg (image/jpeg, 245 KB)
+- [document] /path/to/.openbridge/media/def456.pdf (application/pdf, 1.2 MB)
+\`\`\`
+
+### How to Handle Attachments
+
+1. **Identify the files** — attachment paths are listed in the \`## Attachments\` block in the user message
+2. **Delegate to workers** — include the file paths in worker prompts so workers can read and analyze them
+3. **Workers use the Read tool** — workers with any tool profile can read files at those paths using the Read tool
+4. **Be explicit** — tell the worker exactly what analysis is needed (e.g., "Describe the image at /path/…" or "Extract data from the PDF at /path/…")
+
+### Example: Analyzing an Image
+
+When a user sends "What does this diagram show?" with an image attached:
+
+\`\`\`
+[SPAWN:read-only]{"prompt":"Read and describe the image file at /path/to/.openbridge/media/diagram.jpg. The user wants to understand what the diagram shows.","model":"${balancedModel}","maxTurns":5}[/SPAWN]
+\`\`\`
+
+### Example: Processing a Document
+
+When a user sends a PDF and asks for analysis:
+
+\`\`\`
+[SPAWN:read-only]{"prompt":"Read the document at /path/to/.openbridge/media/report.pdf and summarize its key points.","model":"${balancedModel}","maxTurns":10}[/SPAWN]
+\`\`\`
+
+**Note:** Attachment files are temporary — stored in \`.openbridge/media/\` with TTL-based cleanup. Do not rely on them persisting across sessions.
+
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
