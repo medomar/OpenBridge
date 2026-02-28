@@ -20,12 +20,27 @@ export class McpRegistry {
   private readonly servers: Map<string, McpServerEntry>;
   // configPath is stored for use by persistToConfig() in OB-1173
   readonly configPath: string;
+  private onChange: ((servers: McpServerWithStatus[]) => void) | null = null;
 
   constructor(configPath: string, initialServers: MCPServer[]) {
     this.configPath = configPath;
     this.servers = new Map();
     for (const server of initialServers) {
       this.servers.set(server.name, { ...server, enabled: true });
+    }
+  }
+
+  /**
+   * Register a callback to be called after every mutation (add/remove/toggle).
+   * Used to broadcast mcp-status WebSocket events to connected clients.
+   */
+  setOnChange(callback: (servers: McpServerWithStatus[]) => void): void {
+    this.onChange = callback;
+  }
+
+  private notifyChange(): void {
+    if (this.onChange) {
+      this.onChange(this.listServers());
     }
   }
 
@@ -39,6 +54,7 @@ export class McpRegistry {
     }
     this.servers.set(server.name, { ...server, enabled: true });
     this.persistToConfig();
+    this.notifyChange();
   }
 
   /**
@@ -51,6 +67,7 @@ export class McpRegistry {
     }
     this.servers.delete(name);
     this.persistToConfig();
+    this.notifyChange();
   }
 
   /**
@@ -64,6 +81,7 @@ export class McpRegistry {
     }
     this.servers.set(name, { ...entry, enabled });
     this.persistToConfig();
+    this.notifyChange();
   }
 
   /**

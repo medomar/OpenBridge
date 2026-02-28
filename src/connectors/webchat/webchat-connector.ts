@@ -8,7 +8,7 @@ import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
-import type { McpRegistry } from '../../core/mcp-registry.js';
+import type { McpRegistry, McpServerWithStatus } from '../../core/mcp-registry.js';
 import { MCPServerSchema } from '../../types/config.js';
 import { MCP_CATALOG } from '../../core/mcp-catalog.js';
 
@@ -825,9 +825,12 @@ export class WebChatConnector implements Connector {
     this.memory = memory;
   }
 
-  /** Wire the MCP registry — enables the MCP management API endpoints. */
+  /** Wire the MCP registry — enables the MCP management API endpoints and mcp-status broadcasts. */
   setMcpRegistry(registry: McpRegistry): void {
     this.mcpRegistry = registry;
+    registry.setOnChange((servers) => {
+      this.broadcastMcpStatus(servers);
+    });
   }
 
   async initialize(): Promise<void> {
@@ -1329,6 +1332,20 @@ export class WebChatConnector implements Connector {
       type: 'agent-status',
       agents,
       timestamp: new Date().toISOString(),
+    });
+    for (const client of this.clients) {
+      if (client.readyState === WS_OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
+  /** Broadcast MCP server status to all connected WebSocket clients. */
+  broadcastMcpStatus(servers: McpServerWithStatus[]): void {
+    if (!this.connected || this.clients.size === 0) return;
+    const payload = JSON.stringify({
+      type: 'mcp-status',
+      servers: servers.map((s) => ({ name: s.name, enabled: s.enabled, status: s.status })),
     });
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {
