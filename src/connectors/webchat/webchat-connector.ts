@@ -611,7 +611,7 @@ export class WebChatConnector implements Connector {
         return;
       }
 
-      // /api/mcp/servers/:name — DELETE remove
+      // /api/mcp/servers/:name — DELETE remove, PATCH toggle
       const mcpServerMatch = /^\/api\/mcp\/servers\/([^/?#]+)$/.exec(url);
       if (mcpServerMatch) {
         const mcpReg = this.mcpRegistry;
@@ -637,6 +637,52 @@ export class WebChatConnector implements Connector {
               res.end(JSON.stringify({ error: 'Internal server error' }));
             }
           }
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const name = decodeURIComponent(mcpServerMatch[1] ?? '');
+          void (async (): Promise<void> => {
+            let parsed: unknown;
+            try {
+              const body = await new Promise<string>((resolve, reject) => {
+                const chunks: Buffer[] = [];
+                req.on('data', (chunk) => chunks.push(chunk as Buffer));
+                req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+                req.on('error', reject);
+              });
+              parsed = JSON.parse(body);
+            } catch {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+              return;
+            }
+            if (
+              typeof parsed !== 'object' ||
+              parsed === null ||
+              typeof (parsed as Record<string, unknown>)['enabled'] !== 'boolean'
+            ) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Body must be { enabled: boolean }' }));
+              return;
+            }
+            const enabled = (parsed as { enabled: boolean })['enabled'];
+            try {
+              mcpReg.toggleServer(name, enabled);
+              const updated = mcpReg.getServer(name);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(updated));
+            } catch (err) {
+              const message = (err as Error).message;
+              if (message.includes('not found')) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: message }));
+              } else {
+                logger.error({ err }, 'PATCH /api/mcp/servers/:name failed');
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+              }
+            }
+          })();
           return;
         }
       }
