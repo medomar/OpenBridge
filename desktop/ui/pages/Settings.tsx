@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 
 const GeneralSettings = lazy(() => import('./settings/GeneralSettings'));
 const ConnectorSettings = lazy(() => import('./settings/ConnectorSettings'));
+const ProviderSettings = lazy(() => import('./settings/ProviderSettings'));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -199,7 +200,11 @@ export default function Settings() {
             <ConnectorSettings config={draftConfig} onUpdate={handleUpdate} />
           </Suspense>
         )}
-        {activeTab === 'providers' && <PlaceholderTab label="AI Providers" />}
+        {activeTab === 'providers' && draftConfig != null && (
+          <Suspense fallback={<PlaceholderTab label="AI Providers" />}>
+            <ProviderSettings config={draftConfig} onUpdate={handleUpdate} />
+          </Suspense>
+        )}
         {activeTab === 'mcp' && <PlaceholderTab label="MCP Servers" />}
         {activeTab === 'access' && <PlaceholderTab label="Access Control" />}
         {activeTab === 'advanced' && <PlaceholderTab label="Advanced" />}
