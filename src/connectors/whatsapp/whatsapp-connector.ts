@@ -8,8 +8,10 @@ import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
 import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
 import type { MediaManager, SaveMediaResult } from '../../core/media-manager.js';
+import { isPackagedMode } from '../../cli/utils.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -18,6 +20,47 @@ import type { MessageMedia } from 'whatsapp-web.js';
 const execFileAsync = promisify(execFile);
 
 const logger = createLogger('whatsapp');
+
+/** Common Chrome/Chromium install paths per OS, checked when PUPPETEER_EXECUTABLE_PATH is not set. */
+const CHROMIUM_PATHS: Record<'macos' | 'windows' | 'linux', string[]> = {
+  macos: [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ],
+  windows: [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ],
+  linux: [
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+  ],
+};
+
+/**
+ * Resolves a Chrome/Chromium executable path for Puppeteer.
+ * Priority: PUPPETEER_EXECUTABLE_PATH env var → common OS install paths → null.
+ * When in packaged mode (pkg binary), Puppeteer cannot use its bundled Chromium,
+ * so the host system must have Chrome/Chromium installed.
+ */
+function resolveChromiumPath(): string | null {
+  const envPath = process.env['PUPPETEER_EXECUTABLE_PATH'];
+  if (envPath) return envPath;
+
+  const platform = process.platform;
+  const os: 'macos' | 'windows' | 'linux' =
+    platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux';
+
+  for (const candidate of CHROMIUM_PATHS[os]) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 type EventListeners = {
   [E in keyof ConnectorEvents]: ConnectorEvents[E][];
@@ -128,6 +171,20 @@ export class WhatsAppConnector implements Connector {
     // Without this, Puppeteer hangs trying to connect to a dead browser.
     await this.removeStaleLock();
 
+    // Resolve the Chrome/Chromium executable. In packaged mode (pkg binary), Puppeteer's
+    // bundled Chromium is not accessible, so we must find an existing system installation.
+    const chromiumPath = resolveChromiumPath();
+    if (chromiumPath) {
+      process.env['PUPPETEER_EXECUTABLE_PATH'] = chromiumPath;
+      logger.info({ path: chromiumPath }, 'Using system Chrome/Chromium for WhatsApp connector');
+    } else if (isPackagedMode()) {
+      logger.warn(
+        'Chrome or Chromium not found on this system. ' +
+          'Install Google Chrome (https://www.google.com/chrome) or set the ' +
+          'PUPPETEER_EXECUTABLE_PATH environment variable to enable WhatsApp.',
+      );
+    }
+
     this.client = new Client({
       authStrategy: new LocalAuth(localAuthOptions),
       // Use local cache to avoid remote fetch failures (GitHub URL can be unreachable)
@@ -135,6 +192,7 @@ export class WhatsAppConnector implements Connector {
         type: 'local',
       },
       puppeteer: {
+        ...(chromiumPath !== null && { executablePath: chromiumPath }),
         headless: this.config.headless,
         protocolTimeout: 300_000, // 5 min — WhatsApp Web can be slow to load
         args: [
