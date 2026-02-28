@@ -3,6 +3,7 @@ import { Button } from '../components/Button';
 import AccountStep from './setup/AccountStep';
 import AIToolStep from './setup/AIToolStep';
 import WelcomeStep from './setup/WelcomeStep';
+import WorkspaceStep from './setup/WorkspaceStep';
 
 // Accumulated configuration data across all wizard steps.
 // Extended by each step component (OB-1268 through OB-1274).
@@ -210,8 +211,10 @@ export default function Setup() {
           <AIToolStep key={1} {...stepProps} />
         ) : currentStep === 2 ? (
           <AccountStep key={2} {...stepProps} />
+        ) : currentStep === 3 ? (
+          <WorkspaceStep key={3} {...stepProps} />
         ) : (
-          /* Remaining step components (OB-1270–OB-1274) will replace PlaceholderStep here */
+          /* Remaining step components (OB-1272–OB-1274) will replace PlaceholderStep here */
           <PlaceholderStep
             key={currentStep}
             label={STEPS[currentStep] ?? ''}

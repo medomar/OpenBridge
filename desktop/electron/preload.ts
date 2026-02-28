@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld('openbridge', {
   authenticateTool: (tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('setup:authenticateTool', tool),
 
+  selectDirectory: (): Promise<{ path: string | null }> =>
+    ipcRenderer.invoke('setup:selectDirectory'),
+
+  validateDirectory: (dirPath: string): Promise<{ valid: boolean; error?: string }> =>
+    ipcRenderer.invoke('setup:validateDirectory', dirPath),
+
+  getHomeDirectory: (): Promise<string> => ipcRenderer.invoke('setup:getHomeDirectory'),
+
   startBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:start'),
 
   stopBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:stop'),

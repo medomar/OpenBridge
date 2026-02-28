@@ -9,6 +9,9 @@ declare global {
       detectInstalledTools(): Promise<{ claude: boolean; codex: boolean }>;
       installAiTool(tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }>;
       authenticateTool(tool: 'claude' | 'codex'): Promise<{ success: boolean; error?: string }>;
+      selectDirectory(): Promise<{ path: string | null }>;
+      validateDirectory(dirPath: string): Promise<{ valid: boolean; error?: string }>;
+      getHomeDirectory(): Promise<string>;
       getConfig(): Promise<unknown>;
       startBridge(): Promise<{ success: boolean }>;
       stopBridge(): Promise<{ success: boolean }>;
