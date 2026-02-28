@@ -2,26 +2,26 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 3 | **Fixed:** 49 | **Last Audit:** 2026-02-28
+> **Open:** 2 | **Fixed:** 50 | **Last Audit:** 2026-02-28
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding                                                           | Severity  | Impact                                                                                  | Status |
-| --- | ----------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- | ------ |
-| 46  | OB-F46 — Voice transcription requires local Whisper install       | 🟡 Medium | Users must install external binary (whisper CLI) for voice messages; no API fallback    | Open   |
-| 47  | OB-F47 — No desktop installer or guided setup for non-developers  | 🟠 High   | Non-dev users cannot install/run OpenBridge; no .exe/.dmg, no dependency wizard         | Open   |
-| 48  | OB-F48 — Master AI answers from stale context, not live knowledge | 🟠 High   | Exploration data (chunks, dir dives, workspace map) underutilized after startup; no RAG | Open   |
+| #   | Finding                                                           | Severity  | Impact                                                                                  | Status   |
+| --- | ----------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- | -------- |
+| 46  | OB-F46 — Voice transcription requires local Whisper install       | 🟡 Medium | Users must install external binary (whisper CLI) for voice messages; no API fallback    | ✅ Fixed |
+| 47  | OB-F47 — No desktop installer or guided setup for non-developers  | 🟠 High   | Non-dev users cannot install/run OpenBridge; no .exe/.dmg, no dependency wizard         | Open     |
+| 48  | OB-F48 — Master AI answers from stale context, not live knowledge | 🟠 High   | Exploration data (chunks, dir dives, workspace map) underutilized after startup; no RAG | Open     |
 
 ---
 
 ## Open Findings
 
-### OB-F46 — Voice transcription requires local Whisper install (no API fallback) 🟡 Medium
+### OB-F46 — Voice transcription requires local Whisper install (no API fallback) ✅ Fixed
 
-**Discovered:** 2026-02-28 | **Component:** `src/core/voice-transcriber.ts`
+**Discovered:** 2026-02-28 | **Fixed:** 2026-02-28 | **Component:** `src/core/voice-transcriber.ts`
 
 **Problem:** Voice message transcription currently requires users to install an external binary — either `openai-whisper` (Python, ~1.5 GB with model) or `whisper-cpp` (Homebrew). If not installed, voice messages silently degrade to `"[Voice message — install whisper for auto-transcription]"`. There is no API-based fallback using the OpenAI Whisper API (`POST /v1/audio/transcriptions`), which would require only an API key and zero local installs.
 
