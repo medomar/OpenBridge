@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 29 | **In Progress:** 0 | **Done:** 21
+> **Pending:** 28 | **In Progress:** 0 | **Done:** 22
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -72,7 +72,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                          | Status    |
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 22  | OB-1164 | Unit tests for `MediaManager` — save/retrieve/cleanup/size-cap/TTL eviction, directory creation, concurrent saves — 8+ test cases                                                                    | ◻ Pending |
+| 22  | OB-1164 | Unit tests for `MediaManager` — save/retrieve/cleanup/size-cap/TTL eviction, directory creation, concurrent saves — 8+ test cases                                                                    | ✅ Done   |
 | 23  | OB-1167 | Unit tests for shared `VoiceTranscriber` — Whisper available, Whisper missing fallback, OGG vs OGA formats, temp file cleanup — 5+ test cases                                                        | ◻ Pending |
 | 24  | OB-1165 | Unit tests for WhatsApp media handling — image download, document download, video download, sticker, download failure fallback, parseWhatsAppMessage with attachments — 7+ test cases                | ◻ Pending |
 | 25  | OB-1166 | Unit tests for Telegram media handling — voice transcription, photo download (largest size), document download, video download, caption extraction, download failure, outbound media — 9+ test cases | ◻ Pending |
