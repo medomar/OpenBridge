@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
 import {
+  detectOS,
   getNodeVersion,
   isCommandAvailable,
   meetsNodeVersion,
@@ -11,6 +12,8 @@ import {
   printSuccess,
   printWarning,
 } from './utils.js';
+
+const TOTAL_STEPS = 7;
 
 export interface InitOptions {
   input?: NodeJS.ReadableStream;
@@ -106,6 +109,14 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
   };
 
   try {
+    const os = detectOS();
+    const osLabel = os === 'macos' ? 'macOS' : os === 'windows' ? 'Windows' : 'Linux';
+    const nodeVer = getNodeVersion();
+    write(`\n  OpenBridge Setup Wizard\n`);
+    write(
+      `  Welcome to OpenBridge Setup! (${osLabel} ${process.arch}, Node ${nodeVer}) — ${TOTAL_STEPS} steps\n\n`,
+    );
+
     await checkPrerequisites();
 
     write('\n  OpenBridge — Configuration Setup\n\n');
