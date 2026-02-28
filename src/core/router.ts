@@ -414,6 +414,13 @@ export class Router {
       'Routing message',
     );
 
+    // Notify the Electron parent process (if running as a forked child) so it can show
+    // notification badges without parsing log output. Guarded by OPENBRIDGE_ELECTRON so
+    // this is a no-op in tests, CLI runs, and other non-Electron contexts.
+    if (typeof process.send === 'function' && process.env['OPENBRIDGE_ELECTRON'] === '1') {
+      process.send({ type: 'message-received', sender: message.sender, channel: message.source });
+    }
+
     // Send single acknowledgment (no cycling timer — progress events handle the rest)
     const ack: OutboundMessage = {
       target: message.source,

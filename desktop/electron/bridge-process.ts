@@ -7,15 +7,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export type BridgeStatus = 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
 
+export interface MessageEvent {
+  sender: string;
+  channel: string;
+}
+
 class BridgeProcessManager {
   private child: ChildProcess | null = null;
   private status: BridgeStatus = 'stopped';
   private stopTimeout: ReturnType<typeof setTimeout> | null = null;
   private statusListeners: Array<(status: BridgeStatus) => void> = [];
+  private messageListeners: Array<(event: MessageEvent) => void> = [];
 
   /** Register a listener that is called on every bridge status change. */
   onStatusChange(listener: (status: BridgeStatus) => void): void {
     this.statusListeners.push(listener);
+  }
+
+  /** Register a listener that is called when the bridge receives an inbound message. */
+  onMessageReceived(listener: (event: MessageEvent) => void): void {
+    this.messageListeners.push(listener);
   }
 
   private getWindow(): BrowserWindow | null {
@@ -47,7 +58,7 @@ class BridgeProcessManager {
 
     this.setStatus('starting');
 
-    const env: NodeJS.ProcessEnv = { ...process.env };
+    const env: NodeJS.ProcessEnv = { ...process.env, OPENBRIDGE_ELECTRON: '1' };
     if (configPath) {
       env['CONFIG_PATH'] = configPath;
     }
@@ -69,6 +80,22 @@ class BridgeProcessManager {
 
     this.child.on('spawn', () => {
       this.setStatus('running');
+    });
+
+    // Listen for structured IPC messages from the bridge child process.
+    // The bridge calls process.send() when it routes an inbound message so
+    // that the Electron main process can show notification badges.
+    this.child.on('message', (msg: unknown) => {
+      if (typeof msg !== 'object' || msg === null) return;
+      const m = msg as Record<string, unknown>;
+      if (m['type'] !== 'message-received') return;
+      const sender = typeof m['sender'] === 'string' ? m['sender'] : 'unknown';
+      const channel = typeof m['channel'] === 'string' ? m['channel'] : 'unknown';
+      const event: MessageEvent = { sender, channel };
+      this.send('message-received', event);
+      for (const listener of this.messageListeners) {
+        listener(event);
+      }
     });
 
     this.child.on('error', (err: Error) => {
