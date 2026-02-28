@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 15 | **In Progress:** 0 | **Done:** 80
+> **Pending:** 14 | **In Progress:** 0 | **Done:** 81
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 22     | ◻      |
-|       | **Total**                                      |         | **95** | **79** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 23     | ◻      |
+|       | **Total**                                      |         | **95** | **80** |        |
 
 ---
 
@@ -246,7 +246,7 @@
 | 20  | OB-1277 | Create `desktop/ui/components/BridgeStatus.tsx` — shows bridge running state (green pulsing dot for running, gray for stopped, red for error), uptime, connected channels count, active workers count. Start/Stop/Restart buttons. Receives data via IPC events from `bridge-process.ts`                                                                | ✅ Done   |
 | 21  | OB-1278 | Create `desktop/ui/components/ChannelList.tsx` — list of configured connectors with status (connected/disconnected/error). Each row shows: connector icon, name (e.g., "WhatsApp"), status badge, message count. Click to expand shows recent messages for that channel                                                                                 | ✅ Done   |
 | 22  | OB-1279 | Create `desktop/ui/components/WorkerCard.tsx` — card showing an active worker agent: task description, model being used, tool profile, elapsed time, status (running/completed/failed), turn count. Workers appear/disappear as Master spawns/completes them. Data comes from IPC events that relay `agent_activity` from the bridge                    | ✅ Done   |
-| 23  | OB-1280 | Create `desktop/ui/components/MessageList.tsx` — scrollable list of recent messages across all channels. Each message shows: sender (user or AI), channel icon, timestamp, message preview (truncated at 200 chars). Click to expand full message. Auto-scrolls to bottom on new messages. Limit to last 100 messages in memory                         | ◻ Pending |
+| 23  | OB-1280 | Create `desktop/ui/components/MessageList.tsx` — scrollable list of recent messages across all channels. Each message shows: sender (user or AI), channel icon, timestamp, message preview (truncated at 200 chars). Click to expand full message. Auto-scrolls to bottom on new messages. Limit to last 100 messages in memory                         | ✅ Done   |
 | 24  | OB-1281 | Create `desktop/ui/components/LogViewer.tsx` — collapsible panel at the bottom of the dashboard showing live bridge logs. Streams log lines via IPC from the bridge child process stdout. Supports filtering by log level (info/warn/error). Auto-scroll with pause button. Limit to last 500 lines in memory                                           | ◻ Pending |
 
 ### Phase 73E — Settings Panel
