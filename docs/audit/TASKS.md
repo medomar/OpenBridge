@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 63 | **In Progress:** 0 | **Done:** 32
+> **Pending:** 62 | **In Progress:** 0 | **Done:** 33
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 22     | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **32** |        |
+|       | **Total**                                      |         | **95** | **33** |        |
 
 ---
 
@@ -122,12 +122,12 @@
 
 ### Phase 71G — Wizard Flow Integration & Testing
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 20  | OB-1229 | Integrate all steps into `init()` flow — refactor `src/cli/init.ts` to run steps in order: (1) Welcome banner + OS detection, (2) Prerequisite check, (3) AI tool detection + install, (4) Account/API key setup, (5) Workspace path, (6) Connector selection + config, (7) Whitelist setup, (8) MCP setup (existing), (9) Config generation, (10) Health check, (11) Summary. Wrap in try-catch with graceful Ctrl+C handling. Track step numbers for `printStep()` display | ✅ Done   |
-| 21  | OB-1230 | Unit tests for `src/cli/utils.ts` — test: `detectOS()` returns valid values, `isCommandAvailable()` finds `node` and doesn't find `nonexistent-cmd-xyz`, `meetsNodeVersion()` correctly compares versions, `runCommand()` captures stdout/stderr, `printStep/Success/Warning/Error()` produce ANSI-colored output, `validateApiKey()` with mocked fetch (valid/invalid/network error), `writeEnvFile()` creates and merges env files. 10+ test cases                         | ✅ Done   |
-| 22  | OB-1231 | Unit tests for enhanced `init()` wizard — test: prerequisite check catches missing Node, AI tool detection correctly reports available tools, connector-specific prompts fire for the right connector, health check runs after config generation, `.env` file written with API keys. Mock readline, child_process, and fs. 8+ test cases                                                                                                                                     | ✅ Done   |
-| 23  | OB-1232 | Build + lint + typecheck + full test suite validation — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done                                                                                                                                                                                                                                                                                             | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 20  | OB-1229 | Integrate all steps into `init()` flow — refactor `src/cli/init.ts` to run steps in order: (1) Welcome banner + OS detection, (2) Prerequisite check, (3) AI tool detection + install, (4) Account/API key setup, (5) Workspace path, (6) Connector selection + config, (7) Whitelist setup, (8) MCP setup (existing), (9) Config generation, (10) Health check, (11) Summary. Wrap in try-catch with graceful Ctrl+C handling. Track step numbers for `printStep()` display | ✅ Done |
+| 21  | OB-1230 | Unit tests for `src/cli/utils.ts` — test: `detectOS()` returns valid values, `isCommandAvailable()` finds `node` and doesn't find `nonexistent-cmd-xyz`, `meetsNodeVersion()` correctly compares versions, `runCommand()` captures stdout/stderr, `printStep/Success/Warning/Error()` produce ANSI-colored output, `validateApiKey()` with mocked fetch (valid/invalid/network error), `writeEnvFile()` creates and merges env files. 10+ test cases                         | ✅ Done |
+| 22  | OB-1231 | Unit tests for enhanced `init()` wizard — test: prerequisite check catches missing Node, AI tool detection correctly reports available tools, connector-specific prompts fire for the right connector, health check runs after config generation, `.env` file written with API keys. Mock readline, child_process, and fs. 8+ test cases                                                                                                                                     | ✅ Done |
+| 23  | OB-1232 | Build + lint + typecheck + full test suite validation — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done                                                                                                                                                                                                                                                                                             | ✅ Done |
 
 ---
 
