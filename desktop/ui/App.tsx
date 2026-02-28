@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
 
 // Electron preload API — exposed via contextBridge in desktop/electron/preload.ts
 declare global {
@@ -25,13 +26,9 @@ declare global {
   }
 }
 
-// Placeholder pages — will be replaced as subsequent tasks are implemented
+// Placeholder page — will be replaced once Setup wizard tasks land
 function SetupPage() {
   return <div>Setup Wizard</div>;
-}
-
-function SettingsPage() {
-  return <div>Settings</div>;
 }
 
 // Sidebar layout — visible on /dashboard and /settings but not /setup
@@ -109,7 +106,7 @@ export default function App() {
         path="/settings"
         element={
           <AppLayout>
-            <SettingsPage />
+            <Settings />
           </AppLayout>
         }
       />
