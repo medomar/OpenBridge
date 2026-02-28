@@ -611,6 +611,36 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/mcp/servers/:name — DELETE remove
+      const mcpServerMatch = /^\/api\/mcp\/servers\/([^/?#]+)$/.exec(url);
+      if (mcpServerMatch) {
+        const mcpReg = this.mcpRegistry;
+        if (!mcpReg) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const name = decodeURIComponent(mcpServerMatch[1] ?? '');
+          try {
+            mcpReg.removeServer(name);
+            res.writeHead(204);
+            res.end();
+          } catch (err) {
+            const message = (err as Error).message;
+            if (message.includes('not found')) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: message }));
+            } else {
+              logger.error({ err }, 'DELETE /api/mcp/servers/:name failed');
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Internal server error' }));
+            }
+          }
+          return;
+        }
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
