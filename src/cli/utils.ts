@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -44,4 +44,41 @@ export function meetsNodeVersion(min: string): boolean {
   if (curMajor !== minMajor) return curMajor > minMajor;
   if (curMinor !== minMinor) return curMinor > minMinor;
   return curPatch >= minPatch;
+}
+
+export function runCommand(
+  cmd: string,
+  args: string[],
+  timeoutMs = 120_000,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args);
+    const stdoutParts: string[] = [];
+    const stderrParts: string[] = [];
+    let settled = false;
+
+    const done = (exitCode: number, stdout: string, stderr: string): void => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ exitCode, stdout, stderr });
+      }
+    };
+
+    const timer = setTimeout(() => {
+      child.kill();
+      done(1, stdoutParts.join(''), 'Command timed out');
+    }, timeoutMs);
+
+    child.stdout?.on('data', (data: Buffer) => stdoutParts.push(data.toString()));
+    child.stderr?.on('data', (data: Buffer) => stderrParts.push(data.toString()));
+
+    child.on('close', (code) => {
+      done(code ?? 1, stdoutParts.join(''), stderrParts.join(''));
+    });
+
+    child.on('error', (err: Error) => {
+      done(1, stdoutParts.join(''), err.message);
+    });
+  });
 }
