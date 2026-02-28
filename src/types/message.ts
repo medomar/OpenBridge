@@ -56,6 +56,19 @@ export interface InboundMessage {
   content: string;
   /** Timestamp when the message was received */
   timestamp: Date;
+  /** Optional file attachments received alongside the message */
+  attachments?: Array<{
+    /** Media type of the attachment */
+    type: 'image' | 'document' | 'audio' | 'video';
+    /** Absolute path to the saved file on disk */
+    filePath: string;
+    /** MIME type (e.g. image/jpeg, application/pdf) */
+    mimeType: string;
+    /** Original filename, if available from the platform */
+    filename?: string;
+    /** File size in bytes */
+    sizeBytes: number;
+  }>;
   /** Optional metadata from the platform */
   metadata?: Record<string, unknown>;
 }
