@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import Dashboard from './pages/Dashboard';
 
 // Electron preload API — exposed via contextBridge in desktop/electron/preload.ts
 declare global {
@@ -24,13 +25,9 @@ declare global {
   }
 }
 
-// Placeholder pages — fully implemented in subsequent tasks (OB-1267 through OB-1274)
+// Placeholder pages — will be replaced as subsequent tasks are implemented
 function SetupPage() {
   return <div>Setup Wizard</div>;
-}
-
-function DashboardPage() {
-  return <div>Dashboard</div>;
 }
 
 function SettingsPage() {
@@ -104,7 +101,7 @@ export default function App() {
         path="/dashboard"
         element={
           <AppLayout>
-            <DashboardPage />
+            <Dashboard />
           </AppLayout>
         }
       />

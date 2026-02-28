@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 19 | **In Progress:** 0 | **Done:** 76
+> **Pending:** 18 | **In Progress:** 0 | **Done:** 77
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 18     | ◻      |
-|       | **Total**                                      |         | **95** | **75** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 19     | ◻      |
+|       | **Total**                                      |         | **95** | **76** |        |
 
 ---
 
@@ -242,7 +242,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                             | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 19  | OB-1276 | Create `desktop/ui/pages/Dashboard.tsx` — main dashboard layout with: (1) top bar showing bridge status (Running/Stopped) with Start/Stop button, (2) left column: connected channels with status indicators, (3) center: recent messages / conversation view, (4) right column: active workers with live progress. Uses CSS Grid for responsive layout | ◻ Pending |
+| 19  | OB-1276 | Create `desktop/ui/pages/Dashboard.tsx` — main dashboard layout with: (1) top bar showing bridge status (Running/Stopped) with Start/Stop button, (2) left column: connected channels with status indicators, (3) center: recent messages / conversation view, (4) right column: active workers with live progress. Uses CSS Grid for responsive layout | ✅ Done   |
 | 20  | OB-1277 | Create `desktop/ui/components/BridgeStatus.tsx` — shows bridge running state (green pulsing dot for running, gray for stopped, red for error), uptime, connected channels count, active workers count. Start/Stop/Restart buttons. Receives data via IPC events from `bridge-process.ts`                                                                | ◻ Pending |
 | 21  | OB-1278 | Create `desktop/ui/components/ChannelList.tsx` — list of configured connectors with status (connected/disconnected/error). Each row shows: connector icon, name (e.g., "WhatsApp"), status badge, message count. Click to expand shows recent messages for that channel                                                                                 | ◻ Pending |
 | 22  | OB-1279 | Create `desktop/ui/components/WorkerCard.tsx` — card showing an active worker agent: task description, model being used, tool profile, elapsed time, status (running/completed/failed), turn count. Workers appear/disappear as Master spawns/completes them. Data comes from IPC events that relay `agent_activity` from the bridge                    | ◻ Pending |
