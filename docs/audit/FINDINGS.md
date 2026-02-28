@@ -2,23 +2,24 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 44 | **Last Audit:** 2026-02-28
+> **Open:** 1 | **Fixed:** 46 | **Last Audit:** 2026-02-28
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md)
 
 ---
 
 ## Priority Order
 
-| #   | Finding                                                         | Severity | Impact                                                               | Status |
-| --- | --------------------------------------------------------------- | -------- | -------------------------------------------------------------------- | ------ |
-| 43  | OB-F43 — WhatsApp incoming media ignored (images, docs, videos) | 🟠 High  | Users cannot send images, documents, or videos as task context       | Open   |
-| 44  | OB-F44 — Telegram has zero media support (incoming + voice)     | 🟠 High  | Telegram users limited to text-only; voice messages silently dropped | Open   |
+| #   | Finding                                                         | Severity  | Impact                                                                                 | Status   |
+| --- | --------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------- | -------- |
+| 43  | OB-F43 — WhatsApp incoming media ignored (images, docs, videos) | 🟠 High   | Users cannot send images, documents, or videos as task context                         | ✅ Fixed |
+| 44  | OB-F44 — Telegram has zero media support (incoming + voice)     | 🟠 High   | Telegram users limited to text-only; voice messages silently dropped                   | ✅ Fixed |
+| 45  | OB-F45 — No user-facing MCP management UI                       | 🟡 Medium | Users must edit config.json to manage MCP servers; no browse/connect/toggle at runtime | Open     |
 
 ---
 
 ## Open Findings
 
-### OB-F43 — WhatsApp incoming media ignored (images, documents, videos) 🟠 High
+### OB-F43 — WhatsApp incoming media ignored (images, documents, videos) ✅ Fixed
 
 **Discovered:** 2026-02-28 | **Component:** `src/connectors/whatsapp/whatsapp-connector.ts`
 
@@ -46,13 +47,18 @@
 
 - `src/types/message.ts` — `InboundMessage` needs `attachments` field
 - `src/connectors/whatsapp/whatsapp-connector.ts` — `handleIncomingMessage()` needs media download branches
-- `src/core/router.ts` — needs to pass attachment context to Master
-- `src/master/master-manager.ts` — Master prompt needs attachment awareness
+- `src/connectors/whatsapp/whatsapp-message.ts` — `parseWhatsAppMessage()` needs attachments param
+- `src/core/router.ts` — needs to inject `## Attachments` context before passing to Master
+- `src/master/master-manager.ts` — `buildPromptForWorker()` needs to inject attachment file paths into worker prompts
 - `src/master/master-system-prompt.ts` — system prompt should describe media capabilities
+- New: `src/core/media-manager.ts` — managed temp directory for media files
+- New: `src/core/voice-transcriber.ts` — shared Whisper CLI integration (extracted from WhatsApp connector)
+
+**Fixed:** Phase 68 (v0.0.6) — All 27 tasks implemented: `attachments` field added to `InboundMessage`, `MediaManager` + `VoiceTranscriber` created, WhatsApp media download handlers added for image/document/video/audio/sticker, Router injects `## Attachments` context, Master system prompt updated, worker prompts include `## Referenced Files`. Full test suite green.
 
 ---
 
-### OB-F44 — Telegram connector has zero media support (incoming + voice) 🟠 High
+### OB-F44 — Telegram connector has zero media support (incoming + voice) ✅ Fixed
 
 **Discovered:** 2026-02-28 | **Component:** `src/connectors/telegram/telegram-connector.ts`
 
@@ -83,6 +89,64 @@
 - `src/connectors/telegram/telegram-connector.ts` — needs media event handlers + file download
 - `src/connectors/telegram/telegram-config.ts` — may need media temp path config
 - `src/types/message.ts` — shares the `InboundMessage` attachment changes with OB-F43
+
+**Fixed:** Phase 68 (v0.0.6) — `GrammyContext` interface extended with voice/photo/document/video/audio/caption; `downloadTelegramFile()` helper implemented; `message:voice`, `message:photo`, `message:document`, `message:video`, `message:audio` handlers added with MediaManager integration; `transcribeAudio()` from shared VoiceTranscriber used; outbound media via `sendPhoto/sendDocument/sendVideo/sendVoice`; chat action feedback on receipt. Full test suite green.
+
+---
+
+### OB-F45 — No user-facing MCP management UI 🟡 Medium
+
+**Discovered:** 2026-02-28 | **Component:** `src/connectors/webchat/`, `src/core/config.ts`, `src/types/config.ts`
+
+**Problem:** OpenBridge has solid backend MCP support — per-worker isolation, Master-driven assignment, health checks, Claude + Codex adapter support. But users have **zero runtime visibility or control** over MCP servers. Adding, removing, or toggling MCP servers requires manually editing `config.json` and restarting the bridge. There is no way to browse available MCP servers, see which are active/healthy, or connect new ones from the WebChat UI.
+
+By comparison, Claude's web interface (claude.ai) offers a full **Connectors Directory** — a browsable, searchable catalog of 50+ MCP servers with one-click OAuth connection, per-conversation toggles, categories/filters, and real-time status. OpenBridge users get none of this despite having the backend infrastructure ready.
+
+**Root cause:** MCP was built as a config-file-first feature (Phases 60–61). The WebChat connector has an embedded HTML UI with an Agent Status dashboard, but no MCP panel. There are no REST endpoints for MCP CRUD operations. The config-watcher exists for hot-reload but is not wired to MCP changes. The `writeMcpConfig()` function in `src/core/config.ts` exists but is not called during startup.
+
+**Impact:**
+
+- Users must edit JSON by hand to add/remove MCP servers — error-prone and requires restart
+- No visibility into which MCP servers are healthy, active, or assigned to workers
+- No way to browse or discover available MCP servers from the UI
+- No OAuth flow for remote MCP servers — users must manually obtain and paste API keys
+- The WebChat UI shows agent status and worker progress but nothing about MCP
+- Significant UX gap vs Claude web (which has a full Connectors Directory + one-click OAuth)
+
+**What needs to change:**
+
+1. **MCP Registry API** — REST endpoints on the WebChat server for MCP CRUD:
+   - `GET /api/mcp/servers` — list configured servers + health status
+   - `POST /api/mcp/servers` — add a new server (command, args, env, or remote URL)
+   - `DELETE /api/mcp/servers/:name` — remove a server
+   - `PATCH /api/mcp/servers/:name` — toggle enabled/disabled
+   - `GET /api/mcp/catalog` — list available MCP servers from the built-in catalog
+
+2. **MCP Catalog** — a curated JSON catalog of popular MCP servers shipped with OpenBridge (filesystem, GitHub, Slack, Gmail, Canva, etc.) with metadata: name, description, category, command template, required env vars, official docs URL. Similar to Claude's Connectors Directory but local-first.
+
+3. **WebChat MCP Dashboard** — new collapsible panel in the embedded HTML UI (alongside Agent Status) showing:
+   - Connected servers with health indicators (green/red dot)
+   - "Browse & Connect" button that opens the catalog
+   - Add custom server form (command + args + env vars, or remote MCP URL)
+   - Remove/toggle per server
+   - Which workers are currently using which servers
+
+4. **Hot-reload** — adding/removing MCP servers via the API persists to `config.json` (read-merge-write, same pattern as existing `writeMcpConfig()`, no file locking needed in single-process Bridge) and takes effect immediately without restart. `MasterManager` needs a new `reloadMcpServers(servers)` method to update `this.mcpServers` and mark the system prompt as stale, leveraging the existing `config-watcher.ts` handler chain.
+
+5. **OAuth for remote MCP** — future scope (v0.1.0+). For now, users provide API keys via the Connect form env var fields.
+
+6. **Credential security** — env vars containing API keys must be masked in API responses and WebSocket broadcasts (first 4 chars + `****`). Full values stored internally only. Never logged or sent to frontend.
+
+**Affected files:**
+
+- `src/connectors/webchat/webchat-connector.ts` — new REST endpoints + MCP dashboard HTML panel + `broadcastMcpStatus()` WebSocket method
+- `src/core/config-watcher.ts` — trigger MCP reload on config changes → call `McpRegistry.reload()` + `MasterManager.reloadMcpServers()`
+- `src/core/health.ts` — `checkCommandOnPath()` reused by McpRegistry for health status
+- `src/master/master-manager.ts` — new `reloadMcpServers(servers)` method to update MCP list + stale system prompt
+- `src/types/config.ts` — new `MCPCatalogEntrySchema` Zod schema
+- `src/index.ts` — wire McpRegistry into Bridge startup
+- New: `src/core/mcp-catalog.ts` — built-in MCP server catalog (inline TypeScript const)
+- New: `src/core/mcp-registry.ts` — runtime MCP server management (CRUD + health + config persistence)
 
 ---
 
