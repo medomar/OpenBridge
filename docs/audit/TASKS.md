@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 93 | **In Progress:** 0 | **Done:** 2
+> **Pending:** 92 | **In Progress:** 0 | **Done:** 3
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -33,11 +33,11 @@
 
 | Phase | Title                                          | Finding | Tasks  | Done  | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ----- | ------ |
-| 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 2     | ◻      |
+| 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 3     | ◻      |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 0     | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0     | ◻      |
-|       | **Total**                                      |         | **95** | **2** |        |
+|       | **Total**                                      |         | **95** | **3** |        |
 
 ---
 
@@ -51,7 +51,7 @@
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1200 | Add `TranscriptionBackend` type to `src/core/voice-transcriber.ts` — define `type TranscriptionBackend = 'api' \| 'cli' \| 'none'` and `interface TranscriptionResult { text: string; backend: TranscriptionBackend; durationMs: number }`. Export both. These will be used by the fallback chain and for logging which backend was used                                                                                                                                                                                                              | ✅ Done   |
 | 2   | OB-1201 | Implement `transcribeViaApi(audioPath: string): Promise<string \| null>` in `src/core/voice-transcriber.ts` — reads `process.env.OPENAI_API_KEY`, if missing returns `null`. Uses Node.js native `fetch()` (no new deps) to POST to `https://api.openai.com/v1/audio/transcriptions` with `model: 'whisper-1'`, audio file as `multipart/form-data` (use `FormData` + `Blob` from Node 22). Returns transcription text on success, `null` on failure. Log errors via Pino but never throw — failures are non-fatal                                    | ✅ Done   |
-| 3   | OB-1202 | Implement `detectAvailableBackend(): Promise<TranscriptionBackend>` in `src/core/voice-transcriber.ts` — checks priority order: (1) `OPENAI_API_KEY` exists in env → return `'api'`, (2) `findWhisper()` finds local binary → return `'cli'`, (3) neither → return `'none'`. Cache the result for the process lifetime (run once at first call). Log the detected backend at `info` level                                                                                                                                                             | ◻ Pending |
+| 3   | OB-1202 | Implement `detectAvailableBackend(): Promise<TranscriptionBackend>` in `src/core/voice-transcriber.ts` — checks priority order: (1) `OPENAI_API_KEY` exists in env → return `'api'`, (2) `findWhisper()` finds local binary → return `'cli'`, (3) neither → return `'none'`. Cache the result for the process lifetime (run once at first call). Log the detected backend at `info` level                                                                                                                                                             | ✅ Done   |
 | 4   | OB-1203 | Refactor `transcribeAudio()` to use fallback chain — update the existing `transcribeAudio(audioPath: string)` function to: (1) call `detectAvailableBackend()`, (2) if `'api'` → call `transcribeViaApi()`, if it fails fall through to `'cli'`, (3) if `'cli'` → call existing Whisper CLI logic, (4) if `'none'` → return `null`. Return `TranscriptionResult` instead of `string \| null` (update return type). Update the fallback message to include both options: `"[Voice message — set OPENAI_API_KEY or install whisper for transcription]"` | ◻ Pending |
 | 5   | OB-1204 | Update callers of `transcribeAudio()` — the WhatsApp connector (`src/connectors/whatsapp/whatsapp-connector.ts`) and Telegram connector (`src/connectors/telegram/telegram-connector.ts`) call `transcribeAudio()` and expect `string \| null`. Update both to handle the new `TranscriptionResult` return type — extract `.text` for the message content, optionally log `.backend` and `.durationMs` at debug level                                                                                                                                 | ◻ Pending |
 

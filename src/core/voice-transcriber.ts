@@ -30,6 +30,31 @@ export async function findWhisper(): Promise<string | null> {
   }
 }
 
+let _cachedBackend: TranscriptionBackend | undefined;
+
+/**
+ * Detect and cache the best available transcription backend for this process.
+ *
+ * Priority: (1) OPENAI_API_KEY in env → 'api', (2) local whisper binary → 'cli', (3) 'none'.
+ * Result is cached after the first call — detection runs exactly once per process.
+ */
+export async function detectAvailableBackend(): Promise<TranscriptionBackend> {
+  if (_cachedBackend !== undefined) return _cachedBackend;
+
+  let backend: TranscriptionBackend;
+  if (process.env['OPENAI_API_KEY']) {
+    backend = 'api';
+  } else if (await findWhisper()) {
+    backend = 'cli';
+  } else {
+    backend = 'none';
+  }
+
+  logger.info({ backend }, 'Transcription backend detected');
+  _cachedBackend = backend;
+  return backend;
+}
+
 /**
  * Transcribe an audio file using the OpenAI Whisper API.
  *
