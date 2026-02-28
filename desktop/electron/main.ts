@@ -1,4 +1,5 @@
 import { access, readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { exec } from 'child_process';
 import nodeOs from 'os';
 import { promisify } from 'util';
@@ -307,5 +308,106 @@ ipcMain.handle('mcp:connectFromCatalog', async (_event, name: string, envVars: u
     return { success: true };
   } catch {
     return { success: false, error: 'Bridge is not running.' };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Access control IPC handlers — proxy to `openbridge access` CLI
+// ---------------------------------------------------------------------------
+
+interface AccessEntry {
+  user_id: string;
+  channel: string;
+  role: string;
+  active: boolean;
+}
+
+/**
+ * Parse the formatted ASCII table output of `openbridge access list` into
+ * structured objects. Lines starting with `|` are data rows; the header row
+ * is detected by checking if the first cell equals "User ID".
+ */
+function parseAccessTable(output: string): AccessEntry[] {
+  const entries: AccessEntry[] = [];
+  if (output.includes('(no entries)')) return entries;
+
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) continue;
+    const cols = trimmed
+      .split('|')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (cols.length < 4) continue;
+    if (cols[0] === 'User ID') continue; // header row
+    entries.push({
+      user_id: cols[0] ?? '',
+      channel: cols[1] ?? '',
+      role: cols[2] ?? 'viewer',
+      active: (cols[3] ?? 'yes') === 'yes',
+    });
+  }
+  return entries;
+}
+
+function getCliPath(): string {
+  return path.resolve(__dirname, '../../dist/cli/index.js');
+}
+
+function getConfigDir(): string {
+  return path.dirname(getConfigFilePath());
+}
+
+ipcMain.handle('access:list', async () => {
+  const cliPath = getCliPath();
+  const configDir = getConfigDir();
+  if (!existsSync(cliPath)) {
+    return { error: 'Bridge not built yet — run `npm run build` to compile the CLI.' };
+  }
+  try {
+    const { stdout } = await execAsync(`node "${cliPath}" access list`, { cwd: configDir });
+    const entries = parseAccessTable(stdout);
+    return { entries };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('not found') || message.includes('Database not found')) {
+      return { bridgeNotInitialized: true };
+    }
+    return { error: message };
+  }
+});
+
+ipcMain.handle('access:add', async (_event, userId: string, role: string, channel: string) => {
+  const cliPath = getCliPath();
+  const configDir = getConfigDir();
+  if (!existsSync(cliPath)) {
+    return { success: false, error: 'Bridge not built yet — run `npm run build` first.' };
+  }
+  try {
+    await execAsync(
+      `node "${cliPath}" access add "${userId}" --role "${role}" --channel "${channel}"`,
+      { cwd: configDir },
+    );
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('access:remove', async (_event, userId: string, channel: string) => {
+  const cliPath = getCliPath();
+  const configDir = getConfigDir();
+  if (!existsSync(cliPath)) {
+    return { success: false, error: 'Bridge not built yet — run `npm run build` first.' };
+  }
+  try {
+    await execAsync(`node "${cliPath}" access remove "${userId}" --channel "${channel}"`, {
+      cwd: configDir,
+    });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
   }
 });

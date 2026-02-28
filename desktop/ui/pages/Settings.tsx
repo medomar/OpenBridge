@@ -5,6 +5,7 @@ const GeneralSettings = lazy(() => import('./settings/GeneralSettings'));
 const ConnectorSettings = lazy(() => import('./settings/ConnectorSettings'));
 const ProviderSettings = lazy(() => import('./settings/ProviderSettings'));
 const McpSettings = lazy(() => import('./settings/McpSettings'));
+const AccessSettings = lazy(() => import('./settings/AccessSettings'));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -211,7 +212,11 @@ export default function Settings() {
             <McpSettings config={draftConfig} onUpdate={handleUpdate} />
           </Suspense>
         )}
-        {activeTab === 'access' && <PlaceholderTab label="Access Control" />}
+        {activeTab === 'access' && draftConfig != null && (
+          <Suspense fallback={<PlaceholderTab label="Access Control" />}>
+            <AccessSettings config={draftConfig} onUpdate={handleUpdate} />
+          </Suspense>
+        )}
         {activeTab === 'advanced' && <PlaceholderTab label="Advanced" />}
       </div>
 
