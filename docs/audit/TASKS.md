@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 25 | **In Progress:** 0 | **Done:** 25
+> **Pending:** 24 | **In Progress:** 0 | **Done:** 26
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -76,7 +76,7 @@
 | 23  | OB-1167 | Unit tests for shared `VoiceTranscriber` — Whisper available, Whisper missing fallback, OGG vs OGA formats, temp file cleanup — 5+ test cases                                                        | ✅ Done   |
 | 24  | OB-1165 | Unit tests for WhatsApp media handling — image download, document download, video download, sticker, download failure fallback, parseWhatsAppMessage with attachments — 7+ test cases                | ✅ Done   |
 | 25  | OB-1166 | Unit tests for Telegram media handling — voice transcription, photo download (largest size), document download, video download, caption extraction, download failure, outbound media — 9+ test cases | ✅ Done   |
-| 26  | OB-1193 | Unit tests for Router media injection — verify `## Attachments` section appended when attachments present, verify no injection when attachments absent — 3+ test cases                               | ◻ Pending |
+| 26  | OB-1193 | Unit tests for Router media injection — verify `## Attachments` section appended when attachments present, verify no injection when attachments absent — 3+ test cases                               | ✅ Done   |
 | 27  | OB-1168 | Build + lint + typecheck + full test suite validation — all existing tests still pass, new tests green                                                                                               | ◻ Pending |
 
 ---

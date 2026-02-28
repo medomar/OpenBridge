@@ -1897,4 +1897,170 @@ describe('Router', () => {
       expect(completion).toContain('12');
     });
   });
+
+  describe('media attachment injection (OB-1193)', () => {
+    it('should append ## Attachments section when message has attachments', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-1',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'analyze this image',
+        content: 'analyze this image',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'image',
+            filePath: '/tmp/.openbridge/media/photo.jpg',
+            mimeType: 'image/jpeg',
+            filename: 'photo.jpg',
+            sizeBytes: 204800,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('## Attachments');
+      expect(content).toContain('/tmp/.openbridge/media/photo.jpg');
+      expect(content).toContain('image/jpeg');
+      expect(content).toContain('(photo.jpg)');
+      expect(content).toContain('200.0 KB');
+    });
+
+    it('should not inject ## Attachments when attachments is undefined', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage()); // no attachments field
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toBe('hello');
+      expect(content).not.toContain('## Attachments');
+    });
+
+    it('should not inject ## Attachments when attachments is an empty array', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-2',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'hello',
+        content: 'hello',
+        timestamp: new Date(),
+        attachments: [],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toBe('hello');
+      expect(content).not.toContain('## Attachments');
+    });
+
+    it('should list all attachments when multiple are present', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-3',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'process these files',
+        content: 'process these files',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'image',
+            filePath: '/tmp/media/img.png',
+            mimeType: 'image/png',
+            sizeBytes: 1024,
+          },
+          {
+            type: 'document',
+            filePath: '/tmp/media/doc.pdf',
+            mimeType: 'application/pdf',
+            filename: 'report.pdf',
+            sizeBytes: 51200,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('## Attachments');
+      expect(content).toContain('/tmp/media/img.png');
+      expect(content).toContain('/tmp/media/doc.pdf');
+      expect(content).toContain('(report.pdf)');
+    });
+
+    it('should omit filename parentheses when filename is not provided', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-4',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'check this',
+        content: 'check this',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'video',
+            filePath: '/tmp/media/clip.mp4',
+            mimeType: 'video/mp4',
+            sizeBytes: 2048,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('**video**:');
+      expect(content).not.toContain('**video** (');
+    });
+  });
 });
