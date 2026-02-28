@@ -1,0 +1,111 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS Binaries + DMG
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Package macOS ARM64 binary
+        run: npm run package:mac
+
+      - name: Package macOS x64 binary
+        run: npm run package:mac-x64
+
+      - name: Create macOS DMG
+        run: bash scripts/create-dmg.sh
+
+      - name: Upload macOS ARM64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbridge-macos-arm64
+          path: release/openbridge-macos-arm64
+          retention-days: 7
+
+      - name: Upload macOS x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbridge-macos-x64
+          path: release/openbridge-macos-x64
+          retention-days: 7
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbridge-macos-dmg
+          path: release/OpenBridge-*-macOS.dmg
+          retention-days: 7
+
+  build-linux:
+    name: Build Linux Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Package Linux x64 binary
+        run: npm run package:linux
+
+      - name: Upload Linux x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbridge-linux-x64
+          path: release/openbridge-linux-x64
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows Binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Package Windows x64 binary
+        run: npm run package:win
+
+      - name: Upload Windows x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: openbridge-win-x64
+          path: release/openbridge-win-x64.exe
+          retention-days: 7
