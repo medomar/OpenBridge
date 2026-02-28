@@ -11,6 +11,12 @@ class BridgeProcessManager {
   private child: ChildProcess | null = null;
   private status: BridgeStatus = 'stopped';
   private stopTimeout: ReturnType<typeof setTimeout> | null = null;
+  private statusListeners: Array<(status: BridgeStatus) => void> = [];
+
+  /** Register a listener that is called on every bridge status change. */
+  onStatusChange(listener: (status: BridgeStatus) => void): void {
+    this.statusListeners.push(listener);
+  }
 
   private getWindow(): BrowserWindow | null {
     const windows = BrowserWindow.getAllWindows();
@@ -27,6 +33,9 @@ class BridgeProcessManager {
   private setStatus(status: BridgeStatus): void {
     this.status = status;
     this.send('bridge-status-change', status);
+    for (const listener of this.statusListeners) {
+      listener(status);
+    }
   }
 
   start(configPath?: string): void {
