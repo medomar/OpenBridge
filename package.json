@@ -59,7 +59,8 @@
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
     "bench": "vitest bench",
-    "clean": "rm -rf dist coverage"
+    "clean": "rm -rf dist coverage",
+    "prebuild": "cd node_modules/better-sqlite3 && prebuildify --napi --target 22.0.0"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -87,6 +88,7 @@
     "husky": "^9.1.0",
     "lint-staged": "^16.2.7",
     "pino-pretty": "^13.0.0",
+    "prebuildify": "^6.0.1",
     "prettier": "^3.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
@@ -111,7 +113,8 @@
     ],
     "outputPath": "release",
     "assets": [
-      "dist/**/*"
+      "dist/**/*",
+      "node_modules/better-sqlite3/prebuilds/**/*"
     ],
     "scripts": [
       "dist/**/*.js"
