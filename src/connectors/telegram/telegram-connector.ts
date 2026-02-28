@@ -29,6 +29,26 @@ interface GrammyBot {
     getFile: (
       fileId: string,
     ) => Promise<{ file_id: string; file_path?: string; file_size?: number }>;
+    sendPhoto: (
+      chatId: string | number,
+      photo: unknown,
+      other?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    sendDocument: (
+      chatId: string | number,
+      document: unknown,
+      other?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    sendVideo: (
+      chatId: string | number,
+      video: unknown,
+      other?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    sendVoice: (
+      chatId: string | number,
+      voice: unknown,
+      other?: Record<string, unknown>,
+    ) => Promise<unknown>;
   };
 }
 
@@ -503,6 +523,30 @@ export class TelegramConnector implements Connector {
     if (!this.bot || !this.connected) {
       throw new Error('Telegram connector is not connected');
     }
+
+    if (message.media) {
+      const { InputFile } = await import('grammy');
+      const chatId = message.recipient;
+      const inputFile = new InputFile(message.media.data, message.media.filename ?? 'file');
+      const other: Record<string, unknown> = message.content ? { caption: message.content } : {};
+
+      switch (message.media.type) {
+        case 'image':
+          await this.bot.api.sendPhoto(chatId, inputFile, other);
+          break;
+        case 'document':
+          await this.bot.api.sendDocument(chatId, inputFile, other);
+          break;
+        case 'video':
+          await this.bot.api.sendVideo(chatId, inputFile, other);
+          break;
+        case 'audio':
+          await this.bot.api.sendVoice(chatId, inputFile, other);
+          break;
+      }
+      return;
+    }
+
     const chunks = splitMessage(message.content, PLATFORM_MAX_LENGTH.telegram);
     for (const chunk of chunks) {
       await this.bot.api.sendMessage(message.recipient, chunk);
