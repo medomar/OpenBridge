@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 5 | **In Progress:** 0 | **Done:** 45
+> **Pending:** 4 | **In Progress:** 0 | **Done:** 46
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -122,7 +122,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                        | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 19  | OB-1187 | Credential masking — in `McpRegistry.listServers()`, mask ALL env var values before returning: show first 4 chars + `****` (or `****` if value < 4 chars). Full values only stored internally, never sent to API responses or WebSocket broadcasts | ◻ Pending |
+| 19  | OB-1187 | Credential masking — in `McpRegistry.listServers()`, mask ALL env var values before returning: show first 4 chars + `****` (or `****` if value < 4 chars). Full values only stored internally, never sent to API responses or WebSocket broadcasts | ✅ Done   |
 | 20  | OB-1188 | Unit tests for `McpRegistry` — addServer, removeServer, toggleServer, listServers with health, config persistence (mock fs), duplicate name rejection (409), not-found rejection (404), env var masking — 10+ test cases                           | ◻ Pending |
 | 21  | OB-1189 | Unit tests for MCP REST endpoints — GET/POST/DELETE/PATCH servers, GET catalog with category filter, POST catalog connect (success + missing env vars + not found + duplicate), validation errors — 12+ test cases                                 | ◻ Pending |
 | 22  | OB-1194 | Unit tests for MCP Dashboard WebSocket — verify `mcp-status` broadcast on add/remove/toggle, verify payload format, verify masking in broadcast — 4+ test cases                                                                                    | ◻ Pending |

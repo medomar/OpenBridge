@@ -85,11 +85,27 @@ export class McpRegistry {
   }
 
   /**
+   * Mask all values in an env record for safe API/WebSocket exposure.
+   * Shows first 4 chars + '****', or just '****' if value is shorter than 4 chars.
+   */
+  private maskEnv(env: Record<string, string> | undefined): Record<string, string> | undefined {
+    if (env === undefined) return undefined;
+    const masked: Record<string, string> = {};
+    for (const [key, value] of Object.entries(env)) {
+      masked[key] = value.length >= 4 ? `${value.slice(0, 4)}****` : '****';
+    }
+    return masked;
+  }
+
+  /**
    * List all servers with their enabled state and health status.
    * Status is determined by checking whether the server's command exists on PATH:
    * - 'healthy'  — server enabled and command found on PATH
    * - 'error'    — server enabled but command not found on PATH
    * - 'unknown'  — server is disabled (command not checked)
+   *
+   * Env var values are masked (first 4 chars + ****) to prevent credential leakage
+   * in API responses and WebSocket broadcasts.
    */
   listServers(): McpServerWithStatus[] {
     return Array.from(this.servers.values()).map((entry) => {
@@ -99,7 +115,7 @@ export class McpRegistry {
       } else {
         status = checkCommandOnPath(entry.command) ? 'healthy' : 'error';
       }
-      return { ...entry, status };
+      return { ...entry, env: this.maskEnv(entry.env), status };
     });
   }
 
