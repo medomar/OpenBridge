@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import nodeOs from 'os';
 import { promisify } from 'util';
 import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { bridgeProcess, type MessageEvent } from './bridge-process.js';
@@ -113,6 +114,51 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Auto-updater — macOS + Windows. Linux AppImage requires manual update.
+  // Update feed is configured in desktop/electron-builder.yml (provider: github).
+  // Only runs in production builds — skipped in dev mode.
+  // ---------------------------------------------------------------------------
+  if (!isDev) {
+    autoUpdater.on('update-available', () => {
+      new Notification({
+        title: 'OpenBridge',
+        body: 'Update available — downloading...',
+      }).show();
+    });
+
+    autoUpdater.on('update-downloaded', () => {
+      const win = mainWindow;
+      const showDialog = win
+        ? dialog.showMessageBox(win, {
+            type: 'info',
+            title: 'OpenBridge',
+            message: 'Update ready — restart to apply',
+            buttons: ['Restart Now', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          })
+        : dialog.showMessageBox({
+            type: 'info',
+            title: 'OpenBridge',
+            message: 'Update ready — restart to apply',
+            buttons: ['Restart Now', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          });
+
+      showDialog
+        .then(({ response }) => {
+          if (response === 0) autoUpdater.quitAndInstall();
+        })
+        .catch(() => {});
+    });
+
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {
+      // Non-fatal — silently ignore network or config errors during update check.
+    });
+  }
 });
 
 app.on('window-all-closed', () => {
