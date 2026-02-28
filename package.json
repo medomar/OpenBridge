@@ -80,6 +80,7 @@
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.0",
+    "@yao-pkg/pkg": "^6.14.1",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",
     "globals": "^15.14.0",
@@ -99,6 +100,21 @@
     ],
     "*.{json,md,yml,yaml}": [
       "prettier --write"
+    ]
+  },
+  "pkg": {
+    "targets": [
+      "node22-macos-arm64",
+      "node22-macos-x64",
+      "node22-win-x64",
+      "node22-linux-x64"
+    ],
+    "outputPath": "release",
+    "assets": [
+      "dist/**/*"
+    ],
+    "scripts": [
+      "dist/**/*.js"
     ]
   }
 }
