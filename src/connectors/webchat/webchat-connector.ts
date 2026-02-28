@@ -10,6 +10,7 @@ import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import type { McpRegistry } from '../../core/mcp-registry.js';
 import { MCPServerSchema } from '../../types/config.js';
+import { MCP_CATALOG } from '../../core/mcp-catalog.js';
 
 const logger = createLogger('webchat');
 
@@ -545,6 +546,24 @@ export class WebChatConnector implements Connector {
             res.end(JSON.stringify({ error: 'Internal server error' }));
           }
         })();
+        return;
+      }
+
+      // /api/mcp/catalog — GET full catalog or filtered by category
+      if (url === '/api/mcp/catalog' || url.startsWith('/api/mcp/catalog?')) {
+        try {
+          const parsed = new URL(url, 'http://localhost');
+          const category = parsed.searchParams.get('category');
+          const entries = category
+            ? MCP_CATALOG.filter((e) => e.category === category)
+            : MCP_CATALOG;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(entries));
+        } catch (err) {
+          logger.error({ err }, 'GET /api/mcp/catalog failed');
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
         return;
       }
 
