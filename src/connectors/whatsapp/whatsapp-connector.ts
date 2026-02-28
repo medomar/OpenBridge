@@ -297,7 +297,7 @@ export class WhatsAppConnector implements Connector {
     }
 
     // Download non-PTT media (image, document, video, audio)
-    const downloadedMedia =
+    const downloadResult =
       msg.hasMedia && msg.type && WhatsAppConnector.DOWNLOADABLE_TYPES.has(msg.type)
         ? await this.downloadIncomingMedia(msg)
         : null;
@@ -305,14 +305,14 @@ export class WhatsAppConnector implements Connector {
     let content = msg.body;
     let attachments: InboundMessage['attachments'];
 
-    if (downloadedMedia) {
+    if (downloadResult && !downloadResult.failed) {
       attachments = [
         {
-          type: downloadedMedia.type,
-          filePath: downloadedMedia.result.filePath,
-          mimeType: downloadedMedia.mimeType,
-          ...(downloadedMedia.filename !== undefined && { filename: downloadedMedia.filename }),
-          sizeBytes: downloadedMedia.result.sizeBytes,
+          type: downloadResult.type,
+          filePath: downloadResult.result.filePath,
+          mimeType: downloadResult.mimeType,
+          ...(downloadResult.filename !== undefined && { filename: downloadResult.filename }),
+          sizeBytes: downloadResult.result.sizeBytes,
         },
       ];
       // Use caption (msg.body) as text; fall back to type label if no caption
@@ -323,12 +323,16 @@ export class WhatsAppConnector implements Connector {
           video: '[Video]',
           audio: '[Audio]',
         };
-        content = fallbackMap[downloadedMedia.type] ?? `[${downloadedMedia.type}]`;
+        content = fallbackMap[downloadResult.type] ?? `[${downloadResult.type}]`;
       }
       logger.debug(
-        { filePath: downloadedMedia.result.filePath, type: downloadedMedia.type },
+        { filePath: downloadResult.result.filePath, type: downloadResult.type },
         'Incoming media downloaded',
       );
+    } else if (downloadResult?.failed) {
+      // Download was attempted but failed — prepend failure notice to any caption text
+      const failureText = `[Media attachment failed to download — ${downloadResult.type}]`;
+      content = content ? `${failureText}\n${content}` : failureText;
     }
 
     const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp, attachments);
@@ -337,14 +341,24 @@ export class WhatsAppConnector implements Connector {
 
   /**
    * Download an incoming non-PTT media message and save it via MediaManager.
-   * Returns null if no MediaManager is configured or the download fails.
+   * Returns:
+   *   - null if not applicable (no MediaManager configured, or no media data)
+   *   - { failed: false, ... } on success
+   *   - { failed: true, type } when download was attempted but threw an error
    */
-  private async downloadIncomingMedia(msg: WAMessage): Promise<{
-    result: SaveMediaResult;
-    mimeType: string;
-    filename?: string;
-    type: 'image' | 'document' | 'audio' | 'video';
-  } | null> {
+  private async downloadIncomingMedia(
+    msg: WAMessage,
+  ): Promise<
+    | {
+        failed: false;
+        result: SaveMediaResult;
+        mimeType: string;
+        filename?: string;
+        type: 'image' | 'document' | 'audio' | 'video';
+      }
+    | { failed: true; type: string }
+    | null
+  > {
     if (!this.mediaManager) return null;
 
     // Stickers are .webp images — map to 'image' attachment type
@@ -358,10 +372,16 @@ export class WhatsAppConnector implements Connector {
       const buffer = Buffer.from(media.data, 'base64');
       const result = await this.mediaManager.saveMedia(buffer, media.mimetype, media.filename);
 
-      return { result, mimeType: media.mimetype, filename: media.filename, type: attachmentType };
+      return {
+        failed: false,
+        result,
+        mimeType: media.mimetype,
+        filename: media.filename,
+        type: attachmentType,
+      };
     } catch (err) {
       logger.warn({ err, type: msg.type }, 'Failed to download incoming media');
-      return null;
+      return { failed: true, type: msg.type ?? 'unknown' };
     }
   }
 
