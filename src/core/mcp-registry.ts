@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { MCPServer } from '../types/config.js';
 import { checkCommandOnPath } from './health.js';
 
@@ -37,6 +38,7 @@ export class McpRegistry {
       throw new Error(`MCP server "${server.name}" already exists`);
     }
     this.servers.set(server.name, { ...server, enabled: true });
+    this.persistToConfig();
   }
 
   /**
@@ -48,6 +50,7 @@ export class McpRegistry {
       throw new Error(`MCP server "${name}" not found`);
     }
     this.servers.delete(name);
+    this.persistToConfig();
   }
 
   /**
@@ -60,6 +63,7 @@ export class McpRegistry {
       throw new Error(`MCP server "${name}" not found`);
     }
     this.servers.set(name, { ...entry, enabled });
+    this.persistToConfig();
   }
 
   /**
@@ -87,5 +91,47 @@ export class McpRegistry {
    */
   getServer(name: string): McpServerEntry | undefined {
     return this.servers.get(name);
+  }
+
+  /**
+   * Persist current server list to config.json.
+   * Reads the file, merges mcp.servers from internal state, and writes back.
+   * Called after every mutation (addServer, removeServer, toggleServer).
+   */
+  private persistToConfig(): void {
+    let raw: string;
+    try {
+      raw = readFileSync(this.configPath, 'utf-8');
+    } catch (err) {
+      throw new Error(
+        `McpRegistry: cannot read config file "${this.configPath}": ${(err as Error).message}`,
+      );
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch (err) {
+      throw new Error(
+        `McpRegistry: config file "${this.configPath}" is not valid JSON: ${(err as Error).message}`,
+      );
+    }
+
+    // Build MCPServer array from internal state, stripping the runtime-only `enabled` field
+    const servers: MCPServer[] = Array.from(this.servers.values()).map((entry) => {
+      const server: MCPServer = { name: entry.name, command: entry.command };
+      if (entry.args !== undefined) server.args = entry.args;
+      if (entry.env !== undefined) server.env = entry.env;
+      return server;
+    });
+
+    // Preserve existing mcp fields (enabled, configPath) and replace servers
+    const existingMcp =
+      typeof parsed['mcp'] === 'object' && parsed['mcp'] !== null
+        ? (parsed['mcp'] as Record<string, unknown>)
+        : {};
+    parsed['mcp'] = { ...existingMcp, servers };
+
+    writeFileSync(this.configPath, JSON.stringify(parsed, null, 2), 'utf-8');
   }
 }
