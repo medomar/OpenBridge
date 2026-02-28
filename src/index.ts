@@ -23,7 +23,7 @@ import { MasterManager } from './master/index.js';
 import { createAdapterRegistry } from './core/adapter-registry.js';
 import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
-import { isPackagedMode, getConfigDir } from './cli/utils.js';
+import { isPackagedMode, getConfigDir, checkForUpdate } from './cli/utils.js';
 import { runInit } from './cli/init.js';
 
 interface PackageJson {
@@ -332,6 +332,15 @@ async function main(): Promise<void> {
       process.stdout.write('First-time setup detected — running setup wizard...\n');
       await runInit({ outputPath: firstRunConfigPath });
     }
+
+    // Non-blocking auto-update check — fires once per session, never delays startup
+    void checkForUpdate().then((update) => {
+      if (update?.available) {
+        process.stdout.write(
+          `A new version of OpenBridge is available: v${update.latest} (you have v${update.current}). Download: ${update.downloadUrl}\n`,
+        );
+      }
+    });
   }
 
   let bridge: Bridge | null = null;
