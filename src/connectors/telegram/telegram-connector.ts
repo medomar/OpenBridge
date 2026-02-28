@@ -56,6 +56,12 @@ interface GrammyContext {
     message_id: number;
     text?: string;
     date: number;
+    caption?: string;
+    voice?: { file_id: string; duration: number };
+    photo?: Array<{ file_id: string; width: number; height: number }>;
+    document?: { file_id: string; file_name?: string; mime_type?: string };
+    video?: { file_id: string };
+    audio?: { file_id: string };
   };
   from?: {
     id: number;
