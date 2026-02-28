@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 70 | **In Progress:** 0 | **Done:** 25
+> **Pending:** 69 | **In Progress:** 0 | **Done:** 26
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 15     | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 16     | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **25** |        |
+|       | **Total**                                      |         | **95** | **26** |        |
 
 ---
 
@@ -105,12 +105,12 @@
 
 ### Phase 71E — Enhanced Connector & Config Setup
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 13  | OB-1222 | Enhance workspace path step — improve the existing workspace path question in `init()` with: (1) default to current directory `process.cwd()`, (2) validate the path exists (`fs.existsSync`), (3) if path doesn't exist, ask to create it, (4) show absolute resolved path for confirmation. Replace the raw readline prompt with formatted step output using `printStep()`                                                                                                                         | ✅ Done   |
-| 14  | OB-1223 | Enhance connector selection step — improve the connector selection with better descriptions: (1) WhatsApp — "Connect via WhatsApp Web (scans QR code on first run)", (2) Telegram — "Connect via Telegram Bot (needs bot token from @BotFather)", (3) Discord — "Connect via Discord Bot (needs bot token + app ID)", (4) WebChat — "Built-in web interface (opens in browser)", (5) Console — "Terminal chat (for testing)". Number each option. Show which connectors have additional requirements | ✅ Done   |
-| 15  | OB-1224 | Add connector-specific setup prompts — after connector selection, prompt for connector-specific config: (1) Telegram: ask for bot token, validate format (digits:alphanumeric), (2) Discord: ask for bot token + application ID, (3) WhatsApp: explain QR code flow will happen on first run, no token needed, (4) WebChat: ask for port (default 3000), (5) Console: no extra config needed. Write all values into the generated `config.json`                                                      | ✅ Done   |
-| 16  | OB-1225 | Enhance whitelist step — improve phone whitelist setup with: (1) explain what whitelist does ("Only these phone numbers can send commands"), (2) accept comma-separated numbers, (3) validate phone number format (digits, optional + prefix), (4) show formatted list for confirmation, (5) support "skip" to allow all users (with security warning). Preserve existing logic but improve UX                                                                                                       | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 13  | OB-1222 | Enhance workspace path step — improve the existing workspace path question in `init()` with: (1) default to current directory `process.cwd()`, (2) validate the path exists (`fs.existsSync`), (3) if path doesn't exist, ask to create it, (4) show absolute resolved path for confirmation. Replace the raw readline prompt with formatted step output using `printStep()`                                                                                                                         | ✅ Done |
+| 14  | OB-1223 | Enhance connector selection step — improve the connector selection with better descriptions: (1) WhatsApp — "Connect via WhatsApp Web (scans QR code on first run)", (2) Telegram — "Connect via Telegram Bot (needs bot token from @BotFather)", (3) Discord — "Connect via Discord Bot (needs bot token + app ID)", (4) WebChat — "Built-in web interface (opens in browser)", (5) Console — "Terminal chat (for testing)". Number each option. Show which connectors have additional requirements | ✅ Done |
+| 15  | OB-1224 | Add connector-specific setup prompts — after connector selection, prompt for connector-specific config: (1) Telegram: ask for bot token, validate format (digits:alphanumeric), (2) Discord: ask for bot token + application ID, (3) WhatsApp: explain QR code flow will happen on first run, no token needed, (4) WebChat: ask for port (default 3000), (5) Console: no extra config needed. Write all values into the generated `config.json`                                                      | ✅ Done |
+| 16  | OB-1225 | Enhance whitelist step — improve phone whitelist setup with: (1) explain what whitelist does ("Only these phone numbers can send commands"), (2) accept comma-separated numbers, (3) validate phone number format (digits, optional + prefix), (4) show formatted list for confirmation, (5) support "skip" to allow all users (with security warning). Preserve existing logic but improve UX                                                                                                       | ✅ Done |
 
 ### Phase 71F — Health Check & Summary
 
