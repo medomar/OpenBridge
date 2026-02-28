@@ -6,6 +6,8 @@ import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
 import { MemoryManager } from '../memory/index.js';
+import { createMediaManager } from './media-manager.js';
+import type { MediaManager } from './media-manager.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
@@ -292,6 +294,17 @@ export class Bridge {
         const c = connector as { setMemory?: (m: MemoryManager) => void };
         if (typeof c.setMemory === 'function') {
           c.setMemory(this.memory);
+        }
+      }
+    }
+
+    // Wire MediaManager into connectors that support incoming media download (e.g. WhatsApp)
+    if (this.workspacePath) {
+      const mediaManager = createMediaManager(this.workspacePath);
+      for (const connector of this.connectors) {
+        const c = connector as { setMediaManager?: (m: MediaManager) => void };
+        if (typeof c.setMediaManager === 'function') {
+          c.setMediaManager(mediaManager);
         }
       }
     }
