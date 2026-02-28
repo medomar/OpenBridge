@@ -9,6 +9,14 @@ const execFileAsync = promisify(execFile);
 
 const logger = createLogger('voice-transcriber');
 
+export type TranscriptionBackend = 'api' | 'cli' | 'none';
+
+export interface TranscriptionResult {
+  text: string;
+  backend: TranscriptionBackend;
+  durationMs: number;
+}
+
 /**
  * Locate the whisper CLI binary on PATH.
  * Returns the full path if found, null otherwise.
