@@ -14,6 +14,7 @@ Connect your messaging app to the AI tools on your machine. Send a message from 
 
 [Features](#features) |
 [Quick Start](#quick-start) |
+[Prerequisites](#prerequisites) |
 [Examples](#see-it-in-action) |
 [How It Works](#how-it-works) |
 [Documentation](#documentation)
@@ -109,6 +110,22 @@ Scan the QR code with WhatsApp. Then from your phone:
 ### Other Channels
 
 OpenBridge supports 5 channels: Console, WebChat, WhatsApp, Telegram, and Discord. See the [Connector Setup Guide](docs/CONNECTORS.md) for all options.
+
+---
+
+## Prerequisites
+
+**Required**
+
+- **Node.js >= 22** — [nodejs.org](https://nodejs.org/)
+
+**Optional — by connector / feature**
+
+- **WhatsApp:** Chrome/Chromium — auto-installed by Puppeteer, no extra steps needed
+- **Voice messages (recommended):** `OPENAI_API_KEY` env var — uses the OpenAI Whisper API ($0.006/min, zero local setup; same key Codex uses)
+- **Voice messages (offline):** `pip install openai-whisper` or `brew install whisper-cpp` — free, runs locally
+- **Telegram:** Bot token from [@BotFather](https://t.me/BotFather)
+- **Discord:** Bot token + application ID from the [Discord Developer Portal](https://discord.com/developers/applications)
 
 ---
 
