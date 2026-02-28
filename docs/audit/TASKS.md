@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 40 | **In Progress:** 0 | **Done:** 55
+> **Pending:** 39 | **In Progress:** 0 | **Done:** 56
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,9 +35,9 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 22     | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 23     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **51** |        |
+|       | **Total**                                      |         | **95** | **56** |        |
 
 ---
 
@@ -193,7 +193,7 @@
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 21  | OB-1253 | Unit tests for `isPackagedMode()` and `getConfigDir()` — test: (1) `isPackagedMode()` returns false in dev, (2) mock `process.pkg` to test packaged mode detection, (3) `getConfigDir()` returns project root in dev mode, (4) `getConfigDir()` returns `~/.openbridge/` in packaged mode, (5) directory is created if missing. 5 test cases | ✅ Done   |
 | 22  | OB-1254 | Unit tests for `checkForUpdate()` — mock fetch to test: (1) newer version available returns correct info, (2) current version up-to-date returns `{ available: false }`, (3) network error returns null, (4) malformed response returns null, (5) timeout returns null. 5 test cases                                                         | ✅ Done   |
-| 23  | OB-1255 | Integration test for packaged mode paths — test that `loadConfig()`, `database.ts`, and `logger.ts` all resolve to `getConfigDir()` when `process.pkg` is set. Mock the filesystem. Verify no paths point inside the pkg snapshot (`/snapshot/...`). 3 test cases                                                                            | ◻ Pending |
+| 23  | OB-1255 | Integration test for packaged mode paths — test that `loadConfig()`, `database.ts`, and `logger.ts` all resolve to `getConfigDir()` when `process.pkg` is set. Mock the filesystem. Verify no paths point inside the pkg snapshot (`/snapshot/...`). 3 test cases                                                                            | ✅ Done   |
 | 24  | OB-1256 | Manual packaging smoke test — add `scripts/test-package.sh` that: (1) runs `npm run package:mac` (or current platform), (2) executes the binary with `--version` flag, (3) verifies it prints the correct version, (4) executes with `--health` flag and verifies JSON health output. This is a smoke test for CI — not a unit test          | ◻ Pending |
 | 25  | OB-1257 | Build + lint + typecheck + full test suite validation — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done                                                                                                                                                             | ◻ Pending |
 
