@@ -17,6 +17,7 @@ import {
   printError,
   writeEnvFile,
   validateApiKey,
+  checkForUpdate,
 } from '../../src/cli/utils.js';
 
 // ─── isPackagedMode ──────────────────────────────────────────────────────────
@@ -345,5 +346,72 @@ describe('validateApiKey()', () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('Server Error', { status: 500 }));
     const result = await validateApiKey('openai', 'sk-some-key');
     expect(result).toBe(false);
+  });
+});
+
+// ─── checkForUpdate ──────────────────────────────────────────────────────────
+
+describe('checkForUpdate()', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns UpdateInfo with available:true when newer version exists', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: 'v1.0.0',
+          html_url: 'https://github.com/medomar/OpenBridge/releases/tag/v1.0.0',
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await checkForUpdate();
+    expect(result).not.toBeNull();
+    expect(result!.available).toBe(true);
+    expect(result!.latest).toBe('1.0.0');
+    expect(result!.downloadUrl).toBe('https://github.com/medomar/OpenBridge/releases/tag/v1.0.0');
+  });
+
+  it('returns UpdateInfo with available:false when already on latest version', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: 'v0.0.1',
+          html_url: 'https://github.com/medomar/OpenBridge/releases/tag/v0.0.1',
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await checkForUpdate();
+    expect(result).not.toBeNull();
+    expect(result!.available).toBe(false);
+    expect(result!.latest).toBe('0.0.1');
+    expect(result!.current).toBe('0.0.1');
+  });
+
+  it('returns null on network error', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
+    const result = await checkForUpdate();
+    expect(result).toBeNull();
+  });
+
+  it('returns null when response has no tag_name (malformed response)', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Not Found' }), { status: 200 }),
+    );
+    const result = await checkForUpdate();
+    expect(result).toBeNull();
+  });
+
+  it('returns null on timeout (AbortError)', async () => {
+    const abortError = new DOMException('The operation was aborted', 'AbortError');
+    vi.mocked(fetch).mockRejectedValueOnce(abortError);
+    const result = await checkForUpdate();
+    expect(result).toBeNull();
   });
 });
