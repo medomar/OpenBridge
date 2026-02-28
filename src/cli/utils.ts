@@ -82,3 +82,19 @@ export function runCommand(
     });
   });
 }
+
+export function printStep(stepNum: number, total: number, title: string): void {
+  process.stdout.write(`\x1b[1m[${stepNum}/${total}]\x1b[0m ${title}\n`);
+}
+
+export function printSuccess(msg: string): void {
+  process.stdout.write(`\x1b[32m✔\x1b[0m ${msg}\n`);
+}
+
+export function printWarning(msg: string): void {
+  process.stdout.write(`\x1b[33m⚠\x1b[0m ${msg}\n`);
+}
+
+export function printError(msg: string): void {
+  process.stdout.write(`\x1b[31m✖\x1b[0m ${msg}\n`);
+}
