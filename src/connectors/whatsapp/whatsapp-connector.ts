@@ -81,7 +81,13 @@ export class WhatsAppConnector implements Connector {
   };
 
   /** Media types that can be downloaded as file attachments (excludes PTT voice). */
-  private static readonly DOWNLOADABLE_TYPES = new Set(['image', 'document', 'video', 'audio']);
+  private static readonly DOWNLOADABLE_TYPES = new Set([
+    'image',
+    'document',
+    'video',
+    'audio',
+    'sticker',
+  ]);
 
   constructor(options: Record<string, unknown>) {
     this.config = WhatsAppConfigSchema.parse(options);
@@ -341,7 +347,9 @@ export class WhatsAppConnector implements Connector {
   } | null> {
     if (!this.mediaManager) return null;
 
-    const attachmentType = msg.type as 'image' | 'document' | 'audio' | 'video';
+    // Stickers are .webp images — map to 'image' attachment type
+    const attachmentType: 'image' | 'document' | 'audio' | 'video' =
+      msg.type === 'sticker' ? 'image' : (msg.type as 'image' | 'document' | 'audio' | 'video');
 
     try {
       const media = await msg.downloadMedia?.();
