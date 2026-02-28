@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 32 | **In Progress:** 0 | **Done:** 63
+> **Pending:** 31 | **In Progress:** 0 | **Done:** 64
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 5      | ◻      |
-|       | **Total**                                      |         | **95** | **62** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 6      | ◻      |
+|       | **Total**                                      |         | **95** | **63** |        |
 
 ---
 
@@ -219,7 +219,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                               | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 6   | OB-1263 | Create `desktop/ui/App.tsx` — root React component with React Router. Routes: `/setup` (setup wizard), `/dashboard` (main dashboard), `/settings` (configuration). Default route: redirect to `/setup` if no config exists, else `/dashboard`. Use a simple layout with sidebar navigation (Dashboard, Settings) visible on all routes except setup                                                                                       | ◻ Pending |
+| 6   | OB-1263 | Create `desktop/ui/App.tsx` — root React component with React Router. Routes: `/setup` (setup wizard), `/dashboard` (main dashboard), `/settings` (configuration). Default route: redirect to `/setup` if no config exists, else `/dashboard`. Use a simple layout with sidebar navigation (Dashboard, Settings) visible on all routes except setup                                                                                       | ✅ Done   |
 | 7   | OB-1264 | Create `desktop/ui/index.html` + `desktop/ui/main.tsx` — Vite entry point. Minimal HTML shell with `<div id="root">`. `main.tsx` renders `<App />` with `BrowserRouter`. Add `desktop/vite.config.ts` with React plugin, dev server on port 5173, base path for production build                                                                                                                                                          | ◻ Pending |
 | 8   | OB-1265 | Create `desktop/ui/styles/global.css` — minimal design system. CSS variables for colors (light + dark mode via `prefers-color-scheme`), font stack (system fonts), spacing scale, border radius. Status colors: green (#22c55e), red (#ef4444), yellow (#eab308), blue (#3b82f6). Keep it under 150 lines — no CSS framework, just variables + resets                                                                                     | ◻ Pending |
 | 9   | OB-1266 | Create shared UI components — `desktop/ui/components/StatusBadge.tsx` (colored dot + label for healthy/error/offline), `Button.tsx` (primary/secondary/danger variants), `Card.tsx` (white card with shadow + title), `Input.tsx` (labeled text input with validation state), `Select.tsx` (dropdown). Each component is a simple functional component with props typed via TypeScript interfaces. No component library — keep it minimal | ◻ Pending |
