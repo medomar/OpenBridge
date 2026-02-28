@@ -223,7 +223,7 @@ describe('runInit', () => {
   it('should generate a whatsapp config from interactive input', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'whatsapp', // connector
+      '1', // connector: WhatsApp
       '/home/user/my-project', // workspace path
       '+1234567890', // whitelist
       '/ai', // prefix
@@ -250,7 +250,7 @@ describe('runInit', () => {
   it('should generate a console config without auth', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/home/user/my-project', // workspace path
       'n', // MCP: skip
     ]);
@@ -286,7 +286,7 @@ describe('runInit', () => {
   it('should apply prefix default when user presses enter', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'whatsapp', // connector
+      '1', // connector: WhatsApp
       '/home/user/project', // workspace path
       '+555', // whitelist
       '', // prefix — default /ai
@@ -321,7 +321,7 @@ describe('runInit', () => {
   it('should abort if whitelist is empty', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'whatsapp', // connector
+      '1', // connector: WhatsApp
       '/home/user/project', // workspace path
       '', // empty whitelist
     ]);
@@ -361,7 +361,7 @@ describe('runInit', () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       'y', // confirm overwrite
-      'whatsapp', // connector
+      '1', // connector: WhatsApp
       '/home/user/project', // workspace path
       '+1234567890', // whitelist
       '', // prefix
@@ -380,7 +380,7 @@ describe('runInit', () => {
   it('should generate config for telegram connector with bot token', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'telegram', // connector
+      '2', // connector: Telegram
       '/home/user/project', // workspace path
       '123456:ABC-DEF', // bot token
       'n', // MCP: skip
@@ -398,7 +398,7 @@ describe('runInit', () => {
   it('should abort if telegram bot token is empty', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'telegram', // connector
+      '2', // connector: Telegram
       '/home/user/project', // workspace path
       '', // empty bot token
     ]);
@@ -411,7 +411,7 @@ describe('runInit', () => {
   it('should generate config for discord connector with bot token', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'discord', // connector
+      '3', // connector: Discord
       '/home/user/project', // workspace path
       'MTk4NjIy.discord-token', // bot token
       'n', // MCP: skip
@@ -429,7 +429,7 @@ describe('runInit', () => {
   it('should abort if discord bot token is empty', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'discord', // connector
+      '3', // connector: Discord
       '/home/user/project', // workspace path
       '', // empty bot token
     ]);
@@ -442,7 +442,7 @@ describe('runInit', () => {
   it('should show updated success message with both start options', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console',
+      '5', // connector: Console
       '/home/user/project',
       'n', // MCP: skip
     ]);
@@ -456,7 +456,7 @@ describe('runInit', () => {
   it('should generate mcp section when user enables MCP with servers', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/home/user/project', // workspace path
       'y', // Enable MCP
       'canva', // server name
@@ -482,7 +482,7 @@ describe('runInit', () => {
   it('should generate mcp section with configPath when provided', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/home/user/project', // workspace path
       'y', // Enable MCP
       'done', // no servers
@@ -502,7 +502,7 @@ describe('runInit', () => {
   it('should not add mcp section when user enables MCP but provides nothing', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/home/user/project', // workspace path
       'y', // Enable MCP
       'done', // no servers
@@ -519,7 +519,7 @@ describe('runInit', () => {
   it('should generate mcp section with multiple servers', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/home/user/project', // workspace path
       'y', // Enable MCP
       'canva', // server 1 name

@@ -195,7 +195,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('produces no mcp field when user answers n to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'n', // skip MCP
     ]);
@@ -210,7 +210,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('produces no mcp field when user answers N (uppercase) to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'N', // skip MCP
     ]);
@@ -225,7 +225,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('generates valid mcp config with one server when user provides it', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'y', // enable MCP
       'canva', // server name
@@ -252,7 +252,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('collects multiple servers in the servers array', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'y', // enable MCP
       'canva', // server 1 name
@@ -280,7 +280,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('captures configPath import from Claude Desktop when provided', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'y', // enable MCP
       'done', // no inline servers
@@ -300,7 +300,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('does not add mcp section when user enables MCP but provides neither servers nor configPath', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'y', // enable MCP
       'done', // no inline servers
@@ -317,7 +317,7 @@ describe('runInit() — MCP interactive flow', () => {
   it('generates mcp with both servers and configPath when both provided', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
-      'console', // connector
+      '5', // connector: Console
       '/proj', // workspace path
       'y', // enable MCP
       'gmail', // server name
