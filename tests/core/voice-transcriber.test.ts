@@ -48,6 +48,7 @@ import {
   transcribeAudio,
   transcribeViaApi,
   _resetCachedBackend,
+  TRANSCRIPTION_FALLBACK_MESSAGE,
 } from '../../src/core/voice-transcriber.js';
 
 const mockReadFile = readFile as ReturnType<typeof vi.fn>;
@@ -253,6 +254,92 @@ describe('transcribeAudio', () => {
 
     vi.unstubAllGlobals();
     delete process.env['OPENAI_API_KEY'];
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transcribeAudio — fallback chain (OB-1208)
+// ---------------------------------------------------------------------------
+
+describe('transcribeAudio — fallback chain', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetCachedBackend();
+    mockUnlink.mockResolvedValue(undefined);
+    delete process.env['OPENAI_API_KEY'];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env['OPENAI_API_KEY'];
+  });
+
+  it('(1) API available → uses API backend', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    mockReadFile.mockResolvedValue(Buffer.from('audio data'));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ text: 'Transcribed via API' }),
+      }),
+    );
+
+    const result = await transcribeAudio('/audio/voice.ogg');
+
+    expect(result?.text).toBe('Transcribed via API');
+    expect(result?.backend).toBe('api');
+    expect(typeof result?.durationMs).toBe('number');
+  });
+
+  it('(2) API fails + CLI available → falls through to CLI', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+
+    // findWhisper() during API-fallback path
+    mockExecFileAsync.mockResolvedValueOnce({ stdout: '/usr/bin/whisper\n', stderr: '' });
+    // whisper run
+    mockExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+    mockReadFile
+      .mockResolvedValueOnce(Buffer.from('audio data')) // transcribeViaApi readFile
+      .mockResolvedValueOnce('CLI fallback text'); // transcribeViaCli readFile
+
+    const result = await transcribeAudio('/audio/voice.ogg');
+
+    expect(result?.text).toBe('CLI fallback text');
+    expect(result?.backend).toBe('cli');
+  });
+
+  it('(3) neither backend available → returns null; TRANSCRIPTION_FALLBACK_MESSAGE has correct content', async () => {
+    // No API key, whisper not installed
+    mockExecFileAsync.mockRejectedValueOnce(new Error('not found'));
+
+    const result = await transcribeAudio('/audio/voice.ogg');
+
+    expect(result).toBeNull();
+    expect(TRANSCRIPTION_FALLBACK_MESSAGE).toBe(
+      '[Voice message — set OPENAI_API_KEY or install whisper for transcription]',
+    );
+  });
+
+  it('(4) API succeeds → TranscriptionResult has backend: api', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    mockReadFile.mockResolvedValue(Buffer.from('audio data'));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ text: 'API result' }),
+      }),
+    );
+
+    const result = await transcribeAudio('/audio/voice.ogg');
+
+    expect(result?.backend).toBe('api');
   });
 });
 
