@@ -3,6 +3,14 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
+import {
+  getNodeVersion,
+  isCommandAvailable,
+  meetsNodeVersion,
+  printError,
+  printSuccess,
+  printWarning,
+} from './utils.js';
 
 export interface InitOptions {
   input?: NodeJS.ReadableStream;
@@ -25,6 +33,31 @@ interface Answers {
 }
 
 const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
+
+export async function checkPrerequisites(): Promise<boolean> {
+  if (!meetsNodeVersion('22')) {
+    printError(`Node.js >= 22 is required. You have ${getNodeVersion()}.`);
+    printError('Download the latest version at https://nodejs.org');
+    process.exit(1);
+  }
+  printSuccess(`Node.js ${getNodeVersion()} — OK`);
+
+  const npmAvailable = await isCommandAvailable('npm');
+  if (!npmAvailable) {
+    printError('npm is not available. Please reinstall Node.js from https://nodejs.org');
+    process.exit(1);
+  }
+  printSuccess('npm — OK');
+
+  const gitAvailable = await isCommandAvailable('git');
+  if (!gitAvailable) {
+    printWarning('git is not installed — recommended but not required');
+  } else {
+    printSuccess('git — OK');
+  }
+
+  return true;
+}
 
 function ask(rl: ReadlineInterface, question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -73,6 +106,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
   };
 
   try {
+    await checkPrerequisites();
+
     write('\n  OpenBridge — Configuration Setup\n\n');
 
     // Check if config.json already exists
