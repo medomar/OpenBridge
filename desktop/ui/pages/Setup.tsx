@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import WelcomeStep from './setup/WelcomeStep';
 
 // Accumulated configuration data across all wizard steps.
 // Extended by each step component (OB-1268 through OB-1274).
@@ -201,12 +202,16 @@ export default function Setup() {
 
       {/* Step content — key forces remount on step change to reset local state */}
       <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-8)' }}>
-        {/* Real step components (OB-1268–OB-1274) will replace PlaceholderStep here */}
-        <PlaceholderStep
-          key={currentStep}
-          label={STEPS[currentStep] ?? ''}
-          onValidChange={stepProps.onValidChange}
-        />
+        {currentStep === 0 ? (
+          <WelcomeStep key={0} {...stepProps} />
+        ) : (
+          /* Remaining step components (OB-1269–OB-1274) will replace PlaceholderStep here */
+          <PlaceholderStep
+            key={currentStep}
+            label={STEPS[currentStep] ?? ''}
+            onValidChange={stepProps.onValidChange}
+          />
+        )}
       </div>
 
       {/* Navigation */}

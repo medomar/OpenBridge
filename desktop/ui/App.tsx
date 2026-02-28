@@ -5,6 +5,7 @@ import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
 declare global {
   interface Window {
     openbridge: {
+      detectPrerequisites(): Promise<{ os: string; nodeVersion: string; nodeOk: boolean }>;
       getConfig(): Promise<unknown>;
       startBridge(): Promise<{ success: boolean }>;
       stopBridge(): Promise<{ success: boolean }>;

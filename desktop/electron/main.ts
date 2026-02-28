@@ -55,6 +55,16 @@ app.on('window-all-closed', () => {
   }
 });
 
+// IPC handlers for setup wizard
+ipcMain.handle('setup:detectPrerequisites', async () => {
+  const platform = process.platform;
+  const os = platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : platform;
+  const nodeVersion = process.version;
+  const match = /^v(\d+)/.exec(nodeVersion);
+  const major = match ? parseInt(match[1], 10) : 0;
+  return { os, nodeVersion, nodeOk: major >= 22 };
+});
+
 // IPC handlers for bridge control
 ipcMain.handle('bridge:start', async () => {
   // Bridge process management handled by bridge-process.ts
