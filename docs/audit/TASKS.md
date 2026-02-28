@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 60 | **In Progress:** 0 | **Done:** 35
+> **Pending:** 59 | **In Progress:** 0 | **Done:** 36
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,9 +35,9 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 2      | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 3      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **35** |        |
+|       | **Total**                                      |         | **95** | **36** |        |
 
 ---
 
@@ -143,7 +143,7 @@
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1233 | Add `isPackagedMode(): boolean` helper to `src/cli/utils.ts` — returns `true` when running inside a pkg-compiled binary. Check `(process as any).pkg !== undefined`. Export it. This is used throughout the app to switch between dev-mode paths (relative to project root) and packaged-mode paths (relative to `os.homedir()/.openbridge/`) | ✅ Done   |
 | 2   | OB-1234 | Add `getConfigDir(): string` to `src/cli/utils.ts` — if `isPackagedMode()`, return `path.join(os.homedir(), '.openbridge')`. Otherwise return the project root (existing behavior). Create the directory if it doesn't exist. All config paths (`config.json`, `.env`, `openbridge.db`, logs) resolve relative to this                        | ✅ Done   |
-| 3   | OB-1235 | Update `src/core/config.ts` — use `getConfigDir()` to resolve `config.json` path when in packaged mode instead of hardcoded relative path. Update `resolveConfigPath()` to check `getConfigDir()` first, then fallback to CWD. Ensure `loadConfig()` works in both modes                                                                      | ◻ Pending |
+| 3   | OB-1235 | Update `src/core/config.ts` — use `getConfigDir()` to resolve `config.json` path when in packaged mode instead of hardcoded relative path. Update `resolveConfigPath()` to check `getConfigDir()` first, then fallback to CWD. Ensure `loadConfig()` works in both modes                                                                      | ✅ Done   |
 | 4   | OB-1236 | Update `src/index.ts` — detect packaged mode at startup. If `isPackagedMode()` and no `config.json` exists in `getConfigDir()`, automatically run the Phase 71 init wizard before starting the bridge. Import and call `init()` from `src/cli/init.ts`. Print "First-time setup detected — running setup wizard..."                           | ◻ Pending |
 | 5   | OB-1237 | Update `src/memory/database.ts` — resolve SQLite database path (`openbridge.db`) using `getConfigDir()` when in packaged mode. Ensure the database file is created in the user's home directory, not inside the binary snapshot filesystem (which is read-only in pkg)                                                                        | ◻ Pending |
 | 6   | OB-1238 | Update `src/core/logger.ts` — resolve log file paths using `getConfigDir()` when in packaged mode. Create `logs/` subdirectory under `getConfigDir()` if it doesn't exist. Ensure Pino file transport writes to the correct location                                                                                                          | ◻ Pending |
