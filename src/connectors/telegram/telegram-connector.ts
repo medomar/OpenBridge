@@ -275,6 +275,59 @@ export class TelegramConnector implements Connector {
       });
     });
 
+    this.bot.on('message:photo', (ctx: GrammyContext) => {
+      const photos = ctx.message.photo;
+      if (!photos || photos.length === 0) return;
+
+      const chatId = ctx.chat.id.toString();
+      const sender = ctx.from?.id.toString() ?? 'unknown';
+      const msgId = `telegram-${ctx.message.message_id.toString()}`;
+      const timestamp = new Date(ctx.message.date * 1000);
+      const caption = ctx.message.caption ?? '';
+
+      const bot = this.bot;
+      const mediaManager = this.mediaManager;
+
+      const handlePhoto = async (): Promise<void> => {
+        // Telegram sends photos in multiple resolutions; the last element is the largest
+        const largestPhoto = photos[photos.length - 1];
+        if (!largestPhoto) return;
+
+        let attachments: InboundMessage['attachments'];
+
+        if (bot && mediaManager) {
+          try {
+            const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
+              bot,
+              largestPhoto.file_id,
+              mediaManager,
+            );
+            attachments = [{ type: 'image', filePath, mimeType, sizeBytes }];
+          } catch (err) {
+            logger.warn({ err, chatId }, 'Failed to download Telegram photo');
+          }
+        }
+
+        const content = caption || '[Image]';
+        const inbound: InboundMessage = {
+          id: msgId,
+          source: 'telegram',
+          sender,
+          rawContent: content,
+          content,
+          timestamp,
+          attachments,
+          metadata: { chatId },
+        };
+
+        this.emit('message', inbound);
+      };
+
+      handlePhoto().catch((err: Error) => {
+        logger.warn({ err, chatId }, 'Unhandled error in Telegram photo handler');
+      });
+    });
+
     // Start long polling — does not await because it runs until bot.stop()
     this.bot.start().catch((err: Error) => {
       logger.error({ err }, 'Telegram bot polling error');
