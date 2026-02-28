@@ -17,6 +17,10 @@ export interface TranscriptionResult {
   durationMs: number;
 }
 
+/** Fallback message shown when no transcription backend is available. */
+export const TRANSCRIPTION_FALLBACK_MESSAGE =
+  '[Voice message — set OPENAI_API_KEY or install whisper for transcription]';
+
 /**
  * Locate the whisper CLI binary on PATH.
  * Returns the full path if found, null otherwise.
@@ -31,6 +35,7 @@ export async function findWhisper(): Promise<string | null> {
 }
 
 let _cachedBackend: TranscriptionBackend | undefined;
+let _cachedWhisperPath: string | null = null;
 
 /**
  * Detect and cache the best available transcription backend for this process.
@@ -44,15 +49,23 @@ export async function detectAvailableBackend(): Promise<TranscriptionBackend> {
   let backend: TranscriptionBackend;
   if (process.env['OPENAI_API_KEY']) {
     backend = 'api';
-  } else if (await findWhisper()) {
-    backend = 'cli';
   } else {
-    backend = 'none';
+    _cachedWhisperPath = await findWhisper();
+    backend = _cachedWhisperPath ? 'cli' : 'none';
   }
 
   logger.info({ backend }, 'Transcription backend detected');
   _cachedBackend = backend;
   return backend;
+}
+
+/**
+ * Reset the cached backend and whisper path.
+ * @internal For testing only — do not call in production code.
+ */
+export function _resetCachedBackend(): void {
+  _cachedBackend = undefined;
+  _cachedWhisperPath = null;
 }
 
 /**
@@ -101,16 +114,14 @@ export async function transcribeViaApi(audioPath: string): Promise<string | null
 }
 
 /**
- * Transcribe an audio file using the Whisper CLI.
+ * Transcribe an audio file using the local Whisper CLI binary.
  *
- * @param audioPath - Absolute path to the audio file (ogg, oga, wav, mp3, etc.)
- * @returns Transcription text, or null if Whisper is not installed or transcription fails.
+ * @param whisperPath - Absolute path to the whisper binary.
+ * @param audioPath - Absolute path to the audio file.
+ * @returns Transcription text, or null on failure.
  */
-export async function transcribeAudio(audioPath: string): Promise<string | null> {
+async function transcribeViaCli(whisperPath: string, audioPath: string): Promise<string | null> {
   try {
-    const whisperPath = await findWhisper();
-    if (!whisperPath) return null;
-
     const outputDir = tmpdir();
     await execFileAsync(whisperPath, [
       audioPath,
@@ -130,4 +141,50 @@ export async function transcribeAudio(audioPath: string): Promise<string | null>
     logger.warn({ err }, 'Voice transcription failed');
     return null;
   }
+}
+
+/**
+ * Transcribe an audio file using the best available backend.
+ *
+ * Fallback chain: OpenAI Whisper API → local Whisper CLI → null.
+ * If the API backend is detected but fails for a given file, falls through to CLI.
+ *
+ * @param audioPath - Absolute path to the audio file (ogg, oga, wav, mp3, etc.)
+ * @returns TranscriptionResult with text, backend used, and duration — or null if
+ *          no backend is available or all attempts fail.
+ */
+export async function transcribeAudio(audioPath: string): Promise<TranscriptionResult | null> {
+  const startMs = Date.now();
+  const backend = await detectAvailableBackend();
+
+  if (backend === 'api') {
+    const text = await transcribeViaApi(audioPath);
+    if (text !== null) {
+      return { text, backend: 'api', durationMs: Date.now() - startMs };
+    }
+    // API failed — fall through to CLI
+    const whisperPath = await findWhisper();
+    if (whisperPath) {
+      const cliText = await transcribeViaCli(whisperPath, audioPath);
+      if (cliText !== null) {
+        return { text: cliText, backend: 'cli', durationMs: Date.now() - startMs };
+      }
+    }
+    return null;
+  }
+
+  if (backend === 'cli') {
+    // Use path cached during detection to avoid a redundant `which` call
+    const whisperPath = _cachedWhisperPath ?? (await findWhisper());
+    if (whisperPath) {
+      const cliText = await transcribeViaCli(whisperPath, audioPath);
+      if (cliText !== null) {
+        return { text: cliText, backend: 'cli', durationMs: Date.now() - startMs };
+      }
+    }
+    return null;
+  }
+
+  // backend === 'none'
+  return null;
 }
