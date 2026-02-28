@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // vi.hoisted — create the async mock BEFORE any vi.mock factory runs so that
@@ -46,6 +46,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import {
   findWhisper,
   transcribeAudio,
+  transcribeViaApi,
   _resetCachedBackend,
 } from '../../src/core/voice-transcriber.js';
 
@@ -252,5 +253,77 @@ describe('transcribeAudio', () => {
 
     vi.unstubAllGlobals();
     delete process.env['OPENAI_API_KEY'];
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transcribeViaApi — OB-1207
+// ---------------------------------------------------------------------------
+
+describe('transcribeViaApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env['OPENAI_API_KEY'];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env['OPENAI_API_KEY'];
+  });
+
+  it('returns transcription text on a successful API response', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    mockReadFile.mockResolvedValue(Buffer.from('audio data'));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ text: 'Hello from Whisper API' }),
+      }),
+    );
+
+    const result = await transcribeViaApi('/audio/voice.ogg');
+
+    expect(result).toBe('Hello from Whisper API');
+  });
+
+  it('returns null without calling fetch when OPENAI_API_KEY is missing', async () => {
+    // No API key in env
+    const mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await transcribeViaApi('/audio/voice.ogg');
+
+    expect(result).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the API responds with a 4xx or 5xx error status', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    mockReadFile.mockResolvedValue(Buffer.from('audio data'));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+      }),
+    );
+
+    const result = await transcribeViaApi('/audio/voice.ogg');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null gracefully when a network error is thrown', async () => {
+    process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    mockReadFile.mockResolvedValue(Buffer.from('audio data'));
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+
+    const result = await transcribeViaApi('/audio/voice.ogg');
+
+    expect(result).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 88 | **In Progress:** 0 | **Done:** 7
+> **Pending:** 87 | **In Progress:** 0 | **Done:** 8
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -33,11 +33,11 @@
 
 | Phase | Title                                          | Finding | Tasks  | Done  | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ----- | ------ |
-| 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 7     | ◻      |
+| 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 8     | ◻      |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 0     | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0     | ◻      |
-|       | **Total**                                      |         | **95** | **7** |        |
+|       | **Total**                                      |         | **95** | **8** |        |
 
 ---
 
@@ -61,7 +61,7 @@
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 6   | OB-1205 | Add "Prerequisites" section to `README.md` — insert after the "Quick Start" section. List: **Required:** Node.js >= 22. **For WhatsApp:** Chrome/Chromium (auto-installed by Puppeteer). **For voice messages (recommended):** `OPENAI_API_KEY` env var (same key used by Codex — `$0.006/min`, zero local setup). **For voice messages (offline):** `pip install openai-whisper` or `brew install whisper-cpp`. **For Telegram:** Bot token from @BotFather. **For Discord:** Bot token + app ID from Discord Developer Portal. Keep it concise — 15–20 lines max | ✅ Done   |
 | 7   | OB-1206 | Update `config.example.json` — add a comment block or adjacent `config.example.env` file showing `OPENAI_API_KEY=sk-...` with a note that it's optional and shared with Codex. Do NOT add a new config schema field — the env var is sufficient                                                                                                                                                                                                                                                                                                                    | ✅ Done   |
-| 8   | OB-1207 | Unit tests for `transcribeViaApi()` — mock `global.fetch` to test: (1) successful transcription returns text, (2) missing API key returns `null` without calling fetch, (3) API error (4xx/5xx) returns `null` and logs warning, (4) network error returns `null` gracefully. 4 test cases minimum in `tests/core/voice-transcriber.test.ts`                                                                                                                                                                                                                       | ◻ Pending |
+| 8   | OB-1207 | Unit tests for `transcribeViaApi()` — mock `global.fetch` to test: (1) successful transcription returns text, (2) missing API key returns `null` without calling fetch, (3) API error (4xx/5xx) returns `null` and logs warning, (4) network error returns `null` gracefully. 4 test cases minimum in `tests/core/voice-transcriber.test.ts`                                                                                                                                                                                                                       | ✅ Done   |
 | 9   | OB-1208 | Unit tests for fallback chain — test `transcribeAudio()` with mocked backends: (1) API available → uses API, (2) API fails + CLI available → falls through to CLI, (3) neither available → returns null with correct fallback message, (4) API succeeds → TranscriptionResult has `backend: 'api'`. 4 test cases minimum                                                                                                                                                                                                                                           | ◻ Pending |
 | 10  | OB-1209 | Build + lint + typecheck + full test suite validation — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done                                                                                                                                                                                                                                                                                                                                                                                   | ◻ Pending |
 
