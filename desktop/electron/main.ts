@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { bridgeProcess } from './bridge-process.js';
+import { bridgeProcess, type MessageEvent } from './bridge-process.js';
 import { trayManager } from './tray.js';
 
 const execAsync = promisify(exec);
@@ -18,6 +18,7 @@ const isDev = process.env.NODE_ENV === 'development';
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let hasShownMinimizeNotification = false;
+let unreadCount = 0;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -66,6 +67,16 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Clear the unread badge when the user opens/focuses the window.
+  mainWindow.on('focus', () => {
+    if (unreadCount > 0) {
+      unreadCount = 0;
+      if (process.platform === 'darwin' && app.dock) {
+        app.dock.setBadge('');
+      }
+    }
+  });
 }
 
 // Set isQuitting before any windows close so the 'close' handler lets them through.
@@ -79,6 +90,22 @@ app.whenReady().then(() => {
   trayManager.init(() => mainWindow);
   bridgeProcess.onStatusChange((status) => {
     trayManager.update(status);
+  });
+
+  // Show OS notification and increment dock badge when a message arrives while
+  // the window is hidden or not focused. Badge is cleared on window focus.
+  bridgeProcess.onMessageReceived((event: MessageEvent) => {
+    const win = mainWindow;
+    if (!win || !win.isVisible() || !win.isFocused()) {
+      unreadCount++;
+      new Notification({
+        title: 'OpenBridge',
+        body: `New message from ${event.sender} via ${event.channel}`,
+      }).show();
+      if (process.platform === 'darwin' && app.dock) {
+        app.dock.setBadge(String(unreadCount));
+      }
+    }
   });
 
   app.on('activate', () => {
