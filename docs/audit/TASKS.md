@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 | **In Progress:** 0 | **Done:** 93
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 94
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 35     | ◻      |
-|       | **Total**                                      |         | **95** | **93** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 36     | ◻      |
+|       | **Total**                                      |         | **95** | **94** |        |
 
 ---
 
@@ -270,11 +270,11 @@
 
 ### Phase 73G — Native Installers & Auto-Update
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 34  | OB-1291 | Create `desktop/electron-builder.yml` — electron-builder configuration. Build targets: macOS (`.dmg` + `.zip`, universal binary ARM + x64), Windows (NSIS installer `.exe` + `.msi`), Linux (`.AppImage` + `.deb` + `.snap`). App ID: `com.openbridge.desktop`. Code signing: read cert from env vars (for CI), skip if not available (for local dev). Include the core OpenBridge `dist/` as extra resources                                                                            | ✅ Done   |
-| 35  | OB-1292 | Add Electron auto-updater — install `electron-updater` package. In `desktop/electron/main.ts`, call `autoUpdater.checkForUpdatesAndNotify()` on app ready. Configure update feed URL to GitHub Releases (`provider: 'github', owner, repo`). On update available: show notification "Update available — downloading...". On update downloaded: show notification "Update ready — restart to apply" with Restart button. Works on macOS + Windows (Linux AppImage requires manual update) | ✅ Done   |
-| 36  | OB-1293 | Create `.github/workflows/release-desktop.yml` — CI workflow for building Electron desktop app. Triggered on tags matching `desktop-v*`. Matrix build: macOS (macos-latest), Windows (windows-latest), Linux (ubuntu-latest). Steps: checkout, install deps for both core and desktop, build core (`npm run build`), build desktop (`cd desktop && npm run build`). Upload all installers as release assets. Use `electron-builder` GitHub Actions integration                           | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 34  | OB-1291 | Create `desktop/electron-builder.yml` — electron-builder configuration. Build targets: macOS (`.dmg` + `.zip`, universal binary ARM + x64), Windows (NSIS installer `.exe` + `.msi`), Linux (`.AppImage` + `.deb` + `.snap`). App ID: `com.openbridge.desktop`. Code signing: read cert from env vars (for CI), skip if not available (for local dev). Include the core OpenBridge `dist/` as extra resources                                                                            | ✅ Done |
+| 35  | OB-1292 | Add Electron auto-updater — install `electron-updater` package. In `desktop/electron/main.ts`, call `autoUpdater.checkForUpdatesAndNotify()` on app ready. Configure update feed URL to GitHub Releases (`provider: 'github', owner, repo`). On update available: show notification "Update available — downloading...". On update downloaded: show notification "Update ready — restart to apply" with Restart button. Works on macOS + Windows (Linux AppImage requires manual update) | ✅ Done |
+| 36  | OB-1293 | Create `.github/workflows/release-desktop.yml` — CI workflow for building Electron desktop app. Triggered on tags matching `desktop-v*`. Matrix build: macOS (macos-latest), Windows (windows-latest), Linux (ubuntu-latest). Steps: checkout, install deps for both core and desktop, build core (`npm run build`), build desktop (`cd desktop && npm run build`). Upload all installers as release assets. Use `electron-builder` GitHub Actions integration                           | ✅ Done |
 
 ### Phase 73H — Testing & Validation
 
