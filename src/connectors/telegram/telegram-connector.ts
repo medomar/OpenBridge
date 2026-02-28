@@ -328,6 +328,63 @@ export class TelegramConnector implements Connector {
       });
     });
 
+    this.bot.on('message:document', (ctx: GrammyContext) => {
+      const document = ctx.message.document;
+      if (!document) return;
+
+      const chatId = ctx.chat.id.toString();
+      const sender = ctx.from?.id.toString() ?? 'unknown';
+      const msgId = `telegram-${ctx.message.message_id.toString()}`;
+      const timestamp = new Date(ctx.message.date * 1000);
+      const caption = ctx.message.caption ?? '';
+
+      const bot = this.bot;
+      const mediaManager = this.mediaManager;
+
+      const handleDocument = async (): Promise<void> => {
+        let attachments: InboundMessage['attachments'];
+
+        if (bot && mediaManager) {
+          try {
+            const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
+              bot,
+              document.file_id,
+              mediaManager,
+            );
+            attachments = [
+              {
+                type: 'document',
+                filePath,
+                mimeType: document.mime_type ?? mimeType,
+                filename: document.file_name,
+                sizeBytes,
+              },
+            ];
+          } catch (err) {
+            logger.warn({ err, chatId }, 'Failed to download Telegram document');
+          }
+        }
+
+        const content = caption || '[Document]';
+        const inbound: InboundMessage = {
+          id: msgId,
+          source: 'telegram',
+          sender,
+          rawContent: content,
+          content,
+          timestamp,
+          attachments,
+          metadata: { chatId },
+        };
+
+        this.emit('message', inbound);
+      };
+
+      handleDocument().catch((err: Error) => {
+        logger.warn({ err, chatId }, 'Unhandled error in Telegram document handler');
+      });
+    });
+
     // Start long polling — does not await because it runs until bot.stop()
     this.bot.start().catch((err: Error) => {
       logger.error({ err }, 'Telegram bot polling error');
