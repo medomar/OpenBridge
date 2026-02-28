@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import {
@@ -22,6 +23,8 @@ import { MasterManager } from './master/index.js';
 import { createAdapterRegistry } from './core/adapter-registry.js';
 import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
+import { isPackagedMode, getConfigDir } from './cli/utils.js';
+import { runInit } from './cli/init.js';
 
 interface PackageJson {
   version: string;
@@ -320,6 +323,16 @@ async function main(): Promise<void> {
   }
 
   logger.info({ headless: isHeadless }, 'OpenBridge starting...');
+
+  // Packaged mode: auto-run the setup wizard on first launch when config.json is absent
+  if (isPackagedMode()) {
+    const configDir = getConfigDir();
+    const firstRunConfigPath = path.join(configDir, 'config.json');
+    if (!existsSync(firstRunConfigPath)) {
+      process.stdout.write('First-time setup detected — running setup wizard...\n');
+      await runInit({ outputPath: firstRunConfigPath });
+    }
+  }
 
   let bridge: Bridge | null = null;
   let workspaceManager: WorkspaceManager | null = null;
