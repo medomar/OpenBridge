@@ -11,6 +11,7 @@ import {
   printError,
   printSuccess,
   printWarning,
+  runCommand,
 } from './utils.js';
 
 const TOTAL_STEPS = 7;
@@ -71,6 +72,14 @@ export async function detectAITools(): Promise<AIToolStatus> {
   return { claude, codex, aider };
 }
 
+function ask(rl: ReadlineInterface, question: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      resolve(answer.trim());
+    });
+  });
+}
+
 export async function checkPrerequisites(): Promise<boolean> {
   if (!meetsNodeVersion('22')) {
     printError(`Node.js >= 22 is required. You have ${getNodeVersion()}.`);
@@ -94,14 +103,6 @@ export async function checkPrerequisites(): Promise<boolean> {
   }
 
   return true;
-}
-
-function ask(rl: ReadlineInterface, question: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      resolve(answer.trim());
-    });
-  });
 }
 
 export function buildConfig(answers: Answers): Record<string, unknown> {
@@ -131,6 +132,55 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
   return config;
 }
 
+export async function promptAIToolInstallation(
+  rl: ReadlineInterface,
+  toolStatus: AIToolStatus,
+  write: (text: string) => void,
+): Promise<void> {
+  const { claude, codex, aider } = toolStatus;
+  const anyInstalled = claude || codex || aider;
+
+  if (anyInstalled) {
+    const installed: string[] = [];
+    if (claude) installed.push('claude');
+    if (codex) installed.push('codex');
+    if (aider) installed.push('aider');
+    write(`\n  AI tools found — ${installed.join(', ')}\n`);
+    const addMore = await ask(rl, '  Install additional AI tools? (y/N): ');
+    if (addMore.toLowerCase() !== 'y') return;
+  } else {
+    write('\n  No AI tools detected. OpenBridge requires at least one to run.\n');
+  }
+
+  write('\n    1. Claude Code    npm install -g @anthropic-ai/claude-code\n');
+  write('    2. OpenAI Codex   npm install -g @openai/codex\n');
+  write('    3. Both\n');
+  write('    4. Skip — install later\n\n');
+
+  const choice = await ask(rl, '  Your choice (1/2/3/4): ');
+
+  const toInstall: Array<{ name: string; pkg: string }> = [];
+  if (choice === '1' || choice === '3') {
+    toInstall.push({ name: 'Claude Code', pkg: '@anthropic-ai/claude-code' });
+  }
+  if (choice === '2' || choice === '3') {
+    toInstall.push({ name: 'OpenAI Codex', pkg: '@openai/codex' });
+  }
+
+  for (const tool of toInstall) {
+    write(`\n  Installing ${tool.name}...\n`);
+    const result = await runCommand('npm', ['install', '-g', tool.pkg]);
+    if (result.exitCode === 0) {
+      printSuccess(`${tool.name} installed successfully`);
+    } else {
+      printError(`Failed to install ${tool.name}`);
+      if (result.stderr) {
+        process.stdout.write(result.stderr + '\n');
+      }
+    }
+  }
+}
+
 export async function runInit(options: InitOptions = {}): Promise<void> {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
@@ -152,6 +202,9 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     );
 
     await checkPrerequisites();
+
+    const toolStatus = await detectAITools();
+    await promptAIToolInstallation(rl, toolStatus, write);
 
     write('\n  OpenBridge — Configuration Setup\n\n');
 
