@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('openbridge', {
+  detectPrerequisites: (): Promise<{ os: string; nodeVersion: string; nodeOk: boolean }> =>
+    ipcRenderer.invoke('setup:detectPrerequisites'),
+
   startBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:start'),
 
   stopBridge: (): Promise<{ success: boolean }> => ipcRenderer.invoke('bridge:stop'),
