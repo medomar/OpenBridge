@@ -16,7 +16,7 @@ import {
   runCommand,
 } from './utils.js';
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 11;
 
 export interface InitOptions {
   input?: NodeJS.ReadableStream;
@@ -379,25 +379,41 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     output.write(text);
   };
 
+  const handleSigint = (): void => {
+    write('\n\n  Setup cancelled.\n');
+    rl.close();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', handleSigint);
+
   try {
+    // Step 1: Welcome banner + OS detection
+    printStep(1, TOTAL_STEPS, 'Welcome');
     const os = detectOS();
     const osLabel = os === 'macos' ? 'macOS' : os === 'windows' ? 'Windows' : 'Linux';
     const nodeVer = getNodeVersion();
-    write(`\n  OpenBridge Setup Wizard\n`);
-    write(
-      `  Welcome to OpenBridge Setup! (${osLabel} ${process.arch}, Node ${nodeVer}) — ${TOTAL_STEPS} steps\n\n`,
-    );
+    write(`\n  Welcome to OpenBridge Setup! (${osLabel} ${process.arch}, Node ${nodeVer})\n\n`);
 
+    // Step 2: Prerequisite check
+    printStep(2, TOTAL_STEPS, 'Prerequisites');
+    write('\n');
     await checkPrerequisites();
 
+    // Step 3: AI tool detection + install
+    printStep(3, TOTAL_STEPS, 'AI Tools');
+    write('\n');
     const toolStatus = await detectAITools();
     await promptAIToolInstallation(rl, toolStatus, write);
+
+    // Step 4: Account/API key setup
+    printStep(4, TOTAL_STEPS, 'Account Setup');
     await setupClaudeAuth(rl, write);
     await setupCodexAuth(rl, write);
 
-    write('\n  OpenBridge — Configuration Setup\n\n');
-
-    // Check if config.json already exists
+    // Step 5: Workspace path
+    printStep(5, TOTAL_STEPS, 'Workspace Path');
+    write('\n');
     if (existsSync(outputPath)) {
       const overwrite = await ask(rl, '  config.json already exists. Overwrite? (y/N): ');
       if (overwrite.toLowerCase() !== 'y') {
@@ -406,8 +422,27 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Question 1: Connector selection
-    printStep(4, TOTAL_STEPS, 'Connector Selection');
+    const defaultWorkspace = process.cwd();
+    const rawWorkspacePath = await ask(
+      rl,
+      `  Path to your project [default: ${defaultWorkspace}]: `,
+    );
+    const workspacePath = resolve(rawWorkspacePath || defaultWorkspace);
+    write(`  Resolved path: ${workspacePath}\n`);
+
+    if (!existsSync(workspacePath)) {
+      const createIt = await ask(rl, '  Path does not exist. Create it? (y/N): ');
+      if (createIt.toLowerCase() === 'y') {
+        await mkdir(workspacePath, { recursive: true });
+        printSuccess(`Created: ${workspacePath}`);
+      } else {
+        write('  Error: workspace path does not exist.\n');
+        return;
+      }
+    }
+
+    // Step 6: Connector selection + config
+    printStep(6, TOTAL_STEPS, 'Connector Selection');
     write('\n');
     write('    1. WhatsApp — Connect via WhatsApp Web (scans QR code on first run)\n');
     write(
@@ -435,28 +470,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       return;
     }
 
-    // Question 2: Workspace path
-    printStep(5, TOTAL_STEPS, 'Workspace Path');
-    const defaultWorkspace = process.cwd();
-    const rawWorkspacePath = await ask(
-      rl,
-      `  Path to your project [default: ${defaultWorkspace}]: `,
-    );
-    const workspacePath = resolve(rawWorkspacePath || defaultWorkspace);
-    write(`  Resolved path: ${workspacePath}\n`);
-
-    if (!existsSync(workspacePath)) {
-      const createIt = await ask(rl, '  Path does not exist. Create it? (y/N): ');
-      if (createIt.toLowerCase() === 'y') {
-        await mkdir(workspacePath, { recursive: true });
-        printSuccess(`Created: ${workspacePath}`);
-      } else {
-        write('  Error: workspace path does not exist.\n');
-        return;
-      }
-    }
-
-    let config: Record<string, unknown>;
+    let connectorOptions: Record<string, unknown> | undefined;
+    let prefix = '/ai';
 
     if (connector === 'whatsapp') {
       write('\n  WhatsApp — First-run setup\n');
@@ -464,28 +479,20 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
         '  On first run, a QR code will be printed in the terminal. Scan it with\n' +
           '  WhatsApp on your phone (Linked Devices → Link a device). No token needed.\n\n',
       );
-
-      // Question 3: Phone whitelist (WhatsApp only)
-      const whitelist = await promptWhitelist(rl, write);
-
-      // Question 4: Command prefix (WhatsApp only)
       const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');
-      const prefix = prefixAnswer || '/ai';
-
-      config = buildConfig({ connector, workspacePath, whitelist, prefix });
+      prefix = prefixAnswer || '/ai';
     } else if (connector === 'telegram') {
       const botToken = await ask(rl, '  Telegram bot token (from @BotFather): ');
       if (!botToken) {
         write('  Error: bot token is required for Telegram.\n');
         return;
       }
-      // Validate Telegram bot token format: digits:alphanumeric
       if (!/^\d+:[A-Za-z0-9_-]+$/.test(botToken)) {
         write(
           '  Warning: token format looks unexpected. Expected format: 123456789:ABCDEFabcdef\n',
         );
       }
-      config = buildConfig({ connector, workspacePath, connectorOptions: { token: botToken } });
+      connectorOptions = { token: botToken };
     } else if (connector === 'discord') {
       const botToken = await ask(rl, '  Discord bot token (from Developer Portal): ');
       if (!botToken) {
@@ -493,56 +500,69 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
         return;
       }
       const appId = await ask(rl, '  Discord application ID (from Developer Portal): ');
-      const connectorOptions: Record<string, unknown> = { token: botToken };
+      connectorOptions = { token: botToken };
       if (appId) {
         connectorOptions['applicationId'] = appId;
       }
-      config = buildConfig({ connector, workspacePath, connectorOptions });
     } else if (connector === 'webchat') {
       const portAnswer = await ask(rl, '  HTTP port for WebChat server (default: 3000): ');
       const port = portAnswer ? parseInt(portAnswer, 10) : 3000;
-      const connectorOptions: Record<string, unknown> = { port };
-      config = buildConfig({ connector, workspacePath, connectorOptions });
+      connectorOptions = { port };
+    }
+    // console: no extra config needed
+
+    // Step 7: Whitelist setup
+    printStep(7, TOTAL_STEPS, 'Whitelist Setup');
+    let whitelist: string[] | undefined;
+    if (connector === 'whatsapp') {
+      whitelist = await promptWhitelist(rl, write);
     } else {
-      config = buildConfig({ connector, workspacePath });
+      write(`\n  Whitelist — not required for ${connector} connector\n`);
     }
 
-    // Optional: MCP server configuration
+    // Step 8: MCP setup
+    printStep(8, TOTAL_STEPS, 'MCP Setup');
     write('\n');
+    const mcpServers: McpServerEntry[] = [];
+    let mcpConfigPath: string | undefined;
     const mcpAnswer = await ask(rl, '  Enable MCP servers for external service access? (y/N): ');
     if (mcpAnswer.toLowerCase() === 'y') {
-      const servers: McpServerEntry[] = [];
       write("  Add MCP servers. Enter 'done' as server name to finish.\n");
       for (;;) {
         const serverName = await ask(rl, "  Server name (or 'done' to finish): ");
         if (!serverName || serverName.toLowerCase() === 'done') break;
         const command = await ask(rl, '  Command (e.g. npx -y @anthropic/canva-mcp-server): ');
         if (command) {
-          servers.push({ name: serverName, command });
+          mcpServers.push({ name: serverName, command });
         }
       }
       const configPathAnswer = await ask(
         rl,
         '  Import MCP config from Claude Desktop? (path or skip): ',
       );
-      if (servers.length > 0 || configPathAnswer) {
-        const mcp: Record<string, unknown> = {
-          enabled: true,
-          servers,
-        };
-        if (configPathAnswer) {
-          mcp['configPath'] = configPathAnswer;
-        }
-        config['mcp'] = mcp;
+      if (configPathAnswer) {
+        mcpConfigPath = configPathAnswer;
       }
     }
 
+    // Step 9: Config generation
+    printStep(9, TOTAL_STEPS, 'Config Generation');
+    write('\n');
+    const config = buildConfig({
+      connector,
+      workspacePath,
+      whitelist: connector === 'whatsapp' ? whitelist : undefined,
+      prefix: connector === 'whatsapp' ? prefix : undefined,
+      mcpServers,
+      mcpConfigPath,
+      connectorOptions,
+    });
+
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    write(`  Config written to ${outputPath}\n`);
 
-    write(`\n  Config written to ${outputPath}\n`);
-
-    // Health check
-    printStep(6, TOTAL_STEPS, 'Health Check');
+    // Step 10: Health check
+    printStep(10, TOTAL_STEPS, 'Health Check');
     write('\n');
     const healthResult = runHealthCheck(outputPath);
     for (const check of healthResult.checks) {
@@ -561,10 +581,12 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
     write('\n');
 
-    printStep(7, TOTAL_STEPS, 'Quick Start Summary');
+    // Step 11: Summary
+    printStep(11, TOTAL_STEPS, 'Quick Start Summary');
     printQuickStartSummary(write, outputPath, toolStatus, connector, workspacePath);
   } finally {
     rl.close();
+    process.removeListener('SIGINT', handleSigint);
   }
 }
 
