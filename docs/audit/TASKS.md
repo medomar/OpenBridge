@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 39 | **In Progress:** 0 | **Done:** 11
+> **Pending:** 38 | **In Progress:** 0 | **Done:** 12
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -45,14 +45,14 @@
 
 ### Phase 68B — WhatsApp Incoming Media (OB-F43)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                      | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 7   | OB-1192 | Update `parseWhatsAppMessage()` in `src/connectors/whatsapp/whatsapp-message.ts` — add optional `attachments` parameter to the function signature, pass through to `InboundMessage.attachments`. Keep backward-compatible (param defaults to undefined)                          | ✅ Done   |
-| 8   | OB-1149 | Add media download handler in `whatsapp-connector.ts` `handleIncomingMessage()` — detect `msg.hasMedia` for types `image`, `document`, `video`, `audio` (non-ptt); call `msg.downloadMedia()`; decode base64 to Buffer; save via `MediaManager.saveMedia()`                      | ✅ Done   |
-| 9   | OB-1150 | Populate `InboundMessage.attachments` in WhatsApp `handleIncomingMessage()` — build attachment metadata from MediaManager result, pass to updated `parseWhatsAppMessage()`; use caption (`msg.body`) as text content, fallback to `[Image]`/`[Document]`/`[Video]` if no caption | ✅ Done   |
-| 10  | OB-1151 | Handle WhatsApp sticker messages — detect `msg.type === 'sticker'`, download as `.webp`, attach as image type via same media download path                                                                                                                                       | ✅ Done   |
-| 11  | OB-1152 | Add download error handling — wrap `downloadMedia()` in try-catch; on failure, emit message with text `[Media attachment failed to download — {type}]` + continue with any caption text; log warning via Pino                                                                    | ✅ Done   |
-| 12  | OB-1153 | Send user feedback on media receipt — call `sendTypingIndicator()` immediately when `msg.hasMedia` is detected, before starting the download/processing                                                                                                                          | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                      | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 7   | OB-1192 | Update `parseWhatsAppMessage()` in `src/connectors/whatsapp/whatsapp-message.ts` — add optional `attachments` parameter to the function signature, pass through to `InboundMessage.attachments`. Keep backward-compatible (param defaults to undefined)                          | ✅ Done |
+| 8   | OB-1149 | Add media download handler in `whatsapp-connector.ts` `handleIncomingMessage()` — detect `msg.hasMedia` for types `image`, `document`, `video`, `audio` (non-ptt); call `msg.downloadMedia()`; decode base64 to Buffer; save via `MediaManager.saveMedia()`                      | ✅ Done |
+| 9   | OB-1150 | Populate `InboundMessage.attachments` in WhatsApp `handleIncomingMessage()` — build attachment metadata from MediaManager result, pass to updated `parseWhatsAppMessage()`; use caption (`msg.body`) as text content, fallback to `[Image]`/`[Document]`/`[Video]` if no caption | ✅ Done |
+| 10  | OB-1151 | Handle WhatsApp sticker messages — detect `msg.type === 'sticker'`, download as `.webp`, attach as image type via same media download path                                                                                                                                       | ✅ Done |
+| 11  | OB-1152 | Add download error handling — wrap `downloadMedia()` in try-catch; on failure, emit message with text `[Media attachment failed to download — {type}]` + continue with any caption text; log warning via Pino                                                                    | ✅ Done |
+| 12  | OB-1153 | Send user feedback on media receipt — call `sendTypingIndicator()` immediately when `msg.hasMedia` is detected, before starting the download/processing                                                                                                                          | ✅ Done |
 
 ### Phase 68C — Telegram Full Media Support (OB-F44)
 
