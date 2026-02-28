@@ -24,11 +24,17 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, existsSync: vi.fn(() => false) };
 });
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return { ...actual, mkdir: vi.fn(async () => undefined) };
+});
+
 vi.mock('../../src/cli/utils.js', () => ({
   detectOS: vi.fn(() => 'linux' as const),
   getNodeVersion: vi.fn(() => 'v22.0.0'),
   isCommandAvailable: vi.fn(async (cmd: string) => cmd === 'npm' || cmd === 'git'),
   meetsNodeVersion: vi.fn(() => true),
+  printStep: vi.fn(),
   printSuccess: vi.fn(),
   printWarning: vi.fn(),
   printError: vi.fn(),
@@ -198,9 +204,12 @@ describe('runInit', () => {
 
   beforeEach(() => {
     testConfigPath = join(testDir, `openbridge-test-${Date.now()}.json`);
-    vi.mocked(existsSync).mockReturnValue(false);
     vi.clearAllMocks();
-    vi.mocked(existsSync).mockReturnValue(false);
+    // Config file doesn't exist (no overwrite prompt), but workspace paths do exist
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (path === testConfigPath) return false;
+      return true;
+    });
   });
 
   afterEach(async () => {
@@ -292,16 +301,21 @@ describe('runInit', () => {
     expect(auth.prefix).toBe('/ai');
   });
 
-  it('should abort if workspace path is empty', async () => {
+  it('should use current directory as default when workspace path is empty', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       '', // connector (default console)
-      '', // empty workspace path
+      '', // empty workspace path → defaults to cwd
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
-    expect(output.data).toContain('workspace path is required');
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    // Should use process.cwd() as default workspace path
+    expect(typeof config['workspacePath']).toBe('string');
+    expect((config['workspacePath'] as string).length).toBeGreaterThan(0);
   });
 
   it('should abort if whitelist is empty', async () => {

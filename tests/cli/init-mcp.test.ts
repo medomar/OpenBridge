@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough, Writable } from 'node:stream';
 import { readFile, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildConfig, runInit } from '../../src/cli/init.js';
@@ -18,11 +19,17 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, existsSync: vi.fn(() => false) };
 });
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<object>();
+  return { ...actual, mkdir: vi.fn(async () => undefined) };
+});
+
 vi.mock('../../src/cli/utils.js', () => ({
   detectOS: vi.fn(() => 'linux' as const),
   getNodeVersion: vi.fn(() => 'v22.0.0'),
   isCommandAvailable: vi.fn(async (cmd: string) => cmd === 'npm' || cmd === 'git'),
   meetsNodeVersion: vi.fn(() => true),
+  printStep: vi.fn(),
   printSuccess: vi.fn(),
   printWarning: vi.fn(),
   printError: vi.fn(),
@@ -169,6 +176,12 @@ describe('runInit() — MCP interactive flow', () => {
 
   beforeEach(() => {
     testConfigPath = join(testDir, `ob-mcp-test-${Date.now()}.json`);
+    vi.clearAllMocks();
+    // Config file doesn't exist (no overwrite prompt), but workspace paths do exist
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (path === testConfigPath) return false;
+      return true;
+    });
   });
 
   afterEach(async () => {

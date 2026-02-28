@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
@@ -9,6 +9,7 @@ import {
   isCommandAvailable,
   meetsNodeVersion,
   printError,
+  printStep,
   printSuccess,
   printWarning,
   runCommand,
@@ -365,10 +366,24 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
 
     // Question 2: Workspace path
-    const workspacePath = await ask(rl, '  Workspace path (absolute path to your project): ');
-    if (!workspacePath) {
-      write('  Error: workspace path is required.\n');
-      return;
+    printStep(5, TOTAL_STEPS, 'Workspace Path');
+    const defaultWorkspace = process.cwd();
+    const rawWorkspacePath = await ask(
+      rl,
+      `  Path to your project [default: ${defaultWorkspace}]: `,
+    );
+    const workspacePath = resolve(rawWorkspacePath || defaultWorkspace);
+    write(`  Resolved path: ${workspacePath}\n`);
+
+    if (!existsSync(workspacePath)) {
+      const createIt = await ask(rl, '  Path does not exist. Create it? (y/N): ');
+      if (createIt.toLowerCase() === 'y') {
+        await mkdir(workspacePath, { recursive: true });
+        printSuccess(`Created: ${workspacePath}`);
+      } else {
+        write('  Error: workspace path does not exist.\n');
+        return;
+      }
     }
 
     let config: Record<string, unknown>;
