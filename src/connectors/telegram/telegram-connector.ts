@@ -7,6 +7,7 @@ import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
 import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
 import type { MediaManager } from '../../core/media-manager.js';
+import { transcribeAudio } from '../../core/voice-transcriber.js';
 
 const logger = createLogger('telegram');
 
@@ -185,8 +186,15 @@ export class TelegramConnector implements Connector {
     disconnected: [],
   };
 
+  private mediaManager: MediaManager | null = null;
+
   constructor(options: Record<string, unknown>) {
     this.config = TelegramConfigSchema.parse(options);
+  }
+
+  /** Wire a MediaManager for saving incoming voice/media files to disk. */
+  setMediaManager(manager: MediaManager): void {
+    this.mediaManager = manager;
   }
 
   async initialize(): Promise<void> {
@@ -219,6 +227,52 @@ export class TelegramConnector implements Connector {
       };
 
       this.emit('message', message);
+    });
+
+    this.bot.on('message:voice', (ctx: GrammyContext) => {
+      const voice = ctx.message.voice;
+      if (!voice) return;
+
+      const chatId = ctx.chat.id.toString();
+      const sender = ctx.from?.id.toString() ?? 'unknown';
+      const msgId = `telegram-${ctx.message.message_id.toString()}`;
+      const timestamp = new Date(ctx.message.date * 1000);
+
+      const bot = this.bot;
+      const mediaManager = this.mediaManager;
+
+      const handleVoice = async (): Promise<void> => {
+        let content: string;
+
+        if (!bot || !mediaManager) {
+          content = '[Voice message — install whisper for auto-transcription]';
+        } else {
+          try {
+            const { filePath } = await downloadTelegramFile(bot, voice.file_id, mediaManager);
+            const transcription = await transcribeAudio(filePath);
+            content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+          } catch (err) {
+            logger.warn({ err, chatId }, 'Failed to download/transcribe Telegram voice message');
+            content = '[Voice message — transcription failed]';
+          }
+        }
+
+        const inbound: InboundMessage = {
+          id: msgId,
+          source: 'telegram',
+          sender,
+          rawContent: content,
+          content,
+          timestamp,
+          metadata: { chatId },
+        };
+
+        this.emit('message', inbound);
+      };
+
+      handleVoice().catch((err: Error) => {
+        logger.warn({ err, chatId }, 'Unhandled error in Telegram voice handler');
+      });
     });
 
     // Start long polling — does not await because it runs until bot.stop()
