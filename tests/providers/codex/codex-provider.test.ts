@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CodexProvider } from '../../../src/providers/codex/codex-provider.js';
 import { ProviderError } from '../../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../../src/types/message.js';
@@ -78,15 +78,9 @@ describe('CodexProvider', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: OPENAI_API_KEY is set
-    process.env['OPENAI_API_KEY'] = 'sk-test-key';
     mockAccess.mockResolvedValue(undefined);
     mockSpawn.mockResolvedValue({ stdout: 'ok', stderr: '', exitCode: 0 });
     provider = new CodexProvider(DEFAULT_OPTIONS);
-  });
-
-  afterEach(() => {
-    delete process.env['OPENAI_API_KEY'];
   });
 
   it('has name "codex"', () => {
@@ -420,16 +414,7 @@ describe('CodexProvider', () => {
   // -----------------------------------------------------------------------
 
   describe('isAvailable()', () => {
-    it('returns false when OPENAI_API_KEY is not set', async () => {
-      delete process.env['OPENAI_API_KEY'];
-
-      const available = await provider.isAvailable();
-
-      expect(available).toBe(false);
-    });
-
-    it('returns true when OPENAI_API_KEY is set and codex binary exists', async () => {
-      process.env['OPENAI_API_KEY'] = 'sk-test-key';
+    it('returns true when codex binary exists (no API key required)', async () => {
       mockExec.mockResolvedValue({ stdout: 'codex 0.104.0' });
 
       const available = await provider.isAvailable();
@@ -438,7 +423,6 @@ describe('CodexProvider', () => {
     });
 
     it('returns false when codex binary is not found (exec throws)', async () => {
-      process.env['OPENAI_API_KEY'] = 'sk-test-key';
       mockExec.mockRejectedValue(new Error('command not found: codex'));
 
       const available = await provider.isAvailable();

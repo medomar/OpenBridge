@@ -107,7 +107,8 @@ export class CodexProvider implements AIProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    if (!process.env['OPENAI_API_KEY']) return false;
+    // Codex CLI supports multiple auth methods (OAuth via `codex login`, API key, etc.).
+    // We only check that the binary is installed — auth is handled by Codex itself.
     try {
       await execAsync('codex --version', { timeout: 5000 });
       return true;
