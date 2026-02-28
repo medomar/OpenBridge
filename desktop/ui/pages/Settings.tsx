@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+
+const GeneralSettings = lazy(() => import('./settings/GeneralSettings'));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,7 +188,11 @@ export default function Settings() {
           minHeight: 0,
         }}
       >
-        {activeTab === 'general' && <PlaceholderTab label="General" />}
+        {activeTab === 'general' && draftConfig != null && (
+          <Suspense fallback={<PlaceholderTab label="General" />}>
+            <GeneralSettings config={draftConfig} onUpdate={handleUpdate} />
+          </Suspense>
+        )}
         {activeTab === 'connectors' && <PlaceholderTab label="Connectors" />}
         {activeTab === 'providers' && <PlaceholderTab label="AI Providers" />}
         {activeTab === 'mcp' && <PlaceholderTab label="MCP Servers" />}
