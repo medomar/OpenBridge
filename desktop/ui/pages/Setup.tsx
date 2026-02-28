@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import AccountStep from './setup/AccountStep';
 import AIToolStep from './setup/AIToolStep';
 import WelcomeStep from './setup/WelcomeStep';
 
@@ -207,6 +208,8 @@ export default function Setup() {
           <WelcomeStep key={0} {...stepProps} />
         ) : currentStep === 1 ? (
           <AIToolStep key={1} {...stepProps} />
+        ) : currentStep === 2 ? (
+          <AccountStep key={2} {...stepProps} />
         ) : (
           /* Remaining step components (OB-1270–OB-1274) will replace PlaceholderStep here */
           <PlaceholderStep

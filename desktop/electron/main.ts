@@ -103,6 +103,23 @@ ipcMain.handle('setup:installAiTool', async (_event, tool: string) => {
   }
 });
 
+ipcMain.handle('setup:authenticateTool', async (_event, tool: string) => {
+  const commandMap: Record<string, string> = {
+    claude: 'claude auth login',
+    codex: 'codex login',
+  };
+  const cmd = commandMap[tool];
+  if (!cmd) return { success: false, error: 'Unknown tool' };
+
+  try {
+    await execAsync(cmd, { timeout: 120_000 });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
+});
+
 // IPC handlers for bridge control
 ipcMain.handle('bridge:start', async () => {
   // Bridge process management handled by bridge-process.ts
