@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 44 | **In Progress:** 0 | **Done:** 51
+> **Pending:** 43 | **In Progress:** 0 | **Done:** 52
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,9 +35,9 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 18     | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 19     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **48** |        |
+|       | **Total**                                      |         | **95** | **49** |        |
 
 ---
 
@@ -184,7 +184,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 19  | OB-1251 | Create `.github/workflows/release-binaries.yml` — CI workflow triggered on push to tags matching `v*`. Jobs: (1) **build-macos** (runs-on: `macos-latest`) — checkout, npm ci, npm run build, npm run package:mac, npm run package:mac-x64, run `scripts/create-dmg.sh`, upload artifacts (ARM64 binary + x64 binary + .dmg), (2) **build-linux** (runs-on: `ubuntu-latest`) — checkout, npm ci, npm run build, npm run package:linux, upload artifact, (3) **build-windows** (runs-on: `windows-latest`) — checkout, npm ci, npm run build, npm run package:win, upload artifact | ◻ Pending |
+| 19  | OB-1251 | Create `.github/workflows/release-binaries.yml` — CI workflow triggered on push to tags matching `v*`. Jobs: (1) **build-macos** (runs-on: `macos-latest`) — checkout, npm ci, npm run build, npm run package:mac, npm run package:mac-x64, run `scripts/create-dmg.sh`, upload artifacts (ARM64 binary + x64 binary + .dmg), (2) **build-linux** (runs-on: `ubuntu-latest`) — checkout, npm ci, npm run build, npm run package:linux, upload artifact, (3) **build-windows** (runs-on: `windows-latest`) — checkout, npm ci, npm run build, npm run package:win, upload artifact | ✅ Done   |
 | 20  | OB-1252 | Add release upload step to CI — after all build jobs complete, add a **release** job that: (1) downloads all artifacts, (2) creates a GitHub Release with the tag name, (3) uploads all binaries + installers as release assets: `openbridge-macos-arm64`, `openbridge-macos-x64`, `OpenBridge-{version}-macOS.dmg`, `openbridge-linux-x64`, `openbridge-win-x64.exe`. Use `softprops/action-gh-release` action. Include changelog excerpt in release notes                                                                                                                       | ◻ Pending |
 
 ### Phase 72G — Testing & Validation
