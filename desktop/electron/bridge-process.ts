@@ -29,7 +29,7 @@ class BridgeProcessManager {
     this.send('bridge-status-change', status);
   }
 
-  start(): void {
+  start(configPath?: string): void {
     if (this.child !== null) {
       return;
     }
@@ -38,8 +38,14 @@ class BridgeProcessManager {
 
     this.setStatus('starting');
 
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (configPath) {
+      env['CONFIG_PATH'] = configPath;
+    }
+
     this.child = fork(bridgePath, [], {
       silent: true,
+      env,
     });
 
     this.child.stdout?.on('data', (chunk: Buffer) => {

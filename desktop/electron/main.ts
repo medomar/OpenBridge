@@ -1,10 +1,11 @@
-import { access } from 'fs/promises';
+import { access, readFile, writeFile } from 'fs/promises';
 import { exec } from 'child_process';
-import os from 'os';
+import nodeOs from 'os';
 import { promisify } from 'util';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { bridgeProcess } from './bridge-process.js';
 
 const execAsync = promisify(exec);
 
@@ -138,27 +139,53 @@ ipcMain.handle('setup:validateDirectory', async (_event, dirPath: string) => {
   }
 });
 
-ipcMain.handle('setup:getHomeDirectory', () => os.homedir());
+ipcMain.handle('setup:getHomeDirectory', () => nodeOs.homedir());
+
+function getConfigFilePath(): string {
+  return path.join(app.getPath('userData'), 'config.json');
+}
 
 // IPC handlers for bridge control
 ipcMain.handle('bridge:start', async () => {
-  // Bridge process management handled by bridge-process.ts
-  return { success: true };
+  try {
+    bridgeProcess.start(getConfigFilePath());
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 });
 
 ipcMain.handle('bridge:stop', async () => {
-  return { success: true };
+  try {
+    await bridgeProcess.stop();
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 });
 
 ipcMain.handle('bridge:status', async () => {
-  return { status: 'stopped' };
+  return { status: bridgeProcess.getStatus() };
 });
 
 ipcMain.handle('bridge:getConfig', async () => {
-  return null;
+  try {
+    const raw = await readFile(getConfigFilePath(), 'utf-8');
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
 });
 
 ipcMain.handle('bridge:saveConfig', async (_event, config: unknown) => {
-  void config;
-  return { success: true };
+  try {
+    const configPath = getConfigFilePath();
+    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
 });
