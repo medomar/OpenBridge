@@ -138,6 +138,25 @@ const CHAT_HTML = `<!DOCTYPE html>
     .cat-entry-desc { font-size: 12px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .connect-btn { background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .connect-btn:hover { background: #1557b0; }
+    .add-server-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; color: #1a73e8; font-size: 12px; font-weight: 500; border: none; background: none; width: 100%; text-align: left; }
+    .add-server-toggle:hover { color: #1557b0; }
+    .add-server-form { padding-top: 6px; border-top: 1px solid #e8eaed; margin-top: 4px; }
+    .add-server-form.hidden { display: none; }
+    .form-row { margin-bottom: 7px; }
+    .form-row label { display: block; font-size: 11px; font-weight: 500; color: #5f6368; margin-bottom: 2px; }
+    .form-inp { width: 100%; padding: 5px 8px; border: 1.5px solid #dadce0; border-radius: 6px; font-size: 12px; outline: none; }
+    .form-inp:focus { border-color: #1a73e8; }
+    .env-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .env-row input { flex: 1; padding: 4px 6px; border: 1.5px solid #dadce0; border-radius: 6px; font-size: 11px; outline: none; min-width: 0; }
+    .env-row input:focus { border-color: #1a73e8; }
+    .env-remove { background: none; border: none; color: #9aa0a6; cursor: pointer; font-size: 13px; padding: 2px 4px; flex-shrink: 0; line-height: 1; }
+    .env-remove:hover { color: #ea4335; }
+    .add-env-btn { background: none; border: none; color: #1a73e8; cursor: pointer; font-size: 12px; padding: 0; font-weight: 500; }
+    .add-env-btn:hover { color: #1557b0; }
+    .submit-server-btn { background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; width: 100%; margin-top: 4px; }
+    .submit-server-btn:hover:not(:disabled) { background: #1557b0; }
+    .submit-server-btn:disabled { background: #bdc1c6; cursor: not-allowed; }
+    .add-server-error { color: #ea4335; font-size: 11px; margin-bottom: 6px; display: none; }
   </style>
 </head>
 <body>
@@ -173,6 +192,30 @@ const CHAT_HTML = `<!DOCTYPE html>
       </div>
       <div id="mcp-dash-body">
         <div id="mcp-server-list"></div>
+        <button class="add-server-toggle" onclick="toggleAddServerForm()">
+          <span id="add-server-toggle-icon">&#x2795;</span> Add Custom Server
+        </button>
+        <div id="add-server-form" class="add-server-form hidden">
+          <div class="form-row">
+            <label>Server Name</label>
+            <input type="text" id="add-srv-name" class="form-inp" placeholder="my-server">
+          </div>
+          <div class="form-row">
+            <label>Command</label>
+            <input type="text" id="add-srv-cmd" class="form-inp" placeholder="npx">
+          </div>
+          <div class="form-row">
+            <label>Args <span style="color:#9aa0a6;font-weight:400">(comma-separated)</span></label>
+            <input type="text" id="add-srv-args" class="form-inp" placeholder="-y, @modelcontextprotocol/server-filesystem">
+          </div>
+          <div class="form-row">
+            <label>Env Vars</label>
+            <div id="add-srv-env-rows"></div>
+            <button class="add-env-btn" onclick="addEnvVarRow()">+ Add env var</button>
+          </div>
+          <div id="add-server-error" class="add-server-error"></div>
+          <button class="submit-server-btn" id="add-server-submit" onclick="submitCustomServer()">Add Server</button>
+        </div>
       </div>
     </div>
     <div id="catalog-modal" class="modal-overlay hidden">
@@ -583,6 +626,86 @@ const CHAT_HTML = `<!DOCTYPE html>
       connLabel.textContent = online ? 'Connected' : 'Disconnected';
       inp.disabled = !online;
       send.disabled = !online;
+    }
+
+    var addServerFormOpen = false;
+    function toggleAddServerForm() {
+      addServerFormOpen = !addServerFormOpen;
+      var form = document.getElementById('add-server-form');
+      var icon = document.getElementById('add-server-toggle-icon');
+      if (addServerFormOpen) {
+        form.classList.remove('hidden');
+        icon.innerHTML = '&#x2796;';
+      } else {
+        form.classList.add('hidden');
+        icon.innerHTML = '&#x2795;';
+      }
+    }
+
+    function addEnvVarRow() {
+      var rows = document.getElementById('add-srv-env-rows');
+      var row = document.createElement('div');
+      row.className = 'env-row';
+      row.innerHTML = '<input type="text" placeholder="KEY"><input type="text" placeholder="value"><button class="env-remove" onclick="this.parentElement.remove()">&#x2715;</button>';
+      rows.appendChild(row);
+    }
+
+    function clearAddServerForm() {
+      document.getElementById('add-srv-name').value = '';
+      document.getElementById('add-srv-cmd').value = '';
+      document.getElementById('add-srv-args').value = '';
+      document.getElementById('add-srv-env-rows').innerHTML = '';
+      var err = document.getElementById('add-server-error');
+      err.style.display = 'none';
+      err.textContent = '';
+    }
+
+    function submitCustomServer() {
+      var name = document.getElementById('add-srv-name').value.trim();
+      var command = document.getElementById('add-srv-cmd').value.trim();
+      var argsRaw = document.getElementById('add-srv-args').value.trim();
+      var args = argsRaw ? argsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; }) : [];
+      var errorDiv = document.getElementById('add-server-error');
+      errorDiv.style.display = 'none';
+      errorDiv.textContent = '';
+      if (!name || !command) {
+        errorDiv.textContent = 'Server name and command are required.';
+        errorDiv.style.display = '';
+        return;
+      }
+      var envObj = {};
+      var envRows = document.querySelectorAll('#add-srv-env-rows .env-row');
+      for (var ei = 0; ei < envRows.length; ei++) {
+        var envInputs = envRows[ei].querySelectorAll('input');
+        var envKey = envInputs[0] ? envInputs[0].value.trim() : '';
+        var envVal = envInputs[1] ? envInputs[1].value : '';
+        if (envKey) envObj[envKey] = envVal;
+      }
+      var submitBtn = document.getElementById('add-server-submit');
+      submitBtn.disabled = true;
+      var body = { name: name, command: command, args: args };
+      if (Object.keys(envObj).length > 0) body.env = envObj;
+      fetch('/api/mcp/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(function(r) {
+        submitBtn.disabled = false;
+        if (r.ok) {
+          clearAddServerForm();
+          if (addServerFormOpen) toggleAddServerForm();
+          loadMcpServers();
+        } else {
+          return r.json().then(function(data) {
+            errorDiv.textContent = data.error || 'Failed to add server';
+            errorDiv.style.display = '';
+          });
+        }
+      }).catch(function() {
+        submitBtn.disabled = false;
+        errorDiv.textContent = 'Network error \u2014 please try again';
+        errorDiv.style.display = '';
+      });
     }
 
     var ws;
