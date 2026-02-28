@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import AIToolStep from './setup/AIToolStep';
 import WelcomeStep from './setup/WelcomeStep';
 
 // Accumulated configuration data across all wizard steps.
@@ -204,8 +205,10 @@ export default function Setup() {
       <div style={{ flex: 1, overflow: 'auto', padding: 'var(--space-8)' }}>
         {currentStep === 0 ? (
           <WelcomeStep key={0} {...stepProps} />
+        ) : currentStep === 1 ? (
+          <AIToolStep key={1} {...stepProps} />
         ) : (
-          /* Remaining step components (OB-1269–OB-1274) will replace PlaceholderStep here */
+          /* Remaining step components (OB-1270–OB-1274) will replace PlaceholderStep here */
           <PlaceholderStep
             key={currentStep}
             label={STEPS[currentStep] ?? ''}
