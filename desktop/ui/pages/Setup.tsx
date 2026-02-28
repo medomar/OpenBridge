@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
+import AccessStep from './setup/AccessStep';
 import AccountStep from './setup/AccountStep';
 import AIToolStep from './setup/AIToolStep';
 import ConnectorStep from './setup/ConnectorStep';
@@ -216,8 +217,10 @@ export default function Setup() {
           <WorkspaceStep key={3} {...stepProps} />
         ) : currentStep === 4 ? (
           <ConnectorStep key={4} {...stepProps} />
+        ) : currentStep === 5 ? (
+          <AccessStep key={5} {...stepProps} />
         ) : (
-          /* Remaining step components (OB-1273–OB-1274) will replace PlaceholderStep here */
+          /* Remaining step components (OB-1274) will replace PlaceholderStep here */
           <PlaceholderStep
             key={currentStep}
             label={STEPS[currentStep] ?? ''}
