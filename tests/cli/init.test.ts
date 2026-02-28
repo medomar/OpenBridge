@@ -5,8 +5,19 @@ import { existsSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildConfig, runInit, promptAIToolInstallation } from '../../src/cli/init.js';
-import { runCommand, detectOS, printWarning } from '../../src/cli/utils.js';
+import {
+  buildConfig,
+  runInit,
+  promptAIToolInstallation,
+  setupClaudeAuth,
+} from '../../src/cli/init.js';
+import {
+  runCommand,
+  detectOS,
+  isCommandAvailable,
+  printSuccess,
+  printWarning,
+} from '../../src/cli/utils.js';
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<object>();
@@ -801,4 +812,133 @@ describe('promptAIToolInstallation', () => {
   });
 
   void makeRl; // suppress unused warning
+});
+
+// ── setupClaudeAuth() ─────────────────────────────────────────────────────────
+
+describe('setupClaudeAuth', () => {
+  let tmpEnvPath: string;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tmpEnvPath = join(tmpdir(), `openbridge-auth-${Date.now()}.env`);
+  });
+
+  afterEach(async () => {
+    try {
+      await unlink(tmpEnvPath);
+    } catch {
+      // file may not exist
+    }
+  });
+
+  it('skips auth setup when claude is not available', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(false);
+    const { input, output } = createLineFeeder([]);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    await setupClaudeAuth(rl, (t) => written.push(t), tmpEnvPath);
+    rl.close();
+
+    expect(written.join('')).toBe('');
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalled();
+  });
+
+  it('shows already authenticated when auth status succeeds', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 0, stdout: 'Logged in', stderr: '' });
+    const { input, output } = createLineFeeder([]);
+    const rl = createInterface({ input, output });
+
+    await setupClaudeAuth(rl, () => {}, tmpEnvPath);
+    rl.close();
+
+    expect(vi.mocked(printSuccess)).toHaveBeenCalledWith(
+      expect.stringContaining('already authenticated'),
+    );
+  });
+
+  it('shows auth options and URL when not authenticated', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' });
+    const { input, output } = createLineFeeder(['3']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    await setupClaudeAuth(rl, (t) => written.push(t), tmpEnvPath);
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('console.anthropic.com');
+    expect(text).toContain('claude auth login');
+  });
+
+  it('runs claude auth login when user picks 1', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand)
+      .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' }) // auth status
+      .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' }); // auth login
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+
+    await setupClaudeAuth(rl, () => {}, tmpEnvPath);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith('claude', ['auth', 'login']);
+    expect(vi.mocked(printSuccess)).toHaveBeenCalledWith(expect.stringContaining('authenticated'));
+  });
+
+  it('shows warning when claude auth login fails', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand)
+      .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' }) // auth status
+      .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'login failed' }); // auth login fails
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+
+    await setupClaudeAuth(rl, () => {}, tmpEnvPath);
+    rl.close();
+
+    expect(vi.mocked(printWarning)).toHaveBeenCalled();
+  });
+
+  it('writes ANTHROPIC_API_KEY to .env when user picks 2', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' });
+    const { input, output } = createLineFeeder(['2', 'sk-ant-test123']);
+    const rl = createInterface({ input, output });
+
+    await setupClaudeAuth(rl, () => {}, tmpEnvPath);
+    rl.close();
+
+    const envContent = await readFile(tmpEnvPath, 'utf-8');
+    expect(envContent).toContain('ANTHROPIC_API_KEY=sk-ant-test123');
+  });
+
+  it('warns when no API key is entered on choice 2', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' });
+    const { input, output } = createLineFeeder(['2', '']);
+    const rl = createInterface({ input, output });
+
+    await setupClaudeAuth(rl, () => {}, tmpEnvPath);
+    rl.close();
+
+    expect(vi.mocked(printWarning)).toHaveBeenCalledWith(expect.stringContaining('No API key'));
+  });
+
+  it('skips auth and shows skip message when user picks 3', async () => {
+    vi.mocked(isCommandAvailable).mockResolvedValueOnce(true);
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '' });
+    const { input, output } = createLineFeeder(['3']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    await setupClaudeAuth(rl, (t) => written.push(t), tmpEnvPath);
+    rl.close();
+
+    expect(written.join('')).toContain('Skipping');
+    expect(vi.mocked(runCommand)).toHaveBeenCalledTimes(1); // only auth status check
+  });
 });
