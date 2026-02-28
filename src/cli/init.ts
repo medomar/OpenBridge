@@ -252,6 +252,55 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
   return config;
 }
 
+export async function promptWhitelist(
+  rl: ReadlineInterface,
+  write: (text: string) => void,
+): Promise<string[] | undefined> {
+  write('\n  Whitelist — Only these phone numbers can send commands\n');
+  write('  Enter numbers with country code, e.g. +1234567890,+0987654321\n');
+  write('  Type "skip" to allow all users (not recommended for production)\n\n');
+
+  for (;;) {
+    const raw = await ask(rl, '  Phone numbers (comma-separated) or "skip": ');
+
+    if (raw.toLowerCase() === 'skip') {
+      printWarning('Whitelist skipped — ALL users can send commands. Use only for testing!');
+      return undefined;
+    }
+
+    const numbers = raw
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+
+    if (numbers.length === 0) {
+      write('  Error: at least one phone number is required or type "skip".\n');
+      continue;
+    }
+
+    const invalid = numbers.filter((n) => !/^\+?\d+$/.test(n));
+    if (invalid.length > 0) {
+      write(`  Error: invalid phone number format: ${invalid.join(', ')}\n`);
+      write('  Phone numbers should contain only digits with an optional + prefix.\n');
+      continue;
+    }
+
+    write('\n  Phone numbers to whitelist:\n');
+    numbers.forEach((n, i) => {
+      write(`    ${i + 1}. ${n}\n`);
+    });
+    write('\n');
+
+    const confirm = await ask(rl, '  Confirm? (Y/n): ');
+    if (confirm.toLowerCase() === 'n') {
+      write('  Re-entering numbers...\n');
+      continue;
+    }
+
+    return numbers;
+  }
+}
+
 export async function promptAIToolInstallation(
   rl: ReadlineInterface,
   toolStatus: AIToolStatus,
@@ -416,19 +465,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       );
 
       // Question 3: Phone whitelist (WhatsApp only)
-      const whitelistRaw = await ask(
-        rl,
-        '  Phone whitelist (comma-separated, e.g. +1234567890,+0987654321): ',
-      );
-      const whitelist = whitelistRaw
-        .split(',')
-        .map((n) => n.trim())
-        .filter((n) => n.length > 0);
-
-      if (whitelist.length === 0) {
-        write('  Error: at least one phone number is required.\n');
-        return;
-      }
+      const whitelist = await promptWhitelist(rl, write);
 
       // Question 4: Command prefix (WhatsApp only)
       const prefixAnswer = await ask(rl, '  Command prefix (default: /ai): ');

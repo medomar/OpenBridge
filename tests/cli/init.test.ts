@@ -250,7 +250,8 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '1', // connector: WhatsApp
       '/home/user/my-project', // workspace path
-      '+1234567890', // whitelist
+      '+1234567890', // whitelist phone numbers
+      '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '/ai', // prefix
       'n', // MCP: skip
     ]);
@@ -313,7 +314,8 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '1', // connector: WhatsApp
       '/home/user/project', // workspace path
-      '+555', // whitelist
+      '+555', // whitelist phone numbers
+      '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '', // prefix — default /ai
       'n', // MCP: skip
     ]);
@@ -343,12 +345,15 @@ describe('runInit', () => {
     expect((config['workspacePath'] as string).length).toBeGreaterThan(0);
   });
 
-  it('should abort if whitelist is empty', async () => {
+  it('should warn when whitelist is empty and allow retry', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       '1', // connector: WhatsApp
       '/home/user/project', // workspace path
-      '', // empty whitelist
+      '', // empty whitelist → warns and loops
+      'skip', // skip whitelist on retry (with security warning)
+      '', // prefix — default /ai
+      'n', // MCP: skip
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -388,8 +393,9 @@ describe('runInit', () => {
       'y', // confirm overwrite
       '1', // connector: WhatsApp
       '/home/user/project', // workspace path
-      '+1234567890', // whitelist
-      '', // prefix
+      '+1234567890', // whitelist phone numbers
+      '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
+      '', // prefix — default /ai
       'n', // MCP: skip
     ]);
 
@@ -555,7 +561,8 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '1', // connector: WhatsApp
       '/home/user/project', // workspace path
-      '+1234567890', // whitelist
+      '+1234567890', // whitelist phone numbers
+      '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '/ai', // prefix
       'n', // MCP: skip
     ]);
