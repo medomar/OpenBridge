@@ -6,6 +6,7 @@ import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
+import { transcribeAudio } from '../../core/voice-transcriber.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
@@ -286,37 +287,15 @@ export class WhatsAppConnector implements Connector {
       const media = await msg.downloadMedia?.();
       if (!media?.data) return null;
 
-      const whisperPath = await this.findWhisper();
-      if (!whisperPath) return null;
-
       const tmpPath = join(tmpdir(), `wa-voice-${Date.now()}.ogg`);
       await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
       try {
-        await execFileAsync(whisperPath, [
-          tmpPath,
-          '--output-format',
-          'txt',
-          '--output-dir',
-          tmpdir(),
-        ]);
-        const txtPath = tmpPath.replace(/\.ogg$/, '.txt');
-        const text = await readFile(txtPath, 'utf-8').catch(() => '');
-        await unlink(txtPath).catch(() => {});
-        return text.trim() || null;
+        return await transcribeAudio(tmpPath);
       } finally {
         await unlink(tmpPath).catch(() => {});
       }
     } catch (err) {
       logger.warn({ err }, 'Voice message transcription failed');
-      return null;
-    }
-  }
-
-  private async findWhisper(): Promise<string | null> {
-    try {
-      const { stdout } = await execFileAsync('which', ['whisper']);
-      return stdout.trim() || null;
-    } catch {
       return null;
     }
   }
