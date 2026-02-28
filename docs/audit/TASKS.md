@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 | **In Progress:** 0 | **Done:** 87
+> **Pending:** 7 | **In Progress:** 0 | **Done:** 88
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 29     | ◻      |
-|       | **Total**                                      |         | **95** | **87** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 30     | ◻      |
+|       | **Total**                                      |         | **95** | **88** |        |
 
 ---
 
@@ -251,14 +251,14 @@
 
 ### Phase 73E — Settings Panel
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                               | Status    |
-| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 25  | OB-1282 | Create `desktop/ui/pages/Settings.tsx` — tabbed settings page with tabs: General, Connectors, AI Providers, MCP Servers, Access Control, Advanced. Each tab is a separate component. Save button at the bottom persists changes to `config.json` via IPC. Show "restart required" notice when bridge-affecting settings change                                                            | ✅ Done   |
-| 26  | OB-1283 | Settings: General tab — `desktop/ui/pages/settings/GeneralSettings.tsx`. Workspace path (with Browse button), bridge auto-start on app launch toggle, log level selector (debug/info/warn/error), theme selector (System/Light/Dark). Reads current values from config, updates on save                                                                                                   | ✅ Done   |
-| 27  | OB-1284 | Settings: Connectors tab — `desktop/ui/pages/settings/ConnectorSettings.tsx`. Shows configured connectors as cards with enable/disable toggle. "Add Connector" button opens a modal with connector type selection + config fields (same as Setup Step 5). Edit and Remove buttons per connector. Changes require bridge restart                                                           | ✅ Done   |
-| 28  | OB-1285 | Settings: AI Providers tab — `desktop/ui/pages/settings/ProviderSettings.tsx`. Shows detected AI tools with version, auth status, preferred model tier selector (fast/balanced/powerful). "Re-authenticate" button per tool. Shows which tool is currently set as Master AI. Option to change Master AI preference                                                                        | ✅ Done   |
-| 29  | OB-1286 | Settings: MCP Servers tab — `desktop/ui/pages/settings/McpSettings.tsx`. Reuses the WebChat MCP Dashboard concept but in React: list of configured servers with health status, "Browse Catalog" button opens catalog modal, "Add Custom" form (command + args + env vars), toggle enabled/disabled, remove. Calls the existing MCP REST API endpoints (`/api/mcp/*`) via IPC-proxied HTTP | ✅ Done   |
-| 30  | OB-1287 | Settings: Access Control tab — `desktop/ui/pages/settings/AccessSettings.tsx`. Phone whitelist management: add/remove numbers, import from contacts (future), "Allow all" toggle with warning. Shows current access rules from the `access_control` table. Integrates with `openbridge access` CLI commands via IPC                                                                       | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                               | Status  |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 25  | OB-1282 | Create `desktop/ui/pages/Settings.tsx` — tabbed settings page with tabs: General, Connectors, AI Providers, MCP Servers, Access Control, Advanced. Each tab is a separate component. Save button at the bottom persists changes to `config.json` via IPC. Show "restart required" notice when bridge-affecting settings change                                                            | ✅ Done |
+| 26  | OB-1283 | Settings: General tab — `desktop/ui/pages/settings/GeneralSettings.tsx`. Workspace path (with Browse button), bridge auto-start on app launch toggle, log level selector (debug/info/warn/error), theme selector (System/Light/Dark). Reads current values from config, updates on save                                                                                                   | ✅ Done |
+| 27  | OB-1284 | Settings: Connectors tab — `desktop/ui/pages/settings/ConnectorSettings.tsx`. Shows configured connectors as cards with enable/disable toggle. "Add Connector" button opens a modal with connector type selection + config fields (same as Setup Step 5). Edit and Remove buttons per connector. Changes require bridge restart                                                           | ✅ Done |
+| 28  | OB-1285 | Settings: AI Providers tab — `desktop/ui/pages/settings/ProviderSettings.tsx`. Shows detected AI tools with version, auth status, preferred model tier selector (fast/balanced/powerful). "Re-authenticate" button per tool. Shows which tool is currently set as Master AI. Option to change Master AI preference                                                                        | ✅ Done |
+| 29  | OB-1286 | Settings: MCP Servers tab — `desktop/ui/pages/settings/McpSettings.tsx`. Reuses the WebChat MCP Dashboard concept but in React: list of configured servers with health status, "Browse Catalog" button opens catalog modal, "Add Custom" form (command + args + env vars), toggle enabled/disabled, remove. Calls the existing MCP REST API endpoints (`/api/mcp/*`) via IPC-proxied HTTP | ✅ Done |
+| 30  | OB-1287 | Settings: Access Control tab — `desktop/ui/pages/settings/AccessSettings.tsx`. Phone whitelist management: add/remove numbers, import from contacts (future), "Allow all" toggle with warning. Shows current access rules from the `access_control` table. Integrates with `openbridge access` CLI commands via IPC                                                                       | ✅ Done |
 
 ### Phase 73F — System Tray Integration
 

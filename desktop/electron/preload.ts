@@ -65,4 +65,16 @@ contextBridge.exposeInMainWorld('openbridge', {
     envVars: Record<string, string>,
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('mcp:connectFromCatalog', name, envVars),
+
+  accessList: (): Promise<unknown> => ipcRenderer.invoke('access:list'),
+
+  accessAdd: (
+    userId: string,
+    role: string,
+    channel: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('access:add', userId, role, channel),
+
+  accessRemove: (userId: string, channel: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('access:remove', userId, channel),
 });
