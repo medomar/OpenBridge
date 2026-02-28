@@ -288,6 +288,10 @@ export class WhatsAppConnector implements Connector {
   }
 
   private async handleIncomingMessage(msg: WAMessage): Promise<void> {
+    if (msg.hasMedia) {
+      void this.sendTypingIndicator(msg.from);
+    }
+
     if (msg.hasMedia && msg.type === 'ptt') {
       const transcription = await this.transcribeVoiceMessage(msg);
       const content = transcription ?? '[Voice message — install whisper for auto-transcription]';
@@ -346,9 +350,7 @@ export class WhatsAppConnector implements Connector {
    *   - { failed: false, ... } on success
    *   - { failed: true, type } when download was attempted but threw an error
    */
-  private async downloadIncomingMedia(
-    msg: WAMessage,
-  ): Promise<
+  private async downloadIncomingMedia(msg: WAMessage): Promise<
     | {
         failed: false;
         result: SaveMediaResult;
