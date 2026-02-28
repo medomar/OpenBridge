@@ -332,7 +332,7 @@ export class MasterManager {
   private readonly modelRegistry: ModelRegistry;
   private readonly adapter?: CLIAdapter;
   private readonly adapterRegistry: AdapterRegistry;
-  private readonly mcpServers: MCPServer[];
+  private mcpServers: MCPServer[];
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -1906,6 +1906,19 @@ export class MasterManager {
    */
   public setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /**
+   * Replace the active MCP server list and mark the cached system prompt as stale.
+   * Called by Bridge.onConfigChange() when config.json is hot-reloaded.
+   * The next Master session call will regenerate the system prompt with the new servers.
+   */
+  public reloadMcpServers(servers: MCPServer[]): void {
+    this.mcpServers = [...servers];
+    // Null out the cached prompt so buildMasterSpawnOptions() reloads it
+    // on the next message, incorporating the updated MCP server list.
+    this.systemPrompt = null;
+    logger.info({ count: servers.length }, 'MCP servers hot-reloaded — system prompt marked stale');
   }
 
   /**
