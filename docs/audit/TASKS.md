@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 83 | **In Progress:** 0 | **Done:** 12
+> **Pending:** 82 | **In Progress:** 0 | **Done:** 13
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 2      | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 3      | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **12** |        |
+|       | **Total**                                      |         | **95** | **13** |        |
 
 ---
 
@@ -73,11 +73,11 @@
 
 ### Phase 71A — CLI Utilities & OS Detection
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Status    |
-| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1210 | Create `src/cli/utils.ts` — shared CLI helper module. Export: `detectOS(): 'macos' \| 'windows' \| 'linux'` (use `process.platform`), `isCommandAvailable(cmd: string): Promise<boolean>` (use `child_process.execFile('which', [cmd])` on unix, `where.exe` on windows — wrap in try-catch, return boolean), `getNodeVersion(): string` (parse `process.version`), `meetsNodeVersion(min: string): boolean` (compare semver). No external dependencies — use Node built-ins only | ✅ Done   |
-| 2   | OB-1211 | Add `runCommand(cmd: string, args: string[]): Promise<{exitCode: number, stdout: string, stderr: string}>` to `src/cli/utils.ts` — wraps `child_process.execFile` in a promise. Used by the installer to run `npm install -g`, `claude auth login`, `codex login`, etc. Captures output for display. Timeout of 120s default                                                                                                                                                      | ✅ Done   |
-| 3   | OB-1212 | Add `printStep(stepNum: number, total: number, title: string): void` and `printSuccess(msg: string): void` and `printWarning(msg: string): void` and `printError(msg: string): void` to `src/cli/utils.ts` — formatted CLI output helpers using ANSI colors (green checkmark, yellow warning, red X). Use `\x1b[32m` etc. — no chalk dependency needed                                                                                                                            | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Status  |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1210 | Create `src/cli/utils.ts` — shared CLI helper module. Export: `detectOS(): 'macos' \| 'windows' \| 'linux'` (use `process.platform`), `isCommandAvailable(cmd: string): Promise<boolean>` (use `child_process.execFile('which', [cmd])` on unix, `where.exe` on windows — wrap in try-catch, return boolean), `getNodeVersion(): string` (parse `process.version`), `meetsNodeVersion(min: string): boolean` (compare semver). No external dependencies — use Node built-ins only | ✅ Done |
+| 2   | OB-1211 | Add `runCommand(cmd: string, args: string[]): Promise<{exitCode: number, stdout: string, stderr: string}>` to `src/cli/utils.ts` — wraps `child_process.execFile` in a promise. Used by the installer to run `npm install -g`, `claude auth login`, `codex login`, etc. Captures output for display. Timeout of 120s default                                                                                                                                                      | ✅ Done |
+| 3   | OB-1212 | Add `printStep(stepNum: number, total: number, title: string): void` and `printSuccess(msg: string): void` and `printWarning(msg: string): void` and `printError(msg: string): void` to `src/cli/utils.ts` — formatted CLI output helpers using ANSI colors (green checkmark, yellow warning, red X). Use `\x1b[32m` etc. — no chalk dependency needed                                                                                                                            | ✅ Done |
 
 ### Phase 71B — Prerequisite Checking
 
