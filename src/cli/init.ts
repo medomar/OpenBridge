@@ -117,6 +117,62 @@ async function appendToEnv(envPath: string, key: string, value: string): Promise
   await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
 }
 
+export async function setupCodexAuth(
+  rl: ReadlineInterface,
+  write: (text: string) => void,
+  dotEnvPath = resolve('.env'),
+): Promise<void> {
+  const codexAvailable = await isCommandAvailable('codex');
+  if (!codexAvailable) return;
+
+  write('\n  Codex — Authentication Check\n');
+
+  if (process.env['OPENAI_API_KEY']) {
+    printSuccess('Codex — already authenticated (OPENAI_API_KEY set)');
+    return;
+  }
+
+  const statusResult = await runCommand('codex', ['auth', 'status']);
+  if (statusResult.exitCode === 0) {
+    printSuccess('Codex — already authenticated');
+    return;
+  }
+
+  write('\n  Codex requires an OpenAI account to function.\n');
+  write('  Create or sign in at https://platform.openai.com/api-keys\n');
+  write('\n  Bonus: your OPENAI_API_KEY also enables Whisper voice transcription\n');
+  write('  (no local Whisper install needed — $0.006/min, zero local setup).\n\n');
+  write('    1. Sign in via browser  (codex login — opens browser)\n');
+  write('    2. Paste API key        (saves OPENAI_API_KEY to .env)\n');
+  write('    3. Skip — set up later\n\n');
+
+  const choice = await ask(rl, '  Your choice (1/2/3): ');
+
+  if (choice === '1') {
+    write('\n  Opening browser for OpenAI sign-in...\n');
+    const result = await runCommand('codex', ['login']);
+    if (result.exitCode === 0) {
+      printSuccess('Codex — authenticated successfully');
+    } else {
+      printWarning('Authentication may not have completed. Run: codex login');
+      if (result.stderr) write(result.stderr + '\n');
+    }
+  } else if (choice === '2') {
+    const key = await ask(rl, '  Paste your OpenAI API key (sk-...): ');
+    if (!key) {
+      printWarning('No API key entered — skipping');
+    } else if (!key.startsWith('sk-')) {
+      printWarning('Invalid key format — OpenAI API keys start with sk-');
+    } else {
+      await appendToEnv(dotEnvPath, 'OPENAI_API_KEY', key);
+      printSuccess(`OPENAI_API_KEY written to ${dotEnvPath}`);
+      printSuccess('Voice transcription via Whisper API is now enabled.');
+    }
+  } else {
+    write('  Skipping Codex auth setup.\n');
+  }
+}
+
 export async function setupClaudeAuth(
   rl: ReadlineInterface,
   write: (text: string) => void,
@@ -281,6 +337,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     const toolStatus = await detectAITools();
     await promptAIToolInstallation(rl, toolStatus, write);
     await setupClaudeAuth(rl, write);
+    await setupCodexAuth(rl, write);
 
     write('\n  OpenBridge — Configuration Setup\n\n');
 
