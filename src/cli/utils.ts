@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -97,6 +98,48 @@ export function printWarning(msg: string): void {
 
 export function printError(msg: string): void {
   process.stdout.write(`\x1b[31m✖\x1b[0m ${msg}\n`);
+}
+
+export function writeEnvFile(envPath: string, vars: Record<string, string>): void {
+  let existingContent = '';
+  try {
+    existingContent = readFileSync(envPath, 'utf8');
+  } catch {
+    // File doesn't exist — will be created
+  }
+
+  // Parse existing keys to avoid overwriting them
+  const existingKeys = new Set<string>();
+  for (const line of existingContent.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        existingKeys.add(trimmed.slice(0, eqIdx).trim());
+      }
+    }
+  }
+
+  // Collect new vars that aren't already present
+  const newLines: string[] = [];
+  for (const [key, value] of Object.entries(vars)) {
+    if (!existingKeys.has(key)) {
+      newLines.push(`${key}=${value}`);
+    }
+  }
+
+  if (newLines.length === 0) {
+    return; // Nothing new to write
+  }
+
+  // Append new vars, ensuring the file ends with a newline before them
+  let content = existingContent;
+  if (content && !content.endsWith('\n')) {
+    content += '\n';
+  }
+  content += newLines.join('\n') + '\n';
+
+  writeFileSync(envPath, content, 'utf8');
 }
 
 export async function validateApiKey(
