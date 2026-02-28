@@ -37,6 +37,40 @@ interface Answers {
 
 const VALID_CONNECTORS = ['console', 'whatsapp', 'webchat', 'telegram', 'discord'] as const;
 
+export interface AIToolStatus {
+  claude: boolean;
+  codex: boolean;
+  aider: boolean;
+}
+
+export async function detectAITools(): Promise<AIToolStatus> {
+  const [claude, codex, aider] = await Promise.all([
+    isCommandAvailable('claude'),
+    isCommandAvailable('codex'),
+    isCommandAvailable('aider'),
+  ]);
+
+  if (claude) {
+    printSuccess('claude — found');
+  } else {
+    printWarning('claude — not found');
+  }
+
+  if (codex) {
+    printSuccess('codex — found');
+  } else {
+    printWarning('codex — not found');
+  }
+
+  if (aider) {
+    printSuccess('aider — found');
+  } else {
+    printWarning('aider — not found');
+  }
+
+  return { claude, codex, aider };
+}
+
 export async function checkPrerequisites(): Promise<boolean> {
   if (!meetsNodeVersion('22')) {
     printError(`Node.js >= 22 is required. You have ${getNodeVersion()}.`);
