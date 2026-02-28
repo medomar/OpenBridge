@@ -1,6 +1,8 @@
+import { access } from 'fs/promises';
 import { exec } from 'child_process';
+import os from 'os';
 import { promisify } from 'util';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -119,6 +121,24 @@ ipcMain.handle('setup:authenticateTool', async (_event, tool: string) => {
     return { success: false, error: message };
   }
 });
+
+ipcMain.handle('setup:selectDirectory', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+  if (result.canceled || result.filePaths.length === 0) return { path: null };
+  return { path: result.filePaths[0] };
+});
+
+ipcMain.handle('setup:validateDirectory', async (_event, dirPath: string) => {
+  try {
+    await access(dirPath);
+    return { valid: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { valid: false, error: message };
+  }
+});
+
+ipcMain.handle('setup:getHomeDirectory', () => os.homedir());
 
 // IPC handlers for bridge control
 ipcMain.handle('bridge:start', async () => {
