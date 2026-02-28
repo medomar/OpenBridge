@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 45 | **In Progress:** 0 | **Done:** 50
+> **Pending:** 44 | **In Progress:** 0 | **Done:** 51
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,7 +35,7 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 17     | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 18     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
 |       | **Total**                                      |         | **95** | **48** |        |
 
@@ -175,10 +175,10 @@
 
 ### Phase 72E — Auto-Update Check
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                           | Status    |
-| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 17  | OB-1249 | Add `checkForUpdate(): Promise<{available: boolean, latest: string, current: string, downloadUrl: string} \| null>` to `src/cli/utils.ts` — fetches `https://api.github.com/repos/<owner>/<repo>/releases/latest` via native `fetch()`, compares `tag_name` against current version from `package.json`. Returns update info or `null` on error. Never blocks — timeout 5s, catch all errors silently | ✅ Done   |
-| 18  | OB-1250 | Wire auto-update check into startup — in `src/index.ts`, when `isPackagedMode()`, call `checkForUpdate()` at startup (non-blocking, don't await before bridge starts). When the check resolves, if an update is available, print a one-line notice: `A new version of OpenBridge is available: v{latest} (you have v{current}). Download: {url}`. Only show once per session                          | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                           | Status  |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 17  | OB-1249 | Add `checkForUpdate(): Promise<{available: boolean, latest: string, current: string, downloadUrl: string} \| null>` to `src/cli/utils.ts` — fetches `https://api.github.com/repos/<owner>/<repo>/releases/latest` via native `fetch()`, compares `tag_name` against current version from `package.json`. Returns update info or `null` on error. Never blocks — timeout 5s, catch all errors silently | ✅ Done |
+| 18  | OB-1250 | Wire auto-update check into startup — in `src/index.ts`, when `isPackagedMode()`, call `checkForUpdate()` at startup (non-blocking, don't await before bridge starts). When the check resolves, if an update is available, print a one-line notice: `A new version of OpenBridge is available: v{latest} (you have v{current}). Download: {url}`. Only show once per session                          | ✅ Done |
 
 ### Phase 72F — CI Release Workflow
 
