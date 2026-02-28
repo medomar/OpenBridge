@@ -4,6 +4,7 @@ import AccessStep from './setup/AccessStep';
 import AccountStep from './setup/AccountStep';
 import AIToolStep from './setup/AIToolStep';
 import ConnectorStep from './setup/ConnectorStep';
+import FinishStep from './setup/FinishStep';
 import WelcomeStep from './setup/WelcomeStep';
 import WorkspaceStep from './setup/WorkspaceStep';
 
@@ -220,12 +221,7 @@ export default function Setup() {
         ) : currentStep === 5 ? (
           <AccessStep key={5} {...stepProps} />
         ) : (
-          /* Remaining step components (OB-1274) will replace PlaceholderStep here */
-          <PlaceholderStep
-            key={currentStep}
-            label={STEPS[currentStep] ?? ''}
-            onValidChange={stepProps.onValidChange}
-          />
+          <FinishStep key={6} {...stepProps} />
         )}
       </div>
 
