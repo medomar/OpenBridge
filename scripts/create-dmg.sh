@@ -54,6 +54,7 @@ APP_NAME="OpenBridge"
 BINARY_SRC="$PROJECT_DIR/release/openbridge-macos-arm64"
 DMG_NAME="${APP_NAME}-${VERSION}-macOS.dmg"
 DMG_OUT="$PROJECT_DIR/release/$DMG_NAME"
+TEMPLATE_DIR="$SCRIPT_DIR/macos-app-template/OpenBridge.app"
 WINDOW_W=600
 WINDOW_H=400
 
@@ -78,16 +79,112 @@ fi
 STAGING_DIR="$(mktemp -d)"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 
-echo -e "${BLUE}[1/3]${NC} Preparing staging directory..."
+echo -e "${BLUE}[1/4]${NC} Building app bundle..."
 
-# Copy binary with the app display name
-cp "$BINARY_SRC" "$STAGING_DIR/$APP_NAME"
-chmod +x "$STAGING_DIR/$APP_NAME"
+# Verify template exists
+if [[ ! -d "$TEMPLATE_DIR" ]]; then
+  echo -e "${RED}ERROR: App template not found: scripts/macos-app-template/OpenBridge.app${NC}" >&2
+  exit 1
+fi
+
+# Copy app bundle template to staging
+APP_BUNDLE="$STAGING_DIR/${APP_NAME}.app"
+cp -R "$TEMPLATE_DIR" "$APP_BUNDLE"
+
+# Fill in version in Info.plist
+sed -i '' "s/@VERSION@/${VERSION}/g" "$APP_BUNDLE/Contents/Info.plist"
+
+# Copy binary into MacOS/ directory
+cp "$BINARY_SRC" "$APP_BUNDLE/Contents/MacOS/OpenBridge"
+chmod +x "$APP_BUNDLE/Contents/MacOS/OpenBridge"
+
+# Remove .gitkeep placeholders
+find "$APP_BUNDLE" -name '.gitkeep' -delete
+
+# Generate app icon (ICNS) via Python
+if command -v python3 &>/dev/null; then
+  ICON_PNG="$STAGING_DIR/icon_source.png"
+  ICONSET_DIR="$STAGING_DIR/AppIcon.iconset"
+
+  python3 - "$ICON_PNG" <<'PYEOF'
+import sys, struct, zlib
+
+def make_png(size, r, g, b):
+    def chunk(name, data):
+        c = name + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xFFFFFFFF)
+    raw = b''
+    for _ in range(size):
+        raw += b'\x00' + bytes([r, g, b] * size)
+    ihdr = struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', ihdr)
+            + chunk(b'IDAT', zlib.compress(raw, 9))
+            + chunk(b'IEND', b''))
+
+# Dark navy placeholder icon: #1c1c2e
+with open(sys.argv[1], 'wb') as f:
+    f.write(make_png(512, 0x1c, 0x1c, 0x2e))
+print("Icon source PNG created: 512x512")
+PYEOF
+
+  # Use iconutil (macOS built-in) to produce a proper .icns from the PNG
+  if command -v iconutil &>/dev/null && command -v sips &>/dev/null; then
+    mkdir -p "$ICONSET_DIR"
+    for size in 16 32 128 256 512; do
+      sips -z "$size" "$size" "$ICON_PNG" --out "$ICONSET_DIR/icon_${size}x${size}.png" &>/dev/null || true
+      double=$((size * 2))
+      if [[ $double -le 512 ]]; then
+        sips -z "$double" "$double" "$ICON_PNG" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" &>/dev/null || true
+      fi
+    done
+    iconutil -c icns "$ICONSET_DIR" --out "$APP_BUNDLE/Contents/Resources/AppIcon.icns" \
+      && echo -e "${GREEN}✓${NC} App icon generated: AppIcon.icns" \
+      || echo -e "${YELLOW}⚠${NC}  iconutil failed — icon placeholder skipped"
+  else
+    # Fallback: embed PNG sizes directly into a minimal ICNS binary via Python
+    python3 - "$ICON_PNG" "$APP_BUNDLE/Contents/Resources/AppIcon.icns" <<'PYEOF'
+import sys, struct, zlib
+
+def make_png(size, r, g, b):
+    def chunk(name, data):
+        c = name + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xFFFFFFFF)
+    raw = b''
+    for _ in range(size):
+        raw += b'\x00' + bytes([r, g, b] * size)
+    ihdr = struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0)
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', ihdr)
+            + chunk(b'IDAT', zlib.compress(raw, 9))
+            + chunk(b'IEND', b''))
+
+def icns_chunk(type_code, data):
+    return type_code + struct.pack('>I', 8 + len(data)) + data
+
+r, g, b = 0x1c, 0x1c, 0x2e  # dark navy
+body = (icns_chunk(b'ic08', make_png(256, r, g, b))
+      + icns_chunk(b'ic07', make_png(128, r, g, b))
+      + icns_chunk(b'icp5', make_png(32,  r, g, b))
+      + icns_chunk(b'icp4', make_png(16,  r, g, b)))
+icns = b'icns' + struct.pack('>I', 8 + len(body)) + body
+
+with open(sys.argv[2], 'wb') as f:
+    f.write(icns)
+print(f"AppIcon.icns created via Python ({len(icns)} bytes)")
+PYEOF
+  fi
+else
+  echo -e "${YELLOW}⚠${NC}  python3 not found — app icon skipped"
+fi
 
 # Symlink to Applications for drag-and-drop installation
 ln -s /Applications "$STAGING_DIR/Applications"
 
-echo -e "${GREEN}✓${NC} Staged: ${APP_NAME} + Applications symlink"
+echo -e "${GREEN}✓${NC} Staged: ${APP_NAME}.app + Applications symlink"
+
+echo ""
+echo -e "${BLUE}[2/4]${NC} Creating background image..."
 
 # ── Create background image (simple gradient via Python) ───────
 
@@ -151,7 +248,7 @@ fi
 # ── Build .dmg ─────────────────────────────────────────────────
 
 echo ""
-echo -e "${BLUE}[2/3]${NC} Creating .dmg..."
+echo -e "${BLUE}[3/4]${NC} Creating .dmg..."
 
 if command -v create-dmg &>/dev/null; then
   # ── create-dmg path (better UI, drag-to-Applications arrow) ──
@@ -162,8 +259,8 @@ if command -v create-dmg &>/dev/null; then
     --window-pos 200 120
     --window-size "$WINDOW_W" "$WINDOW_H"
     --icon-size 80
-    --icon "$APP_NAME" 170 190
-    --hide-extension "$APP_NAME"
+    --icon "${APP_NAME}.app" 170 190
+    --hide-extension "${APP_NAME}.app"
     --app-drop-link 430 190
     --no-internet-enable
   )
@@ -198,7 +295,7 @@ echo -e "${GREEN}✓${NC} .dmg created"
 # ── Verify output ──────────────────────────────────────────────
 
 echo ""
-echo -e "${BLUE}[3/3]${NC} Verifying output..."
+echo -e "${BLUE}[4/4]${NC} Verifying output..."
 
 if [[ -f "$DMG_OUT" ]]; then
   SIZE="$(du -sh "$DMG_OUT" | cut -f1)"
