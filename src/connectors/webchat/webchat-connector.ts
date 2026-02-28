@@ -119,6 +119,25 @@ const CHAT_HTML = `<!DOCTYPE html>
     .mcp-toggle input:checked + .mcp-slider:before { transform: translateX(14px); }
     .mcp-remove { background: none; border: none; color: #9aa0a6; cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 2px 4px; line-height: 1; }
     .mcp-remove:hover { color: #ea4335; }
+    .browse-btn { background: #1a73e8; color: #fff; border: none; border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .browse-btn:hover { background: #1557b0; }
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .modal-overlay.hidden { display: none; }
+    .modal-box { background: #fff; border-radius: 12px; width: 90%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.18); overflow: hidden; }
+    .modal-hdr { padding: 14px 16px; border-bottom: 1px solid #e8eaed; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; color: #202124; flex-shrink: 0; }
+    .modal-close { background: none; border: none; color: #5f6368; cursor: pointer; font-size: 16px; padding: 2px 6px; line-height: 1; border-radius: 4px; }
+    .modal-close:hover { background: #f1f3f4; color: #202124; }
+    .catalog-search { margin: 10px 16px; padding: 8px 12px; border: 1.5px solid #dadce0; border-radius: 8px; font-size: 13px; outline: none; flex-shrink: 0; width: calc(100% - 32px); }
+    .catalog-search:focus { border-color: #1a73e8; }
+    #catalog-list { overflow-y: auto; padding: 0 16px 12px; flex: 1; }
+    .cat-group-hdr { font-size: 11px; font-weight: 600; color: #5f6368; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 0 4px; }
+    .cat-entry { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f3f4; }
+    .cat-entry:last-child { border-bottom: none; }
+    .cat-entry-info { flex: 1; min-width: 0; }
+    .cat-entry-name { font-size: 13px; font-weight: 500; color: #202124; }
+    .cat-entry-desc { font-size: 12px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .connect-btn { background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .connect-btn:hover { background: #1557b0; }
   </style>
 </head>
 <body>
@@ -147,10 +166,23 @@ const CHAT_HTML = `<!DOCTYPE html>
     <div id="mcp-dash" class="hidden">
       <div class="dash-hdr" id="mcp-dash-hdr">
         <span id="mcp-dash-lbl">MCP Servers</span>
-        <span id="mcp-dash-icon">&#9650;</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="browse-btn" onclick="openCatalogModal();event.stopPropagation()">Browse Servers</button>
+          <span id="mcp-dash-icon">&#9650;</span>
+        </div>
       </div>
       <div id="mcp-dash-body">
         <div id="mcp-server-list"></div>
+      </div>
+    </div>
+    <div id="catalog-modal" class="modal-overlay hidden">
+      <div class="modal-box">
+        <div class="modal-hdr">
+          <span>Browse MCP Servers</span>
+          <button class="modal-close" onclick="closeCatalogModal()">&#x2715;</button>
+        </div>
+        <input id="catalog-search" type="text" class="catalog-search" placeholder="Search servers..." oninput="filterCatalog()">
+        <div id="catalog-list"></div>
       </div>
     </div>
     <div id="msgs"></div>
@@ -335,6 +367,76 @@ const CHAT_HTML = `<!DOCTYPE html>
       fetch('/api/mcp/servers/' + encodeURIComponent(name), { method: 'DELETE' })
         .then(function() { loadMcpServers(); }).catch(function() {});
     }
+
+    var catalogCache = null;
+
+    function openCatalogModal() {
+      document.getElementById('catalog-modal').classList.remove('hidden');
+      document.getElementById('catalog-search').value = '';
+      if (!catalogCache) {
+        fetch('/api/mcp/catalog').then(function(r) { return r.json(); }).then(function(entries) {
+          catalogCache = entries;
+          renderCatalog(entries);
+        }).catch(function() {
+          document.getElementById('catalog-list').innerHTML = '<div style="color:#ea4335;padding:12px 0;font-size:13px">Failed to load catalog.</div>';
+        });
+      } else {
+        renderCatalog(catalogCache);
+      }
+    }
+
+    function closeCatalogModal() {
+      document.getElementById('catalog-modal').classList.add('hidden');
+    }
+
+    function filterCatalog() {
+      if (!catalogCache) return;
+      var q = document.getElementById('catalog-search').value.toLowerCase();
+      var filtered = q ? catalogCache.filter(function(e) {
+        return e.name.toLowerCase().indexOf(q) !== -1 || (e.description || '').toLowerCase().indexOf(q) !== -1;
+      }) : catalogCache;
+      renderCatalog(filtered);
+    }
+
+    function renderCatalog(entries) {
+      var list = document.getElementById('catalog-list');
+      if (!entries || entries.length === 0) {
+        list.innerHTML = '<div style="color:#5f6368;padding:12px 0;font-size:13px">No results.</div>';
+        return;
+      }
+      var groups = {};
+      var order = [];
+      for (var i = 0; i < entries.length; i++) {
+        var cat = entries[i].category || 'other';
+        if (!groups[cat]) { groups[cat] = []; order.push(cat); }
+        groups[cat].push(entries[i]);
+      }
+      var h = '';
+      for (var oi = 0; oi < order.length; oi++) {
+        var c = order[oi];
+        h += '<div class="cat-group-hdr">' + c + '</div>';
+        var grp = groups[c];
+        for (var j = 0; j < grp.length; j++) {
+          var e = grp[j];
+          h += '<div class="cat-entry">' +
+            '<div class="cat-entry-info">' +
+              '<div class="cat-entry-name">' + e.name + '</div>' +
+              '<div class="cat-entry-desc">' + (e.description || '') + '</div>' +
+            '</div>' +
+            '<button class="connect-btn" onclick="connectCatalogEntry(' + JSON.stringify(e.name) + ')">Connect</button>' +
+            '</div>';
+        }
+      }
+      list.innerHTML = h;
+    }
+
+    function connectCatalogEntry(_name) {
+      // OB-1183 will implement the connect flow
+    }
+
+    document.getElementById('catalog-modal').addEventListener('click', function(ev) {
+      if (ev.target === this) closeCatalogModal();
+    });
 
     var dashOpen = true;
     document.getElementById('dash-hdr').addEventListener('click', function() {
