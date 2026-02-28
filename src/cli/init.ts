@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
@@ -103,6 +103,64 @@ export async function checkPrerequisites(): Promise<boolean> {
   }
 
   return true;
+}
+
+async function appendToEnv(envPath: string, key: string, value: string): Promise<void> {
+  let existing = '';
+  try {
+    existing = await readFile(envPath, 'utf-8');
+  } catch {
+    // file doesn't exist yet
+  }
+  const lines = existing.split('\n').filter((l) => l !== '' && !l.startsWith(`${key}=`));
+  lines.push(`${key}=${value}`);
+  await writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
+}
+
+export async function setupClaudeAuth(
+  rl: ReadlineInterface,
+  write: (text: string) => void,
+  dotEnvPath = resolve('.env'),
+): Promise<void> {
+  const claudeAvailable = await isCommandAvailable('claude');
+  if (!claudeAvailable) return;
+
+  write('\n  Claude Code — Authentication Check\n');
+
+  const statusResult = await runCommand('claude', ['auth', 'status']);
+  if (statusResult.exitCode === 0) {
+    printSuccess('Claude Code — already authenticated');
+    return;
+  }
+
+  write('\n  Claude Code requires an Anthropic account to function.\n');
+  write('  Create or sign in at https://console.anthropic.com\n\n');
+  write('    1. Sign in via browser  (claude auth login — opens browser)\n');
+  write('    2. Paste API key        (saves ANTHROPIC_API_KEY to .env)\n');
+  write('    3. Skip — set up later\n\n');
+
+  const choice = await ask(rl, '  Your choice (1/2/3): ');
+
+  if (choice === '1') {
+    write('\n  Opening browser for Anthropic sign-in...\n');
+    const result = await runCommand('claude', ['auth', 'login']);
+    if (result.exitCode === 0) {
+      printSuccess('Claude Code — authenticated successfully');
+    } else {
+      printWarning('Authentication may not have completed. Run: claude auth login');
+      if (result.stderr) write(result.stderr + '\n');
+    }
+  } else if (choice === '2') {
+    const key = await ask(rl, '  Paste your Anthropic API key (sk-ant-...): ');
+    if (key) {
+      await appendToEnv(dotEnvPath, 'ANTHROPIC_API_KEY', key);
+      printSuccess(`ANTHROPIC_API_KEY written to ${dotEnvPath}`);
+    } else {
+      printWarning('No API key entered — skipping');
+    }
+  } else {
+    write('  Skipping Claude Code auth setup.\n');
+  }
 }
 
 export function buildConfig(answers: Answers): Record<string, unknown> {
@@ -222,6 +280,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
 
     const toolStatus = await detectAITools();
     await promptAIToolInstallation(rl, toolStatus, write);
+    await setupClaudeAuth(rl, write);
 
     write('\n  OpenBridge — Configuration Setup\n\n');
 
