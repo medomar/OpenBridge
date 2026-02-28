@@ -1,0 +1,7 @@
+{
+  "name": "openbridge-desktop",
+  "version": "0.0.1",
+  "description": "Electron desktop application for OpenBridge — graphical setup wizard, live dashboard, and system tray integration.",
+  "private": true,
+  "main": "dist/electron/main.js"
+}
