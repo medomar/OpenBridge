@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
+import { runHealthCheck } from '../core/health.js';
 import {
   detectOS,
   getNodeVersion,
@@ -539,6 +540,27 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 
     write(`\n  Config written to ${outputPath}\n`);
+
+    // Health check
+    printStep(6, TOTAL_STEPS, 'Health Check');
+    write('\n');
+    const healthResult = runHealthCheck(outputPath);
+    for (const check of healthResult.checks) {
+      if (check.passed) {
+        printSuccess(`${check.name} — ${check.message}`);
+      } else {
+        printError(`${check.name} — ${check.message}`);
+      }
+    }
+    write('\n');
+    if (healthResult.passed) {
+      printSuccess("All checks passed — you're ready!");
+    } else {
+      const issueCount = healthResult.checks.filter((c) => !c.passed).length;
+      printWarning(`${issueCount} issue${issueCount === 1 ? '' : 's'} found — see above`);
+    }
+    write('\n');
+
     write('  To start OpenBridge:\n');
     write('    - Cloned from repo:    npm run dev\n');
     write('    - Installed via npm:   node dist/index.js\n\n');
