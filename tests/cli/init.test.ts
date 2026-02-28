@@ -1,15 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PassThrough, Writable } from 'node:stream';
+import { createInterface } from 'node:readline';
 import { existsSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildConfig, runInit } from '../../src/cli/init.js';
+import { buildConfig, runInit, promptAIToolInstallation } from '../../src/cli/init.js';
+import { runCommand } from '../../src/cli/utils.js';
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<object>();
   return { ...actual, existsSync: vi.fn(() => false) };
 });
+
+vi.mock('../../src/cli/utils.js', () => ({
+  detectOS: vi.fn(() => 'linux' as const),
+  getNodeVersion: vi.fn(() => 'v22.0.0'),
+  isCommandAvailable: vi.fn(async (cmd: string) => cmd === 'npm' || cmd === 'git'),
+  meetsNodeVersion: vi.fn(() => true),
+  printSuccess: vi.fn(),
+  printWarning: vi.fn(),
+  printError: vi.fn(),
+  runCommand: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })),
+}));
 
 /**
  * Creates a mock input stream that feeds lines one-at-a-time
@@ -175,6 +188,8 @@ describe('runInit', () => {
   beforeEach(() => {
     testConfigPath = join(testDir, `openbridge-test-${Date.now()}.json`);
     vi.mocked(existsSync).mockReturnValue(false);
+    vi.clearAllMocks();
+    vi.mocked(existsSync).mockReturnValue(false);
   });
 
   afterEach(async () => {
@@ -187,6 +202,7 @@ describe('runInit', () => {
 
   it('should generate a whatsapp config from interactive input', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'whatsapp', // connector
       '/home/user/my-project', // workspace path
       '+1234567890', // whitelist
@@ -213,6 +229,7 @@ describe('runInit', () => {
 
   it('should generate a console config without auth', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/home/user/my-project', // workspace path
       'n', // MCP: skip
@@ -231,6 +248,7 @@ describe('runInit', () => {
 
   it('should default to console when connector answer is empty', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       '', // empty = default console
       '/home/user/project', // workspace path
       'n', // MCP: skip
@@ -247,6 +265,7 @@ describe('runInit', () => {
 
   it('should apply prefix default when user presses enter', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'whatsapp', // connector
       '/home/user/project', // workspace path
       '+555', // whitelist
@@ -264,6 +283,7 @@ describe('runInit', () => {
 
   it('should abort if workspace path is empty', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       '', // connector (default console)
       '', // empty workspace path
     ]);
@@ -275,6 +295,7 @@ describe('runInit', () => {
 
   it('should abort if whitelist is empty', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'whatsapp', // connector
       '/home/user/project', // workspace path
       '', // empty whitelist
@@ -287,6 +308,7 @@ describe('runInit', () => {
 
   it('should abort on invalid connector', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'slack', // invalid connector
     ]);
 
@@ -298,7 +320,10 @@ describe('runInit', () => {
   it('should abort if user declines overwrite', async () => {
     vi.mocked(existsSync).mockReturnValue(true);
 
-    const { input, output } = createLineFeeder(['n']);
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      'n', // decline overwrite
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
@@ -309,6 +334,7 @@ describe('runInit', () => {
     vi.mocked(existsSync).mockReturnValue(true);
 
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'y', // confirm overwrite
       'whatsapp', // connector
       '/home/user/project', // workspace path
@@ -328,6 +354,7 @@ describe('runInit', () => {
 
   it('should generate config for telegram connector with bot token', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'telegram', // connector
       '/home/user/project', // workspace path
       '123456:ABC-DEF', // bot token
@@ -345,6 +372,7 @@ describe('runInit', () => {
 
   it('should abort if telegram bot token is empty', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'telegram', // connector
       '/home/user/project', // workspace path
       '', // empty bot token
@@ -357,6 +385,7 @@ describe('runInit', () => {
 
   it('should generate config for discord connector with bot token', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'discord', // connector
       '/home/user/project', // workspace path
       'MTk4NjIy.discord-token', // bot token
@@ -374,6 +403,7 @@ describe('runInit', () => {
 
   it('should abort if discord bot token is empty', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'discord', // connector
       '/home/user/project', // workspace path
       '', // empty bot token
@@ -386,6 +416,7 @@ describe('runInit', () => {
 
   it('should show updated success message with both start options', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console',
       '/home/user/project',
       'n', // MCP: skip
@@ -399,6 +430,7 @@ describe('runInit', () => {
 
   it('should generate mcp section when user enables MCP with servers', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/home/user/project', // workspace path
       'y', // Enable MCP
@@ -424,6 +456,7 @@ describe('runInit', () => {
 
   it('should generate mcp section with configPath when provided', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/home/user/project', // workspace path
       'y', // Enable MCP
@@ -443,6 +476,7 @@ describe('runInit', () => {
 
   it('should not add mcp section when user enables MCP but provides nothing', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/home/user/project', // workspace path
       'y', // Enable MCP
@@ -459,6 +493,7 @@ describe('runInit', () => {
 
   it('should generate mcp section with multiple servers', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/home/user/project', // workspace path
       'y', // Enable MCP
@@ -480,4 +515,163 @@ describe('runInit', () => {
     expect(servers[0]?.name).toBe('canva');
     expect(servers[1]?.name).toBe('gmail');
   });
+});
+
+// ── promptAIToolInstallation() ────────────────────────────────────────────────
+
+describe('promptAIToolInstallation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeRl(lines: string[]): {
+    rl: ReturnType<typeof createInterface>;
+    written: string[];
+  } {
+    const { input, output } = createLineFeeder(lines);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    return { rl, written };
+  }
+
+  it('shows "no tools detected" message when no tools are installed', async () => {
+    const { input, output } = createLineFeeder(['4']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('No AI tools detected');
+  });
+
+  it('shows install menu when no tools are installed', async () => {
+    const { input, output } = createLineFeeder(['4']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('Claude Code');
+    expect(text).toContain('OpenAI Codex');
+    expect(text).toContain('Skip');
+  });
+
+  it('skips installation when user picks 4', async () => {
+    const { input, output } = createLineFeeder(['4']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalled();
+  });
+
+  it('installs Claude Code when user picks 1', async () => {
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith('npm', [
+      'install',
+      '-g',
+      '@anthropic-ai/claude-code',
+    ]);
+  });
+
+  it('installs OpenAI Codex when user picks 2', async () => {
+    const { input, output } = createLineFeeder(['2']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).toHaveBeenCalledWith('npm', ['install', '-g', '@openai/codex']);
+  });
+
+  it('installs both tools when user picks 3', async () => {
+    const { input, output } = createLineFeeder(['3']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    const mock = vi.mocked(runCommand);
+    expect(mock).toHaveBeenCalledTimes(2);
+    expect(mock).toHaveBeenCalledWith('npm', ['install', '-g', '@anthropic-ai/claude-code']);
+    expect(mock).toHaveBeenCalledWith('npm', ['install', '-g', '@openai/codex']);
+  });
+
+  it('skips installation on invalid choice', async () => {
+    const { input, output } = createLineFeeder(['9']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalled();
+  });
+
+  it('shows installed tools when some are available', async () => {
+    const { input, output } = createLineFeeder(['n']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: true, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('AI tools found');
+    expect(written.join('')).toContain('claude');
+  });
+
+  it('skips additional install when user answers n (some tools available)', async () => {
+    const { input, output } = createLineFeeder(['n']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: true, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(runCommand)).not.toHaveBeenCalled();
+  });
+
+  it('shows install menu when user answers y with some tools available', async () => {
+    const { input, output } = createLineFeeder(['y', '4']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: true, codex: false, aider: false }, write);
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('Claude Code');
+    expect(text).toContain('OpenAI Codex');
+  });
+
+  it('shows installing message when tool is being installed', async () => {
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('Installing Claude Code');
+  });
+
+  void makeRl; // suppress unused warning
 });

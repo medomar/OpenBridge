@@ -18,6 +18,17 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, existsSync: vi.fn(() => false) };
 });
 
+vi.mock('../../src/cli/utils.js', () => ({
+  detectOS: vi.fn(() => 'linux' as const),
+  getNodeVersion: vi.fn(() => 'v22.0.0'),
+  isCommandAvailable: vi.fn(async (cmd: string) => cmd === 'npm' || cmd === 'git'),
+  meetsNodeVersion: vi.fn(() => true),
+  printSuccess: vi.fn(),
+  printWarning: vi.fn(),
+  printError: vi.fn(),
+  runCommand: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })),
+}));
+
 /**
  * Creates a mock input stream that feeds lines on demand.
  * Each time readline writes a prompt containing '?' or ':', the next line is pushed.
@@ -170,6 +181,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('produces no mcp field when user answers n to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'n', // skip MCP
@@ -184,6 +196,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('produces no mcp field when user answers N (uppercase) to MCP prompt', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'N', // skip MCP
@@ -198,6 +211,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('generates valid mcp config with one server when user provides it', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'y', // enable MCP
@@ -224,6 +238,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('collects multiple servers in the servers array', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'y', // enable MCP
@@ -251,6 +266,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('captures configPath import from Claude Desktop when provided', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'y', // enable MCP
@@ -270,6 +286,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('does not add mcp section when user enables MCP but provides neither servers nor configPath', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'y', // enable MCP
@@ -286,6 +303,7 @@ describe('runInit() — MCP interactive flow', () => {
 
   it('generates mcp with both servers and configPath when both provided', async () => {
     const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
       'console', // connector
       '/proj', // workspace path
       'y', // enable MCP
