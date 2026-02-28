@@ -253,6 +253,11 @@ async function startV2Flow(
   // the DB before it is open (this.db would be null, causing 'MemoryManager not initialised' errors).
   await bridge.start();
 
+  // Re-sync MasterManager's memory reference after bridge.start() —
+  // if MemoryManager.init() failed, bridge.start() sets bridge.memory to null,
+  // but MasterManager still holds the old (uninitialised) reference.
+  masterManager.memory = bridge.getMemory();
+
   // Wire MCP servers into the health endpoint (runs after bridge.start() initialises the health server)
   if (v2Config.mcp?.enabled !== false && (v2Config.mcp?.servers ?? []).length > 0) {
     bridge.setMcpServers(v2Config.mcp?.servers ?? []);
@@ -416,14 +421,13 @@ async function main(): Promise<void> {
 // Handle --version flag for the packaged binary entry point
 if (process.argv.includes('--version') || process.argv.includes('-v')) {
   process.stdout.write(OPENBRIDGE_VERSION + '\n');
-  process.exit(0);
-}
-
-// Handle --health flag for the packaged binary entry point
-if (process.argv.includes('--health')) {
+  // Defer exit to let Pino's sonic-boom stream finish initialization
+  setTimeout(() => process.exit(0), 50);
+} else if (process.argv.includes('--health')) {
+  // Handle --health flag for the packaged binary entry point
   const result = runHealthCheck();
   process.stdout.write(JSON.stringify(result) + '\n');
-  process.exit(result.passed ? 0 : 1);
+  setTimeout(() => process.exit(result.passed ? 0 : 1), 50);
+} else {
+  void main();
 }
-
-void main();

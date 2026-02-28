@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 | **In Progress:** 0 | **Done:** 94
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 95
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 36     | ◻      |
-|       | **Total**                                      |         | **95** | **94** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 37     | ✅     |
+|       | **Total**                                      |         | **95** | **95** |        |
 
 ---
 
@@ -278,9 +278,9 @@
 
 ### Phase 73H — Testing & Validation
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 37  | OB-1294 | Unit tests for Electron IPC handlers — test all IPC handlers in `main.ts`: `detect-prerequisites`, `install-ai-tool`, `generate-config`, `start-bridge`, `stop-bridge`, `get-bridge-status`. Mock `child_process`, `fs`, and Electron APIs. 8+ test cases. Unit tests for React components — test `Setup.tsx` wizard navigation (step transitions, validation gating), `Dashboard.tsx` renders bridge status, `Settings.tsx` tab switching. Use Vitest + React Testing Library. 10+ test cases. Build + lint + typecheck validation — run `npm run lint && npm run typecheck && npm run test && npm run build` in both root and `desktop/`. Fix any failures | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 37  | OB-1294 | Unit tests for Electron IPC handlers — test all IPC handlers in `main.ts`: `detect-prerequisites`, `install-ai-tool`, `generate-config`, `start-bridge`, `stop-bridge`, `get-bridge-status`. Mock `child_process`, `fs`, and Electron APIs. 8+ test cases. Unit tests for React components — test `Setup.tsx` wizard navigation (step transitions, validation gating), `Dashboard.tsx` renders bridge status, `Settings.tsx` tab switching. Use Vitest + React Testing Library. 10+ test cases. Build + lint + typecheck validation — run `npm run lint && npm run typecheck && npm run test && npm run build` in both root and `desktop/`. Fix any failures | ✅ Done |
 
 ---
 
