@@ -22,6 +22,18 @@ declare global {
       onBridgeLog(callback: (log: string) => void): void;
       onWorkerUpdate(callback: (update: unknown) => void): void;
       onMessageReceived(callback: (message: unknown) => void): void;
+      mcpGetServers(): Promise<unknown>;
+      mcpAddServer(body: unknown): Promise<{ success: boolean; error?: string }>;
+      mcpToggleServer(
+        name: string,
+        enabled: boolean,
+      ): Promise<{ success: boolean; error?: string }>;
+      mcpRemoveServer(name: string): Promise<{ success: boolean; error?: string }>;
+      mcpGetCatalog(): Promise<unknown>;
+      mcpConnectFromCatalog(
+        name: string,
+        envVars: Record<string, string>,
+      ): Promise<{ success: boolean; error?: string }>;
     };
   }
 }
