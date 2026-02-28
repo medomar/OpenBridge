@@ -4,6 +4,10 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+export function isPackagedMode(): boolean {
+  return (process as { pkg?: unknown }).pkg !== undefined;
+}
+
 export function detectOS(): 'macos' | 'windows' | 'linux' {
   switch (process.platform) {
     case 'darwin':
