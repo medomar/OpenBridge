@@ -547,6 +547,25 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/mcp/servers — JSON list of MCP servers from the registry
+      if (url === '/api/mcp/servers') {
+        if (!this.mcpRegistry) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        try {
+          const servers = this.mcpRegistry.listServers();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(servers));
+        } catch (err) {
+          logger.error({ err }, 'GET /api/mcp/servers failed');
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });

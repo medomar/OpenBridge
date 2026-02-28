@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 | **In Progress:** 0 | **Done:** 33
+> **Pending:** 16 | **In Progress:** 0 | **Done:** 34
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -100,7 +100,7 @@
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                            | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 7   | OB-1175 | Add `GET /api/mcp/servers` endpoint on WebChat HTTP server — returns `McpRegistry.listServers()` as JSON array. Each entry: `{name, command, args, enabled, status}`. Env vars masked (masking task handles this). Response: 200 + JSON, 503 if registry not available                                                                                 | ◻ Pending |
+| 7   | OB-1175 | Add `GET /api/mcp/servers` endpoint on WebChat HTTP server — returns `McpRegistry.listServers()` as JSON array. Each entry: `{name, command, args, enabled, status}`. Env vars masked (masking task handles this). Response: 200 + JSON, 503 if registry not available                                                                                 | ✅ Done   |
 | 8   | OB-1176 | Add `POST /api/mcp/servers` endpoint — parse JSON body `{name, command, args?, env?}`, validate via `MCPServerSchema.safeParse()`, call `McpRegistry.addServer()`. Return 201 + created server on success, 400 on validation failure, 409 if server name already exists                                                                                | ◻ Pending |
 | 9   | OB-1177 | Add `DELETE /api/mcp/servers/:name` endpoint — URL-decode name param, call `McpRegistry.removeServer(name)`. Return 204 on success, 404 if not found                                                                                                                                                                                                   | ◻ Pending |
 | 10  | OB-1178 | Add `PATCH /api/mcp/servers/:name` endpoint — parse JSON body `{enabled: boolean}`, call `McpRegistry.toggleServer(name, enabled)`. Return 200 + updated server, 404 if not found                                                                                                                                                                      | ◻ Pending |
