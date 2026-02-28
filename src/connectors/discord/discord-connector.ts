@@ -3,6 +3,7 @@ import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types
 import { DiscordConfigSchema } from './discord-config.js';
 import type { DiscordConfig } from './discord-config.js';
 import { createLogger } from '../../core/logger.js';
+import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
 
 const logger = createLogger('discord');
 
@@ -172,7 +173,10 @@ export class DiscordConnector implements Connector {
     if (!channel) {
       throw new Error(`Discord channel not found: ${message.recipient}`);
     }
-    await channel.send(message.content);
+    const chunks = splitMessage(message.content, PLATFORM_MAX_LENGTH.discord);
+    for (const chunk of chunks) {
+      await channel.send(chunk);
+    }
   }
 
   sendTypingIndicator(_chatId: string): Promise<void> {

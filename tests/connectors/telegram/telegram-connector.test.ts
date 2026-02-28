@@ -235,6 +235,38 @@ describe('TelegramConnector', () => {
     expect(bot.api.sendMessage).toHaveBeenCalledWith('12345', 'Hello from AI');
   });
 
+  it('should split long messages into multiple sends', async () => {
+    await connector.initialize();
+    const bot = latestBot();
+
+    const longContent = 'Hello world. '.repeat(400); // ~5200 chars, over 4096 limit
+    await connector.sendMessage({
+      target: 'telegram',
+      recipient: '12345',
+      content: longContent,
+    });
+
+    // Should have been called multiple times (once per chunk)
+    expect(bot.api.sendMessage.mock.calls.length).toBeGreaterThan(1);
+    // Each chunk should be under 4096 chars
+    for (const call of bot.api.sendMessage.mock.calls) {
+      expect((call[1] as string).length).toBeLessThanOrEqual(4096);
+    }
+  });
+
+  it('should send short messages as a single call', async () => {
+    await connector.initialize();
+    const bot = latestBot();
+
+    await connector.sendMessage({
+      target: 'telegram',
+      recipient: '12345',
+      content: 'Short message under limit',
+    });
+
+    expect(bot.api.sendMessage).toHaveBeenCalledOnce();
+  });
+
   it('should throw when sending while disconnected', async () => {
     await expect(
       connector.sendMessage({

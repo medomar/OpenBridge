@@ -264,6 +264,30 @@ describe('DiscordConnector', () => {
     expect(mockChannel.send).toHaveBeenCalledWith('Hello from AI');
   });
 
+  it('should split long messages into multiple sends (2000 char limit)', async () => {
+    await connector.initialize();
+    latestClient().simulateReady();
+
+    const longContent = 'Hello world. '.repeat(200); // ~2600 chars, over 2000 limit
+    await connector.sendMessage({
+      target: 'discord',
+      recipient: 'chan-777',
+      content: longContent,
+    });
+
+    const client = latestClient();
+    const mockChannel = (await client.channels.fetch.mock.results[0]!.value) as {
+      send: ReturnType<typeof vi.fn>;
+    };
+
+    // Should have been called multiple times (once per chunk)
+    expect(mockChannel.send.mock.calls.length).toBeGreaterThan(1);
+    // Each chunk should be under 2000 chars
+    for (const call of mockChannel.send.mock.calls) {
+      expect((call[0] as string).length).toBeLessThanOrEqual(2000);
+    }
+  });
+
   it('should throw when sending while disconnected', async () => {
     await expect(
       connector.sendMessage({
