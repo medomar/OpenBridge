@@ -251,6 +251,7 @@ const CHAT_HTML = `<!DOCTYPE html>
     var statusTimer = document.getElementById('status-timer');
     var timerInterval = null;
     var timerStart = null;
+    var mcpPollTimer = null;
 
     function md(raw) {
       var h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
@@ -369,6 +370,15 @@ const CHAT_HTML = `<!DOCTYPE html>
       fetch('/api/mcp/servers').then(function(r) { return r.json(); }).then(function(servers) {
         renderMcpServers(servers);
       }).catch(function() {});
+    }
+
+    function startMcpPoll() {
+      if (mcpPollTimer) return;
+      mcpPollTimer = setInterval(loadMcpServers, 30000);
+    }
+
+    function stopMcpPoll() {
+      if (mcpPollTimer) { clearInterval(mcpPollTimer); mcpPollTimer = null; }
     }
 
     function renderMcpServers(servers) {
@@ -711,8 +721,8 @@ const CHAT_HTML = `<!DOCTYPE html>
     var ws;
     function connectWs() {
       ws = new WebSocket('ws://' + location.host);
-      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); loadMcpServers(); };
-      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
+      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); stopMcpPoll(); loadMcpServers(); };
+      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); startMcpPoll(); setTimeout(connectWs, 2000); };
       ws.onmessage = function(e) {
         try {
           var data = JSON.parse(e.data);
