@@ -178,11 +178,12 @@ const CHAT_HTML = `<!DOCTYPE html>
     <div id="catalog-modal" class="modal-overlay hidden">
       <div class="modal-box">
         <div class="modal-hdr">
-          <span>Browse MCP Servers</span>
-          <button class="modal-close" onclick="closeCatalogModal()">&#x2715;</button>
+          <span id="modal-hdr-title">Browse MCP Servers</span>
+          <button id="modal-close-btn" class="modal-close" onclick="closeCatalogModal()">&#x2715;</button>
         </div>
         <input id="catalog-search" type="text" class="catalog-search" placeholder="Search servers..." oninput="filterCatalog()">
         <div id="catalog-list"></div>
+        <div id="connect-form-view" style="display:none;padding:0 16px 16px;overflow-y:auto;flex:1"></div>
       </div>
     </div>
     <div id="msgs"></div>
@@ -369,6 +370,7 @@ const CHAT_HTML = `<!DOCTYPE html>
     }
 
     var catalogCache = null;
+    var currentConnectEntry = null;
 
     function openCatalogModal() {
       document.getElementById('catalog-modal').classList.remove('hidden');
@@ -387,6 +389,50 @@ const CHAT_HTML = `<!DOCTYPE html>
 
     function closeCatalogModal() {
       document.getElementById('catalog-modal').classList.add('hidden');
+      showCatalogView();
+    }
+
+    function showCatalogView() {
+      currentConnectEntry = null;
+      document.getElementById('catalog-search').style.display = '';
+      document.getElementById('catalog-list').style.display = '';
+      var fv = document.getElementById('connect-form-view');
+      fv.style.display = 'none';
+      fv.innerHTML = '';
+      document.getElementById('modal-hdr-title').textContent = 'Browse MCP Servers';
+    }
+
+    function submitConnectForm() {
+      if (!currentConnectEntry) return;
+      var name = currentConnectEntry.name;
+      var envVarsData = {};
+      var inputs = document.querySelectorAll('#connect-form-view input[data-key]');
+      for (var i = 0; i < inputs.length; i++) {
+        var key = inputs[i].getAttribute('data-key');
+        if (key) envVarsData[key] = inputs[i].value;
+      }
+      var submitBtn = document.getElementById('connect-submit-btn');
+      if (submitBtn) submitBtn.disabled = true;
+      var errorDiv = document.getElementById('connect-error');
+      if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = ''; }
+      fetch('/api/mcp/catalog/' + encodeURIComponent(name) + '/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ envVars: envVarsData })
+      }).then(function(r) {
+        if (r.ok) {
+          closeCatalogModal();
+          loadMcpServers();
+        } else {
+          return r.json().then(function(data) {
+            if (errorDiv) { errorDiv.textContent = data.error || 'Failed to connect'; errorDiv.style.display = ''; }
+            if (submitBtn) submitBtn.disabled = false;
+          });
+        }
+      }).catch(function() {
+        if (errorDiv) { errorDiv.textContent = 'Network error \u2014 please try again'; errorDiv.style.display = ''; }
+        if (submitBtn) submitBtn.disabled = false;
+      });
     }
 
     function filterCatalog() {
@@ -430,8 +476,37 @@ const CHAT_HTML = `<!DOCTYPE html>
       list.innerHTML = h;
     }
 
-    function connectCatalogEntry(_name) {
-      // OB-1183 will implement the connect flow
+    function connectCatalogEntry(name) {
+      var entry = null;
+      if (catalogCache) {
+        for (var i = 0; i < catalogCache.length; i++) {
+          if (catalogCache[i].name === name) { entry = catalogCache[i]; break; }
+        }
+      }
+      if (!entry) return;
+      currentConnectEntry = entry;
+      document.getElementById('catalog-search').style.display = 'none';
+      document.getElementById('catalog-list').style.display = 'none';
+      document.getElementById('modal-hdr-title').textContent = 'Connect: ' + entry.name;
+      var envVars = entry.envVars || [];
+      var h = '<button style="background:none;border:none;color:#1a73e8;cursor:pointer;font-size:12px;padding:0;margin-bottom:12px" onclick="showCatalogView()">\u2190 Back to catalog</button>';
+      if (entry.description) {
+        h += '<p style="font-size:13px;color:#5f6368;margin-bottom:12px">' + entry.description + '</p>';
+      }
+      for (var j = 0; j < envVars.length; j++) {
+        var ev = envVars[j];
+        h += '<div style="margin-bottom:10px">';
+        h += '<label style="display:block;font-size:13px;font-weight:500;color:#202124;margin-bottom:4px">' + ev.description;
+        if (ev.required) h += ' <span style="color:#ea4335">*</span>';
+        h += '</label>';
+        h += '<input type="password" data-key="' + ev.key + '" placeholder="' + ev.key + '" style="width:100%;padding:8px 12px;border:1.5px solid #dadce0;border-radius:8px;font-size:13px;outline:none">';
+        h += '</div>';
+      }
+      h += '<div id="connect-error" style="color:#ea4335;font-size:13px;margin-bottom:8px;display:none"></div>';
+      h += '<button id="connect-submit-btn" class="connect-btn" style="width:100%;padding:9px;font-size:13px" onclick="submitConnectForm()">Connect</button>';
+      var fv = document.getElementById('connect-form-view');
+      fv.innerHTML = h;
+      fv.style.display = '';
     }
 
     document.getElementById('catalog-modal').addEventListener('click', function(ev) {
