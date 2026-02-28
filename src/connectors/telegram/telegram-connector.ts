@@ -267,12 +267,14 @@ export class TelegramConnector implements Connector {
         if (!bot || !mediaManager) {
           content = '[Voice message — install whisper for auto-transcription]';
         } else {
+          await bot.api.sendChatAction(chatId, 'typing').catch(() => {});
           try {
             const { filePath } = await downloadTelegramFile(bot, voice.file_id, mediaManager);
             const transcription = await transcribeAudio(filePath);
             content = transcription ?? '[Voice message — install whisper for auto-transcription]';
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download/transcribe Telegram voice message');
+            await bot.api.sendMessage(chatId, '[Failed to process voice]').catch(() => {});
             content = '[Voice message — transcription failed]';
           }
         }
@@ -316,6 +318,7 @@ export class TelegramConnector implements Connector {
         let attachments: InboundMessage['attachments'];
 
         if (bot && mediaManager) {
+          await bot.api.sendChatAction(chatId, 'upload_photo').catch(() => {});
           try {
             const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
               bot,
@@ -325,6 +328,7 @@ export class TelegramConnector implements Connector {
             attachments = [{ type: 'image', filePath, mimeType, sizeBytes }];
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram photo');
+            await bot.api.sendMessage(chatId, '[Failed to process photo]').catch(() => {});
           }
         }
 
@@ -365,6 +369,7 @@ export class TelegramConnector implements Connector {
         let attachments: InboundMessage['attachments'];
 
         if (bot && mediaManager) {
+          await bot.api.sendChatAction(chatId, 'upload_document').catch(() => {});
           try {
             const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
               bot,
@@ -382,6 +387,7 @@ export class TelegramConnector implements Connector {
             ];
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram document');
+            await bot.api.sendMessage(chatId, '[Failed to process document]').catch(() => {});
           }
         }
 
@@ -422,6 +428,7 @@ export class TelegramConnector implements Connector {
         let attachments: InboundMessage['attachments'];
 
         if (bot && mediaManager) {
+          await bot.api.sendChatAction(chatId, 'upload_video').catch(() => {});
           try {
             const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
               bot,
@@ -431,6 +438,7 @@ export class TelegramConnector implements Connector {
             attachments = [{ type: 'video', filePath, mimeType, sizeBytes }];
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram video');
+            await bot.api.sendMessage(chatId, '[Failed to process video]').catch(() => {});
           }
         }
 
@@ -471,6 +479,7 @@ export class TelegramConnector implements Connector {
         let attachments: InboundMessage['attachments'];
 
         if (bot && mediaManager) {
+          await bot.api.sendChatAction(chatId, 'upload_document').catch(() => {});
           try {
             const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
               bot,
@@ -480,6 +489,7 @@ export class TelegramConnector implements Connector {
             attachments = [{ type: 'audio', filePath, mimeType, sizeBytes }];
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram audio');
+            await bot.api.sendMessage(chatId, '[Failed to process audio]').catch(() => {});
           }
         }
 
