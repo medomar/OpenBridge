@@ -109,3 +109,78 @@ jobs:
           name: openbridge-win-x64
           path: release/openbridge-win-x64.exe
           retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS ARM64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: openbridge-macos-arm64
+          path: release/
+
+      - name: Download macOS x64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: openbridge-macos-x64
+          path: release/
+
+      - name: Download macOS DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: openbridge-macos-dmg
+          path: release/
+
+      - name: Download Linux x64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: openbridge-linux-x64
+          path: release/
+
+      - name: Download Windows x64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: openbridge-win-x64
+          path: release/
+
+      - name: Extract changelog excerpt
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Extract the section for this version from CHANGELOG.md
+          # Looks for "## [vX.Y.Z]" or "## vX.Y.Z" heading and captures until next "## "
+          CHANGELOG_EXCERPT=$(awk "/^## (\[)?${VERSION}(\])?/,/^## /" CHANGELOG.md | head -n -1 | tail -n +2 || echo "See CHANGELOG.md for details.")
+          if [ -z "$CHANGELOG_EXCERPT" ]; then
+            CHANGELOG_EXCERPT="See [CHANGELOG.md](CHANGELOG.md) for details."
+          fi
+          # Write to a file to preserve newlines
+          echo "$CHANGELOG_EXCERPT" > /tmp/release-notes.txt
+
+      - name: Rename binaries with version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          cp release/openbridge-macos-arm64 release/openbridge-macos-arm64-${VERSION} 2>/dev/null || true
+          cp release/openbridge-macos-x64 release/openbridge-macos-x64-${VERSION} 2>/dev/null || true
+          cp release/openbridge-linux-x64 release/openbridge-linux-x64-${VERSION} 2>/dev/null || true
+          cp release/openbridge-win-x64.exe release/openbridge-win-x64-${VERSION}.exe 2>/dev/null || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenBridge ${{ github.ref_name }}
+          body_path: /tmp/release-notes.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release/openbridge-macos-arm64
+            release/openbridge-macos-x64
+            release/OpenBridge-*-macOS.dmg
+            release/openbridge-linux-x64
+            release/openbridge-win-x64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
