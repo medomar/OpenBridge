@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 14 | **In Progress:** 0 | **Done:** 36
+> **Pending:** 13 | **In Progress:** 0 | **Done:** 37
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -103,7 +103,7 @@
 | 7   | OB-1175 | Add `GET /api/mcp/servers` endpoint on WebChat HTTP server — returns `McpRegistry.listServers()` as JSON array. Each entry: `{name, command, args, enabled, status}`. Env vars masked (masking task handles this). Response: 200 + JSON, 503 if registry not available                                                                                 | ✅ Done   |
 | 8   | OB-1176 | Add `POST /api/mcp/servers` endpoint — parse JSON body `{name, command, args?, env?}`, validate via `MCPServerSchema.safeParse()`, call `McpRegistry.addServer()`. Return 201 + created server on success, 400 on validation failure, 409 if server name already exists                                                                                | ✅ Done   |
 | 9   | OB-1177 | Add `DELETE /api/mcp/servers/:name` endpoint — URL-decode name param, call `McpRegistry.removeServer(name)`. Return 204 on success, 404 if not found                                                                                                                                                                                                   | ✅ Done   |
-| 10  | OB-1178 | Add `PATCH /api/mcp/servers/:name` endpoint — parse JSON body `{enabled: boolean}`, call `McpRegistry.toggleServer(name, enabled)`. Return 200 + updated server, 404 if not found                                                                                                                                                                      | ◻ Pending |
+| 10  | OB-1178 | Add `PATCH /api/mcp/servers/:name` endpoint — parse JSON body `{enabled: boolean}`, call `McpRegistry.toggleServer(name, enabled)`. Return 200 + updated server, 404 if not found                                                                                                                                                                      | ✅ Done   |
 | 11  | OB-1179 | Add `GET /api/mcp/catalog` endpoint — return `MCP_CATALOG` from `mcp-catalog.ts` as JSON array. Support optional `?category=code` query param to filter. Return 200 + JSON                                                                                                                                                                             | ◻ Pending |
 | 12  | OB-1180 | Add `POST /api/mcp/catalog/:name/connect` endpoint — look up catalog entry by name (404 if not found), parse body `{envVars: {KEY: "value"}}`, validate all required env vars are provided (400 if missing), build `MCPServer` from catalog template + user env vars, call `McpRegistry.addServer()` (409 if name exists). Return 201 + created server | ◻ Pending |
 
