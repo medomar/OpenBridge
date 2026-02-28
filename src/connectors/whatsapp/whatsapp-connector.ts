@@ -1,5 +1,5 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { setQrCode } from '../../core/qr-store.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
@@ -296,13 +296,36 @@ export class WhatsAppConnector implements Connector {
         ? await this.downloadIncomingMedia(msg)
         : null;
 
-    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
+    let content = msg.body;
+    let attachments: InboundMessage['attachments'];
+
     if (downloadedMedia) {
+      attachments = [
+        {
+          type: downloadedMedia.type,
+          filePath: downloadedMedia.result.filePath,
+          mimeType: downloadedMedia.mimeType,
+          ...(downloadedMedia.filename !== undefined && { filename: downloadedMedia.filename }),
+          sizeBytes: downloadedMedia.result.sizeBytes,
+        },
+      ];
+      // Use caption (msg.body) as text; fall back to type label if no caption
+      if (!content) {
+        const fallbackMap: Record<string, string> = {
+          image: '[Image]',
+          document: '[Document]',
+          video: '[Video]',
+          audio: '[Audio]',
+        };
+        content = fallbackMap[downloadedMedia.type] ?? `[${downloadedMedia.type}]`;
+      }
       logger.debug(
         { filePath: downloadedMedia.result.filePath, type: downloadedMedia.type },
         'Incoming media downloaded',
       );
     }
+
+    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp, attachments);
     this.emit('message', parsed);
   }
 
