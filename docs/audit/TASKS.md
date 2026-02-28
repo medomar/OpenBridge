@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 47 | **In Progress:** 0 | **Done:** 48
+> **Pending:** 46 | **In Progress:** 0 | **Done:** 49
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,9 +35,9 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 15     | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 16     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **46** |        |
+|       | **Total**                                      |         | **95** | **47** |        |
 
 ---
 
@@ -168,10 +168,10 @@
 
 ### Phase 72D — Windows Installer (.exe)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 15  | OB-1247 | Create `scripts/create-installer.nsi` — NSIS installer script for Windows. Installs `openbridge-win-x64.exe` to `C:\Program Files\OpenBridge\`, creates Start Menu shortcut, creates Desktop shortcut (optional), adds uninstaller entry in Control Panel, sets `OPENBRIDGE_HOME` env var to `%USERPROFILE%\.openbridge`. Output: `release/OpenBridge-{version}-Setup.exe` | ✅ Done   |
-| 16  | OB-1248 | Add Windows build instructions — add to `docs/CODE_SIGNING.md`: (1) building on Windows requires NSIS installed (`choco install nsis` or download from nsis.sourceforge.io), (2) run `makensis scripts/create-installer.nsi` to produce the installer, (3) CI can cross-compile using `nsis` GitHub Action. Note: actual Windows testing requires a Windows runner         | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 15  | OB-1247 | Create `scripts/create-installer.nsi` — NSIS installer script for Windows. Installs `openbridge-win-x64.exe` to `C:\Program Files\OpenBridge\`, creates Start Menu shortcut, creates Desktop shortcut (optional), adds uninstaller entry in Control Panel, sets `OPENBRIDGE_HOME` env var to `%USERPROFILE%\.openbridge`. Output: `release/OpenBridge-{version}-Setup.exe` | ✅ Done |
+| 16  | OB-1248 | Add Windows build instructions — add to `docs/CODE_SIGNING.md`: (1) building on Windows requires NSIS installed (`choco install nsis` or download from nsis.sourceforge.io), (2) run `makensis scripts/create-installer.nsi` to produce the installer, (3) CI can cross-compile using `nsis` GitHub Action. Note: actual Windows testing requires a Windows runner         | ✅ Done |
 
 ### Phase 72E — Auto-Update Check
 

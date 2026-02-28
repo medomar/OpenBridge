@@ -176,6 +176,42 @@ Sign the generated `.exe` installer using the same `signtool` command after NSIS
 
 Store the Base64-encoded PFX certificate and password as GitHub Actions secrets. Use `azure/trusted-signing-action` or a custom PowerShell step to sign on a `windows-latest` runner.
 
+### Building the Windows installer (.exe)
+
+The Windows installer is generated using **NSIS (Nullsoft Scriptable Install System)** from `scripts/create-installer.nsi`.
+
+**Step 1 — Install NSIS:**
+
+```powershell
+# Using Chocolatey (recommended on Windows)
+choco install nsis
+
+# Or download manually from:
+# https://nsis.sourceforge.io/Download
+```
+
+**Step 2 — Build the installer:**
+
+```bash
+makensis scripts/create-installer.nsi
+```
+
+This produces `release/OpenBridge-{version}-Setup.exe`. Run `makensis` from the project root so that relative paths in the `.nsi` script resolve correctly.
+
+**Step 3 — CI cross-compilation (Linux/macOS runners):**
+
+NSIS can be cross-compiled from non-Windows CI runners using the `nsis` GitHub Action or by installing the `nsis` package on Ubuntu (`sudo apt-get install nsis`):
+
+```yaml
+- name: Install NSIS
+  run: sudo apt-get install -y nsis
+
+- name: Build Windows installer
+  run: makensis scripts/create-installer.nsi
+```
+
+> **Note:** Actual Windows testing (launch, install path, registry entries, Start Menu shortcuts) requires a `windows-latest` GitHub Actions runner or a local Windows machine. The cross-compiled installer file is structurally correct but should be verified on Windows before release.
+
 ---
 
 ## Linux — No Signing Requirement
