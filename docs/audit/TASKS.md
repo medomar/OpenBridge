@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 49 | **In Progress:** 0 | **Done:** 46
+> **Pending:** 48 | **In Progress:** 0 | **Done:** 47
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -35,7 +35,7 @@
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
-| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 13     | ◻      |
+| 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 14     | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
 |       | **Total**                                      |         | **95** | **45** |        |
 
@@ -160,11 +160,11 @@
 
 ### Phase 72C — macOS Installer (.dmg)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 12  | OB-1244 | Create `scripts/create-dmg.sh` — macOS .dmg creation script. Uses `create-dmg` (install via `brew install create-dmg` if available, else fallback to `hdiutil`). Takes the ARM64 binary from `release/openbridge-macos-arm64`, creates a `.dmg` with: app name "OpenBridge", background image (simple gradient), drag-to-Applications arrow, window size 600x400. Output: `release/OpenBridge-{version}-macOS.dmg`. Read version from `package.json`                                                                                         | ✅ Done   |
-| 13  | OB-1245 | Create macOS app bundle structure — create `scripts/macos-app-template/OpenBridge.app/Contents/` with: `Info.plist` (bundle ID `com.openbridge.app`, version from package.json, executable name), `MacOS/` (symlink or copy of pkg binary), `Resources/` (app icon — create a simple `.icns` from a 512x512 PNG placeholder). The `create-dmg.sh` script copies the binary into this structure before creating the .dmg                                                                                                                      | ✅ Done   |
-| 14  | OB-1246 | Add code signing documentation — create `docs/CODE_SIGNING.md` explaining: (1) without signing, macOS Gatekeeper shows "unidentified developer" warning, (2) workaround: right-click → Open → confirm, (3) for proper signing: requires Apple Developer cert ($99/yr), `codesign --sign "Developer ID" OpenBridge.app`, `xcrun notarytool submit`, (4) Windows SmartScreen: similar warning, "Run anyway" workaround, proper fix requires code signing cert. This is documentation only — actual signing is out of scope for initial release | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 12  | OB-1244 | Create `scripts/create-dmg.sh` — macOS .dmg creation script. Uses `create-dmg` (install via `brew install create-dmg` if available, else fallback to `hdiutil`). Takes the ARM64 binary from `release/openbridge-macos-arm64`, creates a `.dmg` with: app name "OpenBridge", background image (simple gradient), drag-to-Applications arrow, window size 600x400. Output: `release/OpenBridge-{version}-macOS.dmg`. Read version from `package.json`                                                                                         | ✅ Done |
+| 13  | OB-1245 | Create macOS app bundle structure — create `scripts/macos-app-template/OpenBridge.app/Contents/` with: `Info.plist` (bundle ID `com.openbridge.app`, version from package.json, executable name), `MacOS/` (symlink or copy of pkg binary), `Resources/` (app icon — create a simple `.icns` from a 512x512 PNG placeholder). The `create-dmg.sh` script copies the binary into this structure before creating the .dmg                                                                                                                      | ✅ Done |
+| 14  | OB-1246 | Add code signing documentation — create `docs/CODE_SIGNING.md` explaining: (1) without signing, macOS Gatekeeper shows "unidentified developer" warning, (2) workaround: right-click → Open → confirm, (3) for proper signing: requires Apple Developer cert ($99/yr), `codesign --sign "Developer ID" OpenBridge.app`, `xcrun notarytool submit`, (4) Windows SmartScreen: similar warning, "Run anyway" workaround, proper fix requires code signing cert. This is documentation only — actual signing is out of scope for initial release | ✅ Done |
 
 ### Phase 72D — Windows Installer (.exe)
 
