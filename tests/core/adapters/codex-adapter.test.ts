@@ -1,24 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { CodexAdapter, parseCodexJsonlOutput } from '../../../src/core/adapters/codex-adapter.js';
 
 const adapter = new CodexAdapter();
-
-// Ensure OPENAI_API_KEY is present for all tests that exercise buildSpawnConfig.
-// Tests that verify the missing-key error explicitly clear the variable themselves.
-const ORIGINAL_API_KEY = process.env['OPENAI_API_KEY'];
-
-beforeAll(() => {
-  process.env['OPENAI_API_KEY'] = 'sk-test-key';
-});
-
-afterAll(() => {
-  if (ORIGINAL_API_KEY === undefined) {
-    delete process.env['OPENAI_API_KEY'];
-  } else {
-    process.env['OPENAI_API_KEY'] = ORIGINAL_API_KEY;
-  }
-});
 
 // ── buildSpawnConfig ────────────────────────────────────────────────
 
@@ -319,13 +303,13 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).not.toContain('-c');
   });
 
-  it('throws when OPENAI_API_KEY is missing', () => {
+  it('builds config without requiring OPENAI_API_KEY (Codex supports codex login)', () => {
     const saved = process.env['OPENAI_API_KEY'];
     delete process.env['OPENAI_API_KEY'];
     try {
-      expect(() =>
-        adapter.buildSpawnConfig({ prompt: 'Task', workspacePath: '/tmp/test' }),
-      ).toThrow('Codex requires OPENAI_API_KEY environment variable');
+      const config = adapter.buildSpawnConfig({ prompt: 'Task', workspacePath: '/tmp/test' });
+      expect(config.binary).toBe('codex');
+      expect(config.args[0]).toBe('exec');
     } finally {
       if (saved !== undefined) {
         process.env['OPENAI_API_KEY'] = saved;

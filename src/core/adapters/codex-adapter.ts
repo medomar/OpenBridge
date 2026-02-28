@@ -79,16 +79,11 @@ export class CodexAdapter implements CLIAdapter {
   readonly name = 'codex';
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
-    // Validate OPENAI_API_KEY before attempting spawn — Codex requires it for all operations.
-    // Fail early with a clear message rather than letting Codex exit with a confusing auth error.
-    if (!process.env['OPENAI_API_KEY']) {
-      logger.error(
-        'Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file.',
-      );
-      throw new Error(
-        'Codex requires OPENAI_API_KEY environment variable. Set it in your shell or .env file.',
-      );
-    }
+    // Codex CLI supports multiple auth methods:
+    //   1. `codex login` — OAuth via ChatGPT (zero API key, like Claude Code CLI)
+    //   2. OPENAI_API_KEY env var — direct API key auth
+    // We don't check for either here — Codex handles auth internally and gives
+    // a clear error if the user isn't authenticated.
 
     // Start with `exec` subcommand for non-interactive mode
     const args: string[] = ['exec', '--skip-git-repo-check'];

@@ -169,7 +169,7 @@ async function startV2Flow(
   if (masterProviderName === undefined) {
     throw new Error(
       `No AI provider available for master tool '${selectedMaster.name}'. ` +
-        `Supported options: 'claude' (requires Claude Code CLI) or 'codex' (requires Codex CLI + OPENAI_API_KEY).`,
+        `Supported options: 'claude' (requires Claude Code CLI) or 'codex' (requires Codex CLI — authenticate via 'codex login' or OPENAI_API_KEY).`,
     );
   }
 
