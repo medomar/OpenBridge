@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 75 | **In Progress:** 0 | **Done:** 20
+> **Pending:** 74 | **In Progress:** 0 | **Done:** 21
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 10     | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 11     | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **20** |        |
+|       | **Total**                                      |         | **95** | **21** |        |
 
 ---
 
@@ -100,7 +100,7 @@
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 9   | OB-1218 | Add Claude Code auth step — if `claude` CLI is available, check auth status by running `claude auth status` (or similar). If not authenticated, walk user through: (1) explain what Claude Code is and that it needs an Anthropic account, (2) print link to `https://console.anthropic.com`, (3) ask user to choose: `claude auth login` (interactive browser OAuth) or paste API key manually. If they choose OAuth, run `claude auth login` via `runCommand()`. If they choose API key, prompt for it and write to `.env` as `ANTHROPIC_API_KEY` | ✅ Done   |
 | 10  | OB-1219 | Add Codex auth step — if `codex` CLI is available, check auth by running `codex auth status` (or looking for `OPENAI_API_KEY` in env). If not authenticated: (1) explain Codex needs an OpenAI account, (2) print link to `https://platform.openai.com/api-keys`, (3) ask user to choose: `codex login` (OAuth) or paste `OPENAI_API_KEY`. If OAuth, run `codex login`. If manual key, validate format (starts with `sk-`) and write to `.env`. Note: this key also enables Whisper voice transcription (mention this benefit to user)              | ✅ Done   |
-| 11  | OB-1220 | Add API key validation — new `validateApiKey(provider: 'anthropic' \| 'openai', key: string): Promise<boolean>` in `src/cli/utils.ts`. For Anthropic: POST to `https://api.anthropic.com/v1/messages` with minimal payload, check for 401 vs 200. For OpenAI: POST to `https://api.openai.com/v1/models` with auth header, check for 401 vs 200. Return true/false. Use native `fetch()`. On validation success, print green checkmark. On failure, warn but don't block                                                                            | ◻ Pending |
+| 11  | OB-1220 | Add API key validation — new `validateApiKey(provider: 'anthropic' \| 'openai', key: string): Promise<boolean>` in `src/cli/utils.ts`. For Anthropic: POST to `https://api.anthropic.com/v1/messages` with minimal payload, check for 401 vs 200. For OpenAI: POST to `https://api.openai.com/v1/models` with auth header, check for 401 vs 200. Return true/false. Use native `fetch()`. On validation success, print green checkmark. On failure, warn but don't block                                                                            | ✅ Done   |
 | 12  | OB-1221 | Add `.env` file writer — new `writeEnvFile(envPath: string, vars: Record<string, string>): void` in `src/cli/utils.ts`. Reads existing `.env` if present, merges new vars (don't overwrite existing values unless explicitly told), writes back. Handle comment lines. Create the file if it doesn't exist. Used by the API key steps to persist `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`                                                                                                                                                           | ◻ Pending |
 
 ### Phase 71E — Enhanced Connector & Config Setup
