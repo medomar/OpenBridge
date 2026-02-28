@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 3 | **In Progress:** 0 | **Done:** 47
+> **Pending:** 2 | **In Progress:** 0 | **Done:** 48
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -124,7 +124,7 @@
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 19  | OB-1187 | Credential masking — in `McpRegistry.listServers()`, mask ALL env var values before returning: show first 4 chars + `****` (or `****` if value < 4 chars). Full values only stored internally, never sent to API responses or WebSocket broadcasts | ✅ Done   |
 | 20  | OB-1188 | Unit tests for `McpRegistry` — addServer, removeServer, toggleServer, listServers with health, config persistence (mock fs), duplicate name rejection (409), not-found rejection (404), env var masking — 10+ test cases                           | ✅ Done   |
-| 21  | OB-1189 | Unit tests for MCP REST endpoints — GET/POST/DELETE/PATCH servers, GET catalog with category filter, POST catalog connect (success + missing env vars + not found + duplicate), validation errors — 12+ test cases                                 | ◻ Pending |
+| 21  | OB-1189 | Unit tests for MCP REST endpoints — GET/POST/DELETE/PATCH servers, GET catalog with category filter, POST catalog connect (success + missing env vars + not found + duplicate), validation errors — 12+ test cases                                 | ✅ Done   |
 | 22  | OB-1194 | Unit tests for MCP Dashboard WebSocket — verify `mcp-status` broadcast on add/remove/toggle, verify payload format, verify masking in broadcast — 4+ test cases                                                                                    | ◻ Pending |
 | 23  | OB-1190 | Build + lint + typecheck + full test suite validation — all existing tests still pass, new tests green                                                                                                                                             | ◻ Pending |
 
