@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { getConfigDir } from '../cli/utils.js';
 import { AppConfigSchema, V2ConfigSchema } from '../types/config.js';
 import type { AppConfig, V2Config } from '../types/config.js';
 import { createLogger } from './logger.js';
@@ -130,8 +131,15 @@ export function expandTilde(filePath: string): string {
 }
 
 export function resolveConfigPath(configPath?: string): string {
-  const path = configPath ?? process.env['CONFIG_PATH'] ?? './config.json';
-  return resolve(path);
+  if (configPath) {
+    return resolve(configPath);
+  }
+  if (process.env['CONFIG_PATH']) {
+    return resolve(process.env['CONFIG_PATH']);
+  }
+  // In packaged mode (pkg binary), getConfigDir() returns ~/.openbridge/
+  // In dev mode, getConfigDir() returns process.cwd()
+  return join(getConfigDir(), 'config.json');
 }
 
 export function isV2Config(parsed: unknown): parsed is V2Config {
