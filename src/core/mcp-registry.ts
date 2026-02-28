@@ -94,6 +94,19 @@ export class McpRegistry {
   }
 
   /**
+   * Replace the internal server list with a new set of servers.
+   * Used by hot-reload: called from Bridge.onConfigChange() when config.json is updated
+   * externally (e.g., by a user or CI pipeline). Does NOT persist to config — the new
+   * servers are already on disk; this just synchronises the runtime state.
+   */
+  reload(servers: MCPServer[]): void {
+    this.servers.clear();
+    for (const server of servers) {
+      this.servers.set(server.name, { ...server, enabled: true });
+    }
+  }
+
+  /**
    * Persist current server list to config.json.
    * Reads the file, merges mcp.servers from internal state, and writes back.
    * Called after every mutation (addServer, removeServer, toggleServer).

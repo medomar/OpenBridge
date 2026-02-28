@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer } from '../types/config.js';
+import { V2ConfigSchema } from '../types/config.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
@@ -473,6 +475,27 @@ export class Bridge {
 
     this.auth.updateConfig(newConfig.auth);
     this.rateLimiter.updateConfig(newConfig.auth.rateLimit);
+
+    // Propagate MCP server changes to McpRegistry and MasterManager.
+    // config.json may have been updated by McpRegistry.persistToConfig() (via the WebChat
+    // MCP management API) or by the user editing the file directly. Either way we re-parse
+    // the raw file to extract the V2Config MCP section and synchronise runtime state.
+    if (this.configPath && (this.mcpRegistry !== null || this.master !== null)) {
+      try {
+        const raw = readFileSync(this.configPath, 'utf-8');
+        const parsed: unknown = JSON.parse(raw);
+        const v2Result = V2ConfigSchema.safeParse(parsed);
+        if (v2Result.success) {
+          const newMcpServers =
+            v2Result.data.mcp?.enabled !== false ? (v2Result.data.mcp?.servers ?? []) : [];
+          this.mcpRegistry?.reload(newMcpServers);
+          this.master?.reloadMcpServers(newMcpServers);
+          logger.info({ count: newMcpServers.length }, 'MCP server list hot-reloaded');
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to extract MCP servers from hot-reloaded config');
+      }
+    }
 
     logger.info('Configuration hot-reload complete');
   }
