@@ -188,3 +188,22 @@ export type MCPServer = z.infer<typeof MCPServerSchema>;
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 export type EmailConfig = z.infer<typeof EmailConfigSchema>;
 export type V2Config = z.infer<typeof V2ConfigSchema>;
+
+/** Schema for an MCP catalog entry — describes a known MCP server users can install */
+export const MCPCatalogEntrySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  category: z.enum(['code', 'productivity', 'communication', 'data', 'design']),
+  command: z.string().min(1),
+  args: z.array(z.string()),
+  envVars: z.array(
+    z.object({
+      key: z.string().min(1),
+      description: z.string().min(1),
+      required: z.boolean(),
+    }),
+  ),
+  docsUrl: z.string().url(),
+});
+
+export type MCPCatalogEntry = z.infer<typeof MCPCatalogEntrySchema>;
