@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 81 | **In Progress:** 0 | **Done:** 14
+> **Pending:** 80 | **In Progress:** 0 | **Done:** 15
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 4      | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 5      | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **14** |        |
+|       | **Total**                                      |         | **95** | **15** |        |
 
 ---
 
@@ -81,10 +81,10 @@
 
 ### Phase 71B — Prerequisite Checking
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Status    |
-| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 4   | OB-1213 | Add prerequisite checker to `src/cli/init.ts` — new `checkPrerequisites()` async function called at the start of `init()`. Step 1 of the wizard flow. Checks: (1) Node.js >= 22 — if not met, print download link `https://nodejs.org` and exit with clear error, (2) npm available — should always be true if Node is installed, (3) git available — warn if missing (optional but recommended). Use `isCommandAvailable()` and `meetsNodeVersion()` from utils. Print results with colored output | ✅ Done   |
-| 5   | OB-1214 | Detect OS and display welcome banner — at the very start of `init()`, before prerequisite checks, print a welcome banner: `OpenBridge Setup Wizard`, detected OS, Node version, and total steps count. Use `detectOS()` from utils. Example: `Welcome to OpenBridge Setup! (macOS arm64, Node v22.x.x) — 7 steps`                                                                                                                                                                                   | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Status  |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 4   | OB-1213 | Add prerequisite checker to `src/cli/init.ts` — new `checkPrerequisites()` async function called at the start of `init()`. Step 1 of the wizard flow. Checks: (1) Node.js >= 22 — if not met, print download link `https://nodejs.org` and exit with clear error, (2) npm available — should always be true if Node is installed, (3) git available — warn if missing (optional but recommended). Use `isCommandAvailable()` and `meetsNodeVersion()` from utils. Print results with colored output | ✅ Done |
+| 5   | OB-1214 | Detect OS and display welcome banner — at the very start of `init()`, before prerequisite checks, print a welcome banner: `OpenBridge Setup Wizard`, detected OS, Node version, and total steps count. Use `detectOS()` from utils. Example: `Welcome to OpenBridge Setup! (macOS arm64, Node v22.x.x) — 7 steps`                                                                                                                                                                                   | ✅ Done |
 
 ### Phase 71C — AI Tool Detection & Installation
 
