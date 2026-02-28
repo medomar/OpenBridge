@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 78 | **In Progress:** 0 | **Done:** 17
+> **Pending:** 77 | **In Progress:** 0 | **Done:** 18
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -34,10 +34,10 @@
 | Phase | Title                                          | Finding | Tasks  | Done   | Status |
 | ----- | ---------------------------------------------- | ------- | ------ | ------ | ------ |
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
-| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 7      | ◻      |
+| 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 8      | ◻      |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 0      | ◻      |
 | 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 0      | ◻      |
-|       | **Total**                                      |         | **95** | **17** |        |
+|       | **Total**                                      |         | **95** | **18** |        |
 
 ---
 
@@ -88,11 +88,11 @@
 
 ### Phase 71C — AI Tool Detection & Installation
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status    |
-| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 6   | OB-1215 | Add AI tool detection step to `src/cli/init.ts` — new `detectAITools()` async function. Checks for: (1) `claude` CLI via `isCommandAvailable('claude')`, (2) `codex` CLI via `isCommandAvailable('codex')`, (3) `aider` CLI via `isCommandAvailable('aider')`. Returns `{ claude: boolean, codex: boolean, aider: boolean }`. Print found/missing status for each with colored output                                                                                                                 | ✅ Done   |
-| 7   | OB-1216 | Add AI tool installation prompt — if `detectAITools()` finds no AI tools installed, ask the user which to install: (1) Claude Code (`npm install -g @anthropic-ai/claude-code`), (2) OpenAI Codex (`npm install -g @openai/codex`), (3) Both, (4) Skip (I'll install later). Run `npm install -g <package>` via `runCommand()` with live output. Show progress and success/failure. If at least one tool is already installed, show what's available and ask if they want to install additional tools | ✅ Done   |
-| 8   | OB-1217 | Handle AI tool installation failures gracefully — if `npm install -g` fails (e.g., permission denied on global install), suggest: (1) retry with `sudo` (unix only), (2) use `npx` instead (explain how), (3) manual install instructions. Print the exact error message from npm. Do not block the wizard — let user continue even if install fails, with a warning that OpenBridge needs at least one AI tool to function                                                                           | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status  |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 6   | OB-1215 | Add AI tool detection step to `src/cli/init.ts` — new `detectAITools()` async function. Checks for: (1) `claude` CLI via `isCommandAvailable('claude')`, (2) `codex` CLI via `isCommandAvailable('codex')`, (3) `aider` CLI via `isCommandAvailable('aider')`. Returns `{ claude: boolean, codex: boolean, aider: boolean }`. Print found/missing status for each with colored output                                                                                                                 | ✅ Done |
+| 7   | OB-1216 | Add AI tool installation prompt — if `detectAITools()` finds no AI tools installed, ask the user which to install: (1) Claude Code (`npm install -g @anthropic-ai/claude-code`), (2) OpenAI Codex (`npm install -g @openai/codex`), (3) Both, (4) Skip (I'll install later). Run `npm install -g <package>` via `runCommand()` with live output. Show progress and success/failure. If at least one tool is already installed, show what's available and ask if they want to install additional tools | ✅ Done |
+| 8   | OB-1217 | Handle AI tool installation failures gracefully — if `npm install -g` fails (e.g., permission denied on global install), suggest: (1) retry with `sudo` (unix only), (2) use `npx` instead (explain how), (3) manual install instructions. Print the exact error message from npm. Do not block the wizard — let user continue even if install fails, with a warning that OpenBridge needs at least one AI tool to function                                                                           | ✅ Done |
 
 ### Phase 71D — Account & API Key Setup
 

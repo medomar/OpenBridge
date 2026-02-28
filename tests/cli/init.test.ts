@@ -6,7 +6,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildConfig, runInit, promptAIToolInstallation } from '../../src/cli/init.js';
-import { runCommand } from '../../src/cli/utils.js';
+import { runCommand, detectOS, printWarning } from '../../src/cli/utils.js';
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<object>();
@@ -671,6 +671,133 @@ describe('promptAIToolInstallation', () => {
     rl.close();
 
     expect(written.join('')).toContain('Installing Claude Code');
+  });
+
+  it('shows exact npm error message on install failure', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'npm ERR! code EACCES\nnpm ERR! permission denied',
+    });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('npm ERR! code EACCES');
+  });
+
+  it('suggests sudo retry on unix when install fails', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'permission denied',
+    });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('sudo npm install -g');
+  });
+
+  it('does not suggest sudo on windows when install fails', async () => {
+    vi.mocked(detectOS).mockReturnValueOnce('windows');
+    vi.mocked(runCommand).mockResolvedValueOnce({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'permission denied',
+    });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).not.toContain('sudo npm install -g');
+  });
+
+  it('suggests npx alternative when install fails', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'error' });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('npx @anthropic-ai/claude-code');
+  });
+
+  it('shows manual install link when install fails', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'error' });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(written.join('')).toContain('npmjs.com');
+  });
+
+  it('does not block wizard on install failure', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'error' });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+    const write = (t: string) => written.push(t);
+
+    await expect(
+      promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write),
+    ).resolves.toBeUndefined();
+    rl.close();
+
+    expect(written.join('')).toContain('Continuing setup');
+  });
+
+  it('warns when all installs fail and no tools pre-installed', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'error' });
+
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: false, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(printWarning)).toHaveBeenCalledWith(expect.stringContaining('at least one'));
+  });
+
+  it('does not warn when install fails but a tool was pre-installed', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'error' });
+
+    const { input, output } = createLineFeeder(['y', '2']);
+    const rl = createInterface({ input, output });
+    const write = (t: string) => void t;
+
+    await promptAIToolInstallation(rl, { claude: true, codex: false, aider: false }, write);
+    rl.close();
+
+    expect(vi.mocked(printWarning)).not.toHaveBeenCalledWith(
+      expect.stringContaining('at least one'),
+    );
   });
 
   void makeRl; // suppress unused warning
