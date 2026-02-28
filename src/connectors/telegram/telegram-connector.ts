@@ -271,6 +271,12 @@ export class TelegramConnector implements Connector {
           try {
             const { filePath } = await downloadTelegramFile(bot, voice.file_id, mediaManager);
             const transcription = await transcribeAudio(filePath);
+            if (transcription) {
+              logger.debug(
+                { backend: transcription.backend, durationMs: transcription.durationMs },
+                'Voice transcription complete',
+              );
+            }
             content = transcription?.text ?? TRANSCRIPTION_FALLBACK_MESSAGE;
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download/transcribe Telegram voice message');
