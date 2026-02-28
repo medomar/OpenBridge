@@ -136,6 +136,20 @@ mkdir -p "$PROJECT_DIR/release"
 
 npx pkg . --targets "${TARGETS_STR}" --output "release/openbridge"
 
+# Single-platform builds produce "openbridge" (no suffix).
+# Rename to include platform suffix so downstream scripts (create-dmg.sh) can find it.
+if [[ -n "$PLATFORM" ]]; then
+  SRC_NAME="$(single_binary_name "$PLATFORM")"
+  case "$PLATFORM" in
+    "win-x64") DEST_NAME="openbridge-win-x64.exe" ;;
+    *)         DEST_NAME="openbridge-${PLATFORM}" ;;
+  esac
+  if [[ "$SRC_NAME" != "$DEST_NAME" && -f "$PROJECT_DIR/release/$SRC_NAME" ]]; then
+    mv "$PROJECT_DIR/release/$SRC_NAME" "$PROJECT_DIR/release/$DEST_NAME"
+    EXPECTED_BINARIES=("$DEST_NAME")
+  fi
+fi
+
 echo ""
 echo -e "${GREEN}✓${NC} Packaging complete"
 

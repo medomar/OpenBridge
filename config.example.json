@@ -50,6 +50,16 @@
         "env": {
           "MY_SERVICE_API_KEY": "your-api-key-here"
         }
+      },
+      {
+        "name": "gmail",
+        "command": "npx",
+        "args": ["-y", "@anthropic/mcp-server-gmail"],
+        "env": {
+          "GMAIL_OAUTH_CLIENT_ID": "<your-client-id>",
+          "GMAIL_OAUTH_CLIENT_SECRET": "<your-client-secret>",
+          "GMAIL_OAUTH_REFRESH_TOKEN": "<your-refresh-token>"
+        }
       }
     ],
     "configPath": "~/.claude/claude_desktop_config.json"

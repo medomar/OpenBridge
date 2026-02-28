@@ -325,7 +325,7 @@ export class MasterManager {
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
-  readonly memory: MemoryManager | null;
+  memory: MemoryManager | null;
   /** Sub-master manager — null when no root DB is available (OB-755) */
   private subMasterManager: SubMasterManager | null = null;
   private readonly workerRetryDelayMs: number;
