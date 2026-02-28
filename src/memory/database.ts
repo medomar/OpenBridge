@@ -1,7 +1,24 @@
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
+import { getConfigDir } from '../cli/utils.js';
 import { applySchemaChanges } from './migration.js';
+
+/**
+ * Resolves the SQLite database path for a given workspace.
+ *
+ * - With a workspace path: returns `<workspacePath>/.openbridge/openbridge.db`
+ * - Without a workspace path: returns `<getConfigDir()>/openbridge.db`
+ *   In packaged mode (pkg binary) `getConfigDir()` = `~/.openbridge/`, ensuring
+ *   the database lands on the writable host filesystem rather than the read-only
+ *   pkg snapshot. In dev mode it falls back to `process.cwd()`.
+ */
+export function resolveDbPath(workspacePath?: string): string {
+  if (workspacePath) {
+    return join(workspacePath, '.openbridge', 'openbridge.db');
+  }
+  return join(getConfigDir(), 'openbridge.db');
+}
 
 /**
  * Opens (or creates) the SQLite database at the given path.
