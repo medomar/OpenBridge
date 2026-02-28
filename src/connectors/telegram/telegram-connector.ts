@@ -385,6 +385,55 @@ export class TelegramConnector implements Connector {
       });
     });
 
+    this.bot.on('message:video', (ctx: GrammyContext) => {
+      const video = ctx.message.video;
+      if (!video) return;
+
+      const chatId = ctx.chat.id.toString();
+      const sender = ctx.from?.id.toString() ?? 'unknown';
+      const msgId = `telegram-${ctx.message.message_id.toString()}`;
+      const timestamp = new Date(ctx.message.date * 1000);
+      const caption = ctx.message.caption ?? '';
+
+      const bot = this.bot;
+      const mediaManager = this.mediaManager;
+
+      const handleVideo = async (): Promise<void> => {
+        let attachments: InboundMessage['attachments'];
+
+        if (bot && mediaManager) {
+          try {
+            const { filePath, sizeBytes, mimeType } = await downloadTelegramFile(
+              bot,
+              video.file_id,
+              mediaManager,
+            );
+            attachments = [{ type: 'video', filePath, mimeType, sizeBytes }];
+          } catch (err) {
+            logger.warn({ err, chatId }, 'Failed to download Telegram video');
+          }
+        }
+
+        const content = caption || '[Video]';
+        const inbound: InboundMessage = {
+          id: msgId,
+          source: 'telegram',
+          sender,
+          rawContent: content,
+          content,
+          timestamp,
+          attachments,
+          metadata: { chatId },
+        };
+
+        this.emit('message', inbound);
+      };
+
+      handleVideo().catch((err: Error) => {
+        logger.warn({ err, chatId }, 'Unhandled error in Telegram video handler');
+      });
+    });
+
     // Start long polling — does not await because it runs until bot.stop()
     this.bot.start().catch((err: Error) => {
       logger.error({ err }, 'Telegram bot polling error');

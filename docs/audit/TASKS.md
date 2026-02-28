@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 33 | **In Progress:** 0 | **Done:** 17
+> **Pending:** 32 | **In Progress:** 0 | **Done:** 18
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -63,7 +63,7 @@
 | 15  | OB-1156 | Add `message:voice` handler — download `.oga` voice file via `downloadTelegramFile()`, transcribe via shared `transcribeAudio()` from `src/core/voice-transcriber.ts`, emit transcription as `InboundMessage.content`; fallback text if Whisper not installed                                                                                                   | ✅ Done   |
 | 16  | OB-1157 | Add `message:photo` handler — download largest photo size (last element in `ctx.message.photo` array), save via MediaManager, attach to `InboundMessage.attachments`, use `ctx.message.caption` as text content                                                                                                                                                 | ✅ Done   |
 | 17  | OB-1158 | Add `message:document` handler — download document file via `downloadTelegramFile()`, save via MediaManager, attach to `InboundMessage.attachments`, use caption as text                                                                                                                                                                                        | ✅ Done   |
-| 18  | OB-1159 | Add `message:video` handler — download video file via `downloadTelegramFile()`, save via MediaManager, attach to `InboundMessage.attachments`, use caption as text                                                                                                                                                                                              | ◻ Pending |
+| 18  | OB-1159 | Add `message:video` handler — download video file via `downloadTelegramFile()`, save via MediaManager, attach to `InboundMessage.attachments`, use caption as text                                                                                                                                                                                              | ✅ Done   |
 | 19  | OB-1160 | Add `message:audio` handler — download audio file via `downloadTelegramFile()`, save via MediaManager, attach to `InboundMessage.attachments`, use caption as text                                                                                                                                                                                              | ◻ Pending |
 | 20  | OB-1161 | Telegram outbound media — in `sendMessage()`, when `OutboundMessage.media` is present, use `bot.api.sendPhoto()` / `sendDocument()` / `sendVideo()` / `sendVoice()` based on `media.type`; pass `media.data` as `InputFile`, `content` as caption                                                                                                               | ◻ Pending |
 | 21  | OB-1163 | Send user feedback on Telegram media receipt — call `bot.api.sendChatAction(chatId, 'upload_photo')` / `'upload_document'` while processing; on download failure reply with fallback text `[Failed to process {type}]`                                                                                                                                          | ◻ Pending |
