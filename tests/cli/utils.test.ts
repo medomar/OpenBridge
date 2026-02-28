@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { writeFileSync, unlinkSync, existsSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 
 import {
   isPackagedMode,
+  getConfigDir,
   detectOS,
   isCommandAvailable,
   getNodeVersion,
@@ -39,6 +40,37 @@ describe('isPackagedMode()', () => {
     (process as { pkg?: unknown }).pkg = { version: '1.0' };
     delete (process as { pkg?: unknown }).pkg;
     expect(isPackagedMode()).toBe(false);
+  });
+});
+
+// ─── getConfigDir ────────────────────────────────────────────────────────────
+
+describe('getConfigDir()', () => {
+  it('returns process.cwd() in dev mode (no process.pkg)', () => {
+    // In dev mode, getConfigDir returns process.cwd()
+    const dir = getConfigDir();
+    expect(dir).toBe(process.cwd());
+  });
+
+  it('returns ~/.openbridge in packaged mode', () => {
+    (process as { pkg?: unknown }).pkg = {};
+    try {
+      const dir = getConfigDir();
+      expect(dir).toBe(join(homedir(), '.openbridge'));
+    } finally {
+      delete (process as { pkg?: unknown }).pkg;
+    }
+  });
+
+  it('creates the directory if it does not already exist', () => {
+    (process as { pkg?: unknown }).pkg = {};
+    try {
+      const dir = getConfigDir();
+      // The directory should exist after calling getConfigDir()
+      expect(existsSync(dir)).toBe(true);
+    } finally {
+      delete (process as { pkg?: unknown }).pkg;
+    }
   });
 });
 
