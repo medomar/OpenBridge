@@ -9,6 +9,7 @@ import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import type { McpRegistry } from '../../core/mcp-registry.js';
+import { MCPServerSchema } from '../../types/config.js';
 
 const logger = createLogger('webchat');
 
@@ -547,15 +548,59 @@ export class WebChatConnector implements Connector {
         return;
       }
 
-      // /api/mcp/servers — JSON list of MCP servers from the registry
+      // /api/mcp/servers — GET list or POST create
       if (url === '/api/mcp/servers') {
-        if (!this.mcpRegistry) {
+        const mcpReg = this.mcpRegistry;
+        if (!mcpReg) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'MCP registry not available' }));
           return;
         }
+        if (req.method === 'POST') {
+          void (async (): Promise<void> => {
+            try {
+              const body = await new Promise<string>((resolve, reject) => {
+                const chunks: Buffer[] = [];
+                req.on('data', (chunk) => chunks.push(chunk as Buffer));
+                req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+                req.on('error', reject);
+              });
+              let parsed: unknown;
+              try {
+                parsed = JSON.parse(body);
+              } catch {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+                return;
+              }
+              const result = MCPServerSchema.safeParse(parsed);
+              if (!result.success) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(
+                  JSON.stringify({ error: 'Validation failed', details: result.error.issues }),
+                );
+                return;
+              }
+              mcpReg.addServer(result.data);
+              const created = mcpReg.getServer(result.data.name);
+              res.writeHead(201, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(created));
+            } catch (err) {
+              const message = (err as Error).message;
+              if (message.includes('already exists')) {
+                res.writeHead(409, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: message }));
+              } else {
+                logger.error({ err }, 'POST /api/mcp/servers failed');
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error' }));
+              }
+            }
+          })();
+          return;
+        }
         try {
-          const servers = this.mcpRegistry.listServers();
+          const servers = mcpReg.listServers();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(servers));
         } catch (err) {
