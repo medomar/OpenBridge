@@ -25,6 +25,7 @@ import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
 import { isPackagedMode, getConfigDir, checkForUpdate } from './cli/utils.js';
 import { runInit } from './cli/init.js';
+import { runHealthCheck } from './core/health.js';
 
 interface PackageJson {
   version: string;
@@ -410,6 +411,19 @@ async function main(): Promise<void> {
     }
     process.exit(1);
   }
+}
+
+// Handle --version flag for the packaged binary entry point
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  process.stdout.write(OPENBRIDGE_VERSION + '\n');
+  process.exit(0);
+}
+
+// Handle --health flag for the packaged binary entry point
+if (process.argv.includes('--health')) {
+  const result = runHealthCheck();
+  process.stdout.write(JSON.stringify(result) + '\n');
+  process.exit(result.passed ? 0 : 1);
 }
 
 void main();
