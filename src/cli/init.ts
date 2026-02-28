@@ -167,17 +167,34 @@ export async function promptAIToolInstallation(
     toInstall.push({ name: 'OpenAI Codex', pkg: '@openai/codex' });
   }
 
+  let anyNewlyInstalled = false;
+  const os = detectOS();
+
   for (const tool of toInstall) {
     write(`\n  Installing ${tool.name}...\n`);
     const result = await runCommand('npm', ['install', '-g', tool.pkg]);
     if (result.exitCode === 0) {
       printSuccess(`${tool.name} installed successfully`);
+      anyNewlyInstalled = true;
     } else {
       printError(`Failed to install ${tool.name}`);
       if (result.stderr) {
-        process.stdout.write(result.stderr + '\n');
+        write(result.stderr + '\n');
       }
+      write('\n  Suggestions to fix this:\n');
+      let n = 1;
+      if (os !== 'windows') {
+        write(`    ${n++}. Retry with sudo:  sudo npm install -g ${tool.pkg}\n`);
+      }
+      write(`    ${n++}. Use npx instead:  npx ${tool.pkg} (no install needed, runs on demand)\n`);
+      write(`    ${n}. Manual install:   https://www.npmjs.com/package/${tool.pkg}\n`);
+      write('\n  Continuing setup — you can install later.\n');
     }
+  }
+
+  if (toInstall.length > 0 && !anyNewlyInstalled && !anyInstalled) {
+    printWarning('No AI tools installed. OpenBridge needs at least one to function.');
+    printWarning('Install one later and restart: npm install -g @anthropic-ai/claude-code');
   }
 }
 
