@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 
 const GeneralSettings = lazy(() => import('./settings/GeneralSettings'));
+const ConnectorSettings = lazy(() => import('./settings/ConnectorSettings'));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,7 +194,11 @@ export default function Settings() {
             <GeneralSettings config={draftConfig} onUpdate={handleUpdate} />
           </Suspense>
         )}
-        {activeTab === 'connectors' && <PlaceholderTab label="Connectors" />}
+        {activeTab === 'connectors' && draftConfig != null && (
+          <Suspense fallback={<PlaceholderTab label="Connectors" />}>
+            <ConnectorSettings config={draftConfig} onUpdate={handleUpdate} />
+          </Suspense>
+        )}
         {activeTab === 'providers' && <PlaceholderTab label="AI Providers" />}
         {activeTab === 'mcp' && <PlaceholderTab label="MCP Servers" />}
         {activeTab === 'access' && <PlaceholderTab label="Access Control" />}
