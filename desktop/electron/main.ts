@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { exec } from 'child_process';
 import nodeOs from 'os';
 import { promisify } from 'util';
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { bridgeProcess } from './bridge-process.js';
@@ -16,6 +16,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
+let hasShownMinimizeNotification = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -43,10 +45,33 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  // Minimize-to-tray: intercept the close event and hide the window instead
+  // of destroying it. Only allow the window to actually close when isQuitting
+  // is true (set by app.on('before-quit'), triggered from the tray Quit item
+  // or Cmd+Q / system quit).
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow?.hide();
+      if (!hasShownMinimizeNotification) {
+        hasShownMinimizeNotification = true;
+        new Notification({
+          title: 'OpenBridge',
+          body: 'OpenBridge is still running in the background.',
+        }).show();
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
+
+// Set isQuitting before any windows close so the 'close' handler lets them through.
+app.on('before-quit', () => {
+  isQuitting = true;
+});
 
 app.whenReady().then(() => {
   createWindow();
