@@ -6,7 +6,7 @@ import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
-import { transcribeAudio } from '../../core/voice-transcriber.js';
+import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
 import type { MediaManager, SaveMediaResult } from '../../core/media-manager.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -294,7 +294,7 @@ export class WhatsAppConnector implements Connector {
 
     if (msg.hasMedia && msg.type === 'ptt') {
       const transcription = await this.transcribeVoiceMessage(msg);
-      const content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+      const content = transcription ?? TRANSCRIPTION_FALLBACK_MESSAGE;
       const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp);
       this.emit('message', parsed);
       return;
@@ -395,7 +395,8 @@ export class WhatsAppConnector implements Connector {
       const tmpPath = join(tmpdir(), `wa-voice-${Date.now()}.ogg`);
       await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
       try {
-        return await transcribeAudio(tmpPath);
+        const result = await transcribeAudio(tmpPath);
+        return result?.text ?? null;
       } finally {
         await unlink(tmpPath).catch(() => {});
       }

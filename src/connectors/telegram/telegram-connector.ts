@@ -7,7 +7,7 @@ import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
 import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
 import type { MediaManager } from '../../core/media-manager.js';
-import { transcribeAudio } from '../../core/voice-transcriber.js';
+import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
 
 const logger = createLogger('telegram');
 
@@ -265,13 +265,13 @@ export class TelegramConnector implements Connector {
         let content: string;
 
         if (!bot || !mediaManager) {
-          content = '[Voice message — install whisper for auto-transcription]';
+          content = TRANSCRIPTION_FALLBACK_MESSAGE;
         } else {
           await bot.api.sendChatAction(chatId, 'typing').catch(() => {});
           try {
             const { filePath } = await downloadTelegramFile(bot, voice.file_id, mediaManager);
             const transcription = await transcribeAudio(filePath);
-            content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+            content = transcription?.text ?? TRANSCRIPTION_FALLBACK_MESSAGE;
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download/transcribe Telegram voice message');
             await bot.api.sendMessage(chatId, '[Failed to process voice]').catch(() => {});

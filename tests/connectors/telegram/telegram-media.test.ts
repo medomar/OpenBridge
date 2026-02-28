@@ -28,11 +28,19 @@ vi.mock('node:https', () => ({
 // Mock: voice transcriber
 // ---------------------------------------------------------------------------
 
-const mockTranscribeAudio = vi.hoisted(() => vi.fn<[string], Promise<string | null>>());
+import type { TranscriptionResult } from '../../../src/core/voice-transcriber.js';
+
+const mockTranscribeAudio = vi.hoisted(() =>
+  vi.fn<[string], Promise<TranscriptionResult | null>>(),
+);
 
 vi.mock('../../../src/core/voice-transcriber.js', () => ({
   transcribeAudio: mockTranscribeAudio,
+  TRANSCRIPTION_FALLBACK_MESSAGE:
+    '[Voice message — set OPENAI_API_KEY or install whisper for transcription]',
 }));
+
+const MOCK_FALLBACK = '[Voice message — set OPENAI_API_KEY or install whisper for transcription]';
 
 // ---------------------------------------------------------------------------
 // Mock: logger — suppress output
@@ -292,7 +300,11 @@ describe('Telegram media handling (OB-1166)', () => {
   describe('message:voice handler', () => {
     it('emits transcription text as content when Whisper is available', async () => {
       setupHttpsSuccess(Buffer.from('ogg-audio'));
-      mockTranscribeAudio.mockResolvedValue('Hello, this is a transcription');
+      mockTranscribeAudio.mockResolvedValue({
+        text: 'Hello, this is a transcription',
+        backend: 'cli',
+        durationMs: 10,
+      });
 
       const mediaManager = buildMockMediaManager('/tmp/tg/media/voice.oga');
       connector.setMediaManager(mediaManager);
@@ -338,7 +350,7 @@ describe('Telegram media handling (OB-1166)', () => {
 
       expect(messageListener).toHaveBeenCalledOnce();
       const msg = messageListener.mock.calls[0]![0] as InboundMessage;
-      expect(msg.content).toBe('[Voice message — install whisper for auto-transcription]');
+      expect(msg.content).toBe(MOCK_FALLBACK);
     });
 
     it('sends failure reply and emits fallback content when download throws', async () => {
@@ -382,12 +394,12 @@ describe('Telegram media handling (OB-1166)', () => {
 
       expect(messageListener).toHaveBeenCalledOnce();
       const msg = messageListener.mock.calls[0]![0] as InboundMessage;
-      expect(msg.content).toBe('[Voice message — install whisper for auto-transcription]');
+      expect(msg.content).toBe(MOCK_FALLBACK);
     });
 
     it('sends typing chat action before downloading the voice file', async () => {
       setupHttpsSuccess(Buffer.from('audio'));
-      mockTranscribeAudio.mockResolvedValue('text');
+      mockTranscribeAudio.mockResolvedValue({ text: 'text', backend: 'cli', durationMs: 5 });
 
       const mediaManager = buildMockMediaManager();
       connector.setMediaManager(mediaManager);
