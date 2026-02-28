@@ -561,10 +561,38 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
     write('\n');
 
-    write('  To start OpenBridge:\n');
-    write('    - Cloned from repo:    npm run dev\n');
-    write('    - Installed via npm:   node dist/index.js\n\n');
+    printStep(7, TOTAL_STEPS, 'Quick Start Summary');
+    printQuickStartSummary(write, outputPath, toolStatus, connector, workspacePath);
   } finally {
     rl.close();
   }
+}
+
+export function printQuickStartSummary(
+  write: (text: string) => void,
+  configPath: string,
+  toolStatus: AIToolStatus,
+  connector: string,
+  workspacePath: string,
+): void {
+  const installedTools: string[] = [];
+  if (toolStatus.claude) installedTools.push('claude');
+  if (toolStatus.codex) installedTools.push('codex');
+  if (toolStatus.aider) installedTools.push('aider');
+  const toolsStr = installedTools.length > 0 ? installedTools.join(', ') : 'none detected';
+
+  const divider = '  ' + '═'.repeat(44);
+  write('\n');
+  write(divider + '\n');
+  write('  OpenBridge — Quick Start Summary\n');
+  write(divider + '\n');
+  write(`  Config:     ${configPath}\n`);
+  write(`  AI tools:   ${toolsStr}\n`);
+  write(`  Connector:  ${connector}\n`);
+  write(`  Workspace:  ${workspacePath}\n`);
+  write(divider + '\n');
+  write('  Next step:  npm run dev\n');
+  write('  Dev mode:   npm run dev:watch\n');
+  write(divider + '\n');
+  write('\n');
 }

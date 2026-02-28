@@ -573,7 +573,7 @@ describe('runInit', () => {
     expect(output.data).toContain('No token needed');
   });
 
-  it('should show updated success message with both start options', async () => {
+  it('should show quick-start summary with npm run dev and dev:watch', async () => {
     const { input, output } = createLineFeeder([
       '4', // AI tool installation: skip
       '5', // connector: Console
@@ -584,7 +584,8 @@ describe('runInit', () => {
     await runInit({ input, output, outputPath: testConfigPath });
 
     expect(output.data).toContain('npm run dev');
-    expect(output.data).toContain('node dist/index.js');
+    expect(output.data).toContain('npm run dev:watch');
+    expect(output.data).toContain('Quick Start Summary');
   });
 
   it('should generate mcp section when user enables MCP with servers', async () => {
