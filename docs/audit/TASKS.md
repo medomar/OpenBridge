@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 | **In Progress:** 0 | **Done:** 73
+> **Pending:** 21 | **In Progress:** 0 | **Done:** 74
 > **Last Updated:** 2026-02-28
 
 <details>
@@ -36,8 +36,8 @@
 | 70    | Voice Transcription API Fallback               | OB-F46  | 10     | 10     | ✅     |
 | 71    | Enhanced Setup Wizard CLI (OB-F47 Phase 1)     | OB-F47  | 23     | 23     | ✅     |
 | 72    | Standalone Binary Packaging (OB-F47 Phase 2)   | OB-F47  | 25     | 25     | ✅     |
-| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 15     | ◻      |
-|       | **Total**                                      |         | **95** | **72** |        |
+| 73    | Electron Desktop App with GUI (OB-F47 Phase 3) | OB-F47  | 37     | 16     | ◻      |
+|       | **Total**                                      |         | **95** | **73** |        |
 
 ---
 
@@ -234,7 +234,7 @@
 | 13  | OB-1270 | Setup Step 3: Account Login — `desktop/ui/pages/setup/AccountStep.tsx`. For each installed AI tool, show a login card: tool name, auth status (authenticated/not), "Login" button (triggers OAuth flow via IPC → `claude auth login` or `codex login`), OR "Enter API Key" text input with validation. Show green checkmark when authenticated. Skip button available ("I'll do this later")                                                                             | ✅ Done   |
 | 14  | OB-1271 | Setup Step 4: Workspace — `desktop/ui/pages/setup/WorkspaceStep.tsx`. Shows a folder path input with a "Browse" button that triggers Electron's `dialog.showOpenDialog({ properties: ['openDirectory'] })` via IPC. Displays resolved absolute path. Validates directory exists and is readable. Default: user's home directory                                                                                                                                          | ✅ Done   |
 | 15  | OB-1272 | Setup Step 5: Connector — `desktop/ui/pages/setup/ConnectorStep.tsx`. Shows visual cards for each connector: WhatsApp (phone icon, "Scans QR code"), Telegram (paper plane icon, "Enter bot token"), Discord (game controller icon, "Enter bot token"), WebChat (globe icon, "Built-in web UI"), Console (terminal icon, "For testing"). Card selection highlights. Connector-specific config inputs appear below the selected card (e.g., bot token field for Telegram) | ✅ Done   |
-| 16  | OB-1273 | Setup Step 6: Access Control — `desktop/ui/pages/setup/AccessStep.tsx`. Phone whitelist input: text area for comma-separated phone numbers, or "Allow everyone" toggle (with security warning). Shows formatted preview of the whitelist. Validates phone number format                                                                                                                                                                                                  | ◻ Pending |
+| 16  | OB-1273 | Setup Step 6: Access Control — `desktop/ui/pages/setup/AccessStep.tsx`. Phone whitelist input: text area for comma-separated phone numbers, or "Allow everyone" toggle (with security warning). Shows formatted preview of the whitelist. Validates phone number format                                                                                                                                                                                                  | ✅ Done   |
 | 17  | OB-1274 | Setup Step 7: Finish — `desktop/ui/pages/setup/FinishStep.tsx`. Shows summary of all configuration: workspace path, selected AI tool, connector, access control. "Start OpenBridge" button that: (1) generates `config.json` via IPC, (2) starts the bridge process, (3) navigates to Dashboard. Shows a brief loading animation during bridge startup                                                                                                                   | ◻ Pending |
 | 18  | OB-1275 | Wire setup wizard IPC — add IPC handlers in `desktop/electron/main.ts` for: `detect-prerequisites` (returns OS, Node version, installed AI tools), `install-ai-tool` (runs npm install), `authenticate-tool` (runs auth login), `select-directory` (opens native folder picker), `generate-config` (writes config.json), `start-bridge` (spawns bridge process). Each handler catches errors and returns structured results                                              | ◻ Pending |
 
