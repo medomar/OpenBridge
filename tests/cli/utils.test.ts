@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import {
+  isPackagedMode,
   detectOS,
   isCommandAvailable,
   getNodeVersion,
@@ -16,6 +17,30 @@ import {
   writeEnvFile,
   validateApiKey,
 } from '../../src/cli/utils.js';
+
+// ─── isPackagedMode ──────────────────────────────────────────────────────────
+
+describe('isPackagedMode()', () => {
+  it('returns false in normal dev/test environment (no process.pkg)', () => {
+    // In dev mode, process.pkg is undefined
+    expect(isPackagedMode()).toBe(false);
+  });
+
+  it('returns true when process.pkg is defined (simulates pkg binary)', () => {
+    (process as { pkg?: unknown }).pkg = {};
+    try {
+      expect(isPackagedMode()).toBe(true);
+    } finally {
+      delete (process as { pkg?: unknown }).pkg;
+    }
+  });
+
+  it('returns false after process.pkg is removed', () => {
+    (process as { pkg?: unknown }).pkg = { version: '1.0' };
+    delete (process as { pkg?: unknown }).pkg;
+    expect(isPackagedMode()).toBe(false);
+  });
+});
 
 // ─── detectOS ───────────────────────────────────────────────────────────────
 
