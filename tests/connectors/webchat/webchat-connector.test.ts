@@ -410,4 +410,93 @@ describe('WebChatConnector', () => {
       connector.sendProgress({ type: 'classifying' }, 'webchat-user'),
     ).resolves.toBeUndefined();
   });
+
+  it('should send worker-turn-progress event with workerId, turnsUsed, turnsMax', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress(
+      {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc-123',
+        turnsUsed: 3,
+        turnsMax: 25,
+      },
+      'webchat-user',
+    );
+
+    const expected = JSON.stringify({
+      type: 'progress',
+      event: {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc-123',
+        turnsUsed: 3,
+        turnsMax: 25,
+      },
+    });
+    expect(client.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should send worker-turn-progress event with optional lastAction', async () => {
+    await connector.initialize();
+
+    const client = createMockClient();
+    latestWss().simulateConnection(client);
+
+    await connector.sendProgress(
+      {
+        type: 'worker-turn-progress',
+        workerId: 'worker-xyz-456',
+        turnsUsed: 7,
+        turnsMax: 15,
+        lastAction: 'Reading src/index.ts',
+      },
+      'webchat-user',
+    );
+
+    const expected = JSON.stringify({
+      type: 'progress',
+      event: {
+        type: 'worker-turn-progress',
+        workerId: 'worker-xyz-456',
+        turnsUsed: 7,
+        turnsMax: 15,
+        lastAction: 'Reading src/index.ts',
+      },
+    });
+    expect(client.send).toHaveBeenCalledWith(expected);
+  });
+
+  it('should broadcast worker-turn-progress event to all OPEN clients', async () => {
+    await connector.initialize();
+
+    const client1 = createMockClient();
+    const client2 = createMockClient();
+    latestWss().simulateConnection(client1);
+    latestWss().simulateConnection(client2);
+
+    await connector.sendProgress(
+      {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc',
+        turnsUsed: 5,
+        turnsMax: 25,
+      },
+      'webchat-user',
+    );
+
+    const expected = JSON.stringify({
+      type: 'progress',
+      event: {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc',
+        turnsUsed: 5,
+        turnsMax: 25,
+      },
+    });
+    expect(client1.send).toHaveBeenCalledWith(expected);
+    expect(client2.send).toHaveBeenCalledWith(expected);
+  });
 });

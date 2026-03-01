@@ -1,9 +1,14 @@
 import { spawn as nodeSpawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { TaskManifest, ToolProfile } from '../types/agent.js';
+import type { ModelRegistry } from './model-registry.js';
+import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
+import { ClaudeAdapter } from './adapters/claude-adapter.js';
 
 const logger = createLogger('agent-runner');
 
@@ -23,14 +28,15 @@ export const DEFAULT_MAX_TURNS_TASK = 25;
 
 /**
  * Accepted model short names for the --model flag.
- * The Claude CLI accepts these directly (no need to resolve to full IDs).
- * Callers can also pass full model IDs like 'claude-sonnet-4-5-20250929'.
+ * @deprecated Use ModelRegistry with capability tiers ('fast', 'balanced', 'powerful') instead.
+ * Kept for backward compatibility — these are the Claude-specific aliases.
  */
 export const MODEL_ALIASES = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelAlias = (typeof MODEL_ALIASES)[number];
 
 /**
  * Model fallback chain: opus → sonnet → haiku.
+ * @deprecated Use ModelRegistry.getFallback() for provider-agnostic fallback.
  * If the preferred model is unavailable or rate-limited, the runner
  * falls back to the next model in the chain before retrying.
  */
@@ -56,6 +62,118 @@ const RATE_LIMIT_PATTERNS = [
 ];
 
 /**
+ * Patterns in stdout that indicate the Claude CLI hit its --max-turns limit.
+ * Claude exits with code 0 when max-turns is reached, so we must scan stdout
+ * to distinguish a complete run from a turn-budget exhaustion.
+ * Matched case-insensitively against stdout.
+ */
+export const MAX_TURNS_PATTERNS = [
+  'max turns reached',
+  'maximum turns reached',
+  'turn limit',
+  'turn budget',
+  'turns exhausted',
+  'max_turns',
+];
+
+/**
+ * Patterns indicating authentication / authorization failures.
+ * These are non-retryable — retrying with the same credentials will fail again.
+ */
+const AUTH_PATTERNS = [
+  'api key',
+  'api_key',
+  'invalid api',
+  'unauthorized',
+  'unauthenticated',
+  'authentication failed',
+  'permission denied',
+  'access denied',
+  'invalid token',
+  'forbidden',
+  '401',
+  '403',
+];
+
+/**
+ * Patterns in streaming stdout that indicate a new agent turn has started.
+ * Matched against each chunk to extract the current turn number.
+ * Claude CLI emits these markers at the beginning of each agentic turn.
+ */
+const TURN_INDICATOR_PATTERNS: RegExp[] = [
+  /\bturn\s+(\d+)\b/i, // "Turn 1", "Turn 2", "agentic turn 3"
+  /"turn":\s*(\d+)/, // JSON: "turn": 1
+  /\((\d+)\s+agentic\s+turn/i, // "(3 agentic turns used)"
+  /step\s+(\d+)\s+of\s+\d+/i, // "Step 1 of 25"
+];
+
+/**
+ * Result of parsing a turn indicator from a streaming stdout chunk.
+ */
+export interface TurnIndicator {
+  /** Number of agentic turns used so far */
+  turnsUsed: number;
+  /** The last action text extracted from the chunk, if detectable */
+  lastAction?: string;
+}
+
+/**
+ * Parse a turn indicator from a chunk of Claude CLI streaming stdout.
+ *
+ * Returns a `TurnIndicator` if a turn marker is found in the chunk,
+ * or `null` if the chunk contains no recognizable turn information.
+ * Used by workers streaming real-time progress via `execOnceStreaming()`.
+ */
+export function parseTurnIndicator(chunk: string): TurnIndicator | null {
+  for (const pattern of TURN_INDICATOR_PATTERNS) {
+    const match = chunk.match(pattern);
+    if (match?.[1]) {
+      const turnsUsed = parseInt(match[1], 10);
+      if (!isNaN(turnsUsed) && turnsUsed > 0) {
+        // Extract a short lastAction hint from the first non-empty line of the chunk
+        const firstLine = chunk
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => l.length > 0);
+        return { turnsUsed, lastAction: firstLine };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Patterns indicating the prompt or context exceeded the model's context window.
+ * These are non-retryable with the same prompt — the task must be split.
+ */
+const CONTEXT_OVERFLOW_PATTERNS = [
+  'context too long',
+  'context window',
+  'context length',
+  'context_length_exceeded',
+  'prompt too long',
+  'maximum context',
+  'token limit',
+  'too many tokens',
+  'context overflow',
+  'context_overflow',
+];
+
+/**
+ * Categories of worker exit errors.
+ * Used by callers to decide retry strategy:
+ *   retryable:     'rate-limit', 'timeout', 'crash'
+ *   non-retryable: 'auth', 'context-overflow', 'unknown'
+ */
+export type ErrorCategory =
+  | 'rate-limit'
+  | 'auth'
+  | 'timeout'
+  | 'crash'
+  | 'context-overflow'
+  | 'unknown';
+
+/**
  * Check whether the stderr output from a failed attempt indicates a rate-limit
  * or model-unavailability error that warrants falling back to a different model.
  */
@@ -65,21 +183,61 @@ export function isRateLimitError(stderr: string): boolean {
 }
 
 /**
- * Get the next model in the fallback chain for a given model.
- * Returns undefined if there is no further fallback (haiku is the end of the chain).
- * For unknown models (full model IDs), falls back to sonnet as a safe default.
+ * Check whether the stdout from a completed agent run indicates that the
+ * Claude CLI hit its --max-turns limit. Claude exits with code 0 when
+ * max-turns is reached, so we must inspect stdout to detect incomplete work.
  */
-export function getNextFallbackModel(currentModel: string): string | undefined {
+export function isMaxTurnsExhausted(stdout: string): boolean {
+  const lower = stdout.toLowerCase();
+  return MAX_TURNS_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+/**
+ * Classify the category of a worker exit error from stderr output and exit code.
+ *
+ * Priority order (highest to lowest):
+ *   1. rate-limit   — recoverable, retry with model fallback
+ *   2. auth         — non-retryable, report to user
+ *   3. context-overflow — non-retryable, split the task
+ *   4. timeout      — exit code 143/137 or "timeout" in stderr
+ *   5. crash        — any other non-zero exit
+ *   6. unknown      — exit code 0 with unrecognised stderr
+ */
+export function classifyError(stderr: string, exitCode: number): ErrorCategory {
+  const lower = stderr.toLowerCase();
+
+  if (isRateLimitError(stderr)) return 'rate-limit';
+  if (AUTH_PATTERNS.some((p) => lower.includes(p))) return 'auth';
+  if (CONTEXT_OVERFLOW_PATTERNS.some((p) => lower.includes(p))) return 'context-overflow';
+  if (exitCode === 143 || exitCode === 137 || lower.includes('timeout')) return 'timeout';
+  if (exitCode !== 0) return 'crash';
+  return 'unknown';
+}
+
+/**
+ * Get the next model in the fallback chain for a given model.
+ * If a ModelRegistry is provided, uses tier-aware fallback (provider-agnostic).
+ * Otherwise falls back to the hardcoded Claude chain.
+ */
+export function getNextFallbackModel(
+  currentModel: string,
+  registry?: ModelRegistry,
+): string | undefined {
+  if (registry) {
+    return registry.getFallback(currentModel);
+  }
   return MODEL_FALLBACK_CHAIN[currentModel] ?? (currentModel === 'haiku' ? undefined : 'sonnet');
 }
 
 /**
  * Validate a model string.
- * Accepts known short aliases ('haiku', 'sonnet', 'opus') or full model IDs
- * matching the Claude naming pattern (e.g. 'claude-sonnet-4-5-20250929').
- * Returns true if valid, false otherwise.
+ * If a ModelRegistry is provided, checks against registered models (provider-agnostic).
+ * Otherwise falls back to Claude-specific validation.
  */
-export function isValidModel(model: string): boolean {
+export function isValidModel(model: string, registry?: ModelRegistry): boolean {
+  if (registry) {
+    return registry.isValid(model);
+  }
   if (MODEL_ALIASES.includes(model as ModelAlias)) return true;
   // Full model IDs follow the pattern: claude-<variant>-<version>
   return /^claude-[a-z0-9]+-[a-z0-9._-]+$/.test(model);
@@ -127,6 +285,21 @@ export function resolveProfile(
 }
 
 /**
+ * Result returned by manifestToSpawnOptions().
+ * Contains the resolved SpawnOptions and a cleanup function that deletes
+ * any temporary files created for per-worker MCP isolation.
+ */
+export interface ManifestSpawnResult {
+  /** Resolved spawn options ready for AgentRunner.spawn() */
+  spawnOptions: SpawnOptions;
+  /**
+   * Async cleanup function — call after spawn completes (success or failure).
+   * Deletes the per-worker MCP temp file if one was created; no-op otherwise.
+   */
+  cleanup: () => Promise<void>;
+}
+
+/**
  * Convert a TaskManifest into SpawnOptions.
  *
  * Resolution rules:
@@ -134,11 +307,19 @@ export function resolveProfile(
  * - If only `profile` is provided, resolve it via custom profiles then built-in
  * - If neither is provided, no tools restriction is applied
  * - All other fields map directly to SpawnOptions equivalents
+ *
+ * Per-worker MCP isolation:
+ * - When `manifest.mcpServers` is non-empty, a temporary JSON file is written
+ *   containing only those servers (not all globally configured servers).
+ * - `spawnOptions.mcpConfigPath` is set to the temp file path and
+ *   `strictMcpConfig` is set to `true` so the worker cannot access any
+ *   globally configured MCP servers.
+ * - Call `cleanup()` after the spawn completes to delete the temp file.
  */
-export function manifestToSpawnOptions(
+export async function manifestToSpawnOptions(
   manifest: TaskManifest,
   customProfiles?: Record<string, ToolProfile>,
-): SpawnOptions {
+): Promise<ManifestSpawnResult> {
   let allowedTools: string[] | undefined = manifest.allowedTools;
 
   if (!allowedTools && manifest.profile) {
@@ -153,7 +334,7 @@ export function manifestToSpawnOptions(
     }
   }
 
-  return {
+  const baseOptions: SpawnOptions = {
     prompt: manifest.prompt,
     workspacePath: manifest.workspacePath,
     model: manifest.model,
@@ -163,6 +344,56 @@ export function manifestToSpawnOptions(
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
     maxBudgetUsd: manifest.maxBudgetUsd,
+  };
+
+  // No MCP servers requested — return immediately with a no-op cleanup
+  if (!manifest.mcpServers || manifest.mcpServers.length === 0) {
+    return {
+      spawnOptions: baseOptions,
+      cleanup: async (): Promise<void> => {
+        /* no-op */
+      },
+    };
+  }
+
+  // Per-worker MCP isolation: write a temp file with ONLY the requested servers.
+  // This ensures each worker sees only the MCP servers it needs, not all
+  // globally configured servers (security: least-privilege per worker).
+  const tempFilePath = `${tmpdir()}/ob-mcp-${randomUUID()}.json`;
+
+  const mcpServersConfig: Record<
+    string,
+    { command: string; args?: string[]; env?: Record<string, string> }
+  > = {};
+  for (const server of manifest.mcpServers) {
+    mcpServersConfig[server.name] = {
+      command: server.command,
+      ...(server.args !== undefined ? { args: server.args } : {}),
+      ...(server.env !== undefined ? { env: server.env } : {}),
+    };
+  }
+
+  await writeFile(tempFilePath, JSON.stringify({ mcpServers: mcpServersConfig }, null, 2), 'utf-8');
+
+  logger.debug(
+    { tempFilePath, serverCount: manifest.mcpServers.length },
+    'Wrote per-worker MCP config — worker sees only its requested servers',
+  );
+
+  return {
+    spawnOptions: {
+      ...baseOptions,
+      mcpConfigPath: tempFilePath,
+      strictMcpConfig: true,
+    },
+    cleanup: async (): Promise<void> => {
+      try {
+        await rm(tempFilePath, { force: true });
+        logger.debug({ tempFilePath }, 'Cleaned up per-worker MCP temp file');
+      } catch (err) {
+        logger.warn({ tempFilePath, err }, 'Failed to clean up MCP temp file');
+      }
+    },
   };
 }
 
@@ -217,6 +448,18 @@ export interface SpawnOptions {
   systemPrompt?: string;
   /** Maximum spend in USD for this agent run (passed as --max-budget-usd) */
   maxBudgetUsd?: number;
+  /**
+   * Path to an MCP config JSON file to pass to the agent CLI.
+   * For Claude: passed as `--mcp-config <path>` so the worker can use MCP tools.
+   * For Codex: passed via the `-c` flag when set.
+   */
+  mcpConfigPath?: string;
+  /**
+   * When true, passes `--strict-mcp-config` to the Claude CLI, isolating the worker
+   * from any globally configured MCP servers (e.g. ~/.claude/claude_desktop_config.json).
+   * Only the servers listed in `mcpConfigPath` will be available to the worker.
+   */
+  strictMcpConfig?: boolean;
 }
 
 /**
@@ -241,6 +484,20 @@ export function estimateCostUsd(model: string | undefined, outputBytes: number):
   return 0.01 + outputKb * 0.001;
 }
 
+/**
+ * Handle returned by AgentRunner.spawnWithHandle().
+ * Provides the result promise, the PID of the initial child process,
+ * and an abort function that sends SIGTERM → 5s grace → SIGKILL.
+ */
+export interface SpawnHandle {
+  /** Promise that resolves to the final AgentResult (after retries if any) */
+  promise: Promise<AgentResult>;
+  /** PID of the initial child process (-1 if the OS did not assign one) */
+  pid: number;
+  /** Abort the currently-running execution (SIGTERM → 5s grace period → SIGKILL) */
+  abort: () => void;
+}
+
 /** Result returned from AgentRunner.spawn() */
 export interface AgentResult {
   stdout: string;
@@ -254,6 +511,12 @@ export interface AgentResult {
   modelFallbacks?: string[];
   /** Estimated cost in USD for this agent run */
   costUsd?: number;
+  /**
+   * True when the Claude CLI exited with code 0 but stdout contains a
+   * max-turns indicator, meaning the worker ran out of its turn budget
+   * before completing the task. The result is incomplete.
+   */
+  turnsExhausted?: boolean;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -293,7 +556,11 @@ export class AgentExhaustedError extends Error {
   }
 }
 
-/** Build the CLI argument array from spawn options. */
+/**
+ * Build the CLI argument array from spawn options.
+ * @deprecated Use CLIAdapter.buildSpawnConfig() instead for provider-agnostic arg building.
+ * Kept for backward compatibility — produces Claude-specific args.
+ */
 export function buildArgs(opts: SpawnOptions): string[] {
   const args: string[] = [];
 
@@ -353,119 +620,140 @@ export function buildArgs(opts: SpawnOptions): string[] {
  */
 const SIGTERM_GRACE_PERIOD_MS = 5000;
 
+/** Handle returned by execOnce() — exposes the result promise, process PID, and a kill function. */
+interface ExecOnceHandle {
+  promise: Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  pid: number;
+  kill: () => void;
+}
+
 /** Execute a single agent attempt. Returns stdout, stderr, exitCode. */
-function execOnce(
-  args: string[],
-  workspacePath: string,
-  timeout?: number,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    // Remove Claude Code env vars to prevent "nested session" detection.
-    // When OpenBridge runs inside a Claude Code session (VS Code extension or CLI),
-    // these vars cause child `claude` calls to refuse to start or behave unexpectedly.
-    const cleanEnv = { ...process.env };
-    for (const key of Object.keys(cleanEnv)) {
-      if (
-        key === 'CLAUDECODE' ||
-        key.startsWith('CLAUDE_CODE_') ||
-        key.startsWith('CLAUDE_AGENT_SDK_')
-      ) {
-        delete cleanEnv[key];
+function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: number): ExecOnceHandle {
+  const child = nodeSpawn(config.binary, config.args, {
+    cwd: workspacePath,
+    env: config.env,
+    stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
+  });
+
+  logger.debug(
+    { pid: child.pid, binary: config.binary, argCount: config.args.length },
+    'Spawned child process',
+  );
+
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+  let timeoutTimer: NodeJS.Timeout | undefined;
+  let gracePeriodTimer: NodeJS.Timeout | undefined;
+
+  const promise = new Promise<{ stdout: string; stderr: string; exitCode: number }>(
+    (resolve, reject) => {
+      // Manual timeout handling with SIGTERM → SIGKILL progression
+      if (timeout && timeout > 0) {
+        timeoutTimer = setTimeout(() => {
+          timedOut = true;
+          logger.warn(
+            { timeout, pid: child.pid },
+            'Worker timeout exceeded — sending SIGTERM (5s grace period)',
+          );
+
+          // Send SIGTERM for graceful shutdown
+          const terminated = child.kill('SIGTERM');
+
+          if (!terminated) {
+            logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to worker');
+            // Resolve immediately if kill failed
+            resolve({
+              stdout,
+              stderr: stderr + '\nTimeout: failed to terminate process',
+              exitCode: 143,
+            });
+            return;
+          }
+
+          // Set up grace period timer for SIGKILL
+          gracePeriodTimer = setTimeout(() => {
+            logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
+            child.kill('SIGKILL');
+          }, SIGTERM_GRACE_PERIOD_MS);
+        }, timeout);
       }
-    }
 
-    const child = nodeSpawn('claude', args, {
-      cwd: workspacePath,
-      env: cleanEnv,
-      stdio: ['ignore', 'pipe', 'pipe'], // Close stdin immediately — claude --print doesn't need it
-    });
+      child.stdout!.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+        stdout += chunk;
+        logger.debug(
+          { pid: child.pid, chunkLen: chunk.length, totalLen: stdout.length },
+          'stdout data received',
+        );
+      });
 
-    logger.debug(
-      { pid: child.pid, argCount: args.length, promptLen: args[args.length - 1]?.length },
-      'Spawned claude child process',
-    );
+      child.stderr!.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
 
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let timeoutTimer: NodeJS.Timeout | undefined;
-    let gracePeriodTimer: NodeJS.Timeout | undefined;
+      child.on('close', (code, signal) => {
+        // Clear both timers
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
 
-    // Manual timeout handling with SIGTERM → SIGKILL progression
-    if (timeout && timeout > 0) {
-      timeoutTimer = setTimeout(() => {
-        timedOut = true;
-        logger.warn(
-          { timeout, pid: child.pid },
-          'Worker timeout exceeded — sending SIGTERM (5s grace period)',
+        logger.debug(
+          { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
+          'Child process closed',
         );
 
-        // Send SIGTERM for graceful shutdown
-        const terminated = child.kill('SIGTERM');
-
-        if (!terminated) {
-          logger.warn({ pid: child.pid }, 'Failed to send SIGTERM to worker');
-          // Resolve immediately if kill failed
-          resolve({
-            stdout,
-            stderr: stderr + '\nTimeout: failed to terminate process',
-            exitCode: 143,
-          });
-          return;
+        // Apply adapter-specific output parsing (e.g. Codex --json JSONL extraction)
+        let parsedStdout = stdout;
+        if (config.parseOutput) {
+          try {
+            parsedStdout = config.parseOutput(stdout);
+          } catch (parseErr) {
+            logger.warn({ parseErr }, 'parseOutput threw — falling back to raw stdout');
+          }
         }
 
-        // Set up grace period timer for SIGKILL
+        if (timedOut) {
+          // Process was terminated due to timeout
+          const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
+          resolve({
+            stdout: parsedStdout,
+            stderr:
+              stderr +
+              `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
+            exitCode,
+          });
+        } else {
+          resolve({ stdout: parsedStdout, stderr, exitCode: code ?? 1 });
+        }
+      });
+
+      child.on('error', (error) => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+        reject(error);
+      });
+    },
+  );
+
+  return {
+    promise,
+    pid: child.pid ?? -1,
+    kill: (): void => {
+      // Clear timers if kill is called manually
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+
+      // Graceful shutdown with SIGTERM
+      const terminated = child.kill('SIGTERM');
+
+      if (terminated) {
+        // Set up grace period for SIGKILL
         gracePeriodTimer = setTimeout(() => {
-          logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
           child.kill('SIGKILL');
         }, SIGTERM_GRACE_PERIOD_MS);
-      }, timeout);
-    }
-
-    child.stdout.on('data', (data: Buffer) => {
-      const chunk = data.toString();
-      stdout += chunk;
-      logger.debug(
-        { pid: child.pid, chunkLen: chunk.length, totalLen: stdout.length },
-        'stdout data received',
-      );
-    });
-
-    child.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code, signal) => {
-      // Clear both timers
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
-
-      logger.debug(
-        { pid: child.pid, code, signal, stdoutLen: stdout.length, stderrLen: stderr.length },
-        'claude child process closed',
-      );
-
-      if (timedOut) {
-        // Process was terminated due to timeout
-        const exitCode = signal === 'SIGTERM' ? 143 : signal === 'SIGKILL' ? 137 : (code ?? 1);
-        resolve({
-          stdout,
-          stderr:
-            stderr +
-            `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
-          exitCode,
-        });
-      } else {
-        resolve({ stdout, stderr, exitCode: code ?? 1 });
       }
-    });
-
-    child.on('error', (error) => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
-      reject(error);
-    });
-  });
+    },
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -505,29 +793,19 @@ async function writeLogFile(
 
 /** Execute a single agent attempt in streaming mode. Yields stdout chunks. */
 function execOnceStreaming(
-  args: string[],
+  config: CLISpawnConfig,
   workspacePath: string,
   timeout?: number,
 ): {
   chunks: AsyncGenerator<string, { exitCode: number; stderr: string }>;
   abort: () => void;
+  pid: number;
 } {
-  // Remove Claude Code env vars to prevent "nested session" detection (same as execOnce).
-  const cleanEnv = { ...process.env };
-  for (const key of Object.keys(cleanEnv)) {
-    if (
-      key === 'CLAUDECODE' ||
-      key.startsWith('CLAUDE_CODE_') ||
-      key.startsWith('CLAUDE_AGENT_SDK_')
-    ) {
-      delete cleanEnv[key];
-    }
-  }
-
-  const child = nodeSpawn('claude', args, {
+  const child = nodeSpawn(config.binary, config.args, {
     cwd: workspacePath,
     // Don't use Node's built-in timeout — we handle it manually for graceful cleanup
-    env: cleanEnv,
+    env: config.env,
+    stdio: [config.stdin ?? 'ignore', 'pipe', 'pipe'],
   });
 
   let stderr = '';
@@ -563,7 +841,7 @@ function execOnceStreaming(
     }, timeout);
   }
 
-  child.stderr.on('data', (data: Buffer) => {
+  child.stderr!.on('data', (data: Buffer) => {
     stderr += data.toString();
   });
 
@@ -580,7 +858,7 @@ function execOnceStreaming(
     });
   }
 
-  child.stdout.on('data', (data: Buffer) => {
+  child.stdout!.on('data', (data: Buffer) => {
     chunkQueue.push(data.toString());
     notify?.();
   });
@@ -631,6 +909,7 @@ function execOnceStreaming(
 
   return {
     chunks: generate(),
+    pid: child.pid ?? -1,
     abort: (): void => {
       // Clear timers if abort is called manually
       if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -650,18 +929,24 @@ function execOnceStreaming(
 }
 
 export class AgentRunner {
+  private readonly adapter: CLIAdapter;
+
+  constructor(adapter?: CLIAdapter) {
+    this.adapter = adapter ?? new ClaudeAdapter();
+  }
+
   /**
-   * Spawn a Claude CLI agent with the given options.
+   * Spawn an AI CLI agent with the given options.
    *
-   * Builds CLI args from the options, executes the child process, and
-   * retries on non-zero exit codes up to `retries` times with `retryDelay`
-   * between attempts.
+   * Uses the CLIAdapter to build provider-specific CLI args, executes the
+   * child process, and retries on non-zero exit codes up to `retries` times
+   * with `retryDelay` between attempts.
    */
   async spawn(opts: SpawnOptions): Promise<AgentResult> {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
     let currentModel = opts.model;
-    let currentArgs = buildArgs(opts);
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
 
@@ -692,7 +977,8 @@ export class AgentRunner {
       }
 
       try {
-        lastResult = await execOnce(currentArgs, opts.workspacePath, opts.timeout);
+        const { promise: execPromise } = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+        lastResult = await execPromise;
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
         attemptRecords.push({
@@ -731,7 +1017,7 @@ export class AgentRunner {
           );
           modelFallbacks.push(currentModel);
           currentModel = nextModel;
-          currentArgs = buildArgs({ ...opts, model: currentModel });
+          currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
         }
       }
     }
@@ -744,6 +1030,8 @@ export class AgentRunner {
       throw new AgentExhaustedError(attemptRecords, durationMs);
     }
 
+    const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
+
     const result: AgentResult = {
       stdout: lastResult.stdout,
       stderr: lastResult.stderr,
@@ -753,7 +1041,15 @@ export class AgentRunner {
       model: currentModel,
       modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
       costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+      turnsExhausted: turnsExhausted || undefined,
     };
+
+    if (turnsExhausted) {
+      logger.warn(
+        { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
+        'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+      );
+    }
 
     logger.info(
       {
@@ -763,6 +1059,7 @@ export class AgentRunner {
         retryCount: result.retryCount,
         modelFallbacks: result.modelFallbacks,
         costUsd: result.costUsd,
+        turnsExhausted: result.turnsExhausted,
       },
       'Agent completed',
     );
@@ -780,7 +1077,370 @@ export class AgentRunner {
   }
 
   /**
-   * Stream a Claude CLI agent, yielding stdout chunks as they arrive.
+   * Spawn an AI CLI agent and immediately return a handle with the child PID
+   * and an abort function, without waiting for the run to complete.
+   *
+   * The returned `promise` resolves to the same `AgentResult` that `spawn()`
+   * would produce (including retries and model fallback). The `abort()` function
+   * always targets the *currently running* child process — it updates across
+   * retry boundaries so a late abort still kills an in-progress retry.
+   *
+   * Use this instead of `spawn()` when the caller needs to:
+   *   - record the worker PID in a registry before the run finishes
+   *   - cancel a long-running worker in response to a user "stop" command
+   *
+   * Keep `spawn()` unchanged for backward compatibility.
+   */
+  spawnWithHandle(opts: SpawnOptions): SpawnHandle {
+    const retries = opts.retries ?? 3;
+    const retryDelay = opts.retryDelay ?? 10_000;
+    let currentModel = opts.model;
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
+    const startTime = Date.now();
+    const modelFallbacks: string[] = [];
+
+    // Mutable reference to the kill function of the currently-running process.
+    // Updated on each retry so abort() always terminates the live child.
+    let currentKill: (() => void) | undefined;
+
+    const abort = (): void => {
+      currentKill?.();
+    };
+
+    // Launch the first execution immediately — this lets us capture its PID
+    // synchronously before the async retry loop begins.
+    const firstHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+    currentKill = firstHandle.kill;
+    const initialPid = firstHandle.pid;
+
+    logger.debug(
+      {
+        workspacePath: opts.workspacePath,
+        model: opts.model,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        timeout: opts.timeout,
+        retries,
+        pid: initialPid,
+        sessionId: opts.resumeSessionId ?? opts.sessionId,
+      },
+      'Spawning agent with handle',
+    );
+
+    const promise = (async (): Promise<AgentResult> => {
+      const attemptRecords: AttemptRecord[] = [];
+      let lastResult: { stdout: string; stderr: string; exitCode: number } | undefined;
+      let attempt = 0;
+
+      // The first iteration uses the already-started handle; subsequent
+      // iterations create new execOnce() calls for each retry.
+      let currentHandle: ExecOnceHandle = firstHandle;
+
+      for (attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) {
+          logger.warn(
+            { attempt, maxRetries: retries, delay: retryDelay },
+            'Retrying agent after non-zero exit',
+          );
+          await sleep(retryDelay);
+          currentHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+          currentKill = currentHandle.kill;
+        }
+
+        try {
+          lastResult = await currentHandle.promise;
+        } catch (error) {
+          logger.error({ error, attempt }, 'Agent spawn error');
+          attemptRecords.push({
+            attempt,
+            exitCode: -1,
+            stderr: error instanceof Error ? error.message : String(error),
+          });
+          if (attempt < retries) {
+            continue;
+          }
+          throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+        }
+
+        if (lastResult.exitCode === 0) {
+          break;
+        }
+
+        logger.warn(
+          { exitCode: lastResult.exitCode, attempt, stderr: lastResult.stderr.slice(0, 500) },
+          'Agent exited with non-zero code',
+        );
+
+        attemptRecords.push({
+          attempt,
+          exitCode: lastResult.exitCode,
+          stderr: lastResult.stderr,
+        });
+
+        // Rate-limit / model unavailability — fall back to next model
+        if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
+          const nextModel = getNextFallbackModel(currentModel);
+          if (nextModel) {
+            logger.warn(
+              { from: currentModel, to: nextModel, attempt },
+              'Model rate-limited — falling back to next model in chain',
+            );
+            modelFallbacks.push(currentModel);
+            currentModel = nextModel;
+            currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
+          }
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      const retryCount = Math.min(attempt, retries);
+
+      if (!lastResult || lastResult.exitCode !== 0) {
+        throw new AgentExhaustedError(attemptRecords, durationMs);
+      }
+
+      const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
+
+      const result: AgentResult = {
+        stdout: lastResult.stdout,
+        stderr: lastResult.stderr,
+        exitCode: lastResult.exitCode,
+        durationMs,
+        retryCount,
+        model: currentModel,
+        modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+        costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+        turnsExhausted: turnsExhausted || undefined,
+      };
+
+      if (turnsExhausted) {
+        logger.warn(
+          { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
+          'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+        );
+      }
+
+      logger.info(
+        {
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          model: result.model ?? 'default',
+          retryCount: result.retryCount,
+          modelFallbacks: result.modelFallbacks,
+          costUsd: result.costUsd,
+          turnsExhausted: result.turnsExhausted,
+        },
+        'Agent completed',
+      );
+
+      if (opts.logFile) {
+        try {
+          await writeLogFile(opts.logFile, opts, result);
+          logger.debug({ logFile: opts.logFile }, 'Agent log written to disk');
+        } catch (logError) {
+          logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write agent log');
+        }
+      }
+
+      return result;
+    })();
+
+    return { promise, pid: initialPid, abort };
+  }
+
+  /**
+   * Spawn an AI CLI agent with real-time streaming progress via turn-indicator parsing.
+   *
+   * Identical to spawnWithHandle() — returns pid, abort, and a result promise —
+   * but uses execOnceStreaming() internally so that stdout chunks are inspected
+   * as they arrive. Whenever parseTurnIndicator() detects a new agent turn in a
+   * chunk, the optional onProgress callback is invoked with the TurnIndicator.
+   *
+   * Use this instead of spawnWithHandle() when the caller needs real-time turn
+   * visibility (e.g. to broadcast worker-turn-progress events to connectors).
+   */
+  spawnWithStreamingHandle(
+    opts: SpawnOptions,
+    onProgress?: (indicator: TurnIndicator) => void,
+  ): SpawnHandle {
+    const retries = opts.retries ?? 3;
+    const retryDelay = opts.retryDelay ?? 10_000;
+    let currentModel = opts.model;
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
+    const startTime = Date.now();
+    const modelFallbacks: string[] = [];
+
+    // Mutable reference to the abort function of the currently-running stream.
+    // Updated on each retry so abort() always terminates the live child.
+    let currentAbort: (() => void) | undefined;
+    const abort = (): void => {
+      currentAbort?.();
+    };
+
+    // Launch the first execution immediately — this lets us capture its PID
+    // synchronously before the async retry loop begins.
+    const firstStreaming = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+    currentAbort = firstStreaming.abort;
+    const initialPid = firstStreaming.pid;
+
+    logger.debug(
+      {
+        workspacePath: opts.workspacePath,
+        model: opts.model,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        timeout: opts.timeout,
+        retries,
+        pid: initialPid,
+        sessionId: opts.resumeSessionId ?? opts.sessionId,
+      },
+      'Spawning agent with streaming handle',
+    );
+
+    const promise = (async (): Promise<AgentResult> => {
+      const attemptRecords: AttemptRecord[] = [];
+      let attempt = 0;
+
+      // The first iteration uses the already-started streaming handle.
+      let currentStreaming: ReturnType<typeof execOnceStreaming> = firstStreaming;
+
+      for (attempt = 0; attempt <= retries; attempt++) {
+        if (attempt > 0) {
+          logger.warn(
+            { attempt, maxRetries: retries, delay: retryDelay },
+            'Retrying streaming agent after non-zero exit',
+          );
+          await sleep(retryDelay);
+          currentStreaming = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+          currentAbort = currentStreaming.abort;
+        }
+
+        let stdout = '';
+        let streamResult: { exitCode: number; stderr: string } | undefined;
+        let spawnError: Error | undefined;
+
+        try {
+          // Drain all chunks — accumulate stdout and report turn progress
+          let iterResult = await currentStreaming.chunks.next();
+          while (!iterResult.done) {
+            const chunk = iterResult.value;
+            stdout += chunk;
+            if (onProgress) {
+              const indicator = parseTurnIndicator(chunk);
+              if (indicator) {
+                onProgress(indicator);
+              }
+            }
+            iterResult = await currentStreaming.chunks.next();
+          }
+          streamResult = iterResult.value;
+        } catch (error) {
+          logger.error({ error, attempt }, 'Agent streaming handle error');
+          spawnError = error instanceof Error ? error : new Error(String(error));
+        }
+
+        if (spawnError) {
+          attemptRecords.push({
+            attempt,
+            exitCode: -1,
+            stderr: spawnError.message,
+          });
+          if (attempt < retries) continue;
+          throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+        }
+
+        if (streamResult!.exitCode === 0) {
+          const durationMs = Date.now() - startTime;
+          const retryCount = attempt;
+          const turnsExhausted = isMaxTurnsExhausted(stdout);
+
+          const result: AgentResult = {
+            stdout,
+            stderr: streamResult!.stderr,
+            exitCode: 0,
+            durationMs,
+            retryCount,
+            model: currentModel,
+            modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+            costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
+            turnsExhausted: turnsExhausted || undefined,
+          };
+
+          if (turnsExhausted) {
+            logger.warn(
+              {
+                model: currentModel ?? 'default',
+                maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+              },
+              'Streaming agent exited with code 0 but max-turns was exhausted — result may be incomplete',
+            );
+          }
+
+          logger.info(
+            {
+              exitCode: 0,
+              durationMs,
+              model: currentModel ?? 'default',
+              retryCount,
+              modelFallbacks: result.modelFallbacks,
+              costUsd: result.costUsd,
+              turnsExhausted: result.turnsExhausted,
+            },
+            'Streaming agent completed',
+          );
+
+          if (opts.logFile) {
+            try {
+              await writeLogFile(opts.logFile, opts, result);
+              logger.debug({ logFile: opts.logFile }, 'Streaming agent log written to disk');
+            } catch (logError) {
+              logger.warn({ logFile: opts.logFile, error: logError }, 'Failed to write agent log');
+            }
+          }
+
+          return result;
+        }
+
+        // Non-zero exit — record and possibly retry
+        logger.warn(
+          {
+            exitCode: streamResult!.exitCode,
+            attempt,
+            stderr: streamResult!.stderr.slice(0, 500),
+          },
+          'Streaming agent exited with non-zero code',
+        );
+
+        attemptRecords.push({
+          attempt,
+          exitCode: streamResult!.exitCode,
+          stderr: streamResult!.stderr,
+        });
+
+        // Rate-limit / model unavailability — fall back to next model
+        if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
+          const nextModel = getNextFallbackModel(currentModel);
+          if (nextModel) {
+            logger.warn(
+              { from: currentModel, to: nextModel, attempt },
+              'Model rate-limited — falling back to next model in chain',
+            );
+            modelFallbacks.push(currentModel);
+            currentModel = nextModel;
+            currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
+          }
+        }
+      }
+
+      // All retries exhausted
+      throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
+    })();
+
+    return { promise, pid: initialPid, abort };
+  }
+
+  /**
+   * Stream an AI CLI agent, yielding stdout chunks as they arrive.
    *
    * Supports all the same options as spawn() — allowedTools, maxTurns,
    * model, retries, disk logging. On non-zero exit codes, retries the
@@ -793,7 +1453,7 @@ export class AgentRunner {
     const retries = opts.retries ?? 3;
     const retryDelay = opts.retryDelay ?? 10_000;
     let currentModel = opts.model;
-    let currentArgs = buildArgs(opts);
+    let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
 
@@ -827,7 +1487,7 @@ export class AgentRunner {
       let spawnError: Error | undefined;
 
       try {
-        const { chunks } = execOnceStreaming(currentArgs, opts.workspacePath, opts.timeout);
+        const { chunks } = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
 
         // Drain all chunks — yield each one and accumulate stdout
         let iterResult = await chunks.next();
@@ -859,6 +1519,7 @@ export class AgentRunner {
       if (streamResult!.exitCode === 0) {
         const durationMs = Date.now() - startTime;
         const retryCount = attempt;
+        const turnsExhausted = isMaxTurnsExhausted(stdout);
 
         const result: AgentResult = {
           stdout,
@@ -869,7 +1530,18 @@ export class AgentRunner {
           model: currentModel,
           modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
           costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
+          turnsExhausted: turnsExhausted || undefined,
         };
+
+        if (turnsExhausted) {
+          logger.warn(
+            {
+              model: currentModel ?? 'default',
+              maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK,
+            },
+            'Stream exited with code 0 but max-turns was exhausted — result may be incomplete',
+          );
+        }
 
         logger.info(
           {
@@ -879,6 +1551,7 @@ export class AgentRunner {
             retryCount,
             modelFallbacks: result.modelFallbacks,
             costUsd: result.costUsd,
+            turnsExhausted: result.turnsExhausted,
           },
           'Stream completed',
         );
@@ -921,7 +1594,7 @@ export class AgentRunner {
           );
           modelFallbacks.push(currentModel);
           currentModel = nextModel;
-          currentArgs = buildArgs({ ...opts, model: currentModel });
+          currentConfig = this.adapter.buildSpawnConfig({ ...opts, model: currentModel });
         }
       }
     }
@@ -931,29 +1604,39 @@ export class AgentRunner {
   }
 
   /**
-   * Spawn a Claude CLI agent from a TaskManifest.
+   * Spawn an AI CLI agent from a TaskManifest.
    *
    * Converts the manifest into SpawnOptions, resolving the `profile` field
-   * into `--allowedTools` flags via custom profiles then built-in profiles.
+   * into tool lists via custom profiles then built-in profiles.
    * If both `profile` and explicit `allowedTools` are provided, explicit wins.
    */
   async spawnFromManifest(
     manifest: TaskManifest,
     customProfiles?: Record<string, ToolProfile>,
   ): Promise<AgentResult> {
-    return this.spawn(manifestToSpawnOptions(manifest, customProfiles));
+    const { spawnOptions, cleanup } = await manifestToSpawnOptions(manifest, customProfiles);
+    try {
+      return await this.spawn(spawnOptions);
+    } finally {
+      await cleanup();
+    }
   }
 
   /**
-   * Stream a Claude CLI agent from a TaskManifest.
+   * Stream an AI CLI agent from a TaskManifest.
    *
-   * Same as streamFromManifest but yields stdout chunks as they arrive.
+   * Same as spawnFromManifest but yields stdout chunks as they arrive.
    * Resolves `profile` to tools the same way as spawnFromManifest.
    */
   async *streamFromManifest(
     manifest: TaskManifest,
     customProfiles?: Record<string, ToolProfile>,
   ): AsyncGenerator<string, AgentResult> {
-    return yield* this.stream(manifestToSpawnOptions(manifest, customProfiles));
+    const { spawnOptions, cleanup } = await manifestToSpawnOptions(manifest, customProfiles);
+    try {
+      return yield* this.stream(spawnOptions);
+    } finally {
+      await cleanup();
+    }
   }
 }

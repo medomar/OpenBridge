@@ -14,12 +14,24 @@ This document covers every public interface, class, and configuration schema in 
   - [ConnectorEvents](#connectorevents)
   - [AIProvider](#aiprovider)
   - [ProviderResult](#providerresult)
+  - [SpawnOptions](#spawnoptions)
+- [CLI Adapter Layer](#cli-adapter-layer)
+  - [CLIAdapter](#cliadapter)
+  - [CLISpawnConfig](#clispawnconfig)
+  - [CapabilityLevel](#capabilitylevel)
+  - [AdapterRegistry](#adapterregistry)
+  - [CodexAdapter](#codexadapter)
+- [Built-in Providers](#built-in-providers)
+  - [CodexProvider](#codexprovider)
+  - [CodexConfig](#codexconfig)
 - [Discovery Types](#discovery-types)
   - [DiscoveredTool](#discoveredtool)
   - [ScanResult](#scanresult)
 - [Master AI Types](#master-ai-types)
   - [MasterState](#masterstate)
   - [ExplorationSummary](#explorationsummary)
+  - [TaskManifest](#taskmanifest)
+  - [MasterSystemPromptContext](#mastersystempromptcontext)
 - [Core Classes](#core-classes)
   - [Bridge](#bridge)
   - [Router](#router)
@@ -46,13 +58,30 @@ This document covers every public interface, class, and configuration schema in 
   - [AuditConfig](#auditconfig)
   - [HealthConfig](#healthconfig)
   - [MetricsConfig](#metricsconfig)
+  - [MCPServer](#mcpserver)
+  - [MCPConfig](#mcpconfig)
+- [Memory Classes](#memory-classes)
+  - [ConversationStore](#conversationstore)
+    - [listSessions()](#listsessions)
+    - [searchSessions()](#searchsessions)
+    - [searchConversations()](#searchconversations)
+    - [getSessionHistory()](#getsessionhistory)
+    - [getRecentMessages()](#getrecentmessages)
+  - [MemoryManager](#memorymanager)
+- [Master AI Classes](#master-ai-classes)
+  - [MasterManager](#mastermanager)
+  - [DotFolderManager](#dotfoldermanager)
 - [Utility Functions](#utility-functions)
   - [loadConfig()](#loadconfig)
+  - [getMcpConfigPath()](#getmcpconfigpath)
   - [scanForAITools()](#scanforaitools)
   - [createLogger()](#createlogger)
+- [Built-in Commands](#built-in-commands)
+  - [/history](#history-command)
 - [HTTP Endpoints](#http-endpoints)
   - [Health Check](#health-check-endpoint)
   - [Metrics](#metrics-endpoint)
+  - [Sessions (WebChat)](#sessions-endpoints-webchat)
 
 ---
 
@@ -150,6 +179,201 @@ Result returned by an AI provider after processing.
 | `usage?`      | `Record<string, number>` | Token count or similar usage data |
 | `[key]`       | `unknown`                | Provider-specific data            |
 
+### SpawnOptions
+
+_Source: `src/core/agent-runner.ts`_
+
+Options accepted by `AgentRunner.spawn()`. Adapter-specific fields are silently dropped by adapters that don't support them.
+
+| Property           | Type       | Default | Description                                                                                                                                                                                                                                             |
+| ------------------ | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`           | `string`   | —       | The prompt to send to the AI agent                                                                                                                                                                                                                      |
+| `workspacePath`    | `string`   | —       | Working directory for the agent process                                                                                                                                                                                                                 |
+| `model?`           | `string`   | —       | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                                                                                                                                                                                         |
+| `allowedTools?`    | `string[]` | —       | Tools the agent may use. Mapped to `--allowedTools` (Claude) or sandbox mode (Codex)                                                                                                                                                                    |
+| `maxTurns?`        | `number`   | —       | Max agentic turns before stopping. Claude only — dropped by Codex/Aider adapters                                                                                                                                                                        |
+| `timeout?`         | `number`   | —       | Timeout in milliseconds per attempt                                                                                                                                                                                                                     |
+| `retries?`         | `number`   | `3`     | Number of retry attempts on non-zero exit codes                                                                                                                                                                                                         |
+| `retryDelay?`      | `number`   | `10000` | Delay in milliseconds between retry attempts                                                                                                                                                                                                            |
+| `logFile?`         | `string`   | —       | Path to write the full agent log output                                                                                                                                                                                                                 |
+| `sessionId?`       | `string`   | —       | Start a new named session (`--session-id` for Claude, named session for Codex)                                                                                                                                                                          |
+| `resumeSessionId?` | `string`   | —       | Resume a prior session (`--resume` for Claude, `exec resume --last` for Codex)                                                                                                                                                                          |
+| `systemPrompt?`    | `string`   | —       | System prompt injected at the top of the agent context                                                                                                                                                                                                  |
+| `maxBudgetUsd?`    | `number`   | —       | Max spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)                                                                                                                                                                                |
+| `mcpConfigPath?`   | `string`   | —       | Path to MCP config JSON (`--mcp-config` for Claude, `-c` for Codex; Aider drops it)                                                                                                                                                                     |
+| `strictMcpConfig?` | `boolean`  | —       | When `true`, passes `--strict-mcp-config` to Claude — isolates the worker from any global MCP configs (e.g. `~/.claude/claude_desktop_config.json`). Always set to `true` by `manifestToSpawnOptions()` when a per-worker temp MCP config is generated. |
+
+---
+
+## CLI Adapter Layer
+
+_Source: `src/core/cli-adapter.ts`, `src/core/adapter-registry.ts`, `src/core/adapters/`_
+
+The CLI Adapter layer translates provider-neutral `SpawnOptions` into tool-specific binary, args, and env for each supported AI CLI (`claude`, `codex`, `aider`). This abstraction lets the rest of OpenBridge remain tool-agnostic.
+
+```
+SpawnOptions → CLIAdapter.buildSpawnConfig() → CLISpawnConfig → child_process.spawn()
+```
+
+### CLIAdapter
+
+Interface that every CLI adapter must implement.
+
+| Member                      | Type                                                        | Description                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                      | `readonly string`                                           | Provider name matching `DiscoveredTool.name` (e.g. `'claude'`, `'codex'`, `'aider'`)                                                                    |
+| `buildSpawnConfig(opts)`    | `(opts: SpawnOptions) => CLISpawnConfig`                    | Translate `SpawnOptions` into the binary, args, and env for this CLI                                                                                    |
+| `cleanEnv(env)`             | `(env: Record<string, string \| undefined>) => Record<...>` | Strip env vars that would cause conflicts for this CLI                                                                                                  |
+| `mapCapabilityLevel(level)` | `(level: CapabilityLevel) => string[] \| undefined`         | Map capability level to CLI-specific access restrictions. Returns `undefined` if the CLI doesn't use tool lists (e.g. Codex uses sandbox modes instead) |
+| `isValidModel(model)`       | `(model: string) => boolean`                                | Return `true` if the model string is recognized by this CLI                                                                                             |
+
+### CLISpawnConfig
+
+The output of `CLIAdapter.buildSpawnConfig()` — everything needed to call `child_process.spawn()`.
+
+| Property       | Type                                  | Description                                                                                                                                                           |
+| -------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `binary`       | `string`                              | Command name or absolute path to the binary                                                                                                                           |
+| `args`         | `string[]`                            | CLI arguments array                                                                                                                                                   |
+| `env`          | `Record<string, string \| undefined>` | Environment variables (cleaned of conflicting vars)                                                                                                                   |
+| `stdin?`       | `'ignore' \| 'pipe'`                  | stdin behavior. `'ignore'` closes stdin (default for Claude/Codex). `'pipe'` provides a writable stream for CLIs that require TTY detection.                          |
+| `parseOutput?` | `(stdout: string) => string`          | Optional post-processor for raw stdout. Used by Codex to extract the final message from `--json` JSONL. Falls back to raw stdout if absent or if the function throws. |
+
+### CapabilityLevel
+
+```typescript
+type CapabilityLevel = 'read-only' | 'code-edit' | 'full-access';
+```
+
+Maps tool profiles to CLI-specific access mechanisms:
+
+| Level           | Claude (`--allowedTools`)                                 | Codex (`--sandbox`)         |
+| --------------- | --------------------------------------------------------- | --------------------------- |
+| `'read-only'`   | `Read, Glob, Grep`                                        | `read-only`                 |
+| `'code-edit'`   | `Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(npm:*)` | `workspace-write`           |
+| `'full-access'` | All tools                                                 | `--full-auto` (danger mode) |
+
+### AdapterRegistry
+
+_Source: `src/core/adapter-registry.ts`_
+
+Maps discovered tool names to `CLIAdapter` instances. Built-in adapters (`claude`, `codex`, `aider`) are lazy-loaded on first access. Custom adapters registered via `register()` take priority over built-ins.
+
+**Methods:**
+
+| Method                    | Returns                   | Description                                                         |
+| ------------------------- | ------------------------- | ------------------------------------------------------------------- |
+| `register(name, adapter)` | `void`                    | Register a `CLIAdapter` for a tool name (overrides built-ins)       |
+| `get(name)`               | `CLIAdapter \| undefined` | Get the adapter for a tool name, creating from built-ins if needed  |
+| `getForTool(tool)`        | `CLIAdapter \| undefined` | Get the adapter for a `DiscoveredTool`                              |
+| `has(name)`               | `boolean`                 | Check if an adapter exists for a tool name (registered or built-in) |
+
+**Factory:**
+
+```typescript
+function createAdapterRegistry(): AdapterRegistry;
+```
+
+Creates an `AdapterRegistry` pre-loaded with the `ClaudeAdapter`.
+
+**Built-in adapters:**
+
+| Tool name | Adapter         | Source                                |
+| --------- | --------------- | ------------------------------------- |
+| `claude`  | `ClaudeAdapter` | `src/core/adapters/claude-adapter.ts` |
+| `codex`   | `CodexAdapter`  | `src/core/adapters/codex-adapter.ts`  |
+| `aider`   | `AiderAdapter`  | `src/core/adapters/aider-adapter.ts`  |
+
+### CodexAdapter
+
+_Source: `src/core/adapters/codex-adapter.ts`_
+
+Translates `SpawnOptions` into `codex exec` arguments for non-interactive Codex CLI execution.
+
+**Flags always included:**
+
+| Flag                    | Value                    | Reason                                                                         |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| `--skip-git-repo-check` | (boolean flag)           | Required for non-git or untrusted workspaces — Codex refuses to run without it |
+| `--json`                | (boolean flag)           | Enables JSONL structured output (one JSON event per line to stdout)            |
+| `-o <tempFile>`         | Auto-generated temp path | Reliable final-answer capture. Codex writes the last message to this file      |
+| `--ephemeral`           | (worker spawns only)     | Suppresses session persistence for short-lived worker invocations              |
+
+**Flags set conditionally:**
+
+| Flag               | Condition                             | Value                                                      |
+| ------------------ | ------------------------------------- | ---------------------------------------------------------- |
+| `--model <M>`      | `opts.model` is set                   | Model string passed through                                |
+| `--sandbox <mode>` | `allowedTools` present, not `Bash(*)` | `read-only` or `workspace-write`                           |
+| `--full-auto`      | `Bash(*)` in `allowedTools`           | Enables auto-approve + full sandbox (`danger-full-access`) |
+| `-c <path>`        | `opts.mcpConfigPath` is set           | MCP config file for Codex-native MCP passthrough           |
+
+**Sandbox inference** from `allowedTools`:
+
+| `allowedTools` content               | Sandbox mode                             |
+| ------------------------------------ | ---------------------------------------- |
+| `Bash(*)` present                    | `danger-full-access` (via `--full-auto`) |
+| `Edit` or `Write` present            | `workspace-write`                        |
+| Empty, undefined, or read-only tools | `read-only` (safe default)               |
+
+**Output parsing priority:**
+
+1. Read the `-o` temp file — Codex's most reliable output path
+2. Fall back to `--json` JSONL parsing (`parseCodexJsonlOutput()`) if the temp file is absent
+3. Fall back to raw stdout if no parseable `type: "message"` event is found
+
+**OPENAI_API_KEY validation:** `buildSpawnConfig()` throws immediately if `OPENAI_API_KEY` is not set, preventing confusing downstream auth failures.
+
+**Valid models** (Codex CLI v0.104.0): `gpt-5.2-codex` (default), `o3`, `o4-mini`. Any model ID matching `/^(gpt-|o[0-9]|codex)/` is also accepted for forward compatibility.
+
+---
+
+## Built-in Providers
+
+### CodexProvider
+
+_Source: `src/providers/codex/codex-provider.ts`_
+
+`AIProvider` implementation for the OpenAI Codex CLI. Uses `AgentRunner` + `CodexAdapter` internally — the same pattern as `ClaudeCodeProvider`.
+
+```typescript
+import { CodexProvider } from './providers/codex/index.js';
+
+const provider = new CodexProvider({
+  workspacePath: '/path/to/project',
+  timeout: 120000,
+  model: 'gpt-5.2-codex',
+});
+
+await provider.initialize();
+```
+
+**Methods:**
+
+| Method                    | Returns                                  | Description                                                                                          |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `initialize()`            | `Promise<void>`                          | Validates `workspacePath` is accessible                                                              |
+| `processMessage(message)` | `Promise<ProviderResult>`                | Runs `codex exec` with session wiring and returns the AI response                                    |
+| `streamMessage(message)`  | `AsyncGenerator<string, ProviderResult>` | Falls back to `processMessage()` — yields the result in one chunk (Codex has no real-time streaming) |
+| `isAvailable()`           | `Promise<boolean>`                       | Returns `true` if `codex` binary is on PATH and `OPENAI_API_KEY` is set                              |
+| `shutdown()`              | `Promise<void>`                          | Clears all active sessions                                                                           |
+
+**Session management:** Sessions are scoped by `sender:workspacePath`. The first message in a session window starts a new Codex session; follow-up messages use `codex exec resume --last`. Sessions expire after the configured TTL (default 30 minutes).
+
+### CodexConfig
+
+_Source: `src/providers/codex/codex-config.ts`_
+
+Zod schema for `CodexProvider` constructor options.
+
+| Property        | Type     | Default            | Description                                                                        |
+| --------------- | -------- | ------------------ | ---------------------------------------------------------------------------------- |
+| `workspacePath` | `string` | `'.'`              | Working directory for Codex invocations. Supports `~/` home directory expansion    |
+| `timeout`       | `number` | `120000` (2 min)   | Timeout per invocation in milliseconds                                             |
+| `model?`        | `string` | —                  | Codex model override. Defaults to the Codex CLI's built-in default                 |
+| `sandbox?`      | `string` | —                  | Sandbox mode override (`'read-only'`, `'workspace-write'`, `'danger-full-access'`) |
+| `sessionTtlMs`  | `number` | `1800000` (30 min) | Session inactivity TTL in milliseconds                                             |
+
 ---
 
 ## Discovery Types
@@ -205,6 +429,41 @@ Summary of the Master AI's workspace exploration.
 | `frameworks`  | `string[]` | Detected frameworks                        |
 | `exploredAt`  | `string`   | ISO 8601 timestamp of exploration          |
 
+### TaskManifest
+
+_Source: `src/types/agent.ts`_
+
+Describes everything needed to spawn a worker agent. The Master AI produces these; `AgentRunner` consumes them via `manifestToSpawnOptions()`.
+
+| Property        | Type          | Description                                                                                                                                           |
+| --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`        | `string`      | The prompt to send to the worker agent (required)                                                                                                     |
+| `workspacePath` | `string`      | Working directory for the worker (required)                                                                                                           |
+| `model?`        | `string`      | Tier alias (`'haiku'`, `'sonnet'`, `'opus'`) or a full model ID                                                                                       |
+| `profile?`      | `string`      | Named tool profile — resolved to `allowedTools` by `AgentRunner`                                                                                      |
+| `allowedTools?` | `string[]`    | Explicit tools list — overrides `profile` if both are provided                                                                                        |
+| `maxTurns?`     | `number`      | Maximum number of agentic turns                                                                                                                       |
+| `timeout?`      | `number`      | Timeout in milliseconds per attempt                                                                                                                   |
+| `retries?`      | `number`      | Number of retry attempts on failure                                                                                                                   |
+| `retryDelay?`   | `number`      | Delay in milliseconds between retries                                                                                                                 |
+| `maxBudgetUsd?` | `number`      | Maximum spend in USD (`--max-budget-usd` for Claude; dropped by Codex/Aider)                                                                          |
+| `mcpServers?`   | `MCPServer[]` | MCP servers this worker may use. `manifestToSpawnOptions()` writes a per-worker temp config with only these servers and sets `strictMcpConfig: true`. |
+
+### MasterSystemPromptContext
+
+_Source: `src/master/master-system-prompt.ts`_
+
+Context object passed to `generateMasterSystemPrompt()` to build the Master AI's system prompt.
+
+| Property           | Type               | Description                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspacePath`    | `string`           | Absolute path to the target workspace                                                                                                                                                                                                                                                                                |
+| `masterToolName`   | `string`           | The Master AI tool's name (e.g. `'claude'`, `'codex'`)                                                                                                                                                                                                                                                               |
+| `discoveredTools?` | `DiscoveredTool[]` | All AI tools found on the machine                                                                                                                                                                                                                                                                                    |
+| `customProfiles?`  | `object`           | Custom tool profiles for the Master to assign to workers                                                                                                                                                                                                                                                             |
+| `modelRegistry?`   | `ModelRegistry`    | Provider-agnostic model registry for resolving tier aliases                                                                                                                                                                                                                                                          |
+| `mcpServers?`      | `MCPServer[]`      | MCP servers available for workers (sourced from `V2Config.mcp.servers`). When non-empty, the system prompt gains an "Available MCP Servers" section listing each server name. The Master can then assign servers to workers via the `mcpServers` field of `TaskManifest`. Omit or pass `[]` to suppress the section. |
+
 ---
 
 ## Core Classes
@@ -239,6 +498,35 @@ await bridge.stop();
 | `setMaster()`   | `void`           | Wire a MasterManager into the router               |
 | `start()`       | `Promise<void>`  | Initialize all plugins, start processing           |
 | `stop()`        | `Promise<void>`  | Drain queue, shut down Master + plugins gracefully |
+
+#### Shutdown Behavior
+
+_Source: `src/index.ts`_
+
+OpenBridge registers `SIGINT` and `SIGTERM` handlers that trigger a graceful shutdown sequence:
+
+1. **Double-shutdown guard** — a module-level `shutdownInProgress` flag is set on the first signal. Subsequent signals (e.g., double Ctrl+C) are ignored with a WARN log rather than force-killing the process.
+2. **User-facing message** — `console.log('\nShutting down gracefully... please wait')` is printed immediately so users know not to press Ctrl+C again.
+3. **10-second timeout** — `bridge.stop()` races against a 10-second `setTimeout`. If the timeout fires first, `console.error('Shutdown timeout exceeded (10s) — forcing exit')` is printed and `process.exit(1)` is called.
+4. **Critical-first ordering** — inside `MasterManager.shutdown()`, `saveMasterSessionToStore()` (fast SQLite write, <100ms) runs **before** `triggerMemoryUpdate()` (slow AI spawn, 10-30s). This ensures session state is always persisted even if the memory update is interrupted by the timeout.
+5. **Memory update failure isolation** — `triggerMemoryUpdate()` on shutdown is wrapped in `try/catch` so its failure cannot block or throw past `MasterManager.shutdown()`.
+
+**Full shutdown sequence:**
+
+```
+SIGINT / SIGTERM
+  → shutdownInProgress guard (no-op if already set)
+  → console.log "Shutting down gracefully..."
+  → workspaceManager.stopPolling()
+  → Promise.race([bridge.stop(), 10s timeout])
+      → bridge.stop()
+          → queue.drain()
+          → MasterManager.shutdown()
+              → saveMasterSessionToStore()   ← always runs (critical)
+              → triggerMemoryUpdate()        ← may be skipped by timeout
+          → connectors[].shutdown()
+  → process.exit(0)
+```
 
 ---
 
@@ -385,13 +673,35 @@ HTTP server exposing bridge health status as JSON.
 
 **HealthStatus** (response shape):
 
-| Property     | Type                                     | Description                  |
-| ------------ | ---------------------------------------- | ---------------------------- |
-| `status`     | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status        |
-| `uptime`     | `number`                                 | Seconds since bridge started |
-| `timestamp`  | `string`                                 | ISO 8601 timestamp           |
-| `connectors` | `ComponentStatus[]`                      | Status of each connector     |
-| `queue`      | `object`                                 | Queue state                  |
+| Property          | Type                                     | Description                                                                            |
+| ----------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `status`          | `'healthy' \| 'degraded' \| 'unhealthy'` | Overall bridge status                                                                  |
+| `uptime_seconds`  | `number`                                 | Seconds since bridge started                                                           |
+| `memory_mb`       | `number`                                 | Resident memory usage in MB                                                            |
+| `active_workers`  | `number`                                 | Current number of active worker agents                                                 |
+| `master_status`   | `string`                                 | Master AI lifecycle state                                                              |
+| `db_status`       | `'connected' \| 'disconnected'`          | SQLite memory system status                                                            |
+| `last_message_at` | `string \| null`                         | ISO 8601 timestamp of the most recent message                                          |
+| `timestamp`       | `string`                                 | ISO 8601 timestamp of this health check                                                |
+| `connectors`      | `ComponentStatus[]`                      | Status of each connector                                                               |
+| `providers`       | `ComponentStatus[]`                      | Status of each provider                                                                |
+| `queue`           | `object`                                 | Queue state (`pending`, `processing`, `deadLetterSize`)                                |
+| `mcp?`            | `object`                                 | MCP server health (present only when MCP servers are configured via `setMcpServers()`) |
+
+**`mcp` sub-object:**
+
+| Property  | Type                | Description                                 |
+| --------- | ------------------- | ------------------------------------------- |
+| `enabled` | `boolean`           | Whether MCP is enabled                      |
+| `servers` | `McpServerStatus[]` | Health status of each configured MCP server |
+
+**`McpServerStatus`:**
+
+| Property  | Type                      | Description                                               |
+| --------- | ------------------------- | --------------------------------------------------------- |
+| `name`    | `string`                  | MCP server name (from config)                             |
+| `status`  | `'configured' \| 'error'` | `'configured'` if command found on PATH, `'error'` if not |
+| `command` | `string`                  | The server command being checked (e.g. `npx`)             |
 
 ---
 
@@ -465,18 +775,19 @@ All configuration is validated at startup using [Zod](https://zod.dev) schemas. 
 
 The simplified config format. Three required fields.
 
-| Property        | Type     | Default   | Description                                    |
-| --------------- | -------- | --------- | ---------------------------------------------- |
-| `workspacePath` | `string` | —         | Absolute path to the target project (required) |
-| `channels`      | `array`  | —         | At least one channel config (required)         |
-| `auth`          | `object` | —         | Authentication settings (required)             |
-| `master?`       | `object` | `{}`      | Override auto-detected Master AI settings      |
-| `queue?`        | `object` | see below | Queue retry configuration                      |
-| `router?`       | `object` | see below | Router configuration                           |
-| `audit?`        | `object` | see below | Audit logging configuration                    |
-| `health?`       | `object` | see below | Health check endpoint config                   |
-| `metrics?`      | `object` | see below | Metrics endpoint configuration                 |
-| `logLevel?`     | `string` | `'info'`  | One of: trace, debug, info, warn, error, fatal |
+| Property        | Type        | Default   | Description                                            |
+| --------------- | ----------- | --------- | ------------------------------------------------------ |
+| `workspacePath` | `string`    | —         | Absolute path to the target project (required)         |
+| `channels`      | `array`     | —         | At least one channel config (required)                 |
+| `auth`          | `object`    | —         | Authentication settings (required)                     |
+| `master?`       | `object`    | `{}`      | Override auto-detected Master AI settings              |
+| `mcp?`          | `MCPConfig` | —         | MCP server configuration (see [MCPConfig](#mcpconfig)) |
+| `queue?`        | `object`    | see below | Queue retry configuration                              |
+| `router?`       | `object`    | see below | Router configuration                                   |
+| `audit?`        | `object`    | see below | Audit logging configuration                            |
+| `health?`       | `object`    | see below | Health check endpoint config                           |
+| `metrics?`      | `object`    | see below | Metrics endpoint configuration                         |
+| `logLevel?`     | `string`    | `'info'`  | One of: trace, debug, info, warn, error, fatal         |
 
 **Channel config:**
 
@@ -562,6 +873,326 @@ The original config format. Still fully supported — auto-detected by the confi
 | `enabled?` | `boolean` | `false` | Enable/disable metrics endpoint    |
 | `port?`    | `number`  | `9090`  | HTTP port for the metrics endpoint |
 
+### MCPServer
+
+_Source: `src/types/config.ts`_
+
+A single MCP server definition, used in the `mcp.servers` array of `AppConfigV2`.
+
+| Property  | Type                     | Description                                                                         |
+| --------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `name`    | `string`                 | Unique server name — used by the Master AI to reference the server                  |
+| `command` | `string`                 | Command to launch the MCP server (e.g. `npx`, `/usr/local/bin/my-mcp`)              |
+| `args?`   | `string[]`               | CLI arguments for the server command (e.g. `['-y', '@anthropic/canva-mcp-server']`) |
+| `env?`    | `Record<string, string>` | Environment variables injected when the MCP server process is started               |
+
+### MCPConfig
+
+_Source: `src/types/config.ts`_
+
+The `mcp` section of `AppConfigV2`. Controls which MCP servers are available to workers.
+
+| Property      | Type          | Default | Description                                                                                                                                      |
+| ------------- | ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled?`    | `boolean`     | `true`  | Enable or disable MCP support. When `false`, no MCP config is written at startup                                                                 |
+| `servers?`    | `MCPServer[]` | `[]`    | Inline server definitions                                                                                                                        |
+| `configPath?` | `string`      | —       | Path to an existing Claude Desktop or Claude Code MCP config file to import. Inline `servers` override same-name entries from the imported file. |
+
+At bridge startup, `loadConfig()` transforms the `mcp` section into a global `.openbridge/mcp-config.json` file in the Claude CLI format. Use `getMcpConfigPath()` to retrieve the resulting file path.
+
+---
+
+## Memory Classes
+
+### ConversationStore
+
+_Source: `src/memory/conversation-store.ts`_
+
+Functions for querying conversation history stored in the SQLite memory database.
+
+#### listSessions()
+
+```typescript
+function listSessions(db: Database.Database, limit?: number, offset?: number): SessionSummary[];
+```
+
+Returns a paginated list of conversation sessions ordered by most recent activity.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `limit`   | `number`            | `20`    | Maximum sessions to return |
+| `offset`  | `number`            | `0`     | Pagination offset          |
+
+**Returns:** `SessionSummary[]` — sessions ordered by `last_message_at DESC`.
+
+**SessionSummary:**
+
+| Property           | Type             | Description                                   |
+| ------------------ | ---------------- | --------------------------------------------- |
+| `session_id`       | `string`         | Unique session identifier                     |
+| `title`            | `string \| null` | Session title (first user message, ≤50 chars) |
+| `first_message_at` | `string`         | ISO 8601 timestamp of first message           |
+| `last_message_at`  | `string`         | ISO 8601 timestamp of most recent message     |
+| `message_count`    | `number`         | Total messages in the session                 |
+| `channel`          | `string \| null` | Channel that originated the session           |
+| `user_id`          | `string \| null` | Sender identifier                             |
+
+#### searchSessions()
+
+```typescript
+function searchSessions(db: Database.Database, query: string, limit?: number): SessionSummary[];
+```
+
+Full-text search over conversation content returning session-level results via FTS5.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `query`   | `string`            | —       | Search query string        |
+| `limit`   | `number`            | `10`    | Maximum sessions to return |
+
+**Returns:** `SessionSummary[]` ranked by number of matching messages, then by recency. Returns `[]` if query is empty or no matches found. The query is passed through `sanitizeFts5Query()` before the FTS5 `MATCH` clause — special characters (`'`, `"`, `*`, `AND`, `OR`, `NOT`, `(`, `)`, etc.) are stripped and each token is quoted to prevent `SqliteError: fts5: syntax error` (Phase 63 fix).
+
+#### getSessionHistory()
+
+```typescript
+function getSessionHistory(
+  db: Database.Database,
+  sessionId: string,
+  limit?: number,
+): ConversationEntry[];
+```
+
+Retrieves the full message transcript for one conversation session.
+
+| Parameter   | Type                | Default | Description                                                 |
+| ----------- | ------------------- | ------- | ----------------------------------------------------------- |
+| `db`        | `Database.Database` | —       | SQLite database instance                                    |
+| `sessionId` | `string`            | —       | Session ID to retrieve                                      |
+| `limit`     | `number`            | `50`    | Maximum messages to return (most recent, then oldest-first) |
+
+**Returns:** `ConversationEntry[]` in chronological order (oldest first). Returns `[]` if session not found.
+
+**ConversationEntry:**
+
+| Property     | Type                                         | Description                      |
+| ------------ | -------------------------------------------- | -------------------------------- |
+| `id`         | `number`                                     | Auto-increment row ID            |
+| `session_id` | `string`                                     | Parent session identifier        |
+| `role`       | `'user' \| 'master' \| 'worker' \| 'system'` | Who sent this message            |
+| `content`    | `string`                                     | Message text                     |
+| `channel`    | `string \| undefined`                        | Channel that carried the message |
+| `user_id`    | `string \| undefined`                        | Sender identifier                |
+| `created_at` | `string`                                     | ISO 8601 timestamp               |
+
+#### searchConversations()
+
+_Source: `src/memory/retrieval.ts`_
+
+```typescript
+function searchConversations(
+  db: Database.Database,
+  query: string,
+  limit?: number,
+): ConversationEntry[];
+```
+
+Full-text search over individual conversation messages using the `conversations_fts` FTS5 index. Results are BM25-ranked for relevance, then sorted by recency within equal-relevance groups.
+
+| Parameter | Type                | Default | Description                |
+| --------- | ------------------- | ------- | -------------------------- |
+| `db`      | `Database.Database` | —       | SQLite database instance   |
+| `query`   | `string`            | —       | Search query string        |
+| `limit`   | `number`            | `10`    | Maximum messages to return |
+
+**Returns:** `ConversationEntry[]` BM25-ranked, then by `created_at DESC`. Returns `[]` if query is empty or all special characters. The query is passed through `sanitizeFts5Query()` before the FTS5 `MATCH` clause — this prevents `SqliteError: fts5: syntax error` for messages containing `'`, `"`, `*`, `AND`, `OR`, `NOT`, `(`, `)`, etc. (Phase 63 fix). Previously, special characters in user messages silently caused cross-session context injection to fail.
+
+#### getRecentMessages()
+
+_Source: `src/memory/conversation-store.ts`_
+
+```typescript
+function getRecentMessages(db: Database.Database, limit?: number): ConversationEntry[];
+```
+
+Returns the most recent messages across all sessions, filtered to `user` and `master` roles only, in chronological order (oldest → newest). Used by `triggerMemoryUpdate()` to give the stateless `--print` agent conversation context to write meaningful memory notes.
+
+| Parameter | Type                | Default | Description                                |
+| --------- | ------------------- | ------- | ------------------------------------------ |
+| `db`      | `Database.Database` | —       | SQLite database instance                   |
+| `limit`   | `number`            | `20`    | Maximum messages to return (most recent N) |
+
+**Returns:** `ConversationEntry[]` in chronological order (oldest first). The query selects by `created_at DESC` then `.reverse()` is applied to restore chronological order. Only `role IN ('user', 'master')` — `worker` and `system` messages are excluded.
+
+---
+
+### MemoryManager
+
+_Source: `src/memory/index.ts`_
+
+Facade class over all SQLite store modules. Provides a unified async API for the rest of OpenBridge. Initialized with a `Database.Database` instance; all methods throw if the DB is not initialized.
+
+#### getRecentMessages()
+
+```typescript
+async getRecentMessages(limit?: number): Promise<ConversationEntry[]>
+```
+
+Returns the most recent user + master messages across all sessions in chronological order (oldest → newest). Delegates to the `getRecentMessages()` store function. Called by `MasterManager.triggerMemoryUpdate()` to inject conversation context into the memory-update prompt.
+
+| Parameter | Type     | Default | Description                |
+| --------- | -------- | ------- | -------------------------- |
+| `limit`   | `number` | `20`    | Maximum messages to return |
+
+**Returns:** `Promise<ConversationEntry[]>` — rejects with `Error('MemoryManager not initialised')` if `db` is null.
+
+---
+
+## Master AI Classes
+
+### MasterManager
+
+_Source: `src/master/master-manager.ts`_
+
+The core Master AI lifecycle manager. Handles session initialization, worker spawning, exploration coordination, and graceful shutdown. 6155 LOC.
+
+#### triggerMemoryUpdate()
+
+```typescript
+private async triggerMemoryUpdate(): Promise<void>
+```
+
+Spawns a stateless `--print` mode AI agent that reads recent conversation history from SQLite and writes updated notes to `.openbridge/context/memory.md`. Non-blocking — callers fire-and-forget with `void`.
+
+**When triggered:**
+
+| Trigger  | Condition                                                         |
+| -------- | ----------------------------------------------------------------- |
+| Periodic | Every `MEMORY_UPDATE_INTERVAL` (10) completed tasks               |
+| Shutdown | In `MasterManager.shutdown()`, after `saveMasterSessionToStore()` |
+
+**Behavior:**
+
+1. Returns early if no master session or state is `'shutdown'`.
+2. Calls `this.memory?.getRecentMessages(20)` — fetches the last 20 `user`/`master` messages from SQLite.
+3. Logs `{ messageCount }` at INFO level.
+4. Formats each entry as `[YYYY-MM-DD HH:MM] Role: content` (content truncated to 300 chars with `…`).
+5. If messages exist, prepends a `## Recent conversation history:` section to the prompt.
+6. Spawns an agent in `--print` mode with `allowedTools: ['Write']` pointing at `memoryPath`.
+7. Prompt uses generic language ("Write your updated notes to …") — not Claude-specific tool names — so it works with Codex as Master.
+
+**Error handling:** Failures are logged as WARN and do not block the caller. The `triggerMemoryUpdate()` call in `shutdown()` is wrapped in `try/catch` so a failed memory update cannot block session state persistence.
+
+### DotFolderManager
+
+_Source: `src/master/dotfolder-manager.ts`_
+
+Manages the `.openbridge/` folder in the target workspace: exploration state, context memory, and the prompt library.
+
+#### Prompt Library Methods
+
+##### readPromptManifest()
+
+```typescript
+readPromptManifest(): Promise<PromptManifest | null>
+```
+
+Reads `.openbridge/prompts/manifest.json` and returns the parsed manifest, or `null` if the file does not exist or fails to parse.
+
+##### writePromptManifest()
+
+```typescript
+writePromptManifest(manifest: PromptManifest): Promise<void>
+```
+
+Validates and writes the manifest to `.openbridge/prompts/manifest.json`. Creates the `prompts/` directory if needed.
+
+##### writePromptTemplate()
+
+```typescript
+writePromptTemplate(
+  filename: string,
+  content: string,
+  metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt'>,
+): Promise<void>
+```
+
+Writes a prompt template `.md` file to `.openbridge/prompts/<filename>` and creates or updates its entry in the manifest. Preserves `createdAt` when overwriting; sets `previousVersion` and `previousSuccessRate` when updating an existing entry.
+
+##### getPromptTemplate()
+
+```typescript
+getPromptTemplate(id: string): Promise<PromptTemplate | null>
+```
+
+Looks up a prompt template by ID in the manifest. Returns `null` if the manifest does not exist or the ID is not found.
+
+##### recordPromptUsage()
+
+```typescript
+recordPromptUsage(id: string, success: boolean): Promise<void>
+```
+
+Increments `usageCount`, conditionally increments `successCount`, recalculates `successRate = successCount / usageCount`, and updates `lastUsedAt`. No-op if the prompt ID is not found.
+
+##### getLowPerformingPrompts()
+
+```typescript
+getLowPerformingPrompts(threshold: number): Promise<PromptTemplate[]>
+```
+
+Returns all prompts where `usageCount >= 3` AND `successRate < threshold`. Used by the prompt evolver to identify candidates for refinement.
+
+##### resetPromptStats()
+
+```typescript
+resetPromptStats(id: string): Promise<void>
+```
+
+Zeros `usageCount`, `successCount`, and `successRate`. Preserves the previous value in `previousSuccessRate` before resetting. No-op if the ID is not found.
+
+#### Memory File Methods
+
+##### readMemoryFile()
+
+```typescript
+readMemoryFile(): Promise<string | null>
+```
+
+Reads `.openbridge/context/memory.md` and returns its content as a string, or `null` if the file does not exist. This file is the Master AI's curated cross-session memory.
+
+##### writeMemoryFile()
+
+```typescript
+writeMemoryFile(content: string): Promise<void>
+```
+
+Writes content to `.openbridge/context/memory.md`. Validates that content is at most 200 lines — throws if exceeded. Creates the `context/` directory if it doesn't exist.
+
+**Prompt Types** — _Source: `src/types/master.ts`_
+
+| Type             | Description                                   |
+| ---------------- | --------------------------------------------- |
+| `PromptManifest` | `{ prompts: Record<string, PromptTemplate> }` |
+| `PromptTemplate` | Full metadata object for one prompt template  |
+
+**PromptTemplate fields:**
+
+| Property              | Type             | Description                                    |
+| --------------------- | ---------------- | ---------------------------------------------- |
+| `id`                  | `string`         | Unique prompt identifier                       |
+| `name`                | `string`         | Human-readable name                            |
+| `filePath`            | `string`         | Path to the `.md` file                         |
+| `usageCount`          | `number`         | Total times this prompt was used               |
+| `successCount`        | `number`         | Times the prompt produced a successful outcome |
+| `successRate`         | `number`         | `successCount / usageCount` (0–1)              |
+| `createdAt`           | `string`         | ISO 8601 creation timestamp                    |
+| `updatedAt`           | `string`         | ISO 8601 last-modified timestamp               |
+| `lastUsedAt`          | `string \| null` | ISO 8601 last-used timestamp                   |
+| `previousVersion`     | `string \| null` | Content of the previous version (on update)    |
+| `previousSuccessRate` | `number \| null` | Success rate before last reset                 |
+
 ---
 
 ## Utility Functions
@@ -575,6 +1206,18 @@ function loadConfig(configPath?: string): Promise<AppConfig | AppConfigV2>;
 ```
 
 Reads and validates `config.json`. Tries V2 schema first, falls back to V0. Falls back to `CONFIG_PATH` env var, then `./config.json`.
+
+When loading a V2 config with an `mcp` section, `loadConfig()` also writes the global MCP config file (`.openbridge/mcp-config.json`) in the Claude CLI format (`{ mcpServers: { [name]: { command, args?, env? } } }`). If `mcp.configPath` is set, that file is imported and merged with inline `servers` (inline entries win on name conflicts).
+
+### getMcpConfigPath()
+
+_Source: `src/core/config.ts`_
+
+```typescript
+function getMcpConfigPath(): string | null;
+```
+
+Returns the absolute path to the global MCP config file written by `loadConfig()`, or `null` if no MCP config was written (no `mcp` section, `enabled: false`, or no servers defined). Used by `MasterManager` to pass the global MCP config to workers that don't specify per-worker servers.
 
 ### scanForAITools()
 
@@ -595,6 +1238,77 @@ function createLogger(name: string, level?: string): pino.Logger;
 ```
 
 Creates a [Pino](https://getpino.io) logger instance. Uses `pino-pretty` in non-production environments.
+
+---
+
+## Built-in Commands
+
+Built-in commands are intercepted by the Router before any message reaches the Master AI. They require the memory system to be initialized.
+
+### /history Command
+
+_Source: `src/core/router.ts`_
+
+Provides access to past conversation sessions. Three subcommands:
+
+#### `/history` (bare)
+
+Lists the last 10 conversation sessions with title, message count, and date.
+
+```
+/history
+```
+
+**Response (WhatsApp/Telegram/Discord):**
+
+```
+1. What is the project structure? — 12 msgs — 2026-01-15
+2. Fix the auth bug — 4 msgs — 2026-01-14
+...
+```
+
+**Response (Console):** ASCII table with aligned columns.
+
+**Response (WebChat):** HTML table with `<tr>/<td>` cells.
+
+#### `/history search <query>`
+
+Full-text search across all past sessions by keyword. Returns up to 10 matching sessions ranked by relevance.
+
+```
+/history search authentication
+```
+
+**Error:** Returns an error message if `query` is empty.
+
+#### `/history <session-id>`
+
+Displays the full conversation transcript for one session (up to 50 messages, oldest first).
+
+```
+/history a1b2c3d4-...
+```
+
+**Response (WhatsApp/Telegram/Discord):**
+
+```
+[2026-01-15 10:30] User: What is the project structure?
+[2026-01-15 10:30] Master: The project has src/, tests/, and docs/ directories...
+```
+
+**Response (Console):** Plain text with separator lines.
+
+**Response (WebChat):** HTML `<div class="msg">` bubbles with time and role.
+
+**Error responses:**
+
+| Condition                         | Message                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| Memory not initialized            | `History not available — memory system not initialized`                  |
+| DB query failure                  | `History search/list temporarily unavailable — could not query sessions` |
+| No sessions found (bare)          | `No past sessions found`                                                 |
+| No sessions found (search)        | `No sessions found matching <query>`                                     |
+| Session ID not found (transcript) | `No conversation found for session: <id>`                                |
 
 ---
 
@@ -651,3 +1365,94 @@ Enabled via `metrics.enabled: true` in config. Default port: `9090`.
   "errors": { "total": 3, "transient": 2, "permanent": 1 }
 }
 ```
+
+---
+
+### Sessions Endpoints (WebChat)
+
+_Source: `src/connectors/webchat/webchat-connector.ts`_
+
+Available when the WebChat connector is enabled. Requires the memory system to be initialized (memory must be wired via `setMemory()` on the connector).
+
+#### GET /api/sessions
+
+Returns a paginated list of conversation sessions.
+
+**Query Parameters:**
+
+| Parameter | Type     | Default | Description                               |
+| --------- | -------- | ------- | ----------------------------------------- |
+| `limit`   | `number` | `20`    | Max sessions to return (clamped to 1–100) |
+| `offset`  | `number` | `0`     | Pagination offset (min 0)                 |
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "session_id": "uuid-or-sender-id",
+    "title": "What is the project structure?",
+    "first_message_at": "2026-01-15T10:30:00.000Z",
+    "last_message_at": "2026-01-15T11:45:30.000Z",
+    "message_count": 12,
+    "channel": "whatsapp",
+    "user_id": "+1234567890"
+  }
+]
+```
+
+**Error Responses:**
+
+| Status | Body                                | Condition               |
+| ------ | ----------------------------------- | ----------------------- |
+| `503`  | `{"error":"Memory not available"}`  | MemoryManager not wired |
+| `500`  | `{"error":"Internal server error"}` | DB query error          |
+
+#### GET /api/sessions/:id
+
+Returns the full conversation transcript for one session.
+
+**URL Parameter:** `id` — the session ID (URL-decoded).
+
+**Query Parameters:**
+
+| Parameter | Type     | Default | Description                               |
+| --------- | -------- | ------- | ----------------------------------------- |
+| `limit`   | `number` | `100`   | Max messages to return (clamped to 1–500) |
+
+**Response (200 OK):**
+
+```json
+{
+  "session_id": "uuid-or-sender-id",
+  "messages": [
+    {
+      "id": 1,
+      "session_id": "uuid-or-sender-id",
+      "role": "user",
+      "content": "What is the project structure?",
+      "channel": "whatsapp",
+      "user_id": "+1234567890",
+      "created_at": "2026-01-15T10:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "session_id": "uuid-or-sender-id",
+      "role": "master",
+      "content": "The project has src/, tests/, and docs/ directories...",
+      "channel": null,
+      "user_id": null,
+      "created_at": "2026-01-15T10:30:15.000Z"
+    }
+  ]
+}
+```
+
+Messages are in chronological order (oldest first).
+
+**Error Responses:**
+
+| Status | Body                                | Condition               |
+| ------ | ----------------------------------- | ----------------------- |
+| `503`  | `{"error":"Memory not available"}`  | MemoryManager not wired |
+| `500`  | `{"error":"Internal server error"}` | DB query error          |

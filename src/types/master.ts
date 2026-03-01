@@ -271,6 +271,9 @@ export const DirectoryDiveStatusSchema = z.object({
   /** Number of attempts made */
   attempts: z.number().int().nonnegative().default(0),
 
+  /** Estimated file count in this directory (used for timeout scaling) */
+  fileCount: z.number().int().nonnegative().optional(),
+
   /** Error message if failed */
   error: z.string().optional(),
 });
@@ -355,6 +358,14 @@ export const StructureScanSchema = z.object({
 
   /** Duration of the scan in milliseconds */
   durationMs: z.number().int().nonnegative(),
+
+  /**
+   * Directories that were split into subdirectories because they exceeded
+   * the file count threshold during exploration.  Maps a top-level dir to
+   * the sub-paths that replaced it in the dive list.
+   * Example: `{ "src": ["src/core", "src/master", "src/connectors"] }`
+   */
+  splitDirs: z.record(z.array(z.string())).default({}),
 });
 
 export type StructureScan = z.infer<typeof StructureScanSchema>;
@@ -513,6 +524,12 @@ export const PromptTemplateSchema = z.object({
 
   /** When this prompt was last used */
   lastUsedAt: z.string().datetime().optional(),
+
+  /** Content of the prompt before the most recent rewrite (for rollback) */
+  previousVersion: z.string().optional(),
+
+  /** Success rate before the most recent rewrite (for degradation detection) */
+  previousSuccessRate: z.number().min(0).max(1).optional(),
 });
 
 export type PromptTemplate = z.infer<typeof PromptTemplateSchema>;
@@ -666,6 +683,7 @@ export const ClassificationCacheEntrySchema = z.object({
   result: z.object({
     class: z.enum(['quick-answer', 'tool-use', 'complex-task']),
     maxTurns: z.number().int().positive(),
+    timeout: z.number().int().positive(),
     reason: z.string(),
   }),
 

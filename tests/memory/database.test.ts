@@ -1,9 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import { openDatabase, closeDatabase } from '../../src/memory/database.js';
+import { openDatabase, closeDatabase, resolveDbPath } from '../../src/memory/database.js';
 
 describe('database.ts', () => {
   let db: Database.Database;
@@ -42,7 +42,7 @@ describe('database.ts', () => {
       expect(fk).toBe(1);
     });
 
-    it('creates all 9 base tables', () => {
+    it('creates all base tables', () => {
       db = openDatabase(':memory:');
       const tables = db
         .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`)
@@ -55,8 +55,8 @@ describe('database.ts', () => {
       expect(names).toContain('prompts');
       expect(names).toContain('sessions');
       expect(names).toContain('workspace_state');
-      expect(names).toContain('exploration_state');
       expect(names).toContain('system_config');
+      expect(names).not.toContain('exploration_state');
     });
 
     it('creates both FTS5 virtual tables', () => {
@@ -95,6 +95,36 @@ describe('database.ts', () => {
       expect(db.open).toBe(true);
       closeDatabase(db);
       expect(db.open).toBe(false);
+    });
+  });
+
+  describe('resolveDbPath', () => {
+    it('returns workspace-scoped path when workspacePath is given', () => {
+      const result = resolveDbPath('/home/user/myproject');
+      expect(result).toBe(path.join('/home/user/myproject', '.openbridge', 'openbridge.db'));
+    });
+
+    it('resolved path ends with openbridge.db', () => {
+      const result = resolveDbPath('/some/workspace');
+      expect(result.endsWith('openbridge.db')).toBe(true);
+    });
+
+    it('returns a path under getConfigDir() when no workspace is given (dev mode)', () => {
+      // In dev mode getConfigDir() returns process.cwd()
+      const result = resolveDbPath();
+      expect(result.endsWith('openbridge.db')).toBe(true);
+      expect(path.isAbsolute(result)).toBe(true);
+    });
+
+    it('returns path under ~/.openbridge when in packaged mode', () => {
+      vi.stubGlobal('process', { ...process, pkg: {} });
+      try {
+        const result = resolveDbPath();
+        const expected = path.join(os.homedir(), '.openbridge', 'openbridge.db');
+        expect(result).toBe(expected);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

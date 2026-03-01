@@ -1,6 +1,24 @@
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
+import { getConfigDir } from '../cli/utils.js';
+import { applySchemaChanges } from './migration.js';
+
+/**
+ * Resolves the SQLite database path for a given workspace.
+ *
+ * - With a workspace path: returns `<workspacePath>/.openbridge/openbridge.db`
+ * - Without a workspace path: returns `<getConfigDir()>/openbridge.db`
+ *   In packaged mode (pkg binary) `getConfigDir()` = `~/.openbridge/`, ensuring
+ *   the database lands on the writable host filesystem rather than the read-only
+ *   pkg snapshot. In dev mode it falls back to `process.cwd()`.
+ */
+export function resolveDbPath(workspacePath?: string): string {
+  if (workspacePath) {
+    return join(workspacePath, '.openbridge', 'openbridge.db');
+  }
+  return join(getConfigDir(), 'openbridge.db');
+}
 
 /**
  * Opens (or creates) the SQLite database at the given path.
@@ -17,6 +35,7 @@ export function openDatabase(dbPath: string): Database.Database {
   db.pragma('foreign_keys=ON');
 
   createSchema(db);
+  applySchemaChanges(db);
 
   return db;
 }
@@ -28,6 +47,13 @@ export function closeDatabase(db: Database.Database): void {
 
 function createSchema(db: Database.Database): void {
   db.exec(`
+    -- schema_versions: tracks applied schema migrations
+    CREATE TABLE IF NOT EXISTS schema_versions (
+      version    INTEGER PRIMARY KEY,
+      applied_at TEXT    NOT NULL,
+      description TEXT   NOT NULL
+    );
+
     -- context_chunks: workspace knowledge, chunked for retrieval
     CREATE TABLE IF NOT EXISTS context_chunks (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,16 +162,6 @@ function createSchema(db: Database.Database): void {
       files_changed    INTEGER DEFAULT 0
     );
 
-    -- exploration_state: resumability (replaces exploration-state.json)
-    CREATE TABLE IF NOT EXISTS exploration_state (
-      id              INTEGER PRIMARY KEY DEFAULT 1,
-      current_phase   TEXT    NOT NULL,
-      status          TEXT    NOT NULL,
-      directory_dives TEXT,
-      started_at      TEXT,
-      completed_at    TEXT
-    );
-
     -- system_config: key-value store (replaces agents.json, profiles.json)
     CREATE TABLE IF NOT EXISTS system_config (
       key        TEXT PRIMARY KEY,
@@ -163,6 +179,7 @@ function createSchema(db: Database.Database): void {
       status       TEXT    NOT NULL,
       progress_pct INTEGER,
       parent_id    TEXT,
+      pid          INTEGER,
       cost_usd     REAL,
       started_at   TEXT    NOT NULL,
       updated_at   TEXT    NOT NULL,
@@ -214,6 +231,23 @@ function createSchema(db: Database.Database): void {
       status         TEXT    NOT NULL DEFAULT 'active'
     );
 
+    -- audit_log: structured audit trail (replaces flat-file JSONL)
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp      TEXT    NOT NULL,
+      event          TEXT    NOT NULL,
+      message_id     TEXT,
+      sender         TEXT,
+      source         TEXT,
+      recipient      TEXT,
+      content_length INTEGER,
+      error          TEXT,
+      metadata       TEXT
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS audit_log_fts
+      USING fts5(event, sender, source, recipient, error);
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
@@ -227,5 +261,8 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_agent_activity_type    ON agent_activity(type);
     CREATE INDEX IF NOT EXISTS idx_exploration_id         ON exploration_progress(exploration_id);
     CREATE INDEX IF NOT EXISTS idx_exploration_status     ON exploration_progress(status);
+    CREATE INDEX IF NOT EXISTS idx_audit_event            ON audit_log(event);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp        ON audit_log(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_sender           ON audit_log(sender);
   `);
 }

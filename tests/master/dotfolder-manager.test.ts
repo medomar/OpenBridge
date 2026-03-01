@@ -324,6 +324,7 @@ describe('DotFolderManager', () => {
         totalFiles: 65,
         scannedAt: new Date().toISOString(),
         durationMs: 1500,
+        splitDirs: {},
       };
 
       await manager.writeStructureScan(testScan);
@@ -1096,6 +1097,78 @@ describe('DotFolderManager', () => {
       expect(modelResults).toEqual([]);
       expect(profileResults).toEqual([]);
       expect(failedResults).toEqual([]);
+    });
+  });
+
+  describe('Memory File Operations (OB-1027)', () => {
+    beforeEach(async () => {
+      await manager.createFolder();
+    });
+
+    it('should return the correct memory file path', () => {
+      const expected = path.join(testWorkspace, '.openbridge', 'context', 'memory.md');
+      expect(manager.getMemoryFilePath()).toBe(expected);
+    });
+
+    it('should return null when memory.md does not exist', async () => {
+      const content = await manager.readMemoryFile();
+      expect(content).toBeNull();
+    });
+
+    it('should write and read memory file content', async () => {
+      const testContent =
+        '## Preferences\n- Always uses TypeScript\n\n## Project State\n- Authentication done with JWT';
+      await manager.writeMemoryFile(testContent);
+      const readContent = await manager.readMemoryFile();
+      expect(readContent).toBe(testContent);
+    });
+
+    it('should create context directory on write if it does not exist', async () => {
+      const testContent = 'Memory content';
+      await manager.writeMemoryFile(testContent);
+
+      const contextDir = path.join(manager.getDotFolderPath(), 'context');
+      const dirExists = await fs
+        .access(contextDir)
+        .then(() => true)
+        .catch(() => false);
+      expect(dirExists).toBe(true);
+    });
+
+    it('should throw when content exceeds 200 lines', async () => {
+      const lines = Array.from({ length: 201 }, (_, i) => `line ${i + 1}`);
+      const content = lines.join('\n');
+      await expect(manager.writeMemoryFile(content)).rejects.toThrow('200-line limit');
+    });
+
+    it('should allow content at exactly 200 lines', async () => {
+      const lines = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`);
+      const content = lines.join('\n');
+      await expect(manager.writeMemoryFile(content)).resolves.toBeUndefined();
+    });
+
+    it('should overwrite existing memory file on subsequent writes', async () => {
+      await manager.writeMemoryFile('first content');
+      await manager.writeMemoryFile('second content');
+      const readContent = await manager.readMemoryFile();
+      expect(readContent).toBe('second content');
+    });
+
+    it('initialize() creates context/ directory', async () => {
+      const freshWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'openbridge-ctx-test-'));
+      try {
+        const freshManager = new DotFolderManager(freshWorkspace);
+        await freshManager.initialize();
+
+        const contextDir = path.join(freshManager.getDotFolderPath(), 'context');
+        const exists = await fs
+          .access(contextDir)
+          .then(() => true)
+          .catch(() => false);
+        expect(exists).toBe(true);
+      } finally {
+        await fs.rm(freshWorkspace, { recursive: true, force: true });
+      }
     });
   });
 });

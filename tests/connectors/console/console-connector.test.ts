@@ -182,6 +182,39 @@ describe('ConsoleConnector', () => {
     expect(stdoutSpy).not.toHaveBeenCalled();
   });
 
+  it('should format worker-turn-progress event with workerId, turns, and lastAction', async () => {
+    await connector.initialize();
+    await connector.sendProgress(
+      {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc-123-xyz',
+        turnsUsed: 3,
+        turnsMax: 25,
+        lastAction: 'Reading src/index.ts',
+      },
+      'console-user',
+    );
+    // workerId is sliced to 8 chars: 'worker-abc-123-xyz'.slice(0,8) = 'worker-a'
+    expect(stdoutSpy).toHaveBeenCalledWith(
+      '\r[Worker worker-a — turn 3/25 (Reading src/index.ts)]',
+    );
+  });
+
+  it('should format worker-turn-progress event without lastAction', async () => {
+    await connector.initialize();
+    await connector.sendProgress(
+      {
+        type: 'worker-turn-progress',
+        workerId: 'worker-abc-123-xyz',
+        turnsUsed: 5,
+        turnsMax: 15,
+      },
+      'console-user',
+    );
+    // workerId is sliced to 8 chars: 'worker-abc-123-xyz'.slice(0,8) = 'worker-a'
+    expect(stdoutSpy).toHaveBeenCalledWith('\r[Worker worker-a — turn 5/15]');
+  });
+
   it('should emit disconnected when stdin closes', async () => {
     const disconnectedHandler = vi.fn();
     connector.on('disconnected', disconnectedHandler);

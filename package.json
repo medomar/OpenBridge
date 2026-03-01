@@ -19,7 +19,7 @@
     "CHANGELOG.md"
   ],
   "bin": {
-    "openbridge": "dist/cli/index.js"
+    "openbridge": "dist/index.js"
   },
   "license": "Apache-2.0",
   "repository": {
@@ -59,7 +59,13 @@
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
     "bench": "vitest bench",
-    "clean": "rm -rf dist coverage"
+    "clean": "rm -rf dist coverage",
+    "prebuild": "cd node_modules/better-sqlite3 && prebuildify --napi --target 22.0.0",
+    "package": "bash scripts/package.sh",
+    "package:mac": "bash scripts/package.sh --platform macos-arm64",
+    "package:mac-x64": "bash scripts/package.sh --platform macos-x64",
+    "package:win": "bash scripts/package.sh --platform win-x64",
+    "package:linux": "bash scripts/package.sh --platform linux-x64"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -80,12 +86,14 @@
     "@types/node": "^22.10.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.0",
+    "@yao-pkg/pkg": "^6.14.1",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",
     "globals": "^15.14.0",
     "husky": "^9.1.0",
     "lint-staged": "^16.2.7",
     "pino-pretty": "^13.0.0",
+    "prebuildify": "^6.0.1",
     "prettier": "^3.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
@@ -99,6 +107,22 @@
     ],
     "*.{json,md,yml,yaml}": [
       "prettier --write"
+    ]
+  },
+  "pkg": {
+    "targets": [
+      "node22-macos-arm64",
+      "node22-macos-x64",
+      "node22-win-x64",
+      "node22-linux-x64"
+    ],
+    "outputPath": "release",
+    "assets": [
+      "dist/**/*",
+      "node_modules/better-sqlite3/prebuilds/**/*"
+    ],
+    "scripts": [
+      "dist/**/*.js"
     ]
   }
 }

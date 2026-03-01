@@ -28,13 +28,15 @@ const ROLE_ALLOWED_ACTIONS: Record<string, string[] | null> = {
 };
 
 // Keywords used to classify a message into an action category.
-// Order matters — deploy > edit > test > read (most → least restrictive).
+// Order matters — stop > deploy > edit > test > read (most → least restrictive).
+const STOP_RE = /\bstop\b/i;
 const DEPLOY_RE = /\b(deploy|release|publish|push to|ship|launch|stage)\b/i;
 const EDIT_RE =
   /\b(edit|modify|change|update|fix|refactor|add|create|write|implement|delete|remove|replace|rename|install|uninstall)\b/i;
 const TEST_RE = /\b(test|run|execute|build|compile|lint)\b/i;
 
 function classifyMessageAction(content: string): string {
+  if (STOP_RE.test(content)) return 'stop';
   if (DEPLOY_RE.test(content)) return 'deploy';
   if (EDIT_RE.test(content)) return 'edit';
   if (TEST_RE.test(content)) return 'test';
@@ -62,6 +64,7 @@ export class AuthService {
   }
 
   constructor(config: AuthConfig) {
+    const rawCount = config.whitelist.length;
     this.whitelist = AuthService.buildWhitelist(config.whitelist);
     this.prefix = config.prefix;
 
@@ -78,12 +81,20 @@ export class AuthService {
     logger.info(
       {
         whitelistedNumbers: this.whitelist.size,
+        rawEntries: rawCount,
         prefix: this.prefix,
         allowPatterns: filter.allowPatterns.length,
         denyPatterns: filter.denyPatterns.length,
       },
       'Auth service initialized',
     );
+
+    if (rawCount !== this.whitelist.size) {
+      logger.warn(
+        { rawEntries: rawCount, normalizedEntries: this.whitelist.size },
+        'Whitelist count changed after normalization — some entries were non-numeric or duplicates',
+      );
+    }
 
     if (this.whitelist.size === 0) {
       logger.warn(

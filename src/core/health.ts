@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { HealthConfig } from '../types/config.js';
+import { resolve } from 'node:path';
+import { V2ConfigSchema } from '../types/config.js';
+import type { HealthConfig, MCPServer, V2Config } from '../types/config.js';
 import type { MetricsSnapshot } from './metrics.js';
 import { createLogger } from './logger.js';
 
@@ -8,6 +12,12 @@ const logger = createLogger('health');
 export interface ComponentStatus {
   name: string;
   status: 'healthy' | 'degraded' | 'unhealthy';
+}
+
+export interface McpServerStatus {
+  name: string;
+  status: 'configured' | 'error';
+  command: string;
 }
 
 export interface HealthStatus {
@@ -32,6 +42,182 @@ export interface HealthStatus {
     taskAgents: number;
     byStatus: Record<string, number>;
   };
+  mcp?: {
+    enabled: boolean;
+    servers: McpServerStatus[];
+  };
+}
+
+/**
+ * Check whether a command exists on PATH using `which` (Unix) or `where` (Windows).
+ * Returns true if found, false if not.
+ */
+export function checkCommandOnPath(command: string): boolean {
+  try {
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(whichCmd, [command], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check health of a list of MCP servers by verifying their commands exist on PATH.
+ * Returns the mcp health section ready to include in HealthStatus.
+ */
+export function checkMcpServersHealth(servers: MCPServer[]): HealthStatus['mcp'] {
+  if (servers.length === 0) {
+    return { enabled: true, servers: [] };
+  }
+  return {
+    enabled: true,
+    servers: servers.map((server) => ({
+      name: server.name,
+      command: server.command,
+      status: checkCommandOnPath(server.command) ? 'configured' : 'error',
+    })),
+  };
+}
+
+export interface HealthCheckItem {
+  name: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface HealthCheckResult {
+  passed: boolean;
+  checks: HealthCheckItem[];
+}
+
+/**
+ * Run a pre-flight health check suitable for use from both the CLI wizard and the HTTP endpoint.
+ * Checks: config file validity, AI tool availability, workspace path accessibility,
+ * and connector-specific prerequisites (Telegram token, Discord credentials).
+ *
+ * @param configPath - Absolute path to config.json. Defaults to `<cwd>/config.json`.
+ */
+export function runHealthCheck(configPath?: string): HealthCheckResult {
+  const checks: HealthCheckItem[] = [];
+  const resolvedPath = configPath ?? resolve(process.cwd(), 'config.json');
+
+  // Check 1: Config file exists and is valid
+  let config: V2Config | null = null;
+  if (!existsSync(resolvedPath)) {
+    checks.push({
+      name: 'Config file',
+      passed: false,
+      message: `config.json not found at ${resolvedPath}`,
+    });
+  } else {
+    try {
+      const raw = readFileSync(resolvedPath, 'utf-8');
+      const json = JSON.parse(raw) as unknown;
+      const result = V2ConfigSchema.safeParse(json);
+      if (result.success) {
+        config = result.data;
+        checks.push({
+          name: 'Config file',
+          passed: true,
+          message: `config.json is valid`,
+        });
+      } else {
+        const firstIssue = result.error.issues[0]?.message ?? 'unknown error';
+        checks.push({
+          name: 'Config file',
+          passed: false,
+          message: `config.json has validation errors: ${firstIssue}`,
+        });
+      }
+    } catch (err) {
+      checks.push({
+        name: 'Config file',
+        passed: false,
+        message: `config.json is not valid JSON: ${(err as Error).message}`,
+      });
+    }
+  }
+
+  // Check 2: At least one AI tool available
+  const aiTools = ['claude', 'codex', 'aider'];
+  const foundTools = aiTools.filter((tool) => checkCommandOnPath(tool));
+  if (foundTools.length > 0) {
+    checks.push({
+      name: 'AI tools',
+      passed: true,
+      message: `Found: ${foundTools.join(', ')}`,
+    });
+  } else {
+    checks.push({
+      name: 'AI tools',
+      passed: false,
+      message: 'No AI tools found. Install claude, codex, or aider.',
+    });
+  }
+
+  if (config) {
+    // Check 3: Workspace path accessible
+    if (existsSync(config.workspacePath)) {
+      checks.push({
+        name: 'Workspace path',
+        passed: true,
+        message: `Workspace accessible: ${config.workspacePath}`,
+      });
+    } else {
+      checks.push({
+        name: 'Workspace path',
+        passed: false,
+        message: `Workspace path not found: ${config.workspacePath}`,
+      });
+    }
+
+    // Check 4: Connector-specific prerequisites
+    for (const channel of config.channels) {
+      if (!channel.enabled) continue;
+      const opts = channel.options ?? {};
+
+      if (channel.type === 'telegram') {
+        if (opts['token']) {
+          checks.push({
+            name: 'Telegram token',
+            passed: true,
+            message: 'Telegram bot token is configured',
+          });
+        } else {
+          checks.push({
+            name: 'Telegram token',
+            passed: false,
+            message: 'Telegram connector requires a bot token (options.token)',
+          });
+        }
+      } else if (channel.type === 'discord') {
+        const hasToken = Boolean(opts['token']);
+        const hasAppId = Boolean(opts['applicationId'] ?? opts['appId']);
+        if (hasToken && hasAppId) {
+          checks.push({
+            name: 'Discord credentials',
+            passed: true,
+            message: 'Discord bot token and application ID are configured',
+          });
+        } else {
+          const missing: string[] = [];
+          if (!hasToken) missing.push('token');
+          if (!hasAppId) missing.push('applicationId');
+          checks.push({
+            name: 'Discord credentials',
+            passed: false,
+            message: `Discord connector requires: ${missing.join(', ')} in options`,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    passed: checks.every((c) => c.passed),
+    checks,
+  };
 }
 
 export type HealthDataProvider = () => HealthStatus;
@@ -47,6 +233,7 @@ export class HealthServer {
   private dataProvider: HealthDataProvider | null = null;
   private metricsProvider: (() => MetricsSnapshot) | null = null;
   private readinessProvider: (() => boolean) | null = null;
+  private mcpServers: MCPServer[] = [];
 
   constructor(config: Partial<HealthConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -62,6 +249,16 @@ export class HealthServer {
 
   setReadinessProvider(provider: () => boolean): void {
     this.readinessProvider = provider;
+  }
+
+  /**
+   * Configure the MCP servers to health-check on each /health request.
+   * Call this after Bridge.start() with servers from V2Config.mcp.servers.
+   * When servers are set, the /health response includes an `mcp` section
+   * reporting whether each server's command exists on PATH.
+   */
+  setMcpServers(servers: MCPServer[]): void {
+    this.mcpServers = servers;
   }
 
   async start(): Promise<void> {
@@ -123,6 +320,11 @@ export class HealthServer {
     }
 
     const health = this.dataProvider();
+
+    if (this.mcpServers.length > 0) {
+      health.mcp = checkMcpServersHealth(this.mcpServers);
+    }
+
     const statusCode = health.status === 'unhealthy' ? 503 : 200;
 
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });

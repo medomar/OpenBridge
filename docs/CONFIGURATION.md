@@ -1,6 +1,6 @@
 # OpenBridge — Configuration Guide
 
-> **Last Updated:** 2026-02-23
+> **Last Updated:** 2026-02-27
 
 ---
 
@@ -44,6 +44,7 @@ npx openbridge init
 | `audit`         | `object` |    No    | `{}`    | Audit logging settings                         |
 | `health`        | `object` |    No    | `{}`    | Health check endpoint settings                 |
 | `metrics`       | `object` |    No    | `{}`    | Metrics endpoint settings                      |
+| `mcp`           | `object` |    No    | —       | MCP server configuration (Claude-only)         |
 | `logLevel`      | `string` |    No    | `info`  | One of: trace, debug, info, warn, error, fatal |
 
 ### `workspacePath`
@@ -190,6 +191,16 @@ Override the auto-detected Master AI settings. By default, OpenBridge scans your
 
 OpenBridge will skip auto-detection and use `aider` if it's installed.
 
+**Force Codex as Master:**
+
+```json
+"master": {
+  "tool": "codex"
+}
+```
+
+Codex requires `OPENAI_API_KEY` to be set in your environment — see [AI Provider Requirements](#ai-provider-requirements) below.
+
 **Use a specific Claude installation:**
 
 ```json
@@ -204,6 +215,133 @@ Useful if you have multiple AI CLIs installed and want to pick a specific one.
 
 - `explorationPrompt`: Custom exploration instructions for non-code workspaces
 - `sessionTtlMs`: Override session expiry time for privacy/performance tuning
+
+### `mcp` (optional)
+
+Enable MCP (Model Context Protocol) servers so workers can call external services — Gmail, Slack, Canva, databases, and anything else with an MCP server.
+
+> **Claude-only:** MCP via `--mcp-config` is supported for Claude workers only. Codex has native MCP support wired separately via `codex mcp`.
+
+```json
+"mcp": {
+  "enabled": true,
+  "servers": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    },
+    {
+      "name": "gmail",
+      "command": "npx",
+      "args": ["-y", "@anthropic/gmail-mcp-server"],
+      "env": { "GMAIL_OAUTH_TOKEN": "ya29...." }
+    }
+  ]
+}
+```
+
+| Field        | Type      | Default | Description                                                                      |
+| ------------ | --------- | ------- | -------------------------------------------------------------------------------- |
+| `enabled`    | `boolean` | `true`  | Enable/disable MCP globally                                                      |
+| `servers`    | `array`   | `[]`    | Inline server definitions (see table below)                                      |
+| `configPath` | `string`  | —       | Path to an existing Claude Desktop / Claude Code MCP config to import (optional) |
+
+#### MCP Server Fields
+
+Each entry in `servers` defines one MCP server:
+
+| Field     | Type                     | Required | Description                                      |
+| --------- | ------------------------ | :------: | ------------------------------------------------ |
+| `name`    | `string`                 |   Yes    | Unique name used to reference this server        |
+| `command` | `string`                 |   Yes    | Executable to run (e.g. `npx`, `python`, `node`) |
+| `args`    | `string[]`               |    No    | Arguments passed to the command                  |
+| `env`     | `Record<string, string>` |    No    | Environment variables injected into the process  |
+
+#### Importing from Claude Desktop / Claude Code
+
+If you already have MCP servers configured in Claude Desktop or Claude Code, point `configPath` at that file to reuse the same servers without duplication:
+
+```json
+"mcp": {
+  "configPath": "~/.claude/claude_desktop_config.json"
+}
+```
+
+You can combine both — inline `servers` entries take precedence over same-named imports from `configPath`:
+
+```json
+"mcp": {
+  "configPath": "~/.claude/claude_desktop_config.json",
+  "servers": [
+    {
+      "name": "gmail",
+      "command": "npx",
+      "args": ["-y", "@anthropic/gmail-mcp-server"],
+      "env": { "GMAIL_OAUTH_TOKEN": "ya29...." }
+    }
+  ]
+}
+```
+
+#### Security Model — Per-Worker Isolation
+
+OpenBridge uses **per-worker temp config files** and `--strict-mcp-config` to isolate each worker's MCP access:
+
+1. When the Master AI spawns a worker, it specifies exactly which MCP servers that worker needs in its `TaskManifest.mcpServers`.
+2. OpenBridge writes a temporary JSON file containing **only those servers** — not the full server list.
+3. The worker is launched with `--mcp-config /tmp/ob-mcp-<id>.json --strict-mcp-config`.
+4. After the worker exits, the temp file is deleted.
+
+This means a worker that only needs `gmail` cannot call `canva` tools — even if `canva` is configured globally. Each worker sees exactly what it needs, nothing more.
+
+#### Examples for Popular MCP Servers
+
+**Filesystem (read/write local files):**
+
+```json
+{
+  "name": "filesystem",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects"]
+}
+```
+
+**Git (query repo history and diffs):**
+
+```json
+{
+  "name": "git",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-git", "--repository", "/Users/you/projects/my-app"]
+}
+```
+
+**Gmail (send and read emails):**
+
+```json
+{
+  "name": "gmail",
+  "command": "npx",
+  "args": ["-y", "@anthropic/gmail-mcp-server"],
+  "env": { "GMAIL_OAUTH_TOKEN": "ya29...." }
+}
+```
+
+**Slack (post messages, read channels):**
+
+```json
+{
+  "name": "slack",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-slack"],
+  "env": { "SLACK_BOT_TOKEN": "xoxb-..." }
+}
+```
+
+> **MCP ecosystem:** Browse available servers at [modelcontextprotocol.io](https://modelcontextprotocol.io) and the [MCP servers GitHub repo](https://github.com/modelcontextprotocol/servers).
+
+---
 
 ### `queue`
 
@@ -292,13 +430,69 @@ V0 config runs the legacy startup flow (direct provider routing, no discovery, n
 
 ---
 
+## AI Provider Requirements
+
+OpenBridge auto-discovers AI tools on your machine. Each tool has its own authentication model:
+
+| Tool       | Auth Method                          | Requirement                                   |
+| ---------- | ------------------------------------ | --------------------------------------------- |
+| **Claude** | Local CLI auth (`claude auth login`) | None — uses your existing Claude subscription |
+| **Codex**  | API key via environment variable     | `OPENAI_API_KEY` must be set before starting  |
+| **Aider**  | API key via environment variable     | Depends on the underlying model provider      |
+
+### Claude
+
+Claude Code authenticates via your local Claude subscription. Run `claude auth login` once to set it up. No API keys or environment variables required for OpenBridge.
+
+### Codex
+
+Codex requires a valid OpenAI API key. Set it in your environment before starting OpenBridge:
+
+**Option 1 — Shell environment (recommended):**
+
+```bash
+export OPENAI_API_KEY="sk-..."
+npm run dev
+```
+
+**Option 2 — `.env` file in the OpenBridge directory:**
+
+```bash
+# .env
+OPENAI_API_KEY=sk-...
+```
+
+OpenBridge reads `.env` automatically on startup (via Node.js `--env-file` or dotenv if present).
+
+> **Note:** If `OPENAI_API_KEY` is missing, Codex workers will fail immediately with an auth error. OpenBridge logs a clear message: `"Codex requires OPENAI_API_KEY environment variable"` — no retries are wasted.
+
+#### Codex Sandbox Modes
+
+Codex workers run in a sandboxed environment that controls what actions they can take. The sandbox mode is inferred from the worker's tool profile:
+
+| Sandbox Mode | Codex Flag             | What the Worker Can Do                                                                             |
+| ------------ | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `read-only`  | `--sandbox read-only`  | Read files, run read-only commands. No writes or edits. Default when no tool profile is specified. |
+| `read-write` | `--sandbox read-write` | Read and write files. Cannot run arbitrary shell commands.                                         |
+| `full-auto`  | `--full-auto`          | Full access — read, write, run commands. Use with caution.                                         |
+
+OpenBridge maps tool profiles to sandbox modes automatically:
+
+- `read-only` tool profile → `read-only` sandbox
+- `code-edit` tool profile → `read-write` sandbox
+- `full-access` tool profile → `full-auto` sandbox
+- No profile specified → `read-only` sandbox (safe default)
+
+---
+
 ## Environment Variables
 
-| Variable      | Description                              | Default       |
-| ------------- | ---------------------------------------- | ------------- |
-| `CONFIG_PATH` | Path to config file                      | `config.json` |
-| `LOG_LEVEL`   | Override log level from config           | from config   |
-| `NODE_ENV`    | Environment (`development`/`production`) | `development` |
+| Variable         | Description                                                    | Default       |
+| ---------------- | -------------------------------------------------------------- | ------------- |
+| `CONFIG_PATH`    | Path to config file                                            | `config.json` |
+| `LOG_LEVEL`      | Override log level from config                                 | from config   |
+| `NODE_ENV`       | Environment (`development`/`production`)                       | `development` |
+| `OPENAI_API_KEY` | OpenAI API key — required when using Codex as Master or worker | _(none)_      |
 
 ---
 
@@ -347,6 +541,22 @@ Load config.json
     "commandFilter": {
       "denyPatterns": ["rm -rf", "DROP TABLE", "sudo", "format c:"]
     }
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/projects/my-saas-app"]
+      },
+      {
+        "name": "slack",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+        "env": { "SLACK_BOT_TOKEN": "xoxb-..." }
+      }
+    ]
   },
   "queue": {
     "maxRetries": 3,

@@ -73,7 +73,9 @@ vi.mock('../../src/core/agent-runner.js', () => {
     isValidModel: vi.fn(() => true),
     MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
     AgentExhaustedError: class AgentExhaustedError extends Error {},
-    manifestToSpawnOptions: vi.fn((m: unknown) => m),
+    manifestToSpawnOptions: vi.fn((m: unknown) =>
+      Promise.resolve({ spawnOptions: m, cleanup: async () => {} }),
+    ),
   };
 });
 
@@ -102,6 +104,7 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     createExplorationDir: vi.fn().mockResolvedValue(undefined),
     readWorkers: vi.fn().mockResolvedValue(null),
     writeWorkers: vi.fn().mockResolvedValue(undefined),
+    readWorkspaceMap: vi.fn().mockResolvedValue(null),
   })),
 }));
 
@@ -405,10 +408,10 @@ describe('Memory wiring integration (OB-814)', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // (h) exploration_state table — wiring verified via direct API calls
+  // (h) exploration_state — stored in system_config, wiring verified via API
   // ─────────────────────────────────────────────────────────────────────────
 
-  describe('(h) exploration_state table wiring', () => {
+  describe('(h) exploration_state wiring (system_config)', () => {
     it('persists and retrieves exploration state checkpoint', async () => {
       const memory = bridge.getMemory()!;
 

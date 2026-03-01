@@ -10,7 +10,7 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { InboundMessage } from '../../src/types/message.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 
 // ---------------------------------------------------------------------------
 // Module mocks (must be at top level before any imports resolved by Vitest)
@@ -18,6 +18,7 @@ import type { SpawnOptions } from '../../src/core/agent-runner.js';
 
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 
 vi.mock('../../src/core/agent-runner.js', () => {
   const profiles: Record<string, string[]> = {
@@ -30,6 +31,8 @@ vi.mock('../../src/core/agent-runner.js', () => {
     AgentRunner: vi.fn().mockImplementation(() => ({
       spawn: mockSpawn,
       stream: mockStream,
+      spawnWithHandle: mockSpawnWithHandle,
+      spawnWithStreamingHandle: mockSpawnWithHandle,
     })),
     TOOLS_READ_ONLY: profiles['read-only'],
     TOOLS_CODE_EDIT: profiles['code-edit'],
@@ -47,16 +50,19 @@ vi.mock('../../src/core/agent-runner.js', () => {
       const allowedTools =
         (manifest.allowedTools as string[] | undefined) ??
         (profile ? profiles[profile] : undefined);
-      return {
-        prompt: manifest.prompt,
-        workspacePath: manifest.workspacePath,
-        model: manifest.model,
-        allowedTools,
-        maxTurns: manifest.maxTurns,
-        timeout: manifest.timeout,
-        retries: manifest.retries,
-        retryDelay: manifest.retryDelay,
-      };
+      return Promise.resolve({
+        spawnOptions: {
+          prompt: manifest.prompt,
+          workspacePath: manifest.workspacePath,
+          model: manifest.model,
+          allowedTools,
+          maxTurns: manifest.maxTurns,
+          timeout: manifest.timeout,
+          retries: manifest.retries,
+          retryDelay: manifest.retryDelay,
+        },
+        cleanup: async () => {},
+      });
     },
   };
 });
@@ -109,6 +115,13 @@ describe('MasterManager — worker briefing integration (OB-723 / OB-727)', () =
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: Parameters<typeof mockSpawn>[0]) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // Keyword-based classification so tests don't consume extra spawn mocks
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(

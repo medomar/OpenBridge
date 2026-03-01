@@ -64,6 +64,7 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     readSystemPrompt: vi.fn().mockResolvedValue(null),
     writeSystemPrompt: vi.fn().mockResolvedValue(undefined),
     readProfiles: vi.fn().mockResolvedValue(null),
+    readWorkspaceMap: vi.fn().mockResolvedValue(null),
   })),
 }));
 
@@ -77,6 +78,7 @@ describe('Session Continuity', () => {
   let masterManager: MasterManager;
   let masterTool: DiscoveredTool;
   let discoveredTools: DiscoveredTool[];
+  let classifyTaskSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     // Create temporary test workspace
@@ -104,8 +106,9 @@ describe('Session Continuity', () => {
     vi.clearAllMocks();
 
     // Use keyword-based classification by default so tests don't consume spawn mocks
-    vi.spyOn(MasterManager.prototype, 'classifyTask').mockImplementation(
-      async (content: string) => {
+    classifyTaskSpy = vi
+      .spyOn(MasterManager.prototype, 'classifyTask')
+      .mockImplementation(async (content: string) => {
         const lower = content.toLowerCase();
         if (
           ['implement', 'build', 'refactor', 'develop', 'set up', 'setup'].some((kw) =>
@@ -120,8 +123,7 @@ describe('Session Continuity', () => {
         )
           return 'tool-use';
         return 'quick-answer';
-      },
-    );
+      });
 
     mockSpawn.mockResolvedValue({
       exitCode: 0,
@@ -144,6 +146,7 @@ describe('Session Continuity', () => {
   });
 
   afterEach(async () => {
+    classifyTaskSpy?.mockRestore();
     // Cleanup
     if (masterManager) {
       await masterManager.shutdown();

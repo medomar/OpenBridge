@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   WorkerRegistry,
   DEFAULT_MAX_CONCURRENT_WORKERS,
@@ -497,6 +497,240 @@ describe('WorkerRegistry', () => {
       expect(session2.getWorker(w2)?.status).toBe('completed');
       expect(session2.getWorker(w3)?.status).toBe('failed');
       expect(session2.getRunningCount()).toBe(1);
+    });
+  });
+
+  describe('Backpressure — waitForSlot()', () => {
+    it('should resolve immediately if under capacity', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 2 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      // Only 1 running, capacity is 2 — should resolve immediately
+      await expect(reg.waitForSlot()).resolves.toBeUndefined();
+    });
+
+    it('should wait and resolve when a slot frees up', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      expect(reg.isAtCapacity()).toBe(true);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      // Not resolved yet
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      // Complete the worker — frees a slot
+      reg.markCompleted(w1, sampleResult);
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve when a worker fails (not just completes)', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      // Fail the worker — should also free a slot
+      reg.markFailed(w1, { ...sampleResult, exitCode: 1 }, 'error');
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve when a worker is cancelled', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      let resolved = false;
+      const waitPromise = reg.waitForSlot(5000).then(() => {
+        resolved = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(resolved).toBe(false);
+
+      reg.markCancelled(w1, 'cancelled by user');
+
+      await waitPromise;
+      expect(resolved).toBe(true);
+    });
+
+    it('should resolve multiple waiters in FIFO order', async () => {
+      const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+
+      const order: number[] = [];
+      const wait1 = reg.waitForSlot(5000).then(() => order.push(1));
+      const wait2 = reg.waitForSlot(5000).then(() => order.push(2));
+
+      // Complete first worker — frees slot for first waiter
+      reg.markCompleted(w1, sampleResult);
+      await wait1;
+
+      // Add and complete another worker — frees slot for second waiter
+      const w2 = reg.addWorker(sampleManifest);
+      reg.markRunning(w2, 1002);
+      reg.markCompleted(w2, sampleResult);
+      await wait2;
+
+      expect(order).toEqual([1, 2]);
+    });
+
+    it('should reject on timeout if no slot frees up', async () => {
+      vi.useFakeTimers();
+      try {
+        const reg = new WorkerRegistry({ maxConcurrentWorkers: 1 });
+        const w1 = reg.addWorker(sampleManifest);
+        reg.markRunning(w1, 1001);
+
+        const waitPromise = reg.waitForSlot(1000);
+
+        // Advance past timeout
+        vi.advanceTimersByTime(1001);
+
+        await expect(waitPromise).rejects.toThrow('Timed out waiting for worker slot');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  // ── getAggregatedStats ──────────────────────────────────────────
+
+  describe('getAggregatedStats', () => {
+    it('returns zeroes for empty registry', () => {
+      const stats = registry.getAggregatedStats();
+      expect(stats.totalWorkers).toBe(0);
+      expect(stats.completed).toBe(0);
+      expect(stats.failed).toBe(0);
+      expect(stats.cancelled).toBe(0);
+      expect(stats.avgDurationMs).toBe(0);
+      expect(Object.keys(stats.byProfile)).toHaveLength(0);
+      expect(Object.keys(stats.byModel)).toHaveLength(0);
+    });
+
+    it('counts statuses correctly with mixed workers', () => {
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, sampleResult);
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1, durationMs: 3000 }, 'some error');
+
+      const w3 = registry.addWorker(sampleManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCancelled(w3, 'timeout');
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.totalWorkers).toBe(3);
+      expect(stats.completed).toBe(1);
+      expect(stats.failed).toBe(1);
+      expect(stats.cancelled).toBe(1);
+    });
+
+    it('computes average duration from workers with results', () => {
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 4000 });
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markCompleted(w2, { ...sampleResult, durationMs: 6000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.avgDurationMs).toBe(5000); // (4000 + 6000) / 2
+    });
+
+    it('breaks down by profile correctly', () => {
+      const readOnlyManifest: TaskManifest = {
+        ...sampleManifest,
+        profile: 'read-only',
+      };
+      const codeEditManifest: TaskManifest = {
+        ...sampleManifest,
+        profile: 'code-edit',
+      };
+
+      const w1 = registry.addWorker(readOnlyManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 2000 });
+
+      const w2 = registry.addWorker(readOnlyManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1, durationMs: 3000 });
+
+      const w3 = registry.addWorker(codeEditManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCompleted(w3, { ...sampleResult, durationMs: 8000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byProfile['read-only'].total).toBe(2);
+      expect(stats.byProfile['read-only'].successRate).toBe(0.5); // 1/2
+      expect(stats.byProfile['read-only'].avgDurationMs).toBe(2500); // (2000+3000)/2
+      expect(stats.byProfile['code-edit'].total).toBe(1);
+      expect(stats.byProfile['code-edit'].successRate).toBe(1); // 1/1
+      expect(stats.byProfile['code-edit'].avgDurationMs).toBe(8000);
+    });
+
+    it('breaks down by model correctly', () => {
+      const haikuManifest: TaskManifest = { ...sampleManifest, model: 'haiku' };
+      const sonnetManifest: TaskManifest = { ...sampleManifest, model: 'sonnet' };
+
+      const w1 = registry.addWorker(haikuManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, durationMs: 1000 });
+
+      const w2 = registry.addWorker(haikuManifest);
+      registry.markRunning(w2, 1002);
+      registry.markCompleted(w2, { ...sampleResult, durationMs: 3000 });
+
+      const w3 = registry.addWorker(sonnetManifest);
+      registry.markRunning(w3, 1003);
+      registry.markFailed(w3, { ...sampleResult, exitCode: 1, durationMs: 5000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byModel['haiku'].total).toBe(2);
+      expect(stats.byModel['haiku'].successRate).toBe(1); // 2/2
+      expect(stats.byModel['haiku'].avgDurationMs).toBe(2000); // (1000+3000)/2
+      expect(stats.byModel['sonnet'].total).toBe(1);
+      expect(stats.byModel['sonnet'].successRate).toBe(0); // 0/1
+      expect(stats.byModel['sonnet'].avgDurationMs).toBe(5000);
+    });
+
+    it('uses "unknown" for workers without profile or model', () => {
+      const bareManifest: TaskManifest = {
+        prompt: 'Bare task',
+        workspacePath: '/test/workspace',
+      };
+
+      const w1 = registry.addWorker(bareManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, { ...sampleResult, model: undefined, durationMs: 1000 });
+
+      const stats = registry.getAggregatedStats();
+      expect(stats.byProfile['unknown']).toBeDefined();
+      expect(stats.byProfile['unknown'].total).toBe(1);
+      expect(stats.byModel['unknown']).toBeDefined();
+      expect(stats.byModel['unknown'].total).toBe(1);
     });
   });
 });

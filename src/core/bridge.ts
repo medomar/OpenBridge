@@ -1,10 +1,16 @@
+import * as fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { AppConfig, EmailConfig } from '../types/config.js';
+import type { AppConfig, EmailConfig, MCPServer } from '../types/config.js';
+import { V2ConfigSchema } from '../types/config.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
 import { MemoryManager } from '../memory/index.js';
+import { createMediaManager } from './media-manager.js';
+import type { MediaManager } from './media-manager.js';
+import type { McpRegistry } from './mcp-registry.js';
 import { AuthService } from './auth.js';
 import { AuditLogger } from './audit-logger.js';
 import { ConfigWatcher } from './config-watcher.js';
@@ -15,7 +21,7 @@ import { MessageQueue } from './queue.js';
 import { MetricsCollector, MetricsServer } from './metrics.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
-import { Router } from './router.js';
+import { Router, classifyMessagePriority } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
 import { createLogger } from './logger.js';
 
@@ -30,6 +36,8 @@ export interface BridgeOptions {
   drainTimeoutMs?: number;
   /** Absolute path to the target workspace — when provided, MemoryManager is created for SQLite persistence */
   workspacePath?: string;
+  /** MCP server registry — when provided, exposed via getMcpRegistry() and wired to connectors */
+  mcpRegistry?: McpRegistry;
 }
 
 export class Bridge {
@@ -47,7 +55,9 @@ export class Bridge {
   private readonly orchestrator: AgentOrchestrator;
   private master: MasterManager | null = null;
   private memory: MemoryManager | null = null;
+  private mcpRegistry: McpRegistry | null = null;
   private fileServer: FileServer | null = null;
+  private readonly workspacePath: string | undefined;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
   private readonly startedAt: number = Date.now();
@@ -74,10 +84,15 @@ export class Bridge {
     this.orchestrator = new AgentOrchestrator(config.defaultProvider);
 
     if (options?.workspacePath) {
+      this.workspacePath = options.workspacePath;
       const dbPath = path.join(options.workspacePath, '.openbridge', 'openbridge.db');
       this.memory = new MemoryManager(dbPath);
       this.fileServer = new FileServer(options.workspacePath);
       this.router.setWorkspacePath(options.workspacePath);
+    }
+
+    if (options?.mcpRegistry) {
+      this.mcpRegistry = options.mcpRegistry;
     }
   }
 
@@ -96,6 +111,11 @@ export class Bridge {
     return this.memory;
   }
 
+  /** Returns the McpRegistry instance (null if no mcpRegistry was provided) */
+  getMcpRegistry(): McpRegistry | null {
+    return this.mcpRegistry;
+  }
+
   /** Set the Master AI — must be called before start() to enable Master routing */
   setMaster(master: MasterManager): void {
     this.master = master;
@@ -108,6 +128,17 @@ export class Bridge {
     logger.info('Email config set on Router');
   }
 
+  /**
+   * Register MCP servers with the health check endpoint.
+   * Call after bridge.start() with servers from V2Config.mcp.servers.
+   * The /health response will include an `mcp` section reporting whether
+   * each server's command is available on PATH.
+   */
+  setMcpServers(servers: MCPServer[]): void {
+    this.healthServer.setMcpServers(servers);
+    logger.info({ count: servers.length }, 'MCP servers registered for health checks');
+  }
+
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
@@ -118,6 +149,9 @@ export class Bridge {
         await this.memory.init();
         await this.memory.migrate();
         logger.info('MemoryManager initialized and migrated');
+
+        // Wire SQLite audit persistence into AuditLogger
+        this.auditLogger.setMemory(this.memory);
       } catch (error) {
         logger.error(
           { err: error },
@@ -125,6 +159,11 @@ export class Bridge {
         );
         this.memory = null;
       }
+    }
+
+    // Clean up legacy .openbridge/ artifacts that were migrated to SQLite
+    if (this.memory && this.workspacePath) {
+      await this.cleanLegacyDotFolderArtifacts(this.workspacePath, this.memory);
     }
 
     // Schedule periodic DB eviction — run once on startup, then every 24 hours
@@ -156,6 +195,9 @@ export class Bridge {
     if (this.memory) {
       this.router.setMemory(this.memory);
     }
+
+    // Wire message queue into router for queue-depth display in "status" command
+    this.router.setQueue(this.queue);
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
@@ -208,6 +250,17 @@ export class Bridge {
       }
     });
 
+    // Notify users when their message must wait behind an in-flight message.
+    // Includes queue position and estimated wait based on recent processing times.
+    this.queue.onQueued((message, position, estimatedWaitMs) => {
+      const waitStr =
+        estimatedWaitMs < 60_000
+          ? `~${Math.ceil(estimatedWaitMs / 1000)}s`
+          : `~${Math.round(estimatedWaitMs / 60_000)}m`;
+      const content = `You're #${position} in queue (${waitStr}). I'll get to your message shortly.`;
+      void this.router.sendDirect(message.source, message.sender, content, message.id);
+    });
+
     // Initialize connectors in parallel — slow connectors (WhatsApp/Puppeteer)
     // must not block fast connectors (Console) from starting.
     const connectorPromises: Promise<void>[] = [];
@@ -249,6 +302,27 @@ export class Bridge {
     }
     // Wait for all connectors to finish (success or failure)
     await Promise.allSettled(connectorPromises);
+
+    // Wire memory into connectors that support the sessions REST API (e.g. WebChat /api/sessions)
+    if (this.memory) {
+      for (const connector of this.connectors) {
+        const c = connector as { setMemory?: (m: MemoryManager) => void };
+        if (typeof c.setMemory === 'function') {
+          c.setMemory(this.memory);
+        }
+      }
+    }
+
+    // Wire MediaManager into connectors that support incoming media download (e.g. WhatsApp)
+    if (this.workspacePath) {
+      const mediaManager = createMediaManager(this.workspacePath);
+      for (const connector of this.connectors) {
+        const c = connector as { setMediaManager?: (m: MediaManager) => void };
+        if (typeof c.setMediaManager === 'function') {
+          c.setMediaManager(mediaManager);
+        }
+      }
+    }
 
     // Start agent status broadcasting to WebChat dashboard (2s poll — best-effort)
     if (this.memory) {
@@ -391,6 +465,27 @@ export class Bridge {
 
     this.auth.updateConfig(newConfig.auth);
     this.rateLimiter.updateConfig(newConfig.auth.rateLimit);
+
+    // Propagate MCP server changes to McpRegistry and MasterManager.
+    // config.json may have been updated by McpRegistry.persistToConfig() (via the WebChat
+    // MCP management API) or by the user editing the file directly. Either way we re-parse
+    // the raw file to extract the V2Config MCP section and synchronise runtime state.
+    if (this.configPath && (this.mcpRegistry !== null || this.master !== null)) {
+      try {
+        const raw = readFileSync(this.configPath, 'utf-8');
+        const parsed: unknown = JSON.parse(raw);
+        const v2Result = V2ConfigSchema.safeParse(parsed);
+        if (v2Result.success) {
+          const newMcpServers =
+            v2Result.data.mcp?.enabled !== false ? (v2Result.data.mcp?.servers ?? []) : [];
+          this.mcpRegistry?.reload(newMcpServers);
+          this.master?.reloadMcpServers(newMcpServers);
+          logger.info({ count: newMcpServers.length }, 'MCP server list hot-reloaded');
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to extract MCP servers from hot-reloaded config');
+      }
+    }
 
     logger.info('Configuration hot-reload complete');
   }
@@ -553,6 +648,69 @@ export class Bridge {
     };
 
     void this.auditLogger.logInbound(cleaned);
-    void this.queue.enqueue(cleaned);
+    const priority = classifyMessagePriority(cleaned.content);
+    void this.queue.enqueue(cleaned, priority);
+  }
+
+  /**
+   * Remove legacy .openbridge/ artifacts that have been migrated to SQLite.
+   * Called on startup after memory.init() and memory.migrate() succeed.
+   * Only deletes files/dirs when the corresponding data exists in the DB,
+   * to avoid data loss on the first run before migration has occurred.
+   */
+  private async cleanLegacyDotFolderArtifacts(
+    workspacePath: string,
+    memory: MemoryManager,
+  ): Promise<void> {
+    const dotFolderPath = path.join(workspacePath, '.openbridge');
+
+    try {
+      await fs.access(dotFolderPath);
+    } catch {
+      return; // .openbridge/ doesn't exist yet — nothing to clean
+    }
+
+    // 1. exploration.log — logging is now in the DB
+    try {
+      await fs.unlink(path.join(dotFolderPath, 'exploration.log'));
+      logger.info('Removed legacy .openbridge/exploration.log');
+    } catch {
+      // File doesn't exist — no-op
+    }
+
+    // 2. exploration/ directory — exploration state is now in system_config
+    try {
+      await fs.access(path.join(dotFolderPath, 'exploration'));
+      await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
+      logger.info('Removed legacy .openbridge/exploration/ directory');
+    } catch {
+      // Directory doesn't exist — no-op
+    }
+
+    // 3. prompts/ directory — only remove when memory already holds the manifest,
+    //    to avoid deleting prompt data before it has been migrated to the DB.
+    try {
+      await fs.access(path.join(dotFolderPath, 'prompts'));
+      const manifest = await memory.getPromptManifest();
+      if (manifest !== null) {
+        await fs.rm(path.join(dotFolderPath, 'prompts'), { recursive: true, force: true });
+        logger.info('Removed legacy .openbridge/prompts/ directory');
+      }
+    } catch {
+      // Directory doesn't exist — no-op
+    }
+
+    // 4. *.migrated backup files — safe to delete (migration has already run)
+    try {
+      const entries = await fs.readdir(dotFolderPath);
+      for (const entry of entries) {
+        if (entry.endsWith('.migrated')) {
+          await fs.unlink(path.join(dotFolderPath, entry));
+          logger.info({ file: entry }, 'Removed legacy .migrated backup file');
+        }
+      }
+    } catch {
+      // Best-effort — ignore readdir or unlink errors
+    }
   }
 }

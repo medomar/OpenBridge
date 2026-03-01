@@ -16,7 +16,6 @@ vi.mock('../../src/core/agent-runner.js', async (importOriginal) => {
 describe('Mock test', () => {
   it('should mock AgentRunner', () => {
     const runner = new AgentRunner();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(runner.spawn).toBe(mockSpawn);
   });
 });

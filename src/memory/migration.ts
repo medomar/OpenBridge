@@ -18,6 +18,111 @@ import { storeChunks } from './chunk-store.js';
 import { recordTask, recordLearning } from './task-store.js';
 
 // ---------------------------------------------------------------------------
+// Schema migrations (ALTER TABLE for existing databases)
+// ---------------------------------------------------------------------------
+
+interface Migration {
+  version: number;
+  description: string;
+  apply: (db: Database.Database) => void;
+}
+
+/**
+ * Numbered schema migrations. Each entry maps to a row in schema_versions.
+ * Migrations are guarded by column-existence checks so they are safe to
+ * call on both fresh and pre-existing databases.
+ */
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    description: 'Add pid column to agent_activity',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('agent_activity') WHERE name='pid'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE agent_activity ADD COLUMN pid INTEGER');
+      }
+    },
+  },
+  {
+    version: 2,
+    description: 'Add title column to conversations',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('conversations') WHERE name='title'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE conversations ADD COLUMN title TEXT');
+      }
+    },
+  },
+  {
+    version: 3,
+    description: 'Add checkpoint_data column to sessions',
+    apply: (db) => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('sessions') WHERE name='checkpoint_data'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE sessions ADD COLUMN checkpoint_data TEXT');
+      }
+    },
+  },
+];
+
+/**
+ * Apply all numbered schema migrations to the database.
+ *
+ * On each startup, queries MAX(version) from schema_versions to determine
+ * the highest migration already applied. Only migrations with a version
+ * greater than that maximum are executed. Each migration is wrapped in a
+ * transaction so that a failure rolls back both the DDL change and the
+ * schema_versions insert, leaving the database in a consistent state.
+ */
+export function applySchemaChanges(db: Database.Database): void {
+  const now = new Date().toISOString();
+
+  // Determine the highest migration version already recorded.
+  const row = db.prepare('SELECT MAX(version) AS max_version FROM schema_versions').get() as
+    | { max_version: number | null }
+    | undefined;
+  const maxVersion = row?.max_version ?? 0;
+
+  const recordVersion = db.prepare(
+    `INSERT OR IGNORE INTO schema_versions (version, applied_at, description) VALUES (?, ?, ?)`,
+  );
+
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= maxVersion) {
+      continue; // Already applied — skip
+    }
+
+    // Wrap the migration and version recording in a single transaction so
+    // a failure rolls back both the DDL change and the version record.
+    db.transaction((): void => {
+      migration.apply(db);
+      recordVersion.run(migration.version, now, migration.description);
+    })();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Types for workspace_state and sessions tables
 // ---------------------------------------------------------------------------
 
@@ -34,10 +139,12 @@ export interface WorkspaceState {
 export interface SessionRecord {
   id: string;
   type: 'master' | 'exploration';
-  status: 'active' | 'ended' | 'crashed';
+  status: 'active' | 'ended' | 'crashed' | 'closed';
   restart_count?: number;
   message_count?: number;
   allowed_tools?: string;
+  /** JSON-serialized checkpoint state (pending workers, results, message context) */
+  checkpoint_data?: string;
   created_at: string;
   last_used_at: string;
 }
@@ -60,6 +167,7 @@ interface SessionRow {
   restart_count: number;
   message_count: number;
   allowed_tools: string | null;
+  checkpoint_data: string | null;
   created_at: string;
   last_used_at: string;
 }
@@ -118,10 +226,11 @@ export function getSession(db: Database.Database, type: string): SessionRecord |
   return {
     id: row.id,
     type: row.type as 'master' | 'exploration',
-    status: row.status as 'active' | 'ended' | 'crashed',
+    status: row.status as 'active' | 'ended' | 'crashed' | 'closed',
     restart_count: row.restart_count,
     message_count: row.message_count,
     allowed_tools: row.allowed_tools ?? undefined,
+    checkpoint_data: row.checkpoint_data ?? undefined,
     created_at: row.created_at,
     last_used_at: row.last_used_at,
   };
@@ -130,8 +239,8 @@ export function getSession(db: Database.Database, type: string): SessionRecord |
 export function upsertSession(db: Database.Database, session: SessionRecord): void {
   db.prepare(
     `INSERT OR REPLACE INTO sessions
-       (id, type, status, restart_count, message_count, allowed_tools, created_at, last_used_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, type, status, restart_count, message_count, allowed_tools, checkpoint_data, created_at, last_used_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     session.id,
     session.type,
@@ -139,8 +248,16 @@ export function upsertSession(db: Database.Database, session: SessionRecord): vo
     session.restart_count ?? 0,
     session.message_count ?? 0,
     session.allowed_tools ?? null,
+    session.checkpoint_data ?? null,
     session.created_at,
     session.last_used_at,
+  );
+}
+
+export function closeActiveSessions(db: Database.Database): void {
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE sessions SET status = 'closed', last_used_at = ? WHERE status = 'active'`).run(
+    now,
   );
 }
 
@@ -230,17 +347,11 @@ function migrateExplorationState(db: Database.Database, filePath: string): void 
   const result = ExplorationStateSchema.safeParse(JSON.parse(raw));
   if (!result.success) return;
 
-  const state = result.data;
-  db.prepare(
-    `INSERT OR REPLACE INTO exploration_state
-       (id, current_phase, status, directory_dives, started_at, completed_at)
-     VALUES (1, ?, ?, ?, ?, ?)`,
-  ).run(
-    state.currentPhase,
-    state.status,
-    JSON.stringify(state.directoryDives),
-    state.startedAt,
-    state.completedAt ?? null,
+  const now = new Date().toISOString();
+  db.prepare(`INSERT OR REPLACE INTO system_config (key, value, updated_at) VALUES (?, ?, ?)`).run(
+    'exploration_state',
+    JSON.stringify(result.data),
+    now,
   );
 }
 
@@ -437,6 +548,9 @@ function mapMasterTaskStatus(status: string): 'running' | 'completed' | 'failed'
  * If no JSON files exist (fresh install), returns silently.
  */
 export function migrateJsonToSqlite(db: Database.Database, dotfolderPath: string): Promise<void> {
+  // Drop the exploration_state table — exploration state is now stored in system_config
+  db.exec('DROP TABLE IF EXISTS exploration_state');
+
   const migratedFiles: string[] = [];
 
   function tryMigrate(filePath: string, migrateFn: () => void): void {

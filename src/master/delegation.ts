@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 import { AgentRunner, TOOLS_CODE_EDIT, DEFAULT_MAX_TURNS_TASK } from '../core/agent-runner.js';
+import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { TaskRecord } from '../types/master.js';
 
@@ -77,10 +78,14 @@ export class DelegationCoordinator {
   private readonly defaultTimeout: number;
   private readonly agentRunner: AgentRunner;
 
-  constructor(options?: { maxConcurrentDelegations?: number; defaultTimeout?: number }) {
+  constructor(options?: {
+    maxConcurrentDelegations?: number;
+    defaultTimeout?: number;
+    adapter?: CLIAdapter;
+  }) {
     this.maxConcurrentDelegations = options?.maxConcurrentDelegations ?? 3;
     this.defaultTimeout = options?.defaultTimeout ?? DEFAULT_DELEGATION_TIMEOUT;
-    this.agentRunner = new AgentRunner();
+    this.agentRunner = new AgentRunner(options?.adapter);
 
     logger.info(
       {

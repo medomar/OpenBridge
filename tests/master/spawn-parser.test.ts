@@ -76,6 +76,38 @@ After marker.`;
       expect(body.retries).toBe(2);
     });
 
+    it('should parse tool field when present', () => {
+      const output = `[SPAWN:code-edit]{"prompt":"Refactor auth","tool":"codex","model":"fast"}[/SPAWN]`;
+
+      const result = parseSpawnMarkers(output);
+
+      expect(result.markers).toHaveLength(1);
+      expect(result.markers[0]!.body.tool).toBe('codex');
+      expect(result.markers[0]!.body.model).toBe('fast');
+    });
+
+    it('should have undefined tool when not specified (backward compat)', () => {
+      const output = `[SPAWN:read-only]{"prompt":"List files","model":"haiku"}[/SPAWN]`;
+
+      const result = parseSpawnMarkers(output);
+
+      expect(result.markers).toHaveLength(1);
+      expect(result.markers[0]!.body.tool).toBeUndefined();
+    });
+
+    it('should parse tool + model + all fields together', () => {
+      const output = `[SPAWN:full-access]{"prompt":"Deploy","tool":"aider","model":"balanced","maxTurns":20,"retries":1}[/SPAWN]`;
+
+      const result = parseSpawnMarkers(output);
+
+      expect(result.markers).toHaveLength(1);
+      const body = result.markers[0]!.body;
+      expect(body.tool).toBe('aider');
+      expect(body.model).toBe('balanced');
+      expect(body.maxTurns).toBe(20);
+      expect(body.retries).toBe(1);
+    });
+
     it('should skip markers with invalid JSON', () => {
       const output = `[SPAWN:read-only]{not valid json}[/SPAWN]
 

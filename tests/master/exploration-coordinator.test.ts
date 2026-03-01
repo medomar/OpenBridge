@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { ExplorationCoordinator } from '../../src/master/exploration-coordinator.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
@@ -926,6 +927,483 @@ describe('ExplorationCoordinator', () => {
 
       const summary = await coordinator.explore();
 
+      expect(summary.status).toBe('completed');
+    });
+  });
+
+  describe('exploration_progress tracking (OB-892)', () => {
+    it('creates exploration_progress rows for structure, classification, directory-dive, and assembly phases', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const phases = rows.map((r) => r.phase);
+      expect(phases).toContain('structure');
+      expect(phases).toContain('classification');
+      expect(phases).toContain('directory-dive');
+      expect(phases).toContain('assembly');
+    });
+
+    it('marks phase rows as completed with progress_pct=100 after successful phases', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const phaseRows = rows.filter((r) =>
+        ['structure', 'classification', 'assembly'].includes(r.phase),
+      );
+
+      expect(phaseRows.length).toBe(3);
+      for (const row of phaseRows) {
+        expect(row.status).toBe('completed');
+        expect(row.progress_pct).toBe(100);
+      }
+    });
+
+    it('marks phase row as failed via failPhaseRow when a phase fails', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      // Make structure scan fail with non-zero exit code
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'AI execution failed',
+        retryCount: 0,
+        durationMs: 0,
+      });
+
+      await expect(coordinatorWithMemory.explore()).rejects.toThrow(
+        'Structure scan failed with exit code 1',
+      );
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const structureRow = rows.find((r) => r.phase === 'structure');
+      expect(structureRow).toBeDefined();
+      expect(structureRow?.status).toBe('failed');
+    });
+
+    it('auto-registers an explorer activity when memory is provided without explorationId', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        // no explorationId — coordinator auto-registers one
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      // The auto-registered explorer activity stays 'running' (MasterManager owns the update)
+      const activeAgents = await memory.getActiveAgents();
+      const explorerAgent = activeAgents.find((a) => a.type === 'explorer');
+      expect(explorerAgent).toBeDefined();
+
+      // Its auto-generated explorationId should have exploration_progress rows
+      const rows = await memory.getExplorationProgressByExplorationId(explorerAgent!.id);
+      const phases = rows.map((r) => r.phase);
+      expect(phases).toContain('structure');
+      expect(phases).toContain('classification');
+      expect(phases).toContain('directory-dive');
+      expect(phases).toContain('assembly');
+    });
+  });
+
+  describe('directory-level progress rows (OB-893)', () => {
+    it('creates one exploration_progress row per directory with phase=directory-dive and correct target', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const structureScan: StructureScan = {
+        workspacePath: testWorkspace,
+        topLevelFiles: ['package.json'],
+        topLevelDirs: ['src', 'tests'],
+        directoryCounts: { src: 10, tests: 5 },
+        configFiles: ['package.json'],
+        skippedDirs: [],
+        totalFiles: 15,
+        scannedAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      const classification: Classification = {
+        projectType: 'node',
+        projectName: 'test-project',
+        frameworks: ['typescript'],
+        commands: {},
+        dependencies: [],
+        insights: [],
+        classifiedAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      const srcDive: DirectoryDiveResult = {
+        path: 'src',
+        purpose: 'Source code',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 10,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      const testsDive: DirectoryDiveResult = {
+        path: 'tests',
+        purpose: 'Tests',
+        keyFiles: [],
+        subdirectories: [],
+        fileCount: 5,
+        insights: [],
+        exploredAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(srcDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(testsDive),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify({ summary: 'Summary' }),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const dirRows = rows.filter((r) => r.phase === 'directory-dive');
+
+      // One row per directory
+      expect(dirRows).toHaveLength(2);
+
+      // Each row has the correct target (directory path)
+      const targets = dirRows.map((r) => r.target);
+      expect(targets).toContain('src');
+      expect(targets).toContain('tests');
+    });
+
+    it('sets progress_pct=100 and status=completed after a successful directory dive', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      // setupCompleteExploration sets up one directory (src, fileCount=10)
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const dirRows = rows.filter((r) => r.phase === 'directory-dive');
+
+      expect(dirRows.length).toBeGreaterThan(0);
+      for (const row of dirRows) {
+        expect(row.status).toBe('completed');
+        expect(row.progress_pct).toBe(100);
+      }
+    });
+
+    it('sets files_processed from the directory dive fileCount', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      // setupCompleteExploration uses fileCount=10 for the src directory
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const srcRow = rows.find((r) => r.phase === 'directory-dive' && r.target === 'src');
+
+      expect(srcRow).toBeDefined();
+      expect(srcRow?.files_processed).toBe(10);
+    });
+
+    it('sets files_total from the structure scan directoryCounts', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      // setupCompleteExploration uses directoryCounts: { src: 10 }
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const srcRow = rows.find((r) => r.phase === 'directory-dive' && r.target === 'src');
+
+      expect(srcRow).toBeDefined();
+      expect(srcRow?.files_total).toBe(10);
+    });
+
+    it('sets status=in_progress on the directory row when the dive begins (even if it then fails)', async () => {
+      // Each directory is attempted exactly once per explore() call. If a single attempt fails,
+      // the dive's attempts counter is incremented to 1 (< MAX_RETRIES=3) and the dir stays
+      // 'pending' in the state — no failure row update fires. The DB row ends up 'in_progress'
+      // (set at dive start) because the dive never completed or exhausted retries.
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const structureScan: StructureScan = {
+        workspacePath: testWorkspace,
+        topLevelFiles: [],
+        topLevelDirs: ['src'],
+        directoryCounts: { src: 10 },
+        configFiles: [],
+        skippedDirs: [],
+        totalFiles: 10,
+        scannedAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      const classification: Classification = {
+        projectType: 'node',
+        projectName: 'test',
+        frameworks: [],
+        commands: {},
+        dependencies: [],
+        insights: [],
+        classifiedAt: new Date().toISOString(),
+        durationMs: 1000,
+      };
+
+      mockSpawn
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(structureScan),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify(classification),
+          stderr: '',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        // Dive fails — one attempt, attempts=1 < MAX_RETRIES(3), stays pending
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fail',
+          retryCount: 0,
+          durationMs: 0,
+        });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      await expect(coordinatorWithMemory.explore()).rejects.toThrow('Directory dives incomplete');
+
+      const rows = await memory.getExplorationProgressByExplorationId(explorationId);
+      const srcRow = rows.find((r) => r.phase === 'directory-dive' && r.target === 'src');
+
+      // Row was created (inserted as 'pending' in phase 3 setup, then updated to 'in_progress'
+      // when the dive started). It was never updated to 'completed' or 'failed'.
+      expect(srcRow).toBeDefined();
+      expect(srcRow?.status).toBe('in_progress');
+      expect(srcRow?.target).toBe('src');
+    });
+  });
+
+  describe('Regression guard: insertExplorationProgress called (OB-896)', () => {
+    it('calls insertExplorationProgress for each phase when memory and explorationId are provided', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+      const explorationId = randomUUID();
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const insertSpy = vi.spyOn(memory, 'insertExplorationProgress');
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      expect(insertSpy).toHaveBeenCalled();
+
+      // Verify all expected phases were tracked
+      const calledPhases = insertSpy.mock.calls.map((call) => call[0].phase);
+      expect(calledPhases).toContain('structure');
+      expect(calledPhases).toContain('classification');
+      expect(calledPhases).toContain('directory-dive');
+      expect(calledPhases).toContain('assembly');
+    });
+
+    it('does not throw when no memory is provided (no DB tracking)', async () => {
+      // Coordinator without memory — no insertExplorationProgress calls expected
+      setupCompleteExploration();
+      const summary = await coordinator.explore();
       expect(summary.status).toBe('completed');
     });
   });

@@ -16,6 +16,8 @@ export default tseslint.config(
       'tests/types/**',
       'test-workspace-*/',
       'ob-smoke-test/',
+      'scripts/**/*.ts',
+      'desktop/**',
     ],
   },
 
@@ -50,6 +52,7 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 

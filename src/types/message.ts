@@ -10,16 +10,35 @@
  * - complete            — Processing finished
  * - exploring           — Workspace exploration phase transition
  * - exploring-directory — Per-directory progress during exploration
+ * - worker-cancelled    — A worker was stopped by a user (broadcast to all channels)
+ * - worker-turn-progress — Real-time turn count update for a running worker
  */
 export type ProgressEvent =
   | { type: 'classifying' }
   | { type: 'planning' }
   | { type: 'spawning'; workerCount: number }
   | { type: 'worker-progress'; completed: number; total: number; workerName?: string }
+  | {
+      type: 'worker-result';
+      workerIndex: number;
+      total: number;
+      profile: string;
+      tool?: string;
+      content: string;
+      success: boolean;
+    }
   | { type: 'synthesizing' }
   | { type: 'complete' }
   | { type: 'exploring'; phase: string; detail?: string }
-  | { type: 'exploring-directory'; directory: string; completed: number; total: number };
+  | { type: 'exploring-directory'; directory: string; completed: number; total: number }
+  | { type: 'worker-cancelled'; workerId: string; cancelledBy: string }
+  | {
+      type: 'worker-turn-progress';
+      workerId: string;
+      turnsUsed: number;
+      turnsMax: number;
+      lastAction?: string;
+    };
 
 /**
  * A message received from a messaging connector.
@@ -37,6 +56,19 @@ export interface InboundMessage {
   content: string;
   /** Timestamp when the message was received */
   timestamp: Date;
+  /** Optional file attachments received alongside the message */
+  attachments?: Array<{
+    /** Media type of the attachment */
+    type: 'image' | 'document' | 'audio' | 'video';
+    /** Absolute path to the saved file on disk */
+    filePath: string;
+    /** MIME type (e.g. image/jpeg, application/pdf) */
+    mimeType: string;
+    /** Original filename, if available from the platform */
+    filename?: string;
+    /** File size in bytes */
+    sizeBytes: number;
+  }>;
   /** Optional metadata from the platform */
   metadata?: Record<string, unknown>;
 }

@@ -3,17 +3,28 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../../src/core/github-publisher.js', () => ({
   publishToGitHubPages: vi.fn().mockResolvedValue('https://owner.github.io/repo/report.html'),
 }));
-import { Router } from '../../src/core/router.js';
+
+vi.mock('../../src/core/agent-runner.js', () => ({
+  AgentRunner: vi.fn().mockImplementation(() => ({
+    spawn: vi.fn().mockResolvedValue({ stdout: 'Fast-path answer', stderr: '', exitCode: 0 }),
+    spawnWithHandle: vi.fn(),
+  })),
+  TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+}));
+
+import { Router, classifyMessagePriority } from '../../src/core/router.js';
 import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
 import { ProviderError } from '../../src/providers/claude-code/provider-error.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MasterManager } from '../../src/master/master-manager.js';
+import type { AuthService } from '../../src/core/auth.js';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { publishToGitHubPages } from '../../src/core/github-publisher.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { ActivityRecord } from '../../src/memory/index.js';
 
 function createMessage(): InboundMessage {
   return {
@@ -91,8 +102,8 @@ describe('Router', () => {
     expect(connector.sentMessages[1]?.content).toBe('chunk1chunk2');
   });
 
-  it('should send progress updates for long-running tasks', async () => {
-    const router = new Router('mock', { progressIntervalMs: 10_000 });
+  it('should not send cycling progress messages (only ack + response)', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
 
@@ -103,7 +114,6 @@ describe('Router', () => {
         resolveProcess = resolve;
       });
     };
-    // Disable streaming to force processMessage path
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
@@ -112,34 +122,27 @@ describe('Router', () => {
 
     const routePromise = router.route(createMessage());
 
-    // After initial ack, advance time past the progress interval
-    await vi.advanceTimersByTimeAsync(10_000);
+    // Advance time well past where old cycling timer would fire
+    await vi.advanceTimersByTimeAsync(60_000);
 
-    // Should have sent ack + 1 progress update
-    expect(connector.sentMessages).toHaveLength(2);
+    // Only the initial ack — no cycling messages
+    expect(connector.sentMessages).toHaveLength(1);
     expect(connector.sentMessages[0]?.content).toBe('Working on it...');
-    expect(connector.sentMessages[1]?.content).toBe('Still working on it...');
-
-    // Advance again — second progress update with different message
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(connector.sentMessages).toHaveLength(3);
-    expect(connector.sentMessages[2]?.content).toBe('This is taking a moment \u2014 hang tight...');
 
     // Resolve the provider and complete routing
     resolveProcess({ content: 'Done!' });
     await routePromise;
 
-    // Final response sent
-    expect(connector.sentMessages).toHaveLength(4);
-    expect(connector.sentMessages[3]?.content).toBe('Done!');
+    // ack + final response only
+    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[1]?.content).toBe('Done!');
   });
 
-  it('should stop progress updates after provider completes', async () => {
-    const router = new Router('mock', { progressIntervalMs: 5_000 });
+  it('should send only ack + response even for fast tasks', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
     provider.setResponse({ content: 'Quick response' });
-    // Disable streaming
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
@@ -148,75 +151,32 @@ describe('Router', () => {
 
     await router.route(createMessage());
 
-    // ack + response only (no progress because it was fast)
+    // ack + response only
     expect(connector.sentMessages).toHaveLength(2);
-
-    // Advance time — no more progress updates should be sent
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(connector.sentMessages).toHaveLength(2);
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toBe('Quick response');
   });
 
-  it('should stop progress updates on provider error', async () => {
-    const router = new Router('mock', { progressIntervalMs: 5_000 });
+  it('should send only ack + error on provider failure (no cycling)', async () => {
+    const router = new Router('mock');
     const connector = new MockConnector();
     const provider = new MockProvider();
 
-    let rejectProcess!: (error: Error) => void;
-    provider.processMessage = (_message: InboundMessage) => {
-      return new Promise((_resolve, reject) => {
-        rejectProcess = reject;
-      });
-    };
+    provider.processMessage = vi
+      .fn()
+      .mockRejectedValue(new ProviderError('Provider failed', 'permanent', 1));
     provider.streamMessage = undefined;
 
     router.addConnector(connector);
     router.addProvider(provider);
     await connector.initialize();
 
-    const routePromise = router.route(createMessage());
+    await expect(router.route(createMessage())).rejects.toThrow('Provider failed');
 
-    await vi.advanceTimersByTimeAsync(5_000);
-    // ack + 1 progress update
+    // ack + error message only — no cycling messages
     expect(connector.sentMessages).toHaveLength(2);
-
-    rejectProcess(new Error('Provider failed'));
-    await expect(routePromise).rejects.toThrow('Provider failed');
-
-    // Advance more — no further progress updates
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(connector.sentMessages).toHaveLength(2);
-  });
-
-  it('should refresh typing indicator on each progress tick', async () => {
-    const router = new Router('mock', { progressIntervalMs: 10_000 });
-    const connector = new MockConnector();
-    const provider = new MockProvider();
-
-    let resolveProcess!: (result: { content: string }) => void;
-    provider.processMessage = (_message: InboundMessage) => {
-      return new Promise((resolve) => {
-        resolveProcess = resolve;
-      });
-    };
-    provider.streamMessage = undefined;
-
-    router.addConnector(connector);
-    router.addProvider(provider);
-    await connector.initialize();
-
-    const routePromise = router.route(createMessage());
-    // Flush microtask queue so route() proceeds past the awaited ack + typing indicator
-    await vi.advanceTimersByTimeAsync(0);
-
-    // Initial typing indicator
-    expect(connector.typingIndicators).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    // Progress tick refreshes typing indicator
-    expect(connector.typingIndicators).toHaveLength(2);
-
-    resolveProcess({ content: 'Done' });
-    await routePromise;
+    expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    expect(connector.sentMessages[1]?.content).toContain('Request failed');
   });
 
   describe('with Agent Orchestrator', () => {
@@ -728,6 +688,554 @@ describe('Router', () => {
     });
   });
 
+  describe('stop all confirmation flow (OB-879)', () => {
+    function createStopMessage(content: string): InboundMessage {
+      return {
+        id: 'msg-stop',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterWithWorkers(runningCount: number) {
+      const runningWorkers = Array.from({ length: runningCount }, (_, i) => ({
+        id: `worker-${i + 1}`,
+        status: 'running' as const,
+        pid: 1000 + i,
+        model: 'claude-sonnet',
+        profile: 'code-edit',
+        task_summary: `Task ${i + 1}`,
+        started_at: new Date().toISOString(),
+      }));
+
+      const mockKillAllWorkers = vi.fn().mockResolvedValue({
+        stopped: runningWorkers.map((w) => w.id),
+        message: `Stopped ${runningCount} worker${runningCount !== 1 ? 's' : ''}.`,
+      });
+
+      const mockKillWorker = vi.fn().mockResolvedValue({
+        success: true,
+        message: 'Stopped worker worker-1.',
+      });
+
+      const mockGetWorkerRegistry = vi.fn().mockReturnValue({
+        getRunningWorkers: vi.fn().mockReturnValue(runningWorkers),
+        getAllWorkers: vi.fn().mockReturnValue(runningWorkers),
+      });
+
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'ready' as const),
+        killAllWorkers: mockKillAllWorkers,
+        killWorker: mockKillWorker,
+        getWorkerRegistry: mockGetWorkerRegistry,
+      } as unknown as MasterManager;
+
+      return { master, mockKillAllWorkers, mockKillWorker, mockGetWorkerRegistry };
+    }
+
+    it('should ask for confirmation when "stop all" is sent with running workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(3);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+
+      // Should NOT have killed workers yet
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+
+      // Should have sent a confirmation prompt
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('3 running workers');
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+      expect(connector.sentMessages[0]?.content).toContain('30 seconds');
+    });
+
+    it('should ask for confirmation when bare "stop" is sent with running workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toContain('1 running worker');
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+    });
+
+    it('should reply "No workers are currently running" when stop all with 0 workers', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(0);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toBe('No workers are currently running.');
+    });
+
+    it('should execute kill when "confirm" is received within the timeout', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // Step 1: send "stop all"
+      await router.route(createStopMessage('stop all'));
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+
+      // Step 2: send "confirm" within 30 seconds
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+      expect(connector.sentMessages[1]?.content).toContain('Stopped 2 workers');
+    });
+
+    it('should execute kill when "CONFIRM" (case-insensitive) is received', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+      await router.route(createStopMessage('CONFIRM'));
+
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+    });
+
+    it('should report confirmation expired after 30 seconds', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // Step 1: send "stop all"
+      await router.route(createStopMessage('stop all'));
+
+      // Advance time past the 30-second timeout
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      // Step 2: send "confirm" after timeout
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+      expect(connector.sentMessages[1]?.content).toContain('Confirmation expired');
+      expect(connector.sentMessages[1]?.content).toContain("'stop all'");
+    });
+
+    it('should only honour the confirmation once (one-shot)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithWorkers(2);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop all'));
+      // First confirm → executes kill
+      await router.route(createStopMessage('confirm'));
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+
+      // Second "confirm" → no pending confirmation, routes to Master
+      await router.route(createStopMessage('confirm'));
+      // Master's processMessage is called (not killAllWorkers a second time)
+      expect(mockKillAllWorkers).toHaveBeenCalledOnce();
+    });
+
+    it('should not intercept "confirm" when there is no pending confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const mockProcessMessage = vi.fn().mockResolvedValue('Master confirm response');
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: vi.fn(() => 'ready' as const),
+        killAllWorkers: vi.fn(),
+        killWorker: vi.fn(),
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue([]),
+          getAllWorkers: vi.fn().mockReturnValue([]),
+        }),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // "confirm" with no pending stop — should fall through to Master
+      await router.route(createStopMessage('confirm'));
+
+      expect(mockProcessMessage).toHaveBeenCalledOnce();
+      // ack + master response (not a confirmation prompt)
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toBe('Working on it...');
+    });
+
+    it('should execute single-worker stop immediately without confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithWorkers(1);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMessage('stop worker-1'));
+
+      // Single-worker stop should execute immediately
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(connector.sentMessages[0]?.content).toContain('Stopped worker');
+    });
+  });
+
+  describe('stop command handling (OB-881)', () => {
+    function createStopMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'msg-stop-881',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterWithNamedWorkers(
+      workers: Array<{ id: string; status?: 'running' | 'done' }>,
+    ) {
+      const runningWorkers = workers
+        .filter((w) => (w.status ?? 'running') === 'running')
+        .map((w) => ({
+          id: w.id,
+          status: 'running' as const,
+          pid: 9000,
+          model: 'claude-sonnet',
+          profile: 'code-edit',
+          task_summary: 'Fix auth bug',
+          started_at: new Date(Date.now() - 45_000).toISOString(),
+        }));
+
+      const allWorkers = workers.map((w) => ({
+        id: w.id,
+        status: w.status ?? 'running',
+        pid: 9000,
+        model: 'claude-sonnet',
+        profile: 'code-edit',
+        task_summary: 'Fix auth bug',
+        started_at: new Date(Date.now() - 45_000).toISOString(),
+      }));
+
+      const mockKillWorker = vi.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          success: true,
+          message: `Stopped worker ${id} (sonnet, 'Fix auth bug', 45s)`,
+        }),
+      );
+
+      const mockKillAllWorkers = vi.fn().mockResolvedValue({
+        stopped: runningWorkers.map((w) => w.id),
+        message: `Stopped ${runningWorkers.length} worker${runningWorkers.length !== 1 ? 's' : ''}.`,
+      });
+
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'ready' as const),
+        killWorker: mockKillWorker,
+        killAllWorkers: mockKillAllWorkers,
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue(runningWorkers),
+          getAllWorkers: vi.fn().mockReturnValue(allWorkers),
+        }),
+      } as unknown as MasterManager;
+
+      return { master, mockKillWorker, mockKillAllWorkers };
+    }
+
+    // ── Access control ────────────────────────────────────────────────────────
+
+    it('should return permission-denied when auth denies stop action', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({
+          allowed: false,
+          reason: 'That action is not permitted for your role.',
+        }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not permitted');
+    });
+
+    it('should use default denial message when auth denies without a reason', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({ allowed: false }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('permission');
+    });
+
+    it('should allow stop when auth grants access', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-abc123' },
+      ]);
+
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({ allowed: true }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+    });
+
+    it('should allow stop when no auth service is configured', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-abc123' },
+      ]);
+
+      // No auth set
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+    });
+
+    // ── No master ─────────────────────────────────────────────────────────────
+
+    it('should return "Stop command not available" when no master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-123'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    it('should return "Stop command not available" for "stop all" when no master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    // ── Case-insensitive interception ─────────────────────────────────────────
+
+    it('should intercept "STOP ALL" (uppercase) without routing to Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillAllWorkers } = createMockMasterWithNamedWorkers([{ id: 'worker-1' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('STOP ALL'));
+
+      // Master processMessage should NOT be called
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      // Should have gotten a confirmation prompt (not routed to master)
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain("Reply 'confirm'");
+      expect(mockKillAllWorkers).not.toHaveBeenCalled();
+    });
+
+    it('should intercept "Stop" (mixed case) without routing to Master', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-1' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('Stop'));
+
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      expect(connector.sentMessages).toHaveLength(1);
+    });
+
+    // ── Partial ID matching ───────────────────────────────────────────────────
+
+    it('should match worker by suffix (stop w8f3 → worker-1708123456789-w8f3)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-w8f3';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop w8f3'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
+    });
+
+    it('should match worker by exact ID', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-w8f3';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg(`stop ${workerId}`));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
+    });
+
+    it('should match worker by substring', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const workerId = 'worker-1708123456789-abc';
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([{ id: workerId }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // "1708123456789" is a substring of the full ID
+      await router.route(createStopMsg('stop 1708123456789'));
+
+      expect(mockKillWorker).toHaveBeenCalledOnce();
+      expect(mockKillWorker).toHaveBeenCalledWith(workerId, '+1234567890');
+    });
+
+    it('should return "Worker not found" when partial ID has no match', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master, mockKillWorker } = createMockMasterWithNamedWorkers([
+        { id: 'worker-1708123456789-abc' },
+      ]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop zzzzz'));
+
+      expect(mockKillWorker).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain("'zzzzz' not found");
+      expect(connector.sentMessages[0]?.content).toContain('status');
+    });
+
+    // ── Response formatting ───────────────────────────────────────────────────
+
+    it('should include worker details in single-stop response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createStopMsg('stop worker-abc123'));
+
+      expect(connector.sentMessages[0]?.content).toContain('Stopped worker');
+      expect(connector.sentMessages[0]?.content).toContain('worker-abc123');
+    });
+
+    it('should pass replyTo from the original message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMockMasterWithNamedWorkers([{ id: 'worker-abc123' }]);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      const msg = createStopMsg('stop worker-abc123');
+      msg.id = 'original-msg-id';
+      await router.route(msg);
+
+      expect(connector.sentMessages[0]?.replyTo).toBe('original-msg-id');
+    });
+  });
+
   describe('SHARE:github-pages marker processing (OB-613)', () => {
     let workspaceDir: string;
     let generatedDir: string;
@@ -826,6 +1334,733 @@ describe('Router', () => {
       const textMsgs = connector.sentMessages.filter((m) => m.media === undefined);
       const finalReply = textMsgs[textMsgs.length - 1];
       expect(finalReply?.content).toBe('');
+    });
+  });
+
+  describe('status command queue depth display (OB-923)', () => {
+    function createStatusMsg(): InboundMessage {
+      return {
+        id: 'msg-status',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'status',
+        content: 'status',
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMemory(agents: Partial<ActivityRecord>[] = []) {
+      return {
+        getActiveAgents: vi.fn().mockResolvedValue(agents),
+        getExplorationProgress: vi.fn().mockResolvedValue([]),
+        getDailyCost: vi.fn().mockResolvedValue(0),
+      };
+    }
+
+    function setupRouter() {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      router.addConnector(connector);
+      router.addProvider(provider);
+      return { router, connector };
+    }
+
+    it('should show "Queue: idle" when no messages are waiting', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi.fn().mockReturnValue([]),
+        onUrgentEnqueued: vi.fn(),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Queue: idle');
+    });
+
+    it('should show per-user queue depth when messages are waiting', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 2, estimatedWaitMs: 60_000 }]),
+        onUrgentEnqueued: vi.fn(),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('Queue:');
+      expect(content).toContain('2 messages waiting');
+    });
+
+    it('should show estimated wait time in seconds when under 1 minute', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 1, estimatedWaitMs: 30_000 }]),
+        onUrgentEnqueued: vi.fn(),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('~30s');
+    });
+
+    it('should show estimated wait time in minutes when >= 1 minute', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      router.setQueue({
+        getQueueSnapshot: vi
+          .fn()
+          .mockReturnValue([{ sender: '+1234567890', pending: 3, estimatedWaitMs: 90_000 }]),
+        onUrgentEnqueued: vi.fn(),
+      } as never);
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('~2m');
+    });
+
+    it('should omit queue section when setQueue is not called', async () => {
+      const { router, connector } = setupRouter();
+      await connector.initialize();
+
+      router.setMemory(createMockMemory() as never);
+      // No setQueue call
+
+      await router.route(createStatusMsg());
+
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).not.toContain('Queue:');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // OB-925: Tests for responsive Master
+  // ---------------------------------------------------------------------------
+
+  describe('classifyMessagePriority (OB-921)', () => {
+    it('should classify "implement auth" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('implement auth')).toBe(3);
+    });
+
+    it('should classify "refactor the login system" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('refactor the login system')).toBe(3);
+    });
+
+    it('should classify "build a REST API" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('build a REST API')).toBe(3);
+    });
+
+    it('should classify compound action with "and" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('review code and add tests')).toBe(3);
+    });
+
+    it('should classify "architect a new service" as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('architect a new service')).toBe(3);
+    });
+
+    it('should classify "fix the login bug" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('fix the login bug')).toBe(2);
+    });
+
+    it('should classify "create config.ts" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('create config.ts')).toBe(2);
+    });
+
+    it('should classify "update the README" as tool-use (priority 2)', () => {
+      expect(classifyMessagePriority('update the README')).toBe(2);
+    });
+
+    it('should classify "what is the entry point?" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('what is the entry point?')).toBe(1);
+    });
+
+    it('should classify "how does authentication work?" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('how does authentication work?')).toBe(1);
+    });
+
+    it('should classify "status" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('status')).toBe(1);
+    });
+
+    it('should classify "list all modules" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('list all modules')).toBe(1);
+    });
+
+    it('should classify "explain the router" as quick-answer (priority 1)', () => {
+      expect(classifyMessagePriority('explain the router')).toBe(1);
+    });
+
+    it('should default to tool-use (priority 2) for unclassified messages', () => {
+      expect(classifyMessagePriority('do something with the code')).toBe(2);
+    });
+
+    it('should classify short questions ending in "?" as quick-answer (priority 1)', () => {
+      // Short generic question — no keywords needed, just "?" + short length
+      expect(classifyMessagePriority('Where is the config?')).toBe(1);
+    });
+  });
+
+  describe('fast-path responder during Master processing (OB-925)', () => {
+    function createQuickMsg(content = 'what is the entry point?'): InboundMessage {
+      return {
+        id: 'msg-fp',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createProcessingMaster(withWorkspaceMap = false) {
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => 'processing' as const),
+        getWorkspaceMap: vi.fn().mockResolvedValue(
+          withWorkspaceMap
+            ? {
+                projectName: 'my-app',
+                projectType: 'nodejs',
+                frameworks: ['express'],
+                summary: 'A Node.js API',
+                commands: { dev: 'npm run dev' },
+              }
+            : null,
+        ),
+      } as unknown as MasterManager;
+      return master;
+    }
+
+    it('should use fast-path when master is processing and message is quick-answer (priority 1)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Master.processMessage must NOT be called — fast-path handles it
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    });
+
+    it('should send fast-path response to the connector', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      // Should contain the fast-path agent response (mocked AgentRunner returns "Fast-path answer")
+      expect(connector.sentMessages[0]?.content).toBe('Fast-path answer');
+    });
+
+    it('should route priority-2 messages to Master even when it is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      // "fix the bug" is priority 2 (tool-use), should NOT go through fast-path
+      const toolUseMsg: InboundMessage = {
+        id: 'msg-tool',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'fix the login bug',
+        content: 'fix the login bug',
+        timestamp: new Date(),
+      };
+      await router.route(toolUseMsg);
+
+      // Master.processMessage IS called because priority != 1
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    });
+
+    it('should route quick-answer to Master when it is ready (not processing)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+
+      // Master is READY, not processing
+      const master = {
+        processMessage: vi.fn().mockResolvedValue('Master quick-answer'),
+        getState: vi.fn(() => 'ready' as const),
+        getWorkspaceMap: vi.fn().mockResolvedValue(null),
+      } as unknown as MasterManager;
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Master.processMessage IS called because state is not 'processing'
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+      expect(connector.sentMessages[1]?.content).toBe('Master quick-answer');
+    });
+
+    it('should send "busy" message when workspace path is not set and master is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      // Deliberately do NOT set workspacePath
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      // Should get a "busy" fallback (no workspacePath means fast-path can't run)
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('busy');
+
+      // Master.processMessage must NOT be called
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    });
+
+    it('should include workspace context in fast-path prompt when workspace map is available', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster(true); // pass true to return workspace map
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what frameworks are used?'));
+
+      // The response goes through fast-path (master.processMessage NOT called)
+      expect((master.processMessage as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+      // Workspace map was requested to build context
+      expect((master.getWorkspaceMap as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    });
+
+    it('should send typing indicator during fast-path response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createProcessingMaster();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setWorkspacePath('/tmp/test-workspace');
+      await connector.initialize();
+
+      await router.route(createQuickMsg('what is the entry point?'));
+
+      expect(connector.typingIndicators).toHaveLength(1);
+      expect(connector.typingIndicators[0]).toBe('+1234567890');
+    });
+  });
+
+  // ── Explore command handling (OB-954) ───────────────────────────────────
+
+  describe('explore command handling (OB-954)', () => {
+    function createExploreMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'msg-explore-954',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMasterForExplore(state: string = 'ready') {
+      return {
+        processMessage: vi.fn().mockResolvedValue('Master response'),
+        getState: vi.fn(() => state),
+        reExplore: vi.fn().mockResolvedValue(undefined),
+        fullReExplore: vi.fn().mockResolvedValue(undefined),
+        getExplorationSummary: vi.fn().mockReturnValue({
+          status: 'completed',
+          projectType: 'node',
+          frameworks: ['typescript', 'vitest'],
+          directoriesExplored: 12,
+          filesScanned: 150,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          insights: [],
+          gitInitialized: true,
+        }),
+        getWorkerRegistry: vi.fn().mockReturnValue({
+          getRunningWorkers: vi.fn().mockReturnValue([]),
+          getAllWorkers: vi.fn().mockReturnValue([]),
+        }),
+      } as unknown as MasterManager;
+    }
+
+    it('should return "not available" when no master is set', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'response' });
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('not available');
+    });
+
+    it('should call reExplore() for bare "explore" command', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(master.reExplore).toHaveBeenCalledOnce();
+      expect(master.fullReExplore).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toContain('quick');
+      expect(connector.sentMessages[1]?.content).toContain('completed');
+    });
+
+    it('should call fullReExplore() for "explore full" command', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore full'));
+
+      expect(master.fullReExplore).toHaveBeenCalledOnce();
+      expect(master.reExplore).not.toHaveBeenCalled();
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[0]?.content).toContain('full');
+    });
+
+    it('should be case-insensitive for "EXPLORE FULL"', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('EXPLORE FULL'));
+
+      expect(master.fullReExplore).toHaveBeenCalledOnce();
+    });
+
+    it('should return "already in progress" when Master is exploring', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('exploring');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('already in progress');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should return state-blocked message when Master is processing', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('processing');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('processing');
+    });
+
+    it('should send error message when exploration fails', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+      (master.reExplore as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Exploration timeout'),
+      );
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('failed');
+      expect(connector.sentMessages[1]?.content).toContain('Exploration timeout');
+    });
+
+    it('should show exploration summary for "explore status"', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore status'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Exploration Status');
+      expect(connector.sentMessages[0]?.content).toContain('node');
+      expect(connector.sentMessages[0]?.content).toContain('typescript');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should deny explore when auth denies access', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+      const mockAuth = {
+        checkAccessControl: vi.fn().mockReturnValue({
+          allowed: false,
+          reason: 'Not permitted.',
+        }),
+        isAuthorized: vi.fn().mockReturnValue(true),
+      };
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setAuth(mockAuth as unknown as AuthService);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Not permitted');
+      expect(master.reExplore).not.toHaveBeenCalled();
+    });
+
+    it('should include project info in completion message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const master = createMockMasterForExplore('ready');
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createExploreMsg('explore'));
+
+      const completion = connector.sentMessages[1]?.content ?? '';
+      expect(completion).toContain('node');
+      expect(completion).toContain('typescript');
+      expect(completion).toContain('12');
+    });
+  });
+
+  describe('media attachment injection (OB-1193)', () => {
+    it('should append ## Attachments section when message has attachments', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-1',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'analyze this image',
+        content: 'analyze this image',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'image',
+            filePath: '/tmp/.openbridge/media/photo.jpg',
+            mimeType: 'image/jpeg',
+            filename: 'photo.jpg',
+            sizeBytes: 204800,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('## Attachments');
+      expect(content).toContain('/tmp/.openbridge/media/photo.jpg');
+      expect(content).toContain('image/jpeg');
+      expect(content).toContain('(photo.jpg)');
+      expect(content).toContain('200.0 KB');
+    });
+
+    it('should not inject ## Attachments when attachments is undefined', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createMessage()); // no attachments field
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toBe('hello');
+      expect(content).not.toContain('## Attachments');
+    });
+
+    it('should not inject ## Attachments when attachments is an empty array', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-2',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'hello',
+        content: 'hello',
+        timestamp: new Date(),
+        attachments: [],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toBe('hello');
+      expect(content).not.toContain('## Attachments');
+    });
+
+    it('should list all attachments when multiple are present', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-3',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'process these files',
+        content: 'process these files',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'image',
+            filePath: '/tmp/media/img.png',
+            mimeType: 'image/png',
+            sizeBytes: 1024,
+          },
+          {
+            type: 'document',
+            filePath: '/tmp/media/doc.pdf',
+            mimeType: 'application/pdf',
+            filename: 'report.pdf',
+            sizeBytes: 51200,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('## Attachments');
+      expect(content).toContain('/tmp/media/img.png');
+      expect(content).toContain('/tmp/media/doc.pdf');
+      expect(content).toContain('(report.pdf)');
+    });
+
+    it('should omit filename parentheses when filename is not provided', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'done' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const message: InboundMessage = {
+        id: 'msg-media-4',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: 'check this',
+        content: 'check this',
+        timestamp: new Date(),
+        attachments: [
+          {
+            type: 'video',
+            filePath: '/tmp/media/clip.mp4',
+            mimeType: 'video/mp4',
+            sizeBytes: 2048,
+          },
+        ],
+      };
+
+      await router.route(message);
+
+      const content = provider.processedMessages[0]?.content ?? '';
+      expect(content).toContain('**video**:');
+      expect(content).not.toContain('**video** (');
     });
   });
 });

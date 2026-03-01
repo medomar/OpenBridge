@@ -25,6 +25,12 @@ function formatProgressEvent(event: ProgressEvent): string {
       return `${event.phase}${event.detail ? ` — ${event.detail}` : ''}...`;
     case 'exploring-directory':
       return `Exploring directories: ${event.completed.toString()}/${event.total.toString()}${event.directory ? ` (${event.directory})` : ''}...`;
+    case 'worker-cancelled':
+      return `Worker ${event.workerId} was stopped by ${event.cancelledBy}.`;
+    case 'worker-turn-progress':
+      return `Worker ${event.workerId.slice(0, 8)} — turn ${event.turnsUsed.toString()}/${event.turnsMax.toString()}${event.lastAction ? ` (${event.lastAction.slice(0, 60)})` : ''}`;
+    default:
+      return `Processing (${event.type})...`;
   }
 }
 

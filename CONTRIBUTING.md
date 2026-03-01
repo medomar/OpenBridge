@@ -25,6 +25,35 @@ npm run lint         # Run linter
 npm run dev          # Start in development mode with hot reload
 ```
 
+### Development Tips
+
+**Ctrl+C / Shutdown behavior**
+
+When running `npm run dev`, press Ctrl+C **once** and wait for the message:
+
+```
+Shutting down gracefully... please wait
+```
+
+Do not press Ctrl+C again. If you press it multiple times, `tsx` force-kills the process before
+shutdown completes.
+
+**Graceful shutdown takes up to 10 seconds.** During this window, OpenBridge:
+
+1. Saves the Master AI session state to SQLite (fast — always completes)
+2. Triggers a memory update — runs a short AI agent to update `.openbridge/context/memory.md`
+   with recent conversation context (slow — may take up to 10 seconds)
+
+If the 10-second timeout is exceeded, OpenBridge logs a warning and calls `process.exit(1)`.
+
+**If force-killed:**
+
+- Session state is still saved (it runs first — critical-first ordering)
+- The `memory.md` update may be lost (it runs last and is interruptible)
+
+This means a force-kill loses at most the current session's memory notes — the SQLite state
+(tasks, conversations, agent activity) is always safe.
+
 ## Branch Strategy
 
 | Branch        | Purpose                                       |
