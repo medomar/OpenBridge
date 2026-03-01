@@ -8,9 +8,6 @@ import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
-import type { McpRegistry, McpServerWithStatus } from '../../core/mcp-registry.js';
-import { MCPServerSchema } from '../../types/config.js';
-import { MCP_CATALOG } from '../../core/mcp-catalog.js';
 
 const logger = createLogger('webchat');
 
@@ -101,62 +98,6 @@ const CHAT_HTML = `<!DOCTYPE html>
     .stop-all-btn { background: #ff5252; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
     .stop-all-btn:hover { background: #d32f2f; }
     .stop-all-btn:disabled { background: #e57373; cursor: not-allowed; }
-    #mcp-dash { border-bottom: 1px solid #e8eaed; background: #f8f9fa; flex-shrink: 0; max-height: 200px; overflow-y: auto; }
-    #mcp-dash.hidden { display: none; }
-    #mcp-dash-body { padding: 2px 16px 8px; font-size: 12px; }
-    .mcp-card { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f1f3f4; }
-    .mcp-card:last-child { border-bottom: none; }
-    .mcp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .mcp-dot.healthy { background: #34a853; }
-    .mcp-dot.error { background: #ea4335; }
-    .mcp-dot.unknown { background: #9aa0a6; }
-    .cat-badge { padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 500; flex-shrink: 0; background: #e8f0fe; color: #1a73e8; }
-    .mcp-toggle { position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0; }
-    .mcp-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .mcp-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #bdc1c6; border-radius: 18px; transition: background 0.2s; }
-    .mcp-slider:before { position: absolute; content: ''; height: 12px; width: 12px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
-    .mcp-toggle input:checked + .mcp-slider { background: #1a73e8; }
-    .mcp-toggle input:checked + .mcp-slider:before { transform: translateX(14px); }
-    .mcp-remove { background: none; border: none; color: #9aa0a6; cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 2px 4px; line-height: 1; }
-    .mcp-remove:hover { color: #ea4335; }
-    .browse-btn { background: #1a73e8; color: #fff; border: none; border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; }
-    .browse-btn:hover { background: #1557b0; }
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-    .modal-overlay.hidden { display: none; }
-    .modal-box { background: #fff; border-radius: 12px; width: 90%; max-width: 560px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.18); overflow: hidden; }
-    .modal-hdr { padding: 14px 16px; border-bottom: 1px solid #e8eaed; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; color: #202124; flex-shrink: 0; }
-    .modal-close { background: none; border: none; color: #5f6368; cursor: pointer; font-size: 16px; padding: 2px 6px; line-height: 1; border-radius: 4px; }
-    .modal-close:hover { background: #f1f3f4; color: #202124; }
-    .catalog-search { margin: 10px 16px; padding: 8px 12px; border: 1.5px solid #dadce0; border-radius: 8px; font-size: 13px; outline: none; flex-shrink: 0; width: calc(100% - 32px); }
-    .catalog-search:focus { border-color: #1a73e8; }
-    #catalog-list { overflow-y: auto; padding: 0 16px 12px; flex: 1; }
-    .cat-group-hdr { font-size: 11px; font-weight: 600; color: #5f6368; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 0 4px; }
-    .cat-entry { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f3f4; }
-    .cat-entry:last-child { border-bottom: none; }
-    .cat-entry-info { flex: 1; min-width: 0; }
-    .cat-entry-name { font-size: 13px; font-weight: 500; color: #202124; }
-    .cat-entry-desc { font-size: 12px; color: #5f6368; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .connect-btn { background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-    .connect-btn:hover { background: #1557b0; }
-    .add-server-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; color: #1a73e8; font-size: 12px; font-weight: 500; border: none; background: none; width: 100%; text-align: left; }
-    .add-server-toggle:hover { color: #1557b0; }
-    .add-server-form { padding-top: 6px; border-top: 1px solid #e8eaed; margin-top: 4px; }
-    .add-server-form.hidden { display: none; }
-    .form-row { margin-bottom: 7px; }
-    .form-row label { display: block; font-size: 11px; font-weight: 500; color: #5f6368; margin-bottom: 2px; }
-    .form-inp { width: 100%; padding: 5px 8px; border: 1.5px solid #dadce0; border-radius: 6px; font-size: 12px; outline: none; }
-    .form-inp:focus { border-color: #1a73e8; }
-    .env-row { display: flex; gap: 4px; margin-bottom: 4px; }
-    .env-row input { flex: 1; padding: 4px 6px; border: 1.5px solid #dadce0; border-radius: 6px; font-size: 11px; outline: none; min-width: 0; }
-    .env-row input:focus { border-color: #1a73e8; }
-    .env-remove { background: none; border: none; color: #9aa0a6; cursor: pointer; font-size: 13px; padding: 2px 4px; flex-shrink: 0; line-height: 1; }
-    .env-remove:hover { color: #ea4335; }
-    .add-env-btn { background: none; border: none; color: #1a73e8; cursor: pointer; font-size: 12px; padding: 0; font-weight: 500; }
-    .add-env-btn:hover { color: #1557b0; }
-    .submit-server-btn { background: #1a73e8; color: #fff; border: none; border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: 500; cursor: pointer; width: 100%; margin-top: 4px; }
-    .submit-server-btn:hover:not(:disabled) { background: #1557b0; }
-    .submit-server-btn:disabled { background: #bdc1c6; cursor: not-allowed; }
-    .add-server-error { color: #ea4335; font-size: 11px; margin-bottom: 6px; display: none; }
   </style>
 </head>
 <body>
@@ -182,53 +123,6 @@ const CHAT_HTML = `<!DOCTYPE html>
         <div id="dash-cost"></div>
       </div>
     </div>
-    <div id="mcp-dash" class="hidden">
-      <div class="dash-hdr" id="mcp-dash-hdr">
-        <span id="mcp-dash-lbl">MCP Servers</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="browse-btn" onclick="openCatalogModal();event.stopPropagation()">Browse Servers</button>
-          <span id="mcp-dash-icon">&#9650;</span>
-        </div>
-      </div>
-      <div id="mcp-dash-body">
-        <div id="mcp-server-list"></div>
-        <button class="add-server-toggle" onclick="toggleAddServerForm()">
-          <span id="add-server-toggle-icon">&#x2795;</span> Add Custom Server
-        </button>
-        <div id="add-server-form" class="add-server-form hidden">
-          <div class="form-row">
-            <label>Server Name</label>
-            <input type="text" id="add-srv-name" class="form-inp" placeholder="my-server">
-          </div>
-          <div class="form-row">
-            <label>Command</label>
-            <input type="text" id="add-srv-cmd" class="form-inp" placeholder="npx">
-          </div>
-          <div class="form-row">
-            <label>Args <span style="color:#9aa0a6;font-weight:400">(comma-separated)</span></label>
-            <input type="text" id="add-srv-args" class="form-inp" placeholder="-y, @modelcontextprotocol/server-filesystem">
-          </div>
-          <div class="form-row">
-            <label>Env Vars</label>
-            <div id="add-srv-env-rows"></div>
-            <button class="add-env-btn" onclick="addEnvVarRow()">+ Add env var</button>
-          </div>
-          <div id="add-server-error" class="add-server-error"></div>
-          <button class="submit-server-btn" id="add-server-submit" onclick="submitCustomServer()">Add Server</button>
-        </div>
-      </div>
-    </div>
-    <div id="catalog-modal" class="modal-overlay hidden">
-      <div class="modal-box">
-        <div class="modal-hdr">
-          <span id="modal-hdr-title">Browse MCP Servers</span>
-          <button id="modal-close-btn" class="modal-close" onclick="closeCatalogModal()">&#x2715;</button>
-        </div>
-        <input id="catalog-search" type="text" class="catalog-search" placeholder="Search servers..." oninput="filterCatalog()">
-        <div id="catalog-list"></div>
-        <div id="connect-form-view" style="display:none;padding:0 16px 16px;overflow-y:auto;flex:1"></div>
-      </div>
-    </div>
     <div id="msgs"></div>
     <div id="status-bar" class="hidden">
       <span id="status-text"></span>
@@ -251,8 +145,6 @@ const CHAT_HTML = `<!DOCTYPE html>
     var statusTimer = document.getElementById('status-timer');
     var timerInterval = null;
     var timerStart = null;
-    var mcpPollTimer = null;
-
     function md(raw) {
       var h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
       // Code blocks: \`\`\`lang\\ncode\`\`\`
@@ -359,213 +251,6 @@ const CHAT_HTML = `<!DOCTYPE html>
       return null;
     }
 
-    var mcpDashOpen = true;
-    document.getElementById('mcp-dash-hdr').addEventListener('click', function() {
-      mcpDashOpen = !mcpDashOpen;
-      document.getElementById('mcp-dash-body').style.display = mcpDashOpen ? '' : 'none';
-      document.getElementById('mcp-dash-icon').textContent = mcpDashOpen ? '\u25B2' : '\u25BC';
-    });
-
-    function loadMcpServers() {
-      fetch('/api/mcp/servers').then(function(r) { return r.json(); }).then(function(servers) {
-        renderMcpServers(servers);
-      }).catch(function() {});
-    }
-
-    function startMcpPoll() {
-      if (mcpPollTimer) return;
-      mcpPollTimer = setInterval(loadMcpServers, 30000);
-    }
-
-    function stopMcpPoll() {
-      if (mcpPollTimer) { clearInterval(mcpPollTimer); mcpPollTimer = null; }
-    }
-
-    function renderMcpServers(servers) {
-      var mcpDash = document.getElementById('mcp-dash');
-      var list = document.getElementById('mcp-server-list');
-      var lbl = document.getElementById('mcp-dash-lbl');
-      if (!servers || servers.length === 0) { mcpDash.classList.add('hidden'); return; }
-      mcpDash.classList.remove('hidden');
-      lbl.textContent = 'MCP Servers (' + servers.length + ')';
-      var h = '';
-      for (var si = 0; si < servers.length; si++) {
-        var srv = servers[si];
-        var dotCls = srv.status === 'healthy' ? 'healthy' : (srv.status === 'error' ? 'error' : 'unknown');
-        var chk = srv.enabled ? ' checked' : '';
-        var catHtml = srv.category ? '<span class="cat-badge">' + srv.category + '</span>' : '';
-        h += '<div class="mcp-card">' +
-          '<span class="mcp-dot ' + dotCls + '"></span>' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124;font-weight:500">' + srv.name + '</span>' +
-          catHtml +
-          '<label class="mcp-toggle" title="' + (srv.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable') + '">' +
-            '<input type="checkbox"' + chk + ' onchange="toggleMcpServer(' + JSON.stringify(srv.name) + ', this.checked)">' +
-            '<span class="mcp-slider"></span>' +
-          '</label>' +
-          '<button class="mcp-remove" title="Remove server" onclick="removeMcpServer(' + JSON.stringify(srv.name) + ')">&#x2715;</button>' +
-          '</div>';
-      }
-      list.innerHTML = h;
-    }
-
-    function toggleMcpServer(name, enabled) {
-      fetch('/api/mcp/servers/' + encodeURIComponent(name), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: enabled })
-      }).then(function() { loadMcpServers(); }).catch(function() {});
-    }
-
-    function removeMcpServer(name) {
-      if (!confirm('Remove MCP server "' + name + '"?')) return;
-      fetch('/api/mcp/servers/' + encodeURIComponent(name), { method: 'DELETE' })
-        .then(function() { loadMcpServers(); }).catch(function() {});
-    }
-
-    var catalogCache = null;
-    var currentConnectEntry = null;
-
-    function openCatalogModal() {
-      document.getElementById('catalog-modal').classList.remove('hidden');
-      document.getElementById('catalog-search').value = '';
-      if (!catalogCache) {
-        fetch('/api/mcp/catalog').then(function(r) { return r.json(); }).then(function(entries) {
-          catalogCache = entries;
-          renderCatalog(entries);
-        }).catch(function() {
-          document.getElementById('catalog-list').innerHTML = '<div style="color:#ea4335;padding:12px 0;font-size:13px">Failed to load catalog.</div>';
-        });
-      } else {
-        renderCatalog(catalogCache);
-      }
-    }
-
-    function closeCatalogModal() {
-      document.getElementById('catalog-modal').classList.add('hidden');
-      showCatalogView();
-    }
-
-    function showCatalogView() {
-      currentConnectEntry = null;
-      document.getElementById('catalog-search').style.display = '';
-      document.getElementById('catalog-list').style.display = '';
-      var fv = document.getElementById('connect-form-view');
-      fv.style.display = 'none';
-      fv.innerHTML = '';
-      document.getElementById('modal-hdr-title').textContent = 'Browse MCP Servers';
-    }
-
-    function submitConnectForm() {
-      if (!currentConnectEntry) return;
-      var name = currentConnectEntry.name;
-      var envVarsData = {};
-      var inputs = document.querySelectorAll('#connect-form-view input[data-key]');
-      for (var i = 0; i < inputs.length; i++) {
-        var key = inputs[i].getAttribute('data-key');
-        if (key) envVarsData[key] = inputs[i].value;
-      }
-      var submitBtn = document.getElementById('connect-submit-btn');
-      if (submitBtn) submitBtn.disabled = true;
-      var errorDiv = document.getElementById('connect-error');
-      if (errorDiv) { errorDiv.style.display = 'none'; errorDiv.textContent = ''; }
-      fetch('/api/mcp/catalog/' + encodeURIComponent(name) + '/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ envVars: envVarsData })
-      }).then(function(r) {
-        if (r.ok) {
-          closeCatalogModal();
-          loadMcpServers();
-        } else {
-          return r.json().then(function(data) {
-            if (errorDiv) { errorDiv.textContent = data.error || 'Failed to connect'; errorDiv.style.display = ''; }
-            if (submitBtn) submitBtn.disabled = false;
-          });
-        }
-      }).catch(function() {
-        if (errorDiv) { errorDiv.textContent = 'Network error \u2014 please try again'; errorDiv.style.display = ''; }
-        if (submitBtn) submitBtn.disabled = false;
-      });
-    }
-
-    function filterCatalog() {
-      if (!catalogCache) return;
-      var q = document.getElementById('catalog-search').value.toLowerCase();
-      var filtered = q ? catalogCache.filter(function(e) {
-        return e.name.toLowerCase().indexOf(q) !== -1 || (e.description || '').toLowerCase().indexOf(q) !== -1;
-      }) : catalogCache;
-      renderCatalog(filtered);
-    }
-
-    function renderCatalog(entries) {
-      var list = document.getElementById('catalog-list');
-      if (!entries || entries.length === 0) {
-        list.innerHTML = '<div style="color:#5f6368;padding:12px 0;font-size:13px">No results.</div>';
-        return;
-      }
-      var groups = {};
-      var order = [];
-      for (var i = 0; i < entries.length; i++) {
-        var cat = entries[i].category || 'other';
-        if (!groups[cat]) { groups[cat] = []; order.push(cat); }
-        groups[cat].push(entries[i]);
-      }
-      var h = '';
-      for (var oi = 0; oi < order.length; oi++) {
-        var c = order[oi];
-        h += '<div class="cat-group-hdr">' + c + '</div>';
-        var grp = groups[c];
-        for (var j = 0; j < grp.length; j++) {
-          var e = grp[j];
-          h += '<div class="cat-entry">' +
-            '<div class="cat-entry-info">' +
-              '<div class="cat-entry-name">' + e.name + '</div>' +
-              '<div class="cat-entry-desc">' + (e.description || '') + '</div>' +
-            '</div>' +
-            '<button class="connect-btn" onclick="connectCatalogEntry(' + JSON.stringify(e.name) + ')">Connect</button>' +
-            '</div>';
-        }
-      }
-      list.innerHTML = h;
-    }
-
-    function connectCatalogEntry(name) {
-      var entry = null;
-      if (catalogCache) {
-        for (var i = 0; i < catalogCache.length; i++) {
-          if (catalogCache[i].name === name) { entry = catalogCache[i]; break; }
-        }
-      }
-      if (!entry) return;
-      currentConnectEntry = entry;
-      document.getElementById('catalog-search').style.display = 'none';
-      document.getElementById('catalog-list').style.display = 'none';
-      document.getElementById('modal-hdr-title').textContent = 'Connect: ' + entry.name;
-      var envVars = entry.envVars || [];
-      var h = '<button style="background:none;border:none;color:#1a73e8;cursor:pointer;font-size:12px;padding:0;margin-bottom:12px" onclick="showCatalogView()">\u2190 Back to catalog</button>';
-      if (entry.description) {
-        h += '<p style="font-size:13px;color:#5f6368;margin-bottom:12px">' + entry.description + '</p>';
-      }
-      for (var j = 0; j < envVars.length; j++) {
-        var ev = envVars[j];
-        h += '<div style="margin-bottom:10px">';
-        h += '<label style="display:block;font-size:13px;font-weight:500;color:#202124;margin-bottom:4px">' + ev.description;
-        if (ev.required) h += ' <span style="color:#ea4335">*</span>';
-        h += '</label>';
-        h += '<input type="password" data-key="' + ev.key + '" placeholder="' + ev.key + '" style="width:100%;padding:8px 12px;border:1.5px solid #dadce0;border-radius:8px;font-size:13px;outline:none">';
-        h += '</div>';
-      }
-      h += '<div id="connect-error" style="color:#ea4335;font-size:13px;margin-bottom:8px;display:none"></div>';
-      h += '<button id="connect-submit-btn" class="connect-btn" style="width:100%;padding:9px;font-size:13px" onclick="submitConnectForm()">Connect</button>';
-      var fv = document.getElementById('connect-form-view');
-      fv.innerHTML = h;
-      fv.style.display = '';
-    }
-
-    document.getElementById('catalog-modal').addEventListener('click', function(ev) {
-      if (ev.target === this) closeCatalogModal();
-    });
-
     var dashOpen = true;
     document.getElementById('dash-hdr').addEventListener('click', function() {
       dashOpen = !dashOpen;
@@ -638,91 +323,11 @@ const CHAT_HTML = `<!DOCTYPE html>
       send.disabled = !online;
     }
 
-    var addServerFormOpen = false;
-    function toggleAddServerForm() {
-      addServerFormOpen = !addServerFormOpen;
-      var form = document.getElementById('add-server-form');
-      var icon = document.getElementById('add-server-toggle-icon');
-      if (addServerFormOpen) {
-        form.classList.remove('hidden');
-        icon.innerHTML = '&#x2796;';
-      } else {
-        form.classList.add('hidden');
-        icon.innerHTML = '&#x2795;';
-      }
-    }
-
-    function addEnvVarRow() {
-      var rows = document.getElementById('add-srv-env-rows');
-      var row = document.createElement('div');
-      row.className = 'env-row';
-      row.innerHTML = '<input type="text" placeholder="KEY"><input type="text" placeholder="value"><button class="env-remove" onclick="this.parentElement.remove()">&#x2715;</button>';
-      rows.appendChild(row);
-    }
-
-    function clearAddServerForm() {
-      document.getElementById('add-srv-name').value = '';
-      document.getElementById('add-srv-cmd').value = '';
-      document.getElementById('add-srv-args').value = '';
-      document.getElementById('add-srv-env-rows').innerHTML = '';
-      var err = document.getElementById('add-server-error');
-      err.style.display = 'none';
-      err.textContent = '';
-    }
-
-    function submitCustomServer() {
-      var name = document.getElementById('add-srv-name').value.trim();
-      var command = document.getElementById('add-srv-cmd').value.trim();
-      var argsRaw = document.getElementById('add-srv-args').value.trim();
-      var args = argsRaw ? argsRaw.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; }) : [];
-      var errorDiv = document.getElementById('add-server-error');
-      errorDiv.style.display = 'none';
-      errorDiv.textContent = '';
-      if (!name || !command) {
-        errorDiv.textContent = 'Server name and command are required.';
-        errorDiv.style.display = '';
-        return;
-      }
-      var envObj = {};
-      var envRows = document.querySelectorAll('#add-srv-env-rows .env-row');
-      for (var ei = 0; ei < envRows.length; ei++) {
-        var envInputs = envRows[ei].querySelectorAll('input');
-        var envKey = envInputs[0] ? envInputs[0].value.trim() : '';
-        var envVal = envInputs[1] ? envInputs[1].value : '';
-        if (envKey) envObj[envKey] = envVal;
-      }
-      var submitBtn = document.getElementById('add-server-submit');
-      submitBtn.disabled = true;
-      var body = { name: name, command: command, args: args };
-      if (Object.keys(envObj).length > 0) body.env = envObj;
-      fetch('/api/mcp/servers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      }).then(function(r) {
-        submitBtn.disabled = false;
-        if (r.ok) {
-          clearAddServerForm();
-          if (addServerFormOpen) toggleAddServerForm();
-          loadMcpServers();
-        } else {
-          return r.json().then(function(data) {
-            errorDiv.textContent = data.error || 'Failed to add server';
-            errorDiv.style.display = '';
-          });
-        }
-      }).catch(function() {
-        submitBtn.disabled = false;
-        errorDiv.textContent = 'Network error \u2014 please try again';
-        errorDiv.style.display = '';
-      });
-    }
-
     var ws;
     function connectWs() {
       ws = new WebSocket('ws://' + location.host);
-      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); stopMcpPoll(); loadMcpServers(); };
-      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); startMcpPoll(); setTimeout(connectWs, 2000); };
+      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
+      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
       ws.onmessage = function(e) {
         try {
           var data = JSON.parse(e.data);
@@ -760,8 +365,6 @@ const CHAT_HTML = `<!DOCTYPE html>
             }
           } else if (data.type === 'agent-status') {
             updateDashboard(data.agents);
-          } else if (data.type === 'mcp-status') {
-            renderMcpServers(data.servers);
           }
         } catch(ex) {}
       };
@@ -814,7 +417,6 @@ export class WebChatConnector implements Connector {
     disconnected: [],
   };
   private memory: MemoryManager | null = null;
-  private mcpRegistry: McpRegistry | null = null;
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -823,14 +425,6 @@ export class WebChatConnector implements Connector {
   /** Wire the SQLite memory manager — enables the /api/sessions REST endpoint. */
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
-  }
-
-  /** Wire the MCP registry — enables the MCP management API endpoints and mcp-status broadcasts. */
-  setMcpRegistry(registry: McpRegistry): void {
-    this.mcpRegistry = registry;
-    registry.setOnChange((servers) => {
-      this.broadcastMcpStatus(servers);
-    });
   }
 
   async initialize(): Promise<void> {
@@ -943,236 +537,6 @@ export class WebChatConnector implements Connector {
           }
         })();
         return;
-      }
-
-      // /api/mcp/catalog — GET full catalog or filtered by category
-      if (url === '/api/mcp/catalog' || url.startsWith('/api/mcp/catalog?')) {
-        try {
-          const parsed = new URL(url, 'http://localhost');
-          const category = parsed.searchParams.get('category');
-          const entries = category
-            ? MCP_CATALOG.filter((e) => e.category === category)
-            : MCP_CATALOG;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(entries));
-        } catch (err) {
-          logger.error({ err }, 'GET /api/mcp/catalog failed');
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-        return;
-      }
-
-      // /api/mcp/catalog/:name/connect — POST connect from catalog
-      const mcpCatalogConnectMatch = /^\/api\/mcp\/catalog\/([^/?#]+)\/connect$/.exec(url);
-      if (mcpCatalogConnectMatch && req.method === 'POST') {
-        const mcpReg = this.mcpRegistry;
-        if (!mcpReg) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'MCP registry not available' }));
-          return;
-        }
-        const catalogName = decodeURIComponent(mcpCatalogConnectMatch[1] ?? '');
-        const entry = MCP_CATALOG.find((e) => e.name === catalogName);
-        if (!entry) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `Catalog entry '${catalogName}' not found` }));
-          return;
-        }
-        void (async (): Promise<void> => {
-          try {
-            const body = await new Promise<string>((resolve, reject) => {
-              const chunks: Buffer[] = [];
-              req.on('data', (chunk) => chunks.push(chunk as Buffer));
-              req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-              req.on('error', reject);
-            });
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(body);
-            } catch {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-              return;
-            }
-            const envVars: Record<string, string> =
-              typeof parsed === 'object' &&
-              parsed !== null &&
-              'envVars' in parsed &&
-              typeof (parsed as Record<string, unknown>)['envVars'] === 'object' &&
-              (parsed as Record<string, unknown>)['envVars'] !== null
-                ? (parsed as { envVars: Record<string, string> })['envVars']
-                : {};
-            const missingKeys = entry.envVars
-              .filter((ev) => ev.required && !envVars[ev.key])
-              .map((ev) => ev.key);
-            if (missingKeys.length > 0) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Missing required env vars', missing: missingKeys }));
-              return;
-            }
-            const server = {
-              name: entry.name,
-              command: entry.command,
-              args: entry.args,
-              ...(Object.keys(envVars).length > 0 ? { env: envVars } : {}),
-            };
-            mcpReg.addServer(server);
-            const created = mcpReg.getServer(entry.name);
-            res.writeHead(201, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(created));
-          } catch (err) {
-            const message = (err as Error).message;
-            if (message.includes('already exists')) {
-              res.writeHead(409, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: message }));
-            } else {
-              logger.error({ err }, 'POST /api/mcp/catalog/:name/connect failed');
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Internal server error' }));
-            }
-          }
-        })();
-        return;
-      }
-
-      // /api/mcp/servers — GET list or POST create
-      if (url === '/api/mcp/servers') {
-        const mcpReg = this.mcpRegistry;
-        if (!mcpReg) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'MCP registry not available' }));
-          return;
-        }
-        if (req.method === 'POST') {
-          void (async (): Promise<void> => {
-            try {
-              const body = await new Promise<string>((resolve, reject) => {
-                const chunks: Buffer[] = [];
-                req.on('data', (chunk) => chunks.push(chunk as Buffer));
-                req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-                req.on('error', reject);
-              });
-              let parsed: unknown;
-              try {
-                parsed = JSON.parse(body);
-              } catch {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-                return;
-              }
-              const result = MCPServerSchema.safeParse(parsed);
-              if (!result.success) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(
-                  JSON.stringify({ error: 'Validation failed', details: result.error.issues }),
-                );
-                return;
-              }
-              mcpReg.addServer(result.data);
-              const created = mcpReg.getServer(result.data.name);
-              res.writeHead(201, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify(created));
-            } catch (err) {
-              const message = (err as Error).message;
-              if (message.includes('already exists')) {
-                res.writeHead(409, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: message }));
-              } else {
-                logger.error({ err }, 'POST /api/mcp/servers failed');
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Internal server error' }));
-              }
-            }
-          })();
-          return;
-        }
-        try {
-          const servers = mcpReg.listServers();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(servers));
-        } catch (err) {
-          logger.error({ err }, 'GET /api/mcp/servers failed');
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-        return;
-      }
-
-      // /api/mcp/servers/:name — DELETE remove, PATCH toggle
-      const mcpServerMatch = /^\/api\/mcp\/servers\/([^/?#]+)$/.exec(url);
-      if (mcpServerMatch) {
-        const mcpReg = this.mcpRegistry;
-        if (!mcpReg) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'MCP registry not available' }));
-          return;
-        }
-        if (req.method === 'DELETE') {
-          const name = decodeURIComponent(mcpServerMatch[1] ?? '');
-          try {
-            mcpReg.removeServer(name);
-            res.writeHead(204);
-            res.end();
-          } catch (err) {
-            const message = (err as Error).message;
-            if (message.includes('not found')) {
-              res.writeHead(404, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: message }));
-            } else {
-              logger.error({ err }, 'DELETE /api/mcp/servers/:name failed');
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Internal server error' }));
-            }
-          }
-          return;
-        }
-        if (req.method === 'PATCH') {
-          const name = decodeURIComponent(mcpServerMatch[1] ?? '');
-          void (async (): Promise<void> => {
-            let parsed: unknown;
-            try {
-              const body = await new Promise<string>((resolve, reject) => {
-                const chunks: Buffer[] = [];
-                req.on('data', (chunk) => chunks.push(chunk as Buffer));
-                req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-                req.on('error', reject);
-              });
-              parsed = JSON.parse(body);
-            } catch {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-              return;
-            }
-            if (
-              typeof parsed !== 'object' ||
-              parsed === null ||
-              typeof (parsed as Record<string, unknown>)['enabled'] !== 'boolean'
-            ) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Body must be { enabled: boolean }' }));
-              return;
-            }
-            const enabled = (parsed as { enabled: boolean })['enabled'];
-            try {
-              mcpReg.toggleServer(name, enabled);
-              const updated = mcpReg.getServer(name);
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify(updated));
-            } catch (err) {
-              const message = (err as Error).message;
-              if (message.includes('not found')) {
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: message }));
-              } else {
-                logger.error({ err }, 'PATCH /api/mcp/servers/:name failed');
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Internal server error' }));
-              }
-            }
-          })();
-          return;
-        }
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -1332,20 +696,6 @@ export class WebChatConnector implements Connector {
       type: 'agent-status',
       agents,
       timestamp: new Date().toISOString(),
-    });
-    for (const client of this.clients) {
-      if (client.readyState === WS_OPEN) {
-        client.send(payload);
-      }
-    }
-  }
-
-  /** Broadcast MCP server status to all connected WebSocket clients. */
-  broadcastMcpStatus(servers: McpServerWithStatus[]): void {
-    if (!this.connected || this.clients.size === 0) return;
-    const payload = JSON.stringify({
-      type: 'mcp-status',
-      servers: servers.map((s) => ({ name: s.name, enabled: s.enabled, status: s.status })),
     });
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {

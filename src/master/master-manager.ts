@@ -79,6 +79,18 @@ const logger = createLogger('master-manager');
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
 
+/**
+ * Per-turn wall-clock budget in milliseconds.
+ * Used to compute per-class timeouts: timeout = maxTurns × PER_TURN_BUDGET_MS.
+ * 30s/turn gives quick-answer(5) = 150s, tool-use(15) = 450s, complex-task(25) = 750s.
+ */
+const PER_TURN_BUDGET_MS = 30_000;
+
+/** Compute wall-clock timeout from a turn budget. */
+function turnsToTimeout(maxTurns: number): number {
+  return maxTurns * PER_TURN_BUDGET_MS;
+}
+
 /** Idle time threshold (5 minutes) before triggering self-improvement cycle */
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 /** How often to check for idle state (1 minute) */
@@ -159,7 +171,7 @@ const MEMORY_UPDATE_INTERVAL = 10;
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
  */
-const CLASSIFIER_VERSION = 2;
+const CLASSIFIER_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Memory ↔ DotFolderManager type conversion helpers (OB-711)
@@ -258,6 +270,8 @@ export interface ClassificationResult {
   class: 'quick-answer' | 'tool-use' | 'complex-task';
   /** AI-suggested turn budget for this specific message */
   maxTurns: number;
+  /** Computed wall-clock timeout in milliseconds (maxTurns × PER_TURN_BUDGET_MS) */
+  timeout: number;
   /** Brief reason for the classification (for logging/debugging) */
   reason: string;
 }
@@ -2373,19 +2387,23 @@ export class MasterManager {
       timedOut,
     });
 
-    // If 2+ of the last 3 executions timed out, bump maxTurns by 50% (capped at 30)
+    // If 2+ of the last 3 executions timed out, log a warning.
+    // Note: bumping maxTurns does NOT help timeout errors — the bottleneck is the
+    // wall-clock timeout, not the turn budget. The per-class timeout map (Issue #5)
+    // is the proper fix. We only log here so operators can identify patterns.
     const recent = entry.feedback.slice(-3);
     const timeoutCount = recent.filter((f) => f.timedOut).length;
     if (recent.length >= 2 && timeoutCount >= 2) {
-      const bumped = Math.min(Math.ceil(entry.result.maxTurns * 1.5), 30);
-      if (bumped > entry.result.maxTurns) {
-        logger.info(
-          { normalizedKey, oldMaxTurns: entry.result.maxTurns, newMaxTurns: bumped },
-          'Classification cache: bumping maxTurns due to repeated timeouts',
-        );
-        entry.result.maxTurns = bumped;
-        entry.result.reason = `${entry.result.reason} (auto-adjusted: repeated timeouts)`;
-      }
+      logger.warn(
+        {
+          normalizedKey,
+          taskClass: entry.result.class,
+          maxTurns: entry.result.maxTurns,
+          timeoutCount,
+          recentFeedback: recent.length,
+        },
+        'Classification cache: repeated timeouts detected — task may need a higher wall-clock timeout',
+      );
     }
 
     await this.persistClassificationCache();
@@ -2437,6 +2455,7 @@ export class MasterManager {
       return {
         class: 'complex-task',
         maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
         reason: 'keyword match: complex-task',
       };
     }
@@ -2463,6 +2482,7 @@ export class MasterManager {
       return {
         class: 'complex-task',
         maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
         reason: `keyword match: complex-task (compound: ${matchedVerbs.join('+')})`,
       };
     }
@@ -2481,6 +2501,7 @@ export class MasterManager {
       return {
         class: 'tool-use',
         maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
         reason: 'keyword match: tool-use',
       };
     }
@@ -2508,6 +2529,7 @@ export class MasterManager {
       return {
         class: 'quick-answer',
         maxTurns: MESSAGE_MAX_TURNS_QUICK,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
         reason: 'keyword match: quick-answer',
       };
     }
@@ -2517,6 +2539,7 @@ export class MasterManager {
     return {
       class: 'tool-use',
       maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
       reason: 'keyword fallback: tool-use',
     };
   }
@@ -2626,11 +2649,17 @@ export class MasterManager {
                     ? MESSAGE_MAX_TURNS_TOOL_USE
                     : MESSAGE_MAX_TURNS_PLANNING;
             logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
-            classificationResult = { class: cls, maxTurns, reason };
+            classificationResult = {
+              class: cls,
+              maxTurns,
+              timeout: turnsToTimeout(maxTurns),
+              reason,
+            };
           } else {
             classificationResult = {
               class: 'tool-use',
               maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
               reason: 'parse failure default',
             };
           }
@@ -2641,24 +2670,28 @@ export class MasterManager {
             classificationResult = {
               class: 'quick-answer',
               maxTurns: MESSAGE_MAX_TURNS_QUICK,
+              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
               reason: 'text scan fallback',
             };
           } else if (lower.includes('complex-task')) {
             classificationResult = {
               class: 'complex-task',
               maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
               reason: 'text scan fallback',
             };
           } else if (lower.includes('tool-use')) {
             classificationResult = {
               class: 'tool-use',
               maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
               reason: 'text scan fallback',
             };
           } else {
             classificationResult = {
               class: 'tool-use',
               maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
               reason: 'parse failure default',
             };
           }
@@ -2670,18 +2703,21 @@ export class MasterManager {
           classificationResult = {
             class: 'quick-answer',
             maxTurns: MESSAGE_MAX_TURNS_QUICK,
+            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
             reason: 'text scan fallback',
           };
         } else if (lower.includes('complex-task')) {
           classificationResult = {
             class: 'complex-task',
             maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
             reason: 'text scan fallback',
           };
         } else if (lower.includes('tool-use')) {
           classificationResult = {
             class: 'tool-use',
             maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
             reason: 'text scan fallback',
           };
         } else {
@@ -2693,6 +2729,7 @@ export class MasterManager {
           classificationResult = {
             class: 'tool-use',
             maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
             reason: 'parse failure default',
           };
         }
@@ -2720,7 +2757,8 @@ export class MasterManager {
           if (
             validClasses.has(learned.model) &&
             learnedRank > currentRank &&
-            learned.success_rate > 0.5
+            learned.success_rate > 0.5 &&
+            currentRank > 0 // Never escalate quick-answer (rank 0) — trivial queries should stay cheap
           ) {
             const escalatedClass = learned.model as ClassificationResult['class'];
             const escalatedMaxTurns =
@@ -2741,6 +2779,7 @@ export class MasterManager {
             classificationResult = {
               class: escalatedClass,
               maxTurns: escalatedMaxTurns,
+              timeout: turnsToTimeout(escalatedMaxTurns),
               reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
             };
           }
@@ -3859,6 +3898,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
+      // Derive timeout from the actual turns used (complex-task overrides to planning turns)
+      const timeoutToUse =
+        taskClass === 'complex-task'
+          ? turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING)
+          : classification.timeout;
 
       if (taskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation');
@@ -3908,7 +3952,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       }
 
       // Execute message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+      const spawnOpts = this.buildMasterSpawnOptions(promptToSend, timeoutToUse, maxTurnsToUse);
       // Inject relevant conversation history into the Master's system prompt (OB-731)
       if (conversationContext) {
         spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
@@ -3930,7 +3974,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         await this.restartMasterSession();
 
         // Retry with the same prompt (planning or raw) and the new session
-        const retryOpts = this.buildMasterSpawnOptions(promptToSend, undefined, maxTurnsToUse);
+        const retryOpts = this.buildMasterSpawnOptions(promptToSend, timeoutToUse, maxTurnsToUse);
         // Re-inject conversation history into retry opts as well
         if (conversationContext) {
           retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
@@ -4240,6 +4284,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         streamTaskClass === 'complex-task'
           ? MESSAGE_MAX_TURNS_PLANNING
           : streamClassification.maxTurns;
+      // Derive timeout from the actual turns used (complex-task overrides to planning turns)
+      const streamTimeoutToUse =
+        streamTaskClass === 'complex-task'
+          ? turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING)
+          : streamClassification.timeout;
 
       if (streamTaskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation (stream)');
@@ -4248,7 +4297,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       }
 
       // Stream message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(streamPromptToSend, undefined, streamMaxTurns);
+      const spawnOpts = this.buildMasterSpawnOptions(
+        streamPromptToSend,
+        streamTimeoutToUse,
+        streamMaxTurns,
+      );
       // Inject relevant conversation history into the Master's system prompt (OB-731)
       if (streamConversationContext) {
         spawnOpts.systemPrompt =
@@ -4287,7 +4340,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         // Retry with the same prompt (planning or raw) and the new session (streamed)
         const retryOpts = this.buildMasterSpawnOptions(
           streamPromptToSend,
-          undefined,
+          streamTimeoutToUse,
           streamMaxTurns,
         );
         // Re-inject conversation history into retry opts as well

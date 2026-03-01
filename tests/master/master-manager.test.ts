@@ -171,14 +171,29 @@ describe('MasterManager', () => {
             lower.includes(kw),
           )
         )
-          return { class: 'complex-task' as const, maxTurns: 5, reason: 'test mock: complex-task' };
+          return {
+            class: 'complex-task' as const,
+            maxTurns: 5,
+            timeout: 5 * 30_000,
+            reason: 'test mock: complex-task',
+          };
         if (
           ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'].some((kw) =>
             lower.includes(kw),
           )
         )
-          return { class: 'tool-use' as const, maxTurns: 10, reason: 'test mock: tool-use' };
-        return { class: 'quick-answer' as const, maxTurns: 3, reason: 'test mock: quick-answer' };
+          return {
+            class: 'tool-use' as const,
+            maxTurns: 10,
+            timeout: 10 * 30_000,
+            reason: 'test mock: tool-use',
+          };
+        return {
+          class: 'quick-answer' as const,
+          maxTurns: 3,
+          timeout: 3 * 30_000,
+          reason: 'test mock: quick-answer',
+        };
       },
     );
   });
@@ -1792,10 +1807,11 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a full-stack web app');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(20);
+        expect(result.timeout).toBe(20 * 30_000); // 600_000ms = 10 min
         expect(result.reason).toBe('full-stack app requires multi-step planning');
       });
 
-      it('returns AI-suggested maxTurns in the result', async () => {
+      it('returns AI-suggested maxTurns and derived timeout in the result', async () => {
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
           stdout:
@@ -1807,11 +1823,26 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a HTML Preview');
         expect(result.class).toBe('tool-use');
         expect(result.maxTurns).toBe(15);
+        expect(result.timeout).toBe(15 * 30_000); // 450_000ms
       });
 
       it('result has a reason field', async () => {
         const result = await masterManager.classifyTask('what is this project?');
         expect(typeof result.reason).toBe('string');
+      });
+
+      it('returns per-class timeout derived from maxTurns (keyword heuristics)', async () => {
+        const quick = await masterManager.classifyTask('what is this project?');
+        expect(quick.class).toBe('quick-answer');
+        expect(quick.timeout).toBe(5 * 30_000); // 150_000ms
+
+        const toolUse = await masterManager.classifyTask('generate a config file');
+        expect(toolUse.class).toBe('tool-use');
+        expect(toolUse.timeout).toBe(15 * 30_000); // 450_000ms
+
+        const complex = await masterManager.classifyTask('implement user authentication');
+        expect(complex.class).toBe('complex-task');
+        expect(complex.timeout).toBe(25 * 30_000); // 750_000ms
       });
     });
 
@@ -1896,6 +1927,8 @@ describe('MasterManager', () => {
         mockSpawn.mockReset();
         const updated = await masterManager.classifyTask(msg);
         expect(updated.maxTurns).toBeGreaterThan(originalMaxTurns);
+        // Timeout should track the bumped maxTurns
+        expect(updated.timeout).toBe(updated.maxTurns * 30_000);
       });
     });
 
@@ -1951,6 +1984,8 @@ describe('MasterManager', () => {
         // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(12);
+        // Timeout is derived from AI-classified maxTurns: 12 × 30s = 360s
+        expect(taskCall?.timeout).toBe(12 * 30_000);
 
         expect(response).toBe('preview.html has been created.');
       });
@@ -2023,6 +2058,8 @@ describe('MasterManager', () => {
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
         expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
+        // Timeout derived from planning turns: 25 × 30s = 750s
+        expect(planningCall?.timeout).toBe(25 * 30_000);
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -2066,8 +2103,65 @@ describe('MasterManager', () => {
         // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(15);
+        // Timeout derived from keyword-fallback turns: 15 × 30s = 450s
+        expect(taskCall?.timeout).toBe(15 * 30_000);
 
         expect(response).toBe('config.json generated.');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Classification escalation guard — quick-answer must never be escalated
+    // -----------------------------------------------------------------------
+    describe('classification escalation guard', () => {
+      let memoryManager: MemoryManager;
+
+      beforeEach(() => {
+        MasterManager.prototype.classifyTask = _originalClassifyTask;
+        mockSpawn.mockRejectedValue(new Error('classifier disabled in tests'));
+
+        // Create a MasterManager with memory so escalation logic can query learnings
+        memoryManager = new MemoryManager(':memory:');
+        masterManager = new MasterManager({
+          workspacePath: testWorkspace,
+          masterTool,
+          discoveredTools,
+          skipAutoExploration: true,
+          memory: memoryManager,
+        });
+      });
+
+      it('does NOT escalate quick-answer even when learned data favors tool-use', async () => {
+        // Seed learnings: tool-use has high success rate
+        vi.spyOn(memoryManager, 'getLearnedParams').mockResolvedValue({
+          model: 'tool-use',
+          success_rate: 0.8,
+          avg_turns: 3,
+          total_tasks: 50,
+        });
+
+        // "what is this project?" classifies as quick-answer by keywords
+        const result = await masterManager.classifyTask('what is this project?');
+        expect(result.class).toBe('quick-answer');
+        expect(result.maxTurns).toBe(5);
+        expect(result.timeout).toBe(5 * 30_000);
+      });
+
+      it('still escalates tool-use to complex-task when learned data supports it', async () => {
+        // Seed learnings: complex-task has high success rate
+        vi.spyOn(memoryManager, 'getLearnedParams').mockResolvedValue({
+          model: 'complex-task',
+          success_rate: 0.7,
+          avg_turns: 10,
+          total_tasks: 30,
+        });
+
+        // "generate a config file" classifies as tool-use by keywords
+        const result = await masterManager.classifyTask('generate a config file');
+        expect(result.class).toBe('complex-task');
+        expect(result.maxTurns).toBe(25);
+        expect(result.timeout).toBe(25 * 30_000);
+        expect(result.reason).toContain('escalated');
       });
     });
 

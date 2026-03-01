@@ -683,6 +683,7 @@ export const ClassificationCacheEntrySchema = z.object({
   result: z.object({
     class: z.enum(['quick-answer', 'tool-use', 'complex-task']),
     maxTurns: z.number().int().positive(),
+    timeout: z.number().int().positive(),
     reason: z.string(),
   }),
 

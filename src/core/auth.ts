@@ -64,6 +64,7 @@ export class AuthService {
   }
 
   constructor(config: AuthConfig) {
+    const rawCount = config.whitelist.length;
     this.whitelist = AuthService.buildWhitelist(config.whitelist);
     this.prefix = config.prefix;
 
@@ -80,12 +81,20 @@ export class AuthService {
     logger.info(
       {
         whitelistedNumbers: this.whitelist.size,
+        rawEntries: rawCount,
         prefix: this.prefix,
         allowPatterns: filter.allowPatterns.length,
         denyPatterns: filter.denyPatterns.length,
       },
       'Auth service initialized',
     );
+
+    if (rawCount !== this.whitelist.size) {
+      logger.warn(
+        { rawEntries: rawCount, normalizedEntries: this.whitelist.size },
+        'Whitelist count changed after normalization — some entries were non-numeric or duplicates',
+      );
+    }
 
     if (this.whitelist.size === 0) {
       logger.warn(

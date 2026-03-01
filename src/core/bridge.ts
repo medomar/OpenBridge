@@ -324,16 +324,6 @@ export class Bridge {
       }
     }
 
-    // Wire McpRegistry into connectors that support the MCP management API (e.g. WebChat)
-    if (this.mcpRegistry) {
-      for (const connector of this.connectors) {
-        const c = connector as { setMcpRegistry?: (r: McpRegistry) => void };
-        if (typeof c.setMcpRegistry === 'function') {
-          c.setMcpRegistry(this.mcpRegistry);
-        }
-      }
-    }
-
     // Start agent status broadcasting to WebChat dashboard (2s poll — best-effort)
     if (this.memory) {
       this.agentStatusInterval = setInterval(() => {
