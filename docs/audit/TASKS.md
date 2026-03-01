@@ -34,6 +34,13 @@
 
 No active tasks. All 652 tasks across 73 phases have been completed and archived.
 
-**Next development cycle:** See [FUTURE.md](FUTURE.md) for planned features (RAG/knowledge retrieval, MCP management UI, and more).
+**Next development cycle:** Marketplace Development Track (v0.0.9 — v0.0.12).
+
+- Sprint 1 (v0.0.9): Classification + SPAWN response fixes (OB-F76–F78), code audit profile (OB-F57), exploration bug fixes (OB-F58–F65), data cleanup (OB-F66–F67) — ~34 tasks
+- Sprint 2 (v0.0.10): RAG knowledge retrieval (OB-F48), env var protection (OB-F70) — ~42 tasks
+- Sprint 3 (v0.0.11): Output sharing (OB-F68), user consent (OB-F71) — ~20 tasks
+- Sprint 4 (v0.0.12): Deep Mode (OB-F56), WebChat modernization (OB-F73–F75, Phases 88–92), tunnel + ephemeral apps (OB-F69, Phases 82–84), document visibility (OB-F72, Phase 87), Docker sandbox (OB-193) — ~160 tasks
+
+See [FUTURE.md](FUTURE.md) for detailed task breakdowns and [ROADMAP.md](../ROADMAP.md) for version milestones.
 
 ---
