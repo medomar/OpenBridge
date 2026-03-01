@@ -236,19 +236,21 @@ function setupMinimalExplorationMocks(
   });
 
   // Mock stream for both exploration and message handling.
-  // Exploration uses stream() and writes workspace-map.json on the first call.
+  // Exploration uses stream() — returns workspace map JSON in stdout (OB-838).
   let streamCallCount = 0;
   mockStream.mockImplementation(async function* (opts: { prompt: string }) {
     streamCallCount++;
     const query = opts.prompt.toLowerCase();
 
-    // First stream call is exploration — write workspace-map.json to simulate Master AI
-    if (streamCallCount === 1 && opts.prompt.includes('workspace-map.json')) {
-      const mapPath = join(workspacePath, '.openbridge', 'workspace-map.json');
-      await writeFile(mapPath, JSON.stringify(workspaceMaps[scenario], null, 2), 'utf-8');
-      yield 'Exploring workspace...';
+    // First stream call is exploration — return workspace map JSON in stdout (OB-838)
+    if (
+      streamCallCount === 1 &&
+      opts.prompt.includes('output ONLY the workspace map as a JSON object')
+    ) {
+      const mapJson = JSON.stringify(workspaceMaps[scenario]);
+      yield mapJson;
       return {
-        stdout: 'Exploration complete.',
+        stdout: mapJson,
         stderr: '',
         exitCode: 0,
         retryCount: 0,

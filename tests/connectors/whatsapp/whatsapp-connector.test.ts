@@ -583,48 +583,9 @@ describe('WhatsAppConnector', () => {
       expect(err.message).toContain('max attempts');
     });
 
-    // This test uses real timers in its own describe block to avoid the
-    // fake→real timer switch that corrupts mock state on Node 22 CI, and
-    // the fake-timer microtask deadlock on Node 24 CI.
-    describe('reconnect counter reset (real timers)', () => {
-      beforeEach(() => {
-        vi.useRealTimers();
-      });
-
-      it('resets reconnect attempt counter on successful reconnect', async () => {
-        const connector = buildConnector({
-          reconnect: {
-            enabled: true,
-            maxAttempts: 5,
-            initialDelayMs: 10,
-            maxDelayMs: 10,
-            backoffFactor: 1,
-          },
-        });
-        await connector.initialize();
-        const firstClient = mockClientInstance;
-
-        // First successful connection
-        firstClient._trigger('ready');
-        expect(connector.isConnected()).toBe(true);
-
-        // Disconnect — schedules reconnect timer (10ms)
-        firstClient._trigger('disconnected', 'reason');
-        expect(connector.isConnected()).toBe(false);
-
-        // Wait for reconnect: timer(10ms) + async destroy + async createAndStartClient.
-        // Poll until a new client is created (mocks resolve instantly, just need microtasks).
-        const deadline = Date.now() + 5000;
-        while (mockClientInstance === firstClient && Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 20));
-        }
-        expect(mockClientInstance).not.toBe(firstClient);
-
-        // The new client fires ready — reconnectAttempt should reset to 0
-        mockClientInstance._trigger('ready');
-        expect(connector.isConnected()).toBe(true);
-      }, 10_000);
-    });
+    // NOTE: The "resets reconnect attempt counter on successful reconnect" test
+    // lives in whatsapp-connector-real-timers.test.ts to avoid the fake→real
+    // timer switch that corrupts the module-mock registry on Node 22/24.
   });
 
   // -----------------------------------------------------------------------
@@ -633,7 +594,6 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
-      vi.useRealTimers(); // Avoid fake-timer microtask delays on CI runners
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
@@ -645,7 +605,7 @@ describe('WhatsAppConnector', () => {
 
       expect(mockClientInstance.getChatById).toHaveBeenCalledWith('+1234567890');
       expect(mockChat.sendStateTyping).toHaveBeenCalledOnce();
-    }, 15_000);
+    });
 
     it('silently skips when not connected', async () => {
       const connector = buildConnector();

@@ -110,6 +110,13 @@ describe('generateMasterSystemPrompt', () => {
     const prompt = generateMasterSystemPrompt(context);
     expect(prompt).toContain('No AI tools discovered');
   });
+
+  it('should include turn-budget warning instructions', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).toContain('Turn-Budget Warnings');
+    expect(prompt).toContain('[INCOMPLETE: step X/Y]');
+    expect(prompt).toContain('system can retry with a higher budget');
+  });
 });
 
 describe('DotFolderManager system prompt methods', () => {

@@ -60,6 +60,8 @@ export const WorkerRecordSchema = z.object({
     .optional(),
   /** Error message (if failed or cancelled) */
   error: z.string().optional(),
+  /** Number of worker-level retries attempted (distinct from AgentRunner's internal retries) */
+  workerRetries: z.number().int().nonnegative().optional(),
 });
 
 export type WorkerRecord = z.infer<typeof WorkerRecordSchema>;
@@ -75,6 +77,28 @@ export const WorkersRegistrySchema = z.object({
 });
 
 export type WorkersRegistry = z.infer<typeof WorkersRegistrySchema>;
+
+// ── Worker Stats ────────────────────────────────────────────────
+
+/** Breakdown stats for a profile or model */
+const WorkerGroupStatsSchema = z.object({
+  total: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1),
+  avgDurationMs: z.number().nonnegative(),
+});
+
+/** Aggregated worker statistics */
+export const WorkerStatsSchema = z.object({
+  totalWorkers: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+  avgDurationMs: z.number().nonnegative(),
+  byProfile: z.record(z.string(), WorkerGroupStatsSchema),
+  byModel: z.record(z.string(), WorkerGroupStatsSchema),
+});
+
+export type WorkerStats = z.infer<typeof WorkerStatsSchema>;
 
 // ── Worker Registry ─────────────────────────────────────────────
 
@@ -97,6 +121,8 @@ export const DEFAULT_MAX_CONCURRENT_WORKERS = 5;
 export class WorkerRegistry {
   private workers: Map<string, WorkerRecord> = new Map();
   private readonly maxConcurrentWorkers: number;
+  /** FIFO queue of resolvers waiting for a worker slot to free up */
+  private slotWaiters: Array<() => void> = [];
 
   constructor(opts?: { maxConcurrentWorkers?: number }) {
     this.maxConcurrentWorkers = opts?.maxConcurrentWorkers ?? DEFAULT_MAX_CONCURRENT_WORKERS;
@@ -167,6 +193,7 @@ export class WorkerRegistry {
     worker.result = result;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
   }
 
   /**
@@ -184,6 +211,7 @@ export class WorkerRegistry {
     worker.error = error;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
   }
 
   /**
@@ -200,6 +228,46 @@ export class WorkerRegistry {
     worker.error = error;
     worker.pid = undefined; // Process no longer running
     this.workers.set(workerId, worker);
+    this.notifySlotWaiters();
+  }
+
+  /**
+   * Wait for a worker slot to become available.
+   * Returns a Promise that resolves when a running worker completes/fails/cancels.
+   * Waiters are resolved in FIFO order.
+   * @param timeoutMs Maximum time to wait (default: 5 minutes). Throws on timeout.
+   */
+  public waitForSlot(timeoutMs = 300_000): Promise<void> {
+    // If already under capacity, resolve immediately
+    if (!this.isAtCapacity()) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // Remove this waiter from the queue
+        const idx = this.slotWaiters.indexOf(onSlotFree);
+        if (idx !== -1) this.slotWaiters.splice(idx, 1);
+        reject(new Error(`Timed out waiting for worker slot after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      const onSlotFree = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+
+      this.slotWaiters.push(onSlotFree);
+    });
+  }
+
+  /**
+   * Notify the first waiter in the FIFO queue that a slot has freed up.
+   */
+  private notifySlotWaiters(): void {
+    if (this.slotWaiters.length > 0 && !this.isAtCapacity()) {
+      const waiter = this.slotWaiters.shift();
+      waiter?.();
+    }
   }
 
   /**
@@ -286,6 +354,82 @@ export class WorkerRegistry {
    */
   public clear(): void {
     this.workers.clear();
+  }
+
+  /**
+   * Compute aggregated statistics across all workers in the registry.
+   * Breaks down by status, profile, and model.
+   */
+  public getAggregatedStats(): WorkerStats {
+    const workers = this.getAllWorkers();
+    const completed = workers.filter((w) => w.status === 'completed');
+    const failed = workers.filter((w) => w.status === 'failed');
+    const cancelled = workers.filter((w) => w.status === 'cancelled');
+
+    // Average duration across completed + failed (those with results)
+    const withDuration = workers.filter((w) => w.result?.durationMs !== undefined);
+    const avgDurationMs =
+      withDuration.length > 0
+        ? withDuration.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDuration.length
+        : 0;
+
+    // Group by profile
+    const byProfile: Record<string, { total: number; successRate: number; avgDurationMs: number }> =
+      {};
+    const profileGroups = new Map<string, WorkerRecord[]>();
+    for (const w of workers) {
+      const profile = w.taskManifest.profile ?? 'unknown';
+      const group = profileGroups.get(profile) ?? [];
+      group.push(w);
+      profileGroups.set(profile, group);
+    }
+    for (const [profile, group] of profileGroups) {
+      const successes = group.filter((w) => w.status === 'completed').length;
+      const withDur = group.filter((w) => w.result?.durationMs !== undefined);
+      const avgDur =
+        withDur.length > 0
+          ? withDur.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDur.length
+          : 0;
+      byProfile[profile] = {
+        total: group.length,
+        successRate: group.length > 0 ? successes / group.length : 0,
+        avgDurationMs: Math.round(avgDur),
+      };
+    }
+
+    // Group by model
+    const byModel: Record<string, { total: number; successRate: number; avgDurationMs: number }> =
+      {};
+    const modelGroups = new Map<string, WorkerRecord[]>();
+    for (const w of workers) {
+      const model = w.taskManifest.model ?? w.result?.model ?? 'unknown';
+      const group = modelGroups.get(model) ?? [];
+      group.push(w);
+      modelGroups.set(model, group);
+    }
+    for (const [model, group] of modelGroups) {
+      const successes = group.filter((w) => w.status === 'completed').length;
+      const withDur = group.filter((w) => w.result?.durationMs !== undefined);
+      const avgDur =
+        withDur.length > 0
+          ? withDur.reduce((sum, w) => sum + w.result!.durationMs, 0) / withDur.length
+          : 0;
+      byModel[model] = {
+        total: group.length,
+        successRate: group.length > 0 ? successes / group.length : 0,
+        avgDurationMs: Math.round(avgDur),
+      };
+    }
+
+    return {
+      totalWorkers: workers.length,
+      completed: completed.length,
+      failed: failed.length,
+      cancelled: cancelled.length,
+      avgDurationMs: Math.round(avgDurationMs),
+      byProfile,
+      byModel,
+    };
   }
 
   /**

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { ConversationEntry } from './index.js';
 import type { AgentRunner } from '../core/agent-runner.js';
+import { sanitizeFts5Query } from './retrieval.js';
 
 // ---------------------------------------------------------------------------
 // Raw row shape returned by better-sqlite3
@@ -29,24 +30,6 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
 }
 
 // ---------------------------------------------------------------------------
-// FTS5 query sanitization
-// ---------------------------------------------------------------------------
-
-/**
- * Sanitize a user-provided string for use in an FTS5 MATCH expression.
- * Strips special FTS5 syntax characters and wraps each token in double quotes.
- * Returns an empty string if no usable tokens remain.
- */
-function sanitizeFts5Query(raw: string): string {
-  // Remove FTS5 operators and special characters
-  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
-  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
-  if (tokens.length === 0) return '';
-  // Quote each token to prevent FTS5 syntax errors
-  return tokens.map((t) => `"${t}"`).join(' ');
-}
-
-// ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
 
@@ -59,8 +42,8 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
   const createdAt = msg.created_at ?? now;
 
   const insertConv = db.prepare(`
-    INSERT INTO conversations (session_id, role, content, channel, user_id, created_at)
-    VALUES (@session_id, @role, @content, @channel, @user_id, @created_at)
+    INSERT INTO conversations (session_id, role, content, channel, user_id, created_at, title)
+    VALUES (@session_id, @role, @content, @channel, @user_id, @created_at, @title)
   `);
 
   const insertFts = db.prepare(`
@@ -68,7 +51,20 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
     VALUES (?, ?)
   `);
 
+  const countUserMessages = db.prepare(
+    `SELECT COUNT(*) AS c FROM conversations WHERE session_id = ? AND role = 'user'`,
+  );
+
   db.transaction(() => {
+    // Set title on the first user message of a session (truncated to 50 chars)
+    let title: string | null = null;
+    if (msg.role === 'user') {
+      const { c } = countUserMessages.get(msg.session_id) as { c: number };
+      if (c === 0) {
+        title = msg.content.slice(0, 50);
+      }
+    }
+
     const result = insertConv.run({
       session_id: msg.session_id,
       role: msg.role,
@@ -76,6 +72,7 @@ export function recordMessage(db: Database.Database, msg: ConversationEntry): vo
       channel: msg.channel ?? null,
       user_id: msg.user_id ?? null,
       created_at: createdAt,
+      title,
     });
     insertFts.run(result.lastInsertRowid, msg.content);
   })();
@@ -127,6 +124,153 @@ export function getSessionHistory(
        LIMIT ?`,
     )
     .all(sessionId, limit) as ConversationRow[];
+
+  // Return in chronological order (oldest → newest)
+  return rows.reverse().map(rowToEntry);
+}
+
+// ---------------------------------------------------------------------------
+// Session listing
+// ---------------------------------------------------------------------------
+
+/** Aggregated summary of a single conversation session. */
+export interface SessionSummary {
+  session_id: string;
+  /** Session title — populated once the `title` column is added via migration (OB-1031). Null until then. */
+  title: string | null;
+  first_message_at: string;
+  last_message_at: string;
+  message_count: number;
+  channel: string | null;
+  user_id: string | null;
+}
+
+/**
+ * Return a paginated list of distinct conversation sessions ordered by most recent activity.
+ * Groups all messages by `session_id` and aggregates metadata.
+ */
+export function listSessions(db: Database.Database, limit = 20, offset = 0): SessionSummary[] {
+  interface SessionRow {
+    session_id: string;
+    title: string | null;
+    first_message_at: string;
+    last_message_at: string;
+    message_count: number;
+    channel: string | null;
+    user_id: string | null;
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT
+         session_id,
+         MAX(title)      AS title,
+         MIN(created_at) AS first_message_at,
+         MAX(created_at) AS last_message_at,
+         COUNT(*)        AS message_count,
+         MAX(channel)    AS channel,
+         MAX(user_id)    AS user_id
+       FROM conversations
+       GROUP BY session_id
+       ORDER BY last_message_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as SessionRow[];
+
+  return rows.map((r) => ({
+    session_id: r.session_id,
+    title: r.title,
+    first_message_at: r.first_message_at,
+    last_message_at: r.last_message_at,
+    message_count: r.message_count,
+    channel: r.channel,
+    user_id: r.user_id,
+  }));
+}
+
+/**
+ * FTS5 search over conversations returning session-level results grouped by `session_id`.
+ * Sessions are ranked by the number of matching messages (most relevant first),
+ * then by most-recent activity. Returns up to `limit` sessions (default 10).
+ */
+export function searchSessions(db: Database.Database, query: string, limit = 10): SessionSummary[] {
+  if (!query.trim()) return [];
+
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  interface SessionSearchRow {
+    session_id: string;
+    title: string | null;
+    first_message_at: string;
+    last_message_at: string;
+    message_count: number;
+    channel: string | null;
+    user_id: string | null;
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT
+         matched.session_id,
+         all_msgs.title,
+         all_msgs.first_message_at,
+         all_msgs.last_message_at,
+         all_msgs.message_count,
+         all_msgs.channel,
+         all_msgs.user_id
+       FROM (
+         SELECT c.session_id, COUNT(*) AS match_count
+         FROM conversations c
+         INNER JOIN (
+           SELECT rowid FROM conversations_fts WHERE conversations_fts MATCH ?
+         ) fts ON c.id = fts.rowid
+         GROUP BY c.session_id
+       ) matched
+       INNER JOIN (
+         SELECT
+           session_id,
+           MAX(title)      AS title,
+           MIN(created_at) AS first_message_at,
+           MAX(created_at) AS last_message_at,
+           COUNT(*)        AS message_count,
+           MAX(channel)    AS channel,
+           MAX(user_id)    AS user_id
+         FROM conversations
+         GROUP BY session_id
+       ) all_msgs ON matched.session_id = all_msgs.session_id
+       ORDER BY matched.match_count DESC, all_msgs.last_message_at DESC
+       LIMIT ?`,
+    )
+    .all(sanitized, limit) as SessionSearchRow[];
+
+  return rows.map((r) => ({
+    session_id: r.session_id,
+    title: r.title,
+    first_message_at: r.first_message_at,
+    last_message_at: r.last_message_at,
+    message_count: r.message_count,
+    channel: r.channel,
+    user_id: r.user_id,
+  }));
+}
+
+/**
+ * Return the most recent `limit` messages across all sessions filtered to
+ * 'user' and 'master' roles, ordered chronologically (oldest → newest).
+ * Used by `triggerMemoryUpdate()` to provide conversation context to the
+ * stateless --print agent.
+ */
+export function getRecentMessages(db: Database.Database, limit = 20): ConversationEntry[] {
+  const rows = db
+    .prepare(
+      `SELECT id, session_id, role, content, channel, user_id, created_at
+       FROM conversations
+       WHERE role IN ('user', 'master')
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as ConversationRow[];
 
   // Return in chronological order (oldest → newest)
   return rows.reverse().map(rowToEntry);

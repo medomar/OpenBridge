@@ -1,3 +1,6 @@
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import pino from 'pino';
 
 // Single root logger with one transport shared across the entire app.
@@ -7,7 +10,27 @@ import pino from 'pino';
 // With a singleton + child(), only one transport exists → one handler total.
 const initialLevel = process.env['LOG_LEVEL'] ?? 'info';
 
+/** Returns true when running inside a pkg-compiled binary. */
+function isPackagedMode(): boolean {
+  return (process as { pkg?: unknown }).pkg !== undefined;
+}
+
+/**
+ * Returns the logs directory for file transport.
+ * In packaged mode: ~/.openbridge/logs/
+ * In dev/production mode: not used (logs go to stdout).
+ */
+function getLogDir(): string {
+  const logsDir = join(homedir(), '.openbridge', 'logs');
+  mkdirSync(logsDir, { recursive: true });
+  return logsDir;
+}
+
 function createRootLogger(): pino.Logger {
+  if (isPackagedMode()) {
+    const logFile = join(getLogDir(), 'openbridge.log');
+    return pino({ level: initialLevel }, pino.destination({ dest: logFile, sync: false }));
+  }
   if (process.env['NODE_ENV'] === 'production') {
     return pino({ level: initialLevel });
   }

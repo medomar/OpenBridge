@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import {
@@ -19,7 +20,12 @@ import { registerBuiltInConnectors } from './connectors/index.js';
 import { registerBuiltInProviders } from './providers/index.js';
 import { scanForAITools } from './discovery/index.js';
 import { MasterManager } from './master/index.js';
+import { createAdapterRegistry } from './core/adapter-registry.js';
+import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
+import { isPackagedMode, getConfigDir, checkForUpdate } from './cli/utils.js';
+import { runInit } from './cli/init.js';
+import { runHealthCheck } from './core/health.js';
 
 interface PackageJson {
   version: string;
@@ -155,9 +161,27 @@ async function startV2Flow(
     throw new Error('No Master AI tool available for V2 flow');
   }
 
+  // Provider-aware master selection: map the discovered master tool name to the registered
+  // provider factory that will handle its processMessage() calls.
+  // Supported: 'claude' / 'claude-code' → 'claude-code', 'codex' → 'codex'.
+  // Fail early with a clear error if the selected master has no matching provider.
+  const MASTER_PROVIDER_MAP: Record<string, string> = {
+    claude: 'claude-code',
+    'claude-code': 'claude-code',
+    codex: 'codex',
+  };
+  const masterProviderName = MASTER_PROVIDER_MAP[selectedMaster.name];
+  if (masterProviderName === undefined) {
+    throw new Error(
+      `No AI provider available for master tool '${selectedMaster.name}'. ` +
+        `Supported options: 'claude' (requires Claude Code CLI) or 'codex' (requires Codex CLI — authenticate via 'codex login' or OPENAI_API_KEY).`,
+    );
+  }
+
   logger.info(
     {
       master: selectedMaster.name,
+      provider: masterProviderName,
       totalTools: scanResult.totalDiscovered,
       cliTools: scanResult.cliTools.length,
       vscodeExtensions: scanResult.vscodeExtensions.length,
@@ -169,7 +193,16 @@ async function startV2Flow(
   const config = await loadConfig();
   setLogLevel(process.env['LOG_LEVEL'] ?? config.logLevel);
   injectDevConnectors(config);
-  const bridge = new Bridge(config, { configPath, workspacePath: resolvedWorkspacePath });
+
+  // Create MCP registry from config — only when MCP is enabled and servers are configured
+  const mcpServers = v2Config.mcp?.enabled !== false ? (v2Config.mcp?.servers ?? []) : [];
+  const mcpRegistry = new McpRegistry(configPath, mcpServers);
+
+  const bridge = new Bridge(config, {
+    configPath,
+    workspacePath: resolvedWorkspacePath,
+    mcpRegistry,
+  });
 
   // Register built-in plugins
   const registry = bridge.getRegistry();
@@ -183,11 +216,18 @@ async function startV2Flow(
   // Step 3: Create Master AI and wire into bridge BEFORE starting
   logger.info({ workspacePath: resolvedWorkspacePath }, 'Launching Master AI...');
 
+  // Resolve CLI adapter based on the discovered master tool
+  const adapterRegistry = createAdapterRegistry();
+  const cliAdapter = adapterRegistry.getForTool(selectedMaster);
+
   const masterManager = new MasterManager({
     workspacePath: resolvedWorkspacePath,
     masterTool: selectedMaster,
     discoveredTools: scanResult.cliTools,
     memory: bridge.getMemory() ?? undefined,
+    adapter: cliAdapter,
+    adapterRegistry,
+    mcpServers: v2Config.mcp?.enabled !== false ? (v2Config.mcp?.servers ?? []) : [],
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
@@ -207,18 +247,31 @@ async function startV2Flow(
     logger.info('Email config wired into bridge');
   }
 
-  // Step 4: Start Master AI BEFORE bridge — so it's ready when messages arrive.
+  // Step 4: Start bridge first — this initializes MemoryManager (SQLite) via memory.init().
+  // MasterManager holds a reference to the MemoryManager but must not use it until init() completes.
+  // Running bridge.start() first eliminates the race condition where MasterManager reads from
+  // the DB before it is open (this.db would be null, causing 'MemoryManager not initialised' errors).
+  await bridge.start();
+
+  // Re-sync MasterManager's memory reference after bridge.start() —
+  // if MemoryManager.init() failed, bridge.start() sets bridge.memory to null,
+  // but MasterManager still holds the old (uninitialised) reference.
+  masterManager.memory = bridge.getMemory();
+
+  // Wire MCP servers into the health endpoint (runs after bridge.start() initialises the health server)
+  if (v2Config.mcp?.enabled !== false && (v2Config.mcp?.servers ?? []).length > 0) {
+    bridge.setMcpServers(v2Config.mcp?.servers ?? []);
+  }
+
+  // Step 5: Start Master AI in the background — bridge is already serving messages.
   // This loads workspace-map.json and transitions from 'idle' to 'ready'.
-  // Runs in parallel with bridge.start() so neither blocks the other.
-  const masterStartPromise = masterManager.start().catch((error) => {
+  // masterManager.start() can take minutes (workspace exploration) so we don't await it.
+  masterManager.start().catch((error: unknown) => {
     logger.error(
       { err: error },
       'Master AI exploration failed — bridge continues running without workspace context',
     );
   });
-
-  // Step 5: Start bridge (connectors + queue handler)
-  await Promise.all([masterStartPromise, bridge.start()]);
 
   // Step 6: Start remote workspace polling (no-op for local workspaces)
   workspaceManager.startPolling();
@@ -277,6 +330,25 @@ async function main(): Promise<void> {
 
   logger.info({ headless: isHeadless }, 'OpenBridge starting...');
 
+  // Packaged mode: auto-run the setup wizard on first launch when config.json is absent
+  if (isPackagedMode()) {
+    const configDir = getConfigDir();
+    const firstRunConfigPath = path.join(configDir, 'config.json');
+    if (!existsSync(firstRunConfigPath)) {
+      process.stdout.write('First-time setup detected — running setup wizard...\n');
+      await runInit({ outputPath: firstRunConfigPath });
+    }
+
+    // Non-blocking auto-update check — fires once per session, never delays startup
+    void checkForUpdate().then((update) => {
+      if (update?.available) {
+        process.stdout.write(
+          `A new version of OpenBridge is available: v${update.latest} (you have v${update.current}). Download: ${update.downloadUrl}\n`,
+        );
+      }
+    });
+  }
+
   let bridge: Bridge | null = null;
   let workspaceManager: WorkspaceManager | null = null;
   let configPath: string | undefined;
@@ -307,10 +379,22 @@ async function main(): Promise<void> {
         return;
       }
       shutdownInProgress = true;
+      console.log('\nShutting down gracefully... please wait');
       logger.info('Shutting down...');
       workspaceManager?.stopPolling();
       if (bridge) {
-        await bridge.stop();
+        await Promise.race([
+          bridge.stop(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Shutdown timeout')), 10_000),
+          ),
+        ]).catch((err: unknown) => {
+          if (err instanceof Error && err.message === 'Shutdown timeout') {
+            console.error('Shutdown timeout exceeded (10s) — forcing exit');
+            process.exit(1);
+          }
+          throw err;
+        });
       }
       process.exit(0);
     };
@@ -334,4 +418,16 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Handle --version flag for the packaged binary entry point
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  process.stdout.write(OPENBRIDGE_VERSION + '\n');
+  // Defer exit to let Pino's sonic-boom stream finish initialization
+  setTimeout(() => process.exit(0), 50);
+} else if (process.argv.includes('--health')) {
+  // Handle --health flag for the packaged binary entry point
+  const result = runHealthCheck();
+  process.stdout.write(JSON.stringify(result) + '\n');
+  setTimeout(() => process.exit(result.passed ? 0 : 1), 50);
+} else {
+  void main();
+}

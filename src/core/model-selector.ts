@@ -2,25 +2,44 @@
  * Model Selection Strategy
  *
  * Given a task description and tool profile, recommends a model.
+ * Uses capability tiers (fast / balanced / powerful) resolved through
+ * the ModelRegistry to stay provider-agnostic.
  *
  * Rules:
- * - read-only tasks → haiku (fast, cheap — exploration, information gathering)
- * - code-edit tasks → sonnet (balanced — implementation, modification)
- * - complex reasoning → opus (best — architecture, debugging, multi-step logic)
+ * - read-only tasks → fast tier (exploration, information gathering)
+ * - code-edit tasks → balanced tier (implementation, modification)
+ * - complex reasoning → powerful tier (architecture, debugging, multi-step logic)
  *
  * The Master AI can call this or ignore it. An explicit model in the
  * TaskManifest always takes priority over the recommendation.
  */
 
-import type { ModelAlias } from './agent-runner.js';
 import type { TaskManifest } from '../types/agent.js';
 import type { MemoryManager } from '../memory/index.js';
+import type { LearningEntry } from '../types/master.js';
+import { createModelRegistry } from './model-registry.js';
+import type { ModelTier, ModelRegistry } from './model-registry.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('model-selector');
 
+/** Lazily-created default registry (Claude) for backward compatibility */
+let defaultRegistry: ModelRegistry | null = null;
+function getDefaultRegistry(): ModelRegistry {
+  if (!defaultRegistry) {
+    defaultRegistry = createModelRegistry('claude');
+  }
+  return defaultRegistry;
+}
+
+/** Resolve a tier to a model ID, falling back through tiers if needed */
+function resolveTier(tier: ModelTier, registry: ModelRegistry): string {
+  const entry = registry.resolveWithFallback(tier);
+  return entry?.id ?? tier;
+}
+
 /**
- * Keywords that signal complex reasoning (→ opus).
+ * Keywords that signal complex reasoning (→ powerful tier).
  * Matched case-insensitively against the task description.
  */
 const COMPLEX_KEYWORDS = [
@@ -42,7 +61,7 @@ const COMPLEX_KEYWORDS = [
 ] as const;
 
 /**
- * Keywords that signal code editing (→ sonnet).
+ * Keywords that signal code editing (→ balanced tier).
  * Matched case-insensitively against the task description.
  */
 const CODE_EDIT_KEYWORDS = [
@@ -64,8 +83,8 @@ const CODE_EDIT_KEYWORDS = [
 ] as const;
 
 export interface ModelRecommendation {
-  /** The recommended model alias */
-  model: ModelAlias;
+  /** The recommended model ID (provider-specific, resolved from tier) */
+  model: string;
   /** Why this model was chosen */
   reason: string;
 }
@@ -73,21 +92,32 @@ export interface ModelRecommendation {
 /**
  * Recommend a model based on the tool profile name.
  *
- * - 'read-only'    → haiku (fast, cheap)
- * - 'code-edit'    → sonnet (balanced)
- * - 'full-access'  → sonnet (balanced — full-access is a capability, not complexity)
- * - unknown        → sonnet (safe default)
+ * - 'read-only'    → fast tier (cheap, fast)
+ * - 'code-edit'    → balanced tier (implementation)
+ * - 'full-access'  → balanced tier (capability, not complexity)
+ * - unknown        → balanced tier (safe default)
  */
-export function recommendByProfile(profile: string): ModelRecommendation {
+export function recommendByProfile(profile: string, registry?: ModelRegistry): ModelRecommendation {
+  const reg = registry ?? getDefaultRegistry();
+
   switch (profile) {
     case 'read-only':
-      return { model: 'haiku', reason: 'read-only profile — fast and cheap' };
+      return { model: resolveTier('fast', reg), reason: 'read-only profile — fast and cheap' };
     case 'code-edit':
-      return { model: 'sonnet', reason: 'code-edit profile — balanced for implementation' };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: 'code-edit profile — balanced for implementation',
+      };
     case 'full-access':
-      return { model: 'sonnet', reason: 'full-access profile — balanced default' };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: 'full-access profile — balanced default',
+      };
     default:
-      return { model: 'sonnet', reason: `unknown profile "${profile}" — defaulting to balanced` };
+      return {
+        model: resolveTier('balanced', reg),
+        reason: `unknown profile "${profile}" — defaulting to balanced`,
+      };
   }
 }
 
@@ -95,17 +125,21 @@ export function recommendByProfile(profile: string): ModelRecommendation {
  * Recommend a model based on the task description.
  * Scans for keywords that indicate complexity level.
  *
- * - Complex reasoning keywords → opus
- * - Code editing keywords → sonnet
- * - Everything else (exploration, listing) → haiku
+ * - Complex reasoning keywords → powerful tier
+ * - Code editing keywords → balanced tier
+ * - Everything else (exploration, listing) → fast tier
  */
-export function recommendByDescription(description: string): ModelRecommendation {
+export function recommendByDescription(
+  description: string,
+  registry?: ModelRegistry,
+): ModelRecommendation {
+  const reg = registry ?? getDefaultRegistry();
   const lower = description.toLowerCase();
 
   for (const keyword of COMPLEX_KEYWORDS) {
     if (lower.includes(keyword)) {
       return {
-        model: 'opus',
+        model: resolveTier('powerful', reg),
         reason: `description contains "${keyword}" — complex reasoning`,
       };
     }
@@ -114,17 +148,20 @@ export function recommendByDescription(description: string): ModelRecommendation
   for (const keyword of CODE_EDIT_KEYWORDS) {
     if (lower.includes(keyword)) {
       return {
-        model: 'sonnet',
+        model: resolveTier('balanced', reg),
         reason: `description contains "${keyword}" — code editing`,
       };
     }
   }
 
-  return { model: 'haiku', reason: 'no complexity signals — fast default' };
+  return { model: resolveTier('fast', reg), reason: 'no complexity signals — fast default' };
 }
 
 /** Minimum completed tasks required before trusting learning data. */
 const MIN_TASKS_FOR_LEARNING = 5;
+
+/** Minimum tasks for a specific model before acting on its failure rate. */
+const MIN_TASKS_FOR_AVOIDANCE = 3;
 
 /**
  * Query the learnings store for the best model for a given task type.
@@ -153,7 +190,7 @@ export async function getRecommendedModel(
       'Adaptive model selected from learnings',
     );
     return {
-      model: learned.model as ModelAlias,
+      model: learned.model,
       reason: `learned: ${successPct}% success rate over ${learned.total_tasks} tasks`,
     };
   } catch {
@@ -163,28 +200,147 @@ export async function getRecommendedModel(
 }
 
 /**
+ * If the given model has a >50% failure rate for the task type (with at least
+ * MIN_TASKS_FOR_AVOIDANCE samples), return a ModelRecommendation for a better model.
+ *
+ * Returns null when:
+ * - The model's failure rate is acceptable (≤50%)
+ * - There is insufficient data for the (taskType, model) pair
+ * - No better alternative can be found in learnings
+ */
+export async function avoidHighFailureModel(
+  memory: MemoryManager,
+  taskType: string,
+  currentModel: string,
+): Promise<ModelRecommendation | null> {
+  try {
+    const stats = await memory.getModelStatsForTask(taskType, currentModel);
+    if (!stats || stats.total_tasks < MIN_TASKS_FOR_AVOIDANCE) {
+      return null; // Insufficient data — do not penalise
+    }
+
+    const failureRate = 1 - stats.success_rate;
+    if (failureRate <= 0.5) {
+      return null; // Model is performing acceptably
+    }
+
+    logger.debug(
+      {
+        taskType,
+        currentModel,
+        failureRate: failureRate.toFixed(2),
+        totalTasks: stats.total_tasks,
+      },
+      'Model has >50% failure rate — seeking alternative',
+    );
+
+    // Find the best-performing alternative from learnings
+    const best = await getRecommendedModel(memory, taskType);
+    if (best && best.model !== currentModel) {
+      return {
+        model: best.model,
+        reason: `avoided "${currentModel}" (${(failureRate * 100).toFixed(0)}% failure rate for "${taskType}") — using "${best.model}" instead`,
+      };
+    }
+
+    return null; // No better alternative available
+  } catch {
+    return null; // Non-blocking — caller continues with original model
+  }
+}
+
+/**
+ * Recommend a model based on historical learnings for a specific task type.
+ * Requires 5+ entries for the task type and 3+ uses per model to be statistically meaningful.
+ * Returns null if insufficient data — caller should fall back to heuristics.
+ *
+ * This function is already provider-agnostic: it picks the best model from
+ * actual performance data regardless of provider.
+ */
+export function recommendFromLearnings(
+  taskType: string,
+  learnings: LearningEntry[],
+): ModelRecommendation | null {
+  const filtered = learnings.filter((e) => e.taskType === taskType && e.modelUsed);
+  if (filtered.length < 5) return null;
+
+  // Group by model and compute success rate
+  const modelStats = new Map<string, { total: number; success: number }>();
+  for (const entry of filtered) {
+    const model = entry.modelUsed!;
+    const stats = modelStats.get(model) ?? { total: 0, success: 0 };
+    stats.total++;
+    if (entry.success) stats.success++;
+    modelStats.set(model, stats);
+  }
+
+  // Find the model with the highest success rate (min 3 uses)
+  let bestModel: string | null = null;
+  let bestRate = -1;
+  for (const [model, stats] of modelStats) {
+    if (stats.total < 3) continue;
+    const rate = stats.success / stats.total;
+    if (rate > bestRate) {
+      bestRate = rate;
+      bestModel = model;
+    }
+  }
+
+  if (!bestModel) return null;
+
+  const stats = modelStats.get(bestModel)!;
+  const pct = ((stats.success / stats.total) * 100).toFixed(0);
+
+  logger.debug(
+    { taskType, model: bestModel, successRate: pct, sampleSize: stats.total },
+    'Model recommended from learnings',
+  );
+
+  return {
+    model: bestModel,
+    reason: `historical performance for "${taskType}" tasks: ${pct}% success (${stats.total} samples)`,
+  };
+}
+
+/**
  * Recommend a model for a TaskManifest.
  *
  * Priority:
  * 1. If `manifest.model` is set, return it as-is (explicit override wins)
- * 2. If `manifest.profile` is set, use profile-based recommendation
- * 3. Fall back to description-based recommendation using the prompt
+ * 2. If learnings data is available, use data-driven recommendation
+ * 3. If `manifest.profile` is set, use profile-based recommendation
+ * 4. Fall back to description-based recommendation using the prompt
  *
  * Returns a ModelRecommendation. The caller decides whether to use it.
  */
-export function recommendModel(manifest: TaskManifest): ModelRecommendation {
+export function recommendModel(
+  manifest: TaskManifest,
+  options?: {
+    learnings?: LearningEntry[];
+    taskType?: string;
+    registry?: ModelRegistry;
+  },
+): ModelRecommendation {
+  const registry = options?.registry;
+
   // Explicit model override — respect the caller's choice
   if (manifest.model) {
     logger.debug({ model: manifest.model }, 'Model explicitly set in manifest — using as-is');
     return {
-      model: manifest.model as ModelAlias,
+      model: manifest.model,
       reason: 'explicitly set in manifest',
     };
   }
 
+  // Data-driven recommendation from learnings
+  if (options?.learnings && options.taskType) {
+    const rec = recommendFromLearnings(options.taskType, options.learnings);
+    if (rec) return rec;
+  }
+
   // Profile-based recommendation
   if (manifest.profile) {
-    const rec = recommendByProfile(manifest.profile);
+    const rec = recommendByProfile(manifest.profile, registry);
     logger.debug(
       { profile: manifest.profile, recommended: rec.model },
       'Model recommended by profile',
@@ -193,7 +349,7 @@ export function recommendModel(manifest: TaskManifest): ModelRecommendation {
   }
 
   // Description-based recommendation from the prompt
-  const rec = recommendByDescription(manifest.prompt);
+  const rec = recommendByDescription(manifest.prompt, registry);
   logger.debug({ recommended: rec.model, reason: rec.reason }, 'Model recommended by description');
   return rec;
 }

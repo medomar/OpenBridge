@@ -14,6 +14,8 @@ import {
   MODEL_FALLBACK_CHAIN,
   isValidModel,
   isRateLimitError,
+  isMaxTurnsExhausted,
+  classifyError,
   getNextFallbackModel,
   resolveProfile,
   manifestToSpawnOptions,
@@ -26,10 +28,12 @@ import type { TaskManifest } from '../../src/types/agent.js';
 
 const mockMkdir = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockWriteFile = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockRm = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
 vi.mock('node:fs/promises', () => ({
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  rm: (...args: unknown[]) => mockRm(...args),
 }));
 
 // ── Mock child_process.spawn ────────────────────────────────────────
@@ -94,6 +98,7 @@ beforeEach(() => {
   mockChildren = [];
   mockMkdir.mockClear();
   mockWriteFile.mockClear();
+  mockRm.mockClear();
 });
 
 afterEach(() => {
@@ -1434,35 +1439,47 @@ describe('manifestToSpawnOptions', () => {
     workspacePath: '/tmp/project',
   };
 
-  it('maps basic manifest fields to SpawnOptions', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('maps basic manifest fields to SpawnOptions', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.prompt).toBe('explore the project');
     expect(opts.workspacePath).toBe('/tmp/project');
   });
 
-  it('resolves profile to allowedTools', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' });
+  it('resolves profile to allowedTools', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'read-only',
+    });
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('resolves code-edit profile to code editing tools', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'code-edit' });
+  it('resolves code-edit profile to code editing tools', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'code-edit',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['code-edit'].tools);
   });
 
-  it('resolves full-access profile to full tool set', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'full-access' });
+  it('resolves full-access profile to full tool set', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'full-access',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES['full-access'].tools);
   });
 
-  it('resolves master profile to file management tools without Bash', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'master' });
+  it('resolves master profile to file management tools without Bash', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'master',
+    });
     expect(opts.allowedTools).toEqual(BUILT_IN_PROFILES.master.tools);
     expect(opts.allowedTools?.some((t) => t.startsWith('Bash'))).toBe(false);
   });
 
-  it('explicit allowedTools override profile', () => {
-    const opts = manifestToSpawnOptions({
+  it('explicit allowedTools override profile', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
       ...baseManifest,
       profile: 'read-only',
       allowedTools: ['Read', 'Edit', 'Write'],
@@ -1470,8 +1487,8 @@ describe('manifestToSpawnOptions', () => {
     expect(opts.allowedTools).toEqual(['Read', 'Edit', 'Write']);
   });
 
-  it('passes through model, maxTurns, timeout, retries, retryDelay', () => {
-    const opts = manifestToSpawnOptions({
+  it('passes through model, maxTurns, timeout, retries, retryDelay', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
       ...baseManifest,
       model: 'haiku',
       maxTurns: 10,
@@ -1486,54 +1503,68 @@ describe('manifestToSpawnOptions', () => {
     expect(opts.retryDelay).toBe(5000);
   });
 
-  it('leaves allowedTools undefined when no profile or tools specified', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('leaves allowedTools undefined when no profile or tools specified', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.allowedTools).toBeUndefined();
   });
 
-  it('leaves allowedTools undefined for unrecognized profile', () => {
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'custom-unknown' });
+  it('leaves allowedTools undefined for unrecognized profile', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      ...baseManifest,
+      profile: 'custom-unknown',
+    });
     expect(opts.allowedTools).toBeUndefined();
   });
 
-  it('resolves custom profile when provided', () => {
+  it('resolves custom profile when provided', async () => {
     const customProfiles = {
       'test-runner': {
         name: 'test-runner',
         tools: ['Read', 'Glob', 'Grep', 'Bash(npm:test)'],
       },
     };
-    const opts = manifestToSpawnOptions(
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
       { ...baseManifest, profile: 'test-runner' },
       customProfiles,
     );
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep', 'Bash(npm:test)']);
   });
 
-  it('resolves previously unknown profile when custom profiles are provided', () => {
+  it('resolves previously unknown profile when custom profiles are provided', async () => {
     const customProfiles = {
       'doc-writer': {
         name: 'doc-writer',
         tools: ['Read', 'Write', 'Glob'],
       },
     };
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'doc-writer' }, customProfiles);
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
+      { ...baseManifest, profile: 'doc-writer' },
+      customProfiles,
+    );
     expect(opts.allowedTools).toEqual(['Read', 'Write', 'Glob']);
   });
 
-  it('still resolves built-in profiles when custom profiles are provided', () => {
+  it('still resolves built-in profiles when custom profiles are provided', async () => {
     const customProfiles = {
       'test-runner': { name: 'test-runner', tools: ['Read'] },
     };
-    const opts = manifestToSpawnOptions({ ...baseManifest, profile: 'read-only' }, customProfiles);
+    const { spawnOptions: opts } = await manifestToSpawnOptions(
+      { ...baseManifest, profile: 'read-only' },
+      customProfiles,
+    );
     expect(opts.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('does not include session-related fields', () => {
-    const opts = manifestToSpawnOptions(baseManifest);
+  it('does not include session-related fields', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions(baseManifest);
     expect(opts.resumeSessionId).toBeUndefined();
     expect(opts.sessionId).toBeUndefined();
     expect(opts.logFile).toBeUndefined();
+  });
+
+  it('returns a no-op cleanup when no mcpServers specified', async () => {
+    const { cleanup } = await manifestToSpawnOptions(baseManifest);
+    await expect(cleanup()).resolves.toBeUndefined();
   });
 });
 
@@ -1559,6 +1590,9 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    // spawnFromManifest awaits manifestToSpawnOptions (async) before spawning —
+    // yield a microtask so the child is created before resolveChild is called.
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     const result = await promise;
 
@@ -1581,6 +1615,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     await promise;
 
@@ -1600,6 +1635,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     const result = await promise;
 
@@ -1618,6 +1654,7 @@ describe('AgentRunner.spawnFromManifest()', () => {
       retries: 0,
     });
 
+    await Promise.resolve();
     resolveChild(lastChild(), 'done', 0);
     await promise;
 
@@ -1653,6 +1690,9 @@ describe('AgentRunner.streamFromManifest()', () => {
 
     const resultPromise = drainStream(gen);
 
+    // streamFromManifest awaits manifestToSpawnOptions (async) before spawning —
+    // yield a microtask so the child is created before we interact with it.
+    await Promise.resolve();
     const child = lastChild();
     child.stdout.emit('data', Buffer.from('chunk1'));
     child.stdout.emit('data', Buffer.from('chunk2'));
@@ -1680,6 +1720,7 @@ describe('AgentRunner.streamFromManifest()', () => {
     });
 
     const resultPromise = drainStream(gen);
+    await Promise.resolve();
     resolveChild(lastChild(), 'output', 0);
     await resultPromise;
 
@@ -2345,5 +2386,510 @@ describe('Worker Timeout + Cleanup', () => {
     // SIGKILL should NOT be attempted since SIGTERM failed
     await vi.advanceTimersByTimeAsync(5000);
     expect(killSpy).not.toHaveBeenCalledWith('SIGKILL');
+  });
+});
+
+// ── isMaxTurnsExhausted ──────────────────────────────────────────────
+
+describe('isMaxTurnsExhausted', () => {
+  it('detects "max turns reached" in stdout', () => {
+    expect(isMaxTurnsExhausted('Task done.\nmax turns reached')).toBe(true);
+  });
+
+  it('detects "maximum turns reached" in stdout', () => {
+    expect(isMaxTurnsExhausted('maximum turns reached, stopping.')).toBe(true);
+  });
+
+  it('detects "turn limit" in stdout', () => {
+    expect(isMaxTurnsExhausted('Hit turn limit, aborting.')).toBe(true);
+  });
+
+  it('detects "turn budget" in stdout', () => {
+    expect(isMaxTurnsExhausted('Turn budget exhausted.')).toBe(true);
+  });
+
+  it('detects "turns exhausted" in stdout', () => {
+    expect(isMaxTurnsExhausted('All turns exhausted before completing.')).toBe(true);
+  });
+
+  it('detects "max_turns" in stdout', () => {
+    expect(isMaxTurnsExhausted('Reached max_turns limit of 25')).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isMaxTurnsExhausted('MAX TURNS REACHED')).toBe(true);
+    expect(isMaxTurnsExhausted('Turn Limit Exceeded')).toBe(true);
+  });
+
+  it('returns false for normal output', () => {
+    expect(isMaxTurnsExhausted('Task completed successfully.')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(isMaxTurnsExhausted('')).toBe(false);
+  });
+
+  it('returns false for unrelated output mentioning turns', () => {
+    expect(isMaxTurnsExhausted('I made several turns of the code.')).toBe(false);
+  });
+});
+
+// ── classifyError ────────────────────────────────────────────────────
+
+describe('classifyError', () => {
+  describe('rate-limit category', () => {
+    it('classifies "rate limit" in stderr as rate-limit', () => {
+      expect(classifyError('Error: rate limit exceeded', 1)).toBe('rate-limit');
+    });
+
+    it('classifies "rate_limit" in stderr as rate-limit', () => {
+      expect(classifyError('{"error":"rate_limit_error","type":"rate_limit"}', 1)).toBe(
+        'rate-limit',
+      );
+    });
+
+    it('classifies "too many requests" in stderr as rate-limit', () => {
+      expect(classifyError('HTTP 429: Too Many Requests', 1)).toBe('rate-limit');
+    });
+
+    it('classifies "429" in stderr as rate-limit', () => {
+      expect(classifyError('Status code: 429 from API', 1)).toBe('rate-limit');
+    });
+
+    it('classifies "overloaded" in stderr as rate-limit', () => {
+      expect(
+        classifyError('Claude is currently overloaded with requests. Please try again later.', 1),
+      ).toBe('rate-limit');
+    });
+
+    it('classifies "capacity" in stderr as rate-limit', () => {
+      expect(classifyError('Error: no capacity available at this time', 1)).toBe('rate-limit');
+    });
+
+    it('classifies "unavailable" in stderr as rate-limit', () => {
+      expect(classifyError('Model unavailable, please try another', 1)).toBe('rate-limit');
+    });
+
+    it('classifies "model_not_available" in stderr as rate-limit', () => {
+      expect(classifyError('Error: model_not_available for this region', 1)).toBe('rate-limit');
+    });
+
+    it('is case-insensitive for rate-limit patterns', () => {
+      expect(classifyError('RATE LIMIT EXCEEDED', 1)).toBe('rate-limit');
+      expect(classifyError('OVERLOADED', 1)).toBe('rate-limit');
+    });
+  });
+
+  describe('auth category', () => {
+    it('classifies "api key" in stderr as auth', () => {
+      expect(classifyError('Invalid api key provided', 1)).toBe('auth');
+    });
+
+    it('classifies "api_key" in stderr as auth', () => {
+      expect(classifyError('Error: api_key is missing or invalid', 1)).toBe('auth');
+    });
+
+    it('classifies "invalid api" in stderr as auth', () => {
+      expect(classifyError('Invalid API credentials', 1)).toBe('auth');
+    });
+
+    it('classifies "unauthorized" in stderr as auth', () => {
+      expect(classifyError('Error: unauthorized request', 1)).toBe('auth');
+    });
+
+    it('classifies "unauthenticated" in stderr as auth', () => {
+      expect(classifyError('Request is unauthenticated', 1)).toBe('auth');
+    });
+
+    it('classifies "authentication failed" in stderr as auth', () => {
+      expect(classifyError('Authentication failed: check your credentials', 1)).toBe('auth');
+    });
+
+    it('classifies "permission denied" in stderr as auth', () => {
+      expect(classifyError('Permission denied: insufficient scope', 1)).toBe('auth');
+    });
+
+    it('classifies "access denied" in stderr as auth', () => {
+      expect(classifyError('Access denied for this resource', 1)).toBe('auth');
+    });
+
+    it('classifies "invalid token" in stderr as auth', () => {
+      expect(classifyError('Error: invalid token format', 1)).toBe('auth');
+    });
+
+    it('classifies "forbidden" in stderr as auth', () => {
+      expect(classifyError('403 Forbidden', 1)).toBe('auth');
+    });
+
+    it('classifies "401" in stderr as auth', () => {
+      expect(classifyError('HTTP error 401', 1)).toBe('auth');
+    });
+
+    it('classifies "403" in stderr as auth', () => {
+      expect(classifyError('Status: 403', 1)).toBe('auth');
+    });
+
+    it('is case-insensitive for auth patterns', () => {
+      expect(classifyError('UNAUTHORIZED', 1)).toBe('auth');
+      expect(classifyError('Permission Denied', 1)).toBe('auth');
+    });
+  });
+
+  describe('context-overflow category', () => {
+    it('classifies "context too long" in stderr as context-overflow', () => {
+      expect(classifyError('Error: context too long for this model', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "context window" in stderr as context-overflow', () => {
+      expect(classifyError('Exceeded the model context window limit', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "context length" in stderr as context-overflow', () => {
+      expect(classifyError('Maximum context length exceeded: 200000 tokens', 1)).toBe(
+        'context-overflow',
+      );
+    });
+
+    it('classifies "context_length_exceeded" in stderr as context-overflow', () => {
+      expect(classifyError('{"error":"context_length_exceeded"}', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "prompt too long" in stderr as context-overflow', () => {
+      expect(classifyError('Error: prompt too long (32768 tokens)', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "maximum context" in stderr as context-overflow', () => {
+      expect(classifyError('Exceeded maximum context size', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "token limit" in stderr as context-overflow', () => {
+      expect(classifyError('Token limit reached for this model', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "too many tokens" in stderr as context-overflow', () => {
+      expect(classifyError('Error: too many tokens in this request', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "context overflow" in stderr as context-overflow', () => {
+      expect(classifyError('Context overflow detected', 1)).toBe('context-overflow');
+    });
+
+    it('classifies "context_overflow" in stderr as context-overflow', () => {
+      expect(classifyError('Error type: context_overflow', 1)).toBe('context-overflow');
+    });
+
+    it('is case-insensitive for context-overflow patterns', () => {
+      expect(classifyError('CONTEXT TOO LONG', 1)).toBe('context-overflow');
+      expect(classifyError('Token Limit Exceeded', 1)).toBe('context-overflow');
+    });
+  });
+
+  describe('timeout category', () => {
+    it('classifies exit code 143 (SIGTERM) with empty stderr as timeout', () => {
+      expect(classifyError('', 143)).toBe('timeout');
+    });
+
+    it('classifies exit code 137 (SIGKILL) with empty stderr as timeout', () => {
+      expect(classifyError('', 137)).toBe('timeout');
+    });
+
+    it('classifies "timeout" in stderr with exit 0 as timeout', () => {
+      expect(classifyError('timeout: operation timed out after 60s', 0)).toBe('timeout');
+    });
+
+    it('classifies "timeout" in stderr with non-zero exit as timeout', () => {
+      expect(classifyError('process timeout exceeded', 1)).toBe('timeout');
+    });
+
+    it('classifies exit 143 with unrelated stderr as timeout', () => {
+      expect(classifyError('some generic error message', 143)).toBe('timeout');
+    });
+
+    it('classifies exit 137 with unrelated stderr as timeout', () => {
+      expect(classifyError('process killed', 137)).toBe('timeout');
+    });
+
+    it('is case-insensitive for "timeout" pattern', () => {
+      expect(classifyError('TIMEOUT after 30 seconds', 0)).toBe('timeout');
+    });
+  });
+
+  describe('crash category', () => {
+    it('classifies non-zero exit code with no matching pattern as crash', () => {
+      expect(classifyError('segmentation fault (core dumped)', 1)).toBe('crash');
+    });
+
+    it('classifies exit code 2 with unrecognized error as crash', () => {
+      expect(classifyError('command not found', 2)).toBe('crash');
+    });
+
+    it('classifies exit code 127 (command not found shell error) as crash', () => {
+      expect(classifyError('bash: claude: command not found', 127)).toBe('crash');
+    });
+
+    it('classifies exit code 1 with ENOENT as crash', () => {
+      expect(classifyError('ENOENT: no such file or directory', 1)).toBe('crash');
+    });
+
+    it('classifies empty stderr with non-zero exit as crash', () => {
+      expect(classifyError('', 1)).toBe('crash');
+    });
+
+    it('classifies exit code 1 with generic error message as crash', () => {
+      expect(classifyError('An unexpected error occurred.', 1)).toBe('crash');
+    });
+  });
+
+  describe('unknown category', () => {
+    it('returns unknown for exit code 0 with empty stderr', () => {
+      expect(classifyError('', 0)).toBe('unknown');
+    });
+
+    it('returns unknown for exit code 0 with benign informational stderr', () => {
+      expect(classifyError('some informational message', 0)).toBe('unknown');
+    });
+
+    it('returns unknown for exit code 0 with unrecognized warning', () => {
+      expect(classifyError('Warning: deprecated flag used', 0)).toBe('unknown');
+    });
+  });
+
+  describe('priority ordering', () => {
+    it('rate-limit takes priority over auth when both patterns present', () => {
+      expect(classifyError('rate limit exceeded: unauthorized request', 1)).toBe('rate-limit');
+    });
+
+    it('rate-limit takes priority over context-overflow', () => {
+      expect(classifyError('rate limit: context too long', 1)).toBe('rate-limit');
+    });
+
+    it('rate-limit takes priority over timeout exit code 143', () => {
+      expect(classifyError('rate limit exceeded', 143)).toBe('rate-limit');
+    });
+
+    it('auth takes priority over context-overflow', () => {
+      expect(classifyError('unauthorized: context too long for request', 1)).toBe('auth');
+    });
+
+    it('context-overflow takes priority over timeout exit code 143', () => {
+      expect(classifyError('context too long', 143)).toBe('context-overflow');
+    });
+
+    it('timeout pattern in stderr takes priority over crash for any exit code', () => {
+      expect(classifyError('Timeout: process terminated after 60s', 0)).toBe('timeout');
+      expect(classifyError('Timeout: process terminated after 60s', 1)).toBe('timeout');
+    });
+
+    it('context-overflow takes priority over crash', () => {
+      expect(classifyError('token limit exceeded', 1)).toBe('context-overflow');
+    });
+
+    it('auth takes priority over crash', () => {
+      expect(classifyError('forbidden access to resource', 1)).toBe('auth');
+    });
+  });
+
+  describe('real-world Claude CLI stderr samples', () => {
+    it('handles Claude API rate limit JSON error response', () => {
+      const stderr =
+        '{"type":"error","error":{"type":"rate_limit_error","message":"Too many requests. Please try again in a few minutes."}}';
+      expect(classifyError(stderr, 1)).toBe('rate-limit');
+    });
+
+    it('handles Claude API authentication error JSON response', () => {
+      const stderr =
+        '{"type":"error","error":{"type":"authentication_error","message":"Invalid API key"}}';
+      expect(classifyError(stderr, 1)).toBe('auth');
+    });
+
+    it('handles Claude API context overflow for overly long prompt', () => {
+      const stderr = 'prompt is too long: 220000 tokens > 200000 maximum context window';
+      expect(classifyError(stderr, 1)).toBe('context-overflow');
+    });
+
+    it('handles context_length_exceeded JSON error', () => {
+      const stderr =
+        '{"type":"error","error":{"type":"invalid_request_error","message":"context_length_exceeded"}}';
+      expect(classifyError(stderr, 1)).toBe('context-overflow');
+    });
+
+    it('handles process killed by SIGTERM appended timeout message (exit 143)', () => {
+      const stderr = 'Timeout: process terminated after 120000ms (signal: SIGTERM)';
+      expect(classifyError(stderr, 143)).toBe('timeout');
+    });
+
+    it('handles process killed by SIGKILL appended timeout message (exit 137)', () => {
+      const stderr = 'Timeout: process terminated after 120000ms (signal: SIGKILL)';
+      expect(classifyError(stderr, 137)).toBe('timeout');
+    });
+
+    it('handles ENOENT (binary not found) as crash', () => {
+      const stderr = 'spawn claude ENOENT';
+      expect(classifyError(stderr, 1)).toBe('crash');
+    });
+
+    it('handles generic API overload message as rate-limit', () => {
+      const stderr = 'Anthropic API is currently overloaded. Please retry your request.';
+      expect(classifyError(stderr, 1)).toBe('rate-limit');
+    });
+
+    it('handles overloaded with exit 0 as rate-limit', () => {
+      expect(classifyError('Service overloaded', 0)).toBe('rate-limit');
+    });
+
+    it('handles model capacity error with 429 status', () => {
+      const stderr = 'Request failed with status 429: model at capacity';
+      expect(classifyError(stderr, 1)).toBe('rate-limit');
+    });
+  });
+});
+
+// ── AgentRunner.spawnWithHandle() ────────────────────────────────────
+
+describe('AgentRunner.spawnWithHandle()', () => {
+  it('returns the PID of the spawned child process', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+    expect(handle.pid).toBe(child.pid);
+    expect(handle.pid).toBeGreaterThanOrEqual(0);
+
+    resolveChild(child, 'done', 0);
+    await handle.promise;
+  });
+
+  it('returns a number as PID (handle exposes process identifier)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    expect(typeof handle.pid).toBe('number');
+
+    const child = lastChild();
+    resolveChild(child, 'done', 0);
+    await handle.promise;
+  });
+
+  it('abort() is a function on the returned handle', () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    expect(typeof handle.abort).toBe('function');
+
+    // Emit close to let the promise settle
+    const child = lastChild();
+    child.emit('close', 0, null);
+  });
+
+  it('promise resolves to AgentResult on success (exit code 0)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'do task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+    resolveChild(child, 'task result', 0);
+
+    const result = await handle.promise;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('task result');
+  });
+
+  it('abort() sends SIGTERM immediately when called', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'long running task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+
+    handle.abort();
+
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    // Emit close to settle the promise — exit 143 means SIGTERM, so the promise rejects
+    child.emit('close', 143, 'SIGTERM');
+    await handle.promise.catch(() => {}); // AgentExhaustedError expected — swallow it
+  });
+
+  it('abort() sends SIGKILL after the 5-second grace period elapses', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const runner = new AgentRunner();
+      const handle = runner.spawnWithHandle({
+        prompt: 'long running task',
+        workspacePath: '/tmp/ws',
+        retries: 0,
+      });
+
+      const child = lastChild();
+
+      // Call abort — SIGTERM is sent immediately
+      handle.abort();
+      expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(child.kill).toHaveBeenCalledTimes(1);
+
+      // Advance past the 5-second grace period
+      vi.advanceTimersByTime(5100);
+
+      // SIGKILL should now have fired
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(child.kill).toHaveBeenCalledTimes(2);
+
+      // Emit close to let the promise settle
+      child.emit('close', 137, 'SIGKILL');
+      await handle.promise.catch(() => {});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('abort() does NOT send SIGKILL if the process exits before the grace period', async () => {
+    vi.useFakeTimers();
+
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+    });
+
+    const child = lastChild();
+
+    // Call abort — SIGTERM is sent, grace period timer is set
+    handle.abort();
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+
+    // Process exits gracefully before the 5-second grace period
+    child.emit('close', 0, null);
+
+    // Advance time past the grace period — the timer was cleared by the close handler
+    vi.advanceTimersByTime(6000);
+
+    // Only SIGTERM was sent — SIGKILL was never triggered
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+
+    // Promise should resolve because exit code was 0
+    await handle.promise;
   });
 });

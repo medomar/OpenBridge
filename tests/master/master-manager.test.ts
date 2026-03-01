@@ -6,7 +6,7 @@ import type { InboundMessage } from '../../src/types/message.js';
 import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
-import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -18,10 +18,13 @@ function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
 // Mock AgentRunner (used by MasterManager, DelegationCoordinator)
 const mockSpawn = vi.fn();
 const mockStream = vi.fn();
+const mockSpawnWithHandle = vi.fn();
 vi.mock('../../src/core/agent-runner.js', () => ({
   AgentRunner: vi.fn().mockImplementation(() => ({
     spawn: mockSpawn,
     stream: mockStream,
+    spawnWithHandle: mockSpawnWithHandle,
+    spawnWithStreamingHandle: mockSpawnWithHandle,
   })),
   TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
   TOOLS_CODE_EDIT: [
@@ -86,16 +89,19 @@ vi.mock('../../src/core/agent-runner.js', () => ({
       (manifest.allowedTools as string[] | undefined) ??
       customAllowedTools ??
       (profile ? profiles[profile] : undefined);
-    return {
-      prompt: manifest.prompt,
-      workspacePath: manifest.workspacePath,
-      model: manifest.model,
-      allowedTools,
-      maxTurns: manifest.maxTurns,
-      timeout: manifest.timeout,
-      retries: manifest.retries,
-      retryDelay: manifest.retryDelay,
-    };
+    return Promise.resolve({
+      spawnOptions: {
+        prompt: manifest.prompt,
+        workspacePath: manifest.workspacePath,
+        model: manifest.model,
+        allowedTools,
+        maxTurns: manifest.maxTurns,
+        timeout: manifest.timeout,
+        retries: manifest.retries,
+        retryDelay: manifest.retryDelay,
+      },
+      cleanup: async () => {},
+    });
   },
 }));
 
@@ -110,7 +116,6 @@ vi.mock('../../src/core/logger.js', () => ({
 }));
 
 /** Original classifyTask method — captured before any spy is applied */
-// eslint-disable-next-line @typescript-eslint/unbound-method
 const _originalClassifyTask = MasterManager.prototype.classifyTask;
 
 describe('MasterManager', () => {
@@ -148,6 +153,13 @@ describe('MasterManager', () => {
 
     // Clear mock call history
     vi.clearAllMocks();
+    mockSpawnWithHandle.mockReset();
+    // spawnWithHandle delegates to mockSpawn so existing mockResolvedValueOnce calls work
+    mockSpawnWithHandle.mockImplementation((opts: Parameters<typeof mockSpawn>[0]) => ({
+      promise: mockSpawn(opts) as Promise<AgentResult>,
+      pid: 12345,
+      abort: vi.fn(),
+    }));
 
     // By default, make classifyTask use keyword heuristics (no AI call) so that
     // processMessage tests aren't affected by the classifier consuming spawn mocks.
@@ -159,14 +171,29 @@ describe('MasterManager', () => {
             lower.includes(kw),
           )
         )
-          return { class: 'complex-task' as const, maxTurns: 5, reason: 'test mock: complex-task' };
+          return {
+            class: 'complex-task' as const,
+            maxTurns: 5,
+            timeout: 5 * 30_000,
+            reason: 'test mock: complex-task',
+          };
         if (
           ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'].some((kw) =>
             lower.includes(kw),
           )
         )
-          return { class: 'tool-use' as const, maxTurns: 10, reason: 'test mock: tool-use' };
-        return { class: 'quick-answer' as const, maxTurns: 3, reason: 'test mock: quick-answer' };
+          return {
+            class: 'tool-use' as const,
+            maxTurns: 10,
+            timeout: 10 * 30_000,
+            reason: 'test mock: tool-use',
+          };
+        return {
+          class: 'quick-answer' as const,
+          maxTurns: 3,
+          timeout: 3 * 30_000,
+          reason: 'test mock: quick-answer',
+        };
       },
     );
   });
@@ -853,6 +880,76 @@ describe('MasterManager', () => {
       expect(status).toContain('Master Session:');
       expect(status).toContain('Session Messages: 0');
       expect(status).toContain('Tasks:');
+    });
+
+    it('should include exploration progress table when memory has in-progress rows (OB-894)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const explorationId = 'test-exploration-id';
+      // Insert parent agent_activity row (required by FK constraint)
+      await memory.insertActivity({
+        id: explorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      // Insert phase-level rows
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'structure_scan',
+        target: null,
+        status: 'completed',
+        progress_pct: 100,
+        files_processed: 20,
+        files_total: 20,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      });
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'classification',
+        target: null,
+        status: 'in_progress',
+        progress_pct: 50,
+        files_processed: 5,
+        files_total: 10,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+      // Insert a directory-level row
+      await memory.insertExplorationProgress({
+        exploration_id: explorationId,
+        phase: 'directory-dive',
+        target: 'src',
+        status: 'in_progress',
+        progress_pct: 30,
+        files_processed: 3,
+        files_total: 10,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+
+      await masterManager.shutdown();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const status = await masterManager.getStatus();
+
+      expect(status).toContain('Exploration Progress:');
+      expect(status).toContain('classification');
+      expect(status).toContain('50%');
+      expect(status).toContain('directory-dive (src)');
+      expect(status).toContain('30%');
     });
   });
 
@@ -1710,10 +1807,11 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a full-stack web app');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(20);
+        expect(result.timeout).toBe(20 * 30_000); // 600_000ms = 10 min
         expect(result.reason).toBe('full-stack app requires multi-step planning');
       });
 
-      it('returns AI-suggested maxTurns in the result', async () => {
+      it('returns AI-suggested maxTurns and derived timeout in the result', async () => {
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
           stdout:
@@ -1725,11 +1823,26 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a HTML Preview');
         expect(result.class).toBe('tool-use');
         expect(result.maxTurns).toBe(15);
+        expect(result.timeout).toBe(15 * 30_000); // 450_000ms
       });
 
       it('result has a reason field', async () => {
         const result = await masterManager.classifyTask('what is this project?');
         expect(typeof result.reason).toBe('string');
+      });
+
+      it('returns per-class timeout derived from maxTurns (keyword heuristics)', async () => {
+        const quick = await masterManager.classifyTask('what is this project?');
+        expect(quick.class).toBe('quick-answer');
+        expect(quick.timeout).toBe(5 * 30_000); // 150_000ms
+
+        const toolUse = await masterManager.classifyTask('generate a config file');
+        expect(toolUse.class).toBe('tool-use');
+        expect(toolUse.timeout).toBe(15 * 30_000); // 450_000ms
+
+        const complex = await masterManager.classifyTask('implement user authentication');
+        expect(complex.class).toBe('complex-task');
+        expect(complex.timeout).toBe(25 * 30_000); // 750_000ms
       });
     });
 
@@ -1799,7 +1912,7 @@ describe('MasterManager', () => {
         ).resolves.not.toThrow();
       });
 
-      it('repeated timeouts bump maxTurns in cached entry', async () => {
+      it('repeated timeouts log warning but do not bump maxTurns', async () => {
         const msg = 'implement auth system for testing';
         // First classify to populate cache
         const initial = await masterManager.classifyTask(msg);
@@ -1810,10 +1923,12 @@ describe('MasterManager', () => {
         await masterManager.recordClassificationFeedback(key, false, true);
         await masterManager.recordClassificationFeedback(key, false, true);
 
-        // Next cache hit should return bumped maxTurns
+        // maxTurns stays the same — bumping turn budget doesn't help
+        // wall-clock timeouts (the per-class timeout map is the proper fix)
         mockSpawn.mockReset();
         const updated = await masterManager.classifyTask(msg);
-        expect(updated.maxTurns).toBeGreaterThan(originalMaxTurns);
+        expect(updated.maxTurns).toBe(originalMaxTurns);
+        expect(updated.timeout).toBe(updated.maxTurns * 30_000);
       });
     });
 
@@ -1869,6 +1984,8 @@ describe('MasterManager', () => {
         // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(12);
+        // Timeout is derived from AI-classified maxTurns: 12 × 30s = 360s
+        expect(taskCall?.timeout).toBe(12 * 30_000);
 
         expect(response).toBe('preview.html has been created.');
       });
@@ -1941,6 +2058,8 @@ describe('MasterManager', () => {
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
         expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
+        // Timeout derived from planning turns: 25 × 30s = 750s
+        expect(planningCall?.timeout).toBe(25 * 30_000);
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -1984,8 +2103,65 @@ describe('MasterManager', () => {
         // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(15);
+        // Timeout derived from keyword-fallback turns: 15 × 30s = 450s
+        expect(taskCall?.timeout).toBe(15 * 30_000);
 
         expect(response).toBe('config.json generated.');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Classification escalation guard — quick-answer must never be escalated
+    // -----------------------------------------------------------------------
+    describe('classification escalation guard', () => {
+      let memoryManager: MemoryManager;
+
+      beforeEach(() => {
+        MasterManager.prototype.classifyTask = _originalClassifyTask;
+        mockSpawn.mockRejectedValue(new Error('classifier disabled in tests'));
+
+        // Create a MasterManager with memory so escalation logic can query learnings
+        memoryManager = new MemoryManager(':memory:');
+        masterManager = new MasterManager({
+          workspacePath: testWorkspace,
+          masterTool,
+          discoveredTools,
+          skipAutoExploration: true,
+          memory: memoryManager,
+        });
+      });
+
+      it('does NOT escalate quick-answer even when learned data favors tool-use', async () => {
+        // Seed learnings: tool-use has high success rate
+        vi.spyOn(memoryManager, 'getLearnedParams').mockResolvedValue({
+          model: 'tool-use',
+          success_rate: 0.8,
+          avg_turns: 3,
+          total_tasks: 50,
+        });
+
+        // "what is this project?" classifies as quick-answer by keywords
+        const result = await masterManager.classifyTask('what is this project?');
+        expect(result.class).toBe('quick-answer');
+        expect(result.maxTurns).toBe(5);
+        expect(result.timeout).toBe(5 * 30_000);
+      });
+
+      it('still escalates tool-use to complex-task when learned data supports it', async () => {
+        // Seed learnings: complex-task has high success rate
+        vi.spyOn(memoryManager, 'getLearnedParams').mockResolvedValue({
+          model: 'complex-task',
+          success_rate: 0.7,
+          avg_turns: 10,
+          total_tasks: 30,
+        });
+
+        // "generate a config file" classifies as tool-use by keywords
+        const result = await masterManager.classifyTask('generate a config file');
+        expect(result.class).toBe('complex-task');
+        expect(result.maxTurns).toBe(25);
+        expect(result.timeout).toBe(25 * 30_000);
+        expect(result.reason).toContain('escalated');
       });
     });
 
@@ -2408,6 +2584,126 @@ describe('MasterManager', () => {
       };
 
       await expect(masterManager.processMessage(message)).resolves.toBe('response');
+    });
+  });
+
+  describe('Stuck Activity Cleanup (OB-962)', () => {
+    it('should mark stuck agent_activity rows as failed on startup', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const now = new Date().toISOString();
+
+      // Insert a stuck activity (older than 1 hour, still "running")
+      await memory.insertActivity({
+        id: 'stuck-worker-1',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Stuck task from previous session',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+      });
+
+      // Insert a stuck activity with status "starting"
+      await memory.insertActivity({
+        id: 'stuck-worker-2',
+        type: 'worker',
+        status: 'starting',
+        task_summary: 'Another stuck task',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+      });
+
+      // Insert a recent running activity (should NOT be cleaned up)
+      await memory.insertActivity({
+        id: 'recent-worker',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Recent task',
+        started_at: now,
+        updated_at: now,
+      });
+
+      // Insert an already-completed activity (should NOT be touched)
+      await memory.insertActivity({
+        id: 'done-worker',
+        type: 'worker',
+        status: 'done',
+        task_summary: 'Completed task',
+        started_at: twoHoursAgo,
+        updated_at: twoHoursAgo,
+        completed_at: twoHoursAgo,
+      });
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      // Verify ALL previous in-flight activities were marked as done on startup.
+      // On a fresh process start, every row from the old process is stale.
+      const activeAgents = await memory.getActiveAgents();
+      const activeIds = activeAgents.map((a) => a.id);
+
+      // None of the old workers should remain active
+      expect(activeIds).not.toContain('recent-worker');
+      expect(activeIds).not.toContain('stuck-worker-1');
+      expect(activeIds).not.toContain('stuck-worker-2');
+    });
+
+    it('should not fail when memory is null', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        // No memory — cleanupStuckActivities should return early
+      };
+
+      masterManager = new MasterManager(options);
+
+      // Should not throw
+      await expect(masterManager.start()).resolves.not.toThrow();
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('should clean up all in-flight activities regardless of age', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+      await memory.insertActivity({
+        id: 'recent-running',
+        type: 'worker',
+        status: 'running',
+        task_summary: 'Recently started task',
+        started_at: thirtyMinutesAgo,
+        updated_at: thirtyMinutesAgo,
+      });
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+        memory,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      const activeAgents = await memory.getActiveAgents();
+      // On startup ALL previous in-flight rows are stale — the old process is gone.
+      const activeWorkers = activeAgents.filter((a) => a.type === 'worker');
+      expect(activeWorkers).toHaveLength(0);
     });
   });
 });

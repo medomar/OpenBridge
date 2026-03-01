@@ -3,6 +3,7 @@ import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types
 import { DiscordConfigSchema } from './discord-config.js';
 import type { DiscordConfig } from './discord-config.js';
 import { createLogger } from '../../core/logger.js';
+import { splitMessage, PLATFORM_MAX_LENGTH } from '../message-splitter.js';
 
 const logger = createLogger('discord');
 
@@ -48,6 +49,12 @@ function formatProgressEvent(event: ProgressEvent): string {
       return `🗺️ ${event.phase}${event.detail ? ` — ${event.detail}` : ''}...`;
     case 'exploring-directory':
       return `📂 Exploring directories: ${event.completed.toString()}/${event.total.toString()}${event.directory ? ` (${event.directory})` : ''}...`;
+    case 'worker-cancelled':
+      return `🛑 Worker ${event.workerId} was stopped by ${event.cancelledBy}.`;
+    case 'worker-turn-progress':
+      return `⚙️ Worker ${event.workerId.slice(0, 8)} — turn ${event.turnsUsed.toString()}/${event.turnsMax.toString()}${event.lastAction ? ` (${event.lastAction.slice(0, 60)})` : ''}...`;
+    default:
+      return `⏳ Processing (${event.type})...`;
   }
 }
 
@@ -166,7 +173,10 @@ export class DiscordConnector implements Connector {
     if (!channel) {
       throw new Error(`Discord channel not found: ${message.recipient}`);
     }
-    await channel.send(message.content);
+    const chunks = splitMessage(message.content, PLATFORM_MAX_LENGTH.discord);
+    for (const chunk of chunks) {
+      await channel.send(chunk);
+    }
   }
 
   sendTypingIndicator(_chatId: string): Promise<void> {

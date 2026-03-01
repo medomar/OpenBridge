@@ -1,13 +1,17 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
-import type { OutboundMessage, ProgressEvent } from '../../types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { setQrCode } from '../../core/qr-store.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
 import { parseWhatsAppMessage, splitForWhatsApp } from './whatsapp-message.js';
 import { formatMarkdownForWhatsApp } from './whatsapp-formatter.js';
 import { createLogger } from '../../core/logger.js';
+import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
+import type { MediaManager, SaveMediaResult } from '../../core/media-manager.js';
+import { isPackagedMode } from '../../cli/utils.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import { unlink, readlink, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -16,6 +20,47 @@ import type { MessageMedia } from 'whatsapp-web.js';
 const execFileAsync = promisify(execFile);
 
 const logger = createLogger('whatsapp');
+
+/** Common Chrome/Chromium install paths per OS, checked when PUPPETEER_EXECUTABLE_PATH is not set. */
+const CHROMIUM_PATHS: Record<'macos' | 'windows' | 'linux', string[]> = {
+  macos: [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  ],
+  windows: [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ],
+  linux: [
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+  ],
+};
+
+/**
+ * Resolves a Chrome/Chromium executable path for Puppeteer.
+ * Priority: PUPPETEER_EXECUTABLE_PATH env var → common OS install paths → null.
+ * When in packaged mode (pkg binary), Puppeteer cannot use its bundled Chromium,
+ * so the host system must have Chrome/Chromium installed.
+ */
+function resolveChromiumPath(): string | null {
+  const envPath = process.env['PUPPETEER_EXECUTABLE_PATH'];
+  if (envPath) return envPath;
+
+  const platform = process.platform;
+  const os: 'macos' | 'windows' | 'linux' =
+    platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux';
+
+  for (const candidate of CHROMIUM_PATHS[os]) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 type EventListeners = {
   [E in keyof ConnectorEvents]: ConnectorEvents[E][];
@@ -26,8 +71,9 @@ interface WAChat {
 }
 
 interface WAMediaData {
-  data: string; // base64-encoded audio
+  data: string; // base64-encoded media
   mimetype: string;
+  filename?: string; // original filename (present for documents)
 }
 
 interface WAMessage {
@@ -66,6 +112,7 @@ export class WhatsAppConnector implements Connector {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shuttingDown = false;
+  private mediaManager: MediaManager | null = null;
   /** Tracks chat IDs that have received a progress status message (to avoid repeat sends). */
   private readonly progressSent = new Set<string>();
   private readonly listeners: EventListeners = {
@@ -76,8 +123,22 @@ export class WhatsAppConnector implements Connector {
     disconnected: [],
   };
 
+  /** Media types that can be downloaded as file attachments (excludes PTT voice). */
+  private static readonly DOWNLOADABLE_TYPES = new Set([
+    'image',
+    'document',
+    'video',
+    'audio',
+    'sticker',
+  ]);
+
   constructor(options: Record<string, unknown>) {
     this.config = WhatsAppConfigSchema.parse(options);
+  }
+
+  /** Wire a MediaManager for saving incoming media attachments to disk. */
+  setMediaManager(manager: MediaManager): void {
+    this.mediaManager = manager;
   }
 
   async initialize(): Promise<void> {
@@ -110,6 +171,20 @@ export class WhatsAppConnector implements Connector {
     // Without this, Puppeteer hangs trying to connect to a dead browser.
     await this.removeStaleLock();
 
+    // Resolve the Chrome/Chromium executable. In packaged mode (pkg binary), Puppeteer's
+    // bundled Chromium is not accessible, so we must find an existing system installation.
+    const chromiumPath = resolveChromiumPath();
+    if (chromiumPath) {
+      process.env['PUPPETEER_EXECUTABLE_PATH'] = chromiumPath;
+      logger.info({ path: chromiumPath }, 'Using system Chrome/Chromium for WhatsApp connector');
+    } else if (isPackagedMode()) {
+      logger.warn(
+        'Chrome or Chromium not found on this system. ' +
+          'Install Google Chrome (https://www.google.com/chrome) or set the ' +
+          'PUPPETEER_EXECUTABLE_PATH environment variable to enable WhatsApp.',
+      );
+    }
+
     this.client = new Client({
       authStrategy: new LocalAuth(localAuthOptions),
       // Use local cache to avoid remote fetch failures (GitHub URL can be unreachable)
@@ -117,6 +192,7 @@ export class WhatsAppConnector implements Connector {
         type: 'local',
       },
       puppeteer: {
+        ...(chromiumPath !== null && { executablePath: chromiumPath }),
         headless: this.config.headless,
         protocolTimeout: 300_000, // 5 min — WhatsApp Web can be slow to load
         args: [
@@ -270,15 +346,103 @@ export class WhatsAppConnector implements Connector {
   }
 
   private async handleIncomingMessage(msg: WAMessage): Promise<void> {
+    if (msg.hasMedia) {
+      void this.sendTypingIndicator(msg.from);
+    }
+
     if (msg.hasMedia && msg.type === 'ptt') {
       const transcription = await this.transcribeVoiceMessage(msg);
-      const content = transcription ?? '[Voice message — install whisper for auto-transcription]';
+      const content = transcription ?? TRANSCRIPTION_FALLBACK_MESSAGE;
       const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp);
       this.emit('message', parsed);
       return;
     }
-    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, msg.body, msg.timestamp);
+
+    // Download non-PTT media (image, document, video, audio)
+    const downloadResult =
+      msg.hasMedia && msg.type && WhatsAppConnector.DOWNLOADABLE_TYPES.has(msg.type)
+        ? await this.downloadIncomingMedia(msg)
+        : null;
+
+    let content = msg.body;
+    let attachments: InboundMessage['attachments'];
+
+    if (downloadResult && !downloadResult.failed) {
+      attachments = [
+        {
+          type: downloadResult.type,
+          filePath: downloadResult.result.filePath,
+          mimeType: downloadResult.mimeType,
+          ...(downloadResult.filename !== undefined && { filename: downloadResult.filename }),
+          sizeBytes: downloadResult.result.sizeBytes,
+        },
+      ];
+      // Use caption (msg.body) as text; fall back to type label if no caption
+      if (!content) {
+        const fallbackMap: Record<string, string> = {
+          image: '[Image]',
+          document: '[Document]',
+          video: '[Video]',
+          audio: '[Audio]',
+        };
+        content = fallbackMap[downloadResult.type] ?? `[${downloadResult.type}]`;
+      }
+      logger.debug(
+        { filePath: downloadResult.result.filePath, type: downloadResult.type },
+        'Incoming media downloaded',
+      );
+    } else if (downloadResult?.failed) {
+      // Download was attempted but failed — prepend failure notice to any caption text
+      const failureText = `[Media attachment failed to download — ${downloadResult.type}]`;
+      content = content ? `${failureText}\n${content}` : failureText;
+    }
+
+    const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp, attachments);
     this.emit('message', parsed);
+  }
+
+  /**
+   * Download an incoming non-PTT media message and save it via MediaManager.
+   * Returns:
+   *   - null if not applicable (no MediaManager configured, or no media data)
+   *   - { failed: false, ... } on success
+   *   - { failed: true, type } when download was attempted but threw an error
+   */
+  private async downloadIncomingMedia(msg: WAMessage): Promise<
+    | {
+        failed: false;
+        result: SaveMediaResult;
+        mimeType: string;
+        filename?: string;
+        type: 'image' | 'document' | 'audio' | 'video';
+      }
+    | { failed: true; type: string }
+    | null
+  > {
+    if (!this.mediaManager) return null;
+
+    // Stickers are .webp images — map to 'image' attachment type
+    const attachmentType: 'image' | 'document' | 'audio' | 'video' =
+      msg.type === 'sticker' ? 'image' : (msg.type as 'image' | 'document' | 'audio' | 'video');
+
+    try {
+      const media = await msg.downloadMedia?.();
+      if (!media?.data) return null;
+
+      const buffer = Buffer.from(media.data, 'base64');
+      const result = await this.mediaManager.saveMedia(buffer, media.mimetype, media.filename);
+
+      return {
+        failed: false,
+        result,
+        mimeType: media.mimetype,
+        filename: media.filename,
+        type: attachmentType,
+      };
+    } catch (err) {
+      logger.warn({ err, type: msg.type }, 'Failed to download incoming media');
+      return { failed: true, type: msg.type ?? 'unknown' };
+    }
   }
 
   private async transcribeVoiceMessage(msg: WAMessage): Promise<string | null> {
@@ -286,37 +450,22 @@ export class WhatsAppConnector implements Connector {
       const media = await msg.downloadMedia?.();
       if (!media?.data) return null;
 
-      const whisperPath = await this.findWhisper();
-      if (!whisperPath) return null;
-
       const tmpPath = join(tmpdir(), `wa-voice-${Date.now()}.ogg`);
       await writeFile(tmpPath, Buffer.from(media.data, 'base64'));
       try {
-        await execFileAsync(whisperPath, [
-          tmpPath,
-          '--output-format',
-          'txt',
-          '--output-dir',
-          tmpdir(),
-        ]);
-        const txtPath = tmpPath.replace(/\.ogg$/, '.txt');
-        const text = await readFile(txtPath, 'utf-8').catch(() => '');
-        await unlink(txtPath).catch(() => {});
-        return text.trim() || null;
+        const result = await transcribeAudio(tmpPath);
+        if (result) {
+          logger.debug(
+            { backend: result.backend, durationMs: result.durationMs },
+            'Voice transcription complete',
+          );
+        }
+        return result?.text ?? null;
       } finally {
         await unlink(tmpPath).catch(() => {});
       }
     } catch (err) {
       logger.warn({ err }, 'Voice message transcription failed');
-      return null;
-    }
-  }
-
-  private async findWhisper(): Promise<string | null> {
-    try {
-      const { stdout } = await execFileAsync('which', ['whisper']);
-      return stdout.trim() || null;
-    } catch {
       return null;
     }
   }
@@ -523,8 +672,7 @@ export class WhatsAppConnector implements Connector {
       return;
     }
 
-    // Only send one status message per conversation to avoid spamming the user.
-    // The spawning event is the most informative — it tells the user how many subtasks are running.
+    // Send spawning status once per conversation
     if (event.type === 'spawning' && !this.progressSent.has(chatId)) {
       const n = event.workerCount;
       const text = `🔄 Breaking into ${n.toString()} subtask${n !== 1 ? 's' : ''}...`;
@@ -535,7 +683,34 @@ export class WhatsAppConnector implements Connector {
         logger.debug({ chatId, err }, 'Failed to send WhatsApp progress message');
       }
     }
-    // All other events are silently skipped — avoid WhatsApp message spam
+
+    // Send each worker result as it completes
+    if (event.type === 'worker-result') {
+      const icon = event.success ? '✅' : '❌';
+      const header = `${icon} Subtask ${event.workerIndex}/${event.total} (${event.profile}):`;
+      const maxLen = 4000;
+      const body =
+        event.content.length > maxLen
+          ? event.content.slice(0, maxLen) + '\n...(truncated)'
+          : event.content;
+      try {
+        await this.client.sendMessage(chatId, `${header}\n${body}`);
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp worker result');
+      }
+    }
+
+    // Notify all connected chats when a worker is cancelled (OB-883)
+    if (event.type === 'worker-cancelled') {
+      try {
+        await this.client.sendMessage(
+          chatId,
+          `🛑 Worker ${event.workerId} was stopped by ${event.cancelledBy}.`,
+        );
+      } catch (err: unknown) {
+        logger.debug({ chatId, err }, 'Failed to send WhatsApp worker-cancelled notification');
+      }
+    }
   }
 
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void {

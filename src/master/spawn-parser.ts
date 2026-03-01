@@ -27,8 +27,10 @@ const logger = createLogger('spawn-parser');
 export const SpawnMarkerBodySchema = z.object({
   /** The prompt/instructions for the worker */
   prompt: z.string().min(1),
-  /** Model override (e.g., 'haiku', 'sonnet', 'opus') */
+  /** Model override (e.g., 'haiku', 'sonnet', 'opus', or tier: 'fast', 'balanced', 'powerful') */
   model: z.string().optional(),
+  /** AI tool to use for this worker (e.g., 'claude', 'codex', 'aider'). Defaults to master tool. */
+  tool: z.string().optional(),
   /** Max agentic turns for this worker */
   maxTurns: z.number().int().positive().optional(),
   /** Timeout in milliseconds */
@@ -73,10 +75,30 @@ export interface SpawnParseResult {
 const SPAWN_MARKER_PATTERN = /\[SPAWN:([a-zA-Z0-9_-]+)\]([\s\S]*?)\[\/SPAWN\]/g;
 
 /**
+ * Strip triple-backtick code blocks from text.
+ * Returns the text with all fenced code blocks replaced by empty strings.
+ * This prevents the parser from picking up SPAWN examples in system prompt docs.
+ */
+function stripCodeBlocks(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+
+/**
+ * Check whether a JSON string contains unresolved template variables (e.g. ${fastModel}).
+ * These appear in system prompt examples and must not be treated as real markers.
+ */
+function hasTemplateVariables(jsonStr: string): boolean {
+  return /\$\{[^}]+\}/.test(jsonStr);
+}
+
+/**
  * Parse Master AI output for [SPAWN:profile]{...}[/SPAWN] markers.
  *
  * Extracts all SPAWN markers, validates the JSON body against the schema,
  * and returns both the parsed markers and the cleaned output (with markers removed).
+ *
+ * Markers inside fenced code blocks (triple backticks) are ignored — these are
+ * documentation examples from the system prompt, not real spawn requests.
  *
  * Invalid markers (malformed JSON, schema validation failure) are logged as
  * warnings and skipped — they do not prevent valid markers from being parsed.
@@ -85,17 +107,30 @@ export function parseSpawnMarkers(output: string): SpawnParseResult {
   const markers: ParsedSpawnMarker[] = [];
   let cleanedOutput = output;
 
+  // Strip code blocks before scanning so we don't parse system prompt examples.
+  // We still scan the original `output` for raw matches to strip from cleanedOutput.
+  const strippedOutput = stripCodeBlocks(output);
+
   let match;
   // Reset lastIndex for global regex
   SPAWN_MARKER_PATTERN.lastIndex = 0;
 
-  while ((match = SPAWN_MARKER_PATTERN.exec(output)) !== null) {
+  while ((match = SPAWN_MARKER_PATTERN.exec(strippedOutput)) !== null) {
     const rawMatch = match[0];
     const profile = match[1]?.trim();
     const jsonBody = match[2]?.trim();
 
     if (!profile || !jsonBody) {
       logger.warn({ rawMatch }, 'SPAWN marker missing profile or body — skipping');
+      continue;
+    }
+
+    // Reject markers with unresolved template variables (system prompt examples)
+    if (hasTemplateVariables(jsonBody)) {
+      logger.debug(
+        { profile },
+        'SPAWN marker contains template variables — skipping (likely a documentation example)',
+      );
       continue;
     }
 

@@ -213,7 +213,12 @@ export async function hybridSearch(
     LIMIT ?
   `;
 
-  const rows = db.prepare(sql).all(query, ...extraParams, limit) as ChunkRow[];
+  // Sanitize the query for FTS5 MATCH — user prompts may contain special FTS5
+  // operators (?, *, ^, etc.) that cause SQLITE_ERROR if passed through raw.
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  const rows = db.prepare(sql).all(sanitized, ...extraParams, limit) as ChunkRow[];
   const chunks = rows.map(rowToChunk);
 
   // Layer 4: AI reranking — only when explicitly enabled and results exceed 10
@@ -222,6 +227,22 @@ export async function hybridSearch(
   }
 
   return chunks;
+}
+
+// ---------------------------------------------------------------------------
+// FTS5 query sanitization (shared)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitize a user-provided string for use in an FTS5 MATCH expression.
+ * Strips special FTS5 syntax characters and wraps each token in double quotes.
+ * Returns an empty string if no usable tokens remain.
+ */
+export function sanitizeFts5Query(raw: string): string {
+  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return '';
+  return tokens.map((t) => `"${t}"`).join(' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +263,9 @@ export function searchConversations(
 ): ConversationEntry[] {
   if (!query.trim()) return [];
 
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
   const rows = db
     .prepare(
       `SELECT c.id, c.session_id, c.role, c.content, c.channel, c.user_id, c.created_at
@@ -254,7 +278,7 @@ export function searchConversations(
        ORDER BY fts.bm25_rank, c.created_at DESC
        LIMIT ?`,
     )
-    .all(query, limit) as ConversationRow[];
+    .all(sanitized, limit) as ConversationRow[];
 
   return rows.map(rowToEntry);
 }

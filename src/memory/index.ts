@@ -1,26 +1,41 @@
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { ExplorationLogEntry } from '../types/master.js';
+import {
+  PromptManifestSchema,
+  type ExplorationLogEntry,
+  type PromptManifest,
+} from '../types/master.js';
 import { openDatabase, closeDatabase } from './database.js';
 import type { Chunk } from './chunk-store.js';
 import {
   storeChunks as _storeChunks,
   markStale as _markStale,
   deleteStaleChunks as _deleteStaleChunks,
+  deleteChunksByScope as _deleteChunksByScope,
 } from './chunk-store.js';
-import { hybridSearch as _hybridSearch, type SearchOptions } from './retrieval.js';
-import type { TaskRecord, LearnedParams } from './task-store.js';
+import {
+  hybridSearch as _hybridSearch,
+  searchConversations as _searchConversations,
+  type SearchOptions,
+} from './retrieval.js';
+import type { TaskRecord, LearnedParams, ModelStats } from './task-store.js';
 import {
   recordTask as _recordTask,
   getTasksByType as _getTasksByType,
   getSimilarTasks as _getSimilarTasks,
   getLearnedParams as _getLearnedParams,
   recordLearning as _recordLearning,
+  getModelStatsForTask as _getModelStatsForTask,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
+  getSessionHistory as _getSessionHistory,
+  getRecentMessages as _getRecentMessages,
+  listSessions as _listSessions,
+  searchSessions as _searchSessions,
+  type SessionSummary,
 } from './conversation-store.js';
 import {
   getActivePrompt as _getActivePrompt,
@@ -36,6 +51,7 @@ import {
   updateWorkspaceState as _updateWorkspaceState,
   getSession as _getSession,
   upsertSession as _upsertSession,
+  closeActiveSessions as _closeActiveSessions,
   type WorkspaceState,
   type SessionRecord,
 } from './migration.js';
@@ -46,6 +62,7 @@ import {
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
   cleanupOldActivity as _cleanupOldActivity,
+  markStaleActivityDone as _markStaleActivityDone,
   getDailyCost as _getDailyCost,
   insertExplorationProgress as _insertExplorationProgress,
   updateExplorationProgressById as _updateExplorationProgressById,
@@ -73,13 +90,21 @@ import {
   type SubMasterEntry,
   type SubMasterStatus,
 } from './sub-master-store.js';
+import {
+  insertAuditEntry as _insertAuditEntry,
+  queryAuditEntries as _queryAuditEntries,
+  searchAuditLog as _searchAuditLog,
+  countAuditByEvent as _countAuditByEvent,
+  type AuditRecord,
+  type AuditSearchOptions,
+} from './audit-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
 // ---------------------------------------------------------------------------
 
 export type { Chunk };
-export type { TaskRecord, LearnedParams };
+export type { TaskRecord, LearnedParams, ModelStats };
 
 export interface ConversationEntry {
   id?: number;
@@ -103,6 +128,7 @@ export interface PromptRecord {
   created_at: string;
 }
 
+export type { SessionSummary } from './conversation-store.js';
 export type { WorkspaceState, SessionRecord } from './migration.js';
 export type { EvictionOptions } from './eviction.js';
 export type { SearchOptions } from './retrieval.js';
@@ -114,6 +140,7 @@ export type {
 } from './activity-store.js';
 export type { AccessControlEntry, AccessRole } from './access-store.js';
 export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
+export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -151,6 +178,11 @@ export class MemoryManager {
 
   close(): Promise<void> {
     if (this.db) {
+      try {
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+      } catch {
+        // WAL checkpoint is best-effort — in-memory DBs and read-only mounts may skip
+      }
       closeDatabase(this.db);
       this.db = null;
     }
@@ -194,6 +226,13 @@ export class MemoryManager {
     return Promise.resolve();
   }
 
+  /** Delete all chunks for the given scope (fresh and stale) and their FTS5 entries. */
+  deleteChunksByScope(scope: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _deleteChunksByScope(this.db, scope);
+    return Promise.resolve();
+  }
+
   // -------------------------------------------------------------------------
   // Conversations (implemented by conversation-store.ts — OB-706)
   // -------------------------------------------------------------------------
@@ -209,6 +248,36 @@ export class MemoryManager {
     return Promise.resolve(_findRelevantHistory(this.db, query, limit));
   }
 
+  /** Return the most recent messages for a given session, ordered chronologically (OB-1035). */
+  getSessionHistory(sessionId: string, limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSessionHistory(this.db, sessionId, limit));
+  }
+
+  /** Return the most recent messages across all sessions (user + master roles), chronologically (OB-1116). */
+  getRecentMessages(limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getRecentMessages(this.db, limit));
+  }
+
+  /** Return a paginated list of distinct conversation sessions ordered by most recent activity. */
+  listSessions(limit?: number, offset?: number): Promise<SessionSummary[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_listSessions(this.db, limit, offset));
+  }
+
+  /** FTS5 session-level search — returns sessions ranked by number of matching messages (OB-1032). */
+  searchSessions(query: string, limit?: number): Promise<SessionSummary[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchSessions(this.db, query, limit));
+  }
+
+  /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
+  searchConversations(query: string, limit?: number): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchConversations(this.db, query, limit));
+  }
+
   // -------------------------------------------------------------------------
   // Tasks & Learnings (task-store.ts — OB-705)
   // -------------------------------------------------------------------------
@@ -222,6 +291,11 @@ export class MemoryManager {
   getLearnedParams(taskType: string): Promise<LearnedParams | null> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getLearnedParams(this.db, taskType));
+  }
+
+  getModelStatsForTask(taskType: string, model: string): Promise<ModelStats | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getModelStatsForTask(this.db, taskType, model));
   }
 
   getSimilarTasks(prompt: string, limit?: number): Promise<TaskRecord[]> {
@@ -391,6 +465,28 @@ export class MemoryManager {
     return Promise.resolve();
   }
 
+  /** Read the prompt manifest stored in system_config under key 'prompt_manifest'. Returns null if not stored. */
+  getPromptManifest(): Promise<PromptManifest | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    interface ConfigRow {
+      value: string;
+    }
+    const row = this.db
+      .prepare('SELECT value FROM system_config WHERE key = ?')
+      .get('prompt_manifest') as ConfigRow | undefined;
+    if (!row?.value) return Promise.resolve(null);
+    try {
+      return Promise.resolve(PromptManifestSchema.parse(JSON.parse(row.value)));
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  /** Persist the prompt manifest to system_config under key 'prompt_manifest'. */
+  setPromptManifest(manifest: PromptManifest): Promise<void> {
+    return this.setSystemConfig('prompt_manifest', JSON.stringify(manifest));
+  }
+
   // -------------------------------------------------------------------------
   // Worker Briefing (worker-briefing.ts — OB-722)
   // -------------------------------------------------------------------------
@@ -429,6 +525,12 @@ export class MemoryManager {
   upsertSession(session: SessionRecord): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _upsertSession(this.db, session);
+    return Promise.resolve();
+  }
+
+  closeActiveSessions(): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _closeActiveSessions(this.db);
     return Promise.resolve();
   }
 
@@ -472,6 +574,12 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _cleanupOldActivity(this.db, cutoffHours);
     return Promise.resolve();
+  }
+
+  /** Mark all in-flight activity rows as 'done' — call once on startup. */
+  markStaleActivityDone(): number {
+    if (!this.db) return 0;
+    return _markStaleActivityDone(this.db);
   }
 
   /**
@@ -591,6 +699,35 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
+  // Audit log (audit-store.ts — OB-820)
+  // -------------------------------------------------------------------------
+
+  /** Insert a structured audit log entry into the audit_log table. */
+  insertAuditEntry(entry: AuditRecord): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _insertAuditEntry(this.db, entry);
+    return Promise.resolve();
+  }
+
+  /** Query audit log entries with optional filters (event type, sender, time range). */
+  queryAuditEntries(options?: AuditSearchOptions): Promise<AuditRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_queryAuditEntries(this.db, options));
+  }
+
+  /** Full-text search across audit log entries. */
+  searchAuditLog(query: string, limit?: number): Promise<AuditRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchAuditLog(this.db, query, limit));
+  }
+
+  /** Count audit entries grouped by event type, optionally filtered by time. */
+  countAuditByEvent(since?: string): Promise<{ event: string; count: number }[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_countAuditByEvent(this.db, since));
+  }
+
+  // -------------------------------------------------------------------------
   // Exploration State (system_config — OB-800)
   // -------------------------------------------------------------------------
 
@@ -663,17 +800,41 @@ export class MemoryManager {
   }
 
   // -------------------------------------------------------------------------
-  // Exploration log (agent_activity table — OB-802)
+  // Exploration log (exploration_progress table — OB-835)
   // -------------------------------------------------------------------------
 
   /**
    * Append an exploration log entry to the DB.
-   * Uses agent_activity with type='log' so no schema change is needed.
+   *
+   * When `explorationId` is provided (a valid agent_activity.id), inserts a
+   * structured row into `exploration_progress` — keeping all exploration-related
+   * records in the same table that `insertExplorationProgress` uses.
+   *
+   * When `explorationId` is absent, falls back to writing a `type='log'` row in
+   * `agent_activity` for backward compatibility with callers that have no
+   * exploration context (e.g. lifecycle events in MasterManager).
+   *
    * Replaces dotFolder.appendLog() calls.
    */
-  logExploration(entry: ExplorationLogEntry): Promise<void> {
+  logExploration(entry: ExplorationLogEntry, explorationId?: string): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     const now = entry.timestamp ?? new Date().toISOString();
+
+    if (explorationId) {
+      _insertExplorationProgress(this.db, {
+        exploration_id: explorationId,
+        phase: entry.message,
+        target: entry.data !== undefined ? JSON.stringify(entry.data) : null,
+        status: entry.level === 'error' ? 'failed' : 'completed',
+        progress_pct: 100,
+        files_processed: 0,
+        started_at: now,
+        completed_at: now,
+      });
+      return Promise.resolve();
+    }
+
+    // Fallback: no exploration context — write to agent_activity with type='log'
     this.db
       .prepare(
         `INSERT INTO agent_activity

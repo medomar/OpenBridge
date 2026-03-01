@@ -7,6 +7,7 @@ import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
+import type { MemoryManager } from '../../memory/index.js';
 
 const logger = createLogger('webchat');
 
@@ -18,6 +19,7 @@ type EventListeners = {
 interface WsClient {
   readyState: number;
   send(data: string): void;
+  ping(): void;
   on(event: 'message', listener: (data: Buffer | string) => void): void;
   on(event: 'close', listener: () => void): void;
   on(event: 'error', listener: (err: Error) => void): void;
@@ -26,6 +28,7 @@ interface WsClient {
 /** Minimal WebSocketServer interface */
 interface WssServer {
   on(event: 'connection', listener: (socket: WsClient) => void): void;
+  on(event: 'close', listener: () => void): void;
   close(callback?: () => void): void;
 }
 
@@ -90,15 +93,23 @@ const CHAT_HTML = `<!DOCTYPE html>
     .s-running { background: #d1fae5; color: #065f46; }
     .s-completing { background: #dbeafe; color: #1e40af; }
     .dash-cost { padding: 4px 0 0; color: #5f6368; border-top: 1px solid #e8eaed; margin-top: 4px; }
+    .stop-btn { background: #ff5252; color: #fff; border: none; border-radius: 4px; padding: 1px 7px; font-size: 12px; cursor: pointer; flex-shrink: 0; line-height: 1.6; }
+    .stop-btn:hover { background: #d32f2f; }
+    .stop-all-btn { background: #ff5252; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+    .stop-all-btn:hover { background: #d32f2f; }
+    .stop-all-btn:disabled { background: #e57373; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <div class="chat-wrap">
     <div class="header">
       <h1>OpenBridge WebChat</h1>
-      <div class="conn-status">
-        <div class="conn-dot" id="dot"></div>
-        <span id="connLabel">Connecting...</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="stop-all-btn" id="stop-all-btn" disabled onclick="stopAll()">Stop All</button>
+        <div class="conn-status">
+          <div class="conn-dot" id="dot"></div>
+          <span id="connLabel">Connecting...</span>
+        </div>
       </div>
     </div>
     <div id="dash" class="hidden">
@@ -134,7 +145,6 @@ const CHAT_HTML = `<!DOCTYPE html>
     var statusTimer = document.getElementById('status-timer');
     var timerInterval = null;
     var timerStart = null;
-
     function md(raw) {
       var h = raw.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
       // Code blocks: \`\`\`lang\\ncode\`\`\`
@@ -250,7 +260,8 @@ const CHAT_HTML = `<!DOCTYPE html>
 
     function updateDashboard(agents) {
       var dash = document.getElementById('dash');
-      if (!agents || agents.length === 0) { dash.classList.add('hidden'); return; }
+      var stopAllBtn = document.getElementById('stop-all-btn');
+      if (!agents || agents.length === 0) { dash.classList.add('hidden'); stopAllBtn.disabled = true; return; }
       dash.classList.remove('hidden');
       var master = null;
       var workers = [];
@@ -265,21 +276,25 @@ const CHAT_HTML = `<!DOCTYPE html>
       var workersDiv = document.getElementById('dash-workers');
       if (workers.length === 0) {
         workersDiv.innerHTML = '';
+        stopAllBtn.disabled = true;
       } else {
+        stopAllBtn.disabled = false;
         var h = '<div style="font-weight:500;padding:2px 0">Workers (' + workers.length + '):</div>';
         for (var j = 0; j < workers.length; j++) {
           var w = workers[j];
           var pct = w.progress_pct || 0;
           var sc = 's-' + (w.status || 'running');
           var elapsed = w.started_at ? Math.floor((Date.now() - new Date(w.started_at).getTime()) / 1000) + 's' : '';
+          var wid = String(w.id);
           h += '<div class="agent-row">' +
-            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + String(w.id).slice(0, 8) + '</span>' +
+            '<span style="font-family:monospace;color:#5f6368;flex-shrink:0">' + wid.slice(0, 8) + '</span>' +
             '<span class="abadge ' + sc + '">' + (w.model || '\u2014') + '</span>' +
             '<span style="color:#9aa0a6;flex-shrink:0">' + (w.profile || '\u2014') + '</span>' +
             '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202124">' + (w.task_summary || '\u2014') + '</span>' +
             '<div class="prog-wrap"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
             '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0">' + pct + '%</span>' +
             '<span style="color:#9aa0a6;white-space:nowrap;flex-shrink:0;min-width:32px;text-align:right">' + elapsed + '</span>' +
+            '<button class="stop-btn" title="Stop this worker" onclick="stopWorker(' + JSON.stringify(wid) + ')">&#x2715;</button>' +
             '</div>';
         }
         workersDiv.innerHTML = h;
@@ -291,6 +306,16 @@ const CHAT_HTML = `<!DOCTYPE html>
       document.getElementById('dash-lbl').textContent = 'Agent Status (' + agents.length + ' active)';
     }
 
+    function stopWorker(workerId) {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'stop-worker', workerId: workerId }));
+    }
+
+    function stopAll() {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'stop-all' }));
+    }
+
     function setOnline(online) {
       dot.className = 'conn-dot' + (online ? ' online' : '');
       connLabel.textContent = online ? 'Connected' : 'Disconnected';
@@ -298,42 +323,53 @@ const CHAT_HTML = `<!DOCTYPE html>
       send.disabled = !online;
     }
 
-    var ws = new WebSocket('ws://' + location.host);
-    ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
-    ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected', 'sys'); };
-    ws.onmessage = function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (data.type === 'response') {
-          hideStatus();
-          addBubble(data.content, 'ai');
-        } else if (data.type === 'download') {
-          hideStatus();
-          var div = document.createElement('div');
-          div.className = 'bubble ai';
-          if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
-          var link = document.createElement('a');
-          link.href = data.url;
-          link.download = data.filename || 'download';
-          link.className = 'download-link';
-          link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
-          div.appendChild(link);
-          msgs.appendChild(div);
-          msgs.scrollTop = msgs.scrollHeight;
-        } else if (data.type === 'typing') {
-          showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
-        } else if (data.type === 'progress') {
-          if (data.event && data.event.type === 'complete') {
+    var ws;
+    function connectWs() {
+      ws = new WebSocket('ws://' + location.host);
+      ws.onopen = function() { setOnline(true); addBubble('Connected to OpenBridge', 'sys'); };
+      ws.onclose = function() { setOnline(false); hideStatus(); addBubble('Disconnected — reconnecting...', 'sys'); setTimeout(connectWs, 2000); };
+      ws.onmessage = function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (data.type === 'response') {
             hideStatus();
-          } else if (data.event) {
-            var label = progressLabel(data.event);
-            if (label) showStatus(label);
+            addBubble(data.content, 'ai');
+          } else if (data.type === 'download') {
+            hideStatus();
+            var div = document.createElement('div');
+            div.className = 'bubble ai';
+            if (data.content) { div.innerHTML = md(data.content) + '<br>'; }
+            var link = document.createElement('a');
+            link.href = data.url;
+            link.download = data.filename || 'download';
+            link.className = 'download-link';
+            link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
+            div.appendChild(link);
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
+          } else if (data.type === 'typing') {
+            showStatus('\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>');
+          } else if (data.type === 'progress') {
+            if (data.event && data.event.type === 'complete') {
+              hideStatus();
+            } else if (data.event && data.event.type === 'worker-result') {
+              var icon = data.event.success ? '\u2705' : '\u274C';
+              var toolLabel = data.event.tool ? ' \u00b7 ' + data.event.tool : '';
+              var header = icon + ' **Subtask ' + data.event.workerIndex + '/' + data.event.total + '** (' + data.event.profile + toolLabel + '):\\n\\n';
+              addBubble(header + data.event.content, 'ai');
+            } else if (data.event && data.event.type === 'worker-cancelled') {
+              addBubble('\uD83D\uDED1 Worker ' + data.event.workerId + ' was stopped by ' + data.event.cancelledBy + '.', 'sys');
+            } else if (data.event) {
+              var label = progressLabel(data.event);
+              if (label) showStatus(label);
+            }
+          } else if (data.type === 'agent-status') {
+            updateDashboard(data.agents);
           }
-        } else if (data.type === 'agent-status') {
-          updateDashboard(data.agents);
-        }
-      } catch(ex) {}
-    };
+        } catch(ex) {}
+      };
+    }
+    connectWs();
     form.onsubmit = function(e) {
       e.preventDefault();
       var text = inp.value.trim();
@@ -380,9 +416,15 @@ export class WebChatConnector implements Connector {
     error: [],
     disconnected: [],
   };
+  private memory: MemoryManager | null = null;
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
+  }
+
+  /** Wire the SQLite memory manager — enables the /api/sessions REST endpoint. */
+  setMemory(memory: MemoryManager): void {
+    this.memory = memory;
   }
 
   async initialize(): Promise<void> {
@@ -442,6 +484,61 @@ export class WebChatConnector implements Connector {
         res.end(entry.data);
         return;
       }
+
+      // /api/sessions — JSON list of sessions for the WebChat history view
+      if (url === '/api/sessions' || url.startsWith('/api/sessions?')) {
+        void (async (): Promise<void> => {
+          if (!this.memory) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Memory not available' }));
+            return;
+          }
+          try {
+            const parsed = new URL(url, 'http://localhost');
+            const limitParam = parseInt(parsed.searchParams.get('limit') ?? '20', 10);
+            const offsetParam = parseInt(parsed.searchParams.get('offset') ?? '0', 10);
+            const limit = Number.isFinite(limitParam) ? Math.min(100, Math.max(1, limitParam)) : 20;
+            const offset = Number.isFinite(offsetParam) ? Math.max(0, offsetParam) : 0;
+            const sessions = await this.memory.listSessions(limit, offset);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(sessions));
+          } catch (err) {
+            logger.error({ err }, 'GET /api/sessions failed');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        })();
+        return;
+      }
+
+      // /api/sessions/:id — full conversation JSON for one session
+      const sessionMatch = url.match(/^\/api\/sessions\/([^/?#]+)(?:\?.*)?$/);
+      if (sessionMatch) {
+        const sessionId = decodeURIComponent(sessionMatch[1]!);
+        void (async (): Promise<void> => {
+          if (!this.memory) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Memory not available' }));
+            return;
+          }
+          try {
+            const parsed = new URL(url, 'http://localhost');
+            const limitParam = parseInt(parsed.searchParams.get('limit') ?? '100', 10);
+            const limit = Number.isFinite(limitParam)
+              ? Math.min(500, Math.max(1, limitParam))
+              : 100;
+            const messages = await this.memory.getSessionHistory(sessionId, limit);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ session_id: sessionId, messages }));
+          } catch (err) {
+            logger.error({ err }, 'GET /api/sessions/:id failed');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        })();
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(CHAT_HTML);
     });
@@ -451,13 +548,28 @@ export class WebChatConnector implements Connector {
     const wss = new WsServer({ server });
     this.wss = wss;
 
+    // Keep WebSocket connections alive during long-running tasks (workers can take 10+ minutes)
+    const PING_INTERVAL_MS = 30_000;
+    const pingTimer = setInterval(() => {
+      for (const client of this.clients) {
+        if (client.readyState === WS_OPEN) {
+          client.ping();
+        }
+      }
+    }, PING_INTERVAL_MS);
+    wss.on('close', () => clearInterval(pingTimer));
+
     wss.on('connection', (socket: WsClient) => {
       this.clients.add(socket);
 
       socket.on('message', (raw: Buffer | string) => {
-        let payload: { type: string; content?: string };
+        let payload: { type: string; content?: string; workerId?: string };
         try {
-          payload = JSON.parse(raw.toString()) as { type: string; content?: string };
+          payload = JSON.parse(raw.toString()) as {
+            type: string;
+            content?: string;
+            workerId?: string;
+          };
         } catch {
           return;
         }
@@ -470,6 +582,29 @@ export class WebChatConnector implements Connector {
             sender: 'webchat-user',
             rawContent: payload.content,
             content: payload.content,
+            timestamp: new Date(),
+          };
+          this.emit('message', message);
+        } else if (payload.type === 'stop-worker' && typeof payload.workerId === 'string') {
+          this.messageCounter++;
+          const content = `stop ${payload.workerId}`;
+          const message: InboundMessage = {
+            id: `webchat-${this.messageCounter.toString()}`,
+            source: 'webchat',
+            sender: 'webchat-user',
+            rawContent: content,
+            content,
+            timestamp: new Date(),
+          };
+          this.emit('message', message);
+        } else if (payload.type === 'stop-all') {
+          this.messageCounter++;
+          const message: InboundMessage = {
+            id: `webchat-${this.messageCounter.toString()}`,
+            source: 'webchat',
+            sender: 'webchat-user',
+            rawContent: 'stop all',
+            content: 'stop all',
             timestamp: new Date(),
           };
           this.emit('message', message);

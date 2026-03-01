@@ -1,12 +1,12 @@
 # OpenBridge — Architecture
 
-> **Last Updated:** 2026-02-23
+> **Last Updated:** 2026-02-27
 
 ---
 
 ## Overview
 
-OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy.
+OpenBridge is a 6-layer autonomous AI bridge that connects messaging channels to AI agents. The system auto-discovers AI tools on your machine, picks the most capable one as "Master", and launches it to autonomously explore and operate on your workspace using an incremental, resumable exploration strategy. Workers can access external services (Gmail, Canva, Slack, GitHub, etc.) via the MCP (Model Context Protocol) ecosystem.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -31,6 +31,14 @@ OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
+│                   CLIADAPTER LAYER                                 │
+│  AdapterRegistry · ClaudeAdapter · CodexAdapter · AiderAdapter    │
+│  Maps discovered tool names to CLI-specific spawn configurations  │
+│  Translates SpawnOptions → binary + args + env per tool           │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
 │                     AGENT RUNNER                                   │
 │  AgentRunner · Model Selector · Tool Profiles                     │
 │  Unified CLI executor: --allowedTools, --max-turns, --model,      │
@@ -44,7 +52,18 @@ OpenBridge is a 5-layer autonomous AI bridge that connects messaging channels to
 │  Self-governing Master, AI task classification, auto-delegation   │
 │  via SPAWN markers, worker orchestration, session continuity,     │
 │  self-improvement, git-tracked knowledge in .openbridge/          │
-└──────────────────────────────────────────────────────────────────┘
+└──────────────────────┬────────────────────────────────────────────┘
+                       │ spawns workers with mcpServers in TaskManifest
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│               MCP (MODEL CONTEXT PROTOCOL)                        │
+│  Per-worker temp config · --mcp-config · --strict-mcp-config      │
+│  Gmail · Canva · Slack · GitHub · Filesystem · any MCP server     │
+│  Claude CLI spawns MCP servers per invocation (bounded lifecycle) │
+└──────────────────────┬────────────────────────────────────────────┘
+                       │
+                       ▼
+                 External Services
 ```
 
 ---
@@ -94,20 +113,20 @@ The engine that wires everything together. Lives in `src/core/`.
 
 ### Components
 
-| Component          | File                | Purpose                                                                          |
-| ------------------ | ------------------- | -------------------------------------------------------------------------------- |
-| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI          |
-| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates |
-| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                  |
-| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue            |
-| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                  |
-| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats            |
-| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                     |
-| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                      |
-| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                  |
-| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                     |
-| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                            |
-| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                            |
+| Component          | File                | Purpose                                                                                                                                                                                          |
+| ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Bridge**         | `bridge.ts`         | Main orchestrator — wires connectors, providers, auth, queue, Master AI                                                                                                                          |
+| **Router**         | `router.ts`         | Routes messages: connector → Master AI → connector. Sends ack + progress updates. Built-in commands: `/history`, `/history search <q>`, `/history <session-id>`, `/stop`, `/stop-all`, `/status` |
+| **AuthService**    | `auth.ts`           | Phone whitelist, `/ai` prefix check, command allow/deny filters                                                                                                                                  |
+| **MessageQueue**   | `queue.ts`          | Per-user sequential processing, retry with backoff, dead-letter queue                                                                                                                            |
+| **PluginRegistry** | `registry.ts`       | Factory pattern for connectors. Auto-discovery from directories                                                                                                                                  |
+| **Config**         | `config.ts`         | Loads and validates `config.json` via Zod. Supports V0 and V2 formats                                                                                                                            |
+| **ConfigWatcher**  | `config-watcher.ts` | Hot-reload config on file change (auth + rate limit updates)                                                                                                                                     |
+| **HealthServer**   | `health.ts`         | HTTP `/health` endpoint with uptime, connector/queue status                                                                                                                                      |
+| **Metrics**        | `metrics.ts`        | Message counts, latency histograms, error rates                                                                                                                                                  |
+| **AuditLogger**    | `audit-logger.ts`   | Structured audit trail of all message events                                                                                                                                                     |
+| **RateLimiter**    | `rate-limiter.ts`   | Per-user sliding window rate limiting                                                                                                                                                            |
+| **Logger**         | `logger.ts`         | Pino logger with child logger factory                                                                                                                                                            |
 
 ### Message Flow (V2 with Master AI)
 
@@ -203,6 +222,122 @@ interface ScanResult {
 | Cursor | `cursor` |    4     | code-gen, file-editing                         |
 | Cody   | `cody`   |    5     | code-gen, conversation                         |
 
+### Adapter Resolution
+
+After discovery, each `DiscoveredTool` is matched to a `CLIAdapter` in the `AdapterRegistry`. Only tools with a registered adapter can be used to spawn workers. Built-in adapters are provided for `claude`, `codex`, and `aider`. Tools without an adapter (e.g. `cursor`, `cody`) are recorded in `agents.json` but cannot be delegated to at runtime.
+
+```
+scanForAITools()
+  → ScanResult { tools: DiscoveredTool[], master: DiscoveredTool }
+      → adapterRegistry.getForTool(master)
+          → CLIAdapter (ClaudeAdapter | CodexAdapter | AiderAdapter)
+              → used by AgentRunner for every spawn() call
+```
+
+---
+
+## CLIAdapter Layer
+
+Lives in `src/core/cli-adapter.ts`, `src/core/adapter-registry.ts`, and `src/core/adapters/`.
+
+The `CLIAdapter` interface decouples `AgentRunner` from the specific CLI invocation details of each AI tool. When `AgentRunner.spawn()` is called, it asks the appropriate adapter to build a `CLISpawnConfig` and then passes that config directly to `child_process.spawn()`.
+
+### CLIAdapter Interface
+
+```typescript
+interface CLIAdapter {
+  /** Provider name matching DiscoveredTool.name ('claude', 'codex', 'aider') */
+  readonly name: string;
+
+  /**
+   * Translate provider-neutral SpawnOptions into the binary, args, and env
+   * for this CLI. Called once per spawn() or stream() invocation.
+   */
+  buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig;
+
+  /**
+   * Clean the process environment before spawning.
+   * Removes vars that would cause nested-session conflicts
+   * (e.g. CLAUDECODE, CLAUDE_CODE_*, CLAUDE_AGENT_SDK_*).
+   */
+  cleanEnv(env: Record<string, string | undefined>): Record<string, string | undefined>;
+
+  /**
+   * Map a CapabilityLevel to CLI-specific access restrictions.
+   * Claude → tool name lists for --allowedTools.
+   * Codex  → sandbox mode strings (handled in buildSpawnConfig).
+   * Aider  → flags like --yes.
+   * Returns undefined if the CLI has no restriction mechanism.
+   */
+  mapCapabilityLevel(level: CapabilityLevel): string[] | undefined;
+
+  /**
+   * Validate a model string for this provider.
+   * Returns true if recognized or safely passable to the CLI.
+   */
+  isValidModel(model: string): boolean;
+}
+```
+
+### CLISpawnConfig
+
+The output of `buildSpawnConfig()` — everything `child_process.spawn()` needs:
+
+```typescript
+interface CLISpawnConfig {
+  binary: string; // e.g. 'claude', 'codex'
+  args: string[]; // CLI argument array
+  env: Record<string, string | undefined>; // Cleaned environment
+  stdin?: 'ignore' | 'pipe'; // stdin behavior (default: 'ignore')
+  parseOutput?: (stdout: string) => string; // Optional post-processor for raw stdout
+}
+```
+
+The `parseOutput` hook lets adapters that emit structured output (e.g. Codex `--json` JSONL) extract the final human-readable message before `AgentRunner` returns the result.
+
+### CapabilityLevel
+
+Maps tool profiles to CLI-specific access mechanisms:
+
+| Level         | Claude (`--allowedTools`)                  | Codex (`--sandbox`)  |
+| ------------- | ------------------------------------------ | -------------------- |
+| `read-only`   | `Read`, `Glob`, `Grep`                     | `read-only`          |
+| `code-edit`   | `Read`, `Edit`, `Write`, `Glob`, ...       | `workspace-write`    |
+| `full-access` | `Read`, `Edit`, `Write`, `Glob`, `Bash(*)` | `danger-full-access` |
+
+### Built-in Adapters
+
+| Adapter         | File                         | Tool     | Key Flags                                                                                                                       |
+| --------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ClaudeAdapter` | `adapters/claude-adapter.ts` | `claude` | `--print`, `--session-id`, `--resume`, `--model`, `--max-turns`, `--allowedTools`, `--append-system-prompt`, `--max-budget-usd` |
+| `CodexAdapter`  | `adapters/codex-adapter.ts`  | `codex`  | `exec`, `--skip-git-repo-check`, `--model`, `--sandbox`, `--full-auto`, `--ephemeral`, `--json`, `-o <file>`, `-c <mcp-config>` |
+| `AiderAdapter`  | `adapters/aider-adapter.ts`  | `aider`  | `--no-auto-commits`, `--yes`, `--model`, `--message`                                                                            |
+
+**ClaudeAdapter** translates `allowedTools` directly to repeated `--allowedTools <tool>` flags. Session management uses `--print` (worker/stateless), `--session-id <uuid>` (new session), or `--resume <id>` (continue session).
+
+**CodexAdapter** uses the `exec` subcommand for non-interactive execution. Key behaviors:
+
+- Always pushes `--skip-git-repo-check` (required for non-git or untrusted workspaces)
+- Validates `OPENAI_API_KEY` at build time — throws if missing
+- Maps `allowedTools` → sandbox mode heuristically (`Bash(*)` → `danger-full-access`, `Edit/Write` → `workspace-write`, otherwise `read-only`)
+- Emits `--json` (JSONL structured output) + `-o <tempfile>` (reliable final answer capture)
+- Session resume uses `exec resume --last`; new sessions omit `--ephemeral` so Codex saves state
+- MCP passthrough: when `opts.mcpConfigPath` is set, passes it via `-c <path>`
+
+### AdapterRegistry
+
+`AdapterRegistry` (`src/core/adapter-registry.ts`) maps tool names to `CLIAdapter` instances. Built-in adapters are lazy-loaded on first access; custom adapters registered via `register()` take priority.
+
+```typescript
+const registry = createAdapterRegistry(); // pre-registers ClaudeAdapter
+const adapter = registry.get('codex'); // lazy-loads CodexAdapter
+const adapter2 = registry.getForTool(tool); // looks up by DiscoveredTool.name
+registry.has('aider'); // true (built-in exists)
+registry.register('my-tool', myAdapter); // register a custom adapter
+```
+
+`createAdapterRegistry()` is the production factory — it pre-registers `ClaudeAdapter` so the most common case never incurs lazy-load overhead.
+
 ---
 
 ## Layer 4: Master AI
@@ -228,6 +363,23 @@ Session Continuity:
   - Subsequent messages: resumes with --resume <session-id>
   - Preserves context across multi-turn conversations
   - Cleans up expired sessions automatically
+
+Conversation Context (memory.md pattern — v0.0.2):
+  - On session start: buildConversationContext() loads .openbridge/context/memory.md
+    into the Master's system prompt (always small, always relevant)
+  - Fallback: findRelevantHistory() FTS5 search (sanitized via sanitizeFts5Query())
+    when memory.md is empty/missing
+  - Memory updates: triggerMemoryUpdate() fires every 10 completed tasks and on
+    shutdown. It fetches the last 20 user+master messages from SQLite and injects
+    them into the prompt so the stateless --print agent has real context to write
+    meaningful notes (v0.0.5 fix for OB-F39).
+  - Dual-layer: memory.md = curated brain; SQLite conversations = raw archive
+  - See "memory.md Update Mechanism" in the SQLite Memory System section for details.
+
+Session Checkpointing (v0.0.2):
+  - checkpointSession(): serializes pending workers + accumulated results to DB
+  - resumeSession(): restores state and continues processing
+  - Integrated with priority queue: urgent messages trigger checkpoint-handle-resume
 ```
 
 ### Incremental Exploration Architecture
@@ -367,6 +519,15 @@ target-project/
     │     },
     │     "exploredAt": "2026-02-21T10:05:30.000Z"
     │   }
+    ├── context/                 ← Master AI memory (added in v0.0.2)
+    │   └── memory.md            ← Master's curated brain — decisions, preferences,
+    │                               project state, active threads. Cap: 200 lines.
+    │                               Read on every session start. Updated by Master
+    │                               at session end via "update memory" prompt.
+    ├── prompts/                 ← Prompt library (added in v0.0.2)
+    │   ├── manifest.json        ← Prompt registry: id, filename, usageCount,
+    │   │                           successRate, lastUsedAt, previousVersion
+    │   └── *.md                 ← Individual prompt template files
     ├── exploration.log          ← Timestamped scan history
     │   2026-02-21T10:00:00Z | Exploration started
     │   2026-02-21T10:01:30Z | Pass 1 (structure_scan) completed in 90s
@@ -379,28 +540,24 @@ target-project/
     │       { "name": "codex", "path": "/usr/local/bin/codex" }
     │     ]
     │   }
-    └── tasks/                   ← Task history (one JSON per task)
-        ├── task-001.json
-        │   {
-        │     "id": "task-001",
-        │     "description": "Run tests and fix failures",
-        │     "status": "completed",
-        │     "startedAt": "...",
-        │     "completedAt": "...",
-        │     "result": "47/47 tests passing"
-        │   }
-        └── task-002.json
+    ├── tasks/                   ← Task history JSON (superseded by openbridge.db)
+    │   ├── task-001.json
+    │   └── task-002.json
+    └── openbridge.db            ← SQLite memory (shipped in v0.0.2)
+                                    Tables: workspace_chunks (FTS5), conversation_messages (FTS5),
+                                    tasks, learnings, agent_activity (PID tracking), prompts,
+                                    prompt_versions, access_control, sessions, schema_versions
 ```
 
 ### Exploration Components
 
-| Module                     | File                         | Purpose                                                                                       |
-| -------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress |
-| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)         |
-| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)         |
-| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD operations, exploration state management, git operations                  |
-| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                               |
+| Module                     | File                         | Purpose                                                                                                                                                                                                                                                        |
+| -------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ExplorationCoordinator** | `exploration-coordinator.ts` | Orchestrates the 5-pass flow, loads/saves state, skips completed phases, checkpoints progress                                                                                                                                                                  |
+| **Exploration Prompts**    | `exploration-prompts.ts`     | 4 focused prompt generators (structure scan, classification, directory dive, summary)                                                                                                                                                                          |
+| **Result Parser**          | `result-parser.ts`           | Robust JSON extraction with fallbacks (direct parse → markdown fence → regex → retry)                                                                                                                                                                          |
+| **DotFolderManager**       | `dotfolder-manager.ts`       | `.openbridge/` CRUD, exploration state, git ops, prompt library (readPromptManifest, writePromptManifest, writePromptTemplate, getPromptTemplate, recordPromptUsage, getLowPerformingPrompts, resetPromptStats), memory file (readMemoryFile, writeMemoryFile) |
+| **Exploration Types**      | `types/master.ts`            | Zod schemas for all exploration data structures                                                                                                                                                                                                                |
 
 ### Delegation
 
@@ -430,7 +587,7 @@ When the Master needs help from another AI tool:
 
 ### Agent Runner (Unified CLI Executor)
 
-The `agent-runner.ts` module (`src/core/agent-runner.ts`) is the production-grade CLI executor that replaced the original `claude-code-executor.ts`. It supports:
+The `agent-runner.ts` module (`src/core/agent-runner.ts`) is the production-grade CLI executor that uses `AdapterRegistry` to resolve the correct `CLIAdapter` for each spawn call. It supports:
 
 ```typescript
 const runner = new AgentRunner();
@@ -453,7 +610,215 @@ for await (const chunk of stream) {
 }
 ```
 
-Features: `--allowedTools` for tool restrictions, `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
+Internally, `spawn()` calls `adapterRegistry.get(toolName).buildSpawnConfig(opts)` to produce the binary + args + env for the selected tool. The result is passed to `child_process.spawn()`. If `CLISpawnConfig.parseOutput` is set, `AgentRunner` applies it to accumulated stdout after the process exits — this is how `CodexAdapter` extracts the final message from `--json` JSONL output.
+
+Features: `--allowedTools` for tool restrictions (via adapter), `--max-turns` for bounded execution, `--model` for model selection, automatic retries with model fallback chain (opus → sonnet → haiku), session support (`--session-id`, `--resume`), prompt sanitization, disk logging, tool profiles (`read-only`, `code-edit`, `full-access`).
+
+---
+
+## SQLite Memory System (v0.0.2)
+
+The memory system lives at `.openbridge/openbridge.db` inside the target workspace. It provides persistent storage across sessions via 13 store modules, all exposed through a single `MemoryManager` facade (`src/memory/index.ts`).
+
+### Store Modules
+
+| Module                | File                    | Tables                              | Purpose                                           |
+| --------------------- | ----------------------- | ----------------------------------- | ------------------------------------------------- |
+| **ActivityStore**     | `activity-store.ts`     | `agent_activity`                    | Worker PID tracking, status, turn counts          |
+| **TaskStore**         | `task-store.ts`         | `tasks`, `learnings`                | Task history, model success rates, retry patterns |
+| **ConversationStore** | `conversation-store.ts` | `conversation_messages` (FTS5)      | Full conversation archive, FTS5 search            |
+| **ChunkStore**        | `chunk-store.ts`        | `workspace_chunks` (FTS5)           | Workspace file chunks, semantic retrieval         |
+| **PromptStore**       | `prompt-store.ts`       | `prompts`, `prompt_versions`        | Prompt effectiveness tracking in SQLite           |
+| **AccessStore**       | `access-store.ts`       | `access_control`                    | Role-based permissions per sender                 |
+| **SubMasterStore**    | `sub-master-store.ts`   | `sessions`                          | Sub-master session state + checkpoints            |
+| **WorkerBriefing**    | `worker-briefing.ts`    | (reads multiple tables)             | Assembles per-worker context before spawn         |
+| **Retrieval**         | `retrieval.ts`          | (reads chunk + conversation tables) | Semantic + FTS5 search helpers                    |
+| **Eviction**          | `eviction.ts`           | (writes multiple tables)            | LRU eviction + AI-powered conversation compaction |
+
+### Schema Versioning
+
+`schema_versions` table tracks applied migrations (version INTEGER, applied_at, description). The migration runner only applies versions > MAX(version), wrapped in transactions for rollback safety.
+
+### FTS5 Search Sanitization
+
+All FTS5 `MATCH` queries (in `searchConversations()` and `searchWorkspaceChunks()`) are sanitized via `sanitizeFts5Query()` (exported from `src/memory/retrieval.ts`) before being passed to the FTS5 engine. This prevents `SqliteError: fts5: syntax error near "'"` crashes when user messages or search queries contain FTS5 special characters.
+
+```typescript
+// src/memory/retrieval.ts
+export function sanitizeFts5Query(query: string): string {
+  // Strips FTS5 special characters: " * ( ) { } [ ] : ^ ~ ? @ # $ % & \ | < > = ! + , ;
+  // Quotes each token as a literal phrase
+  const cleaned = query.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return '';
+  return tokens.map((t) => `"${t}"`).join(' ');
+}
+```
+
+If `sanitizeFts5Query()` returns an empty string (e.g. query was only special characters), the search returns `[]` immediately — no SQL is executed.
+
+This fix was applied in Phase 63 (OB-F38). All FTS5 callers in the codebase route through `sanitizeFts5Query()` from the shared location in `retrieval.ts`.
+
+### memory.md Update Mechanism
+
+`triggerMemoryUpdate()` in `MasterManager` (`src/master/master-manager.ts`) drives the memory.md update pipeline:
+
+```
+Triggers:
+  - Every 10 completed tasks (MEMORY_UPDATE_INTERVAL = 10)
+  - On shutdown (before process.exit)
+
+Pipeline:
+  1. Call memory.getRecentMessages(20) → fetch last 20 user+master messages from SQLite
+  2. Format each entry as "[YYYY-MM-DD HH:MM] Role: content" (content truncated at 300 chars)
+  3. Prepend "## Recent conversation history:\n" section to the memory-update prompt
+  4. Spawn a stateless --print agent to write the updated memory.md
+  5. Agent writes updated notes to .openbridge/context/memory.md
+
+Fallbacks:
+  - No messages in SQLite → prompt sent without history section (graceful degradation)
+  - this.memory is null → same fallback (no crash)
+  - Agent exits non-zero → logged as WARN, not fatal
+
+Design rationale:
+  - --print mode is intentional (no TTY hang). The injected conversation history
+    compensates for the stateless context — the agent has enough context to write
+    meaningful notes without needing a persistent session.
+  - Prompt uses generic language ("write your updated notes to <path>") rather than
+    Claude-specific tool names — works with Claude and Codex as Master AI.
+```
+
+### Conversation History Commands
+
+The router (`src/core/router.ts`) handles built-in `/history` commands — intercepted before routing to Master AI:
+
+| Command                  | Description                                        |
+| ------------------------ | -------------------------------------------------- |
+| `history`                | List last 10 sessions (title, date, message count) |
+| `history search <query>` | FTS5 search across all past conversations          |
+| `history <session-id>`   | Show full transcript for one session               |
+
+WebChat connector also exposes `/api/sessions` (list) and `/api/sessions/:id` (full session) REST endpoints.
+
+---
+
+## Layer 6: MCP Integration
+
+MCP (Model Context Protocol) allows OpenBridge workers to call external services — Gmail, Canva, Slack, GitHub, databases, and any other MCP-compatible API — without OpenBridge needing to know anything about those services. The Claude CLI handles tool discovery and invocation; MCP servers are external processes that translate tool calls into real API requests.
+
+### End-to-End Flow
+
+```
+User (WhatsApp / Console / Telegram)
+  → OpenBridge Router
+    → Master AI (reads available MCP servers from system prompt context)
+      → decides: "this task needs Canva"
+        → includes mcpServers: [{ name: "canva", ... }] in worker TaskManifest
+          → AgentRunner.manifestToSpawnOptions() writes per-worker temp config
+            → claude --print --mcp-config /tmp/ob-mcp-<uuid>.json --strict-mcp-config ...
+              → Claude CLI spawns Canva MCP server process
+                → MCP server calls Canva API
+              → MCP server exits when worker completes
+            → temp config file deleted after spawn
+          → worker returns result
+        → Master formats and sends back to channel
+```
+
+### Per-Worker MCP Isolation (Security)
+
+Each worker receives a **temporary MCP config** containing only the servers it needs, not all configured servers. This prevents cross-contamination of API keys and limits each worker's external access to its task scope.
+
+```typescript
+// manifestToSpawnOptions() in agent-runner.ts
+// When manifest.mcpServers is non-empty:
+//   1. Generate /tmp/ob-mcp-<uuid>.json with ONLY the requested servers
+//   2. Set spawnOpts.mcpConfigPath = temp file path
+//   3. Set strictMcpConfig: true  (ignore global/project MCP configs)
+//   4. Register cleanup: delete temp file after spawn completes
+```
+
+The `--strict-mcp-config` flag ensures workers cannot access MCP servers from the user's global `~/.claude/` or project-level configs — only those explicitly provisioned for the task.
+
+### Master Awareness
+
+The Master AI sees all configured MCP servers in its system prompt (injected via `MasterSystemPromptContext.mcpServers`). This allows the Master to autonomously decide when a task requires an external service and which workers should receive MCP access:
+
+```
+Available MCP Servers:
+- canva: Design creation and editing via Canva API
+- gmail: Send and read Gmail messages
+- filesystem: Read and write local files via MCP protocol
+
+To use an external service, include `mcpServers` in the worker TaskManifest
+with only the servers that worker needs.
+```
+
+### Claude CLI MCP Flags
+
+`ClaudeAdapter` (`src/core/adapters/claude-adapter.ts`) passes MCP flags when `SpawnOptions.mcpConfigPath` is set:
+
+```bash
+claude --print \
+  --mcp-config /tmp/ob-mcp-<uuid>.json \
+  --strict-mcp-config \
+  --allowedTools "Read,mcp__canva__*" \
+  "Create a banner for the Q3 campaign"
+```
+
+### MCP Config Format (what Claude CLI expects)
+
+```json
+{
+  "mcpServers": {
+    "canva": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/canva-mcp-server"],
+      "env": { "CANVA_API_KEY": "sk-..." }
+    }
+  }
+}
+```
+
+### OpenBridge Config Format (what users write in config.json)
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": [
+      {
+        "name": "canva",
+        "command": "npx",
+        "args": ["-y", "@anthropic/canva-mcp-server"],
+        "env": { "CANVA_API_KEY": "sk-..." }
+      }
+    ],
+    "configPath": "~/.claude/claude_desktop_config.json"
+  }
+}
+```
+
+`configPath` lets users import their existing Claude Desktop or Claude Code MCP configuration without duplicating server definitions.
+
+### MCP Scope
+
+- **Claude workers:** `--mcp-config` + `--strict-mcp-config` (implemented in `ClaudeAdapter`)
+- **Codex workers:** native MCP support via `codex mcp` — when `opts.mcpConfigPath` is set, passed via `-c <path>` in `CodexAdapter` (wired in Phase 58, OB-1105)
+- **Aider workers:** no MCP support (Aider has no MCP integration)
+
+### MCP Server Lifecycle
+
+MCP servers are **per-worker processes** spawned by the Claude CLI at invocation time and terminated when the worker completes. This matches OpenBridge's bounded-worker philosophy — no long-lived external service connections. Each worker starts fresh.
+
+### Global MCP Config on Startup
+
+On bridge startup, `src/core/config.ts` writes `.openbridge/mcp-config.json` from `V2Config.mcp`:
+
+- If `configPath` is set: validates + imports the external config file
+- If inline `servers` are defined: transforms them to Claude CLI format and writes the file
+- If both: merges (inline servers override same-name imports from `configPath`)
+
+`getMcpConfigPath()` returns the path to this file (or `null` when MCP is not configured), used by `MasterManager` when building Master session context.
 
 ---
 
@@ -494,21 +859,27 @@ The config loader auto-detects the format and runs the appropriate startup flow.
 ### V2 Flow (with discovery + Master)
 
 ```
-1. loadConfig()                    → detect V2 format
-2. scanForAITools()                → discover claude, codex, etc.
-3. new Bridge(config)              → create bridge with auth, queue, router
-4. registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
-5. bridge.start()                  → initialize connectors, health, metrics
-6. new MasterManager(tool, path)   → create Master with discovered tool
-7. bridge.setMaster(master)        → wire Master into router
-8. master.startExploration()       → fire-and-forget incremental exploration
-   ├─ ExplorationCoordinator.explore()
-   ├─ Load exploration-state.json (if exists)
-   ├─ Skip completed phases
-   ├─ Execute remaining passes
-   ├─ Checkpoint after each pass
-   └─ State transitions: idle → exploring → ready
-9. Ready — waiting for messages with full project context
+1.  loadConfig()                    → detect V2 format
+2.  writeMcpConfig(config.mcp)      → if MCP configured: merge inline servers + configPath import,
+                                       write .openbridge/mcp-config.json in Claude CLI format
+3.  scanForAITools()                → discover claude, codex, etc.
+                                       → ScanResult { tools, master }
+4.  adapterRegistry.getForTool(master)
+                                    → resolve master to CLIAdapter
+                                      (ClaudeAdapter, CodexAdapter, or AiderAdapter)
+5.  new Bridge(config)              → create bridge with auth, queue, router
+6.  registerBuiltInConnectors()     → register Console, WebChat, WhatsApp, Telegram, Discord
+7.  bridge.start()                  → initialize connectors, health, metrics
+8.  new MasterManager(tool, path)   → create Master with discovered tool + adapter
+9.  bridge.setMaster(master)        → wire Master into router
+10. master.startExploration()       → fire-and-forget incremental exploration
+    ├─ ExplorationCoordinator.explore()
+    ├─ Load exploration-state.json (if exists)
+    ├─ Skip completed phases
+    ├─ Execute remaining passes (each calls agentRunner.spawn() → adapter.buildSpawnConfig())
+    ├─ Checkpoint after each pass
+    └─ State transitions: idle → exploring → ready
+11. Ready — waiting for messages with full project context and MCP servers available
 ```
 
 ### V0 Flow (legacy — direct provider)
@@ -552,13 +923,67 @@ Scenario 4: First run (no .openbridge/)
 
 ---
 
+## Graceful Shutdown
+
+OpenBridge handles `SIGINT` (Ctrl+C) and `SIGTERM` (process manager) with a structured shutdown sequence that ensures session state and memory are preserved before exit.
+
+### Shutdown Flow
+
+```
+SIGINT / SIGTERM received
+  │
+  ├─ shutdownInProgress guard → if already shutting down, ignore signal (no double-shutdown)
+  │
+  ├─ console.log('\nShutting down gracefully... please wait')  ← user-facing message
+  │
+  ├─ logger.info('Shutting down...')                           ← structured log
+  │
+  ├─ Promise.race([
+  │     bridge.stop(),                                         ← clean connector shutdown
+  │     timeout(10_000)                                        ← 10s hard limit
+  │   ])
+  │
+  │   bridge.stop() calls:
+  │     └─ MasterManager.shutdown()
+  │           ├─ saveMasterSessionToStore()   ← FIRST: fast SQLite write (< 100ms)
+  │           │                                  critical state always persisted
+  │           └─ triggerMemoryUpdate()        ← SECOND: slow AI spawn (10–30s)
+  │                                              may be interrupted by 10s timeout
+  │
+  ├─ On success (shutdown completed before timeout):
+  │     process.exit(0)
+  │
+  └─ On timeout (10s exceeded):
+        console.error('Shutdown timeout exceeded (10s) — forcing exit')
+        process.exit(1)
+```
+
+### Critical-First Ordering
+
+`MasterManager.shutdown()` saves session state to SQLite **before** triggering the memory update. This ordering guarantees:
+
+- **SQLite session state** (fast write, < 100ms) — always persisted, even if the memory update is interrupted
+- **memory.md update** (slow AI spawn, 10–30s) — attempted after session state is safe, may be cut short by the 10s timeout
+
+A try/catch wraps `triggerMemoryUpdate()` so its failure cannot block `saveMasterSessionToStore()`.
+
+### shutdownInProgress Guard
+
+`src/index.ts` maintains a `shutdownInProgress` boolean flag. If the signal handler fires a second time while shutdown is in progress (e.g. user presses Ctrl+C twice), the second call is a no-op. This prevents concurrent shutdown races and double-logging.
+
+### `tsx` Force-Kill Behavior
+
+When running via `npm run dev` (which uses `tsx`), `tsx` may print `[tsx] Previous process hasn't exited yet. Force killing...` if it receives a second Ctrl+C or if the 10s timeout fires. This is expected behavior — see `CONTRIBUTING.md` for details on avoiding force-kills.
+
+---
+
 ## Key Design Decisions
 
 1. **Incremental exploration, not monolithic.** The old architecture used a single giant AI call that timed out on real projects. The new 5-pass strategy breaks exploration into short, checkpointed phases that never timeout.
 
 2. **The AI does the exploring, not our code.** We don't write framework detectors or package.json parsers. We send the AI focused prompts and let it figure out the project. This is simpler and more powerful.
 
-3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. Currently uses JSON files; v0.1.0 will migrate to a single SQLite database (`openbridge.db`).
+3. **`.openbridge/` lives inside the target project.** The AI's knowledge is co-located with the code it knows. Uses a SQLite database (`openbridge.db`, shipped in v0.0.2) alongside JSON files for exploration state. JSON files remain for exploration checkpointing; `openbridge.db` stores conversations, tasks, prompts, agent activity, access control, and schema versions.
 
 4. **Session continuity enables multi-turn conversations.** The Master tracks sessions per sender with 30-minute TTL. First message creates a session, subsequent messages resume it. This enables natural business conversations: "which invoices are overdue?" → "send reminders to those clients".
 
@@ -568,7 +993,15 @@ Scenario 4: First run (no .openbridge/)
 
 7. **AgentRunner replaced the original executor.** The `agent-runner.ts` module provides retries, model fallback, tool restrictions (`--allowedTools`), bounded execution (`--max-turns`), and disk logging — inspired by the bash scripts in `scripts/`.
 
-8. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
+8. **CLIAdapter decouples AgentRunner from per-tool CLI details.** Each tool (`claude`, `codex`, `aider`) has its own `CLIAdapter` that translates provider-neutral `SpawnOptions` into CLI-specific binary + args + env. Lossy translation is intentional — if a CLI doesn't support a feature (e.g. Codex has no `--max-turns`), the adapter silently drops it. This means AgentRunner code never needs to special-case individual tools.
+
+9. **Dead code is deleted, not archived.** Old modules (like `claude-code-executor.ts`) are removed once replaced. Git history preserves them if needed.
+
+10. **MCP integration is per-worker and isolated.** Each worker receives a temporary MCP config containing only the servers it needs. Combined with `--strict-mcp-config`, no worker can access more external services than its TaskManifest declares. API keys from one worker never leak to another.
+
+11. **Master drives MCP assignment autonomously.** The Master AI sees available MCP servers in its system prompt context. It decides which workers need external service access based on the task. No hardcoded rules — the Master reasons about this the same way it reasons about tool profiles and model selection.
+
+12. **MCP scope follows CLI capabilities.** `--mcp-config` is a Claude CLI flag. Codex has its own native MCP system (`codex mcp`), wired in Phase 58. Aider has no MCP support. Each adapter translates `mcpConfigPath` to its CLI's native mechanism (or silently drops it if unsupported).
 
 ---
 
@@ -599,6 +1032,13 @@ src/
 │   ├── config-watcher.ts       ← Config hot-reload
 │   ├── agent-runner.ts         ← Unified CLI executor (--allowedTools, --max-turns, --model, retries)
 │   ├── model-selector.ts       ← Model recommendation per task type + profile
+│   ├── cli-adapter.ts          ← CLIAdapter interface + CLISpawnConfig + CapabilityLevel
+│   ├── adapter-registry.ts     ← Maps tool names to CLIAdapter instances (lazy-loads built-ins)
+│   ├── adapters/               ← Built-in CLIAdapter implementations
+│   │   ├── index.ts            ← Re-exports all adapters
+│   │   ├── claude-adapter.ts   ← ClaudeAdapter: --print, --session-id, --resume, --allowedTools
+│   │   ├── codex-adapter.ts    ← CodexAdapter: exec, --skip-git-repo-check, --json, -o, sandbox
+│   │   └── aider-adapter.ts    ← AiderAdapter: --no-auto-commits, --yes, --message
 │   ├── health.ts               ← Health check endpoint
 │   ├── metrics.ts              ← Metrics collection
 │   ├── audit-logger.ts         ← Audit trail
@@ -613,21 +1053,27 @@ src/
 │   └── discord/                ← Discord connector (discord.js v14)
 ├── providers/
 │   ├── index.ts                ← Provider registry
-│   └── claude-code/            ← Claude Code CLI provider (V0)
-│       ├── claude-code-provider.ts
-│       ├── claude-code-config.ts
-│       ├── session-manager.ts
-│       └── provider-error.ts
+│   ├── claude-code/            ← Claude Code CLI provider (uses AgentRunner + ClaudeAdapter)
+│   │   ├── claude-code-provider.ts
+│   │   ├── claude-code-config.ts
+│   │   ├── session-manager.ts
+│   │   └── provider-error.ts
+│   └── codex/                  ← Codex CLI provider (uses AgentRunner + CodexAdapter)
+│       ├── codex-provider.ts   ← CodexProvider: processMessage(), streamMessage(), isAvailable()
+│       ├── codex-config.ts     ← CodexConfig Zod schema (workspacePath, timeout, model, sandbox)
+│       └── session-manager.ts  ← Codex session management (ephemeral → named session → resume)
 ├── discovery/
 │   ├── index.ts                ← scanForAITools() export
 │   ├── tool-scanner.ts         ← CLI tool detection (which)
 │   └── vscode-scanner.ts       ← VS Code extension detection
 └── master/
     ├── index.ts                ← Module exports
-    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions
-    ├── master-system-prompt.ts ← Master AI system prompt builder
+    ├── master-manager.ts       ← Master AI lifecycle + task classification + sessions +
+    │                              checkpointSession() / resumeSession() (5710+ LOC)
+    ├── master-system-prompt.ts ← Master AI system prompt builder (includes memory.md guidance)
     ├── worker-registry.ts      ← Active worker tracking + concurrency limits
-    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + exploration state
+    ├── dotfolder-manager.ts    ← .openbridge/ CRUD + exploration state + prompt library +
+    │                              readMemoryFile() / writeMemoryFile() (866+ LOC)
     ├── exploration-coordinator.ts ← 5-pass orchestration + checkpointing
     ├── exploration-prompts.ts  ← Pass-specific prompt generators
     ├── exploration-prompt.ts   ← Legacy monolithic exploration prompt (V0)
@@ -636,5 +1082,8 @@ src/
     ├── spawn-parser.ts         ← Parse worker spawn requests from Master output
     ├── worker-result-formatter.ts ← Format worker results for Master
     ├── workspace-change-tracker.ts ← Git-based workspace change detection
+    ├── prompt-evolver.ts       ← Prompt effectiveness tracking + self-improvement
+    ├── sub-master-detector.ts  ← Sub-master capability detection
+    ├── sub-master-manager.ts   ← Sub-master session pool management
     └── delegation.ts           ← Multi-AI task delegation
 ```

@@ -355,17 +355,39 @@ export class WorkspaceChangeTracker {
    *
    * Used by ExplorationCoordinator to decide which memory chunks to mark stale.
    */
-  public extractChangedScopes(changedFiles: string[], deletedFiles: string[] = []): string[] {
+  public extractChangedScopes(
+    changedFiles: string[],
+    deletedFiles: string[] = [],
+    splitDirs?: Record<string, string[]>,
+  ): string[] {
     const scopes = new Set<string>();
     for (const filePath of [...changedFiles, ...deletedFiles]) {
       // Normalise to forward slashes for cross-platform compatibility
       const normalised = filePath.replace(/\\/g, '/');
       const firstSlash = normalised.indexOf('/');
-      if (firstSlash > 0) {
-        scopes.add(normalised.slice(0, firstSlash));
-      } else {
+      if (firstSlash <= 0) {
         // Root-level file — maps to the workspace root scope
         scopes.add('.');
+        continue;
+      }
+
+      const topLevelDir = normalised.slice(0, firstSlash);
+
+      // If this top-level dir was split into subdirs, use 2-level scope
+      if (splitDirs && splitDirs[topLevelDir]) {
+        const secondSlash = normalised.indexOf('/', firstSlash + 1);
+        if (secondSlash > 0) {
+          const twoLevelScope = normalised.slice(0, secondSlash);
+          // Only use 2-level scope if it matches one of the known split paths
+          if (splitDirs[topLevelDir].includes(twoLevelScope)) {
+            scopes.add(twoLevelScope);
+            continue;
+          }
+        }
+        // File is directly under the top-level dir (not in a subdir)
+        scopes.add(topLevelDir);
+      } else {
+        scopes.add(topLevelDir);
       }
     }
     return Array.from(scopes);

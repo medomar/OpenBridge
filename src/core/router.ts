@@ -10,20 +10,22 @@ import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
-import type { MemoryManager, ActivityRecord, ExplorationProgressRow } from '../memory/index.js';
+import type {
+  MemoryManager,
+  ActivityRecord,
+  ConversationEntry,
+  ExplorationProgressRow,
+  SessionSummary,
+} from '../memory/index.js';
+import type { MessageQueue } from './queue.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
+import { AgentRunner } from './agent-runner.js';
+import { FastPathResponder } from './fast-path-responder.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
-
-const PROGRESS_MESSAGES = [
-  'Still working on it...',
-  'This is taking a moment — hang tight...',
-  'Still processing your request...',
-  'Almost there — still working...',
-];
 
 /** Pattern matching [SEND:channel]recipient|content[/SEND] markers in AI output */
 const SEND_MARKER_RE = /\[SEND:([^\]]+)\]([^|]+)\|([^[]*)\[\/SEND\]/g;
@@ -48,6 +50,15 @@ function formatDuration(ms: number): string {
 function makeProgressBar(pct: number, width = 5): string {
   const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
   return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+/** Escape special HTML characters for safe WebChat output. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** Map file extension to MIME type and media category */
@@ -79,11 +90,101 @@ function getMimeType(filename: string): {
   return mimeMap[ext] ?? { mimeType: 'application/octet-stream', mediaType: 'document' };
 }
 
+/** Pending stop-all confirmation entry, keyed by sender ID. */
+interface PendingConfirmation {
+  action: 'kill-all';
+  expiresAt: number;
+}
+
+/**
+ * Message priority levels used for queue ordering.
+ * Lower number = higher priority (processed first).
+ *
+ * 1 = quick-answer  — status, list, simple questions (no file changes)
+ * 2 = tool-use      — generate, create, fix, single-file edits
+ * 3 = complex-task  — implement, refactor, multi-step work
+ */
+export type MessagePriority = 1 | 2 | 3;
+
+/**
+ * Classify a message by priority using keyword heuristics.
+ * Returns 1 (quick-answer), 2 (tool-use), or 3 (complex-task).
+ * Runs synchronously — no AI calls, safe to call before enqueueing.
+ */
+export function classifyMessagePriority(content: string): MessagePriority {
+  const lower = content.toLowerCase().trim();
+
+  // Complex-task keywords — multi-step work requiring planning and delegation
+  const complexKeywords = [
+    'implement',
+    'build',
+    'refactor',
+    'develop',
+    'set up',
+    'setup',
+    'redesign',
+    'migrate',
+    'overhaul',
+  ];
+  if (complexKeywords.some((kw) => lower.includes(kw)) || /\barchitect\b/.test(lower)) {
+    return 3;
+  }
+
+  // Compound action pattern — two verbs joined by "and" signal multi-step work
+  const actionVerbs = [
+    'review',
+    'analyze',
+    'audit',
+    'check',
+    'fix',
+    'add',
+    'update',
+    'create',
+    'remove',
+    'test',
+    'write',
+    'optimize',
+    'improve',
+  ];
+  const matchedVerbs = actionVerbs.filter((v) => lower.includes(v));
+  if (matchedVerbs.length >= 2 && lower.includes(' and ')) {
+    return 3;
+  }
+
+  // Tool-use keywords — single-action file generation or targeted edits
+  const toolUseKeywords = ['generate', 'create', 'write', 'fix', 'update file', 'add to', 'make a'];
+  if (toolUseKeywords.some((kw) => lower.includes(kw))) {
+    return 2;
+  }
+
+  // Quick-answer patterns — questions and lookups (no file changes needed)
+  const questionPatterns = [
+    'what is',
+    'what are',
+    'how does',
+    'how do',
+    'explain',
+    'describe',
+    'show me',
+    'list all',
+    'list the',
+    'tell me',
+    'status',
+  ];
+  const isShortQuestion = lower.endsWith('?') && lower.length <= 80;
+  const hasQuestionKeyword = questionPatterns.some((qp) => lower.includes(qp));
+  if (isShortQuestion || (hasQuestionKeyword && lower.length <= 120)) {
+    return 1;
+  }
+
+  // Default: tool-use — most non-question messages require file operations
+  return 2;
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
   private defaultProviderName: string;
-  private readonly progressIntervalMs: number;
   private readonly auditLogger?: AuditLogger;
   private readonly metrics?: MetricsCollector;
   private orchestrator?: AgentOrchestrator;
@@ -92,15 +193,24 @@ export class Router {
   private workspacePath?: string;
   private emailConfig?: EmailConfig;
   private memory?: MemoryManager;
+  private queue?: MessageQueue;
+  /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
+  private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
+  /**
+   * IDs of priority-1 messages that should trigger a checkpoint-handle-resume cycle.
+   * Populated by the `onUrgentEnqueued` queue callback; consumed in `route()`.
+   */
+  private readonly urgentCycleMessageIds = new Set<string>();
+  /** Pool of short-lived read-only agents for quick-answer responses during Master processing. */
+  private readonly fastPathResponder = new FastPathResponder(new AgentRunner());
 
   constructor(
     defaultProvider: string,
-    config?: RouterConfig,
+    _config?: RouterConfig,
     auditLogger?: AuditLogger,
     metrics?: MetricsCollector,
   ) {
     this.defaultProviderName = defaultProvider;
-    this.progressIntervalMs = config?.progressIntervalMs ?? 15_000;
     this.auditLogger = auditLogger;
     this.metrics = metrics;
   }
@@ -132,10 +242,27 @@ export class Router {
     this.emailConfig = config;
   }
 
-  /** Set the MemoryManager — enables the "status" command */
+  /** Set the MemoryManager — enables the "status" command and fast-path context chunks */
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
+    this.fastPathResponder.setMemory(memory);
     logger.info('Router configured with MemoryManager (status command enabled)');
+  }
+
+  /** Set the MessageQueue — enables queue depth display in the "status" command */
+  setQueue(queue: MessageQueue): void {
+    this.queue = queue;
+    // Register urgent-message callback: when a priority-1 message is enqueued while
+    // the sender already has a message in flight, mark it for checkpoint-handle-resume.
+    queue.onUrgentEnqueued((msg) => {
+      if (this.master) {
+        this.urgentCycleMessageIds.add(msg.id);
+        logger.info(
+          { messageId: msg.id },
+          'Urgent message detected — session will be checkpointed before handling',
+        );
+      }
+    });
   }
 
   /** Register an active connector */
@@ -227,6 +354,54 @@ export class Router {
       return;
     }
 
+    // Handle "confirm" for a pending stop-all confirmation — intercept before routing to Master AI
+    if (message.content.trim().toLowerCase() === 'confirm') {
+      const pending = this.pendingStopConfirmations.get(message.sender);
+      if (pending) {
+        await this.handleConfirmCommand(message, connector, pending);
+        return;
+      }
+    }
+
+    // Handle built-in "stop" command — intercept before routing to Master AI
+    if (/^stop(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleStopCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "explore" command — intercept before routing to Master AI
+    if (/^explore(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleExploreCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "history" command — intercept before routing to Master AI
+    if (/^history(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleHistoryCommand(message, connector);
+      return;
+    }
+
+    // Checkpoint-handle-resume cycle for urgent messages.
+    // When a priority-1 message was flagged by the queue (sender had a message in flight when
+    // this arrived), checkpoint session state before processing so that:
+    //   1. A crash during urgent handling is recoverable from the checkpoint.
+    //   2. After the urgent message completes, we can restore pre-interruption context.
+    const isUrgentCycle = this.urgentCycleMessageIds.has(message.id);
+    if (isUrgentCycle) {
+      this.urgentCycleMessageIds.delete(message.id);
+      if (this.master) {
+        await this.master.checkpointSession();
+      }
+    }
+
+    // Fast-path: when Master is processing a complex task and a quick-answer message arrives,
+    // spawn a lightweight read-only agent to answer immediately without waiting for Master.
+    const messagePriority = classifyMessagePriority(message.content);
+    if (messagePriority === 1 && this.master?.getState() === 'processing') {
+      await this.runFastPath(message, connector);
+      return;
+    }
+
     const useMaster = !!this.master;
     const useOrchestrator = !useMaster && !!this.orchestrator;
     logger.info(
@@ -239,7 +414,14 @@ export class Router {
       'Routing message',
     );
 
-    // Send acknowledgment
+    // Notify the Electron parent process (if running as a forked child) so it can show
+    // notification badges without parsing log output. Guarded by OPENBRIDGE_ELECTRON so
+    // this is a no-op in tests, CLI runs, and other non-Electron contexts.
+    if (typeof process.send === 'function' && process.env['OPENBRIDGE_ELECTRON'] === '1') {
+      process.send({ type: 'message-received', sender: message.sender, channel: message.source });
+    }
+
+    // Send single acknowledgment (no cycling timer — progress events handle the rest)
     const ack: OutboundMessage = {
       target: message.source,
       recipient: message.sender,
@@ -253,8 +435,15 @@ export class Router {
       await connector.sendTypingIndicator(message.sender);
     }
 
-    // Start progress updates
-    const stopProgress = this.startProgressUpdates(connector, message);
+    // Inject attachment context so Master AI and workers know about attached files
+    if (message.attachments && message.attachments.length > 0) {
+      const attachmentLines = message.attachments.map((a) => {
+        const sizeKb = (a.sizeBytes / 1024).toFixed(1);
+        const namePart = a.filename ? ` (${a.filename})` : '';
+        return `- **${a.type}**${namePart}: \`${a.filePath}\` — ${a.mimeType} — ${sizeKb} KB`;
+      });
+      message.content = `${message.content}\n\n## Attachments\n${attachmentLines.join('\n')}`;
+    }
 
     // Process message — through Master, orchestrator, or directly via provider
     let result: ProviderResult;
@@ -265,6 +454,12 @@ export class Router {
         // Route through Master AI
         const response = await this.master.processMessage(message);
         result = { content: response };
+        // Resume from checkpoint after urgent message is fully handled — restores the
+        // pre-interruption Master context (worker history, pending messages) so that
+        // subsequent messages continue with the correct session state.
+        if (isUrgentCycle) {
+          await this.master.resumeSession();
+        }
       } else if (this.orchestrator) {
         const orchestratorResult = await this.orchestrator.process(message);
         result = orchestratorResult.result;
@@ -277,7 +472,6 @@ export class Router {
         }
       }
     } catch (error) {
-      stopProgress();
       const errorKind = error instanceof ProviderError ? error.kind : ('unknown' as const);
       this.metrics?.recordFailed(errorKind);
       if (error instanceof ProviderError) {
@@ -305,7 +499,6 @@ export class Router {
       throw error;
     }
 
-    stopProgress();
     this.metrics?.recordProcessed(Date.now() - startTime);
 
     // Parse and dispatch [SHARE:channel] file-sharing markers before sending main reply
@@ -621,6 +814,88 @@ export class Router {
   }
 
   /**
+   * Fast-path responder for quick-answer messages that arrive while Master is processing.
+   *
+   * Spawns a lightweight `claude --print` call with read-only tools (Read, Glob, Grep)
+   * and maxTurns=3. Injects a compact workspace context from the cached workspace map
+   * so the agent can answer questions about the project without waiting for Master.
+   *
+   * Falls back to a "Master is busy" message if the workspace path is not set or if
+   * the fast-path agent itself fails.
+   */
+  private async runFastPath(message: InboundMessage, connector: Connector): Promise<void> {
+    logger.info(
+      { sender: message.sender },
+      'Fast-path: Master is processing, routing quick-answer directly',
+    );
+
+    if (connector.sendTypingIndicator) {
+      await connector.sendTypingIndicator(message.sender);
+    }
+
+    if (!this.workspacePath) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'The AI is busy processing a task. Please wait a moment before asking again.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const workspaceContext = await this.buildWorkspaceContext();
+    const reply = await this.fastPathResponder.answer({
+      question: message.content,
+      workspacePath: this.workspacePath,
+      workspaceContext: workspaceContext || undefined,
+    });
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: reply,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Fast-path response delivered');
+  }
+
+  /**
+   * Build a compact workspace context string from the cached workspace map.
+   * Used by the fast-path responder to give the lightweight agent project awareness.
+   * Returns an empty string if no map is available.
+   */
+  private async buildWorkspaceContext(): Promise<string> {
+    if (!this.master) return '';
+    try {
+      const map = await this.master.getWorkspaceMap();
+      if (!map) return '';
+
+      const lines: string[] = [];
+      lines.push(`Project: ${map.projectName} (${map.projectType})`);
+      if (map.frameworks.length > 0) {
+        lines.push(`Frameworks: ${map.frameworks.join(', ')}`);
+      }
+      if (map.summary) {
+        lines.push(`Summary: ${map.summary}`);
+      }
+      const commandEntries = Object.entries(map.commands);
+      if (commandEntries.length > 0) {
+        lines.push(`Commands: ${commandEntries.map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      }
+      if (map.keyFiles.length > 0) {
+        const filesSummary = map.keyFiles
+          .slice(0, 10)
+          .map((f) => `  ${f.path}: ${f.purpose}`)
+          .join('\n');
+        lines.push(`Key files:\n${filesSummary}`);
+      }
+      return lines.join('\n');
+    } catch {
+      return '';
+    }
+  }
+
+  /**
    * Handle the built-in "status" command.
    * Queries agent_activity and exploration_progress tables and returns a
    * text-based status report that works on all channels.
@@ -697,6 +972,29 @@ export class Router {
       }
     }
 
+    // Queue depth + estimated completion time section (OB-923)
+    if (this.queue) {
+      const queueSnapshot = this.queue.getQueueSnapshot();
+      if (queueSnapshot.length > 0) {
+        lines.push('\nQueue:');
+        for (const entry of queueSnapshot) {
+          const waitStr =
+            entry.estimatedWaitMs < 60_000
+              ? `~${Math.ceil(entry.estimatedWaitMs / 1000)}s`
+              : `~${Math.round(entry.estimatedWaitMs / 60_000)}m`;
+          const shortSender =
+            entry.sender.length > 12
+              ? `${entry.sender.slice(0, 6)}…${entry.sender.slice(-4)}`
+              : entry.sender;
+          lines.push(
+            ` • ${shortSender}: ${entry.pending} message${entry.pending !== 1 ? 's' : ''} waiting (est. ${waitStr})`,
+          );
+        }
+      } else {
+        lines.push('\nQueue: idle');
+      }
+    }
+
     // Cost summary — use getDailyCost to include all completed workers today (OB-746)
     let dailyCost = 0;
     try {
@@ -720,33 +1018,537 @@ export class Router {
     logger.info({ sender: message.sender }, 'Status command handled');
   }
 
-  /** Start sending periodic progress updates, returns a stop function */
-  private startProgressUpdates(connector: Connector, message: InboundMessage): () => void {
-    let tickCount = 0;
-    const timer = setInterval(() => {
-      const progressMsg = PROGRESS_MESSAGES[tickCount % PROGRESS_MESSAGES.length]!;
-      tickCount++;
+  /**
+   * Handle a "confirm" message that follows a pending "stop all" request.
+   * Executes killAllWorkers() if the confirmation arrived within the 30-second window;
+   * otherwise reports that it has expired.
+   */
+  private async handleConfirmCommand(
+    message: InboundMessage,
+    connector: Connector,
+    pending: PendingConfirmation,
+  ): Promise<void> {
+    // Always remove the pending entry — one shot regardless of outcome
+    this.pendingStopConfirmations.delete(message.sender);
 
-      const update: OutboundMessage = {
+    if (Date.now() > pending.expiresAt) {
+      await connector.sendMessage({
         target: message.source,
         recipient: message.sender,
-        content: progressMsg,
+        content: "Confirmation expired. Send 'stop all' again to retry.",
         replyTo: message.id,
-      };
-
-      connector.sendMessage(update).catch((err: unknown) => {
-        logger.warn({ err, messageId: message.id }, 'Failed to send progress update');
       });
+      logger.info({ sender: message.sender }, 'Stop all confirmation expired');
+      return;
+    }
 
-      // Refresh typing indicator (best-effort)
-      if (connector.sendTypingIndicator) {
-        connector.sendTypingIndicator(message.sender).catch(() => {
-          // best-effort
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Stop command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const result = await this.master.killAllWorkers(message.sender);
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: result.message,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Stop all confirmed and executed');
+  }
+
+  /**
+   * Handle the built-in "stop" command.
+   *
+   * Syntax:
+   *   "stop"        → request confirmation then kill all running workers
+   *   "stop all"    → request confirmation then kill all running workers
+   *   "stop <id>"   → kill the worker whose ID ends with <id> (partial match, no confirmation)
+   *
+   * Requires the Master AI to be configured. Returns a plain-text response
+   * that works on all channels.
+   */
+  private async handleStopCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Stop command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Access control — only owner and admin may stop workers
+    if (this.auth) {
+      const accessResult = this.auth.checkAccessControl(message.sender, message.source, 'stop');
+      if (!accessResult.allowed) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to use the stop command.',
+          replyTo: message.id,
         });
+        return;
       }
-    }, this.progressIntervalMs);
+    }
 
-    return () => clearInterval(timer);
+    const trimmed = message.content.trim();
+    // Extract everything after "stop" (and optional whitespace)
+    const rest = trimmed.slice(4).trim().toLowerCase();
+
+    let responseText: string;
+
+    if (rest === '' || rest === 'all') {
+      // "stop" or "stop all" — require confirmation before killing all workers
+      const running = this.master.getWorkerRegistry().getRunningWorkers();
+      if (running.length === 0) {
+        responseText = 'No workers are currently running.';
+      } else {
+        this.pendingStopConfirmations.set(message.sender, {
+          action: 'kill-all',
+          expiresAt: Date.now() + 30_000,
+        });
+        responseText = `This will terminate ${running.length} running worker${running.length !== 1 ? 's' : ''}. Reply 'confirm' within 30 seconds to proceed.`;
+      }
+    } else {
+      // "stop <partialId>" — find a worker whose ID ends with the partial ID
+      const partialId = rest;
+      const registry = this.master.getWorkerRegistry();
+      const allWorkers = registry.getAllWorkers();
+
+      // Match: exact ID, or ID ends with "-<partialId>", or ID contains <partialId>
+      const matched = allWorkers.find(
+        (w) => w.id === partialId || w.id.endsWith(`-${partialId}`) || w.id.includes(partialId),
+      );
+
+      if (!matched) {
+        responseText = `Worker '${partialId}' not found. Use 'status' to list active workers.`;
+      } else {
+        const result = await this.master.killWorker(matched.id, message.sender);
+        responseText = result.message;
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: responseText,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender, command: trimmed }, 'Stop command handled');
+  }
+
+  /**
+   * Handle the built-in "explore" command.
+   * Triggers workspace re-exploration from any channel.
+   *
+   * Syntax:
+   *   "explore"        -> quick re-exploration via Master session prompt
+   *   "explore full"   -> full 5-phase re-exploration with ExplorationCoordinator
+   *   "explore status" -> show current exploration state and progress
+   */
+  private async handleExploreCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Explore command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Access control — exploration classifies as 'read' action
+    if (this.auth) {
+      const accessResult = this.auth.checkAccessControl(message.sender, message.source, 'explore');
+      if (!accessResult.allowed) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: accessResult.reason ?? 'You do not have permission to trigger exploration.',
+          replyTo: message.id,
+        });
+        return;
+      }
+    }
+
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice(7).trim().toLowerCase(); // slice past "explore"
+
+    if (rest === 'status') {
+      await this.handleExploreStatusSubcommand(message, connector);
+      return;
+    }
+
+    const currentState = this.master.getState();
+
+    if (currentState === 'exploring') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Exploration is already in progress. Use "explore status" to check progress.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (currentState !== 'ready') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Cannot start exploration — Master is currently in '${currentState}' state. Please wait until it is ready.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const isFull = rest === 'full';
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: isFull
+        ? 'Starting full workspace re-exploration (5 phases). This may take a few minutes...'
+        : 'Starting quick workspace re-exploration...',
+      replyTo: message.id,
+    });
+
+    try {
+      if (isFull) {
+        await this.master.fullReExplore();
+      } else {
+        await this.master.reExplore();
+      }
+
+      const summary = this.master.getExplorationSummary();
+      const completionParts = ['Workspace re-exploration completed.'];
+      if (summary?.projectType) {
+        completionParts.push(`Project type: ${summary.projectType}`);
+      }
+      if (summary?.frameworks && summary.frameworks.length > 0) {
+        completionParts.push(`Frameworks: ${summary.frameworks.join(', ')}`);
+      }
+      if (summary?.directoriesExplored !== undefined) {
+        completionParts.push(`Directories explored: ${summary.directoriesExplored}`);
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: completionParts.join('\n'),
+        replyTo: message.id,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Exploration failed: ${errorMsg}`,
+        replyTo: message.id,
+      });
+    }
+
+    logger.info(
+      { sender: message.sender, mode: isFull ? 'full' : 'quick' },
+      'Explore command handled',
+    );
+  }
+
+  /**
+   * Handle the "explore status" subcommand.
+   * Shows last exploration timestamp, project type, and any in-progress phases.
+   */
+  private async handleExploreStatusSubcommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const lines: string[] = ['*Exploration Status*'];
+
+    const state = this.master!.getState();
+    lines.push(`Master state: ${state}`);
+
+    const summary = this.master!.getExplorationSummary();
+    if (summary) {
+      if (summary.completedAt) {
+        lines.push(`Last exploration: ${summary.completedAt}`);
+      }
+      if (summary.projectType) {
+        lines.push(`Project type: ${summary.projectType}`);
+      }
+      if (summary.frameworks && summary.frameworks.length > 0) {
+        lines.push(`Frameworks: ${summary.frameworks.join(', ')}`);
+      }
+      lines.push(`Directories explored: ${summary.directoriesExplored}`);
+      lines.push(`Files scanned: ${summary.filesScanned}`);
+    } else {
+      lines.push('No exploration has been completed yet.');
+    }
+
+    if (this.memory) {
+      try {
+        const progress = await this.memory.getExplorationProgress();
+        if (progress.length > 0) {
+          lines.push('\nPhase progress:');
+          for (const ep of progress) {
+            const bar = makeProgressBar(ep.progress_pct ?? 0);
+            const label = ep.target ?? ep.phase;
+            lines.push(` ${label}: [${bar}] ${ep.progress_pct ?? 0}%`);
+          }
+        }
+      } catch {
+        // Silently skip if DB query fails
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+  }
+
+  /**
+   * Handle the built-in "history" command.
+   * Lists the last 10 conversation sessions with title, message count, and date.
+   * Formats output per channel (WhatsApp/Telegram/Discord = numbered list, Console = table, WebChat = HTML).
+   *
+   * Syntax:
+   *   "history"               → list last 10 sessions
+   *   "history search <q>"    → search sessions by keyword (OB-1034)
+   *   "history <session-id>"  → show full transcript (OB-1035)
+   */
+  private async handleHistoryCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice(7).trim(); // slice past "history"
+
+    // history search <query> — OB-1034
+    if (rest.toLowerCase().startsWith('search')) {
+      const query = rest.slice(6).trim(); // slice past "search"
+      if (!query) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'Usage: history search <keyword>',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (!this.memory) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History search not available — memory system not initialized.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      let sessions: SessionSummary[];
+      try {
+        sessions = await this.memory.searchSessions(query, 10);
+      } catch (err) {
+        logger.warn({ err }, 'handleHistoryCommand: failed to search sessions');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History search temporarily unavailable — could not query sessions.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const content =
+        sessions.length === 0
+          ? `*Conversation History*\n\nNo sessions found matching "${query}".`
+          : this.formatSessionList(sessions, connector.name);
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content,
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender, query }, 'History search command handled');
+      return;
+    }
+
+    // history <session-id> — OB-1035
+    if (rest.length > 0) {
+      if (!this.memory) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History not available — memory system not initialized.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const sessionId = rest;
+      let entries: ConversationEntry[];
+      try {
+        entries = await this.memory.getSessionHistory(sessionId, 50);
+      } catch (err) {
+        logger.warn({ err }, 'handleHistoryCommand: failed to get session history');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'History temporarily unavailable — could not query session.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const content =
+        entries.length === 0
+          ? `No conversation found for session: ${sessionId}`
+          : this.formatSessionTranscript(entries, connector.name);
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content,
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender, sessionId }, 'History transcript command handled');
+      return;
+    }
+
+    // bare "history" — list last 10 sessions
+    if (!this.memory) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'History not available — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let sessions: SessionSummary[];
+    try {
+      sessions = await this.memory.listSessions(10, 0);
+    } catch (err) {
+      logger.warn({ err }, 'handleHistoryCommand: failed to list sessions');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'History temporarily unavailable — could not query sessions.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const content = this.formatSessionList(sessions, connector.name);
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'History command handled');
+  }
+
+  /**
+   * Format a session list for the given channel.
+   *   webchat   → HTML table
+   *   console   → ASCII table
+   *   all other → numbered list (WhatsApp, Telegram, Discord)
+   */
+  private formatSessionList(sessions: SessionSummary[], channel: string): string {
+    if (sessions.length === 0) {
+      return '*Conversation History*\n\nNo past sessions found.';
+    }
+
+    const formatDate = (iso: string): string => iso.slice(0, 10); // YYYY-MM-DD
+
+    if (channel === 'webchat') {
+      const rows = sessions
+        .map(
+          (s, i) =>
+            `<tr><td>${i + 1}</td><td>${escapeHtml(s.title ?? 'Untitled')}</td>` +
+            `<td>${s.message_count}</td><td>${formatDate(s.last_message_at)}</td></tr>`,
+        )
+        .join('');
+      return (
+        '<b>Conversation History</b>' +
+        '<table><tr><th>#</th><th>Title</th><th>Msgs</th><th>Date</th></tr>' +
+        rows +
+        '</table>'
+      );
+    }
+
+    if (channel === 'console') {
+      const header = ' # | Title                | Msgs | Date      ';
+      const sep = '---|----------------------|------|----------';
+      const rowLines = sessions.map((s, i) => {
+        const num = String(i + 1).padStart(2, ' ');
+        const title = (s.title ?? 'Untitled').slice(0, 20).padEnd(20, ' ');
+        const msgs = String(s.message_count).padStart(4, ' ');
+        const date = formatDate(s.last_message_at);
+        return `${num} | ${title} | ${msgs} | ${date}`;
+      });
+      return ['*Conversation History*', '', header, sep, ...rowLines].join('\n');
+    }
+
+    // Default: numbered list (WhatsApp, Telegram, Discord)
+    const rowLines = sessions.map((s, i) => {
+      const title = s.title ?? 'Untitled';
+      const msgWord = s.message_count === 1 ? 'msg' : 'msgs';
+      return `${i + 1}. ${title} — ${s.message_count} ${msgWord} — ${formatDate(s.last_message_at)}`;
+    });
+    return ['*Conversation History*', '', ...rowLines].join('\n');
+  }
+
+  /**
+   * Format a session transcript for the given channel.
+   *   webchat   → HTML message bubbles
+   *   console   → plain text with separator line
+   *   all other → plain text list (WhatsApp, Telegram, Discord)
+   */
+  private formatSessionTranscript(entries: ConversationEntry[], channel: string): string {
+    const formatTime = (iso: string): string => iso.slice(0, 16).replace('T', ' '); // YYYY-MM-DD HH:MM
+    const formatRole = (role: string): string => {
+      if (role === 'user') return 'You';
+      if (role === 'master' || role === 'worker') return 'AI';
+      return 'System';
+    };
+
+    if (channel === 'webchat') {
+      const items = entries
+        .map((e) => {
+          const time = formatTime(e.created_at ?? '');
+          const role = formatRole(e.role);
+          const content = escapeHtml(e.content.slice(0, 500));
+          const cls = e.role === 'user' ? 'user' : 'ai';
+          return (
+            `<div class="msg ${cls}"><b>${escapeHtml(role)}</b> ` +
+            `<span class="time">${time}</span><p>${content}</p></div>`
+          );
+        })
+        .join('');
+      return `<b>Conversation Transcript</b><div class="transcript">${items}</div>`;
+    }
+
+    const rows = entries.map((e) => {
+      const time = formatTime(e.created_at ?? '');
+      const role = formatRole(e.role);
+      const snippet = e.content.slice(0, 300);
+      return `[${time}] ${role}: ${snippet}`;
+    });
+
+    if (channel === 'console') {
+      return ['*Conversation Transcript*', '─'.repeat(40), ...rows, '─'.repeat(40)].join('\n');
+    }
+
+    // Default: WhatsApp, Telegram, Discord
+    return ['*Conversation Transcript*', '', ...rows].join('\n');
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */

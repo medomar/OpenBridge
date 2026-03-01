@@ -99,7 +99,10 @@ export function recordTask(db: Database.Database, task: TaskRecord): void {
      ON CONFLICT(id) DO UPDATE SET
        status       = excluded.status,
        response     = excluded.response,
+       model        = COALESCE(excluded.model, model),
+       profile      = COALESCE(excluded.profile, profile),
        turns_used   = excluded.turns_used,
+       max_turns    = COALESCE(excluded.max_turns, max_turns),
        duration_ms  = excluded.duration_ms,
        exit_code    = excluded.exit_code,
        retries      = excluded.retries,
@@ -185,6 +188,43 @@ export function recordLearning(
        total_duration_ms = total_duration_ms + excluded.total_duration_ms,
        last_used_at      = excluded.last_used_at`,
   ).run(taskType, model, success ? 1 : 0, success ? 0 : 1, turns, durationMs, now);
+}
+
+export interface ModelStats {
+  model: string;
+  success_rate: number;
+  total_tasks: number;
+}
+
+/**
+ * Return the success_rate and total task count for a specific (task_type, model) pair.
+ * Returns null when no learning data exists for that combination.
+ */
+export function getModelStatsForTask(
+  db: Database.Database,
+  taskType: string,
+  model: string,
+): ModelStats | null {
+  interface StatsRow {
+    model: string;
+    success_rate: number;
+    total_tasks: number;
+  }
+  const row = db
+    .prepare(
+      `SELECT model, success_rate, (success_count + failure_count) AS total_tasks
+       FROM learnings
+       WHERE task_type = ? AND model = ?`,
+    )
+    .get(taskType, model) as StatsRow | undefined;
+
+  if (!row) return null;
+
+  return {
+    model: row.model,
+    success_rate: row.success_rate,
+    total_tasks: row.total_tasks,
+  };
 }
 
 /**

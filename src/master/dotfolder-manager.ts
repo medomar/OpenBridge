@@ -9,12 +9,13 @@ import type {
   Classification,
   DirectoryDiveResult,
   MasterSession,
-  PromptManifest,
-  PromptTemplate,
   LearningEntry,
   LearningsRegistry,
   WorkspaceAnalysisMarker,
   ClassificationCache,
+  WorkspaceMap,
+  PromptManifest,
+  PromptTemplate,
 } from '../types/master.js';
 import {
   AgentsRegistrySchema,
@@ -24,11 +25,13 @@ import {
   ClassificationSchema,
   DirectoryDiveResultSchema,
   MasterSessionSchema,
-  PromptManifestSchema,
   LearningEntrySchema,
   LearningsRegistrySchema,
   WorkspaceAnalysisMarkerSchema,
   ClassificationCacheSchema,
+  WorkspaceMapSchema,
+  PromptManifestSchema,
+  PromptTemplateSchema,
 } from '../types/master.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
@@ -49,6 +52,7 @@ export class DotFolderManager {
   private readonly explorationPath: string;
   private readonly explorationDirsPath: string;
   private readonly promptsPath: string;
+  private readonly contextPath: string;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -57,6 +61,7 @@ export class DotFolderManager {
     this.explorationPath = path.join(this.dotFolderPath, 'exploration');
     this.explorationDirsPath = path.join(this.explorationPath, 'dirs');
     this.promptsPath = path.join(this.dotFolderPath, 'prompts');
+    this.contextPath = path.join(this.dotFolderPath, 'context');
   }
 
   /**
@@ -71,6 +76,29 @@ export class DotFolderManager {
    */
   public getMapPath(): string {
     return path.join(this.dotFolderPath, 'workspace-map.json');
+  }
+
+  /**
+   * Read workspace map from .openbridge/workspace-map.json.
+   * Returns null if the file doesn't exist or is invalid.
+   */
+  public async readWorkspaceMap(): Promise<WorkspaceMap | null> {
+    try {
+      const content = await fs.readFile(this.getMapPath(), 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return WorkspaceMapSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write workspace map to .openbridge/workspace-map.json as a JSON safety net.
+   * Primary storage is the DB (via memory.storeChunks); this is the fallback.
+   */
+  public async writeWorkspaceMap(map: WorkspaceMap): Promise<void> {
+    const validated = WorkspaceMapSchema.parse(map);
+    await fs.writeFile(this.getMapPath(), JSON.stringify(validated, null, 2), 'utf-8');
   }
 
   /**
@@ -489,144 +517,10 @@ export class DotFolderManager {
   }
 
   /**
-   * Get the path to the prompts manifest file
-   */
-  public getPromptManifestPath(): string {
-    return path.join(this.promptsPath, 'manifest.json');
-  }
-
-  /**
-   * Read the prompt library manifest from .openbridge/prompts/manifest.json
-   */
-  public async readPromptManifest(): Promise<PromptManifest | null> {
-    const manifestPath = this.getPromptManifestPath();
-
-    try {
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      const data = JSON.parse(content) as unknown;
-      return PromptManifestSchema.parse(data);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Write the prompt library manifest to .openbridge/prompts/manifest.json
-   */
-  public async writePromptManifest(manifest: PromptManifest): Promise<void> {
-    const validated = PromptManifestSchema.parse(manifest);
-    const manifestPath = this.getPromptManifestPath();
-    await fs.mkdir(this.promptsPath, { recursive: true });
-    await fs.writeFile(manifestPath, JSON.stringify(validated, null, 2), 'utf-8');
-  }
-
-  /**
-   * Write a prompt template file to .openbridge/prompts/<filename>
-   * Also updates the manifest with metadata.
-   */
-  public async writePromptTemplate(
-    filename: string,
-    content: string,
-    metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt' | 'lastUsedAt'>,
-  ): Promise<void> {
-    await fs.mkdir(this.promptsPath, { recursive: true });
-    const promptPath = path.join(this.promptsPath, filename);
-    await fs.writeFile(promptPath, content, 'utf-8');
-
-    const manifest = await this.readPromptManifest();
-    const now = new Date().toISOString();
-    const existingPrompt = manifest?.prompts[metadata.id];
-    const promptTemplate: PromptTemplate = {
-      ...metadata,
-      filePath: filename,
-      createdAt: existingPrompt?.createdAt ?? now,
-      updatedAt: now,
-      lastUsedAt: existingPrompt?.lastUsedAt,
-    };
-    const newManifest: PromptManifest = manifest ?? {
-      prompts: {},
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: '1.0.0',
-    };
-    newManifest.prompts[metadata.id] = promptTemplate;
-    newManifest.updatedAt = now;
-    await this.writePromptManifest(newManifest);
-  }
-
-  /**
    * Read the content of a prompt template file from .openbridge/prompts/<filename>.
    */
   public async readPromptTemplate(filename: string): Promise<string> {
     return fs.readFile(path.join(this.promptsPath, filename), 'utf-8');
-  }
-
-  /**
-   * Get a prompt template by ID from the manifest.
-   * Returns null if the manifest doesn't exist or the prompt ID is not found.
-   */
-  public async getPromptTemplate(promptId: string): Promise<PromptTemplate | null> {
-    const manifest = await this.readPromptManifest();
-    if (!manifest) return null;
-    return manifest.prompts[promptId] ?? null;
-  }
-
-  /**
-   * Record prompt usage (increments usage count and updates lastUsedAt)
-   */
-  public async recordPromptUsage(promptId: string, success: boolean): Promise<void> {
-    const manifest = await this.readPromptManifest();
-    if (!manifest || !manifest.prompts[promptId]) {
-      return;
-    }
-
-    const prompt = manifest.prompts[promptId];
-    prompt.usageCount += 1;
-    if (success) {
-      prompt.successCount += 1;
-    }
-    prompt.successRate = prompt.usageCount > 0 ? prompt.successCount / prompt.usageCount : 0;
-    prompt.lastUsedAt = new Date().toISOString();
-    prompt.updatedAt = new Date().toISOString();
-
-    manifest.updatedAt = new Date().toISOString();
-    await this.writePromptManifest(manifest);
-  }
-
-  /**
-   * Get all prompts with success rate below threshold (for self-improvement)
-   */
-  public async getLowPerformingPrompts(threshold = 0.5): Promise<PromptTemplate[]> {
-    const manifest = await this.readPromptManifest();
-    if (!manifest) return [];
-
-    return Object.values(manifest.prompts).filter((prompt) => {
-      // Only consider prompts that have been used at least 3 times
-      if (prompt.usageCount < 3) return false;
-      const rate = prompt.successRate ?? 0;
-      return rate < threshold;
-    });
-  }
-
-  /**
-   * Reset usage statistics for a prompt (e.g., after rewriting it).
-   * Keeps the version number but resets counts to give the new version a fresh start.
-   */
-  public async resetPromptStats(promptId: string): Promise<void> {
-    const manifest = await this.readPromptManifest();
-    if (!manifest || !manifest.prompts[promptId]) {
-      return;
-    }
-
-    const prompt = manifest.prompts[promptId];
-    prompt.usageCount = 0;
-    prompt.successCount = 0;
-    prompt.successRate = 0;
-    prompt.version = (parseInt(prompt.version) + 1).toString();
-    prompt.updatedAt = new Date().toISOString();
-
-    manifest.updatedAt = new Date().toISOString();
-    await this.writePromptManifest(manifest);
   }
 
   /**
@@ -797,6 +691,8 @@ export class DotFolderManager {
     if (!folderExists) {
       await this.createFolder();
     }
+
+    await fs.mkdir(this.contextPath, { recursive: true });
   }
 
   // ── Classification Cache ──────────────────────────────────────
@@ -829,5 +725,179 @@ export class DotFolderManager {
     const validated = ClassificationCacheSchema.parse(cache);
     const classificationsPath = this.getClassificationsPath();
     await fs.writeFile(classificationsPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  // ── Prompt Library ───────────────────────────────────────────
+
+  /**
+   * Get the path to the prompt manifest file.
+   */
+  private getPromptManifestPath(): string {
+    return path.join(this.promptsPath, 'manifest.json');
+  }
+
+  /**
+   * Read the prompt manifest from .openbridge/prompts/manifest.json.
+   * Returns null if the file does not exist or cannot be parsed.
+   */
+  public async readPromptManifest(): Promise<PromptManifest | null> {
+    try {
+      const content = await fs.readFile(this.getPromptManifestPath(), 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return PromptManifestSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the prompt manifest to .openbridge/prompts/manifest.json.
+   * Creates the prompts directory if it does not exist.
+   */
+  public async writePromptManifest(manifest: PromptManifest): Promise<void> {
+    const validated = PromptManifestSchema.parse(manifest);
+    await fs.mkdir(this.promptsPath, { recursive: true });
+    await fs.writeFile(this.getPromptManifestPath(), JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Write a prompt template file to .openbridge/prompts/<filename> and update the manifest.
+   * Preserves `createdAt` when overwriting an existing entry.
+   * Sets `previousVersion` and `previousSuccessRate` when overwriting.
+   */
+  public async writePromptTemplate(
+    filename: string,
+    content: string,
+    metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt'>,
+  ): Promise<void> {
+    await fs.mkdir(this.promptsPath, { recursive: true });
+    await fs.writeFile(path.join(this.promptsPath, filename), content, 'utf-8');
+
+    const now = new Date().toISOString();
+    const existing = await this.readPromptManifest();
+
+    const existingEntry = existing?.prompts[metadata.id];
+    const createdAt = existingEntry?.createdAt ?? now;
+
+    const entry: PromptTemplate = PromptTemplateSchema.parse({
+      ...metadata,
+      filePath: filename,
+      createdAt,
+      updatedAt: now,
+      previousVersion: existingEntry ? content : undefined,
+      previousSuccessRate: existingEntry?.successRate,
+    });
+
+    const manifest: PromptManifest = existing ?? {
+      prompts: {},
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: '1.0.0',
+    };
+
+    manifest.prompts[metadata.id] = entry;
+    manifest.updatedAt = now;
+
+    await this.writePromptManifest(manifest);
+  }
+
+  /**
+   * Get a single prompt template by ID.
+   * Returns null if the manifest does not exist or the ID is not found.
+   */
+  public async getPromptTemplate(id: string): Promise<PromptTemplate | null> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return null;
+    return manifest.prompts[id] ?? null;
+  }
+
+  /**
+   * Record a prompt usage result — increments `usageCount`, conditionally `successCount`,
+   * recalculates `successRate`, and updates `lastUsedAt`.
+   * No-op if the prompt ID is not found in the manifest.
+   */
+  public async recordPromptUsage(id: string, success: boolean): Promise<void> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return;
+
+    const entry = manifest.prompts[id];
+    if (!entry) return;
+
+    entry.usageCount += 1;
+    if (success) entry.successCount += 1;
+    entry.successRate = entry.successCount / entry.usageCount;
+    entry.lastUsedAt = new Date().toISOString();
+
+    manifest.updatedAt = new Date().toISOString();
+    await this.writePromptManifest(manifest);
+  }
+
+  /**
+   * Return all prompts where `usageCount >= 3` AND `successRate < threshold`.
+   */
+  public async getLowPerformingPrompts(threshold: number): Promise<PromptTemplate[]> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return [];
+
+    return Object.values(manifest.prompts).filter(
+      (p) => p.usageCount >= 3 && (p.successRate ?? 0) < threshold,
+    );
+  }
+
+  /**
+   * Reset usage stats for a prompt — zeros `usageCount`, `successCount`, `successRate`.
+   * Preserves `previousSuccessRate` from the current `successRate` before zeroing.
+   * No-op if the prompt ID is not found in the manifest.
+   */
+  public async resetPromptStats(id: string): Promise<void> {
+    const manifest = await this.readPromptManifest();
+    if (!manifest) return;
+
+    const entry = manifest.prompts[id];
+    if (!entry) return;
+
+    entry.previousSuccessRate = entry.successRate;
+    entry.successRate = 0;
+    entry.usageCount = 0;
+    entry.successCount = 0;
+
+    manifest.updatedAt = new Date().toISOString();
+    await this.writePromptManifest(manifest);
+  }
+
+  // ── Memory File ───────────────────────────────────────────────
+
+  /**
+   * Get the path to the memory file.
+   */
+  public getMemoryFilePath(): string {
+    return path.join(this.contextPath, 'memory.md');
+  }
+
+  /**
+   * Read the Master's curated memory from `.openbridge/context/memory.md`.
+   * Returns null if the file does not exist.
+   */
+  public async readMemoryFile(): Promise<string | null> {
+    try {
+      return await fs.readFile(this.getMemoryFilePath(), 'utf-8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Write the Master's curated memory to `.openbridge/context/memory.md`.
+   * Validates that content is at most 200 lines — throws if exceeded.
+   */
+  public async writeMemoryFile(content: string): Promise<void> {
+    const lines = content.split('\n');
+    if (lines.length > 200) {
+      throw new Error(
+        `memory.md exceeds 200-line limit (${lines.length} lines). Trim content before writing.`,
+      );
+    }
+    await fs.mkdir(this.contextPath, { recursive: true });
+    await fs.writeFile(this.getMemoryFilePath(), content, 'utf-8');
   }
 }
