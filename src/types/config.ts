@@ -151,6 +151,16 @@ export const MCPConfigSchema = z.object({
   configPath: z.string().optional(),
 });
 
+/** Schema for security configuration — env var sanitization for workers */
+export const SecurityConfigSchema = z.object({
+  /** Glob patterns for env vars to strip from worker environments (denylist mode) */
+  envDenyPatterns: z.array(z.string()).optional(),
+  /** Glob patterns for the ONLY env vars workers receive (allowlist mode, overrides deny) */
+  envAllowPatterns: z.array(z.string()).optional(),
+});
+
+export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
+
 /** Schema for email (SMTP) configuration */
 export const EmailConfigSchema = z.object({
   host: z.string().min(1),

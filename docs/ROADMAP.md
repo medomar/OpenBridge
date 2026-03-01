@@ -1,6 +1,7 @@
 # OpenBridge — Roadmap
 
 > **Last Updated:** 2026-03-01 | **Current Version:** v0.0.8
+> **Current Focus:** Marketplace Development Track — making OpenBridge effective for finishing the Marketplace projects.
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -63,11 +64,56 @@ Everything that shipped — 652 tasks across 73 phases.
 
 ---
 
-## Future Work
+## Next: Marketplace Development Track (v0.0.9 — v0.0.12)
 
-All future features, deferred findings, and finalization items are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
+**Priority:** Make OpenBridge effective for finishing 3 Marketplace projects, then make it a complete platform.
 
-### Finalization (highest priority):
+- **Marketplace** — Next.js 15 customer-facing frontend (early-mid dev, 0 tests)
+- **Marketplace-dashboard** — Next.js 15 admin/supplier dashboard (mid dev, needs stabilization)
+- **Marketplace-backend-services** — NestJS monorepo, 24 modules, 438 tests (needs integration testing + fixes)
+
+| Version     | Phases                       | Key Features                                                                                   | Est. Tasks |
+| ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ---------- |
+| **v0.0.9**  | 78a–80                       | Classification + SPAWN response fixes, code audit profile, exploration bug fixes, data cleanup | ~34        |
+| **v0.0.10** | 74–77, 85                    | RAG knowledge retrieval (FTS5 queries before spawning workers), env var secret protection      | ~42        |
+| **v0.0.11** | 81, 86                       | Master output sharing ([SHARE:*] markers), user consent for risky operations                   | ~20        |
+| **v0.0.12** | 82–84, 87–92, OB-F56, OB-193 | Deep Mode, WebChat modernization, tunnel + ephemeral apps, Docker sandbox                      | ~160       |
+
+**Sprint 1 (v0.0.9)** — Foundation Fixes:
+
+- Classification fixes — execution/delegation keywords trigger complex-task, not tool-use (OB-F76)
+- SPAWN response fix — generate status message instead of empty stub after marker stripping (OB-F77, OB-F78)
+- Workers can run `npm test`, `npm run lint`, `npm run typecheck` via new `code-audit` profile (OB-F57)
+- 8 exploration bugs fixed — stable exploration of large codebases (OB-F58–F65)
+- Clean `.openbridge/` data — no stale/corrupted state from old sessions (OB-F66, OB-F67)
+
+**Sprint 2 (v0.0.10)** — Knowledge & Safety:
+
+- Knowledge-First Retrieval (RAG) — query existing FTS5 chunks before spawning workers (OB-F48)
+- Environment variable protection — strip DB_URL, API keys, SMTP creds from workers (OB-F70)
+
+**Sprint 3 (v0.0.11)** — Development Workflow:
+
+- Master knows how to share generated test reports and analysis via [SHARE:*] markers (OB-F68)
+- User consent before risky operations — confirmation for code-edit and full-access workers (OB-F71)
+
+**Sprint 4 (v0.0.12)** — Platform Completion:
+
+- Deep Mode — multi-phase execution: investigate → report → plan → execute → verify (OB-F56)
+- WebChat modernization — extract UI, auth, phone/LAN/PWA, history, rich input, Deep Mode UI (OB-F73+F74+F75, Phases 88–92)
+- Output delivery pipeline — tunnel integration, ephemeral app server, interaction relay (OB-F69, Phases 82–84)
+- Docker sandbox — run workers in containers for untrusted workspaces (OB-193)
+- Document visibility controls — include/exclude file lists, sensitive file detection (OB-F72, Phase 87)
+
+See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
+
+---
+
+## Future Work (Post v0.0.12)
+
+All future features beyond the Marketplace track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
+
+### Deferred finalization:
 
 | Feature                         | What's Needed                                                      | Est. Tasks |
 | ------------------------------- | ------------------------------------------------------------------ | ---------- |
@@ -75,20 +121,19 @@ All future features, deferred findings, and finalization items are tracked in [d
 | Electron Desktop App (Phase 73) | Fix TS compile, wire setup wizard, fix Vite paths, test end-to-end | ~10–15     |
 | MCP UI (Electron layer)         | Blocked by Electron fix — verify once app runs                     | ~3–5       |
 
-### New features:
+### Deferred features:
 
-| Feature                         | Description                                                                                   | Est. Phases |
-| ------------------------------- | --------------------------------------------------------------------------------------------- | ----------- |
-| Knowledge-First Retrieval (RAG) | Query existing FTS5 chunks, workspace map, and dir-dive data before spawning workers (OB-F48) | 74–77       |
-| Timeout scaling (OB-F52)        | Scale worker timeouts based on task complexity instead of fixed 180s                          | TBD         |
-| Classification tuning (OB-F53)  | Per-category success tracking instead of global escalation                                    | TBD         |
-| Access Control Dashboard        | Web-based role/permission management UI                                                       | TBD         |
-| Server Deployment Mode          | Docker container + headless mode for VPS/cloud                                                | TBD         |
-| Agent Orchestration             | Role-based workers (Architect, Coder, Tester, Reviewer) with dependency chains                | TBD         |
+| Feature                            | Description                                                                                   | Est. Phases |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ----------- |
+| ~~Timeout scaling (OB-F52)~~       | ~~Scale worker timeouts based on task complexity instead of fixed 180s~~ — **Fixed (OB-F54)** | Done        |
+| ~~Classification tuning (OB-F53)~~ | ~~Per-category success tracking instead of global escalation~~ — **Fixed (OB-F55)**           | Done        |
+| Access Control Dashboard           | Web-based role/permission management UI                                                       | TBD         |
+| Server Deployment Mode             | Docker container + headless mode for VPS/cloud                                                | TBD         |
+| Agent Orchestration                | Role-based workers (Architect, Coder, Tester, Reviewer) with dependency chains                | TBD         |
 
 ---
 
-## Dependency Graph (Shipped)
+## Dependency Graph
 
 ```
 ✅ Phases 1–5: Bridge Core + WhatsApp + Console + Claude Code
@@ -108,6 +153,29 @@ All future features, deferred findings, and finalization items are tracked in [d
               ├──► ✅ Phases 63–66: FTS5 Fix + Context Injection + Shutdown (v0.0.5)
               ├──► ✅ Phases 67–69: Media + Message Fixes (v0.0.6–v0.0.7)
               └──► ✅ Phases 70–73: Voice API + CLI Wizard + Binary + Desktop App (v0.0.8)
+                        │
+                        │  ── Marketplace Development Track ──
+                        │
+                        ├──► ⬜ Sprint 1 (v0.0.9): Phases 78a–80
+                        │    ├── Phase 78a: Classification + SPAWN Response Fixes
+                        │    ├── Phase 78b: Code Audit Profile (test/lint workers)
+                        │    ├── Phase 79: Exploration Bug Fixes (8 bugs)
+                        │    └── Phase 80: .openbridge Data Cleanup
+                        │
+                        ├──► ⬜ Sprint 2 (v0.0.10): Phases 74–77 + 85
+                        │    ├── Phases 74–77: RAG Knowledge Retrieval
+                        │    └── Phase 85: Env Var Protection
+                        │
+                        ├──► ⬜ Sprint 3 (v0.0.11): Phases 81 + 86
+                        │    ├── Phase 81: Master Output Awareness
+                        │    └── Phase 86: User Consent
+                        │
+                        └──► ⬜ Sprint 4 (v0.0.12): Phases 82–84, 87–92, OB-F56, OB-193
+                             ├── Deep Mode (OB-F56): Multi-phase execution
+                             ├── Phases 88–92: WebChat Modernization (UI, auth, PWA, history, Deep Mode UI)
+                             ├── Phases 82–84: Tunnel + Ephemeral Apps + Interaction Relay
+                             ├── Phase 87: Document Visibility Controls
+                             └── OB-193: Docker Sandbox
 ```
 
 ---
