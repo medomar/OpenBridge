@@ -594,7 +594,6 @@ describe('WhatsAppConnector', () => {
 
   describe('sendTypingIndicator()', () => {
     it('calls getChatById and sendStateTyping when connected', async () => {
-      vi.useRealTimers(); // Avoid fake-timer microtask delays on CI runners
       const connector = buildConnector();
       await connector.initialize();
       mockClientInstance._trigger('ready');
@@ -606,7 +605,7 @@ describe('WhatsAppConnector', () => {
 
       expect(mockClientInstance.getChatById).toHaveBeenCalledWith('+1234567890');
       expect(mockChat.sendStateTyping).toHaveBeenCalledOnce();
-    }, 15_000);
+    });
 
     it('silently skips when not connected', async () => {
       const connector = buildConnector();
