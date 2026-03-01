@@ -2,6 +2,7 @@ import type { InboundMessage } from '../types/message.js';
 import type { QueueConfig } from '../types/config.js';
 import type { MetricsCollector } from './metrics.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
+import { AgentExhaustedError, classifyError } from './agent-runner.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('queue');
@@ -195,19 +196,42 @@ export class MessageQueue {
         lastError = error;
         item.attempts = attempt + 1;
 
+        // Classify the error kind for logging and retry decisions.
+        // AgentExhaustedError carries attempt records with exit codes and stderr
+        // that classifyError() can inspect (timeout, rate-limit, auth, etc.).
+        // ProviderError has its own kind. Everything else is 'unknown'.
+        let errorKind: string;
+        if (error instanceof AgentExhaustedError) {
+          const lastAttempt = error.attempts[error.attempts.length - 1];
+          errorKind = lastAttempt
+            ? classifyError(lastAttempt.stderr, lastAttempt.exitCode)
+            : 'unknown';
+        } else if (error instanceof ProviderError) {
+          errorKind = error.kind;
+        } else {
+          errorKind = 'unknown';
+        }
+
         const isPermanent = error instanceof ProviderError && error.kind === 'permanent';
+        // Timeout errors are non-retryable — retrying a 180s timeout will just
+        // produce another 180s timeout, wasting compute and blocking the user.
+        const isTimeout = errorKind === 'timeout';
         logger.error(
           {
             messageId: item.message.id,
             attempt: attempt + 1,
             maxRetries: this.config.maxRetries,
-            errorKind: error instanceof ProviderError ? error.kind : 'unknown',
+            errorKind,
             error,
           },
-          isPermanent ? 'Permanent error — skipping retries' : 'Failed to process message',
+          isPermanent
+            ? 'Permanent error — skipping retries'
+            : isTimeout
+              ? 'Timeout error — skipping retries (retrying would timeout again)'
+              : 'Failed to process message',
         );
 
-        if (isPermanent) break;
+        if (isPermanent || isTimeout) break;
       }
     }
 
