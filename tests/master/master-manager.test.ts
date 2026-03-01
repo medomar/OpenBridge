@@ -1912,7 +1912,7 @@ describe('MasterManager', () => {
         ).resolves.not.toThrow();
       });
 
-      it('repeated timeouts bump maxTurns in cached entry', async () => {
+      it('repeated timeouts log warning but do not bump maxTurns', async () => {
         const msg = 'implement auth system for testing';
         // First classify to populate cache
         const initial = await masterManager.classifyTask(msg);
@@ -1923,11 +1923,11 @@ describe('MasterManager', () => {
         await masterManager.recordClassificationFeedback(key, false, true);
         await masterManager.recordClassificationFeedback(key, false, true);
 
-        // Next cache hit should return bumped maxTurns
+        // maxTurns stays the same — bumping turn budget doesn't help
+        // wall-clock timeouts (the per-class timeout map is the proper fix)
         mockSpawn.mockReset();
         const updated = await masterManager.classifyTask(msg);
-        expect(updated.maxTurns).toBeGreaterThan(originalMaxTurns);
-        // Timeout should track the bumped maxTurns
+        expect(updated.maxTurns).toBe(originalMaxTurns);
         expect(updated.timeout).toBe(updated.maxTurns * 30_000);
       });
     });
