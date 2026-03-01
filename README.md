@@ -45,9 +45,9 @@ Three access levels keep you in control: **read-only** (browse files), **code-ed
 
 On startup, OpenBridge explores your workspace and builds a knowledge base inside your project. It detects git commits and file changes, then re-explores incrementally — so the AI's understanding is always current. Multi-turn conversations maintain context across messages: ask a question, get an answer, follow up — the AI remembers. Across sessions, persistent `memory.md` ensures key decisions, findings, and preferences survive restarts without bloating the context window.
 
-### Connect to External Services via MCP
+### Connect to External Services via MCP _(coming soon)_
 
-OpenBridge workers can call external services — Gmail, Canva, Slack, GitHub, databases — through the **Model Context Protocol**. Add an `mcp` section to your config, and the Master AI automatically decides which workers need which services. Each worker gets an isolated MCP config with only the tools it needs; API keys never leak between tasks. Claude-native: workers use `--mcp-config` under the hood; no custom integration code required.
+> **Note:** MCP integration is scaffolded in the codebase but not yet fully validated. Full support — including per-worker isolation, health checks, and Master-driven assignment — is planned for a future release. See [ROADMAP.md](docs/ROADMAP.md) for details.
 
 ### Zero Extra Cost
 

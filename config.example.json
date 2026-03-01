@@ -35,8 +35,9 @@
     "whitelist": ["+1234567890"],
     "prefix": "/ai"
   },
+  "_mcp_note": "MCP integration is scaffolded but not yet fully validated. Enable at your own risk.",
   "mcp": {
-    "enabled": true,
+    "enabled": false,
     "servers": [
       {
         "name": "filesystem",
