@@ -53,10 +53,10 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     const config = adapter.buildSpawnConfig({
       prompt: 'Do something',
       workspacePath: '/tmp/test',
-      model: 'codex-mini',
+      model: 'gpt-5.2-codex',
     });
     expect(config.args).toContain('--model');
-    expect(config.args).toContain('codex-mini');
+    expect(config.args).toContain('gpt-5.2-codex');
   });
 
   it('maps read-only tools to --sandbox read-only', () => {

@@ -213,7 +213,12 @@ export async function hybridSearch(
     LIMIT ?
   `;
 
-  const rows = db.prepare(sql).all(query, ...extraParams, limit) as ChunkRow[];
+  // Sanitize the query for FTS5 MATCH — user prompts may contain special FTS5
+  // operators (?, *, ^, etc.) that cause SQLITE_ERROR if passed through raw.
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  const rows = db.prepare(sql).all(sanitized, ...extraParams, limit) as ChunkRow[];
   const chunks = rows.map(rowToChunk);
 
   // Layer 4: AI reranking — only when explicitly enabled and results exceed 10

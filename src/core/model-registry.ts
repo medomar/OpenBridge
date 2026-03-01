@@ -51,9 +51,12 @@ const DEFAULT_MODEL_MAPS: Record<string, ModelEntry[]> = {
     { id: 'opus', tier: 'powerful', provider: 'claude' },
   ],
   codex: [
-    { id: 'codex-mini', tier: 'fast', provider: 'codex' },
-    { id: 'codex', tier: 'balanced', provider: 'codex' },
-    { id: 'codex', tier: 'powerful', provider: 'codex' },
+    // ChatGPT-account auth only supports gpt-5.2-codex (the default).
+    // o3, o4-mini, codex-mini are rejected with "not supported when using Codex with a ChatGPT account".
+    // All tiers map to the same model until Codex expands ChatGPT-auth model support.
+    { id: 'gpt-5.2-codex', tier: 'fast', provider: 'codex' },
+    { id: 'gpt-5.2-codex', tier: 'balanced', provider: 'codex' },
+    { id: 'gpt-5.2-codex', tier: 'powerful', provider: 'codex' },
   ],
   aider: [
     { id: 'gpt-4o-mini', tier: 'fast', provider: 'aider' },

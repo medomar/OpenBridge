@@ -91,13 +91,45 @@ export function formatWorkerError(meta: WorkerResultMeta, error: string): string
 }
 
 /**
+ * Maximum total characters for the combined feedback prompt.
+ * Must stay under AgentRunner's MAX_PROMPT_LENGTH (32 768) to avoid truncation.
+ * We use 30 000 to leave headroom for the wrapper text and metadata.
+ */
+const MAX_FEEDBACK_CHARS = 30_000;
+
+/**
+ * Truncate worker output to fit within a per-worker character budget.
+ * Keeps the first and last portions so the Master sees both the beginning
+ * (context/plan) and end (final result/summary) of the worker's output.
+ */
+function truncateWorkerOutput(output: string, maxChars: number): string {
+  if (output.length <= maxChars) return output;
+  const half = Math.floor((maxChars - 60) / 2); // 60 chars for the "[... truncated ...]" marker
+  return (
+    output.slice(0, half) +
+    `\n\n[... ${output.length - maxChars} chars truncated for synthesis ...]\n\n` +
+    output.slice(-half)
+  );
+}
+
+/**
  * Build the feedback prompt that injects worker results into the Master session.
  * This is the message sent back to the Master after all workers complete.
+ *
+ * Truncates individual worker outputs so the combined prompt stays under
+ * MAX_FEEDBACK_CHARS, preventing downstream sanitizePrompt() from blindly
+ * chopping the concatenated result.
  */
 export function buildWorkerFeedbackPrompt(formattedResults: string[]): string {
   const summary = formattedResults.length === 1 ? '1 worker' : `${formattedResults.length} workers`;
+  const wrapperOverhead = 200; // summary line + instruction suffix
+  const perWorkerBudget = Math.floor(
+    (MAX_FEEDBACK_CHARS - wrapperOverhead) / Math.max(formattedResults.length, 1),
+  );
 
-  return `${summary} completed. Results:\n\n${formattedResults.join('\n\n')}\n\nSummarize the worker results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
+  const trimmed = formattedResults.map((r) => truncateWorkerOutput(r, perWorkerBudget));
+
+  return `${summary} completed. Results:\n\n${trimmed.join('\n\n')}\n\nSummarize the worker results into a clear, user-friendly response. If a file was created, tell the user its path and a brief description. Be concise.`;
 }
 
 /**

@@ -290,10 +290,10 @@ describe('Provider-agnostic selection (with ModelRegistry)', () => {
     const codexRegistry = createModelRegistry('codex');
 
     const rec = recommendByProfile('read-only', codexRegistry);
-    expect(rec.model).toBe('codex-mini'); // fast tier
+    expect(rec.model).toBe('gpt-5.2-codex'); // fast tier (all codex tiers use same model)
 
     const rec2 = recommendByProfile('code-edit', codexRegistry);
-    expect(rec2.model).toBe('codex'); // balanced tier
+    expect(rec2.model).toBe('gpt-5.2-codex'); // balanced tier (same model)
   });
 
   it('uses Aider models when aider registry is provided', () => {
@@ -318,7 +318,7 @@ describe('Provider-agnostic selection (with ModelRegistry)', () => {
       profile: 'read-only',
     };
     const rec = recommendModel(manifest, { registry: codexRegistry });
-    expect(rec.model).toBe('codex-mini'); // fast tier via profile
+    expect(rec.model).toBe('gpt-5.2-codex'); // fast tier via profile
   });
 
   it('explicit model in manifest bypasses registry', () => {
@@ -339,8 +339,8 @@ describe('Provider-agnostic selection (with ModelRegistry)', () => {
       { model: 'gpt-4o', success: true },
       { model: 'gpt-4o', success: true },
       { model: 'gpt-4o', success: true },
-      { model: 'codex-mini', success: false },
-      { model: 'codex-mini', success: false },
+      { model: 'gpt-5.2-codex', success: false },
+      { model: 'gpt-5.2-codex', success: false },
     ]);
     const rec = recommendFromLearnings('deploy', learnings);
     expect(rec).not.toBeNull();
