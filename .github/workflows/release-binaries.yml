@@ -3,7 +3,9 @@ name: Release Binaries
 on:
   push:
     tags:
-      - 'v*'
+      - 'bin-v*'
+  # Disabled for v* tags until binary packaging (Phase 72) is validated.
+  # To trigger manually: push a tag like `bin-v0.0.9`
 
 permissions:
   contents: write
