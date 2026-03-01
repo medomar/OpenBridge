@@ -118,15 +118,40 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Extract changelog notes
+      - name: Generate release notes
         id: changelog
         run: |
           version="${{ steps.version.outputs.version }}"
-          # Extract the section for this version from CHANGELOG.md
+          tag="${{ github.ref_name }}"
+
+          # Try CHANGELOG.md first (hand-curated notes take priority)
           notes=$(awk "/^## \[$version\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          if [ -z "$notes" ]; then
-            notes="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+
+          if [ -z "$notes" ] || echo "$notes" | grep -q "No unreleased changes"; then
+            # Fall back to auto-generated notes from conventional commits
+            echo "No CHANGELOG.md entry found for $version — generating from commits" >&2
+            # Find the previous tag
+            prev_tag=$(git tag --sort=-v:refname | grep -v "^${tag}$" | head -1 || echo "")
+            if [ -n "$prev_tag" ]; then
+              range="${prev_tag}..${tag}"
+            else
+              range="${tag}"
+            fi
+
+            notes="## What's Changed"$'\n\n'
+
+            # Group by conventional commit type
+            feats=$(git log "$range" --pretty=format:"%s" --no-merges | grep "^feat" | sed 's/^feat(\([^)]*\)): /- **\1**: /' | sed 's/^feat: /- /' || true)
+            fixes=$(git log "$range" --pretty=format:"%s" --no-merges | grep "^fix" | sed 's/^fix(\([^)]*\)): /- **\1**: /' | sed 's/^fix: /- /' || true)
+            others=$(git log "$range" --pretty=format:"%s" --no-merges | grep -v "^feat\|^fix\|^Merge" | sed 's/^[a-z]*(\([^)]*\)): /- **\1**: /' | sed 's/^[a-z]*: /- /' || true)
+
+            [ -n "$feats" ] && notes+="### Added"$'\n'"${feats}"$'\n\n'
+            [ -n "$fixes" ] && notes+="### Fixed"$'\n'"${fixes}"$'\n\n'
+            [ -n "$others" ] && notes+="### Changed"$'\n'"${others}"$'\n\n'
+
+            notes+=$'\n'"**Full Changelog**: https://github.com/${{ github.repository }}/compare/${prev_tag}...${tag}"
           fi
+
           # Write to file to handle multiline safely
           echo "$notes" > release-notes.txt
 
