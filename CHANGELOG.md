@@ -46,7 +46,6 @@ _No unreleased changes._
 
 - **WhatsApp media handling** — voice messages, images, and documents now properly downloaded and forwarded to Master AI with MIME type metadata
 - **Telegram media handling** — photos, documents, and voice messages extracted via grammY file API
-- **MCP dashboard fixes** — WebChat agent dashboard correctly renders MCP server status when configured
 
 ## [0.0.5] — 2026-02-27
 
@@ -166,12 +165,12 @@ _No unreleased changes._
 - **Fast-path responder** — lightweight `claude --print` for quick answers during Master processing
 - **Enhanced `status` command** — current task, queue depth, worker count, exploration progress
 
-#### Content Publishing & Sharing
+#### Content Publishing & Sharing (scaffolded)
 
-- **`[SHARE:channel]` markers** — Master triggers file delivery via WhatsApp/WebChat/email
-- **File server** — local HTTP server for generated content
-- **Email sender** — SMTP integration for `[SHARE:email]` markers
-- **GitHub publisher** — push to `gh-pages` for `[SHARE:github-pages]` markers
+- **`[SHARE:channel]` markers** — parsing logic for file delivery via WhatsApp/WebChat/email (scaffolded — Master doesn't use these yet, see OB-F68)
+- **File server** — local HTTP server for generated content (scaffolded)
+- **Email sender** — SMTP integration (scaffolded)
+- **GitHub publisher** — push to `gh-pages` (scaffolded)
 
 #### Access Control
 
