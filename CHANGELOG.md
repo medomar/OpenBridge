@@ -19,23 +19,11 @@ _No unreleased changes._
 - **API fallback pipeline** — tries local `ffmpeg` first, falls back to OpenAI Whisper API
 - **Graceful degradation** — clear error message when neither transcription method is available
 
-#### Enhanced CLI Setup Wizard (Phase 71)
+### Scaffolded (not yet validated)
 
-- **Redesigned `npx openbridge init`** — guided 3-question flow (workspace path, connector, auth)
-- **Smart defaults** — auto-detects current directory, suggests console connector for first-time users
-- **Inline validation** — workspace path existence check, connector availability hints
-
-#### Standalone Binary Packaging (Phase 72 — scaffolded)
-
-- **`pkg`-based packaging** — build scripts for macOS (x64/arm64), Linux (x64), Windows (x64)
-- **Entry point + config** — `pkg` section in package.json, binary entry at `dist/index.js`
-- **Status: scaffolded, not yet validated** — build pipeline exists but binaries have not been tested
-
-#### Electron Desktop App (Phase 73 — scaffolded)
-
-- **React-based GUI** — setup wizard, dashboard, and settings panels in `desktop/` directory
-- **Electron main/renderer** — IPC bridge, window management, tray icon support
-- **Status: scaffolded, not yet validated** — has build issues needing finalization
+- **Enhanced CLI Setup Wizard (Phase 71)** — guided `npx openbridge init` flow (needs testing)
+- **Standalone Binary Packaging (Phase 72)** — `pkg`-based build scripts for macOS/Linux/Windows (never run)
+- **Electron Desktop App (Phase 73)** — React GUI with setup wizard, dashboard, settings (has build issues)
 
 ### Changed
 
