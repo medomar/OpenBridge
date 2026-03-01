@@ -2552,6 +2552,28 @@ export class MasterManager {
       this.classificationCache.delete(cacheKey);
     }
 
+    // Skip AI classifier for non-Claude adapters — the fast-tier AI call is
+    // designed for Claude's haiku model. Other adapters (Codex, Aider) don't
+    // handle short single-turn classifier prompts well (e.g. Codex returns
+    // empty output with exit code 1). Keyword heuristics work fine for all providers.
+    if (this.adapter && this.adapter.name !== 'claude') {
+      logger.debug(
+        { adapter: this.adapter.name },
+        'Skipping AI classifier for non-Claude adapter, using keyword heuristics',
+      );
+      const keywordResult = this.classifyTaskByKeywords(content);
+      this.classificationCache.set(cacheKey, {
+        normalizedKey: cacheKey,
+        result: keywordResult,
+        recordedAt: new Date().toISOString(),
+        hitCount: 0,
+        feedback: [],
+        classifierVersion: CLASSIFIER_VERSION,
+      } as ClassificationCacheEntry);
+      void this.persistClassificationCache();
+      return keywordResult;
+    }
+
     // Include workspace context so the AI can calibrate scope
     const workspaceCtx = this.getWorkspaceContextSummary();
     const contextSection = workspaceCtx ? `Workspace context:\n${workspaceCtx}\n\n` : '';
@@ -4036,6 +4058,24 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           }
 
           response = result.stdout.trim() || delegationResults;
+        }
+      }
+
+      // Guard: detect abnormally large final responses (likely the Master echoing its
+      // system prompt or documentation). Real user-facing responses rarely exceed 50K chars.
+      // Applied after SPAWN/delegation processing so worker prompts are unaffected.
+      const MAX_RESPONSE_CHARS = 50_000;
+      if (response.length > MAX_RESPONSE_CHARS) {
+        logger.warn(
+          { responseLength: response.length, maxAllowed: MAX_RESPONSE_CHARS },
+          'Master produced abnormally large response — likely echoed system prompt, truncating',
+        );
+        const tail = response.slice(-2000).trim();
+        if (tail.length > 50 && !tail.includes('${')) {
+          response = tail;
+        } else {
+          response =
+            'I encountered an issue processing your request. Could you please rephrase or simplify it?';
         }
       }
 
@@ -5650,7 +5690,9 @@ ${currentContent}
 
       // Detect max-turns exhaustion: Claude exits 0 but work may be incomplete (OB-900)
       // Auto-retry with an escalated turn budget (OB-903): max 1 turn-escalation retry.
-      if (result.turnsExhausted) {
+      // Skip for non-Claude tools — --max-turns is a Claude-only feature. Other tools
+      // (Codex, Aider) may produce false positives from pattern matching on their output.
+      if (result.turnsExhausted && toolUsed === 'claude') {
         const originalMaxTurns = spawnOpts.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
         logger.warn(
           {

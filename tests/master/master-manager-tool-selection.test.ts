@@ -43,9 +43,9 @@ describe('Per-tool model resolution via ModelRegistry', () => {
     expect(registry.resolveModelOrTier('fast')).toBe('haiku');
   });
 
-  it('resolves "fast" to codex-mini for codex', () => {
+  it('resolves "fast" to gpt-5.2-codex for codex', () => {
     const registry = createModelRegistry('codex');
-    expect(registry.resolveModelOrTier('fast')).toBe('codex-mini');
+    expect(registry.resolveModelOrTier('fast')).toBe('gpt-5.2-codex');
   });
 
   it('resolves "fast" to gpt-4o-mini for aider', () => {
@@ -59,29 +59,29 @@ describe('Per-tool model resolution via ModelRegistry', () => {
   });
 
   it('translates foreign provider models to equivalent tier (cross-provider)', () => {
-    // "haiku" is Claude's fast model → codex registry should resolve to "codex-mini"
+    // "haiku" is Claude's fast model → codex registry should resolve to "gpt-5.2-codex"
     const codexRegistry = createModelRegistry('codex');
-    expect(codexRegistry.resolveModelOrTier('haiku')).toBe('codex-mini');
-    expect(codexRegistry.resolveModelOrTier('sonnet')).toBe('codex');
-    expect(codexRegistry.resolveModelOrTier('opus')).toBe('codex');
+    expect(codexRegistry.resolveModelOrTier('haiku')).toBe('gpt-5.2-codex');
+    expect(codexRegistry.resolveModelOrTier('sonnet')).toBe('gpt-5.2-codex');
+    expect(codexRegistry.resolveModelOrTier('opus')).toBe('gpt-5.2-codex');
 
-    // "codex-mini" is Codex's fast model → claude registry should resolve to "haiku"
+    // "gpt-5.2-codex" is Codex's fast model → claude registry should resolve to "haiku"
     const claudeRegistry = createModelRegistry('claude');
-    expect(claudeRegistry.resolveModelOrTier('codex-mini')).toBe('haiku');
+    expect(claudeRegistry.resolveModelOrTier('gpt-5.2-codex')).toBe('haiku');
 
-    // "gpt-4o-mini" is Aider's fast model → codex registry should resolve to "codex-mini"
-    expect(codexRegistry.resolveModelOrTier('gpt-4o-mini')).toBe('codex-mini');
+    // "gpt-4o-mini" is Aider's fast model → codex registry should resolve to "gpt-5.2-codex"
+    expect(codexRegistry.resolveModelOrTier('gpt-4o-mini')).toBe('gpt-5.2-codex');
   });
 
   it('resolves "balanced" to provider-specific models', () => {
     expect(createModelRegistry('claude').resolveModelOrTier('balanced')).toBe('sonnet');
-    expect(createModelRegistry('codex').resolveModelOrTier('balanced')).toBe('codex');
+    expect(createModelRegistry('codex').resolveModelOrTier('balanced')).toBe('gpt-5.2-codex');
     expect(createModelRegistry('aider').resolveModelOrTier('balanced')).toBe('gpt-4o');
   });
 
   it('resolves "powerful" to provider-specific models', () => {
     expect(createModelRegistry('claude').resolveModelOrTier('powerful')).toBe('opus');
-    expect(createModelRegistry('codex').resolveModelOrTier('powerful')).toBe('codex');
+    expect(createModelRegistry('codex').resolveModelOrTier('powerful')).toBe('gpt-5.2-codex');
     expect(createModelRegistry('aider').resolveModelOrTier('powerful')).toBe('o1');
   });
 });
@@ -119,7 +119,7 @@ describe('Worker result formatter with tool label', () => {
     workerIndex: 1,
     totalWorkers: 2,
     profile: 'code-edit',
-    model: 'codex-mini',
+    model: 'gpt-5.2-codex',
     durationMs: 1500,
     success: true,
     exitCode: 0,
@@ -130,15 +130,15 @@ describe('Worker result formatter with tool label', () => {
     const meta = { ...baseMeta, tool: 'codex' };
     const result = formatWorkerResult(meta, 'Refactored auth module');
 
-    expect(result).toContain('codex/codex-mini');
+    expect(result).toContain('codex/gpt-5.2-codex');
     expect(result).toContain('[WORKER RESULT');
   });
 
   it('shows model only (no slash) when tool is not specified', () => {
     const result = formatWorkerResult(baseMeta, 'Output');
 
-    expect(result).toContain('codex-mini');
-    expect(result).not.toContain('/codex-mini');
+    expect(result).toContain('gpt-5.2-codex');
+    expect(result).not.toContain('/gpt-5.2-codex');
   });
 
   it('includes tool/model label in error formatting', () => {
@@ -193,13 +193,13 @@ describe('Worker result formatter with tool label', () => {
 
     const markers = [
       { profile: 'read-only', body: { model: 'haiku', tool: 'claude' } },
-      { profile: 'code-edit', body: { model: 'codex-mini', tool: 'codex' } },
+      { profile: 'code-edit', body: { model: 'gpt-5.2-codex', tool: 'codex' } },
     ];
 
     const { formattedResults } = formatWorkerBatch(outcomes, markers);
 
     expect(formattedResults[0]).toContain('claude/haiku');
-    expect(formattedResults[1]).toContain('codex/codex-mini');
+    expect(formattedResults[1]).toContain('codex/gpt-5.2-codex');
   });
 
   it('formatWorkerBatch omits tool prefix when tool is absent', () => {

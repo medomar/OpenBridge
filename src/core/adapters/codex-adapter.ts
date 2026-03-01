@@ -7,7 +7,7 @@
  *   codex exec [OPTIONS] <PROMPT>
  *
  * Codex exec flags:
- *   -m, --model <MODEL>           Model to use (gpt-5.2-codex, o3, o4-mini, etc.)
+ *   -m, --model <MODEL>           Model to use (gpt-5.2-codex is default; o3/o4-mini require API key auth)
  *   -s, --sandbox <MODE>          read-only | workspace-write | danger-full-access
  *   --full-auto                   Auto-approve all actions (convenience flag)
  *   --skip-git-repo-check         Skip git repo trust check (required for non-git workspaces)
@@ -206,14 +206,14 @@ export class CodexAdapter implements CLIAdapter {
   }
 
   isValidModel(model: string): boolean {
-    // Current models for Codex CLI v0.104.0
+    // ChatGPT-account auth only supports gpt-5.2-codex (the default in v0.104.0).
+    // o3, o4-mini, codex-mini are rejected with "not supported when using Codex with a ChatGPT account".
+    // API-key auth may support more models — accept OpenAI-style IDs for forward compat.
     const codexModels = [
-      'gpt-5.2-codex', // default in v0.104.0
-      'o3',
-      'o4-mini',
+      'gpt-5.2-codex', // default — works with both ChatGPT auth and API key
     ];
     if (codexModels.includes(model)) return true;
-    // Accept OpenAI-style model IDs for forward compatibility
+    // Accept OpenAI-style model IDs for forward compatibility (API-key users)
     return /^(gpt-|o[0-9]|codex)/.test(model);
   }
 

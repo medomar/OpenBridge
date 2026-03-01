@@ -26,7 +26,7 @@ describe('ModelRegistry', () => {
 
       const all = registry.getAll();
       expect(all).toHaveLength(3);
-      expect(all.map((m) => m.id)).toContain('codex-mini');
+      expect(all.map((m) => m.id)).toContain('gpt-5.2-codex');
     });
 
     it('loads Aider defaults by provider name', () => {
@@ -119,8 +119,8 @@ describe('ModelRegistry', () => {
 
       // gpt-4o is aider's "balanced" → claude's balanced is "sonnet"
       expect(registry.resolveModelOrTier('gpt-4o')).toBe('sonnet');
-      // codex-mini is codex's "fast" → claude's fast is "haiku"
-      expect(registry.resolveModelOrTier('codex-mini')).toBe('haiku');
+      // gpt-5.2-codex is codex's "fast" → claude's fast is "haiku"
+      expect(registry.resolveModelOrTier('gpt-5.2-codex')).toBe('haiku');
     });
 
     it('returns tier name if no model registered for that tier', () => {
@@ -144,8 +144,9 @@ describe('ModelRegistry', () => {
     it('works with non-Claude providers', () => {
       const registry = createModelRegistry('codex');
 
-      expect(registry.getFallback('codex')).toBe('codex-mini'); // balanced → fast
-      expect(registry.getFallback('codex-mini')).toBeUndefined(); // fast → none
+      // All tiers map to gpt-5.2-codex — find() returns the first entry (fast tier),
+      // and fast has no fallback, so getFallback returns undefined.
+      expect(registry.getFallback('gpt-5.2-codex')).toBeUndefined();
     });
 
     it('returns undefined for unknown model IDs', () => {
