@@ -990,6 +990,39 @@ export class MasterManager {
   }
 
   /**
+   * Recover from an error state.
+   * Resets state from 'error' to 'idle' and optionally retries exploration
+   * if the previous error occurred during explore().
+   * After recovery, processMessage() can accept new messages again.
+   */
+  public recover(): Promise<void> {
+    if (this.state !== 'error') {
+      logger.warn(
+        { currentState: this.state },
+        'recover() called but state is not error — ignoring',
+      );
+      return Promise.resolve();
+    }
+
+    logger.warn(
+      { workspacePath: this.workspacePath, previousError: this.explorationSummary?.error },
+      'Recovering from error state',
+    );
+
+    this.state = 'idle';
+
+    // If exploration previously failed, retry it so the Master can become ready.
+    // explore() synchronously sets state to 'exploring' before its first await,
+    // so subsequent processMessage() calls will queue correctly as pending messages.
+    if (this.explorationSummary?.status === 'failed') {
+      logger.info('Retrying exploration after recovery');
+      void this.explore();
+    }
+
+    return Promise.resolve();
+  }
+
+  /**
    * Get the model registry (for provider-agnostic model resolution)
    */
   public getModelRegistry(): ModelRegistry {
@@ -3833,6 +3866,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       );
       this.pendingMessages.push(message);
       return "I'm still exploring your workspace. Your message will be processed once exploration completes.";
+    }
+
+    // Recover from error state instead of permanently rejecting messages.
+    // recover() resets state to 'idle' and re-triggers exploration if needed,
+    // which transitions state to 'exploring' before returning.
+    if (this.state === 'error') {
+      logger.info(
+        { sender: message.sender },
+        'Master in error state — attempting recovery before processing message',
+      );
+      await this.recover();
+      // After recover(), state is 'exploring' (exploration retry fired).
+      // Queue this message so it is processed once exploration completes.
+      this.pendingMessages.push(message);
+      return 'The AI encountered an exploration error and is retrying. Your message will be processed once recovery completes.';
     }
 
     if (this.state !== 'ready') {
