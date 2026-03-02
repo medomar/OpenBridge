@@ -660,61 +660,15 @@ describe('ExplorationCoordinator', () => {
           retryCount: 0,
           durationMs: 0,
         })
-        // First attempt fails
+        // First attempt fails — dive is reset to 'pending' and retried in the same explore() call
         .mockResolvedValueOnce({
           exitCode: 1,
           stdout: '',
           stderr: 'Failed',
           retryCount: 0,
           durationMs: 0,
-        });
-
-      // First explore() call - should fail with pending dive
-      await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
-
-      // Second attempt - need to re-mock phases 1 and 2 because failed state gets reset
-      mockSpawn
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: JSON.stringify(structureScan),
-          stderr: '',
-          retryCount: 0,
-          durationMs: 0,
         })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: JSON.stringify(classification),
-          stderr: '',
-          retryCount: 0,
-          durationMs: 0,
-        })
-        .mockResolvedValueOnce({
-          exitCode: 1,
-          stdout: '',
-          stderr: 'Failed',
-          retryCount: 0,
-          durationMs: 0,
-        });
-
-      // Second explore() call - should still fail with pending dive
-      await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
-
-      // Third attempt succeeds - again need to re-mock phases 1 and 2
-      mockSpawn
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: JSON.stringify(structureScan),
-          stderr: '',
-          retryCount: 0,
-          durationMs: 0,
-        })
-        .mockResolvedValueOnce({
-          exitCode: 0,
-          stdout: JSON.stringify(classification),
-          stderr: '',
-          retryCount: 0,
-          durationMs: 0,
-        })
+        // Retry succeeds
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify(directoryDive),
@@ -722,6 +676,7 @@ describe('ExplorationCoordinator', () => {
           retryCount: 0,
           durationMs: 0,
         })
+        // Assembly
         .mockResolvedValueOnce({
           exitCode: 0,
           stdout: JSON.stringify({ summary: 'Summary' }),
@@ -730,15 +685,14 @@ describe('ExplorationCoordinator', () => {
           durationMs: 0,
         });
 
-      // Third explore() call - should complete
+      // Single explore() call — retry happens within the while loop, no throw expected
       await coordinator.explore();
 
       const dotFolder = new DotFolderManager(testWorkspace);
       const state = await dotFolder.readExplorationState();
 
       expect(state?.directoryDives[0]?.status).toBe('completed');
-      // attempts resets to 0 when coordinator resets failed state on retry
-      expect(state?.directoryDives[0]?.attempts).toBe(0);
+      expect(state?.directoryDives[0]?.attempts).toBe(1); // failed once before succeeding
     });
 
     it('should mark directory as failed after 3 failed attempts', async () => {
@@ -780,7 +734,7 @@ describe('ExplorationCoordinator', () => {
           retryCount: 0,
           durationMs: 0,
         })
-        // Fail 3 times for the directory dive
+        // Fail 3 times — all retries within a single explore() call
         .mockResolvedValueOnce({
           exitCode: 1,
           stdout: '',
@@ -799,11 +753,26 @@ describe('ExplorationCoordinator', () => {
           exitCode: 1,
           stdout: '',
           stderr: 'Failed',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        // Assembly still runs — 'failed' dives don't block phase completion
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify({ summary: 'Summary' }),
+          stderr: '',
           retryCount: 0,
           durationMs: 0,
         });
 
-      await expect(coordinator.explore()).rejects.toThrow('Directory dives incomplete: 1 pending');
+      // explore() completes without throwing — 'failed' dives are excluded from incompleteDives check
+      await coordinator.explore();
+
+      const dotFolder = new DotFolderManager(testWorkspace);
+      const state = await dotFolder.readExplorationState();
+
+      expect(state?.directoryDives[0]?.status).toBe('failed');
+      expect(state?.directoryDives[0]?.attempts).toBe(3);
     });
   });
 

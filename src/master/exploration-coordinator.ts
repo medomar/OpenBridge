@@ -930,16 +930,15 @@ export class ExplorationCoordinator {
     );
 
     // Process directories in parallel batches
-    const pendingDives = state.directoryDives.filter((dive) => dive.status !== 'completed');
     const totalDirs = state.directoryDives.length;
     let completedSoFar = state.directoryDives.filter((d) => d.status === 'completed').length;
 
-    for (let i = 0; i < pendingDives.length; i += batchSize) {
-      const batch = pendingDives.slice(i, i + batchSize);
-      logger.info(
-        { batchStart: i, batchSize: batch.length, totalDirs },
-        'Processing directory batch',
-      );
+    // Re-compute pendingDives inside the loop so dives reset to 'pending' after failure are retried
+    let pendingDives = state.directoryDives.filter((dive) => dive.status === 'pending');
+
+    while (pendingDives.length > 0) {
+      const batch = pendingDives.slice(0, batchSize);
+      logger.info({ batchSize: batch.length, totalDirs }, 'Processing directory batch');
 
       const results = await Promise.allSettled(
         batch.map((dive) => this.executeSingleDirectoryDive(dive.path, context, state)),
@@ -997,6 +996,9 @@ export class ExplorationCoordinator {
         total: totalDirs,
         currentDir: batch[batch.length - 1]?.path,
       });
+
+      // Re-compute for next iteration — picks up dives reset to 'pending' after failure
+      pendingDives = state.directoryDives.filter((dive) => dive.status === 'pending');
     }
 
     // Check if all dives completed or failed
