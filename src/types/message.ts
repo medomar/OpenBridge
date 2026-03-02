@@ -12,6 +12,7 @@
  * - exploring-directory — Per-directory progress during exploration
  * - worker-cancelled    — A worker was stopped by a user (broadcast to all channels)
  * - worker-turn-progress — Real-time turn count update for a running worker
+ * - deep-phase          — Deep Mode phase transition (started / completed / skipped / aborted)
  */
 export type ProgressEvent =
   | { type: 'classifying' }
@@ -42,6 +43,16 @@ export type ProgressEvent =
       turnsUsed: number;
       turnsMax: number;
       lastAction?: string;
+    }
+  | {
+      type: 'deep-phase';
+      sessionId: string;
+      /** The phase this event describes ('investigate' | 'report' | 'plan' | 'execute' | 'verify') */
+      phase: string;
+      /** What happened to this phase */
+      status: 'started' | 'completed' | 'skipped' | 'aborted';
+      /** Short summary of the phase output (first ~200 chars); only present when status === 'completed' */
+      resultSummary?: string;
     };
 
 /**

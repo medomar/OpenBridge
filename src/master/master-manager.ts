@@ -4356,7 +4356,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       if (taskClass === 'complex-task') {
         const effectiveProfile = this.deepConfig?.defaultProfile ?? 'fast';
         if (effectiveProfile === 'thorough' || effectiveProfile === 'manual') {
-          const deepSessionId = this.deepMode.startSession(message.content, effectiveProfile);
+          const deepSessionId = this.deepMode.startSession(
+            message.content,
+            effectiveProfile,
+            progress,
+          );
           if (deepSessionId) {
             // Persist new session to SQLite so it survives process restarts (OB-1405)
             await this.persistDeepModeSession(deepSessionId);

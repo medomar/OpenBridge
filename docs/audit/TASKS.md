@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 147 | **In Progress:** 0 | **Done:** 25 (112 archived)
+> **Pending:** 146 | **In Progress:** 0 | **Done:** 26 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (16/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (17/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -138,7 +138,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 15  | OB-1411 | Add `/phase` command to Router — shows current phase and progress: phase name, completed phases, pending phases, profile name. Shows phase results summary for completed phases                                                                                                            | ✅ Done   |
 | 16  | OB-1412 | Add model override via chat — parse "use opus for task 1" or "use haiku for this" from user message. Override per-phase model for that specific task. Confirm the override to user                                                                                                         | ✅ Done   |
 | 17  | OB-1413 | Add natural language phase navigation — recognize "proceed", "go", "next", "continue" as /proceed. Recognize "focus on #3", "dig into finding 3" as /focus 3. Recognize "skip item 2" as /skip 2                                                                                           | ✅ Done   |
-| 18  | OB-1414 | Add Deep Mode progress events — emit progress events during phase transitions with type, phase, status, resultSummary. Wire into existing WebSocket progress broadcasting                                                                                                                  | ◻ Pending |
+| 18  | OB-1414 | Add Deep Mode progress events — emit progress events during phase transitions with type, phase, status, resultSummary. Wire into existing WebSocket progress broadcasting                                                                                                                  | ✅ Done   |
 | 19  | OB-1415 | Add phase transition messages — when phase completes, send summary to user with item count and summaries. Include guidance for next actions (proceed, focus on N, etc.) tailored per phase                                                                                                 | ◻ Pending |
 | 20  | OB-1416 | Add tests in `tests/core/router.test.ts` — test: (1) /deep thorough activates, (2) /proceed advances phase, (3) /focus 3 spawns focused investigation, (4) /skip 2 marks skipped, (5) /phase shows status, (6) natural language proceed works, (7) /deep off deactivates. At least 7 tests | ◻ Pending |
 
