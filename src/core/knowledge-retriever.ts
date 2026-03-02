@@ -15,6 +15,12 @@ export interface KnowledgeResult {
   needsWorker?: boolean;
 }
 
+export interface ExtractedEntities {
+  filePaths: string[];
+  functionNames: string[];
+  moduleNames: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Stop words for FTS5 query parsing
 // ---------------------------------------------------------------------------
@@ -86,6 +92,56 @@ const STOP_WORDS = new Set([
   'your',
   'their',
 ]);
+
+// ---------------------------------------------------------------------------
+// Entity extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract structured entities from a block of text using regex patterns.
+ * Finds file paths (src/…/*.ts), function names (function X / const X =),
+ * and module names (import … from '…'). Used to enrich stored chunk metadata
+ * so that FTS5 searches can surface relevant chunks without re-spawning workers.
+ *
+ * OB-1363
+ */
+export function extractEntities(text: string): ExtractedEntities {
+  // ── File paths ────────────────────────────────────────────────────────────
+  // Match src/… paths with a file extension (e.g. src/core/router.ts)
+  const filePathPattern = /\bsrc\/[\w/.-]+\.\w{1,5}\b/g;
+  const filePaths = [...new Set(text.match(filePathPattern) ?? [])];
+
+  // ── Function names ────────────────────────────────────────────────────────
+  const functionNames = new Set<string>();
+
+  // function foo / async function foo (with optional type-params)
+  const funcDeclPattern = /\b(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = funcDeclPattern.exec(text)) !== null) {
+    if (m[1]) functionNames.add(m[1]);
+  }
+
+  // const foo = (async) (function|arrow)
+  const constFuncPattern =
+    /\bconst\s+(\w+)\s*(?::\s*[\w<>[\]|&, ]+\s*)?=\s*(?:async\s+)?(?:function|\()/g;
+  while ((m = constFuncPattern.exec(text)) !== null) {
+    if (m[1]) functionNames.add(m[1]);
+  }
+
+  // ── Module names ──────────────────────────────────────────────────────────
+  const moduleNames = new Set<string>();
+  // import … from 'module' / import type … from "module"
+  const importPattern = /\bimport\s+(?:type\s+)?(?:[\s\S]*?)\bfrom\s+['"]([^'"]+)['"]/g;
+  while ((m = importPattern.exec(text)) !== null) {
+    if (m[1]) moduleNames.add(m[1]);
+  }
+
+  return {
+    filePaths,
+    functionNames: [...functionNames],
+    moduleNames: [...moduleNames],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // KnowledgeRetriever
@@ -452,14 +508,23 @@ export class KnowledgeRetriever {
   ): Promise<void> {
     if (!workerOutput.trim()) return;
 
+    const entities = extractEntities(workerOutput);
+    const allFilePaths = [...new Set([...filePaths, ...entities.filePaths])];
+
     const metaLines: string[] = [];
     if (question) metaLines.push(`Q: ${question}`);
-    if (filePaths.length > 0) metaLines.push(`Files: ${filePaths.join(', ')}`);
+    if (allFilePaths.length > 0) metaLines.push(`Files: ${allFilePaths.join(', ')}`);
+    if (entities.functionNames.length > 0) {
+      metaLines.push(`Functions: ${entities.functionNames.slice(0, 10).join(', ')}`);
+    }
+    if (entities.moduleNames.length > 0) {
+      metaLines.push(`Modules: ${entities.moduleNames.slice(0, 10).join(', ')}`);
+    }
 
     const content =
       metaLines.length > 0 ? `${metaLines.join('\n')}\n---\n${workerOutput}` : workerOutput;
 
-    const scope = filePaths[0] ?? 'worker-read';
+    const scope = filePaths[0] ?? entities.filePaths[0] ?? 'worker-read';
 
     await this.memoryManager.storeChunks([
       {
