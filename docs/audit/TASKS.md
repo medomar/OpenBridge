@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 150 | **In Progress:** 0 | **Done:** 22 (112 archived)
+> **Pending:** 149 | **In Progress:** 0 | **Done:** 23 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -33,20 +33,20 @@
 
 ## Task Summary
 
-| Phase  | Description                          | Tasks | Status         |
-| ------ | ------------------------------------ | ----- | -------------- |
-| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (20/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
-| 82     | Tunnel Integration                   | 10    | ◻              |
-| 83     | Ephemeral App Server                 | 12    | ◻              |
-| 84     | Interaction Relay                    | 8     | ◻              |
-| 87     | Document Visibility Controls         | 14    | ◻              |
-| 88     | WebChat Frontend Extraction          | 15    | ◻              |
-| 89     | WebChat Authentication               | 12    | ◻              |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻              |
-| 91     | Conversation History + Rich Input    | 15    | ◻              |
-| 92     | Settings Panel + Deep Mode UI        | 12    | ◻              |
-| Docker | Docker Sandbox                       | 16    | ◻              |
+| Phase  | Description                          | Tasks | Status          |
+| ------ | ------------------------------------ | ----- | --------------- |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done)  |
+| 82     | Tunnel Integration                   | 10    | ◻               |
+| 83     | Ephemeral App Server                 | 12    | ◻               |
+| 84     | Interaction Relay                    | 8     | ◻               |
+| 87     | Document Visibility Controls         | 14    | ◻               |
+| 88     | WebChat Frontend Extraction          | 15    | ◻               |
+| 89     | WebChat Authentication               | 12    | ◻               |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻               |
+| 91     | Conversation History + Rich Input    | 15    | ◻               |
+| 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
+| Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
 **Sprint 4 Remaining:** 170 tasks (v0.0.12)
@@ -97,12 +97,12 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 ### RWT-4 — Classifier Text-Generation Fix (OB-F92) — 4 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                     | Status    |
-| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 20  | OB-1580 | Add `text-generation` task class keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: generate, write, draft, compose, create post, tweet, linkedin, rewrite, rephrase, reformulate, shorter, longer, attractive. Map to quick-answer class (5 turns, no tools) | ✅ Done   |
-| 21  | OB-1581 | Change keyword fallback from `tool-use` to `quick-answer` — when no keywords match, default to quick-answer (5 turns) instead of tool-use (15 turns). Most unrecognized conversational messages don't need tools                                                                                | ✅ Done   |
-| 22  | OB-1582 | Add conversation context to classifier — if the last 3 messages were text-generation (writing posts, tweets), classify follow-up messages ("shorter", "better hook", "mix of 1 and 3") as text-generation too. Check conversation history in `buildConversationContext()`                       | ✅ Done   |
-| 23  | OB-1583 | Add text-generation test cases in `tests/master/classifier.test.ts` — test: (1) "generate LinkedIn post" → quick-answer, (2) "shorter version" → quick-answer, (3) "tweet for non-developers" → quick-answer, (4) fallback is quick-answer not tool-use. At least 4 tests                       | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                     | Status  |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 20  | OB-1580 | Add `text-generation` task class keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: generate, write, draft, compose, create post, tweet, linkedin, rewrite, rephrase, reformulate, shorter, longer, attractive. Map to quick-answer class (5 turns, no tools) | ✅ Done |
+| 21  | OB-1581 | Change keyword fallback from `tool-use` to `quick-answer` — when no keywords match, default to quick-answer (5 turns) instead of tool-use (15 turns). Most unrecognized conversational messages don't need tools                                                                                | ✅ Done |
+| 22  | OB-1582 | Add conversation context to classifier — if the last 3 messages were text-generation (writing posts, tweets), classify follow-up messages ("shorter", "better hook", "mix of 1 and 3") as text-generation too. Check conversation history in `buildConversationContext()`                       | ✅ Done |
+| 23  | OB-1583 | Add text-generation test cases in `tests/master/classifier.test.ts` — test: (1) "generate LinkedIn post" → quick-answer, (2) "shorter version" → quick-answer, (3) "tweet for non-developers" → quick-answer, (4) fallback is quick-answer not tool-use. At least 4 tests                       | ✅ Done |
 
 ---
 
