@@ -516,6 +516,24 @@ export class Router {
       }
     }
 
+    // Handle "go" / "/confirm" for a pending high-risk spawn confirmation
+    if (
+      message.content.trim().toLowerCase() === 'go' ||
+      message.content.trim().toLowerCase() === '/confirm'
+    ) {
+      await this.handleConfirmSpawnCommand(message, connector);
+      return;
+    }
+
+    // Handle "skip" / "/skip" for a pending high-risk spawn cancellation
+    if (
+      message.content.trim().toLowerCase() === 'skip' ||
+      message.content.trim().toLowerCase() === '/skip'
+    ) {
+      await this.handleSkipSpawnCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "stop" command — intercept before routing to Master AI
     if (/^stop(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleStopCommand(message, connector);
@@ -1213,6 +1231,74 @@ export class Router {
       replyTo: message.id,
     });
     logger.info({ sender: message.sender }, 'Stop all confirmed and executed');
+  }
+
+  /**
+   * Handle "go" / "/confirm" — approve a pending high-risk spawn confirmation.
+   *
+   * Retrieves and removes the pending spawn entry for the sender. If found,
+   * re-routes the original message so the Master AI dispatches the workers.
+   * If no confirmation is pending, responds with "No pending confirmation."
+   */
+  private async handleConfirmSpawnCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const entry = this.takePendingSpawnConfirmation(message.sender);
+    if (!entry) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending confirmation.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Spawn confirm: no pending entry');
+      return;
+    }
+
+    logger.info(
+      { sender: message.sender, markerCount: entry.markers.length },
+      'Spawn confirmation approved — dispatching workers',
+    );
+
+    // Re-route the original message so the Master AI re-processes and dispatches workers
+    await this.route(entry.message);
+  }
+
+  /**
+   * Handle "skip" / "/skip" — cancel a pending high-risk spawn confirmation.
+   *
+   * Retrieves and removes the pending spawn entry for the sender. If found,
+   * notifies the user that the spawn has been cancelled. If no confirmation
+   * is pending, responds with "No pending confirmation."
+   */
+  private async handleSkipSpawnCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const entry = this.takePendingSpawnConfirmation(message.sender);
+    if (!entry) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending confirmation.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Spawn skip: no pending entry');
+      return;
+    }
+
+    logger.info(
+      { sender: message.sender, markerCount: entry.markers.length },
+      'Spawn confirmation rejected — spawn cancelled',
+    );
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: 'Spawn cancelled.',
+      replyTo: message.id,
+    });
   }
 
   /**
