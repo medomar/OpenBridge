@@ -3981,6 +3981,19 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       const taskMaxTurns = classification.maxTurns;
       logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
 
+      // Knowledge retrieval for codebase questions (OB-1345)
+      // Query pre-indexed knowledge before building the Master prompt.
+      // Codebase questions are classified as 'quick-answer' in the current system.
+      // Injecting pre-fetched context lets the Master answer directly without
+      // spawning a redundant read-only worker.
+      let knowledgeContext: string | undefined;
+      if (taskClass === 'quick-answer' && this.knowledgeRetriever) {
+        const knowledgeResult = await this.knowledgeRetriever.query(message.content);
+        if (knowledgeResult.confidence >= 0.3) {
+          knowledgeContext = this.knowledgeRetriever.formatKnowledgeContext(knowledgeResult);
+        }
+      }
+
       // For complex tasks, send a planning prompt that forces the Master to output
       // SPAWN markers within a small turn budget instead of attempting execution itself.
       const promptToSend =
@@ -4051,6 +4064,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       if (learnedPatternsContext) {
         spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
       }
+      // Inject pre-fetched knowledge context into the Master's system prompt (OB-1345)
+      if (knowledgeContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + knowledgeContext;
+      }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -4072,6 +4089,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         // Re-inject learned patterns into retry opts as well
         if (learnedPatternsContext) {
           retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
+        }
+        // Re-inject knowledge context into retry opts as well (OB-1345)
+        if (knowledgeContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + knowledgeContext;
         }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
