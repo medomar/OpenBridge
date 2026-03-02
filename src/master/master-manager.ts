@@ -350,6 +350,7 @@ export class MasterManager {
   private readonly adapter?: CLIAdapter;
   private readonly adapterRegistry: AdapterRegistry;
   private mcpServers: MCPServer[];
+  private activeConnectorNames: string[] = [];
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -1361,6 +1362,8 @@ export class MasterManager {
       customProfiles,
       modelRegistry: this.modelRegistry,
       mcpServers: this.mcpServers.length > 0 ? this.mcpServers : undefined,
+      activeConnectorNames:
+        this.activeConnectorNames.length > 0 ? this.activeConnectorNames : undefined,
     });
 
     try {
@@ -1966,6 +1969,14 @@ export class MasterManager {
    */
   public setKnowledgeRetriever(retriever: KnowledgeRetriever): void {
     this.knowledgeRetriever = retriever;
+  }
+
+  /**
+   * Set the names of active connectors so they can be included in the Master system prompt.
+   * Called by the startup flow after Bridge.start() completes and connectors are initialized.
+   */
+  public setActiveConnectorNames(names: string[]): void {
+    this.activeConnectorNames = [...names];
   }
 
   /**
