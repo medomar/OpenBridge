@@ -283,7 +283,7 @@ describe('migration.ts', () => {
 
     it('applies only migrations with version > MAX(version) in schema_versions', () => {
       // Build a minimal raw database: schema_versions + the tables touched by migrations,
-      // but only pre-mark v1 as applied. This verifies only v2 and v3 run.
+      // but only pre-mark v1 as applied. This verifies only v2, v3, v4, v5 run.
       const rawDb = new Database(':memory:');
       rawDb.exec(`
         CREATE TABLE schema_versions (
@@ -315,6 +315,22 @@ describe('migration.ts', () => {
           allowed_tools TEXT,
           created_at    TEXT NOT NULL,
           last_used_at  TEXT NOT NULL
+        );
+        CREATE TABLE access_control (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id              TEXT    NOT NULL,
+          channel              TEXT    NOT NULL,
+          role                 TEXT    NOT NULL DEFAULT 'viewer',
+          scopes               TEXT,
+          allowed_actions      TEXT,
+          blocked_actions      TEXT,
+          max_cost_per_day_usd REAL,
+          daily_cost_used      REAL    DEFAULT 0,
+          cost_reset_at        TEXT,
+          active               BOOLEAN DEFAULT 1,
+          created_at           TEXT    NOT NULL,
+          updated_at           TEXT    NOT NULL,
+          UNIQUE(user_id, channel)
         );
       `);
 
@@ -357,11 +373,11 @@ describe('migration.ts', () => {
       ).c;
       expect(checkpointColCount).toBe(1);
 
-      // All four versions must be recorded in schema_versions
+      // All five versions must be recorded in schema_versions
       const versions = rawDb
         .prepare('SELECT version FROM schema_versions ORDER BY version')
         .all() as { version: number }[];
-      expect(versions.map((r) => r.version)).toEqual([1, 2, 3, 4]);
+      expect(versions.map((r) => r.version)).toEqual([1, 2, 3, 4, 5]);
 
       rawDb.close();
     });
