@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 209 | **In Progress:** 0 | **Done:** 52
+> **Pending:** 208 | **In Progress:** 0 | **Done:** 53
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -195,7 +195,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1352 | Add `suggestTargetFiles(question: string, workspaceMap: WorkspaceMap): string[]` to `KnowledgeRetriever` — analyzes question and workspace map to suggest specific files. Uses heuristics: file paths in question, directory names matching keywords, entry point files of matching modules. Returns up to 10 file paths sorted by relevance | ◻ Pending |
+| 1   | OB-1352 | Add `suggestTargetFiles(question: string, workspaceMap: WorkspaceMap): string[]` to `KnowledgeRetriever` — analyzes question and workspace map to suggest specific files. Uses heuristics: file paths in question, directory names matching keywords, entry point files of matching modules. Returns up to 10 file paths sorted by relevance | ✅ Done   |
 | 2   | OB-1353 | Add `spawnTargetedReader(filePaths: string[], question: string)` to `MasterManager` — spawns read-only worker with focused prompt: "Read these files and answer the following question." Uses read-only profile, 5 max turns, fast model tier. Returns worker result as string                                                               | ◻ Pending |
 | 3   | OB-1354 | Wire targeted reader into processMessage() — when needsWorker is true and confidence < 0.3, call suggestTargetFiles() then spawnTargetedReader(). Inject worker result into Master context before processing the message                                                                                                                     | ◻ Pending |
 | 4   | OB-1355 | Add targeted reader prompt template `TASK_TARGETED_READ` to `src/master/seed-prompts.ts` — instructions to read specified files, extract relevant information, summarize key findings in 3-5 bullet points with file paths and line numbers                                                                                                  | ◻ Pending |

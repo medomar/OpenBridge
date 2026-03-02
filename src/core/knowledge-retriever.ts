@@ -1,6 +1,7 @@
 import * as nodePath from 'node:path';
 import type { MemoryManager, Chunk } from '../memory/index.js';
 import type { DotFolderManager } from '../master/dotfolder-manager.js';
+import type { WorkspaceMap } from '../types/master.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -323,6 +324,107 @@ export class KnowledgeRetriever {
     // Hard-truncate to 4000 chars
     if (full.length <= 4000) return full;
     return full.slice(0, 3997) + '...';
+  }
+
+  /**
+   * Suggest target files for a focused read-only worker when RAG confidence
+   * is low.  Applies three heuristics in priority order:
+   *  1. Explicit file references found in the question (highest weight)
+   *  2. Key files whose basename or purpose matches question keywords
+   *  3. Files under directories whose name or purpose matches question keywords
+   *
+   * Returns up to 10 file paths, de-duplicated and ordered by relevance score.
+   *
+   * OB-1352
+   */
+  suggestTargetFiles(question: string, workspaceMap: WorkspaceMap): string[] {
+    // ── Build term sets ───────────────────────────────────────────────────────
+    // Explicit file references like "router.ts", "src/core/router.ts"
+    const fileRefPattern = /\b[\w/.-]+\.\w{1,5}\b/g;
+    const explicitRefs = (question.match(fileRefPattern) ?? []).map((r) => r.toLowerCase());
+
+    // Module terms: non-stop-words >= 3 chars
+    const moduleTerms = question
+      .toLowerCase()
+      .split(/[\s.,!?;:'"()[\]{}]+/)
+      .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+
+    // Score map: filePath → cumulative score
+    const scores = new Map<string, number>();
+    const addScore = (path: string, points: number): void => {
+      scores.set(path, (scores.get(path) ?? 0) + points);
+    };
+
+    // ── Heuristic 1: explicit file references ─────────────────────────────────
+    for (const kf of workspaceMap.keyFiles) {
+      const kfLower = kf.path.toLowerCase();
+      for (const ref of explicitRefs) {
+        if (kfLower.endsWith(ref) || kfLower.includes(ref)) {
+          addScore(kf.path, 10);
+          break;
+        }
+      }
+    }
+    for (const ep of workspaceMap.entryPoints) {
+      const epLower = ep.toLowerCase();
+      for (const ref of explicitRefs) {
+        if (epLower.endsWith(ref) || epLower.includes(ref)) {
+          addScore(ep, 10);
+          break;
+        }
+      }
+    }
+
+    // ── Heuristic 2: key files matching question keywords ─────────────────────
+    for (const kf of workspaceMap.keyFiles) {
+      const kfLower = kf.path.toLowerCase();
+      const baseName = nodePath.basename(kfLower);
+      const baseNoExt = baseName.replace(/\.[^.]+$/, '');
+      const purposeLower = kf.purpose.toLowerCase();
+      for (const term of moduleTerms) {
+        if (baseNoExt === term) {
+          addScore(kf.path, 6); // exact basename match
+        } else if (baseNoExt.includes(term) || kfLower.includes(term)) {
+          addScore(kf.path, 3); // partial path match
+        }
+        if (purposeLower.includes(term)) {
+          addScore(kf.path, 2); // purpose text match
+        }
+      }
+    }
+
+    // ── Heuristic 3: directories matching keywords → their key files ──────────
+    for (const dir of Object.values(workspaceMap.structure)) {
+      const dirPathLower = dir.path.toLowerCase();
+      const dirNameLower = nodePath.basename(dirPathLower);
+      const purposeLower = dir.purpose.toLowerCase();
+
+      const dirMatch = moduleTerms.some(
+        (t) => dirNameLower.includes(t) || purposeLower.includes(t),
+      );
+      if (!dirMatch) continue;
+
+      // Promote key files that live under the matching directory
+      for (const kf of workspaceMap.keyFiles) {
+        const kfLower = kf.path.toLowerCase();
+        if (kfLower.startsWith(dirPathLower + '/') || kfLower.includes('/' + dirPathLower + '/')) {
+          addScore(kf.path, 4);
+        }
+      }
+      // Promote entry points that reference the matching directory
+      for (const ep of workspaceMap.entryPoints) {
+        if (ep.toLowerCase().includes(dirPathLower)) {
+          addScore(ep, 4);
+        }
+      }
+    }
+
+    // ── Sort, de-duplicate, limit to 10 ──────────────────────────────────────
+    return [...scores.entries()]
+      .filter(([, score]) => score > 0)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([path]) => path);
   }
 
   /**
