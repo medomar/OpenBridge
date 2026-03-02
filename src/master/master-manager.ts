@@ -1182,6 +1182,7 @@ export class MasterManager {
         this.state = 'ready';
         logger.info('Master AI ready (incremental map update completed)');
         await this.drainPendingMessages();
+        await this.logRagHealthDiagnostic();
         return;
       }
 
@@ -1218,6 +1219,10 @@ export class MasterManager {
       logger.info('Auto-exploration disabled, entering ready state');
       this.state = 'ready';
     }
+
+    // RAG health diagnostic — covers Scenarios 1c (full re-explore), no-map,
+    // and skipAutoExploration paths. Scenarios 1a and 1b log their own counts.
+    await this.logRagHealthDiagnostic();
 
     // Start idle detection timer for self-improvement cycle (OB-173)
     this.startIdleDetection();
@@ -5210,6 +5215,24 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     }
 
     return status;
+  }
+
+  /**
+   * Log the current RAG health status (FTS5 chunk count) for startup diagnostics.
+   * OB-1571: Provides visibility into whether the FTS5 index has content so that
+   * operators can identify an empty RAG index before it causes silent failures.
+   */
+  private async logRagHealthDiagnostic(): Promise<void> {
+    if (!this.memory) return;
+    try {
+      const chunkCount = await this.memory.countChunks();
+      logger.info({ chunkCount }, 'RAG startup diagnostic: FTS5 chunk store status');
+      if (chunkCount === 0) {
+        logger.warn('RAG has no indexed chunks — retrieval will return empty results');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'RAG startup diagnostic: failed to count FTS5 chunks');
+    }
   }
 
   /**

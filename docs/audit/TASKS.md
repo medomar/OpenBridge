@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 162 | **In Progress:** 0 | **Done:** 10 (112 archived)
+> **Pending:** 161 | **In Progress:** 0 | **Done:** 11 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -35,7 +35,7 @@
 
 | Phase  | Description                          | Tasks | Status         |
 | ------ | ------------------------------------ | ----- | -------------- |
-| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (10/23 done) |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (11/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
 | 82     | Tunnel Integration                   | 10    | ◻              |
 | 83     | Ephemeral App Server                 | 12    | ◻              |
@@ -80,7 +80,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 8   | OB-1568 | Add WARN log when `buildSearchQuery()` produces empty query — log original question, filtered tokens, and reason (all stop words, all too short). Helps diagnose RAG failures in production                                                                                             | ✅ Done   |
 | 9   | OB-1569 | Ensure exploration stores chunks even when workspace map is reused — in `MasterManager.start()`, after "skipping exploration" path, verify FTS5 chunk count > 0. If zero, force chunk indexing from existing workspace map                                                              | ✅ Done   |
 | 10  | OB-1570 | Auto-store worker results in chunk store — in `master-manager.ts` after worker completes, call `knowledgeRetriever.storeWorkerResult()` automatically. Currently only called explicitly in some paths                                                                                   | ✅ Done   |
-| 11  | OB-1571 | Add startup diagnostic for RAG health — on MasterManager start, count chunks in FTS5 table. Log INFO with count. If zero, log WARN: "RAG has no indexed chunks — retrieval will return empty results"                                                                                   | ◻ Pending |
+| 11  | OB-1571 | Add startup diagnostic for RAG health — on MasterManager start, count chunks in FTS5 table. Log INFO with count. If zero, log WARN: "RAG has no indexed chunks — retrieval will return empty results"                                                                                   | ✅ Done   |
 | 12  | OB-1572 | Add `hybridSearch()` fallback — in `src/memory/retrieval.ts`, if sanitized FTS5 query is empty string, fall back to recent chunks by timestamp (last 20) instead of returning empty array                                                                                               | ◻ Pending |
 | 13  | OB-1573 | Wire workspace map content into chunk store on first load — when `readWorkspaceMapFromStore()` returns a map but `searchContext()` returns 0 chunks, index the map content as chunks so FTS5 has something to search                                                                    | ◻ Pending |
 | 14  | OB-1574 | Add tests in `tests/core/knowledge-retriever-rag.test.ts` — test: (1) buildSearchQuery keeps short domain terms, (2) empty query falls back to original, (3) WARN logged on empty query, (4) zero chunks triggers re-indexing, (5) hybridSearch fallback returns recent chunks. 5 tests | ◻ Pending |
