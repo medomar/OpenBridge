@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 195 | **In Progress:** 0 | **Done:** 66
+> **Pending:** 194 | **In Progress:** 0 | **Done:** 67
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -41,7 +41,7 @@
 | 74     | Knowledge Retriever                   | 10    | ✅     |
 | 75     | Context Injection                     | 8     | ✅     |
 | 76     | Targeted Reader                       | 7     | ✅     |
-| 77     | Chunk Enrichment                      | 8     | ◻      |
+| 77     | Chunk Enrichment                      | 8     | ✅     |
 | 85     | Environment Variable Protection       | 10    | ◻      |
 | 81     | Master Output Awareness               | 7     | ◻      |
 | 86     | User Consent & Execution Transparency | 13    | ◻      |
@@ -209,16 +209,16 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 > **Goal:** Store worker read results as new chunks, cache Q&A pairs for future retrieval, extract named entities from worker outputs. Makes the knowledge base grow smarter with every interaction.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1359 | Add `storeWorkerResult(workerOutput: string, question: string, filePaths: string[])` to `KnowledgeRetriever` — stores worker output as new chunk in workspace_chunks with `source: 'worker-read'` and metadata containing question and filePaths. Enriches chunk store for future instant answers                                            | ✅ Done   |
-| 2   | OB-1360 | Add `qa_cache` table to SQLite schema in `src/memory/database.ts` — columns: id, question (TEXT), answer (TEXT), confidence (REAL), file_paths (JSON), created_at, accessed_at, access_count (INTEGER). Add migration for the new table                                                                                                      | ✅ Done   |
-| 3   | OB-1361 | Create `QACacheStore` class in `src/memory/qa-cache-store.ts` — CRUD for qa_cache table. Methods: store(), findSimilar() using FTS5 on question column, incrementAccess(), evictStale(maxAge). Add FTS5 virtual table `qa_cache_fts`                                                                                                         | ✅ Done   |
-| 4   | OB-1362 | Wire Q&A cache into KnowledgeRetriever.query() — before searching chunks, check Q&A cache for similar question. If cached answer exists with confidence >= 0.7 and created within 24 hours, return directly and skip chunk search. Increment access_count on cache hit                                                                       | ✅ Done   |
-| 5   | OB-1363 | Add entity extraction utility `extractEntities(text: string)` in knowledge-retriever.ts — uses regex to extract file paths (src/.../\*.ts), function names (function X, const X =), module names (import from). Store as chunk metadata for better search matching                                                                           | ✅ Done   |
-| 6   | OB-1364 | Wire `QACacheStore` into MemoryManager facade in `src/memory/index.ts` — instantiate during init, expose via memoryManager.qaCache. Add periodic eviction of entries older than 7 days                                                                                                                                                       | ✅ Done   |
-| 7   | OB-1365 | Add tests in `tests/core/knowledge-retriever.test.ts` and `tests/memory/qa-cache-store.test.ts` — test: (1) storeWorkerResult creates chunk with correct source, (2) Q&A cache hit returns cached answer, (3) cache miss falls through, (4) stale entries evicted, (5) extractEntities finds file paths and function names. At least 5 tests | ✅ Done   |
-| 8   | OB-1366 | Build + lint + typecheck + test validation for Phase 77 — RAG gate. Fix any failures                                                                                                                                                                                                                                                         | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1359 | Add `storeWorkerResult(workerOutput: string, question: string, filePaths: string[])` to `KnowledgeRetriever` — stores worker output as new chunk in workspace_chunks with `source: 'worker-read'` and metadata containing question and filePaths. Enriches chunk store for future instant answers                                            | ✅ Done |
+| 2   | OB-1360 | Add `qa_cache` table to SQLite schema in `src/memory/database.ts` — columns: id, question (TEXT), answer (TEXT), confidence (REAL), file_paths (JSON), created_at, accessed_at, access_count (INTEGER). Add migration for the new table                                                                                                      | ✅ Done |
+| 3   | OB-1361 | Create `QACacheStore` class in `src/memory/qa-cache-store.ts` — CRUD for qa_cache table. Methods: store(), findSimilar() using FTS5 on question column, incrementAccess(), evictStale(maxAge). Add FTS5 virtual table `qa_cache_fts`                                                                                                         | ✅ Done |
+| 4   | OB-1362 | Wire Q&A cache into KnowledgeRetriever.query() — before searching chunks, check Q&A cache for similar question. If cached answer exists with confidence >= 0.7 and created within 24 hours, return directly and skip chunk search. Increment access_count on cache hit                                                                       | ✅ Done |
+| 5   | OB-1363 | Add entity extraction utility `extractEntities(text: string)` in knowledge-retriever.ts — uses regex to extract file paths (src/.../\*.ts), function names (function X, const X =), module names (import from). Store as chunk metadata for better search matching                                                                           | ✅ Done |
+| 6   | OB-1364 | Wire `QACacheStore` into MemoryManager facade in `src/memory/index.ts` — instantiate during init, expose via memoryManager.qaCache. Add periodic eviction of entries older than 7 days                                                                                                                                                       | ✅ Done |
+| 7   | OB-1365 | Add tests in `tests/core/knowledge-retriever.test.ts` and `tests/memory/qa-cache-store.test.ts` — test: (1) storeWorkerResult creates chunk with correct source, (2) Q&A cache hit returns cached answer, (3) cache miss falls through, (4) stale entries evicted, (5) extractEntities finds file paths and function names. At least 5 tests | ✅ Done |
+| 8   | OB-1366 | Build + lint + typecheck + test validation for Phase 77 — RAG gate. Fix any failures                                                                                                                                                                                                                                                         | ✅ Done |
 
 ---
 
