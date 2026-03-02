@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 178 | **In Progress:** 0 | **Done:** 83
+> **Pending:** 177 | **In Progress:** 0 | **Done:** 84
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -43,7 +43,7 @@
 | 76     | Targeted Reader                       | 7     | ✅     |
 | 77     | Chunk Enrichment                      | 8     | ✅     |
 | 85     | Environment Variable Protection       | 10    | ✅     |
-| 81     | Master Output Awareness               | 7     | ◻      |
+| 81     | Master Output Awareness               | 7     | ✅     |
 | 86     | User Consent & Execution Transparency | 13    | ◻      |
 | Deep   | Deep Mode (OB-F56)                    | 35    | ◻      |
 | 82     | Tunnel Integration                    | 10    | ◻      |
@@ -247,15 +247,15 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 > **Goal:** Teach the Master AI how to share generated files using existing infrastructure (file-server, GitHub Pages, email sender). When OpenBridge generates test reports or analysis results, the Master sends them back via the active messaging channel.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                    | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1377 | Add SHARE marker documentation to Master system prompt in `src/master/master-system-prompt.ts` — new "Sharing Files & Outputs" section explaining: SHARE:whatsapp, SHARE:telegram (sends as attachment), SHARE:github-pages (publishes and returns URL), SHARE:email (sends to address) with path parameter    | ✅ Done   |
-| 2   | OB-1378 | Inject active connector names into Master system prompt in `src/master/master-system-prompt.ts` — add "Connected Channels" section listing active channels (e.g., whatsapp, console, telegram). Read from Bridge.getActiveConnectors() (add method if missing). Tells Master which SHARE targets are available | ✅ Done   |
-| 3   | OB-1379 | Add output routing guidelines to Master system prompt — decision logic: PDF/DOC files use SHARE:whatsapp or SHARE:telegram, HTML reports use SHARE:github-pages, small text results go directly in response, large text goes to file and shared                                                                | ✅ Done   |
-| 4   | OB-1380 | Add file-server URL to Master system prompt context in `src/master/master-system-prompt.ts` — include localhost file server URL so Master knows it can generate files in .openbridge/generated/ and reference them. Read port from config                                                                      | ✅ Done   |
-| 5   | OB-1381 | Add `TASK_GENERATE_OUTPUT` seed prompt template to `src/master/seed-prompts.ts` — instructions for output generation: write to .openbridge/generated/, use appropriate format (HTML/JSON/PDF), include SHARE marker at end                                                                                     | ✅ Done   |
-| 6   | OB-1382 | Add tests in `tests/master/master-system-prompt.test.ts` — test: (1) system prompt includes SHARE marker docs, (2) active connector names appear, (3) file-server URL appears, (4) output routing guidelines present. At least 4 tests                                                                         | ✅ Done   |
-| 7   | OB-1383 | Build + lint + typecheck + test validation for Phase 81. Fix any failures                                                                                                                                                                                                                                      | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                    | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1377 | Add SHARE marker documentation to Master system prompt in `src/master/master-system-prompt.ts` — new "Sharing Files & Outputs" section explaining: SHARE:whatsapp, SHARE:telegram (sends as attachment), SHARE:github-pages (publishes and returns URL), SHARE:email (sends to address) with path parameter    | ✅ Done |
+| 2   | OB-1378 | Inject active connector names into Master system prompt in `src/master/master-system-prompt.ts` — add "Connected Channels" section listing active channels (e.g., whatsapp, console, telegram). Read from Bridge.getActiveConnectors() (add method if missing). Tells Master which SHARE targets are available | ✅ Done |
+| 3   | OB-1379 | Add output routing guidelines to Master system prompt — decision logic: PDF/DOC files use SHARE:whatsapp or SHARE:telegram, HTML reports use SHARE:github-pages, small text results go directly in response, large text goes to file and shared                                                                | ✅ Done |
+| 4   | OB-1380 | Add file-server URL to Master system prompt context in `src/master/master-system-prompt.ts` — include localhost file server URL so Master knows it can generate files in .openbridge/generated/ and reference them. Read port from config                                                                      | ✅ Done |
+| 5   | OB-1381 | Add `TASK_GENERATE_OUTPUT` seed prompt template to `src/master/seed-prompts.ts` — instructions for output generation: write to .openbridge/generated/, use appropriate format (HTML/JSON/PDF), include SHARE marker at end                                                                                     | ✅ Done |
+| 6   | OB-1382 | Add tests in `tests/master/master-system-prompt.test.ts` — test: (1) system prompt includes SHARE marker docs, (2) active connector names appear, (3) file-server URL appears, (4) output routing guidelines present. At least 4 tests                                                                         | ✅ Done |
+| 7   | OB-1383 | Build + lint + typecheck + test validation for Phase 81. Fix any failures                                                                                                                                                                                                                                      | ✅ Done |
 
 ---
 
