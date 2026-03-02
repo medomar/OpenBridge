@@ -245,15 +245,29 @@ export class CodexAdapter implements CLIAdapter {
         try {
           const content = readFileSync(tempFile, 'utf-8').trim();
           if (content) {
+            logger.debug(
+              { tempFile, contentLength: content.length },
+              'codex: tempfile output read successfully — using as primary source',
+            );
             try {
               unlinkSync(tempFile);
+              logger.debug({ tempFile }, 'codex: tempfile cleaned up');
             } catch {
               // Best-effort cleanup — not critical if it fails
             }
             return content;
           }
+          // File exists but is empty — Codex may not have written the final answer
+          logger.warn(
+            { tempFile },
+            'codex: tempfile exists but is empty — falling back to JSONL stdout parsing',
+          );
         } catch {
-          // Temp file not found or unreadable — fall through to JSONL parsing
+          // Temp file not found or unreadable — normal if -o flag is unsupported
+          logger.debug(
+            { tempFile },
+            'codex: tempfile not found — falling back to JSONL stdout parsing',
+          );
         }
         return parseCodexJsonlOutput(stdout);
       },

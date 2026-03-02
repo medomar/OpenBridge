@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 168 | **In Progress:** 0 | **Done:** 4 (112 archived)
+> **Pending:** 167 | **In Progress:** 0 | **Done:** 5 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -35,7 +35,7 @@
 
 | Phase  | Description                          | Tasks | Status         |
 | ------ | ------------------------------------ | ----- | -------------- |
-| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (4/23 done)  |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (5/23 done)  |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
 | 82     | Tunnel Integration                   | 10    | ◻              |
 | 83     | Ephemeral App Server                 | 12    | ◻              |
@@ -69,7 +69,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 2   | OB-1562 | Add Codex JSONL incremental parser in `src/core/adapters/codex-adapter.ts` — new `parseCodexStreamChunk()` that extracts human-readable text from streaming events: `type: "message"` content, `type: "command_execution"` output, `type: "reasoning"` text (if not hidden)       | ✅ Done   |
 | 3   | OB-1563 | Wire incremental parser into `spawnWithStreamingHandle()` — when adapter has a stream parser, transform chunks before yielding to progress callbacks. Users see readable text in real-time, not raw JSON                                                                          | ✅ Done   |
 | 4   | OB-1564 | Update `worker-result-formatter.ts` — add fallback: if worker result looks like raw JSONL (starts with `{"type":`), run it through `parseCodexJsonlOutput()` before formatting. Defensive guard for any missed paths                                                              | ✅ Done   |
-| 5   | OB-1565 | Verify `-o` tempfile fallback works for Codex streaming — Codex adapter adds `-o /tmp/file` flag. Check if tempfile is written during streaming mode and can be used as primary output source instead of stdout parsing                                                           | ◻ Pending |
+| 5   | OB-1565 | Verify `-o` tempfile fallback works for Codex streaming — Codex adapter adds `-o /tmp/file` flag. Check if tempfile is written during streaming mode and can be used as primary output source instead of stdout parsing                                                           | ✅ Done   |
 | 6   | OB-1566 | Add tests in `tests/core/agent-runner-codex-streaming.test.ts` — test: (1) execOnceStreaming applies parseOutput, (2) Codex JSONL chunks parsed to readable text, (3) spawnWithStreamingHandle returns parsed output, (4) raw JSONL fallback in formatter. At least 4 tests       | ◻ Pending |
 
 ### RWT-2 — RAG Zero Results Fix (OB-F90) — 8 tasks
