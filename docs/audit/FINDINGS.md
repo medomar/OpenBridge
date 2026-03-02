@@ -2,9 +2,9 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 24 | **Fixed:** 68 | **Last Audit:** 2026-03-02
+> **Open:** 16 | **Fixed:** 84 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
-> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md)
+> **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
 ---
 
@@ -16,13 +16,13 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 
 | #      | Finding                                                  | Severity    | Marketplace Impact                                                                     | Status   |
 | ------ | -------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------- | -------- |
-| OB-F57 | Workers cannot run tests or do deep code analysis        | 🟠 High     | Can't verify Marketplace code — no test/lint/typecheck in workers                      | Open     |
-| OB-F58 | `explore()` failure is unrecoverable                     | 🟠 High     | Exploration failure on any Marketplace project = Master stuck, must restart            | Open     |
-| OB-F59 | `parseAIResult()` has no runtime Zod validation          | 🟠 High     | Corrupt exploration data = Master misunderstands Marketplace codebase                  | Open     |
+| OB-F57 | Workers cannot run tests or do deep code analysis        | 🟠 High     | Can't verify Marketplace code — no test/lint/typecheck in workers                      | ✅ Fixed |
+| OB-F58 | `explore()` failure is unrecoverable                     | 🟠 High     | Exploration failure on any Marketplace project = Master stuck, must restart            | ✅ Fixed |
+| OB-F59 | `parseAIResult()` has no runtime Zod validation          | 🟠 High     | Corrupt exploration data = Master misunderstands Marketplace codebase                  | ✅ Fixed |
 | OB-F67 | Secondary workspace .openbridge is corrupted             | 🔴 Critical | Must clean before targeting Marketplace workspace paths                                | ✅ Fixed |
-| OB-F66 | .openbridge data stale from early development            | 🟡 Medium   | Stale memory.md + workspace map misleads Master about project state                    | Open     |
-| OB-F70 | Environment variables leak sensitive secrets to workers  | 🔴 Critical | Marketplace backend has DB_URL, API keys, SMTP creds — all exposed to workers          | Open     |
-| OB-F76 | Keyword classifier misses execution/delegation keywords  | 🟠 High     | "start execution" classified as tool-use (15 turns) instead of complex-task (25 turns) | Open     |
+| OB-F66 | .openbridge data stale from early development            | 🟡 Medium   | Stale memory.md + workspace map misleads Master about project state                    | ✅ Fixed |
+| OB-F70 | Environment variables leak sensitive secrets to workers  | 🔴 Critical | Marketplace backend has DB_URL, API keys, SMTP creds — all exposed to workers          | ✅ Fixed |
+| OB-F76 | Keyword classifier misses execution/delegation keywords  | 🟠 High     | "start execution" classified as tool-use (15 turns) instead of complex-task (25 turns) | ✅ Fixed |
 | OB-F77 | SPAWN marker stripping leaves empty/stub response        | 🟠 High     | Master output with SPAWN markers stripped to 29 chars — user gets no useful response   | ✅ Fixed |
 | OB-F78 | No warning when response truncated after SPAWN stripping | 🟡 Medium   | Log shows `responseLength: 29` but no flag that original was 500+ chars pre-strip      | ✅ Fixed |
 
@@ -30,8 +30,8 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 
 | #      | Finding                                                     | Severity  | Development Impact                                                      | Status   |
 | ------ | ----------------------------------------------------------- | --------- | ----------------------------------------------------------------------- | -------- |
-| OB-F68 | Master AI doesn't know how to share generated files         | 🟠 High   | Can't receive test reports, code analysis results, or generated outputs | Open     |
-| OB-F71 | No user consent before risky/expensive worker operations    | 🟠 High   | Marketplace is production code — need confirmation before file edits    | Open     |
+| OB-F68 | Master AI doesn't know how to share generated files         | 🟠 High   | Can't receive test reports, code analysis results, or generated outputs | ✅ Fixed |
+| OB-F71 | No user consent before risky/expensive worker operations    | 🟠 High   | Marketplace is production code — need confirmation before file edits    | ✅ Fixed |
 | OB-F60 | Phase 3 directory dive retry logic is broken                | 🟠 High   | Marketplace has many directories — failed dives = knowledge gaps        | ✅ Fixed |
 | OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Re-exploration loops waste time when switching between projects         | ✅ Fixed |
 | OB-F63 | Prompt rollback stores new content as previousVersion       | 🟡 Medium | Bad prompts for Marketplace tasks can't be reverted                     | ✅ Fixed |
@@ -39,14 +39,14 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 
 ### Tier 2b — Platform Completion (Sprint 4 — v0.0.12)
 
-| #      | Finding                                   | Severity    | Sprint 4 Impact                                                           | Status |
-| ------ | ----------------------------------------- | ----------- | ------------------------------------------------------------------------- | ------ |
-| OB-F56 | No multi-phase "deep mode"                | 🟡 Medium   | Enables thorough analysis: investigate → report → plan → execute → verify | Open   |
-| OB-F69 | No delivery path for interactive web apps | 🟠 High     | Tunnel + ephemeral app serving makes outputs accessible from anywhere     | Open   |
-| OB-F72 | No document visibility controls           | 🟡 Medium   | Completes security boundary — controls what AI can see in workspace       | Open   |
-| OB-F73 | WebChat has no authentication             | 🔴 Critical | Required for exposing WebChat beyond localhost (LAN, tunnel, PWA)         | Open   |
-| OB-F74 | WebChat UI is inlined HTML string         | 🟠 High     | Blocks all WebChat improvements — must extract before modernization       | Open   |
-| OB-F75 | WebChat not accessible from phone         | 🟠 High     | Phone access via LAN/tunnel + PWA makes WebChat a primary interface       | Open   |
+| #      | Finding                                   | Severity    | Sprint 4 Impact                                                           | Status                                               |
+| ------ | ----------------------------------------- | ----------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| OB-F56 | No multi-phase "deep mode"                | 🟡 Medium   | Enables thorough analysis: investigate → report → plan → execute → verify | Partial (Core + 5 commands done, 20 tasks remaining) |
+| OB-F69 | No delivery path for interactive web apps | 🟠 High     | Tunnel + ephemeral app serving makes outputs accessible from anywhere     | Open                                                 |
+| OB-F72 | No document visibility controls           | 🟡 Medium   | Completes security boundary — controls what AI can see in workspace       | Open                                                 |
+| OB-F73 | WebChat has no authentication             | 🔴 Critical | Required for exposing WebChat beyond localhost (LAN, tunnel, PWA)         | Open                                                 |
+| OB-F74 | WebChat UI is inlined HTML string         | 🟠 High     | Blocks all WebChat improvements — must extract before modernization       | Open                                                 |
+| OB-F75 | WebChat not accessible from phone         | 🟠 High     | Phone access via LAN/tunnel + PWA makes WebChat a primary interface       | Open                                                 |
 
 ### Tier 2c — Community-Inspired Improvements (v0.0.13)
 
@@ -74,15 +74,27 @@ Improvements identified by analyzing [openclaw/openclaw](https://github.com/open
 
 ### Recently Fixed
 
-| #      | Finding                                                     | Severity  | Impact                                                                                   | Status    |
-| ------ | ----------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | --------- |
-| OB-F54 | Complex tasks use same 180s timeout as quick answers        | 🟠 High   | Complex tasks (25 turns) get 7.2s/turn, timeout every time, retry 4x → DLQ               | **Fixed** |
-| OB-F55 | Classification escalation over-triggers quick-answer        | 🟡 Medium | Global success rate escalates every quick-answer to tool-use, wasting budget             | **Fixed** |
-| OB-F77 | SPAWN marker stripping leaves empty/stub response           | 🟠 High   | Status message now generated when cleanedOutput < 80 and SPAWN markers found             | **Fixed** |
-| OB-F78 | No warning when response truncated after SPAWN stripping    | 🟡 Medium | debug + warn logs added after SPAWN stripping in both streaming and non-streaming paths  | **Fixed** |
-| OB-F61 | Progress calculation gives negative percentages             | 🟡 Medium | Removed erroneous subtraction — diveProgressPercent \* weight now produces 0%–50% range  | **Fixed** |
-| OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Added `writeAnalysisMarkerToStore()` + `workspaceMapSummary` update after re-exploration | **Fixed** |
-| OB-F63 | Prompt rollback stores new content as previousVersion       | 🟡 Medium | Read old file content before write; store as `previousVersion` — rollback now functional | **Fixed** |
+| #      | Finding                                                     | Severity    | Impact                                                                                   | Status    |
+| ------ | ----------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------- | --------- |
+| OB-F54 | Complex tasks use same 180s timeout as quick answers        | 🟠 High     | Complex tasks (25 turns) get 7.2s/turn, timeout every time, retry 4x → DLQ               | **Fixed** |
+| OB-F55 | Classification escalation over-triggers quick-answer        | 🟡 Medium   | Global success rate escalates every quick-answer to tool-use, wasting budget             | **Fixed** |
+| OB-F77 | SPAWN marker stripping leaves empty/stub response           | 🟠 High     | Status message now generated when cleanedOutput < 80 and SPAWN markers found             | **Fixed** |
+| OB-F78 | No warning when response truncated after SPAWN stripping    | 🟡 Medium   | debug + warn logs added after SPAWN stripping in both streaming and non-streaming paths  | **Fixed** |
+| OB-F61 | Progress calculation gives negative percentages             | 🟡 Medium   | Removed erroneous subtraction — diveProgressPercent \* weight now produces 0%–50% range  | **Fixed** |
+| OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium   | Added `writeAnalysisMarkerToStore()` + `workspaceMapSummary` update after re-exploration | **Fixed** |
+| OB-F63 | Prompt rollback stores new content as previousVersion       | 🟡 Medium   | Read old file content before write; store as `previousVersion` — rollback now functional | **Fixed** |
+| OB-F57 | Workers cannot run tests or do deep code analysis           | 🟠 High     | Added `code-audit` profile with npm:test, lint, typecheck tool access                    | **Fixed** |
+| OB-F58 | `explore()` failure is unrecoverable                        | 🟠 High     | Added `recover()` method to reset state from error to idle + retry exploration           | **Fixed** |
+| OB-F59 | `parseAIResult()` has no runtime Zod validation             | 🟠 High     | Added optional `schema` parameter — callers now pass Zod schemas for validation          | **Fixed** |
+| OB-F60 | Phase 3 directory dive retry logic is broken                | 🟠 High     | Moved pendingDives computation inside batch loop — failed dives now retried              | **Fixed** |
+| OB-F64 | `filesScanned` always 0 in exploration summary              | 🟢 Low      | Propagated totalFiles from structure scan to buildSummary()                              | **Fixed** |
+| OB-F65 | Exploration prompts have no media/asset awareness           | 🟢 Low      | Added media/asset categories to all 4 exploration prompts                                | **Fixed** |
+| OB-F66 | .openbridge data stale from early development               | 🟡 Medium   | Cleanup script + fresh exploration on primary workspace                                  | **Fixed** |
+| OB-F67 | Secondary workspace .openbridge is corrupted                | 🔴 Critical | Deleted corrupted .openbridge/ folder — will regenerate on next use                      | **Fixed** |
+| OB-F68 | Master AI doesn't know how to share generated files         | 🟠 High     | SHARE marker docs, connector injection, output routing added to system prompt            | **Fixed** |
+| OB-F70 | Environment variables leak sensitive secrets to workers     | 🔴 Critical | ENV_DENY_PATTERNS + sanitizeEnv() wired into all 3 adapters + startup scan               | **Fixed** |
+| OB-F71 | No user consent before risky/expensive worker operations    | 🟠 High     | Risk classification, confirmation flow, /confirm, /skip, /audit, cost estimation         | **Fixed** |
+| OB-F76 | Keyword classifier misses execution/delegation keywords     | 🟠 High     | Added 9 keywords + regex patterns for delegation phrases                                 | **Fixed** |
 
 ---
 
@@ -132,214 +144,7 @@ Non-developer business users have no way to access the deeper workflow that deve
 
 ---
 
-### OB-F57 — Workers cannot run tests or do deep code analysis (High)
-
-**Problem:** OpenBridge has 4 built-in tool profiles: `read-only` (Read/Glob/Grep), `code-edit` (+ Write/Edit/Bash(git/npm)), `full-access` (Bash(\*)), and `master` (Read/Write/Edit without Bash). None is designed for "analyze code deeply and run tests without modifying anything."
-
-When a user asks "deep check this codebase" via WebChat, the Master spawns `read-only` workers that can only list files and read content — they cannot run `npm test`, `npm run typecheck`, or `npm run lint`. The result is surface-level file inspection instead of deep code-level analysis (logic bugs, schema issues, test results).
-
-Compared to direct Claude Code usage (which found 15 issues including broken retry logic, negative progress calculations, and missing Zod validation), WebChat workers missed all code-level bugs and only reported what files exist.
-
-**Impact:** WebChat users get shallow analysis. Workers can't verify code correctness, find logic bugs, or report test/lint/typecheck failures. The gap between "mechanic" (deep code analysis) and "test driver" (surface inspection) persists.
-
-**Proposed solution:**
-
-1. Add `code-audit` built-in profile to `src/types/agent.ts`:
-   - Tools: `Read`, `Glob`, `Grep`, `Bash(npm:test)`, `Bash(npm:run:lint)`, `Bash(npm:run:typecheck)`, `Bash(npx:vitest:*)`, `Bash(npx:eslint:*)`, `Bash(npx:tsc:*)`
-   - No Edit/Write — audit is read-only + test runners
-   - No Bash(\*) — bounded, safe access to verification tools only
-
-2. Add `TASK_CODE_AUDIT` seed prompt in `src/master/seed-prompts.ts`:
-   - Instructs workers to trace logic paths, check error handling, verify Zod schemas, run test suite
-   - Output format: structured findings table with file:line references
-
-3. Update Master system prompt in `src/master/master-system-prompt.ts`:
-   - Add "Deep Analysis Tasks" section
-   - Guideline: use `code-audit` + balanced/powerful model for audit tasks
-   - Example SPAWN marker for code-audit workers
-
-4. Add `TOOLS_CODE_AUDIT` constant in `src/core/agent-runner.ts`
-
-**Key files:** `src/types/agent.ts`, `src/core/agent-runner.ts`, `src/master/master-system-prompt.ts`, `src/master/seed-prompts.ts`
-
-**See also:** OB-F56 (deep mode), [FUTURE.md — Code Audit Profile](FUTURE.md)
-
----
-
-### OB-F58 — `explore()` failure is unrecoverable (High)
-
-**Problem:** When `explore()` fails in `master-manager.ts` (line 2954), it sets `this.state = 'error'` and throws. There is no recovery mechanism — the MasterManager stays in `'error'` state permanently. All subsequent `processMessage()` calls reject with "The AI is currently error. Please try again in a moment." The only fix is restarting the process.
-
-**Impact:** A single exploration failure (network timeout, AI rate limit, corrupt workspace) permanently disables the Master AI until process restart. No auto-recovery, no retry, no fallback.
-
-**Proposed solution:** Add a `recover()` method that resets state to `'idle'` and retries exploration, or allow `processMessage()` to trigger re-exploration when state is `'error'`.
-
-**Key file:** `src/master/master-manager.ts` (lines 2876-2960)
-
----
-
-### OB-F59 — `parseAIResult()` has no runtime Zod validation (High)
-
-**Problem:** `parseAIResult<T>()` in `result-parser.ts` (lines 39, 53, 102) extracts JSON from AI output and casts it with `as T` — a compile-time-only assertion with zero runtime validation. The parsed data is written to SQLite via `upsertStructureScan()`, `upsertClassification()`, etc. before any Zod validation occurs. Validation only happens on the next _read_ from the DB.
-
-This means malformed AI output (missing fields, wrong types) gets persisted silently. The error surfaces later as a confusing "corrupt DB entry" on next startup.
-
-**Impact:** Data integrity risk. AI hallucinations or format changes silently corrupt the exploration state in the database.
-
-**Proposed solution:** Add optional `schema?: ZodSchema<T>` parameter to `parseAIResult()`. When provided, validate with `.parse()` before returning. Update callers in `exploration-coordinator.ts` to pass the appropriate Zod schema (`StructureScanSchema`, `ClassificationSchema`, `DirectoryDiveResultSchema`).
-
-**Key files:** `src/master/result-parser.ts` (lines 36-130), `src/master/exploration-coordinator.ts` (lines 738, 801, 1036)
-
----
-
-### OB-F60 — Phase 3 directory dive retry logic is broken (High)
-
-**Problem:** In `exploration-coordinator.ts` (line ~904), `pendingDives` is computed once before the batch loop begins. When a directory dive fails, the code sets `attempts++` and `status = 'pending'` (lines 932-958). However, since `pendingDives` was already computed, the retried dive won't be included in subsequent batches. Retries are effectively broken — a dive that fails once will never be retried.
-
-**Impact:** Failed directory dives produce empty results. In large projects with many directories, some directories may silently have no exploration data.
-
-**Proposed solution:** Move `pendingDives` computation inside the batch loop so failed-then-pending dives are picked up in the next iteration.
-
-**Key file:** `src/master/exploration-coordinator.ts` (lines 904, 932-958)
-
----
-
-### OB-F61 — Progress calculation gives negative percentages (Medium)
-
-**Problem:** In `exploration-coordinator.ts` (line ~1450), the progress formula for in-progress directory dives is:
-
-```
-completedWeight += phaseWeights.directory_dives * diveProgressPercent - phaseWeights.directory_dives
-```
-
-When `diveProgressPercent = 0` (no dives completed yet), this adds `-50` to `completedWeight`. With structure_scan (15) and classification (15) already complete, total progress becomes `15 + 15 + (50 × 0 - 50) = -20%`.
-
-**Impact:** Progress reporting shows negative percentages during Phase 3, confusing users and any UI that displays exploration progress.
-
-**Proposed solution:** Fix formula to `completedWeight += phaseWeights.directory_dives * diveProgressPercent` (remove the subtraction).
-
-**Key file:** `src/master/exploration-coordinator.ts` (line ~1450)
-
----
-
-### OB-F62 — `reExplore()` doesn't write analysis marker or update cache (Medium)
-
-**Problem:** After `reExplore()` completes (lines 3596-3679 in `master-manager.ts`), it calls `loadExplorationSummary()` but does NOT:
-
-1. Call `writeAnalysisMarkerToStore()` — so next startup sees the old commit hash and detects the same changes again, triggering unnecessary re-exploration
-2. Update `this.workspaceMapSummary` — so `buildMasterSpawnOptions()` injects stale workspace context into subsequent Master calls
-
-Compare with `incrementalExplore()` (line 3151) and `masterDrivenExplore()` (line 3341-3342), which both correctly do both.
-
-**Impact:** Redundant re-exploration on every restart after `reExplore()`. Stale workspace context in Master sessions until process restart.
-
-**Key file:** `src/master/master-manager.ts` (lines 3596-3679)
-
----
-
-### OB-F63 — Prompt rollback stores new content as previousVersion (Medium)
-
-**Problem:** In `dotfolder-manager.ts` (line 787), `writePromptTemplate()` sets `previousVersion: content` where `content` is the _new_ content being written. It should read the old file content before overwriting and store that as `previousVersion`. As written, the "previous version" is identical to the current version, making rollback impossible.
-
-**Impact:** Prompt evolution rollback feature is non-functional. If a prompt is updated and performs worse, the Master cannot revert to the actual previous version.
-
-**Key file:** `src/master/dotfolder-manager.ts` (line 787)
-
----
-
-### OB-F64 — `filesScanned` always 0 in exploration summary (Low)
-
-**Problem:** In `exploration-coordinator.ts` (line 1326), `filesScanned` is hardcoded to `0`. The `totalFiles` value from the structure scan is available but never propagated to the summary.
-
-**Impact:** Status reporting shows "0 files scanned" regardless of actual exploration scope. Minor UX issue.
-
-**Key file:** `src/master/exploration-coordinator.ts` (line 1326)
-
----
-
-### OB-F65 — Exploration prompts have no media/asset awareness (Low)
-
-**Problem:** The 4 exploration prompts in `exploration-prompts.ts` are code-and-config biased. They never mention images, fonts, media files, data files (`.json`, `.csv`, `.sql`), or binary assets. The classification heuristics (lines 127-136) only define "code workspace indicators" and "business workspace indicators" — there's no category for asset-heavy projects (game dev, design portfolios, media libraries).
-
-The directory dive prompt (line 262) says "Focus on files that matter (skip boilerplate)" which may cause the AI to skip asset directories entirely.
-
-**Impact:** Workspace maps may under-report media, image, font, and data file directories. Projects with significant non-code assets get incomplete exploration.
-
-**Key file:** `src/master/exploration-prompts.ts` (lines 28-350)
-
----
-
-### OB-F66 — .openbridge data stale from early development (Medium)
-
-**Problem:** The primary workspace `.openbridge/` contains stale data from early development phases:
-
-1. `context/memory.md` says "v0.0.6 / Phase 67 / 507 tasks" — actual is v0.0.8 / Phase 73 / 652 tasks
-2. Analysis marker points to branch `fix/memory-validation` and commit `b8e48b4` — current branch is `feature/master-ai-platform` at `879fa9f`
-3. `workspace-map.json` shows `fileCount: 1` for `src/` (actual: 100+) and `tests/` (actual: 104+)
-4. `desktop/` directory is completely absent from the workspace map
-5. `exploration/` JSON fallback folder missing (expected — OB-813 moved to DB, but no fallback exists if DB corrupts)
-6. `agents.json` missing (legacy file, data now in DB)
-
-**Impact:** Master AI operates with outdated project understanding. memory.md gives wrong version/task count. Workspace map has wrong file counts. `desktop/` is invisible.
-
-**Proposed solution:** Run cleanup script to delete stale data, then trigger fresh full exploration on next startup.
-
-**Key files:** `.openbridge/context/memory.md`, `.openbridge/workspace-map.json`, `.openbridge/analysis-marker.json`
-
----
-
-### OB-F67 — Secondary workspace .openbridge is corrupted (Critical)
-
-**Problem:** `/Users/sayadimohamedomar/Desktop/Social-Media-Automation-Platform/.openbridge/` was created during early OpenBridge development and has critical corruption:
-
-1. `workspace-map.json` has `"workspacePath": "/Users/sayadimohamedomar/Desktop/AI-Bridge/OpenBridge"` — points to the **wrong project** entirely
-2. `openbridge.db` is **missing** — no SQLite database, no persistent memory
-3. `context/memory.md` is **missing** — no cross-session continuity
-4. `master-session.json` has `maxTurns: 50` (should be 3-5 for messages)
-5. `analysis-marker.json` is 7+ days stale (2026-02-23)
-6. 32 legacy task JSON files from early testing
-
-**Impact:** If OpenBridge targets the Social Media workspace, it would use workspace metadata from the wrong project, misunderstand the codebase, and have no persistent memory.
-
-**Proposed solution:** Delete the entire `.openbridge/` folder in the secondary workspace. It will be cleanly regenerated with correct data when OpenBridge next targets that workspace.
-
-**Key path:** `/Users/sayadimohamedomar/Desktop/Social-Media-Automation-Platform/.openbridge/`
-
----
-
-### OB-F68 — Master AI doesn't know how to share generated files (High)
-
-**Problem:** The Router already parses `[SHARE:channel]/path/to/file[/SHARE]` markers and sends media attachments via connectors. The file server on port 3001 already serves `.openbridge/generated/` with UUID-based shareable links. But the Master AI **has no idea any of this exists** — its system prompt (`master-system-prompt.ts`) never teaches it the `[SHARE:*]` marker syntax, the available channels, or that files should be written to `.openbridge/generated/`.
-
-**Discovered during testing:** Master generated an HTML report but couldn't send it to the user's phone. The infrastructure was ready but the AI didn't know how to use it.
-
-**Impact:** Users ask for reports, dashboards, files — Master generates them but they sit on disk. User never receives them. The entire file-sharing pipeline (file-server, GitHub Pages, email sender, connector media) goes unused.
-
-**Proposed solution:**
-
-1. Add `[SHARE:*]` marker documentation to Master system prompt (`master-system-prompt.ts`):
-
-   ```
-   When you have generated files the user needs, share them:
-   - [SHARE:whatsapp]/path/to/file[/SHARE]  — Send as attachment
-   - [SHARE:telegram]/path/to/file[/SHARE]  — Send as attachment
-   - [SHARE:discord]/path/to/file[/SHARE]   — Send as attachment
-   - [SHARE:email]recipient@example.com|/path/to/file[/SHARE] — Email
-   - [SHARE:github-pages]/path/to/file[/SHARE] — Publish to GitHub Pages URL
-   Files MUST be written to .openbridge/generated/ directory.
-   Use the same channel the user messaged you from by default.
-   ```
-
-2. Inject active connector names into system prompt so Master knows which channels are available.
-
-3. Add output routing guidelines:
-   - Static files (PDF, CSV, images) → `[SHARE:channel]` attachment
-   - HTML reports → `[SHARE:github-pages]` for persistent URL, or connector attachment
-   - Large outputs → file server link via `[SHARE:channel]`
-
-**Key files:** `src/master/master-system-prompt.ts`, `src/core/router.ts` (lines 596–684), `src/core/file-server.ts`
-
-**Scope:** Small fix — ~3–5 tasks. Immediate impact.
+> **Status:** Partially fixed — core state machine, phase transitions, and 5 interactive commands (/deep, /proceed, /focus, /skip, /phase) are implemented. Remaining: 20 tasks (phase-aware worker prompts, parallel execution, result aggregation, session history, user preferences).
 
 ---
 
@@ -405,109 +210,6 @@ This is a fundamental capability gap: OpenBridge can generate code but cannot de
 **Scope:** Major feature — ~30–40 tasks across 3–4 phases. Aligns with backlog item OB-124 (Interactive AI views).
 
 ---
-
-### OB-F70 — Environment variables leak sensitive secrets to workers (Critical)
-
-**Problem:** When `AgentRunner.spawn()` creates a worker process, it inherits the parent environment and only strips `CLAUDECODE*` and `CLAUDE_AGENT_SDK_*` variables (see `cleanEnv()` in `src/core/adapters/claude-adapter.ts`, lines 92–101). All other environment variables are passed through, including:
-
-- `AWS_SECRET_ACCESS_KEY`, `AWS_ACCESS_KEY_ID` — cloud credentials
-- `GITHUB_TOKEN`, `GH_TOKEN` — GitHub API access
-- `DATABASE_URL`, `DB_PASSWORD` — database credentials
-- `OPENAI_API_KEY` — API keys
-- `SMTP_PASSWORD` — email credentials
-- Any other secrets set in the user's shell profile
-
-A worker with `Bash(*)` access can trivially run `env | grep TOKEN` or `printenv` and exfiltrate all secrets. Even `code-edit` workers with `Bash(npm:*)` could potentially access env vars through `npm run` scripts.
-
-**Impact:** Security vulnerability. Secrets from the user's environment are exposed to AI agents. A prompt injection attack or rogue worker could exfiltrate credentials.
-
-**Proposed solution:**
-
-1. **Configurable env var deny-list** — `config.json` gets a new field:
-
-   ```json
-   {
-     "security": {
-       "envDenyPatterns": [
-         "AWS_*",
-         "GITHUB_*",
-         "GH_*",
-         "TOKEN_*",
-         "SECRET_*",
-         "PASSWORD_*",
-         "PRIVATE_*",
-         "DB_*",
-         "DATABASE_*",
-         "SMTP_*",
-         "OPENAI_*",
-         "ANTHROPIC_*",
-         "API_KEY*"
-       ]
-     }
-   }
-   ```
-
-2. **Default deny-list** — ship sensible defaults that strip common secret patterns out-of-the-box
-
-3. **Allowlist mode** (opt-in) — instead of denying bad vars, explicitly list the only vars workers receive:
-
-   ```json
-   {
-     "security": {
-       "envAllowPatterns": ["PATH", "HOME", "USER", "LANG", "NODE_*", "npm_*"]
-     }
-   }
-   ```
-
-4. **Apply in all adapters** — update `cleanEnv()` in Claude, Codex, and Aider adapters
-
-5. **Startup warning** — on bridge start, scan env for known secret patterns and log a warning if found and not denied
-
-**Key files:** `src/core/adapters/claude-adapter.ts` (lines 92–101), `src/core/adapters/codex-adapter.ts`, `src/core/adapters/aider-adapter.ts`, `src/core/agent-runner.ts`, `src/types/config.ts`
-
-**Scope:** ~8–10 tasks. Critical security fix.
-
----
-
-### OB-F71 — No user consent before risky/expensive worker operations (High)
-
-**Problem:** When the Master AI decides to spawn a worker, it does so immediately with no user confirmation. The user has no visibility into:
-
-- What tool profile the worker gets (read-only vs full-access)
-- What the worker will do (edit files? run commands? access MCP servers?)
-- Estimated cost/time of the operation
-- What files will be modified
-
-This is especially risky for `full-access` workers which can execute arbitrary commands, and for operations that modify code or deploy artifacts.
-
-**Impact:** Non-technical users have no understanding of what OpenBridge is doing on their behalf. A user asking "check my code" might trigger a `full-access` worker that modifies files. No way to prevent unintended changes.
-
-**Proposed solution:**
-
-1. **Risk classification per worker spawn:**
-   - `low`: read-only profile → auto-proceed
-   - `medium`: code-edit profile → notify user, proceed after brief pause
-   - `high`: full-access profile → require explicit confirmation
-   - `critical`: deploy/publish actions → require explicit "yes" from user
-
-2. **Confirmation flow in Router:**
-   - Router intercepts SPAWN markers before executing
-   - For high/critical risk: sends user a message "I'm about to [action] using [profile] tools. This will [impact]. Reply 'go' to proceed or 'skip' to cancel."
-   - Timeout: if no response in 60s, cancel (fail-safe)
-   - Add `/confirm` and `/skip` commands to router
-
-3. **Cost estimation:**
-   - Before spawning, estimate turns × model cost
-   - Show user: "Estimated: ~15 turns, ~$0.50, ~2 minutes"
-   - Track actual vs estimated for learning
-
-4. **Execution summary after completion:**
-   - After worker completes, tell user what was done:
-   - "Worker completed: read 12 files, edited 3 files (src/index.ts, src/router.ts, src/config.ts), ran npm test (passed)"
-
-**Key files:** `src/core/router.ts`, `src/master/master-manager.ts`, `src/master/spawn-parser.ts`, `src/types/agent.ts`
-
-**Scope:** ~12–15 tasks across 1–2 phases.
 
 ---
 
@@ -922,108 +624,3 @@ Three layers of the problem:
 **Scope:** ~8–10 tasks.
 
 ---
-
-### OB-F76 — Keyword classifier misses execution/delegation keywords (High)
-
-**Problem:** The keyword fallback classifier in `classifyTaskByKeywords()` does not recognize words like "start", "execute", "proceed", "begin", "launch", "run" as complex-task triggers. These words clearly imply multi-worker delegation (spawning multiple workers), not single-file tool-use.
-
-**Discovered during testing:** User sent "Can you start the execution of group A" via Telegram. The classifier returned `taskClass: "tool-use"` with `taskMaxTurns: 15` and `reason: "keyword fallback: tool-use"`. The message should have been classified as `complex-task` (25 turns) because it requires spawning multiple workers to execute a task group.
-
-**Impact:** Tasks that require worker delegation get only 15 turns instead of 25. The Master doesn't receive the planning prompt that triggers proper delegation behavior. Result: the Master tries to do everything in a single pass, produces SPAWN markers that get stripped (see OB-F77), and the user gets an empty response.
-
-**Proposed solution:**
-
-1. Add execution/delegation keywords to the complex-task keyword list in `classifyTaskByKeywords()`:
-   - `"execute"`, `"start"`, `"proceed"`, `"begin"`, `"launch"`, `"run tasks"`, `"start execution"`, `"execute group"`, `"start group"`
-2. Add pattern matching for "start the [noun]" / "execute [noun]" as complex-task triggers
-3. Add tests for these new keyword patterns
-
-**Key file:** `src/master/master-manager.ts` — `classifyTaskByKeywords()` (around line 2437–2545)
-
-**Scope:** ~3 tasks. Quick fix.
-
----
-
-### OB-F77 — SPAWN marker stripping leaves empty/stub response (High)
-
-**Problem:** When the Master generates output containing `[SPAWN:...]...[/SPAWN]` markers, `parseSpawnMarkers()` strips the markers from the response. If the Master wrote only a brief intro before the markers (e.g., "I'll start the execution."), the `cleanedOutput` is just that stub — sometimes as short as 29 characters. This stub is what gets sent to the user.
-
-**Discovered during testing:** User asked "Can you start the execution of group A". Master spent 184 seconds generating a response with SPAWN markers. After stripping, only 29 characters remained. The user received a near-empty message after waiting 3 minutes.
-
-**Impact:** Users wait minutes for a response and receive a meaningless stub. The actual work (SPAWN markers) was stripped without replacement. No indication of what's happening or what workers were dispatched.
-
-**Proposed solution:**
-
-1. After SPAWN stripping, check if `cleanedOutput.length < 80`
-2. If so, generate a status message: "Working on your request — dispatching {N} worker(s) for: {task summaries}..."
-3. Extract task descriptions from the parsed SPAWN markers to build the status message
-4. Alternatively: if workers were spawned, wait for results and synthesize them before responding (current synthesis path may be failing — investigate why)
-
-**Key files:**
-
-- `src/master/master-manager.ts` — `processMessage()` around line 3997 (SPAWN stripping logic)
-- `src/master/spawn-parser.ts` — `parseSpawnMarkers()` (lines 106–179)
-
-**Scope:** ~4 tasks.
-
----
-
-### OB-F78 — No warning when response truncated after SPAWN stripping (Medium)
-
-**Problem:** When SPAWN markers are stripped from the Master's response, the log shows `responseLength: 29` but doesn't indicate that the original response was much longer before stripping. There's no log entry comparing pre-strip vs post-strip length, making it hard to diagnose empty-response issues.
-
-**Impact:** Debugging difficulty. When users report empty responses, the only clue is `responseLength: 29` in logs — no way to tell if the Master generated a useful response that was then stripped, or if the Master itself produced nothing.
-
-**Proposed solution:**
-
-1. Log original response length before SPAWN stripping
-2. Log cleaned response length after stripping
-3. If cleaned length < 80 and original length > 200, log a warning: "Response truncated after SPAWN marker removal (original: {N} chars, cleaned: {M} chars)"
-4. Include the number of SPAWN markers found in the log entry
-
-**Key file:** `src/master/master-manager.ts` — `processMessage()` around line 3997
-
-**Scope:** ~2 tasks. Quick observability fix.
-
----
-
-## Recently Fixed
-
-### OB-F54 — Complex tasks use same 180s timeout as quick answers (Fixed)
-
-**Root cause:** `buildMasterSpawnOptions()` was called with `undefined` timeout at all 4 spawn sites in `processMessage` and `processMessageStream`, falling back to `DEFAULT_MESSAGE_TIMEOUT = 180_000` regardless of task class. Complex tasks with 25 turns got 7.2s/turn — too tight for planning.
-
-**Fix:** Derived timeout from turns: `timeout = maxTurns × PER_TURN_BUDGET_MS (30s)`. Added `timeout` field to `ClassificationResult` interface. Quick-answer gets 150s, tool-use gets 450s, complex-task gets 750s. Bumped `CLASSIFIER_VERSION` to 3 to invalidate stale cache entries.
-
-**Files changed:** `src/master/master-manager.ts`, `src/types/master.ts`, `tests/master/master-manager.test.ts`
-
-### OB-F55 — Classification escalation over-triggers quick-answer → tool-use (Fixed)
-
-**Root cause:** Escalation logic at line 2724 used global aggregate success rate from the learnings table. If tool-use had >50% success rate, every quick-answer was escalated to tool-use (15 turns instead of 5).
-
-**Fix:** Added `currentRank > 0` guard to escalation condition. Quick-answer (rank 0) is never escalated. Tool-use (rank 1) can still escalate to complex-task (rank 2) when learned data supports it.
-
-**Files changed:** `src/master/master-manager.ts`, `tests/master/master-manager.test.ts`
-
----
-
----
-
-Most recent archives:
-
-- **OB-F49, OB-F50, OB-F51, OB-F52, OB-F53** (timeout handling, classification, whitelist) — [archived to v19](archive/v19/FINDINGS-v19.md)
-- **OB-F46, OB-F47, OB-F48** (voice transcription, desktop installer, stale context) — [archived to v18](archive/v18/FINDINGS-v18.md)
-- **OB-F43, OB-F44, OB-F45** (WhatsApp/Telegram media + MCP dashboard) — [archived to v17](archive/v17/FINDINGS-v17.md)
-- **OB-F41, OB-F42** (Telegram/Discord message too long + live context) — [archived to v16](archive/v16/FINDINGS-v16.md)
-- **OB-F38, OB-F39, OB-F40** — [archived to v15](archive/v15/FINDINGS-v15.md)
-
----
-
-## Severity Guide
-
-| Severity    | Meaning                                               |
-| ----------- | ----------------------------------------------------- |
-| 🔴 Critical | System broken, data loss risk, security vulnerability |
-| 🟠 High     | Core functionality missing or significantly impaired  |
-| 🟡 Medium   | Friction, technical debt, or non-blocking gaps        |
-| 🟢 Low      | Polish, minor improvements, nice-to-have              |
