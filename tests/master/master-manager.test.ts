@@ -7,6 +7,7 @@ import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
 import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
+import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -2843,6 +2844,270 @@ describe('MasterManager', () => {
       // On startup ALL previous in-flight rows are stale — the old process is gone.
       const activeWorkers = activeAgents.filter((a) => a.type === 'worker');
       expect(activeWorkers).toHaveLength(0);
+    });
+  });
+
+  describe('Error Recovery (recover()) (OB-F58)', () => {
+    it('should reset state from error to idle', async () => {
+      // Arrange: force exploration to fail so state becomes 'error'
+      mockSpawn.mockRejectedValue(new Error('Simulated exploration failure'));
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: false,
+      };
+
+      masterManager = new MasterManager(options);
+
+      try {
+        await masterManager.start();
+      } catch {
+        // Expected — exploration failure causes start() to throw
+      }
+
+      expect(masterManager.getState()).toBe('error');
+
+      // Prevent the fire-and-forget re-exploration from changing state before assertion
+      vi.spyOn(masterManager, 'explore').mockResolvedValue(undefined);
+
+      // Act
+      await masterManager.recover();
+
+      // Assert: state is now 'idle'
+      expect(masterManager.getState()).toBe('idle');
+    });
+
+    it('should be a no-op when state is not error', async () => {
+      // Arrange: start manager normally — state will be 'ready'
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      expect(masterManager.getState()).toBe('ready');
+
+      // Act
+      await masterManager.recover();
+
+      // Assert: state unchanged — recover() is a no-op outside 'error' state
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('should call explore() to retry when explorationSummary.status is failed', async () => {
+      // Arrange: force exploration to fail
+      mockSpawn.mockRejectedValue(new Error('Simulated exploration failure'));
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: false,
+      };
+
+      masterManager = new MasterManager(options);
+
+      try {
+        await masterManager.start();
+      } catch {
+        // Expected
+      }
+
+      expect(masterManager.getExplorationSummary()?.status).toBe('failed');
+
+      // Replace explore() with a spy so we can track calls without running actual exploration
+      const exploreSpy = vi.spyOn(masterManager, 'explore').mockResolvedValue(undefined);
+
+      // Act
+      await masterManager.recover();
+
+      // Assert: explore() was called once for the retry attempt
+      expect(exploreSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Context Injection via KnowledgeRetriever (OB-1350)', () => {
+    let mockRetriever: {
+      query: ReturnType<typeof vi.fn>;
+      formatKnowledgeContext: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      masterManager = new MasterManager(options);
+      await masterManager.start();
+
+      mockRetriever = {
+        query: vi.fn(),
+        formatKnowledgeContext: vi.fn(),
+      };
+    });
+
+    it('should store the knowledge retriever via setKnowledgeRetriever()', async () => {
+      // setKnowledgeRetriever() stores the retriever — verified by observing query() is called
+      mockRetriever.query.mockResolvedValue({ chunks: [], confidence: 0.1, sources: [] });
+      masterManager.setKnowledgeRetriever(mockRetriever as unknown as KnowledgeRetriever);
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Answer',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what is this project?',
+        content: 'what is this project?',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // If the retriever was stored, query() must have been called
+      expect(mockRetriever.query).toHaveBeenCalledOnce();
+    });
+
+    it('should trigger retrieval for quick-answer (codebase question) task class', async () => {
+      mockRetriever.query.mockResolvedValue({ chunks: [], confidence: 0.1, sources: [] });
+      masterManager.setKnowledgeRetriever(mockRetriever as unknown as KnowledgeRetriever);
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Answer to question',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // No action keywords → classifyTask mock returns quick-answer
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what does this project do?',
+        content: 'what does this project do?',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      expect(mockRetriever.query).toHaveBeenCalledOnce();
+      expect(mockRetriever.query).toHaveBeenCalledWith('what does this project do?');
+    });
+
+    it('should inject knowledge context into system prompt when confidence >= 0.3', async () => {
+      // Use a unique marker so we can assert its presence regardless of base system prompt text
+      const formattedContext =
+        '## Relevant Knowledge\nSome relevant info — UNIQUE_RAG_MARKER_OB1350 about the codebase';
+      mockRetriever.query.mockResolvedValue({
+        chunks: [{ content: 'some content', source: 'src/core/router.ts', score: 0.9 }],
+        confidence: 0.8,
+        sources: ['src/core/router.ts'],
+      });
+      mockRetriever.formatKnowledgeContext.mockReturnValue(formattedContext);
+      masterManager.setKnowledgeRetriever(mockRetriever as unknown as KnowledgeRetriever);
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Answer',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai explain the router',
+        content: 'explain the router',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // formatKnowledgeContext should have been called with the high-confidence result
+      expect(mockRetriever.formatKnowledgeContext).toHaveBeenCalledOnce();
+      // The unique marker from the formatted context should appear in the system prompt
+      const spawnOpts = getSpawnCallOpts(0);
+      expect(spawnOpts?.systemPrompt).toContain('UNIQUE_RAG_MARKER_OB1350');
+      expect(spawnOpts?.systemPrompt).toContain(formattedContext);
+    });
+
+    it('should NOT inject knowledge context when confidence < 0.3', async () => {
+      mockRetriever.query.mockResolvedValue({ chunks: [], confidence: 0.1, sources: [] });
+      masterManager.setKnowledgeRetriever(mockRetriever as unknown as KnowledgeRetriever);
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Answer',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai what is the config format?',
+        content: 'what is the config format?',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // formatKnowledgeContext must NOT be called — confidence is below 0.3 threshold
+      expect(mockRetriever.formatKnowledgeContext).not.toHaveBeenCalled();
+      // The unique marker only present when RAG content is actually injected must be absent
+      const spawnOpts = getSpawnCallOpts(0);
+      expect(spawnOpts?.systemPrompt).not.toContain('UNIQUE_RAG_MARKER_OB1350');
+    });
+
+    it('should NOT trigger retrieval for complex-task class', async () => {
+      masterManager.setKnowledgeRetriever(mockRetriever as unknown as KnowledgeRetriever);
+
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '[SPAWN:worker1:{}:SPAWN] Planning complete.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      // 'implement' triggers complex-task in the classifyTask mock
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement a new feature',
+        content: 'implement a new feature',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // retriever.query() must NOT be called for complex-task
+      expect(mockRetriever.query).not.toHaveBeenCalled();
     });
   });
 });
