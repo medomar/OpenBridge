@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 166 | **In Progress:** 0 | **Done:** 6 (112 archived)
+> **Pending:** 165 | **In Progress:** 0 | **Done:** 7 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -35,7 +35,7 @@
 
 | Phase  | Description                          | Tasks | Status         |
 | ------ | ------------------------------------ | ----- | -------------- |
-| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (6/23 done)  |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (7/23 done)  |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
 | 82     | Tunnel Integration                   | 10    | ◻              |
 | 83     | Ephemeral App Server                 | 12    | ◻              |
@@ -76,7 +76,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                             | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 7   | OB-1567 | Relax `buildSearchQuery()` in `src/core/knowledge-retriever.ts` — reduce minimum token length from 3 to 2 chars, trim stop word list to only true stop words (a, the, is, it, etc.), keep domain terms (api, ui, db, cli, ai). Add fallback: if all tokens filtered, use original query | ◻ Pending |
+| 7   | OB-1567 | Relax `buildSearchQuery()` in `src/core/knowledge-retriever.ts` — reduce minimum token length from 3 to 2 chars, trim stop word list to only true stop words (a, the, is, it, etc.), keep domain terms (api, ui, db, cli, ai). Add fallback: if all tokens filtered, use original query | ✅ Done   |
 | 8   | OB-1568 | Add WARN log when `buildSearchQuery()` produces empty query — log original question, filtered tokens, and reason (all stop words, all too short). Helps diagnose RAG failures in production                                                                                             | ◻ Pending |
 | 9   | OB-1569 | Ensure exploration stores chunks even when workspace map is reused — in `MasterManager.start()`, after "skipping exploration" path, verify FTS5 chunk count > 0. If zero, force chunk indexing from existing workspace map                                                              | ◻ Pending |
 | 10  | OB-1570 | Auto-store worker results in chunk store — in `master-manager.ts` after worker completes, call `knowledgeRetriever.storeWorkerResult()` automatically. Currently only called explicitly in some paths                                                                                   | ◻ Pending |
