@@ -36,6 +36,175 @@ import {
 /** Callback type for emitting Deep Mode phase progress events. */
 type PhaseProgressReporter = (event: ProgressEvent) => Promise<void>;
 
+// ── Parallel Execution Types ───────────────────────────────────────
+
+/**
+ * A single task parsed from the plan phase output.
+ * Extracted from the numbered task blocks in the plan Markdown.
+ */
+export interface DeepPlanTask {
+  /** 1-based task number (from "Task #N" in plan output) */
+  taskNumber: number;
+  /** Short task title (from "**Title:**" field) */
+  title: string;
+  /** Task description (from "**Description:**" field) */
+  description: string;
+  /** Relative file paths to modify (from "**Files to Modify:**" field) */
+  filesToModify: string[];
+  /** 1-based task numbers this task depends on (from "**Dependencies:**" field) */
+  dependsOn: number[];
+}
+
+/**
+ * A batch of tasks that can all be spawned simultaneously because they
+ * have no inter-dependencies. All tasks in a batch are ready to run
+ * at the same time, though callers should still respect the
+ * WorkerRegistry concurrency limit when launching them.
+ */
+export type DeepExecuteBatch = DeepPlanTask[];
+
+// ── Plan Output Parsers ────────────────────────────────────────────
+
+/**
+ * Parse individual task entries from plan phase output.
+ *
+ * Scans for "**Task #N**" headers and extracts the title, files to modify,
+ * dependencies, and description for each task. The parser is intentionally
+ * lenient — missing fields produce empty/default values so callers always
+ * receive a well-typed result.
+ *
+ * @param planOutput  Raw plan phase output (Markdown).
+ * @returns           Parsed tasks in document order.
+ */
+export function parsePlanTasks(planOutput: string): DeepPlanTask[] {
+  const tasks: DeepPlanTask[] = [];
+
+  // Locate every "**Task #N**" header and slice the text between consecutive headers
+  const headerRegex = /\*\*Task\s+#(\d+)\*\*/gi;
+  const headerMatches = [...planOutput.matchAll(headerRegex)];
+
+  for (let i = 0; i < headerMatches.length; i++) {
+    const headerMatch = headerMatches[i];
+    if (!headerMatch) continue;
+    const capturedNum = headerMatch[1] ?? '0';
+    const taskNumber = parseInt(capturedNum, 10);
+    const start = headerMatch.index ?? 0;
+    const nextMatch = headerMatches[i + 1];
+    const end = nextMatch?.index ?? planOutput.length;
+    const chunk = planOutput.slice(start, end);
+
+    // Title
+    const titleMatch = /\*\*Title:\*\*\s*(.+)/i.exec(chunk);
+    const title = titleMatch ? (titleMatch[1] ?? '').trim() : `Task #${taskNumber}`;
+
+    // Files to Modify — may be a single line or a newline-separated list
+    const filesMatch = /\*\*Files\s+to\s+Modify:\*\*\s*([\s\S]+?)(?=\n\*\*|\n---)/i.exec(chunk);
+    let filesToModify: string[] = [];
+    if (filesMatch) {
+      filesToModify = (filesMatch[1] ?? '')
+        .split(/[\n,]/)
+        .map((l) =>
+          l
+            .replace(/[`*]/g, '')
+            .replace(/^\s*[-•]\s*/, '')
+            .trim(),
+        )
+        .filter(Boolean);
+    }
+
+    // Dependencies — "none" or a list of task numbers like "#1, #3"
+    const depsMatch = /\*\*Dependencies:\*\*\s*(.+)/i.exec(chunk);
+    let dependsOn: number[] = [];
+    const depsText = depsMatch ? (depsMatch[1] ?? '') : '';
+    if (depsText && !/^\s*none\s*$/i.test(depsText)) {
+      dependsOn = [...depsText.matchAll(/#(\d+)/g)].map((m) => parseInt(m[1] ?? '0', 10));
+    }
+
+    // Description — multi-line field; ends at the next "---" separator or task header
+    const descMatch =
+      /\*\*Description:\*\*\s*([\s\S]+?)(?=\n---|\n\*\*Task\s+#|\n\*\*Batch|\s*$)/i.exec(chunk);
+    const description = descMatch ? (descMatch[1] ?? '').trim() : '';
+
+    tasks.push({ taskNumber, title, description, filesToModify, dependsOn });
+  }
+
+  return tasks;
+}
+
+/**
+ * Parse the "Parallel Batches" section from plan phase output.
+ *
+ * Reads lines in the format:
+ *   **Batch 1 (parallel):** Tasks #1, #2, #3
+ *   **Batch 2 (sequential):** Task #4 (depends on Batch 1)
+ *
+ * and returns an ordered array of task-number arrays. Only the task numbers
+ * listed directly after the colon are extracted — task numbers inside
+ * parenthetical dependency annotations are ignored.
+ *
+ * @param planOutput  Raw plan phase output (Markdown).
+ * @returns           Ordered batches, each an array of 1-based task numbers.
+ *                    Returns an empty array if no batch section is found.
+ */
+export function parsePlanBatches(planOutput: string): number[][] {
+  const batches: number[][] = [];
+
+  // Match: **Batch N (type):** <task list>
+  // Capture everything after the colon up to the first '(' or end of line
+  const batchLineRegex = /\*\*Batch\s+\d+[^:]*:\*\*\s*([^(\n]*)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = batchLineRegex.exec(planOutput)) !== null) {
+    const taskListText = match[1] ?? '';
+    const taskNums = [...taskListText.matchAll(/#(\d+)/g)].map((m) => parseInt(m[1] ?? '0', 10));
+    if (taskNums.length > 0) {
+      batches.push(taskNums);
+    }
+  }
+
+  return batches;
+}
+
+/**
+ * Group tasks into dependency-ordered batches using a BFS topological sort.
+ *
+ * Used as a fallback when no "Parallel Batches" section is present in the plan.
+ * Tasks in the same batch have no inter-dependencies and can run simultaneously.
+ *
+ * @param tasks  Tasks to group (skipped items should be excluded by the caller).
+ * @returns      Ordered batches; tasks whose dependencies fall outside the set
+ *               are treated as having no dependencies for grouping purposes.
+ */
+function groupTasksByDependency(tasks: DeepPlanTask[]): DeepExecuteBatch[] {
+  if (tasks.length === 0) return [];
+
+  const taskSet = new Set(tasks.map((t) => t.taskNumber));
+  const completed = new Set<number>();
+  const batches: DeepExecuteBatch[] = [];
+  let remaining = [...tasks];
+
+  while (remaining.length > 0) {
+    // A task is ready when all its dependencies are completed or outside the set
+    const ready = remaining.filter((t) =>
+      t.dependsOn.every((dep) => completed.has(dep) || !taskSet.has(dep)),
+    );
+
+    // Guard against circular dependencies — take first remaining task to break the cycle
+    const first = remaining[0];
+    const batch: DeepExecuteBatch = ready.length > 0 ? ready : first ? [first] : [];
+
+    batches.push(batch);
+
+    for (const t of batch) {
+      completed.add(t.taskNumber);
+    }
+
+    remaining = remaining.filter((t) => !completed.has(t.taskNumber));
+  }
+
+  return batches;
+}
+
 const logger = createLogger('deep-mode');
 
 // ── Phase Ordering ────────────────────────────────────────────────
@@ -658,6 +827,93 @@ export class DeepModeManager {
 
     const phase = state.currentPhase;
     return overrides?.[phase] ?? PHASE_SYSTEM_PROMPTS[phase];
+  }
+
+  // ── Parallel Execute Phase ────────────────────────────────────
+
+  /**
+   * Return parallel execution batches for the execute phase of a session.
+   *
+   * Reads the plan phase result, parses task structure and batch groupings,
+   * filters out items marked as skipped, and returns an ordered array of
+   * batches. Tasks within the same batch have no inter-dependencies and can
+   * be spawned simultaneously by the caller.
+   *
+   * If no "Parallel Batches" section is found in the plan output (e.g., the AI
+   * omitted it), falls back to `groupTasksByDependency()` which derives batches
+   * from the per-task "**Dependencies:**" fields.
+   *
+   * Callers are responsible for respecting the WorkerRegistry concurrency limit
+   * when spawning tasks within each batch — use `workerRegistry.waitForSlot()`
+   * before each spawn.
+   *
+   * @param sessionId  Active session identifier.
+   * @returns          Ordered batches; each batch is an array of DeepPlanTask.
+   *                   Returns `undefined` if the session is not found or has no plan result.
+   */
+  getExecuteBatches(sessionId: string): DeepExecuteBatch[] | undefined {
+    const state = this.sessions.get(sessionId);
+    if (!state) return undefined;
+
+    const planResult = state.phaseResults['plan'];
+    if (!planResult) return undefined;
+
+    const planOutput = planResult.output;
+    const tasks = parsePlanTasks(planOutput);
+    if (tasks.length === 0) return undefined;
+
+    const skipped = new Set(state.skippedItems);
+    const batchTaskNums = parsePlanBatches(planOutput);
+
+    let batches: DeepExecuteBatch[];
+
+    if (batchTaskNums.length > 0) {
+      // Use the explicit batch structure emitted by the plan worker
+      const taskMap = new Map(tasks.map((t) => [t.taskNumber, t]));
+      batches = batchTaskNums
+        .map((nums) =>
+          nums
+            .filter((n) => !skipped.has(n))
+            .map((n) => taskMap.get(n))
+            .filter((t): t is DeepPlanTask => t !== undefined),
+        )
+        .filter((batch) => batch.length > 0);
+    } else {
+      // Fallback: derive batches from the per-task dependency fields
+      const nonSkipped = tasks.filter((t) => !skipped.has(t.taskNumber));
+      batches = groupTasksByDependency(nonSkipped);
+    }
+
+    logger.info(
+      { sessionId, batchCount: batches.length, totalTasks: tasks.length },
+      'Deep Mode execute batches computed',
+    );
+
+    return batches;
+  }
+
+  /**
+   * Build worker prompts for all tasks in a parallel execution batch.
+   *
+   * Each task in the batch gets its own DEEP_EXECUTE worker prompt with the
+   * task-specific context filled in. The session must have a plan result and
+   * be (or have been) in the execute phase for the output to be meaningful.
+   *
+   * @param sessionId  Active session identifier.
+   * @param batch      The execution batch returned by `getExecuteBatches()`.
+   * @returns          Worker prompt strings, one per task. Empty if session not found.
+   */
+  buildBatchWorkerPrompts(sessionId: string, batch: DeepExecuteBatch): string[] {
+    return batch
+      .map((task) =>
+        this.buildWorkerPrompt(sessionId, {
+          taskNumber: task.taskNumber,
+          taskTitle: task.title,
+          taskDescription: task.description,
+          filesToModify: task.filesToModify.join('\n') || '(see plan)',
+        }),
+      )
+      .filter((p): p is string => p !== undefined);
   }
 
   // ── Phase Worker Prompt Builder ────────────────────────────────
