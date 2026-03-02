@@ -1421,10 +1421,26 @@ export class AgentRunner {
             const chunk = iterResult.value;
             stdout += chunk;
             if (onProgress) {
-              const indicator = parseTurnIndicator(chunk);
-              if (indicator) {
-                lastTurnsUsed = indicator.turnsUsed;
-                onProgress(indicator);
+              if (currentConfig.parseStreamChunk) {
+                // Adapter has incremental stream parser (e.g. Codex --json JSONL).
+                // Split chunk by lines — each line may be a separate structured event.
+                // Transform readable events to synthetic TurnIndicators so users see
+                // real-time progress instead of raw JSON.
+                for (const line of chunk.split('\n')) {
+                  if (!line.trim()) continue;
+                  const parsedText = currentConfig.parseStreamChunk(line);
+                  if (parsedText !== null) {
+                    lastTurnsUsed++;
+                    onProgress({ turnsUsed: lastTurnsUsed, lastAction: parsedText });
+                  }
+                }
+              } else {
+                // Claude path — use turn indicator parsing for Claude-specific patterns.
+                const indicator = parseTurnIndicator(chunk);
+                if (indicator) {
+                  lastTurnsUsed = indicator.turnsUsed;
+                  onProgress(indicator);
+                }
               }
             }
             iterResult = await currentStreaming.chunks.next();

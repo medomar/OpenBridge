@@ -34,6 +34,15 @@ export interface CLISpawnConfig {
    * Falls back to raw stdout if the function returns undefined or throws.
    */
   parseOutput?: (stdout: string) => string;
+  /**
+   * Optional incremental chunk parser for streaming output. When set,
+   * AgentRunner applies this function to each stdout chunk as it arrives
+   * during `spawnWithStreamingHandle()`. Returns human-readable text for
+   * user-visible events, or null for events that have no visible content
+   * (e.g. thread.started, item.started). Enables real-time readable output
+   * for adapters that emit structured streaming formats (e.g. Codex `--json`).
+   */
+  parseStreamChunk?: (chunk: string) => string | null;
 }
 
 /**

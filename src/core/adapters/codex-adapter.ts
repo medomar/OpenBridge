@@ -237,6 +237,7 @@ export class CodexAdapter implements CLIAdapter {
       binary: 'codex',
       args,
       env: this.cleanEnv({ ...process.env }),
+      parseStreamChunk: parseCodexStreamChunk,
       parseOutput: (stdout: string): string => {
         // Prefer the -o temp file — Codex writes the final answer there reliably.
         // Falls back to --json JSONL parsing if the file is missing or unreadable
