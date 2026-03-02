@@ -128,6 +128,55 @@ describe('generateMasterSystemPrompt', () => {
     expect(prompt).toContain('Use it to answer directly');
     expect(prompt).toContain('Only spawn a `read-only` worker');
   });
+
+  it('should include SHARE marker documentation', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).toContain('Sharing Files & Outputs');
+    expect(prompt).toContain('[SHARE:channel]');
+    expect(prompt).toContain('SHARE:whatsapp');
+    expect(prompt).toContain('SHARE:telegram');
+    expect(prompt).toContain('SHARE:github-pages');
+    expect(prompt).toContain('SHARE:email');
+  });
+
+  it('should include active connector names in the Connected Channels section', () => {
+    const context: MasterSystemPromptContext = {
+      ...baseContext,
+      activeConnectorNames: ['whatsapp', 'console'],
+    };
+    const prompt = generateMasterSystemPrompt(context);
+    expect(prompt).toContain('Connected Channels');
+    expect(prompt).toContain('**whatsapp**');
+    expect(prompt).toContain('**console**');
+  });
+
+  it('should not include Connected Channels section when no active connectors are provided', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).not.toContain('### Connected Channels');
+  });
+
+  it('should include file-server URL when fileServerPort is provided', () => {
+    const context: MasterSystemPromptContext = {
+      ...baseContext,
+      fileServerPort: 3001,
+    };
+    const prompt = generateMasterSystemPrompt(context);
+    expect(prompt).toContain('Local File Server');
+    expect(prompt).toContain('http://localhost:3001');
+  });
+
+  it('should not include file-server section when fileServerPort is not provided', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).not.toContain('Local File Server');
+  });
+
+  it('should include output routing guidelines', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).toContain('Output Routing Guidelines');
+    expect(prompt).toContain('PDF, DOC, DOCX');
+    expect(prompt).toContain('HTML report');
+    expect(prompt).toContain('Small text results');
+  });
 });
 
 describe('formatPreFetchedKnowledgeSection', () => {
