@@ -459,6 +459,20 @@ You can improve your own capabilities:
 `;
 }
 
+/**
+ * Format pre-fetched RAG knowledge as a system prompt section.
+ *
+ * Called from MasterManager.processMessage() when the KnowledgeRetriever
+ * returns high-confidence chunks for a codebase question. Wraps the raw
+ * knowledge context in a labelled Markdown section so the Master AI can
+ * recognise it and use it to answer directly instead of spawning a worker.
+ *
+ * @param knowledgeContext - Raw formatted output from KnowledgeRetriever.formatKnowledgeContext()
+ */
+export function formatPreFetchedKnowledgeSection(knowledgeContext: string): string {
+  return `## Pre-fetched Knowledge (from RAG)\n\n${knowledgeContext.trim()}`;
+}
+
 function formatBuiltInProfiles(): string {
   const lines: string[] = [];
   for (const [name, profile] of Object.entries(BUILT_IN_PROFILES)) {
