@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 189 | **In Progress:** 0 | **Done:** 72
+> **Pending:** 188 | **In Progress:** 0 | **Done:** 73
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -233,7 +233,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ✅ Done   |
 | 4   | OB-1370 | Wire sanitizeEnv() into ClaudeAdapter in `src/core/adapters/claude-adapter.ts` — call in cleanEnv() method before passing env to child process. Runs in addition to existing CLAUDECODE stripping                                                                                                                                | ✅ Done   |
 | 5   | OB-1371 | Wire sanitizeEnv() into CodexAdapter in `src/core/adapters/codex-adapter.ts` — same pattern as Claude adapter                                                                                                                                                                                                                    | ✅ Done   |
-| 6   | OB-1372 | Wire sanitizeEnv() into AiderAdapter in `src/core/adapters/aider-adapter.ts` — same pattern as Claude and Codex adapters                                                                                                                                                                                                         | ◻ Pending |
+| 6   | OB-1372 | Wire sanitizeEnv() into AiderAdapter in `src/core/adapters/aider-adapter.ts` — same pattern as Claude and Codex adapters                                                                                                                                                                                                         | ✅ Done   |
 | 7   | OB-1373 | Add startup secret scan in `src/core/bridge.ts` — during initialization, scan process.env for keys matching deny patterns. Log warning with count and matched patterns: "Detected N environment variables matching secret patterns, will be stripped from workers"                                                               | ◻ Pending |
 | 8   | OB-1374 | Update `config.example.json` — add security section with envDenyPatterns and envAllowPatterns examples                                                                                                                                                                                                                           | ◻ Pending |
 | 9   | OB-1375 | Add tests in `tests/core/env-sanitizer.test.ts` — test: (1) AWS_SECRET_KEY stripped, (2) DATABASE_URL stripped, (3) PATH and HOME NOT stripped, (4) GITHUB_ACTIONS preserved when in allow list, (5) wildcard \*\_TOKEN matches AUTH_TOKEN, (6) empty deny list passes everything, (7) case-sensitive matching. At least 7 tests | ◻ Pending |

@@ -21,11 +21,21 @@ import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../cli-adapter
 import type { SpawnOptions } from '../agent-runner.js';
 import { sanitizePrompt } from '../agent-runner.js';
 import { createLogger } from '../logger.js';
+import { sanitizeEnv } from '../env-sanitizer.js';
+import { SecurityConfigSchema } from '../../types/config.js';
+import type { SecurityConfig } from '../../types/config.js';
 
 const logger = createLogger('aider-adapter');
 
+const DEFAULT_SECURITY_CONFIG: SecurityConfig = SecurityConfigSchema.parse({});
+
 export class AiderAdapter implements CLIAdapter {
   readonly name = 'aider';
+  private readonly securityConfig: SecurityConfig;
+
+  constructor(securityConfig?: SecurityConfig) {
+    this.securityConfig = securityConfig ?? DEFAULT_SECURITY_CONFIG;
+  }
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
     const args: string[] = [];
@@ -86,7 +96,7 @@ export class AiderAdapter implements CLIAdapter {
         delete cleaned[key];
       }
     }
-    return cleaned;
+    return sanitizeEnv(cleaned, this.securityConfig);
   }
 
   mapCapabilityLevel(_level: CapabilityLevel): string[] | undefined {
