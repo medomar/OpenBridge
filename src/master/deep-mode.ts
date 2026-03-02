@@ -25,6 +25,13 @@ import type {
   ExecutionProfile,
 } from '../types/agent.js';
 import type { ProgressEvent } from '../types/message.js';
+import {
+  DEEP_INVESTIGATE,
+  DEEP_REPORT,
+  DEEP_PLAN,
+  DEEP_EXECUTE,
+  DEEP_VERIFY,
+} from './seed-prompts.js';
 
 /** Callback type for emitting Deep Mode phase progress events. */
 type PhaseProgressReporter = (event: ProgressEvent) => Promise<void>;
@@ -117,6 +124,39 @@ Your goal in this phase is to **run tests and checks** to confirm the implementa
 - Confirm that each executed task from the plan phase produced the expected outcome.
 - End with a pass/fail verdict and a list of any remaining issues that need follow-up.`,
 };
+
+// ── Phase Worker Prompt Context ────────────────────────────────────
+
+/**
+ * Context supplied by callers when building a phase worker prompt.
+ *
+ * Each field maps to a `{{placeholder}}` in the corresponding DEEP_* template.
+ * Investigate-phase fields are only used for the investigate phase; execute-phase
+ * fields are only used for the execute phase. Previous-phase results are injected
+ * automatically from the session state — callers do not need to supply them.
+ */
+export interface DeepPhaseWorkerContext {
+  /** Absolute workspace path (investigate — defaults to host.workspacePath). */
+  workspacePath?: string;
+  /** Human-readable project name (investigate). */
+  projectName?: string;
+  /** Detected project type, e.g. "Node.js / TypeScript" (investigate). */
+  projectType?: string;
+  /** Comma-separated list of detected frameworks (investigate). */
+  frameworks?: string;
+  /** Summary of the workspace file/directory structure (investigate). */
+  structure?: string;
+  /** 1-based task number to execute (execute phase). */
+  taskNumber?: number;
+  /** Short task title (execute phase). */
+  taskTitle?: string;
+  /** Newline-separated list of files to modify (execute phase). */
+  filesToModify?: string;
+  /** Task description from the plan (execute phase). */
+  taskDescription?: string;
+  /** Additional constraints to enforce during execution (execute phase). */
+  constraints?: string;
+}
 
 // ── MasterManager Surface ─────────────────────────────────────────
 
@@ -618,5 +658,79 @@ export class DeepModeManager {
 
     const phase = state.currentPhase;
     return overrides?.[phase] ?? PHASE_SYSTEM_PROMPTS[phase];
+  }
+
+  // ── Phase Worker Prompt Builder ────────────────────────────────
+
+  /**
+   * Build the worker prompt for the current phase of a session.
+   *
+   * Selects the DEEP_* seed-prompt template that matches the current phase,
+   * substitutes all `{{placeholder}}` tokens, and injects the output from
+   * previous phases as context:
+   *
+   * - investigate: uses caller-supplied workspace / project metadata
+   * - report:      injects investigate.output as `{{investigationFindings}}`
+   * - plan:        injects report.output as `{{reportFindings}}`
+   * - execute:     injects plan.output as `{{planContext}}` + caller task details
+   * - verify:      injects execute.output as `{{executedTasks}}`
+   *
+   * @param sessionId  Active session identifier.
+   * @param context    Phase-specific context for placeholder substitution.
+   * @returns          The filled worker prompt string, or `undefined` if session not found / done.
+   */
+  buildWorkerPrompt(sessionId: string, context: DeepPhaseWorkerContext = {}): string | undefined {
+    const state = this.sessions.get(sessionId);
+    if (!state || !state.currentPhase) return undefined;
+
+    const { currentPhase: phase, taskSummary: userRequest, phaseResults } = state;
+
+    switch (phase) {
+      case 'investigate':
+        return DEEP_INVESTIGATE.content
+          .replace('{{workspacePath}}', context.workspacePath ?? this.host.workspacePath)
+          .replace('{{userRequest}}', userRequest)
+          .replace('{{projectName}}', context.projectName ?? 'Unknown')
+          .replace('{{projectType}}', context.projectType ?? 'Unknown')
+          .replace('{{frameworks}}', context.frameworks ?? 'Unknown')
+          .replace('{{structure}}', context.structure ?? '(no structure available)');
+
+      case 'report': {
+        const investigationFindings =
+          phaseResults['investigate']?.output ?? '(no investigation results available)';
+        return DEEP_REPORT.content
+          .replace('{{userRequest}}', userRequest)
+          .replace('{{investigationFindings}}', investigationFindings);
+      }
+
+      case 'plan': {
+        const reportFindings = phaseResults['report']?.output ?? '(no report available)';
+        return DEEP_PLAN.content
+          .replace('{{userRequest}}', userRequest)
+          .replace('{{reportFindings}}', reportFindings);
+      }
+
+      case 'execute': {
+        const planContext = phaseResults['plan']?.output ?? '(no plan available)';
+        return DEEP_EXECUTE.content
+          .replace('{{userRequest}}', userRequest)
+          .replace('{{taskNumber}}', String(context.taskNumber ?? 1))
+          .replace('{{taskTitle}}', context.taskTitle ?? 'Execute task')
+          .replace('{{filesToModify}}', context.filesToModify ?? '(see plan)')
+          .replace('{{taskDescription}}', context.taskDescription ?? '(see plan)')
+          .replace('{{constraints}}', context.constraints ?? 'None.')
+          .replace('{{planContext}}', planContext);
+      }
+
+      case 'verify': {
+        const executedTasks = phaseResults['execute']?.output ?? '(no execute results available)';
+        return DEEP_VERIFY.content
+          .replace('{{userRequest}}', userRequest)
+          .replace('{{executedTasks}}', executedTasks);
+      }
+
+      default:
+        return undefined;
+    }
   }
 }
