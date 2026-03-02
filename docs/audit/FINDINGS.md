@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 16 | **Fixed:** 84 | **Last Audit:** 2026-03-02
+> **Open:** 19 | **Fixed:** 85 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
@@ -25,6 +25,15 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F76 | Keyword classifier misses execution/delegation keywords  | 🟠 High     | "start execution" classified as tool-use (15 turns) instead of complex-task (25 turns) | ✅ Fixed |
 | OB-F77 | SPAWN marker stripping leaves empty/stub response        | 🟠 High     | Master output with SPAWN markers stripped to 29 chars — user gets no useful response   | ✅ Fixed |
 | OB-F78 | No warning when response truncated after SPAWN stripping | 🟡 Medium   | Log shows `responseLength: 29` but no flag that original was 500+ chars pre-strip      | ✅ Fixed |
+
+### Tier 1b — Real-World Testing Issues (discovered 2026-03-02)
+
+| #      | Finding                                                        | Severity    | Impact                                                                                 | Status   |
+| ------ | -------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------- | -------- |
+| OB-F89 | Codex worker streaming output is raw JSON — not parsed         | 🔴 Critical | Users see raw `{"type":"item.completed",...}` JSONL instead of readable text           | Open     |
+| OB-F90 | RAG always returns confidence 0, chunkCount 0                  | 🟠 High     | Master AI has no workspace context — every query returns empty, RAG system is dead     | ✅ Fixed |
+| OB-F91 | Codex workers waste turns on shell gymnastics instead of tools | 🟠 High     | Workers do `0 files read` — spend all turns running inline Python via bash escaping    | Open     |
+| OB-F92 | Task classifier over-triggers tool-use and complex-task        | 🟡 Medium   | Text-generation tasks (write tweet, write post) classified as tool-use or complex-task | Open     |
 
 ### Tier 2 — Important for Development Workflow (Sprints 1–3)
 
@@ -64,6 +73,121 @@ Improvements identified by analyzing [openclaw/openclaw](https://github.com/open
 | OB-F86 | No pairing-based auth for non-phone channels                      | 🟡 Medium | Discord/Telegram users need manual whitelist; no self-service pairing flow        | openclaw    | Open   |
 | OB-F87 | No skills directory for reusable capabilities                     | 🟡 Medium | Master rediscovers capabilities each session; no SKILL.md pattern for persistence | openclaw    | Open   |
 | OB-F88 | Worker results lack structured summary format                     | 🟡 Medium | No `completed/learned/next_steps` — Master can't track incomplete work            | claude-mem  | Open   |
+
+### OB-F89 — Codex worker streaming output is raw JSON — not parsed (Critical)
+
+**Problem:** When the Master spawns Codex workers via `spawnWithStreamingHandle()`, the worker output sent to users is raw JSONL streaming protocol:
+
+```json
+{"type":"thread.started","thread_id":"019caf0c-47d5-..."}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"Planning..."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc ls",...}}
+```
+
+The non-streaming path (`execOnce()`) correctly applies `parseCodexJsonlOutput()` to convert JSONL → readable text. But `execOnceStreaming()` (used by workers via `spawnWithStreamingHandle()`) accumulates raw stdout without calling `parseOutput()`. The Claude adapter doesn't have this issue because `--print` outputs human-readable text directly.
+
+**Impact:** Any Codex worker result is unreadable to users. Multi-AI delegation (a core feature) is broken for Codex workers.
+
+**Root cause in code:**
+
+- `src/core/agent-runner.ts` `execOnce()` (line ~803): Calls `config.parseOutput()` ✅
+- `src/core/agent-runner.ts` `execOnceStreaming()`: NO `parseOutput()` call ❌
+- `src/core/agent-runner.ts` `spawnWithStreamingHandle()`: Uses `execOnceStreaming()`, no workaround ❌
+- `src/master/master-manager.ts` `spawnWorker()`: Passes raw `result.stdout` to user ❌
+
+**Proposed solution:**
+
+1. Apply `parseOutput()` to the final accumulated `stdout` in `execOnceStreaming()` before returning the result
+2. OR: apply `parseCodexJsonlOutput()` in `spawnWithStreamingHandle()` after generator completes
+3. Also consider parsing incrementally during streaming (extract `type: "message"` events in real-time)
+4. Add test: spawn Codex adapter in streaming mode → verify output is human-readable text
+
+**Key files:** `src/core/agent-runner.ts`, `src/core/adapters/codex-adapter.ts`, `src/master/master-manager.ts`
+
+**Scope:** ~5–6 tasks. Critical — blocks multi-AI delegation.
+
+---
+
+### OB-F90 — RAG always returns confidence 0, chunkCount 0 (High)
+
+**Problem:** In real-world testing (16 messages via Telegram + WebChat), every single RAG query returned `confidence: 0, chunkCount: 0, sources: []`. The Knowledge Retriever is returning nothing — the Master AI operates without any workspace context from the RAG system.
+
+**Root causes identified:**
+
+1. **buildSearchQuery() too aggressive** — `src/core/knowledge-retriever.ts` strips all stop words (80+ words) and tokens ≤2 chars. Questions like "What can you tell about our project?" are reduced to almost nothing after filtering.
+
+2. **Exploration skipped → no chunks indexed** — logs show "Valid workspace map found, no workspace changes detected — skipping exploration". If the workspace map exists but chunks were never stored in FTS5 tables, there's nothing to search.
+
+3. **No fallback when query is empty** — if `buildSearchQuery()` produces an empty string, `hybridSearch()` returns `[]` silently with no error logged.
+
+4. **Worker results not stored** — `storeWorkerResult()` in knowledge-retriever is only called explicitly, not automatically after every worker completes.
+
+**Impact:** The RAG system (Phases 74–77, 43 tasks) is effectively dead at runtime. The Master compensates via its session context and system prompt, but wastes the entire RAG infrastructure.
+
+**Proposed solution:**
+
+1. Relax `buildSearchQuery()` — reduce minimum token length from 3 to 2, reduce stop word list, add fallback to raw query when all tokens filtered
+2. Ensure exploration stores chunks in FTS5 even when workspace map is reused from cache
+3. Log a WARN when `buildSearchQuery()` produces empty query string
+4. Auto-store worker results in chunk store after every worker completion
+5. Add startup diagnostic: count chunks in FTS5, log warning if zero
+
+**Key files:** `src/core/knowledge-retriever.ts`, `src/memory/retrieval.ts`, `src/master/master-manager.ts`, `src/memory/chunk-store.ts`
+
+**Scope:** ~8–10 tasks. High priority — makes RAG system actually work.
+
+---
+
+### OB-F91 — Codex workers waste turns on shell gymnastics instead of using tools (High)
+
+**Problem:** In real-world testing, Codex workers with `read-only` profile spent all their turns running complex inline Python scripts via `/bin/zsh -lc "python -c ..."` with deeply nested shell escaping. Result: `0 files read, 0 files modified`, turns exhausted (89s, 135s), wasted ~$0.08.
+
+The workers tried to run `git blame --line-porcelain` parsed by Python, regex-based export counters, etc. — all achievable with simple `Read`/`Glob`/`Grep` tool calls. The `read-only` profile restricts tools to `Read, Glob, Grep` but Codex CLI may interpret `--allowedTools` differently than Claude CLI, causing workers to fall back to arbitrary shell commands.
+
+**Impact:** Codex workers produce no useful output for read-only tasks. Wasted cost and time. The Master then assembles results from a blank worker.
+
+**Proposed solution:**
+
+1. Verify how Codex CLI handles `--allowedTools` — does it support the same tool names as Claude?
+2. If Codex doesn't support tool restrictions, consider: (a) not passing `--allowedTools` and relying on system prompt instructions, (b) using a wrapper that enforces restrictions
+3. Add stronger system prompt guidance for Codex workers: "Use Read to read files. Do NOT use bash/shell commands for file reading."
+4. Consider defaulting Codex workers to non-read-only tasks where shell access is expected
+5. Add integration test: spawn Codex read-only worker → verify it uses Read tool, not bash
+
+**Key files:** `src/core/adapters/codex-adapter.ts`, `src/core/agent-runner.ts`, `src/master/master-manager.ts`, `src/master/seed-prompts.ts`
+
+**Scope:** ~5–7 tasks.
+
+---
+
+### OB-F92 — Task classifier over-triggers tool-use and complex-task for text-generation (Medium)
+
+**Problem:** In real-world testing, the keyword classifier consistently misclassified pure text-generation tasks:
+
+| User message                      | Classified as      | Correct class     |
+| --------------------------------- | ------------------ | ----------------- |
+| "generate a LinkedIn post"        | tool-use (15t)     | quick-answer (5t) |
+| "shorter version more attractive" | tool-use (15t)     | quick-answer (5t) |
+| "tweet for non-developers"        | complex-task (25t) | quick-answer (5t) |
+| "mix of tweet 4 and 1"            | tool-use (15t)     | quick-answer (5t) |
+| "add no api key no extra cost"    | complex-task (25t) | quick-answer (5t) |
+
+Most were classified via `"keyword fallback: tool-use"` — the default when no keyword matches, which means the fallback itself is wrong for conversational/creative messages.
+
+**Impact:** 2x–5x more turns and tokens than necessary. `complex-task` triggers planning prompts and potentially worker spawning for tasks that just need a text response.
+
+**Proposed solution:**
+
+1. Add `text-generation` keywords: generate, write, draft, compose, create post, tweet, LinkedIn, rewrite, rephrase, reformulate, shorter, longer, more attractive
+2. Change keyword fallback from `tool-use` to `quick-answer` — most unrecognized messages are conversational
+3. Add context-awareness: if previous messages were text-generation, classify follow-ups (shorter, better, mix of) as same class
+4. Add test cases for creative/writing tasks in classifier tests
+
+**Key files:** `src/master/master-manager.ts` (classifyTaskByKeywords), `tests/master/master-manager.test.ts`
+
+**Scope:** ~4–5 tasks.
+
+---
 
 ### Tier 3 — Deferred (not blocking current work)
 
