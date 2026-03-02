@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 166 | **In Progress:** 0 | **Done:** 95
+> **Pending:** 165 | **In Progress:** 0 | **Done:** 96
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -276,7 +276,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 9   | OB-1392 | Add `/audit` command to Router — shows last 10 worker spawns with task ID, profile, tools, duration, estimated cost, result status. Read from agent_activity table                                                                                                                                                                       | ✅ Done   |
 | 10  | OB-1393 | Add audit log persistence to `src/core/audit-logger.ts` — write execution traces to .openbridge/audit/ as JSON files. Each spawn creates audit-{timestamp}-{taskId}.json with profile, tools, duration, cost, files modified, result. Auto-cleanup files older than 30 days                                                              | ✅ Done   |
 | 11  | OB-1394 | Add per-user consent preferences to `src/memory/access-store.ts` — extend access entry with consentMode: always-ask (default), auto-approve-read, auto-approve-all. Skip confirmation for low risk when auto-approve-read, skip all when auto-approve-all                                                                                | ✅ Done   |
-| 12  | OB-1395 | Add tests in `tests/core/router.test.ts` — test: (1) high-risk SPAWN triggers confirmation, (2) low-risk proceeds without confirmation, (3) /confirm executes pending worker, (4) /skip cancels it, (5) timeout auto-cancels after 60s, (6) cost estimation returns reasonable values, (7) /audit shows recent history. At least 7 tests | ◻ Pending |
+| 12  | OB-1395 | Add tests in `tests/core/router.test.ts` — test: (1) high-risk SPAWN triggers confirmation, (2) low-risk proceeds without confirmation, (3) /confirm executes pending worker, (4) /skip cancels it, (5) timeout auto-cancels after 60s, (6) cost estimation returns reasonable values, (7) /audit shows recent history. At least 7 tests | ✅ Done   |
 | 13  | OB-1396 | Build + lint + typecheck + test validation for Phase 86 — Sprint 3 gate. Fix any failures                                                                                                                                                                                                                                                | ◻ Pending |
 
 ---
