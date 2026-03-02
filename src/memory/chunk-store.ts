@@ -16,7 +16,7 @@ export interface Chunk {
 }
 
 /** Raw row shape returned by better-sqlite3 (BOOLEAN stored as INTEGER). */
-interface ChunkRow {
+export interface ChunkRow {
   id: number;
   scope: string;
   category: Chunk['category'];
@@ -115,6 +115,41 @@ export function searchChunks(db: Database.Database, query: string, limit = 10): 
     .all(sanitized, limit) as ChunkRow[];
 
   return rows.map(rowToChunk);
+}
+
+/**
+ * Full-text search over all chunks using the `context_chunks_fts` FTS5 virtual
+ * table. Returns raw {@link ChunkRow} records ordered by FTS5 rank (most
+ * relevant first). Unlike {@link searchChunks}, stale chunks are not filtered
+ * out. Default limit: 10.
+ *
+ * Returns an empty array when the query is empty or when FTS5 encounters a
+ * syntax error.
+ */
+export function searchFTS5(db: Database.Database, query: string, limit = 10): ChunkRow[] {
+  if (!query.trim()) return [];
+
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  try {
+    return db
+      .prepare(
+        `SELECT c.id, c.scope, c.category, c.content, c.source_hash,
+                c.created_at, c.updated_at, c.stale
+         FROM context_chunks c
+         JOIN (
+           SELECT rowid
+           FROM context_chunks_fts
+           WHERE context_chunks_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?
+         ) AS ranked ON c.id = ranked.rowid`,
+      )
+      .all(sanitized, limit) as ChunkRow[];
+  } catch {
+    return [];
+  }
 }
 
 /**
