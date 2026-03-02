@@ -24,6 +24,10 @@ import type {
   DeepPhaseResult,
   ExecutionProfile,
 } from '../types/agent.js';
+import type { ProgressEvent } from '../types/message.js';
+
+/** Callback type for emitting Deep Mode phase progress events. */
+type PhaseProgressReporter = (event: ProgressEvent) => Promise<void>;
 
 const logger = createLogger('deep-mode');
 
@@ -146,18 +150,36 @@ export class DeepModeManager {
   /** Sessions awaiting user confirmation (manual profile only). */
   private readonly pausedSessions = new Set<string>();
 
+  /** Per-session progress reporters — emit WebSocket events on phase transitions. */
+  private readonly progressReporters = new Map<string, PhaseProgressReporter>();
+
   constructor(private readonly host: DeepModeHost) {}
+
+  /** Fire-and-forget helper that emits a phase progress event without blocking callers. */
+  private emitPhaseEvent(sessionId: string, event: ProgressEvent): void {
+    const reporter = this.progressReporters.get(sessionId);
+    if (reporter) {
+      reporter(event).catch((err: unknown) => {
+        logger.warn({ err, sessionId }, 'deep-phase progress emit failed');
+      });
+    }
+  }
 
   // ── Session lifecycle ─────────────────────────────────────────
 
   /**
    * Start a new Deep Mode session.
    *
-   * @param taskSummary  One-line summary of the original user request.
-   * @param profile      Execution profile (fast | thorough | manual).
-   * @returns            The new session ID, or `null` when `fast` skips Deep Mode.
+   * @param taskSummary       One-line summary of the original user request.
+   * @param profile           Execution profile (fast | thorough | manual).
+   * @param progressReporter  Optional callback for emitting WebSocket phase progress events.
+   * @returns                 The new session ID, or `null` when `fast` skips Deep Mode.
    */
-  startSession(taskSummary: string, profile: ExecutionProfile): string | null {
+  startSession(
+    taskSummary: string,
+    profile: ExecutionProfile,
+    progressReporter?: PhaseProgressReporter,
+  ): string | null {
     if (profile === 'fast') {
       logger.info({ profile, taskSummary }, 'Deep Mode skipped for fast profile');
       return null;
@@ -179,7 +201,18 @@ export class DeepModeManager {
 
     this.sessions.set(sessionId, state);
 
+    if (progressReporter) {
+      this.progressReporters.set(sessionId, progressReporter);
+    }
+
     logger.info({ sessionId, profile, taskSummary }, 'Deep Mode session started');
+
+    this.emitPhaseEvent(sessionId, {
+      type: 'deep-phase',
+      sessionId,
+      phase: firstPhase,
+      status: 'started',
+    });
 
     return sessionId;
   }
@@ -196,9 +229,21 @@ export class DeepModeManager {
       return;
     }
 
-    logger.info({ sessionId, currentPhase: state.currentPhase }, 'Deep Mode session aborted');
+    const abortedPhase = state.currentPhase;
+    logger.info({ sessionId, currentPhase: abortedPhase }, 'Deep Mode session aborted');
+
+    if (abortedPhase) {
+      this.emitPhaseEvent(sessionId, {
+        type: 'deep-phase',
+        sessionId,
+        phase: abortedPhase,
+        status: 'aborted',
+      });
+    }
+
     this.sessions.delete(sessionId);
     this.pausedSessions.delete(sessionId);
+    this.progressReporters.delete(sessionId);
   }
 
   // ── Phase state machine ───────────────────────────────────────
@@ -237,11 +282,29 @@ export class DeepModeManager {
 
     state.currentPhase = nextPhase;
 
+    // Emit completed event for the phase that just finished (truncate summary to 200 chars)
+    const resultSummary = result.output.length > 200 ? result.output.slice(0, 200) : result.output;
+    this.emitPhaseEvent(sessionId, {
+      type: 'deep-phase',
+      sessionId,
+      phase: currentPhase,
+      status: 'completed',
+      resultSummary,
+    });
+
     if (nextPhase) {
       logger.info(
         { sessionId, fromPhase: currentPhase, toPhase: nextPhase, profile: state.profile },
         'Deep Mode phase advanced',
       );
+
+      // Emit started event for the incoming phase
+      this.emitPhaseEvent(sessionId, {
+        type: 'deep-phase',
+        sessionId,
+        phase: nextPhase,
+        status: 'started',
+      });
 
       // Manual profile pauses after each phase transition to wait for user confirmation.
       // Thorough profile continues automatically — no pause needed.
@@ -255,6 +318,7 @@ export class DeepModeManager {
     } else {
       // All phases completed — remove any paused state and clean up
       this.pausedSessions.delete(sessionId);
+      this.progressReporters.delete(sessionId);
       logger.info(
         { sessionId, completedPhase: currentPhase },
         'Deep Mode session completed all phases',
@@ -289,6 +353,24 @@ export class DeepModeManager {
     state.currentPhase = nextPhase;
 
     logger.info({ sessionId, skippedPhase: currentPhase, nextPhase }, 'Deep Mode phase skipped');
+
+    this.emitPhaseEvent(sessionId, {
+      type: 'deep-phase',
+      sessionId,
+      phase: currentPhase,
+      status: 'skipped',
+    });
+
+    if (nextPhase) {
+      this.emitPhaseEvent(sessionId, {
+        type: 'deep-phase',
+        sessionId,
+        phase: nextPhase,
+        status: 'started',
+      });
+    } else {
+      this.progressReporters.delete(sessionId);
+    }
 
     return nextPhase;
   }
