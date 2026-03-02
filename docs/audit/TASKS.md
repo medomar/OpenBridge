@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 133 | **In Progress:** 0 | **Done:** 39 (112 archived)
+> **Pending:** 132 | **In Progress:** 0 | **Done:** 40 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (29/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (30/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -162,7 +162,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                              | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 31  | OB-1427 | Add per-user execution profile preferences to `src/memory/access-store.ts` — extend access entry with executionProfile: ExecutionProfile (default: fast). Persists across sessions                       | ✅ Done   |
-| 32  | OB-1428 | Add per-user model preferences to access-store — extend with modelPreferences: Record per DeepPhase. Users can override default model for each phase. Persists across sessions                           | ◻ Pending |
+| 32  | OB-1428 | Add per-user model preferences to access-store — extend with modelPreferences: Record per DeepPhase. Users can override default model for each phase. Persists across sessions                           | ✅ Done   |
 | 33  | OB-1429 | Add Deep Mode documentation to Master system prompt — explain when to suggest Deep Mode: "For complex tasks (audits, reviews, large refactors), suggest Deep Mode to users" with example suggestion text | ◻ Pending |
 | 34  | OB-1430 | Add Deep Mode to `/help` command output — include /deep, /proceed, /focus N, /skip N, /phase commands with brief descriptions                                                                            | ◻ Pending |
 | 35  | OB-1431 | Build + lint + typecheck + test validation for Deep Mode — all 35 tasks must pass. Fix any failures                                                                                                      | ◻ Pending |
