@@ -34,6 +34,8 @@ export interface MasterSystemPromptContext {
   mcpServers?: MCPServer[];
   /** Names of the connectors that are currently active (e.g. ['whatsapp', 'console']) */
   activeConnectorNames?: string[];
+  /** Port the local file server is listening on (e.g. 3001). Undefined when the server is not running. */
+  fileServerPort?: number;
 }
 
 /**
@@ -107,6 +109,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
+  const fileServerSection = formatFileServerSection(context.fileServerPort);
 
   // Resolve model names from registry (defaults to Claude aliases if no registry)
   const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
@@ -473,7 +476,7 @@ Instruct workers to write generated files to \`.openbridge/generated/\` (created
 - Served by the file server if it is running
 - Kept separate from workspace source files
 - Cleaned up by the system based on TTL rules
-
+${fileServerSection}
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
@@ -643,6 +646,24 @@ function formatToolSelectionGuidelines(tools: DiscoveredTool[], masterToolName: 
   lines.push('');
 
   return lines.join('\n');
+}
+
+function formatFileServerSection(port?: number): string {
+  if (port === undefined) return '';
+
+  const baseUrl = `http://localhost:${port}`;
+  return [
+    '',
+    '### Local File Server',
+    '',
+    `The local file server is running at \`${baseUrl}\`. Files written to \`.openbridge/generated/\` are immediately accessible via:`,
+    '',
+    `- **Direct URL:** \`${baseUrl}/shared/<filename>\` — link the user directly to the generated file`,
+    `- **Shareable link:** Created automatically when you use a SHARE marker — includes a UUID and 24-hour expiry`,
+    '',
+    `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${baseUrl}/shared/<filename>\` in your response.`,
+    '',
+  ].join('\n');
 }
 
 function formatConnectedChannelsSection(names?: string[]): string {

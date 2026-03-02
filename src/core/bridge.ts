@@ -114,6 +114,13 @@ export class Bridge {
     return this.connectors.map((c) => c.name);
   }
 
+  /** Returns the port the file server is listening on, or null if not running */
+  getFileServerPort(): number | null {
+    if (!this.fileServer) return null;
+    const match = this.fileServer.baseUrl.match(/:(\d+)$/);
+    return match ? parseInt(match[1]!, 10) : null;
+  }
+
   /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
   getMemory(): MemoryManager | null {
     return this.memory;
