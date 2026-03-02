@@ -381,8 +381,8 @@ describe('checkForUpdate()', () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          tag_name: 'v0.0.1',
-          html_url: 'https://github.com/medomar/OpenBridge/releases/tag/v0.0.1',
+          tag_name: 'v0.0.8',
+          html_url: 'https://github.com/medomar/OpenBridge/releases/tag/v0.0.8',
         }),
         { status: 200 },
       ),
@@ -390,8 +390,8 @@ describe('checkForUpdate()', () => {
     const result = await checkForUpdate();
     expect(result).not.toBeNull();
     expect(result!.available).toBe(false);
-    expect(result!.latest).toBe('0.0.1');
-    expect(result!.current).toBe('0.0.1');
+    expect(result!.latest).toBe('0.0.8');
+    expect(result!.current).toBe('0.0.8');
   });
 
   it('returns null on network error', async () => {

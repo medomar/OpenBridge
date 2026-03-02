@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 253 | **In Progress:** 0 | **Done:** 8
+> **Pending:** 252 | **In Progress:** 0 | **Done:** 9
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -32,30 +32,30 @@
 
 ## Task Summary
 
-| Phase  | Description                           | Tasks | Status       |
-| ------ | ------------------------------------- | ----- | ------------ |
-| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (7/9 done) |
-| 78b    | Code Audit Profile                    | 8     | ◻            |
-| 79     | Exploration Bug Fixes                 | 10    | ◻            |
-| 80     | .openbridge Data Cleanup              | 7     | ◻            |
-| 74     | Knowledge Retriever                   | 10    | ◻            |
-| 75     | Context Injection                     | 8     | ◻            |
-| 76     | Targeted Reader                       | 7     | ◻            |
-| 77     | Chunk Enrichment                      | 8     | ◻            |
-| 85     | Environment Variable Protection       | 10    | ◻            |
-| 81     | Master Output Awareness               | 7     | ◻            |
-| 86     | User Consent & Execution Transparency | 13    | ◻            |
-| Deep   | Deep Mode (OB-F56)                    | 35    | ◻            |
-| 82     | Tunnel Integration                    | 10    | ◻            |
-| 83     | Ephemeral App Server                  | 12    | ◻            |
-| 84     | Interaction Relay                     | 8     | ◻            |
-| 87     | Document Visibility Controls          | 14    | ◻            |
-| 88     | WebChat Frontend Extraction           | 15    | ◻            |
-| 89     | WebChat Authentication                | 12    | ◻            |
-| 90     | Phone Access + Mobile PWA             | 15    | ◻            |
-| 91     | Conversation History + Rich Input     | 15    | ◻            |
-| 92     | Settings Panel + Deep Mode UI         | 12    | ◻            |
-| Docker | Docker Sandbox                        | 16    | ◻            |
+| Phase  | Description                           | Tasks | Status |
+| ------ | ------------------------------------- | ----- | ------ |
+| 78a    | Classification & SPAWN Response Fixes | 9     | ✅     |
+| 78b    | Code Audit Profile                    | 8     | ◻      |
+| 79     | Exploration Bug Fixes                 | 10    | ◻      |
+| 80     | .openbridge Data Cleanup              | 7     | ◻      |
+| 74     | Knowledge Retriever                   | 10    | ◻      |
+| 75     | Context Injection                     | 8     | ◻      |
+| 76     | Targeted Reader                       | 7     | ◻      |
+| 77     | Chunk Enrichment                      | 8     | ◻      |
+| 85     | Environment Variable Protection       | 10    | ◻      |
+| 81     | Master Output Awareness               | 7     | ◻      |
+| 86     | User Consent & Execution Transparency | 13    | ◻      |
+| Deep   | Deep Mode (OB-F56)                    | 35    | ◻      |
+| 82     | Tunnel Integration                    | 10    | ◻      |
+| 83     | Ephemeral App Server                  | 12    | ◻      |
+| 84     | Interaction Relay                     | 8     | ◻      |
+| 87     | Document Visibility Controls          | 14    | ◻      |
+| 88     | WebChat Frontend Extraction           | 15    | ◻      |
+| 89     | WebChat Authentication                | 12    | ◻      |
+| 90     | Phone Access + Mobile PWA             | 15    | ◻      |
+| 91     | Conversation History + Rich Input     | 15    | ◻      |
+| 92     | Settings Panel + Deep Mode UI         | 12    | ◻      |
+| Docker | Docker Sandbox                        | 16    | ◻      |
 
 **Sprint 1 Total:** 34 tasks (v0.0.9)
 **Sprint 2 Total:** 43 tasks (v0.0.10)
@@ -89,11 +89,11 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 ### Phase 78a-3 — SPAWN Stripping Observability (OB-F78)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 7   | OB-1306 | Add logging in `processMessage()` in `src/master/master-manager.ts` — after SPAWN marker stripping, log the original response length and cleaned response length: `logger.debug({ originalLength, cleanedLength, spawnCount }, 'SPAWN marker stripping applied')`. If `cleanedLength < 80` and `originalLength > 200`, log a warning: `logger.warn({ originalLength, cleanedLength, spawnCount }, 'Response truncated after SPAWN marker removal — generating status message')` | ✅ Done   |
-| 8   | OB-1307 | Include the number of SPAWN markers found and their task summaries in the debug log entry added in the previous task. Add `spawnSummaries: string[]` to the log context object so developers can see what workers were dispatched when diagnosing empty-response issues. Use the `extractTaskSummaries()` helper from `src/master/spawn-parser.ts`                                                                                                                              | ✅ Done   |
-| 9   | OB-1308 | Build + lint + typecheck + test validation for Phase 78a — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done. This is the phase gate — all 8 previous tasks must pass verification                                                                                                                                                                                                                       | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 7   | OB-1306 | Add logging in `processMessage()` in `src/master/master-manager.ts` — after SPAWN marker stripping, log the original response length and cleaned response length: `logger.debug({ originalLength, cleanedLength, spawnCount }, 'SPAWN marker stripping applied')`. If `cleanedLength < 80` and `originalLength > 200`, log a warning: `logger.warn({ originalLength, cleanedLength, spawnCount }, 'Response truncated after SPAWN marker removal — generating status message')` | ✅ Done |
+| 8   | OB-1307 | Include the number of SPAWN markers found and their task summaries in the debug log entry added in the previous task. Add `spawnSummaries: string[]` to the log context object so developers can see what workers were dispatched when diagnosing empty-response issues. Use the `extractTaskSummaries()` helper from `src/master/spawn-parser.ts`                                                                                                                              | ✅ Done |
+| 9   | OB-1308 | Build + lint + typecheck + test validation for Phase 78a — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done. This is the phase gate — all 8 previous tasks must pass verification                                                                                                                                                                                                                       | ✅ Done |
 
 ---
 
