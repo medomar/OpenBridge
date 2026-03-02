@@ -271,6 +271,13 @@ async function startV2Flow(
     masterManager.setFileServerPort(fileServerPort);
   }
 
+  // Inform MasterManager of the tunnel public URL — included in the Master system prompt
+  // so the Master knows generated files are publicly accessible (not just on localhost).
+  const tunnelUrl = bridge.getTunnelUrl();
+  if (tunnelUrl !== null) {
+    masterManager.setTunnelUrl(tunnelUrl);
+  }
+
   // Wire MCP servers into the health endpoint (runs after bridge.start() initialises the health server)
   if (v2Config.mcp?.enabled !== false && (v2Config.mcp?.servers ?? []).length > 0) {
     bridge.setMcpServers(v2Config.mcp?.servers ?? []);

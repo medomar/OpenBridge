@@ -359,6 +359,7 @@ export class MasterManager {
   private mcpServers: MCPServer[];
   private activeConnectorNames: string[] = [];
   private fileServerPort: number | undefined;
+  private tunnelUrl: string | null = null;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -1524,6 +1525,7 @@ export class MasterManager {
       activeConnectorNames:
         this.activeConnectorNames.length > 0 ? this.activeConnectorNames : undefined,
       fileServerPort: this.fileServerPort,
+      tunnelUrl: this.tunnelUrl ?? undefined,
     });
 
     try {
@@ -2243,6 +2245,15 @@ export class MasterManager {
    */
   public setFileServerPort(port: number): void {
     this.fileServerPort = port;
+  }
+
+  /**
+   * Set the public tunnel URL so it can be included in the Master system prompt.
+   * Pass null to clear the tunnel URL (e.g. when the tunnel stops).
+   * Called by the startup flow after bridge.start() successfully starts a tunnel.
+   */
+  public setTunnelUrl(url: string | null): void {
+    this.tunnelUrl = url;
   }
 
   /**
