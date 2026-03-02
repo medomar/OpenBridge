@@ -484,6 +484,16 @@ export function formatPreFetchedKnowledgeSection(knowledgeContext: string): stri
   return `## Pre-fetched Knowledge (from RAG)\n\n${knowledgeContext.trim()}`;
 }
 
+/**
+ * Format the targeted reader result for injection into the Master's system
+ * prompt when RAG confidence is low and a focused file-read worker was spawned.
+ *
+ * OB-1354
+ */
+export function formatTargetedReaderSection(readerResult: string): string {
+  return `## Pre-fetched File Context (targeted reader)\n\n${readerResult.trim()}`;
+}
+
 function formatBuiltInProfiles(): string {
   const lines: string[] = [];
   for (const [name, profile] of Object.entries(BUILT_IN_PROFILES)) {
