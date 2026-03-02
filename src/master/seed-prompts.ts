@@ -804,6 +804,135 @@ Your report should be complete and self-contained — a developer reading it sho
 };
 
 /**
+ * Deep Mode: Plan Phase
+ *
+ * Takes the structured report from the Report phase and produces an execution
+ * plan. For each finding/recommendation: task description, files to modify,
+ * estimated complexity, dependencies on other tasks, and risk level.
+ * Tasks are ordered by dependency and priority, and grouped into parallel
+ * batches so the Execute phase can run independent tasks concurrently.
+ */
+export const DEEP_PLAN: SeedPrompt = {
+  id: 'deep-plan',
+  filename: 'deep-plan.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Deep Mode planning: convert report recommendations into an ordered execution plan with task descriptions, files to modify, complexity, dependencies, risk level, and parallel batches.',
+  content: `# Deep Mode — Plan Phase
+
+Convert the report below into a concrete execution plan. Each recommendation becomes one or more tasks. Tasks are ordered by dependency and grouped into parallel batches.
+
+## Original Request
+
+{{userRequest}}
+
+## Report
+
+{{reportFindings}}
+
+## Instructions
+
+### Step 1 — Derive Tasks from Recommendations
+
+For each recommendation in the report, produce one task. If a recommendation is large, split it into smaller, atomic sub-tasks — each sub-task should be completable in a single worker turn.
+
+A task is **atomic** if:
+- It modifies at most 3 files
+- It has a clear, verifiable completion criterion
+- It can be completed without waiting for another in-progress task
+
+### Step 2 — Describe Each Task
+
+For every task, capture the following fields:
+
+| Field | Description |
+| --- | --- |
+| **Task #N** | Unique sequential number, starting from 1 |
+| **Title** | One-line summary (≤ 80 characters) |
+| **Description** | 2–4 sentences: what to do, how to do it, what the end state looks like |
+| **Files to Modify** | List of file paths (relative to workspace root) that this task will change |
+| **Complexity** | \`trivial\` (< 30 min) | \`small\` (< 2 h) | \`medium\` (< 1 day) | \`large\` (> 1 day) |
+| **Dependencies** | Task numbers that must complete before this task starts (empty = none) |
+| **Risk** | \`low\` — safe, reversible change | \`medium\` — modifies shared code | \`high\` — deletes, renames, or restructures |
+| **Finding Refs** | Finding numbers from the report that this task addresses |
+
+### Step 3 — Order by Dependency and Priority
+
+Sort tasks so that:
+1. Tasks with no dependencies come first.
+2. Among tasks at the same dependency level, order by severity (critical → high → medium → low → info) then by complexity (trivial → small → medium → large).
+3. Tasks that depend on earlier tasks follow after their dependencies.
+
+### Step 4 — Group into Parallel Batches
+
+Group tasks into numbered batches. All tasks within a batch have no dependencies on each other and can run simultaneously.
+
+Format:
+
+**Batch 1 (parallel):** Tasks #1, #2, #3
+**Batch 2 (parallel):** Tasks #4, #5
+**Batch 3 (sequential):** Task #6 (depends on Batch 2)
+
+A batch is **sequential** (single task) if the task depends on one or more tasks in the previous batch.
+
+## Output Format
+
+Produce your plan in **Markdown** using the structure below.
+
+### Execution Plan — Summary
+
+- **Total tasks:** N
+- **Parallel batches:** N
+- **Estimated total complexity:** (sum across all tasks — e.g., "3 trivial, 2 small, 1 medium")
+- **Highest risk task:** Task #N — short title
+
+---
+
+### Tasks
+
+---
+
+**Task #1** · complexity: \`trivial\` · risk: \`low\`
+**Title:** Fix /history handler undefined return
+**Files to Modify:** \`src/core/router.ts\`
+**Dependencies:** none
+**Finding Refs:** Finding #1
+**Description:** Add a missing return statement in the \`/history\` branch at line 142 of \`src/core/router.ts\`. The branch currently falls through without returning a value, causing crashes. Return a valid \`OutboundMessage\` object.
+
+---
+
+**Task #2** · complexity: \`small\` · risk: \`low\`
+**Title:** Add test coverage for /stop-all command
+**Files to Modify:** \`tests/core/router.test.ts\`
+**Dependencies:** none
+**Finding Refs:** Finding #2, Finding #4
+**Description:** Add 2 test cases to \`tests/core/router.test.ts\` covering the \`/stop-all\` command. One test verifies workers are terminated; one verifies the response message format. No production code changes needed.
+
+---
+
+Continue for all tasks, incrementing the number.
+
+---
+
+### Parallel Batches
+
+**Batch 1 (parallel):** Tasks #1, #2
+**Batch 2 (parallel):** Tasks #3, #4
+**Batch 3 (sequential):** Task #5 (depends on Tasks #3 and #4)
+
+## Rules
+
+- **Read only — do NOT modify any files.**
+- Every recommendation from the report must map to at least one task. Do not drop recommendations.
+- Keep tasks atomic — if a recommendation requires more than 3 file changes, split it.
+- Dependencies must be acyclic — no circular chains.
+- Risk must reflect the real danger of the change: prefer \`low\` for new tests, \`medium\` for modifying shared utilities, \`high\` for deletes or large refactors.
+- The Parallel Batches section is the most important output — the Execute phase uses it to schedule workers.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -840,6 +969,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_TARGETED_READ,
   DEEP_INVESTIGATE,
   DEEP_REPORT,
+  DEEP_PLAN,
 ];
 
 /**
