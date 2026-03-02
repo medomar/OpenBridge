@@ -186,3 +186,43 @@ export function hasSpawnMarkers(output: string): boolean {
   SPAWN_MARKER_PATTERN.lastIndex = 0;
   return SPAWN_MARKER_PATTERN.test(output);
 }
+
+/**
+ * Extract one-line summaries from parsed SPAWN markers for status messages.
+ *
+ * Each summary is taken from the first non-empty line of the marker's prompt
+ * field and truncated to 120 characters. Used to build dispatch status messages
+ * when Master output consists entirely of SPAWN markers with no user-facing text.
+ *
+ * Edge cases:
+ * - Multi-line prompts: only the first non-empty line is used
+ * - Long summaries: truncated to 120 chars with ellipsis
+ * - No useful description (prompt is missing or all whitespace): falls back to
+ *   the profile name (e.g., "Task via read-only profile")
+ */
+export function extractTaskSummaries(spawnMarkers: ParsedSpawnMarker[]): string[] {
+  return spawnMarkers.map((marker) => {
+    const prompt = marker.body.prompt?.trim() ?? '';
+
+    if (!prompt) {
+      return `Task via ${marker.profile} profile`;
+    }
+
+    // Use only the first non-empty line for a one-line summary
+    const firstLine = prompt
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+
+    if (!firstLine) {
+      return `Task via ${marker.profile} profile`;
+    }
+
+    // Truncate to 120 chars
+    if (firstLine.length > 120) {
+      return firstLine.slice(0, 117) + '...';
+    }
+
+    return firstLine;
+  });
+}
