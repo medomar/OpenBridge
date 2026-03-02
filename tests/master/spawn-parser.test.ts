@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseSpawnMarkers, hasSpawnMarkers } from '../../src/master/spawn-parser.js';
+import {
+  parseSpawnMarkers,
+  hasSpawnMarkers,
+  extractTaskSummaries,
+} from '../../src/master/spawn-parser.js';
+import type { ParsedSpawnMarker } from '../../src/master/spawn-parser.js';
 
 describe('spawn-parser', () => {
   describe('parseSpawnMarkers', () => {
@@ -180,6 +185,97 @@ After marker.`;
       expect(result.markers[0]!.rawMatch).toBe(
         '[SPAWN:read-only]{"prompt":"Do something"}[/SPAWN]',
       );
+    });
+  });
+
+  describe('extractTaskSummaries', () => {
+    /** Helper to build a minimal ParsedSpawnMarker for testing */
+    function makeMarker(profile: string, prompt: string): ParsedSpawnMarker {
+      return {
+        profile,
+        body: { prompt },
+        rawMatch: `[SPAWN:${profile}]{"prompt":"${prompt}"}[/SPAWN]`,
+      };
+    }
+
+    it('returns correct one-line summaries from SPAWN markers', () => {
+      const markers: ParsedSpawnMarker[] = [
+        makeMarker('read-only', 'List all TypeScript files in src/'),
+        makeMarker('code-edit', 'Add validation to the API endpoint'),
+      ];
+
+      const summaries = extractTaskSummaries(markers);
+
+      expect(summaries).toHaveLength(2);
+      expect(summaries[0]).toBe('List all TypeScript files in src/');
+      expect(summaries[1]).toBe('Add validation to the API endpoint');
+    });
+
+    it('uses only the first non-empty line of multi-line prompts', () => {
+      const marker = makeMarker(
+        'code-edit',
+        'Step 1: Read the file\nStep 2: Modify the function\nStep 3: Save',
+      );
+
+      const summaries = extractTaskSummaries([marker]);
+
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]).toBe('Step 1: Read the file');
+    });
+
+    it('produces a sensible fallback summary when prompt is empty', () => {
+      const marker: ParsedSpawnMarker = {
+        profile: 'read-only',
+        body: { prompt: '   ' }, // whitespace only — treated as empty
+        rawMatch: '[SPAWN:read-only]{"prompt":"   "}[/SPAWN]',
+      };
+
+      const summaries = extractTaskSummaries([marker]);
+
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]).toBe('Task via read-only profile');
+    });
+
+    it('truncates long summaries to 120 characters with ellipsis', () => {
+      const longPrompt = 'A'.repeat(150);
+      const marker = makeMarker('full-access', longPrompt);
+
+      const summaries = extractTaskSummaries([marker]);
+
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]).toHaveLength(120);
+      expect(summaries[0]!.slice(-3)).toBe('...');
+      expect(summaries[0]).toBe('A'.repeat(117) + '...');
+    });
+
+    it('does not truncate summaries that are exactly 120 characters', () => {
+      const exactPrompt = 'B'.repeat(120);
+      const marker = makeMarker('read-only', exactPrompt);
+
+      const summaries = extractTaskSummaries([marker]);
+
+      expect(summaries[0]).toHaveLength(120);
+      expect(summaries[0]!.slice(-3)).not.toBe('...');
+    });
+
+    it('returns an empty array for an empty marker list', () => {
+      expect(extractTaskSummaries([])).toEqual([]);
+    });
+
+    it('handles multiple markers with mixed prompt lengths', () => {
+      const markers: ParsedSpawnMarker[] = [
+        makeMarker('read-only', 'Short task'),
+        makeMarker('code-edit', 'C'.repeat(200)),
+        makeMarker('full-access', '   \n  \n  '), // all whitespace lines
+      ];
+
+      const summaries = extractTaskSummaries(markers);
+
+      expect(summaries).toHaveLength(3);
+      expect(summaries[0]).toBe('Short task');
+      expect(summaries[1]).toHaveLength(120);
+      expect(summaries[1]!.slice(-3)).toBe('...');
+      expect(summaries[2]).toBe('Task via full-access profile');
     });
   });
 

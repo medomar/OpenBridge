@@ -2344,6 +2344,108 @@ describe('MasterManager', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Dispatch status message (OB-F77 / OB-1305)
+    // -----------------------------------------------------------------------
+    it('returns dispatch status message when cleanedOutput < 80 chars and synthesis returns empty', async () => {
+      // Planning response: only SPAWN markers, no surrounding text (cleanedOutput = '')
+      const spawnOnlyResponse = `[SPAWN:read-only]{"prompt":"List all TypeScript files in src/","model":"haiku","maxTurns":5}[/SPAWN]`;
+
+      // Call 1: Master planning → returns only SPAWN marker (short cleanedOutput)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: spawnOnlyResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      // Call 2: Worker executes the subtask
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Found 42 TypeScript files.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 3: Synthesis — returns empty stdout to trigger status message fallback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-status-short',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement auth',
+        content: 'implement auth',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      expect(response).toContain('Working on your request');
+      expect(response).toContain('dispatching 1 worker(s)');
+      expect(response).toContain('List all TypeScript files in src/');
+    });
+
+    it('returns synthesis response when cleanedOutput >= 80 chars (no status message override)', async () => {
+      // Planning response: SPAWN marker WITH substantial surrounding text (cleanedOutput >= 80 chars)
+      const richPlanningResponse =
+        `I have analysed your request and broken it into the following concrete subtasks for delegation.\n\n` +
+        `[SPAWN:code-edit]{"prompt":"Add OAuth routes to src/routes/auth.ts","model":"sonnet","maxTurns":15}[/SPAWN]`;
+
+      // Call 1: Master planning → returns SPAWN marker with rich text (cleanedOutput >= 80 chars)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: richPlanningResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 400,
+      });
+
+      // Call 2: Worker executes the subtask
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'OAuth routes added successfully.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 500,
+      });
+
+      // Call 3: Synthesis — returns actual content
+      const synthesisResponse =
+        'OAuth login has been implemented. Routes added to src/routes/auth.ts.';
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: synthesisResponse,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const message: InboundMessage = {
+        id: 'msg-status-long',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai implement auth',
+        content: 'implement auth',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // The synthesis response should be used (not the status message)
+      expect(response).toBe(synthesisResponse);
+      expect(response).not.toContain('Working on your request');
+      expect(response).not.toContain('dispatching');
+    });
+
+    // -----------------------------------------------------------------------
     // (4) Quick-answer messages complete in ≤ 3 turns
     // -----------------------------------------------------------------------
     it('quick-answer messages use maxTurns=3', async () => {
