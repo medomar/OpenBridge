@@ -205,6 +205,33 @@ export const EmailConfigSchema = z.object({
   allowlist: z.array(z.string().email()).default([]),
 });
 
+/** Schema for Deep Mode configuration */
+export const DeepConfigSchema = z.object({
+  /**
+   * Execution profile that controls whether and how Deep Mode operates.
+   * - fast:     Skips Deep Mode entirely (default behaviour).
+   * - thorough: Runs all phases automatically without pausing.
+   * - manual:   Pauses between phases and waits for user confirmation.
+   */
+  defaultProfile: z.enum(['fast', 'thorough', 'manual']).default('fast'),
+  /**
+   * Per-phase model tier overrides. When set, each entry replaces the built-in
+   * PHASE_MODEL_MAP default for that phase. Omitted phases use the built-in default.
+   * Tiers: fast (haiku), balanced (sonnet), powerful (opus).
+   */
+  phaseModels: z
+    .object({
+      investigate: z.enum(['fast', 'balanced', 'powerful']).optional(),
+      report: z.enum(['fast', 'balanced', 'powerful']).optional(),
+      plan: z.enum(['fast', 'balanced', 'powerful']).optional(),
+      execute: z.enum(['fast', 'balanced', 'powerful']).optional(),
+      verify: z.enum(['fast', 'balanced', 'powerful']).optional(),
+    })
+    .optional(),
+});
+
+export type DeepConfig = z.infer<typeof DeepConfigSchema>;
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
@@ -214,6 +241,7 @@ export const V2ConfigSchema = z
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
     mcp: MCPConfigSchema.optional(),
+    deep: DeepConfigSchema.optional(),
     security: SecurityConfigSchema.optional(),
     email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
