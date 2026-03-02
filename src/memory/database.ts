@@ -248,6 +248,21 @@ function createSchema(db: Database.Database): void {
     CREATE VIRTUAL TABLE IF NOT EXISTS audit_log_fts
       USING fts5(event, sender, source, recipient, error);
 
+    -- qa_cache: cached Q&A pairs for instant retrieval
+    CREATE TABLE IF NOT EXISTS qa_cache (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      question     TEXT    NOT NULL,
+      answer       TEXT    NOT NULL,
+      confidence   REAL    NOT NULL DEFAULT 0.5,
+      file_paths   TEXT,
+      created_at   TEXT    NOT NULL,
+      accessed_at  TEXT    NOT NULL,
+      access_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS qa_cache_fts
+      USING fts5(question, content=qa_cache, content_rowid=id);
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_type_status   ON tasks(type, status);
     CREATE INDEX IF NOT EXISTS idx_tasks_created       ON tasks(created_at);
@@ -264,5 +279,7 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_event            ON audit_log(event);
     CREATE INDEX IF NOT EXISTS idx_audit_timestamp        ON audit_log(timestamp);
     CREATE INDEX IF NOT EXISTS idx_audit_sender           ON audit_log(sender);
+    CREATE INDEX IF NOT EXISTS idx_qa_cache_created       ON qa_cache(created_at);
+    CREATE INDEX IF NOT EXISTS idx_qa_cache_confidence    ON qa_cache(confidence);
   `);
 }
