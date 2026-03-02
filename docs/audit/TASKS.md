@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 197 | **In Progress:** 0 | **Done:** 64
+> **Pending:** 196 | **In Progress:** 0 | **Done:** 65
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -216,7 +216,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 3   | OB-1361 | Create `QACacheStore` class in `src/memory/qa-cache-store.ts` — CRUD for qa_cache table. Methods: store(), findSimilar() using FTS5 on question column, incrementAccess(), evictStale(maxAge). Add FTS5 virtual table `qa_cache_fts`                                                                                                         | ✅ Done   |
 | 4   | OB-1362 | Wire Q&A cache into KnowledgeRetriever.query() — before searching chunks, check Q&A cache for similar question. If cached answer exists with confidence >= 0.7 and created within 24 hours, return directly and skip chunk search. Increment access_count on cache hit                                                                       | ✅ Done   |
 | 5   | OB-1363 | Add entity extraction utility `extractEntities(text: string)` in knowledge-retriever.ts — uses regex to extract file paths (src/.../\*.ts), function names (function X, const X =), module names (import from). Store as chunk metadata for better search matching                                                                           | ✅ Done   |
-| 6   | OB-1364 | Wire `QACacheStore` into MemoryManager facade in `src/memory/index.ts` — instantiate during init, expose via memoryManager.qaCache. Add periodic eviction of entries older than 7 days                                                                                                                                                       | ◻ Pending |
+| 6   | OB-1364 | Wire `QACacheStore` into MemoryManager facade in `src/memory/index.ts` — instantiate during init, expose via memoryManager.qaCache. Add periodic eviction of entries older than 7 days                                                                                                                                                       | ✅ Done   |
 | 7   | OB-1365 | Add tests in `tests/core/knowledge-retriever.test.ts` and `tests/memory/qa-cache-store.test.ts` — test: (1) storeWorkerResult creates chunk with correct source, (2) Q&A cache hit returns cached answer, (3) cache miss falls through, (4) stale entries evicted, (5) extractEntities finds file paths and function names. At least 5 tests | ◻ Pending |
 | 8   | OB-1366 | Build + lint + typecheck + test validation for Phase 77 — RAG gate. Fix any failures                                                                                                                                                                                                                                                         | ◻ Pending |
 
