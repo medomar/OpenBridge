@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 174 | **In Progress:** 0 | **Done:** 87
+> **Pending:** 173 | **In Progress:** 0 | **Done:** 88
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -268,7 +268,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 1   | OB-1384 | Define risk classification per tool profile in `src/types/agent.ts` — add RiskLevel type (low, medium, high, critical). Add PROFILE_RISK_MAP constant mapping each profile to its risk level: read-only=low, code-audit=low, code-edit=medium, full-access=high, master=critical                                                         | ✅ Done   |
 | 2   | OB-1385 | Add `security.confirmHighRisk` config option to `src/types/config.ts` — boolean, default true. When enabled, Router intercepts SPAWN markers for high/critical risk profiles and sends confirmation prompt                                                                                                                               | ✅ Done   |
 | 3   | OB-1386 | Add confirmation flow to Router in `src/core/router.ts` — after parsing SPAWN markers, check profile risk. If high/critical and confirmHighRisk enabled, send confirmation message to user with profile, risk level, and task summary. Ask user to reply "go" or "skip"                                                                  | ✅ Done   |
-| 4   | OB-1387 | Add confirmation timeout to Router — if no response within 60 seconds, auto-cancel the pending spawn. Send timeout notification. Store pending confirmations in Map with timeout handles                                                                                                                                                 | ◻ Pending |
+| 4   | OB-1387 | Add confirmation timeout to Router — if no response within 60 seconds, auto-cancel the pending spawn. Send timeout notification. Store pending confirmations in Map with timeout handles                                                                                                                                                 | ✅ Done   |
 | 5   | OB-1388 | Add `/confirm` and `/skip` commands to Router — confirm/go approves pending spawn, skip cancels it. Both clear the pending entry. Respond with "No pending confirmation" if nothing queued                                                                                                                                               | ◻ Pending |
 | 6   | OB-1389 | Add cost estimation to `src/core/agent-runner.ts` — estimateCost(profile, maxTurns, modelTier) returns estimated turns, cost string, and time string. Rough per-turn costs: opus ~$0.10, sonnet ~$0.03, haiku ~$0.01. Time: ~10s/turn                                                                                                    | ◻ Pending |
 | 7   | OB-1390 | Show cost estimate in confirmation prompt — include "Estimated: ~N turns, ~$X.XX, ~Y min" from estimateCost(). Helps users make informed decisions                                                                                                                                                                                       | ◻ Pending |

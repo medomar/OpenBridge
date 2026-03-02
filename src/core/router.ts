@@ -114,6 +114,8 @@ export interface PendingSpawnEntry {
   profile: string;
   /** Risk level of the highest-risk marker */
   riskLevel: RiskLevel;
+  /** Auto-cancel timeout handle — cleared when user replies or entry is consumed */
+  timeoutHandle: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -343,6 +345,34 @@ export class Router {
     const firstHighRiskMarker = highRiskMarkers[0]!;
     const summaries = extractTaskSummaries(highRiskMarkers);
 
+    const profileDisplay = firstHighRiskMarker.profile;
+    const riskDisplay = riskLevel.toUpperCase();
+    const taskList = summaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    const confirmText =
+      `⚠️ Confirmation required — ${highRiskMarkers.length} worker(s) with ${riskDisplay} risk` +
+      ` profile (${profileDisplay}):\n\n${taskList}\n\nReply "go" to proceed or "skip" to cancel.`;
+
+    // Set a 60-second auto-cancel timeout. Stored in the entry so it can be cleared on reply.
+    const timeoutHandle = setTimeout(() => {
+      const stillPending = this.pendingSpawnConfirmations.get(sender);
+      if (!stillPending) return;
+      this.pendingSpawnConfirmations.delete(sender);
+
+      const timeoutMsg: OutboundMessage = {
+        target: message.source,
+        recipient: sender,
+        content: '⏱ Confirmation timed out — spawn cancelled. Send your request again to retry.',
+      };
+      connector.sendMessage(timeoutMsg).catch((err: unknown) => {
+        logger.warn({ err, sender }, 'Failed to send spawn confirmation timeout notification');
+      });
+
+      logger.warn(
+        { sender, profile: profileDisplay, riskLevel },
+        'Spawn confirmation timed out — pending entry auto-cancelled',
+      );
+    }, 60_000);
+
     this.pendingSpawnConfirmations.set(sender, {
       markers,
       message,
@@ -350,14 +380,8 @@ export class Router {
       taskSummaries: summaries,
       profile: firstHighRiskMarker.profile,
       riskLevel,
+      timeoutHandle,
     });
-
-    const profileDisplay = firstHighRiskMarker.profile;
-    const riskDisplay = riskLevel.toUpperCase();
-    const taskList = summaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
-    const confirmText =
-      `⚠️ Confirmation required — ${highRiskMarkers.length} worker(s) with ${riskDisplay} risk` +
-      ` profile (${profileDisplay}):\n\n${taskList}\n\nReply "go" to proceed or "skip" to cancel.`;
 
     const confirmMsg: OutboundMessage = {
       target: message.source,
@@ -376,12 +400,16 @@ export class Router {
 
   /**
    * Retrieve and remove the pending spawn confirmation entry for a sender.
+   * Clears the auto-cancel timeout so it does not fire after the user has replied.
    * Returns `undefined` if no confirmation is pending for that sender.
    * Used by the /confirm and /skip command handlers (OB-1388).
    */
   public takePendingSpawnConfirmation(sender: string): PendingSpawnEntry | undefined {
     const entry = this.pendingSpawnConfirmations.get(sender);
-    this.pendingSpawnConfirmations.delete(sender);
+    if (entry) {
+      clearTimeout(entry.timeoutHandle);
+      this.pendingSpawnConfirmations.delete(sender);
+    }
     return entry;
   }
 
