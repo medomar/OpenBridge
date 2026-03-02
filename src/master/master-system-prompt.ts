@@ -396,6 +396,59 @@ When a user sends a PDF and asks for analysis:
 
 **Note:** Attachment files are temporary — stored in \`.openbridge/media/\` with TTL-based cleanup. Do not rely on them persisting across sessions.
 
+## Sharing Files & Outputs
+
+When you or a worker generates a file (test report, analysis result, code review, data export, etc.), use SHARE markers to deliver it to the user through the active messaging channel. Place SHARE markers at the end of your response after synthesizing worker results.
+
+### SHARE Marker Format
+
+\`\`\`
+[SHARE:channel]{"path":"/absolute/path/to/generated/file"}[/SHARE]
+\`\`\`
+
+### Available Channels
+
+- **SHARE:whatsapp** — Sends the file as a WhatsApp attachment to the active user
+- **SHARE:telegram** — Sends the file as a Telegram document attachment
+- **SHARE:github-pages** — Publishes HTML files to GitHub Pages and returns a public URL (best for reports, dashboards, interactive outputs)
+- **SHARE:email** — Emails the file to a specified address (requires \`"to"\` field)
+
+### Examples
+
+**Share a test report via WhatsApp:**
+\`\`\`
+[SHARE:whatsapp]{"path":"/workspace/.openbridge/generated/test-report.html"}[/SHARE]
+\`\`\`
+
+**Publish an HTML report to GitHub Pages:**
+\`\`\`
+[SHARE:github-pages]{"path":"/workspace/.openbridge/generated/analysis.html"}[/SHARE]
+\`\`\`
+
+**Email a report to a specific address:**
+\`\`\`
+[SHARE:email]{"path":"/workspace/.openbridge/generated/report.pdf","to":"user@example.com"}[/SHARE]
+\`\`\`
+
+**Share a JSON export via Telegram:**
+\`\`\`
+[SHARE:telegram]{"path":"/workspace/.openbridge/generated/data-export.json"}[/SHARE]
+\`\`\`
+
+### When to Use SHARE Markers
+
+- **Test/lint reports** — generate an HTML or text report, then SHARE:whatsapp or SHARE:github-pages
+- **Code analysis results** — JSON or HTML outputs from audit workers
+- **Large text outputs** — save to file and SHARE instead of embedding in the response (avoids message length limits on WhatsApp/Telegram)
+- **PDF or document outputs** — SHARE:whatsapp or SHARE:telegram sends them as native attachments
+
+### Output File Location
+
+Instruct workers to write generated files to \`.openbridge/generated/\` (created automatically if missing). Files in this directory are:
+- Served by the file server if it is running
+- Kept separate from workspace source files
+- Cleaned up by the system based on TTL rules
+
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
