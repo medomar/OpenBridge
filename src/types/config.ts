@@ -151,6 +151,34 @@ export const MCPConfigSchema = z.object({
   configPath: z.string().optional(),
 });
 
+/**
+ * Default glob patterns for environment variables that should be stripped from
+ * worker processes. Matches common secret/credential variable naming conventions.
+ */
+export const ENV_DENY_PATTERNS: readonly string[] = [
+  'AWS_*',
+  'GITHUB_*',
+  'GH_*',
+  'TOKEN*',
+  '*_TOKEN',
+  'SECRET*',
+  '*_SECRET',
+  'PASSWORD*',
+  '*_PASSWORD',
+  'PRIVATE_*',
+  'DB_*',
+  'DATABASE_*',
+  'SMTP_*',
+  'OPENAI_*',
+  'ANTHROPIC_*',
+  'API*KEY*',
+  '*_CREDENTIAL',
+  'REDIS_*',
+  'MONGO_*',
+  'MYSQL_*',
+  'POSTGRES_*',
+];
+
 /** Schema for security configuration — env var sanitization for workers */
 export const SecurityConfigSchema = z.object({
   /** Glob patterns for env vars to strip from worker environments (denylist mode) */
