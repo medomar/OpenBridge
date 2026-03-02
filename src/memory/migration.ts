@@ -133,6 +133,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 6,
+    description: 'Add execution_profile column to access_control',
+    apply: (db): void => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('access_control') WHERE name='execution_profile'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec(`ALTER TABLE access_control ADD COLUMN execution_profile TEXT DEFAULT 'fast'`);
+      }
+    },
+  },
 ];
 
 /**

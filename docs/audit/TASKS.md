@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 134 | **In Progress:** 0 | **Done:** 38 (112 archived)
+> **Pending:** 133 | **In Progress:** 0 | **Done:** 39 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -161,7 +161,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                              | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 31  | OB-1427 | Add per-user execution profile preferences to `src/memory/access-store.ts` — extend access entry with executionProfile: ExecutionProfile (default: fast). Persists across sessions                       | ◻ Pending |
+| 31  | OB-1427 | Add per-user execution profile preferences to `src/memory/access-store.ts` — extend access entry with executionProfile: ExecutionProfile (default: fast). Persists across sessions                       | ✅ Done   |
 | 32  | OB-1428 | Add per-user model preferences to access-store — extend with modelPreferences: Record per DeepPhase. Users can override default model for each phase. Persists across sessions                           | ◻ Pending |
 | 33  | OB-1429 | Add Deep Mode documentation to Master system prompt — explain when to suggest Deep Mode: "For complex tasks (audits, reviews, large refactors), suggest Deep Mode to users" with example suggestion text | ◻ Pending |
 | 34  | OB-1430 | Add Deep Mode to `/help` command output — include /deep, /proceed, /focus N, /skip N, /phase commands with brief descriptions                                                                            | ◻ Pending |
