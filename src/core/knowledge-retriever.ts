@@ -428,6 +428,40 @@ export class KnowledgeRetriever {
   }
 
   /**
+   * Store a worker's read result as a new chunk in the workspace knowledge
+   * base. The chunk is tagged with source `'worker-read'` via `source_hash`
+   * and embeds the originating question and file paths as a metadata header so
+   * future FTS5 searches can surface the answer without re-spawning a worker.
+   *
+   * OB-1359
+   */
+  async storeWorkerResult(
+    workerOutput: string,
+    question: string,
+    filePaths: string[],
+  ): Promise<void> {
+    if (!workerOutput.trim()) return;
+
+    const metaLines: string[] = [];
+    if (question) metaLines.push(`Q: ${question}`);
+    if (filePaths.length > 0) metaLines.push(`Files: ${filePaths.join(', ')}`);
+
+    const content =
+      metaLines.length > 0 ? `${metaLines.join('\n')}\n---\n${workerOutput}` : workerOutput;
+
+    const scope = filePaths[0] ?? 'worker-read';
+
+    await this.memoryManager.storeChunks([
+      {
+        scope,
+        category: 'patterns',
+        content,
+        source_hash: 'worker-read',
+      },
+    ]);
+  }
+
+  /**
    * Query the local knowledge store for information relevant to the given
    * question.  Returns a {@link KnowledgeResult} with matched chunks, a
    * confidence score, and the source types that contributed results.
