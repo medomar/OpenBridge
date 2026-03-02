@@ -1,8 +1,9 @@
 import * as fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { AppConfig, EmailConfig, MCPServer } from '../types/config.js';
-import { V2ConfigSchema } from '../types/config.js';
+import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
+import { V2ConfigSchema, ENV_DENY_PATTERNS } from '../types/config.js';
+import { warnAboutExposedSecrets } from './env-sanitizer.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
@@ -40,6 +41,8 @@ export interface BridgeOptions {
   workspacePath?: string;
   /** MCP server registry — when provided, exposed via getMcpRegistry() and wired to connectors */
   mcpRegistry?: McpRegistry;
+  /** Security config — controls which env vars are stripped from worker processes */
+  securityConfig?: SecurityConfig;
 }
 
 export class Bridge {
@@ -58,6 +61,7 @@ export class Bridge {
   private master: MasterManager | null = null;
   private memory: MemoryManager | null = null;
   private mcpRegistry: McpRegistry | null = null;
+  private readonly securityConfig: SecurityConfig | undefined;
   private fileServer: FileServer | null = null;
   private readonly workspacePath: string | undefined;
   private readonly connectors: Connector[] = [];
@@ -96,6 +100,8 @@ export class Bridge {
     if (options?.mcpRegistry) {
       this.mcpRegistry = options.mcpRegistry;
     }
+
+    this.securityConfig = options?.securityConfig;
   }
 
   /** Register built-in and external plugins before starting */
@@ -144,6 +150,10 @@ export class Bridge {
   /** Start the bridge: initialize all connectors and providers, begin processing */
   async start(): Promise<void> {
     logger.info('Starting OpenBridge...');
+
+    // Scan process.env for secret patterns and warn operators about variables that will be stripped
+    const denyPatterns = this.securityConfig?.envDenyPatterns ?? [...ENV_DENY_PATTERNS];
+    warnAboutExposedSecrets(process.env, denyPatterns);
 
     // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
     if (this.memory) {

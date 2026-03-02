@@ -202,6 +202,7 @@ async function startV2Flow(
     configPath,
     workspacePath: resolvedWorkspacePath,
     mcpRegistry,
+    securityConfig: v2Config.security,
   });
 
   // Register built-in plugins
