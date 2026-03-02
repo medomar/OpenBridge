@@ -8,6 +8,7 @@ import {
   TOOLS_READ_ONLY,
   TOOLS_CODE_EDIT,
   TOOLS_FULL,
+  TOOLS_CODE_AUDIT,
   DEFAULT_MAX_TURNS_EXPLORATION,
   DEFAULT_MAX_TURNS_TASK,
   MODEL_ALIASES,
@@ -18,6 +19,7 @@ import {
   classifyError,
   getNextFallbackModel,
   resolveProfile,
+  resolveTools,
   manifestToSpawnOptions,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
@@ -1428,6 +1430,53 @@ describe('resolveProfile', () => {
 
   it('returns undefined when custom profiles are empty and name is unknown', () => {
     expect(resolveProfile('nonexistent', {})).toBeUndefined();
+  });
+});
+
+// ── resolveTools ────────────────────────────────────────────────────
+
+describe('resolveTools', () => {
+  it('resolves "code-audit" to the TOOLS_CODE_AUDIT array', () => {
+    expect(resolveTools('code-audit')).toEqual([...TOOLS_CODE_AUDIT]);
+  });
+
+  it('code-audit tool list includes Bash(npm:test) but not Bash(*), Write, or Edit', () => {
+    const tools = resolveTools('code-audit');
+    expect(tools).toContain('Bash(npm:test)');
+    expect(tools).not.toContain('Bash(*)');
+    expect(tools).not.toContain('Write');
+    expect(tools).not.toContain('Edit');
+  });
+
+  it('"code-audit" is recognized in BUILT_IN_PROFILES', () => {
+    expect(BUILT_IN_PROFILES['code-audit']).toBeDefined();
+    expect(BUILT_IN_PROFILES['code-audit'].name).toBe('code-audit');
+    expect(BUILT_IN_PROFILES['code-audit'].tools).toContain('Bash(npm:test)');
+  });
+
+  it('resolves "read-only" to TOOLS_READ_ONLY', () => {
+    expect(resolveTools('read-only')).toEqual([...TOOLS_READ_ONLY]);
+  });
+
+  it('resolves "full-access" to TOOLS_FULL', () => {
+    expect(resolveTools('full-access')).toEqual([...TOOLS_FULL]);
+  });
+
+  it('returns undefined for an unknown profile name', () => {
+    expect(resolveTools('nonexistent')).toBeUndefined();
+  });
+
+  it('resolves code-audit via manifestToSpawnOptions with profile field', async () => {
+    const { spawnOptions: opts } = await manifestToSpawnOptions({
+      prompt: 'run tests',
+      workspacePath: '/tmp/project',
+      profile: 'code-audit',
+    });
+    expect(opts.allowedTools).toEqual([...TOOLS_CODE_AUDIT]);
+    expect(opts.allowedTools).toContain('Bash(npm:test)');
+    expect(opts.allowedTools).not.toContain('Write');
+    expect(opts.allowedTools).not.toContain('Edit');
+    expect(opts.allowedTools).not.toContain('Bash(*)');
   });
 });
 
