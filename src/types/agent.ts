@@ -207,7 +207,13 @@ export const ToolProfileSchema = z.object({
 });
 
 /** Built-in profile names that ship with OpenBridge */
-export const BuiltInProfileNameSchema = z.enum(['read-only', 'code-edit', 'full-access', 'master']);
+export const BuiltInProfileNameSchema = z.enum([
+  'read-only',
+  'code-edit',
+  'full-access',
+  'master',
+  'code-audit',
+]);
 
 /**
  * Built-in tool profiles.
@@ -240,6 +246,24 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
     description:
       'Master AI profile — file management for .openbridge/ but no Bash (delegates execution to workers)',
     tools: ['Read', 'Glob', 'Grep', 'Write', 'Edit'],
+  },
+  'code-audit': {
+    name: 'code-audit',
+    description: 'Read files and run test/lint/typecheck commands — no file modifications',
+    tools: [
+      'Read',
+      'Glob',
+      'Grep',
+      'Bash(npm:test)',
+      'Bash(npm:run:lint)',
+      'Bash(npm:run:typecheck)',
+      'Bash(npx:vitest:*)',
+      'Bash(npx:eslint:*)',
+      'Bash(npx:tsc:*)',
+      'Bash(npm:run:test:*)',
+      'Bash(pytest:*)',
+      'Bash(cargo:test)',
+    ],
   },
 };
 
