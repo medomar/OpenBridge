@@ -391,6 +391,15 @@ export class MemoryManager {
   // Context chunk direct lookup (chunk-store.ts — OB-711)
   // -------------------------------------------------------------------------
 
+  /** Count all non-stale chunks in the DB (OB-1569). */
+  countChunks(): Promise<number> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    const row = this.db
+      .prepare('SELECT COUNT(*) as cnt FROM context_chunks WHERE stale = 0')
+      .get() as { cnt: number };
+    return Promise.resolve(row.cnt);
+  }
+
   getChunksByScope(scope: string, category?: string): Promise<Chunk[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     let query = 'SELECT * FROM context_chunks WHERE scope = ? AND stale = 0';
