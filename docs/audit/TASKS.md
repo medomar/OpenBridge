@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 137 | **In Progress:** 0 | **Done:** 35 (112 archived)
+> **Pending:** 136 | **In Progress:** 0 | **Done:** 36 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (26/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (27/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -153,7 +153,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ✅ Done   |
 | 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ✅ Done   |
 | 27  | OB-1423 | Add parallel execution in execute phase — when plan defines independent tasks (no dependencies), spawn multiple workers simultaneously. Respect WorkerRegistry concurrency limit. Collect all results before advancing to verify                                                                                            | ✅ Done   |
-| 28  | OB-1424 | Add Deep Mode result aggregation — after all phases, compile final summary: phases completed, findings count, tasks executed, test results, executive summary. Send as final response                                                                                                                                       | ◻ Pending |
+| 28  | OB-1424 | Add Deep Mode result aggregation — after all phases, compile final summary: phases completed, findings count, tasks executed, test results, executive summary. Send as final response                                                                                                                                       | ✅ Done   |
 | 29  | OB-1425 | Add Deep Mode history persistence — store complete session in .openbridge/deep-mode/session-{timestamp}.json with all phase results, decisions, skipped items. Provides review and prompt evolution training data                                                                                                           | ◻ Pending |
 | 30  | OB-1426 | Add tests in `tests/master/deep-mode.test.ts` — test: (1) investigation prompt includes task context, (2) report receives investigation results, (3) plan receives report, (4) execute spawns per plan, (5) verify runs checks, (6) parallel execution respects limits, (7) final summary includes counts. At least 7 tests | ◻ Pending |
 
