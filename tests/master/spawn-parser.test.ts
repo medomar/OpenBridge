@@ -279,6 +279,56 @@ After marker.`;
     });
   });
 
+  describe('code-audit profile', () => {
+    it('correctly parses a SPAWN marker with profile code-audit and preserves the profile name', () => {
+      const output = `[SPAWN:code-audit]{"prompt":"Run the test suite and report failures","model":"sonnet","maxTurns":15}[/SPAWN]`;
+
+      const result = parseSpawnMarkers(output);
+
+      expect(result.markers).toHaveLength(1);
+      expect(result.markers[0]!.profile).toBe('code-audit');
+      expect(result.markers[0]!.body.prompt).toBe('Run the test suite and report failures');
+      expect(result.markers[0]!.body.model).toBe('sonnet');
+      expect(result.markers[0]!.body.maxTurns).toBe(15);
+    });
+
+    it('strips a code-audit SPAWN marker from cleanedOutput', () => {
+      const output = `Analyzing your project.\n\n[SPAWN:code-audit]{"prompt":"Run npm test and report failures"}[/SPAWN]\n\nResults incoming.`;
+
+      const result = parseSpawnMarkers(output);
+
+      expect(result.cleanedOutput).not.toContain('[SPAWN:code-audit]');
+      expect(result.cleanedOutput).not.toContain('[/SPAWN]');
+      expect(result.cleanedOutput).toContain('Analyzing your project.');
+    });
+
+    it('parses an unknown profile without crashing — parser accepts any valid profile name', () => {
+      const output = `[SPAWN:totally-custom-profile-xyz]{"prompt":"Do custom work"}[/SPAWN]`;
+
+      const result = parseSpawnMarkers(output);
+
+      // The parser is profile-agnostic: unknown profiles are parsed successfully.
+      // Profile validation (and warnings for unresolved profiles) happen downstream
+      // in resolveTools(), not in the spawn parser itself.
+      expect(result.markers).toHaveLength(1);
+      expect(result.markers[0]!.profile).toBe('totally-custom-profile-xyz');
+      expect(result.markers[0]!.body.prompt).toBe('Do custom work');
+    });
+
+    it('extractTaskSummaries produces correct fallback for code-audit profile with empty prompt', () => {
+      const marker: ParsedSpawnMarker = {
+        profile: 'code-audit',
+        body: { prompt: '   ' },
+        rawMatch: '[SPAWN:code-audit]{"prompt":"   "}[/SPAWN]',
+      };
+
+      const summaries = extractTaskSummaries([marker]);
+
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]).toBe('Task via code-audit profile');
+    });
+  });
+
   describe('hasSpawnMarkers', () => {
     it('should return true when SPAWN markers are present', () => {
       const output = `Some text [SPAWN:read-only]{"prompt":"test"}[/SPAWN] more text`;
