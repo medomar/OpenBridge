@@ -2445,6 +2445,16 @@ export class MasterManager {
       'redesign',
       'migrate',
       'overhaul',
+      // Execution / delegation keywords — trigger complex-task instead of tool-use
+      'execute',
+      'start',
+      'proceed',
+      'begin',
+      'launch',
+      'run tasks',
+      'start execution',
+      'execute group',
+      'start group',
     ];
     // Word-boundary keywords — must match as whole words (e.g. "architect" not "architecture")
     const complexWordBoundary = [/\barchitect\b/];
