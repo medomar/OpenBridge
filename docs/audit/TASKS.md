@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 211 | **In Progress:** 0 | **Done:** 50
+> **Pending:** 210 | **In Progress:** 0 | **Done:** 51
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -184,7 +184,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 4   | OB-1347 | Add `codebase-question` RAG guidance to Master system prompt in `src/master/master-system-prompt.ts` — instructions: "When you see a Pre-fetched Knowledge section, use it to answer directly if confidence is high enough. Only spawn a read-only worker if pre-fetched knowledge does not cover the question." | ✅ Done   |
 | 5   | OB-1348 | Add knowledge retrieval logging — in processMessage(), after RAG query, log at info level: question substring, confidence, chunk count, sources. Log at debug level when confidence < 0.3: "Low confidence, worker may be needed"                                                                                | ✅ Done   |
 | 6   | OB-1349 | Add RAG bypass for non-question task classes — only run knowledge retriever for `codebase-question` and `tool-use` task classes. Skip for `complex-task`, `general-chat`, and other classes where Master needs to plan and delegate                                                                              | ✅ Done   |
-| 7   | OB-1350 | Add tests for context injection in `tests/master/master-manager.test.ts` — test: (1) codebase-question triggers retrieval, (2) high-confidence injects context, (3) low-confidence does not inject, (4) complex-task does not trigger retrieval, (5) setKnowledgeRetriever stores correctly. At least 5 tests    | ◻ Pending |
+| 7   | OB-1350 | Add tests for context injection in `tests/master/master-manager.test.ts` — test: (1) codebase-question triggers retrieval, (2) high-confidence injects context, (3) low-confidence does not inject, (4) complex-task does not trigger retrieval, (5) setKnowledgeRetriever stores correctly. At least 5 tests    | ✅ Done   |
 | 8   | OB-1351 | Build + lint + typecheck + test validation for Phase 75 — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures                                                                                                                                                             | ◻ Pending |
 
 ---
