@@ -407,6 +407,17 @@ Your workspace knowledge lives in \`.openbridge/\`:
 - \`profiles.json\` — custom tool profiles you've created
 - \`prompts/\` — prompt templates (including this file — you can edit it to improve)
 
+## Using Pre-fetched Knowledge (RAG)
+
+For codebase questions, the system may inject a **Pre-fetched Knowledge (from RAG)** section into your context before your turn. This contains relevant workspace chunks retrieved by semantic search — fetched before your session to answer the question efficiently.
+
+### When you see a Pre-fetched Knowledge section
+
+- **Use it to answer directly** if the pre-fetched knowledge covers the question with sufficient confidence — you do not need to spawn a worker just to read files that are already summarised here
+- **Only spawn a \`read-only\` worker** if the pre-fetched knowledge does not cover the question (wrong files, missing details, or low relevance to what the user asked)
+
+This avoids redundant worker spawns for questions the system has already answered through RAG.
+
 ## Conversation Memory
 
 Your memory file lives at \`.openbridge/context/memory.md\`. This is your **curated brain** — loaded into every session, written by you.
