@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 202 | **In Progress:** 0 | **Done:** 59
+> **Pending:** 201 | **In Progress:** 0 | **Done:** 60
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -211,7 +211,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1359 | Add `storeWorkerResult(workerOutput: string, question: string, filePaths: string[])` to `KnowledgeRetriever` — stores worker output as new chunk in workspace_chunks with `source: 'worker-read'` and metadata containing question and filePaths. Enriches chunk store for future instant answers                                            | ◻ Pending |
+| 1   | OB-1359 | Add `storeWorkerResult(workerOutput: string, question: string, filePaths: string[])` to `KnowledgeRetriever` — stores worker output as new chunk in workspace_chunks with `source: 'worker-read'` and metadata containing question and filePaths. Enriches chunk store for future instant answers                                            | ✅ Done   |
 | 2   | OB-1360 | Add `qa_cache` table to SQLite schema in `src/memory/database.ts` — columns: id, question (TEXT), answer (TEXT), confidence (REAL), file_paths (JSON), created_at, accessed_at, access_count (INTEGER). Add migration for the new table                                                                                                      | ◻ Pending |
 | 3   | OB-1361 | Create `QACacheStore` class in `src/memory/qa-cache-store.ts` — CRUD for qa_cache table. Methods: store(), findSimilar() using FTS5 on question column, incrementAccess(), evictStale(maxAge). Add FTS5 virtual table `qa_cache_fts`                                                                                                         | ◻ Pending |
 | 4   | OB-1362 | Wire Q&A cache into KnowledgeRetriever.query() — before searching chunks, check Q&A cache for similar question. If cached answer exists with confidence >= 0.7 and created within 24 hours, return directly and skip chunk search. Increment access_count on cache hit                                                                       | ◻ Pending |
