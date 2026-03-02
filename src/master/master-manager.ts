@@ -2458,9 +2458,19 @@ export class MasterManager {
     ];
     // Word-boundary keywords — must match as whole words (e.g. "architect" not "architecture")
     const complexWordBoundary = [/\barchitect\b/];
+    // Delegation phrase patterns — multi-word phrases common in delegation requests
+    // e.g. "start the execution", "execute group A", "begin task 5", "run the workers"
+    const delegationPhrases = [
+      /\bstart\s+the\s+\w+/,
+      /\bexecute\s+\w+/,
+      /\bbegin\s+\w+/,
+      /\blaunch\s+\w+/,
+      /\brun\s+the\s+\w+/,
+    ];
     if (
       complexKeywords.some((kw) => lower.includes(kw)) ||
-      complexWordBoundary.some((re) => re.test(lower))
+      complexWordBoundary.some((re) => re.test(lower)) ||
+      delegationPhrases.some((re) => re.test(lower))
     ) {
       return {
         class: 'complex-task',
