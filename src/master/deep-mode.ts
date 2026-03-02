@@ -15,6 +15,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import type { ModelTier } from '../core/model-registry.js';
 import { createLogger } from '../core/logger.js';
@@ -1195,7 +1197,72 @@ export class DeepModeManager {
       'Deep Mode final summary compiled',
     );
 
+    // Persist session history as a fire-and-forget side effect
+    this.persistSession(sessionId, summary, resolvedState).catch((err: unknown) => {
+      logger.warn({ sessionId, err }, 'Deep Mode session persist failed (background)');
+    });
+
     return summary;
+  }
+
+  // ── Session History Persistence ────────────────────────────────
+
+  /**
+   * Persist a completed Deep Mode session to `.openbridge/deep-mode/session-{timestamp}.json`.
+   *
+   * The session file captures all phase results, decisions, and skipped items for
+   * later review and prompt evolution training. Writing is best-effort — failures
+   * are logged but never thrown to callers.
+   *
+   * @param sessionId  Session identifier (used for logging only when state is provided).
+   * @param summary    The final summary produced by compileFinalSummary().
+   * @param state      The resolved session state (may come from outside the sessions map).
+   */
+  async persistSession(
+    sessionId: string,
+    summary: DeepModeFinalSummary,
+    state?: Readonly<DeepModeState>,
+  ): Promise<void> {
+    const resolvedState = state ?? this.sessions.get(sessionId);
+    if (!resolvedState) {
+      logger.warn({ sessionId }, 'persistSession() called on unknown session');
+      return;
+    }
+
+    // Build a filename-safe timestamp from the session start time
+    // e.g. "2026-03-02T14-30-05" → "session-2026-03-02_14-30-05.json"
+    const timestamp = resolvedState.startedAt
+      .replace(/\.\d{3}Z$/, '') // strip milliseconds + Z
+      .replace('T', '_')
+      .replace(/:/g, '-');
+
+    const deepModeDir = path.join(this.host.workspacePath, '.openbridge', 'deep-mode');
+    const filePath = path.join(deepModeDir, `session-${timestamp}.json`);
+
+    const record = {
+      sessionId: resolvedState.sessionId,
+      profile: resolvedState.profile,
+      taskSummary: resolvedState.taskSummary,
+      startedAt: resolvedState.startedAt,
+      completedAt: summary.completedAt,
+      phasesCompleted: summary.phasesCompleted,
+      completedPhaseNames: summary.completedPhaseNames,
+      findingsCount: summary.findingsCount,
+      tasksExecuted: summary.tasksExecuted,
+      tasksSkipped: summary.tasksSkipped,
+      testVerdict: summary.testVerdict,
+      executiveSummary: summary.executiveSummary,
+      skippedItems: resolvedState.skippedItems,
+      phaseResults: resolvedState.phaseResults,
+    };
+
+    try {
+      await fs.mkdir(deepModeDir, { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(record, null, 2), 'utf8');
+      logger.info({ sessionId, filePath }, 'Deep Mode session persisted');
+    } catch (err) {
+      logger.warn({ sessionId, filePath, err }, 'Deep Mode session persist failed');
+    }
   }
 
   // ── Phase Worker Prompt Builder ────────────────────────────────
