@@ -321,10 +321,10 @@ describe('CodexAdapter.buildSpawnConfig', () => {
 // ── cleanEnv ────────────────────────────────────────────────────────
 
 describe('CodexAdapter.cleanEnv', () => {
-  it('preserves OPENAI_API_KEY', () => {
+  it('strips OPENAI_API_KEY (matches OPENAI_* deny pattern)', () => {
     const env = { OPENAI_API_KEY: 'sk-test', CLAUDECODE: '1' };
     const cleaned = adapter.cleanEnv(env);
-    expect(cleaned.OPENAI_API_KEY).toBe('sk-test');
+    expect(cleaned.OPENAI_API_KEY).toBeUndefined();
     expect(cleaned.CLAUDECODE).toBeUndefined();
   });
 

@@ -35,8 +35,13 @@ import type { CLIAdapter, CLISpawnConfig, CapabilityLevel } from '../cli-adapter
 import type { SpawnOptions } from '../agent-runner.js';
 import { sanitizePrompt } from '../agent-runner.js';
 import { createLogger } from '../logger.js';
+import { sanitizeEnv } from '../env-sanitizer.js';
+import { SecurityConfigSchema } from '../../types/config.js';
+import type { SecurityConfig } from '../../types/config.js';
 
 const logger = createLogger('codex-adapter');
+
+const DEFAULT_SECURITY_CONFIG: SecurityConfig = SecurityConfigSchema.parse({});
 
 /**
  * Extract the final message content from Codex `--json` JSONL output.
@@ -77,6 +82,11 @@ const CAPABILITY_TO_SANDBOX: Record<CapabilityLevel, string> = {
 
 export class CodexAdapter implements CLIAdapter {
   readonly name = 'codex';
+  private readonly securityConfig: SecurityConfig;
+
+  constructor(securityConfig?: SecurityConfig) {
+    this.securityConfig = securityConfig ?? DEFAULT_SECURITY_CONFIG;
+  }
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
     // Codex CLI supports multiple auth methods:
@@ -196,7 +206,7 @@ export class CodexAdapter implements CLIAdapter {
         delete cleaned[key];
       }
     }
-    return cleaned;
+    return sanitizeEnv(cleaned, this.securityConfig);
   }
 
   mapCapabilityLevel(_level: CapabilityLevel): string[] | undefined {
