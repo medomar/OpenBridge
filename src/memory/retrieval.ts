@@ -158,6 +158,43 @@ export async function rerank(
 // ---------------------------------------------------------------------------
 
 /**
+ * Fetch the most recent chunks ordered by updated_at descending.
+ * Used as a fallback when the FTS5 query is empty (e.g. query is all stop words
+ * or special characters that sanitize away to nothing).
+ */
+function recentChunksFallback(
+  db: Database.Database,
+  options: SearchOptions = {},
+  fallbackLimit = 20,
+): Chunk[] {
+  const { scope, category, excludeStale = true } = options;
+
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (excludeStale) conditions.push('stale = 0');
+  if (scope !== undefined) {
+    conditions.push('scope LIKE ?');
+    params.push(`${scope}%`);
+  }
+  if (category !== undefined) {
+    conditions.push('category = ?');
+    params.push(category);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const sql = `
+    SELECT id, scope, category, content, source_hash, created_at, updated_at, stale
+    FROM context_chunks
+    ${whereClause}
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `;
+
+  return (db.prepare(sql).all(...params, fallbackLimit) as ChunkRow[]).map(rowToChunk);
+}
+
+/**
  * Hybrid search over context chunks using FTS5 full-text search combined with
  * metadata filters and BM25 ranking.
  *
@@ -167,6 +204,10 @@ export async function rerank(
  *   3. BM25 ordering — SQLite's built-in ranking (lower rank = more relevant)
  *   4. AI reranking (optional, Layer 4) — enabled via options.rerank when > 10 results
  *
+ * When the sanitized FTS5 query is empty (all tokens are special characters or
+ * the original query is blank), falls back to the 20 most recently updated
+ * chunks so callers always receive something useful.
+ *
  * @param agentRunner Optional AgentRunner for AI reranking (required when options.rerank is true)
  */
 export async function hybridSearch(
@@ -175,7 +216,15 @@ export async function hybridSearch(
   options: SearchOptions = {},
   agentRunner?: AgentRunner,
 ): Promise<Chunk[]> {
-  if (!query.trim()) return [];
+  // Sanitize the query for FTS5 MATCH — user prompts may contain special FTS5
+  // operators (?, *, ^, etc.) that cause SQLITE_ERROR if passed through raw.
+  const sanitized = query.trim() ? sanitizeFts5Query(query) : '';
+
+  // If the sanitized query is empty, fall back to recent chunks by timestamp
+  // so callers always receive context rather than an empty array.
+  if (!sanitized) {
+    return recentChunksFallback(db, options);
+  }
 
   const { scope, category, limit = 10, excludeStale = true } = options;
 
@@ -212,11 +261,6 @@ export async function hybridSearch(
     ORDER BY fts.bm25_rank
     LIMIT ?
   `;
-
-  // Sanitize the query for FTS5 MATCH — user prompts may contain special FTS5
-  // operators (?, *, ^, etc.) that cause SQLITE_ERROR if passed through raw.
-  const sanitized = sanitizeFts5Query(query);
-  if (!sanitized) return [];
 
   const rows = db.prepare(sql).all(sanitized, ...extraParams, limit) as ChunkRow[];
   const chunks = rows.map(rowToChunk);
