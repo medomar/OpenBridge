@@ -185,6 +185,12 @@ export const SecurityConfigSchema = z.object({
   envDenyPatterns: z.array(z.string()).default([...ENV_DENY_PATTERNS]),
   /** Glob patterns for env vars to always allow even if matched by deny list (e.g. GITHUB_ACTIONS for CI) */
   envAllowPatterns: z.array(z.string()).default([]),
+  /**
+   * When true, Router intercepts SPAWN markers for high/critical risk profiles
+   * and sends a confirmation prompt to the user before dispatching the worker.
+   * Default: true (require confirmation for high-risk operations).
+   */
+  confirmHighRisk: z.boolean().default(true),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;

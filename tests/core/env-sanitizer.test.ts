@@ -5,11 +5,16 @@ import { ENV_DENY_PATTERNS } from '../../src/types/config.js';
 
 // Helper to build a SecurityConfig with defaults matching the schema defaults
 function makeConfig(
-  overrides: Partial<{ envDenyPatterns: string[]; envAllowPatterns: string[] }> = {},
+  overrides: Partial<{
+    envDenyPatterns: string[];
+    envAllowPatterns: string[];
+    confirmHighRisk: boolean;
+  }> = {},
 ): SecurityConfig {
   return {
     envDenyPatterns: overrides.envDenyPatterns ?? [...ENV_DENY_PATTERNS],
     envAllowPatterns: overrides.envAllowPatterns ?? [],
+    confirmHighRisk: overrides.confirmHighRisk ?? true,
   };
 }
 

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 176 | **In Progress:** 0 | **Done:** 85
+> **Pending:** 175 | **In Progress:** 0 | **Done:** 86
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -266,7 +266,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                              | Status    |
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1384 | Define risk classification per tool profile in `src/types/agent.ts` — add RiskLevel type (low, medium, high, critical). Add PROFILE_RISK_MAP constant mapping each profile to its risk level: read-only=low, code-audit=low, code-edit=medium, full-access=high, master=critical                                                         | ✅ Done   |
-| 2   | OB-1385 | Add `security.confirmHighRisk` config option to `src/types/config.ts` — boolean, default true. When enabled, Router intercepts SPAWN markers for high/critical risk profiles and sends confirmation prompt                                                                                                                               | ◻ Pending |
+| 2   | OB-1385 | Add `security.confirmHighRisk` config option to `src/types/config.ts` — boolean, default true. When enabled, Router intercepts SPAWN markers for high/critical risk profiles and sends confirmation prompt                                                                                                                               | ✅ Done   |
 | 3   | OB-1386 | Add confirmation flow to Router in `src/core/router.ts` — after parsing SPAWN markers, check profile risk. If high/critical and confirmHighRisk enabled, send confirmation message to user with profile, risk level, and task summary. Ask user to reply "go" or "skip"                                                                  | ◻ Pending |
 | 4   | OB-1387 | Add confirmation timeout to Router — if no response within 60 seconds, auto-cancel the pending spawn. Send timeout notification. Store pending confirmations in Map with timeout handles                                                                                                                                                 | ◻ Pending |
 | 5   | OB-1388 | Add `/confirm` and `/skip` commands to Router — confirm/go approves pending spawn, skip cancels it. Both clear the pending entry. Respond with "No pending confirmation" if nothing queued                                                                                                                                               | ◻ Pending |
