@@ -693,6 +693,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/proceed" command — advances to next Deep Mode phase (OB-1408)
+    if (/^\/proceed(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleProceedCommand(message, connector);
+      return;
+    }
+
     // Checkpoint-handle-resume cycle for urgent messages.
     // When a priority-1 message was flagged by the queue (sender had a message in flight when
     // this arrived), checkpoint session state before processing so that:
@@ -1876,6 +1882,78 @@ export class Router {
       { sender: message.sender, sessionId, profile: effectiveProfile },
       'Deep Mode activated via /deep command',
     );
+  }
+
+  /**
+   * Handle the built-in "/proceed" command — advances to the next Deep Mode phase.
+   *
+   * Behaviour per profile:
+   *   manual   → if the session is paused, resume it so the next phase can run.
+   *              if the session is not paused (phase still running), inform the user.
+   *   thorough → no-op; Deep Mode auto-advances through phases without user input.
+   *
+   * Responds with "No active Deep Mode session" when no session exists.
+   */
+  private async handleProceedCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    if (activeSessions.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const lines: string[] = [];
+
+    for (const sessionId of activeSessions) {
+      const state = deepMode.getSessionState(sessionId);
+      if (!state) continue;
+
+      if (state.profile === 'thorough') {
+        // Thorough profile auto-advances — /proceed is a no-op
+        const phase = state.currentPhase ?? 'done';
+        lines.push(
+          `Deep Mode (thorough) is running automatically — no action needed.\nCurrent phase: *${phase}*`,
+        );
+      } else if (state.profile === 'manual') {
+        if (deepMode.isPaused(sessionId)) {
+          deepMode.resume(sessionId);
+          const phase = state.currentPhase ?? 'done';
+          lines.push(`Proceeding with Deep Mode — resuming *${phase}* phase.`);
+          logger.info(
+            { sender: message.sender, sessionId, phase },
+            'Deep Mode resumed via /proceed',
+          );
+        } else {
+          const phase = state.currentPhase ?? 'done';
+          lines.push(
+            `Deep Mode *${phase}* phase is still running — please wait for it to complete before sending /proceed.`,
+          );
+        }
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n\n') || 'No actionable Deep Mode session found.',
+      replyTo: message.id,
+    });
   }
 
   /**
