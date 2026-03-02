@@ -351,6 +351,7 @@ export class MasterManager {
   private readonly adapterRegistry: AdapterRegistry;
   private mcpServers: MCPServer[];
   private activeConnectorNames: string[] = [];
+  private fileServerPort: number | undefined;
 
   private state: MasterState = 'idle';
   private explorationSummary: ExplorationSummary | null = null;
@@ -1364,6 +1365,7 @@ export class MasterManager {
       mcpServers: this.mcpServers.length > 0 ? this.mcpServers : undefined,
       activeConnectorNames:
         this.activeConnectorNames.length > 0 ? this.activeConnectorNames : undefined,
+      fileServerPort: this.fileServerPort,
     });
 
     try {
@@ -1977,6 +1979,14 @@ export class MasterManager {
    */
   public setActiveConnectorNames(names: string[]): void {
     this.activeConnectorNames = [...names];
+  }
+
+  /**
+   * Set the port the local file server is listening on so it can be included in the Master system prompt.
+   * Called by the startup flow after bridge.start() successfully starts the file server.
+   */
+  public setFileServerPort(port: number): void {
+    this.fileServerPort = port;
   }
 
   /**
