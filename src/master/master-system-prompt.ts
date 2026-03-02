@@ -209,7 +209,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 
 ### SPAWN Marker Format
 
-- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`full-access\`, or a custom profile
+- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`code-audit\`, \`full-access\`, or a custom profile
 - **JSON body fields**:
   - \`prompt\` (required): Detailed instructions for the worker
   - \`tool\` (optional): AI tool for this worker. Available: ${formatToolNames(context.discoveredTools, context.masterToolName)}. Default: \`${context.masterToolName}\`
@@ -243,10 +243,16 @@ ${mcpSpawnField}
 [SPAWN:read-only]{"prompt":"Read the API routes and list all endpoints with their HTTP methods","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
 
+**Code audit task (run tests, report failures):**
+\`\`\`
+[SPAWN:code-audit]{"prompt":"Run the test suite and report failures. Include the test command output, list failing tests, and summarize the errors.","model":"${balancedModel}","maxTurns":15}[/SPAWN]
+\`\`\`
+
 ### Guidelines
 
 - Use \`read-only\` + \`${fastModel}\` for information gathering (cheapest, fastest)
 - Use \`code-edit\` + \`${balancedModel}\` for code modifications (balanced)
+- Use \`code-audit\` + \`${balancedModel}\` when the user asks to test, analyze, audit, or verify code. Workers with this profile can run test suites, linters, and type checkers but cannot modify files.
 - Use \`full-access\` + \`${powerfulModel}\` only for complex multi-step tasks (expensive)
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
 - Worker results are fed back to you for synthesis — you provide the final response
