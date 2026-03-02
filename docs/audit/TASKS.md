@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 158 | **In Progress:** 0 | **Done:** 103
+> **Pending:** 157 | **In Progress:** 0 | **Done:** 104
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -297,7 +297,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 4   | OB-1400 | Add per-phase model selection — PHASE_MODEL_MAP: investigate=powerful, report=balanced, plan=powerful, execute=balanced, verify=fast. Model tier passed to Master session per phase. Users can override via config                                                                                    | ✅ Done   |
 | 5   | OB-1401 | Add per-phase system prompts — each phase gets focused injection: investigate (explore and identify), report (summarize findings), plan (create actionable plan), execute (implement the plan), verify (run tests and checks)                                                                         | ✅ Done   |
 | 6   | OB-1402 | Add `deep.defaultProfile` and `deep.phaseModels` config options to `src/types/config.ts` — defaultProfile: fast/thorough/manual (default: fast). phaseModels: per-phase model tier overrides                                                                                                          | ✅ Done   |
-| 7   | OB-1403 | Wire DeepModeManager into MasterManager — instantiate during init. In processMessage(), check task class and user profile to determine if Deep Mode should activate. If thorough or manual, create session and start with investigate phase                                                           | ◻ Pending |
+| 7   | OB-1403 | Wire DeepModeManager into MasterManager — instantiate during init. In processMessage(), check task class and user profile to determine if Deep Mode should activate. If thorough or manual, create session and start with investigate phase                                                           | ✅ Done   |
 | 8   | OB-1404 | Add Deep Mode task class detection — in classifyTaskByKeywords(), add keywords: audit, deep analysis, thorough review, security review, full review, investigate. Set suggestDeepMode: true in classification result so Master can offer Deep Mode                                                    | ◻ Pending |
 | 9   | OB-1405 | Add Deep Mode state persistence — store active sessions in agent_activity table with type: deep-mode. On restart, check for incomplete sessions and offer resume. Store phase results in SQLite                                                                                                       | ◻ Pending |
 | 10  | OB-1406 | Add tests in `tests/master/deep-mode.test.ts` — test: (1) correct phase transition order, (2) manual pauses between phases, (3) thorough auto-advances, (4) fast skips Deep Mode, (5) skipPhase moves to next, (6) focusOnItem repeats investigation, (7) model selection per phase. At least 7 tests | ◻ Pending |
