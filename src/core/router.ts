@@ -25,7 +25,7 @@ import { extractTaskSummaries } from '../master/spawn-parser.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
-import { AgentRunner } from './agent-runner.js';
+import { AgentRunner, estimateCost, DEFAULT_MAX_TURNS_TASK } from './agent-runner.js';
 import { FastPathResponder } from './fast-path-responder.js';
 import { createLogger } from './logger.js';
 
@@ -348,9 +348,25 @@ export class Router {
     const profileDisplay = firstHighRiskMarker.profile;
     const riskDisplay = riskLevel.toUpperCase();
     const taskList = summaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+    // Aggregate cost estimate across all high-risk workers
+    let totalTurns = 0;
+    let totalCostUsd = 0;
+    for (const marker of highRiskMarkers) {
+      const maxTurns = marker.body.maxTurns ?? DEFAULT_MAX_TURNS_TASK;
+      const modelTier = marker.body.model ?? 'balanced';
+      const est = estimateCost(marker.profile, maxTurns, modelTier);
+      totalTurns += est.estimatedTurns;
+      totalCostUsd += parseFloat(est.costString.slice(2)); // strip leading "~$"
+    }
+    const aggCostString = `~$${totalCostUsd.toFixed(2)}`;
+    const aggTimeMinutes = Math.ceil((totalTurns * 10) / 60);
+    const aggTimeString = aggTimeMinutes <= 1 ? '~1 min' : `~${aggTimeMinutes} min`;
+    const estimateText = `Estimated: ~${totalTurns} turns, ${aggCostString}, ${aggTimeString}`;
+
     const confirmText =
       `⚠️ Confirmation required — ${highRiskMarkers.length} worker(s) with ${riskDisplay} risk` +
-      ` profile (${profileDisplay}):\n\n${taskList}\n\nReply "go" to proceed or "skip" to cancel.`;
+      ` profile (${profileDisplay}):\n\n${taskList}\n\n${estimateText}\n\nReply "go" to proceed or "skip" to cancel.`;
 
     // Set a 60-second auto-cancel timeout. Stored in the entry so it can be cleared on reply.
     const timeoutHandle = setTimeout(() => {
