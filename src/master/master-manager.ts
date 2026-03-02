@@ -4024,6 +4024,20 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
           const n = spawnResult.markers.length;
 
+          // If the cleaned output (text outside SPAWN markers) is very short, prepare
+          // a status message to show the user instead of a near-empty stub response.
+          const cleanedOutput = spawnResult.cleanedOutput;
+          let statusMessage: string | undefined;
+          if (cleanedOutput.length < 80) {
+            const taskSummaries = spawnResult.markers.map((m) => {
+              const summary = m.body.prompt.trim();
+              return summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+            });
+            statusMessage =
+              `Working on your request — dispatching ${n} worker(s) for:\n` +
+              taskSummaries.map((s) => `• ${s}`).join('\n');
+          }
+
           // (3) Emit spawning event — N workers are being created
           await progress?.({ type: 'spawning', workerCount: n });
 
@@ -4081,13 +4095,18 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             if (result.exitCode !== 0) {
               logger.warn({ exitCode: result.exitCode }, 'Synthesis failed — returning fallback');
               response =
+                statusMessage ??
                 'All subtask results were shown above. The summary step could not complete.';
             } else {
-              response = result.stdout.trim() || feedbackPrompt;
+              const synthesisOutput = result.stdout.trim();
+              // Use status message only if synthesis produced no content at all
+              response =
+                synthesisOutput.length > 0 ? synthesisOutput : (statusMessage ?? feedbackPrompt);
             }
           } catch (synthesisError) {
             logger.warn({ err: synthesisError }, 'Synthesis timed out — returning fallback');
-            response = 'All subtask results were shown above. The summary step timed out.';
+            response =
+              statusMessage ?? 'All subtask results were shown above. The summary step timed out.';
           }
         }
       }
@@ -4407,6 +4426,20 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
           const streamN = spawnResult.markers.length;
 
+          // If the cleaned output (text outside SPAWN markers) is very short, prepare
+          // a status message to show the user instead of a near-empty stub response.
+          const streamCleanedOutput = spawnResult.cleanedOutput;
+          let streamStatusMessage: string | undefined;
+          if (streamCleanedOutput.length < 80) {
+            const streamTaskSummaries = spawnResult.markers.map((m) => {
+              const summary = m.body.prompt.trim();
+              return summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
+            });
+            streamStatusMessage =
+              `Working on your request — dispatching ${streamN} worker(s) for:\n` +
+              streamTaskSummaries.map((s) => `• ${s}`).join('\n');
+          }
+
           // (3) Emit spawning event — N workers are being created
           await streamProgress?.({ type: 'spawning', workerCount: streamN });
 
@@ -4485,7 +4518,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           }
           await this.updateMasterSession();
 
-          fullResponse = finalResponse.trim() || feedbackPrompt;
+          const streamFinalResponse = finalResponse.trim();
+          // Use status message only if synthesis produced no content at all
+          fullResponse =
+            streamFinalResponse.length > 0
+              ? streamFinalResponse
+              : (streamStatusMessage ?? feedbackPrompt);
         }
       }
 
