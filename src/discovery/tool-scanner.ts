@@ -64,6 +64,33 @@ const KNOWN_TOOLS: ToolDefinition[] = [
   },
 ];
 
+const TUNNEL_TOOLS: ToolDefinition[] = [
+  {
+    name: 'cloudflared',
+    command: 'cloudflared',
+    versionFlag: '--version',
+    versionPattern: /(\d+\.\d+\.\d+)/,
+    capabilities: ['tunnel'],
+    priority: 30,
+  },
+  {
+    name: 'ngrok',
+    command: 'ngrok',
+    versionFlag: '--version',
+    versionPattern: /(\d+\.\d+\.\d+)/,
+    capabilities: ['tunnel'],
+    priority: 25,
+  },
+  {
+    name: 'localtunnel',
+    command: 'lt',
+    versionFlag: '--version',
+    versionPattern: /(\d+\.\d+\.\d+)/,
+    capabilities: ['tunnel'],
+    priority: 20,
+  },
+];
+
 /**
  * Check if a CLI tool is available on the system PATH
  */
@@ -153,6 +180,48 @@ export function scanForCLITools(): DiscoveredTool[] {
     });
 
     logger.info({ tool: tool.name, path, version }, 'Discovered AI tool');
+  }
+
+  return discovered;
+}
+
+/**
+ * Scan for tunnel tools (cloudflared, ngrok, localtunnel) on the system PATH
+ */
+export function scanForTunnelTools(): DiscoveredTool[] {
+  logger.info('Scanning for tunnel tools');
+
+  const discovered: DiscoveredTool[] = [];
+
+  for (const tool of TUNNEL_TOOLS) {
+    logger.debug({ tool: tool.name }, 'Checking for tunnel tool');
+
+    const available = isCommandAvailable(tool.command);
+
+    if (!available) {
+      logger.debug({ tool: tool.name }, 'Tunnel tool not found on PATH');
+      continue;
+    }
+
+    const path = getCommandPath(tool.command);
+
+    if (!path) {
+      logger.debug({ tool: tool.name }, 'Could not determine tunnel tool path');
+      continue;
+    }
+
+    const version = getToolVersion(tool.command, tool.versionFlag, tool.versionPattern);
+
+    discovered.push({
+      name: tool.name,
+      path,
+      version,
+      capabilities: tool.capabilities,
+      role: 'none',
+      available: true,
+    });
+
+    logger.info({ tool: tool.name, path, version }, 'Discovered tunnel tool');
   }
 
   return discovered;
