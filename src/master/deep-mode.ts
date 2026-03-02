@@ -50,9 +50,18 @@ export interface DeepModeHost {
  *
  * Each session is identified by a unique sessionId returned from startSession().
  * Multiple sessions can exist concurrently (one per active user conversation).
+ *
+ * Profile behaviour:
+ * - fast:     Deep Mode is skipped. startSession() returns null.
+ * - thorough: All phases run automatically without pausing.
+ * - manual:   After each advancePhase() call the session is marked as paused.
+ *             Callers must call resume() after receiving user confirmation.
  */
 export class DeepModeManager {
   private readonly sessions = new Map<string, DeepModeState>();
+
+  /** Sessions awaiting user confirmation (manual profile only). */
+  private readonly pausedSessions = new Set<string>();
 
   constructor(private readonly host: DeepModeHost) {}
 
@@ -63,9 +72,14 @@ export class DeepModeManager {
    *
    * @param taskSummary  One-line summary of the original user request.
    * @param profile      Execution profile (fast | thorough | manual).
-   * @returns            The new session ID.
+   * @returns            The new session ID, or `null` when `fast` skips Deep Mode.
    */
-  startSession(taskSummary: string, profile: ExecutionProfile): string {
+  startSession(taskSummary: string, profile: ExecutionProfile): string | null {
+    if (profile === 'fast') {
+      logger.info({ profile, taskSummary }, 'Deep Mode skipped for fast profile');
+      return null;
+    }
+
     const sessionId = randomUUID();
     const firstPhase: DeepPhase = 'investigate';
 
@@ -100,6 +114,7 @@ export class DeepModeManager {
 
     logger.info({ sessionId, currentPhase: state.currentPhase }, 'Deep Mode session aborted');
     this.sessions.delete(sessionId);
+    this.pausedSessions.delete(sessionId);
   }
 
   // ── Phase state machine ───────────────────────────────────────
@@ -140,10 +155,22 @@ export class DeepModeManager {
 
     if (nextPhase) {
       logger.info(
-        { sessionId, fromPhase: currentPhase, toPhase: nextPhase },
+        { sessionId, fromPhase: currentPhase, toPhase: nextPhase, profile: state.profile },
         'Deep Mode phase advanced',
       );
+
+      // Manual profile pauses after each phase transition to wait for user confirmation.
+      // Thorough profile continues automatically — no pause needed.
+      if (state.profile === 'manual') {
+        this.pausedSessions.add(sessionId);
+        logger.info(
+          { sessionId, nextPhase },
+          'Deep Mode paused — awaiting user confirmation to continue',
+        );
+      }
     } else {
+      // All phases completed — remove any paused state and clean up
+      this.pausedSessions.delete(sessionId);
       logger.info(
         { sessionId, completedPhase: currentPhase },
         'Deep Mode session completed all phases',
@@ -207,10 +234,59 @@ export class DeepModeManager {
     logger.info({ sessionId, focusedItem: itemIndex }, 'Deep Mode focus item recorded');
   }
 
+  // ── Profile-aware helpers ─────────────────────────────────────
+
+  /**
+   * Return whether a manual-profile session is paused waiting for user confirmation.
+   * Always false for thorough sessions (they never pause).
+   *
+   * @param sessionId  Session to query.
+   */
+  isPaused(sessionId: string): boolean {
+    return this.pausedSessions.has(sessionId);
+  }
+
+  /**
+   * Resume a paused manual-profile session after the user has confirmed.
+   * No-op for sessions that are not paused.
+   *
+   * @param sessionId  Session to resume.
+   */
+  resume(sessionId: string): void {
+    if (!this.pausedSessions.has(sessionId)) {
+      logger.warn({ sessionId }, 'resume() called on session that is not paused');
+      return;
+    }
+    this.pausedSessions.delete(sessionId);
+    logger.info({ sessionId }, 'Deep Mode session resumed after user confirmation');
+  }
+
+  /**
+   * Return whether the profile for this session requires user confirmation between phases.
+   * True only for manual profile.
+   *
+   * @param sessionId  Session to query.
+   */
+  requiresConfirmation(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    return state?.profile === 'manual';
+  }
+
+  /**
+   * Return whether the profile for this session should auto-advance through phases
+   * without waiting for user input. True only for thorough profile.
+   *
+   * @param sessionId  Session to query.
+   */
+  shouldAutoAdvance(sessionId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    return state?.profile === 'thorough';
+  }
+
   // ── Accessors ─────────────────────────────────────────────────
 
   /**
-   * Return whether a session is currently active (exists and has phases remaining).
+   * Return whether a session is currently active (exists, has phases remaining, and not paused).
    *
    * @param sessionId  Session to query.
    */
