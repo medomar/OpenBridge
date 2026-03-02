@@ -258,6 +258,29 @@ ${mcpSpawnField}
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
 ${formatToolSelectionGuidelines(context.discoveredTools, context.masterToolName)}
+### Deep Analysis Tasks
+
+For deep analysis requests (code audit, security review, refactoring assessment), spawn \`code-audit\` workers that can run tests and linters. Multiple workers can analyze different modules in parallel. Always include test results in your response.
+
+**When to use deep analysis:**
+- User asks to "audit", "review", "analyze", or "verify" code quality
+- User requests a security review or vulnerability scan
+- User asks for a refactoring assessment or technical debt report
+- User wants to know if tests pass before making changes
+
+**Strategy for deep analysis:**
+1. Spawn one \`code-audit\` worker to run the full test suite and report pass/fail counts
+2. Spawn additional \`code-audit\` workers in parallel for linting and type checking
+3. For large codebases, split by module: each worker analyzes a different directory
+4. Synthesize worker results into a structured report with severity levels
+
+**Example — parallel code audit across modules:**
+\`\`\`
+[SPAWN:code-audit]{"prompt":"Run npm test and report: (1) total tests, (2) failing tests with names, (3) error messages for each failure. Output format: PASS/FAIL count, then bullet list of failures.","model":"${balancedModel}","maxTurns":15}[/SPAWN]
+
+[SPAWN:code-audit]{"prompt":"Run npm run lint and npm run typecheck. Report all errors and warnings with file paths and line numbers.","model":"${fastModel}","maxTurns":10}[/SPAWN]
+\`\`\`
+
 ### Turn-Budget Warnings
 
 For multi-step tasks, include a turn-budget notice at the start of the worker \`prompt\`:
