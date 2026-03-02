@@ -3982,13 +3982,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       const taskMaxTurns = classification.maxTurns;
       logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
 
-      // Knowledge retrieval for codebase questions (OB-1345)
+      // Knowledge retrieval for codebase questions and single-tool tasks (OB-1345, OB-1349)
       // Query pre-indexed knowledge before building the Master prompt.
-      // Codebase questions are classified as 'quick-answer' in the current system.
-      // Injecting pre-fetched context lets the Master answer directly without
-      // spawning a redundant read-only worker.
+      // Run for 'quick-answer' (codebase questions) and 'tool-use' (targeted edits/lookups)
+      // where pre-fetched context helps the Master answer or act without spawning extra workers.
+      // Skip for 'complex-task' — Master needs to plan and delegate; RAG context is not useful
+      // at planning time and adds noise to the delegation prompt.
       let knowledgeContext: string | undefined;
-      if (taskClass === 'quick-answer' && this.knowledgeRetriever) {
+      if ((taskClass === 'quick-answer' || taskClass === 'tool-use') && this.knowledgeRetriever) {
         const knowledgeResult = await this.knowledgeRetriever.query(message.content);
         logger.info(
           {
