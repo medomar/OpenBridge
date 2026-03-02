@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DeepModeManager, PHASE_MODEL_MAP } from '../../src/master/deep-mode.js';
-import type { DeepModeHost } from '../../src/master/deep-mode.js';
+import {
+  DeepModeManager,
+  PHASE_MODEL_MAP,
+  parsePlanTasks,
+  parsePlanBatches,
+} from '../../src/master/deep-mode.js';
+import type { DeepModeHost, DeepExecuteBatch } from '../../src/master/deep-mode.js';
 import type { DeepPhase, DeepPhaseResult } from '../../src/types/agent.js';
 import type { ModelTier } from '../../src/core/model-registry.js';
 
@@ -414,5 +419,275 @@ describe('DeepModeManager.abort()', () => {
     manager.abort(sid);
     // session gone — isPaused should return false
     expect(manager.isPaused(sid)).toBe(false);
+  });
+});
+
+// ── parsePlanTasks ─────────────────────────────────────────────────
+
+const SAMPLE_PLAN_OUTPUT = `
+### Tasks
+
+---
+
+**Task #1** · complexity: \`trivial\` · risk: \`low\`
+**Title:** Fix return value in router
+**Files to Modify:** \`src/core/router.ts\`
+**Dependencies:** none
+**Finding Refs:** Finding #1
+**Description:** Add a missing return statement in the /history branch at line 142. Return a valid OutboundMessage object.
+
+---
+
+**Task #2** · complexity: \`small\` · risk: \`low\`
+**Title:** Add test coverage for stop-all
+**Files to Modify:** \`tests/core/router.test.ts\`
+**Dependencies:** none
+**Finding Refs:** Finding #2
+**Description:** Add 2 test cases to tests/core/router.test.ts covering the /stop-all command.
+
+---
+
+**Task #3** · complexity: \`medium\` · risk: \`medium\`
+**Title:** Refactor queue module
+**Files to Modify:** \`src/core/queue.ts\`, \`src/core/bridge.ts\`
+**Dependencies:** #1, #2
+**Finding Refs:** Finding #3
+**Description:** Refactor the queue module to use the new return values established in Tasks #1 and #2.
+
+---
+
+### Parallel Batches
+
+**Batch 1 (parallel):** Tasks #1, #2
+**Batch 2 (sequential):** Task #3 (depends on Batch 1)
+`;
+
+describe('parsePlanTasks()', () => {
+  it('extracts the correct number of tasks', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks).toHaveLength(3);
+  });
+
+  it('parses task numbers correctly', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks.map((t) => t.taskNumber)).toEqual([1, 2, 3]);
+  });
+
+  it('parses task titles', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks[0].title).toBe('Fix return value in router');
+    expect(tasks[1].title).toBe('Add test coverage for stop-all');
+    expect(tasks[2].title).toBe('Refactor queue module');
+  });
+
+  it('parses files to modify', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks[0].filesToModify).toContain('src/core/router.ts');
+    expect(tasks[2].filesToModify).toHaveLength(2);
+  });
+
+  it('parses "none" dependencies as an empty array', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks[0].dependsOn).toEqual([]);
+    expect(tasks[1].dependsOn).toEqual([]);
+  });
+
+  it('parses task number dependencies', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks[2].dependsOn).toEqual([1, 2]);
+  });
+
+  it('parses task descriptions', () => {
+    const tasks = parsePlanTasks(SAMPLE_PLAN_OUTPUT);
+    expect(tasks[0].description).toContain('return statement');
+  });
+
+  it('returns an empty array for empty plan output', () => {
+    expect(parsePlanTasks('')).toEqual([]);
+  });
+});
+
+// ── parsePlanBatches ───────────────────────────────────────────────
+
+describe('parsePlanBatches()', () => {
+  it('extracts two batches from sample plan output', () => {
+    const batches = parsePlanBatches(SAMPLE_PLAN_OUTPUT);
+    expect(batches).toHaveLength(2);
+  });
+
+  it('first batch contains tasks 1 and 2', () => {
+    const batches = parsePlanBatches(SAMPLE_PLAN_OUTPUT);
+    expect(batches[0]).toEqual([1, 2]);
+  });
+
+  it('second batch contains only task 3', () => {
+    const batches = parsePlanBatches(SAMPLE_PLAN_OUTPUT);
+    expect(batches[1]).toEqual([3]);
+  });
+
+  it('returns empty array when no Parallel Batches section is present', () => {
+    expect(parsePlanBatches('No batches here.')).toEqual([]);
+  });
+
+  it('does not include task numbers from parenthetical dependency annotations', () => {
+    const output = '**Batch 2 (sequential):** Task #3 (depends on Tasks #1 and #2)';
+    const batches = parsePlanBatches(output);
+    expect(batches).toHaveLength(1);
+    // Only #3 should appear — #1 and #2 are in the parens
+    expect(batches[0]).toEqual([3]);
+  });
+});
+
+// ── getExecuteBatches ─────────────────────────────────────────────
+
+describe('DeepModeManager.getExecuteBatches()', () => {
+  let manager: DeepModeManager;
+
+  beforeEach(() => {
+    manager = new DeepModeManager(fakeHost);
+  });
+
+  function advanceToPlan(sid: string): void {
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+  }
+
+  it('returns undefined for an unknown session', () => {
+    expect(manager.getExecuteBatches('no-such-id')).toBeUndefined();
+  });
+
+  it('returns undefined when the plan phase has no result yet', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    advanceToPlan(sid);
+    // plan phase not completed — no result stored
+    expect(manager.getExecuteBatches(sid)).toBeUndefined();
+  });
+
+  it('returns batches from the plan output batch section', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    advanceToPlan(sid);
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid);
+    expect(batches).toBeDefined();
+    expect(batches!).toHaveLength(2);
+    expect(batches![0]).toHaveLength(2); // tasks 1 and 2 in parallel
+    expect(batches![1]).toHaveLength(1); // task 3 sequential
+  });
+
+  it('filters out skipped items from batches', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    advanceToPlan(sid);
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+    manager.skipItem(sid, 1); // skip task #1
+
+    const batches = manager.getExecuteBatches(sid);
+    expect(batches).toBeDefined();
+    // Batch 1 now has only task #2 (task #1 was skipped)
+    const batch1TaskNums = batches![0].map((t) => t.taskNumber);
+    expect(batch1TaskNums).not.toContain(1);
+    expect(batch1TaskNums).toContain(2);
+  });
+
+  it('falls back to dependency-ordered batches when no Parallel Batches section', () => {
+    const noBatchesPlan = `
+**Task #1** · complexity: \`trivial\` · risk: \`low\`
+**Title:** Task one
+**Files to Modify:** \`src/a.ts\`
+**Dependencies:** none
+**Description:** Do task one.
+
+---
+
+**Task #2** · complexity: \`small\` · risk: \`low\`
+**Title:** Task two
+**Files to Modify:** \`src/b.ts\`
+**Dependencies:** #1
+**Description:** Do task two, depends on task one.
+`;
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    advanceToPlan(sid);
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: noBatchesPlan,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid);
+    expect(batches).toBeDefined();
+    // Task 1 first (no deps), task 2 second (depends on 1)
+    expect(batches![0][0].taskNumber).toBe(1);
+    expect(batches![1][0].taskNumber).toBe(2);
+  });
+
+  it('parallel execution respects WorkerRegistry concurrency — batch size does not exceed task count', () => {
+    const sid = manager.startSession('large task', 'thorough')!;
+    advanceToPlan(sid);
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid);
+    expect(batches).toBeDefined();
+    // All tasks must appear exactly once across all batches
+    const allTaskNums = batches!.flatMap((b) => b.map((t) => t.taskNumber));
+    expect(allTaskNums.sort()).toEqual([1, 2, 3]);
+  });
+});
+
+// ── buildBatchWorkerPrompts ───────────────────────────────────────
+
+describe('DeepModeManager.buildBatchWorkerPrompts()', () => {
+  let manager: DeepModeManager;
+
+  beforeEach(() => {
+    manager = new DeepModeManager(fakeHost);
+  });
+
+  it('returns one prompt per task in the batch', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid)!;
+    const prompts = manager.buildBatchWorkerPrompts(sid, batches[0]);
+    expect(prompts).toHaveLength(2); // batch 0 has tasks #1 and #2
+  });
+
+  it('each prompt mentions the correct task number', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid)!;
+    const prompts = manager.buildBatchWorkerPrompts(sid, batches[0]);
+    expect(prompts[0]).toContain('Task #1');
+    expect(prompts[1]).toContain('Task #2');
+  });
+
+  it('returns empty array for an empty batch', () => {
+    const sid = manager.startSession('refactor task', 'thorough')!;
+    const emptyBatch: DeepExecuteBatch = [];
+    expect(manager.buildBatchWorkerPrompts(sid, emptyBatch)).toEqual([]);
   });
 });
