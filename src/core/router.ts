@@ -699,6 +699,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/focus N" command — focused investigation on finding N (OB-1409)
+    if (/^\/focus(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleFocusCommand(message, connector);
+      return;
+    }
+
     // Checkpoint-handle-resume cycle for urgent messages.
     // When a priority-1 message was flagged by the queue (sender had a message in flight when
     // this arrived), checkpoint session state before processing so that:
@@ -1954,6 +1960,133 @@ export class Router {
       content: lines.join('\n\n') || 'No actionable Deep Mode session found.',
       replyTo: message.id,
     });
+  }
+
+  /**
+   * Handle the built-in "/focus N" command — digs deeper into finding number N.
+   *
+   * Behaviour:
+   *   1. Records the focused item in the active Deep Mode session via focusOnItem().
+   *   2. Builds a focused investigation message for the Master AI.
+   *   3. Confirms to the user that investigation is starting.
+   *   4. Routes the investigation to Master AI via processMessage() and sends the result.
+   *
+   * Responds with "No active Deep Mode session" when no session exists.
+   * Responds with usage guidance when N is missing or invalid.
+   */
+  private async handleFocusCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Parse item number N from "/focus N"
+    const trimmed = message.content.trim();
+    const match = /^\/focus\s+(\d+)/i.exec(trimmed);
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /focus N — provide a finding number (e.g., /focus 3)',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const itemIndex = parseInt(match[1]!, 10);
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    if (activeSessions.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Use the first active session
+    const sessionId = activeSessions[0]!;
+    const state = deepMode.getSessionState(sessionId);
+
+    if (!state) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Record the focused item in the session state
+    deepMode.focusOnItem(sessionId, itemIndex);
+
+    // Get the most recent phase result to provide context for the investigation
+    const reportResult = deepMode.getPhaseResult(sessionId, 'report');
+    const investigateResult = deepMode.getPhaseResult(sessionId, 'investigate');
+    const latestResult = reportResult ?? investigateResult;
+
+    const contextSnippet = latestResult
+      ? `\n\nContext from ${latestResult.phase} phase:\n${latestResult.output.slice(0, 800)}`
+      : '';
+
+    // Build focused investigation prompt for the Master AI
+    const focusContent =
+      `[Deep Mode — Focused Investigation on Finding #${itemIndex}]\n` +
+      `The user requested a deep-dive on finding #${itemIndex} from the current analysis.\n` +
+      `Task: "${state.taskSummary}"${contextSnippet}\n\n` +
+      `Please investigate finding #${itemIndex} thoroughly:\n` +
+      `- Trace all code paths, dependencies, and side effects related to this finding\n` +
+      `- Identify the root cause, not just the symptom\n` +
+      `- List all files affected (with file:line references)\n` +
+      `- Assess the severity and impact\n` +
+      `- Suggest specific remediation steps`;
+
+    // Confirm immediately to the user before the investigation begins
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Investigating finding #${itemIndex} in depth — spawning focused worker.\nTask: "${state.taskSummary}"`,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, sessionId, itemIndex, phase: state.currentPhase },
+      'Deep Mode focused investigation requested via /focus',
+    );
+
+    // Spawn the focused investigation via Master AI and send the result back
+    try {
+      const focusMessage: InboundMessage = { ...message, content: focusContent };
+      const response = await this.master.processMessage(focusMessage);
+      if (response) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: response,
+        });
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { sender: message.sender, sessionId, itemIndex, err: errMsg },
+        'Deep Mode focused investigation failed',
+      );
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Focused investigation of finding #${itemIndex} failed: ${errMsg}`,
+      });
+    }
   }
 
   /**
