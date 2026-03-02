@@ -525,6 +525,58 @@ export function estimateCostUsd(model: string | undefined, outputBytes: number):
 }
 
 /**
+ * Result returned by estimateCost().
+ * Provides rough pre-execution cost and time estimates for display in the
+ * user confirmation prompt before a high-risk worker is spawned.
+ */
+export interface CostEstimate {
+  /** Expected number of agent turns (equals maxTurns — pessimistic worst-case estimate) */
+  estimatedTurns: number;
+  /** Human-readable cost estimate string, e.g. "~$0.30" */
+  costString: string;
+  /** Human-readable time estimate string, e.g. "~5 min" */
+  timeString: string;
+}
+
+/**
+ * Estimate the pre-execution cost and time for a worker spawn.
+ *
+ * Uses rough per-turn costs (pessimistic — assumes all turns are used):
+ *   haiku / fast      = $0.01 / turn
+ *   sonnet / balanced = $0.03 / turn
+ *   opus / powerful   = $0.10 / turn
+ *
+ * Time estimate: ~10 seconds per turn.
+ *
+ * @param _profile   Profile name — reserved for future profile-based adjustments
+ * @param maxTurns   Maximum turns the worker is allowed (used as the turn estimate)
+ * @param modelTier  Model tier ('fast', 'balanced', 'powerful') or alias ('haiku', 'sonnet', 'opus')
+ */
+export function estimateCost(_profile: string, maxTurns: number, modelTier: string): CostEstimate {
+  const tier = modelTier.toLowerCase();
+
+  let costPerTurn: number;
+  if (tier === 'fast' || tier.includes('haiku')) {
+    costPerTurn = 0.01;
+  } else if (tier === 'powerful' || tier.includes('opus')) {
+    costPerTurn = 0.1;
+  } else {
+    // balanced / sonnet / unknown — default to sonnet pricing
+    costPerTurn = 0.03;
+  }
+
+  const estimatedTurns = maxTurns;
+  const totalCost = costPerTurn * estimatedTurns;
+  const totalSeconds = estimatedTurns * 10;
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+
+  const costString = `~$${totalCost.toFixed(2)}`;
+  const timeString = totalMinutes <= 1 ? '~1 min' : `~${totalMinutes} min`;
+
+  return { estimatedTurns, costString, timeString };
+}
+
+/**
  * Handle returned by AgentRunner.spawnWithHandle().
  * Provides the result promise, the PID of the initial child process,
  * and an abort function that sends SIGTERM → 5s grace → SIGKILL.
