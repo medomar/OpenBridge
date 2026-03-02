@@ -57,6 +57,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "postinstall": "npm rebuild better-sqlite3",
     "prepare": "husky",
     "bench": "vitest bench",
     "cleanup-db": "tsx scripts/cleanup-openbridge-db.ts",
