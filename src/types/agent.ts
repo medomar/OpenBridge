@@ -361,6 +361,12 @@ export const DeepModeStateSchema = z.object({
   taskSummary: z.string(),
   /** Indices (1-based) of plan items the user has skipped */
   skippedItems: z.array(z.number().int().positive()).default([]),
+  /**
+   * Per-task model overrides keyed by task index (1-based, stringified).
+   * Index 0 (key "0") is a shorthand for "current phase" when user says "use X for this".
+   * Set via natural language in chat: "use opus for task 1", "use haiku for this".
+   */
+  taskModelOverrides: z.record(z.string(), z.enum(['fast', 'balanced', 'powerful'])).default({}),
 });
 
 // ── Inferred Types ───────────────────────────────────────────────

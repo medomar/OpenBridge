@@ -174,6 +174,7 @@ export class DeepModeManager {
       startedAt: new Date().toISOString(),
       taskSummary,
       skippedItems: [],
+      taskModelOverrides: {},
     };
 
     this.sessions.set(sessionId, state);
@@ -441,6 +442,56 @@ export class DeepModeManager {
   }
 
   // ── Per-Phase Model Selection ──────────────────────────────────
+
+  // ── Per-Task Model Overrides (OB-1412) ────────────────────────
+
+  /**
+   * Set a model tier override for a specific plan item in the execute phase.
+   *
+   * Called when the user sends a natural language request such as
+   * "use opus for task 1" or "use haiku for this".
+   *
+   * Use taskIndex = 0 as a sentinel for "current task / current phase" — this
+   * maps to the same key "0" in `taskModelOverrides`.
+   *
+   * @param sessionId  Active session identifier.
+   * @param taskIndex  1-based plan item index; 0 means "current task/phase".
+   * @param modelTier  The model tier to use ('fast' | 'balanced' | 'powerful').
+   * @returns          `true` if the override was stored, `false` if session not found.
+   */
+  setTaskModelOverride(sessionId: string, taskIndex: number, modelTier: ModelTier): boolean {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      logger.warn({ sessionId }, 'setTaskModelOverride() called on unknown session');
+      return false;
+    }
+
+    state.taskModelOverrides[String(taskIndex)] = modelTier;
+    logger.info({ sessionId, taskIndex, modelTier }, 'Deep Mode task model override set');
+    return true;
+  }
+
+  /**
+   * Return the model tier override for a specific plan item, if one has been set.
+   *
+   * Falls back to the override for index 0 ("current task/phase") when no
+   * task-specific override exists.
+   *
+   * @param sessionId  Active session identifier.
+   * @param taskIndex  1-based plan item index to look up.
+   * @returns          The overridden ModelTier, or `undefined` if no override is set.
+   */
+  getTaskModelOverride(sessionId: string, taskIndex: number): ModelTier | undefined {
+    const state = this.sessions.get(sessionId);
+    if (!state) return undefined;
+
+    // Task-specific override takes precedence over the "current" sentinel (index 0)
+    const specific = state.taskModelOverrides[String(taskIndex)];
+    if (specific !== undefined) return specific as ModelTier;
+
+    const current = state.taskModelOverrides['0'];
+    return current !== undefined ? (current as ModelTier) : undefined;
+  }
 
   /**
    * Return the recommended model tier for the current phase of a session.
