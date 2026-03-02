@@ -6,6 +6,7 @@ import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 // Mock AgentRunner (used by MasterManager)
 const mockSpawn = vi.fn();
@@ -147,7 +148,7 @@ describe('MasterManager - Worker-Level Retry', () => {
       },
     );
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-retry-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-retry-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     const dotFolderManager = new DotFolderManager(testWorkspace);

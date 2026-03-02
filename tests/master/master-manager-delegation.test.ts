@@ -6,6 +6,7 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 /** Helper to extract SpawnOptions from mock call args */
 function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
@@ -99,7 +100,7 @@ describe('MasterManager - Delegation Integration', () => {
     );
 
     // Create temporary test workspace
-    testWorkspace = path.join(process.cwd(), 'test-workspace-delegation-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-delegation-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     // Initialize .openbridge folder with git

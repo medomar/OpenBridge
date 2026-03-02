@@ -5,15 +5,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { seedPromptLibrary, SEED_PROMPTS } from '../../src/master/seed-prompts.js';
 import type { PromptManifest } from '../../src/types/master.js';
 
 describe('Prompt Library', () => {
-  const testWorkspacePath = path.join(process.cwd(), 'test-workspace-prompts');
+  let testWorkspacePath: string;
   let dotFolder: DotFolderManager;
 
   beforeEach(async () => {
+    testWorkspacePath = await fs.mkdtemp(path.join(os.tmpdir(), 'test-workspace-prompts-'));
     dotFolder = new DotFolderManager(testWorkspacePath);
     await dotFolder.initialize();
   });

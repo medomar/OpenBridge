@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { MasterManager } from '../../src/master/master-manager.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
@@ -135,7 +136,7 @@ describe('MasterManager — worker briefing integration (OB-723 / OB-727)', () =
       },
     );
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-briefing-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-briefing-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     const dotFolderManager = new DotFolderManager(testWorkspace);

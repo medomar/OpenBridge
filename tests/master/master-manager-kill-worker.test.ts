@@ -5,6 +5,7 @@ import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 // ── Mock AgentRunner ─────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ describe('MasterManager — Worker Kill Infrastructure (OB-876)', () => {
 
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockResolvedValue('tool-use');
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-kill-worker-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-kill-worker-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     const dotFolderManager = new DotFolderManager(testWorkspace);

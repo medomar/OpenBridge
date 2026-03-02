@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { MasterManager } from '../../src/master/master-manager.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
@@ -132,7 +133,7 @@ describe('MasterManager — memory.md context injection (OB-1027 / OB-1022)', ()
       },
     );
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-memory-ctx-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-memory-ctx-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     dotFolderManager = new DotFolderManager(testWorkspace);

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 // Mock logger
 vi.mock('../../src/core/logger.js', () => ({
@@ -20,7 +21,7 @@ describe('Prompt Degradation Detection', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    testWorkspace = path.join(process.cwd(), 'test-workspace-degradation-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-degradation-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     dotFolder = new DotFolderManager(testWorkspace);

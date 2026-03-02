@@ -6,6 +6,7 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 // ── Mock AgentRunner ────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
 
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockResolvedValue('tool-use');
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-adaptive-turns-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-adaptive-turns-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     const dotFolderManager = new DotFolderManager(testWorkspace);

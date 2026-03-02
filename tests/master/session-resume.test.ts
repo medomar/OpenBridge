@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import { MasterManager } from '../../src/master/master-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
@@ -150,7 +151,7 @@ describe('MasterManager.resumeSession() (OB-1054)', () => {
 
     vi.spyOn(MasterManager.prototype, 'classifyTask').mockResolvedValue('quick-answer');
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-resume-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-resume-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     memory = new MemoryManager(':memory:');

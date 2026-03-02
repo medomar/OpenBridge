@@ -5,14 +5,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { seedPromptLibrary } from '../../src/master/seed-prompts.js';
 
 describe('Prompt Effectiveness Tracking', () => {
-  const testWorkspacePath = path.join(process.cwd(), 'test-workspace-effectiveness');
+  let testWorkspacePath: string;
   let dotFolder: DotFolderManager;
 
   beforeEach(async () => {
+    testWorkspacePath = await fs.mkdtemp(path.join(os.tmpdir(), 'test-workspace-effectiveness-'));
     dotFolder = new DotFolderManager(testWorkspacePath);
     await dotFolder.initialize();
     await seedPromptLibrary(dotFolder);

@@ -8,6 +8,7 @@ import type { DiscoveredTool } from '../../src/types/discovery.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 describe('generateMasterSystemPrompt', () => {
   const masterTool: DiscoveredTool = {
@@ -213,7 +214,7 @@ describe('DotFolderManager system prompt methods', () => {
   let dotFolder: DotFolderManager;
 
   beforeEach(async () => {
-    testWorkspace = path.join(process.cwd(), 'test-workspace-sysprompt-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-sysprompt-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
     dotFolder = new DotFolderManager(testWorkspace);
     await dotFolder.initialize();
