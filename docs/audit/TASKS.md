@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 143 | **In Progress:** 0 | **Done:** 29 (112 archived)
+> **Pending:** 142 | **In Progress:** 0 | **Done:** 30 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (20/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (21/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -147,7 +147,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                 | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 21  | OB-1417 | Create `DEEP_INVESTIGATE` worker prompt in `src/master/seed-prompts.ts` — instructions to explore codebase, identify relevant files, patterns, dependencies, potential issues. List every file examined. Categorize findings by type. Number each finding for reference                                                     | ✅ Done   |
-| 22  | OB-1418 | Create `DEEP_REPORT` worker prompt — organize investigation findings into: Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, Recommendations                                                                                                                                     | ◻ Pending |
+| 22  | OB-1418 | Create `DEEP_REPORT` worker prompt — organize investigation findings into: Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, Recommendations                                                                                                                                     | ✅ Done   |
 | 23  | OB-1419 | Create `DEEP_PLAN` worker prompt — for each finding: task description, files to modify, estimated complexity, dependencies on other tasks, risk level. Order by dependency and priority, group into parallel batches                                                                                                        | ◻ Pending |
 | 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ◻ Pending |
 | 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ◻ Pending |

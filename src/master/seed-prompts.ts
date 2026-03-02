@@ -673,6 +673,137 @@ Continue this pattern for all findings, incrementing the number each time.
 };
 
 /**
+ * Deep Mode: Report Phase
+ *
+ * Takes the raw findings list from the Investigate phase and organizes
+ * them into a structured, human-readable report suitable for planning.
+ * Sections: Executive Summary, Detailed Findings (numbered, with severity),
+ * Files Affected, Dependencies, Recommendations.
+ */
+export const DEEP_REPORT: SeedPrompt = {
+  id: 'deep-report',
+  filename: 'deep-report.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Deep Mode reporting: organize investigation findings into Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, and Recommendations.',
+  content: `# Deep Mode — Report Phase
+
+Organize the investigation findings below into a structured report that can be used for planning.
+
+## Original Request
+
+{{userRequest}}
+
+## Investigation Findings
+
+{{investigationFindings}}
+
+## Instructions
+
+Read the investigation findings carefully, then produce a structured report in the following format.
+
+### Section 1 — Executive Summary
+
+Write 3–5 sentences that answer:
+
+1. **What area of the codebase is affected?** (which modules, files, features)
+2. **What is the overall health?** (stable, concerning, critical)
+3. **What are the top 2–3 most important issues?** (brief, high-level)
+4. **What is the recommended next step?** (high-level action)
+
+### Section 2 — Detailed Findings
+
+For each finding from the investigation, produce a numbered entry.
+
+Use the original numbering from the investigation where possible. If the investigation contains duplicate or overlapping findings, merge them and note the merge.
+
+Each entry must include:
+
+| Field | Description |
+| --- | --- |
+| **Finding #N** | Unique number (carry over from investigation) |
+| **Category** | One of: \`bug\`, \`missing-test\`, \`type-error\`, \`pattern\`, \`dependency\`, \`config\`, \`documentation\`, \`performance\`, \`security\`, \`other\` |
+| **Severity** | \`critical\` | \`high\` | \`medium\` | \`low\` | \`info\` |
+| **Title** | One-line summary (≤ 80 characters) |
+| **Description** | 2–4 sentences: what the issue is, why it matters, evidence |
+| **Files** | File path(s) with line numbers if applicable |
+| **Recommendation** | Concrete action to resolve the finding |
+
+Sort findings within each severity level: critical → high → medium → low → info.
+
+### Section 3 — Files Affected
+
+List every file mentioned in the investigation findings.
+
+For each file, note:
+- Whether it has findings against it (and how many)
+- A one-line description of the file's purpose
+- Whether it needs to be modified to resolve findings
+
+Format:
+
+\`\`\`
+src/core/router.ts          — message routing (3 findings — needs modification)
+src/types/agent.ts          — agent type definitions (1 finding — needs modification)
+tests/core/router.test.ts   — router unit tests (2 findings — needs modification)
+src/core/bridge.ts          — main orchestrator (0 findings — referenced only)
+\`\`\`
+
+### Section 4 — Dependencies
+
+Describe the dependency relationships between findings.
+
+Identify:
+1. **Blocking relationships** — findings that must be resolved before others can be addressed
+2. **Parallel groups** — findings that can be resolved independently and simultaneously
+3. **Cascade risks** — findings where fixing one may affect others
+
+Format as a short list:
+
+- Finding #1 blocks Finding #3 (same function — fixing #1 changes the function signature that #3 depends on)
+- Findings #2, #4, #6 are independent and can be worked in parallel
+- Fixing Finding #5 may require re-testing Findings #7 and #8
+
+If there are no dependency relationships, state: "All findings are independent."
+
+### Section 5 — Recommendations
+
+Provide a prioritized list of recommended actions. Order from highest to lowest priority.
+
+Each recommendation must include:
+- **Priority** (1 = highest)
+- **Action** — what to do (concise imperative sentence)
+- **Rationale** — why this should be done first
+- **Findings addressed** — which finding numbers this action resolves
+- **Estimated complexity** — \`trivial\` (< 30 min) | \`small\` (< 2 h) | \`medium\` (< 1 day) | \`large\` (> 1 day)
+
+Example:
+
+1. **Fix /history handler undefined return** · Findings #1 · complexity: trivial
+   Return a valid \`OutboundMessage\` from the \`/history\` branch. This is a crash-path fix that unblocks manual testing.
+
+2. **Add tests for /stop-all command** · Findings #2, #4 · complexity: small
+   Add 2 test cases to \`tests/core/router.test.ts\`. Unblocks CI for the router module.
+
+## Output Format
+
+Write your report in **Markdown** using the section headings above. Do NOT output JSON.
+
+Your report should be complete and self-contained — a developer reading it should be able to understand all issues without referring back to the raw investigation output.
+
+## Rules
+
+- **Read only — do NOT modify any files.**
+- Preserve all finding numbers from the investigation — do not renumber unless merging duplicates.
+- If the investigation findings are empty or minimal, note that in the Executive Summary and produce a minimal report.
+- Severity levels must match those in the investigation — do not upgrade or downgrade without justification.
+- Keep the Executive Summary concise — 3–5 sentences, no bullet points.
+- The Recommendations section is the most important section for the planning phase — make it actionable.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -708,6 +839,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_GENERATE_OUTPUT,
   TASK_TARGETED_READ,
   DEEP_INVESTIGATE,
+  DEEP_REPORT,
 ];
 
 /**
