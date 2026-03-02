@@ -267,6 +267,22 @@ export const TOOLS_CODE_EDIT = [
 /** Full access tools — unrestricted (use sparingly) */
 export const TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'] as const;
 
+/** Code audit tools — read files and run test/lint/typecheck commands, no file modifications */
+export const TOOLS_CODE_AUDIT = [
+  'Read',
+  'Glob',
+  'Grep',
+  'Bash(npm:test)',
+  'Bash(npm:run:lint)',
+  'Bash(npm:run:typecheck)',
+  'Bash(npx:vitest:*)',
+  'Bash(npx:eslint:*)',
+  'Bash(npx:tsc:*)',
+  'Bash(npm:run:test:*)',
+  'Bash(pytest:*)',
+  'Bash(cargo:test)',
+] as const;
+
 /**
  * Resolve a profile name to its tool list.
  * Checks custom profiles first (if provided), then falls back to built-in profiles.
@@ -282,6 +298,30 @@ export function resolveProfile(
   }
   const profile = BUILT_IN_PROFILES[profileName as keyof typeof BUILT_IN_PROFILES];
   return profile?.tools;
+}
+
+/**
+ * Resolve a profile name to its tool list using the built-in TOOLS_* constants.
+ * For profiles not covered by the constants, falls back to resolveProfile().
+ * Used when profile: 'code-audit' (or other built-in names) is requested via
+ * SPAWN markers or config — returns the correct tool list for --allowedTools flags.
+ */
+export function resolveTools(
+  profileName: string,
+  customProfiles?: Record<string, ToolProfile>,
+): string[] | undefined {
+  switch (profileName) {
+    case 'read-only':
+      return [...TOOLS_READ_ONLY];
+    case 'code-edit':
+      return [...TOOLS_CODE_EDIT];
+    case 'full-access':
+      return [...TOOLS_FULL];
+    case 'code-audit':
+      return [...TOOLS_CODE_AUDIT];
+    default:
+      return resolveProfile(profileName, customProfiles);
+  }
 }
 
 /**
