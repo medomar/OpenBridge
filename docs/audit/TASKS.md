@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 261 | **In Progress:** 0 | **Done:** 0
+> **Pending:** 260 | **In Progress:** 0 | **Done:** 1
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -32,30 +32,30 @@
 
 ## Task Summary
 
-| Phase  | Description                           | Tasks | Status |
-| ------ | ------------------------------------- | ----- | ------ |
-| 78a    | Classification & SPAWN Response Fixes | 9     | ◻      |
-| 78b    | Code Audit Profile                    | 8     | ◻      |
-| 79     | Exploration Bug Fixes                 | 10    | ◻      |
-| 80     | .openbridge Data Cleanup              | 7     | ◻      |
-| 74     | Knowledge Retriever                   | 10    | ◻      |
-| 75     | Context Injection                     | 8     | ◻      |
-| 76     | Targeted Reader                       | 7     | ◻      |
-| 77     | Chunk Enrichment                      | 8     | ◻      |
-| 85     | Environment Variable Protection       | 10    | ◻      |
-| 81     | Master Output Awareness               | 7     | ◻      |
-| 86     | User Consent & Execution Transparency | 13    | ◻      |
-| Deep   | Deep Mode (OB-F56)                    | 35    | ◻      |
-| 82     | Tunnel Integration                    | 10    | ◻      |
-| 83     | Ephemeral App Server                  | 12    | ◻      |
-| 84     | Interaction Relay                     | 8     | ◻      |
-| 87     | Document Visibility Controls          | 14    | ◻      |
-| 88     | WebChat Frontend Extraction           | 15    | ◻      |
-| 89     | WebChat Authentication                | 12    | ◻      |
-| 90     | Phone Access + Mobile PWA             | 15    | ◻      |
-| 91     | Conversation History + Rich Input     | 15    | ◻      |
-| 92     | Settings Panel + Deep Mode UI         | 12    | ◻      |
-| Docker | Docker Sandbox                        | 16    | ◻      |
+| Phase  | Description                           | Tasks | Status       |
+| ------ | ------------------------------------- | ----- | ------------ |
+| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (1/9 done) |
+| 78b    | Code Audit Profile                    | 8     | ◻            |
+| 79     | Exploration Bug Fixes                 | 10    | ◻            |
+| 80     | .openbridge Data Cleanup              | 7     | ◻            |
+| 74     | Knowledge Retriever                   | 10    | ◻            |
+| 75     | Context Injection                     | 8     | ◻            |
+| 76     | Targeted Reader                       | 7     | ◻            |
+| 77     | Chunk Enrichment                      | 8     | ◻            |
+| 85     | Environment Variable Protection       | 10    | ◻            |
+| 81     | Master Output Awareness               | 7     | ◻            |
+| 86     | User Consent & Execution Transparency | 13    | ◻            |
+| Deep   | Deep Mode (OB-F56)                    | 35    | ◻            |
+| 82     | Tunnel Integration                    | 10    | ◻            |
+| 83     | Ephemeral App Server                  | 12    | ◻            |
+| 84     | Interaction Relay                     | 8     | ◻            |
+| 87     | Document Visibility Controls          | 14    | ◻            |
+| 88     | WebChat Frontend Extraction           | 15    | ◻            |
+| 89     | WebChat Authentication                | 12    | ◻            |
+| 90     | Phone Access + Mobile PWA             | 15    | ◻            |
+| 91     | Conversation History + Rich Input     | 15    | ◻            |
+| 92     | Settings Panel + Deep Mode UI         | 12    | ◻            |
+| Docker | Docker Sandbox                        | 16    | ◻            |
 
 **Sprint 1 Total:** 34 tasks (v0.0.9)
 **Sprint 2 Total:** 43 tasks (v0.0.10)
@@ -75,7 +75,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1300 | Add execution/delegation keywords to the `complex-task` keyword list in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add `"execute"`, `"start"`, `"proceed"`, `"begin"`, `"launch"`, `"run tasks"`, `"start execution"`, `"execute group"`, `"start group"` to the keywords that trigger `complex-task` classification. Currently these words fall through to `tool-use` (15 turns) instead of `complex-task` (25 turns), causing the Master to lack the planning prompt needed for delegation      | ◻ Pending |
+| 1   | OB-1300 | Add execution/delegation keywords to the `complex-task` keyword list in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add `"execute"`, `"start"`, `"proceed"`, `"begin"`, `"launch"`, `"run tasks"`, `"start execution"`, `"execute group"`, `"start group"` to the keywords that trigger `complex-task` classification. Currently these words fall through to `tool-use` (15 turns) instead of `complex-task` (25 turns), causing the Master to lack the planning prompt needed for delegation      | ✅ Done   |
 | 2   | OB-1301 | Add pattern matching for delegation phrases in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add regex patterns to match "start the [noun]", "execute [noun]", "begin [noun]", "launch [noun]", "run the [noun]" as `complex-task` triggers. These multi-word phrases are common in delegation requests (e.g., "start the execution of group A") and the current keyword list only checks individual words                                                                                           | ◻ Pending |
 | 3   | OB-1302 | Add tests for the new execution keyword and pattern matching in `tests/master/master-manager.test.ts` — test: (1) "execute group A" → `complex-task`, (2) "start the execution" → `complex-task`, (3) "begin task 5" → `complex-task`, (4) "launch the workers" → `complex-task`, (5) "proceed with the plan" → `complex-task`, (6) "run tasks" → `complex-task`, (7) verify existing classifications still work (e.g., "read file X" stays `tool-use`, "what is X" stays `codebase-question`). At least 7 test cases | ◻ Pending |
 
@@ -228,7 +228,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                      | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1367 | Define `ENV_DENY_PATTERNS` constant in `src/types/config.ts` — array of glob patterns: AWS*\*, GITHUB*_, GH\__, TOKEN*\*, SECRET*_, PASSWORD\__, PRIVATE*\*, DB*_, DATABASE\__, SMTP*\*, OPENAI*_, ANTHROPIC\__, API*KEY*, *\_SECRET, *\_TOKEN, *\_PASSWORD, \*\_CREDENTIAL, REDIS*_, MONGO\__, MYSQL*\*, POSTGRES*\*            | ◻ Pending |
+| 1   | OB-1367 | Define `ENV_DENY_PATTERNS` constant in `src/types/config.ts` — array of glob patterns: AWS*\*, GITHUB*\_, GH\__, TOKEN*\*, SECRET*_, PASSWORD\__, PRIVATE*\*, DB*_, DATABASE\__, SMTP*\*, OPENAI*_, ANTHROPIC\__, API*KEY*, *\_SECRET, *\_TOKEN, *\_PASSWORD, \*\_CREDENTIAL, REDIS*_, MONGO\_\_, MYSQL*\*, POSTGRES*\*          | ◻ Pending |
 | 2   | OB-1368 | Add `security.envDenyPatterns` and `security.envAllowPatterns` to V2 config Zod schema in `src/types/config.ts` — optional arrays of glob patterns with defaults. envAllowPatterns overrides deny list (e.g., GITHUB_ACTIONS for CI). Add security section if missing                                                            | ◻ Pending |
 | 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ◻ Pending |
 | 4   | OB-1370 | Wire sanitizeEnv() into ClaudeAdapter in `src/core/adapters/claude-adapter.ts` — call in cleanEnv() method before passing env to child process. Runs in addition to existing CLAUDECODE stripping                                                                                                                                | ◻ Pending |
@@ -408,12 +408,12 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                        | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1462 | Add workspace.include and workspace.exclude to config schema in `src/types/config.ts` — include: optional glob array (only these visible), exclude: optional glob array (hidden from AI). Both support standard glob syntax                                                                                                                        | ◻ Pending |
-| 2   | OB-1463 | Add DEFAULT_EXCLUDE_PATTERNS to `src/types/config.ts` — .env, .env._, _.pem, _.key, _.p12, _.pfx, credentials._, secrets/, id_rsa*, id_ed25519*, \*.sqlite, .git/objects/, node_modules/, .DS_Store. Always excluded unless user overrides                                                                                                         | ◻ Pending |
+| 2   | OB-1463 | Add DEFAULT*EXCLUDE_PATTERNS to `src/types/config.ts` — .env, .env.*, _.pem, _.key, _.p12, _.pfx, credentials.\_, secrets/, id_rsa*, id_ed25519*, \*.sqlite, .git/objects/, node_modules/, .DS_Store. Always excluded unless user overrides                                                                                                        | ◻ Pending |
 | 3   | OB-1464 | Add isFileVisible(filePath, config) to `src/core/workspace-manager.ts` — check against include/exclude rules. File must match at least one include (if set) and must not match any exclude. Exclude takes priority                                                                                                                                 | ◻ Pending |
 | 4   | OB-1465 | Add symlink resolution in isFileVisible() — resolve real path with fs.realpath() before checking. Prevents symlink escape to files outside workspace                                                                                                                                                                                               | ◻ Pending |
 | 5   | OB-1466 | Normalize paths with path.resolve() before scope checks — ensure both file path and workspace root are absolute. Prevents path traversal like ../../etc/passwd                                                                                                                                                                                     | ◻ Pending |
 | 6   | OB-1467 | Create `src/core/secret-scanner.ts` — SecretScanner class with scanWorkspace(workspacePath) method. Scans root (1 level deep) for files matching sensitive patterns. Returns array of { path, pattern, severity }. Name check only, no content reading                                                                                             | ◻ Pending |
-| 7   | OB-1468 | Add sensitive file patterns to SecretScanner — .env (any), _.pem, _.key, _.p12, _.pfx, service-account*.json, credentials*.json, id_rsa*, id_ed25519*, _.jks, _.kdbx. Severity: critical (keys/certs), high (credentials), medium (config)                                                                                                         | ◻ Pending |
+| 7   | OB-1468 | Add sensitive file patterns to SecretScanner — .env (any), _.pem, _.key, _.p12, _.pfx, service-account*.json, credentials*.json, id*rsa*, id_ed25519*, *.jks, \_.kdbx. Severity: critical (keys/certs), high (credentials), medium (config)                                                                                                        | ◻ Pending |
 | 8   | OB-1469 | Add startup secret scanning to Bridge in `src/core/bridge.ts` — run scanner during init, log warning with detected count and paths. Auto-add detected paths to exclude list for current session                                                                                                                                                    | ◻ Pending |
 | 9   | OB-1470 | Create `src/core/content-redactor.ts` — ContentRedactor class with redact(content) method returning { redacted, redactionCount }. Optional feature, disabled by default                                                                                                                                                                            | ◻ Pending |
 | 10  | OB-1471 | Add redaction patterns — OpenAI keys (sk-...), AWS keys (AKIA...), GitHub PATs (ghp*..., ghs*...), PEM private keys, connection strings (mongodb://, postgres://, mysql://). Replace matches with REDACTED:{pattern_name}                                                                                                                          | ◻ Pending |
