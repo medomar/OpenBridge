@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 254 | **In Progress:** 0 | **Done:** 7
+> **Pending:** 253 | **In Progress:** 0 | **Done:** 8
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -34,7 +34,7 @@
 
 | Phase  | Description                           | Tasks | Status       |
 | ------ | ------------------------------------- | ----- | ------------ |
-| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (6/9 done) |
+| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (7/9 done) |
 | 78b    | Code Audit Profile                    | 8     | ◻            |
 | 79     | Exploration Bug Fixes                 | 10    | ◻            |
 | 80     | .openbridge Data Cleanup              | 7     | ◻            |
@@ -92,7 +92,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 7   | OB-1306 | Add logging in `processMessage()` in `src/master/master-manager.ts` — after SPAWN marker stripping, log the original response length and cleaned response length: `logger.debug({ originalLength, cleanedLength, spawnCount }, 'SPAWN marker stripping applied')`. If `cleanedLength < 80` and `originalLength > 200`, log a warning: `logger.warn({ originalLength, cleanedLength, spawnCount }, 'Response truncated after SPAWN marker removal — generating status message')` | ✅ Done   |
-| 8   | OB-1307 | Include the number of SPAWN markers found and their task summaries in the debug log entry added in the previous task. Add `spawnSummaries: string[]` to the log context object so developers can see what workers were dispatched when diagnosing empty-response issues. Use the `extractTaskSummaries()` helper from `src/master/spawn-parser.ts`                                                                                                                              | ◻ Pending |
+| 8   | OB-1307 | Include the number of SPAWN markers found and their task summaries in the debug log entry added in the previous task. Add `spawnSummaries: string[]` to the log context object so developers can see what workers were dispatched when diagnosing empty-response issues. Use the `extractTaskSummaries()` helper from `src/master/spawn-parser.ts`                                                                                                                              | ✅ Done   |
 | 9   | OB-1308 | Build + lint + typecheck + test validation for Phase 78a — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done. This is the phase gate — all 8 previous tasks must pass verification                                                                                                                                                                                                                       | ◻ Pending |
 
 ---

@@ -37,7 +37,7 @@ import { SubMasterManager } from './sub-master-manager.js';
 import type { SubMasterRecord } from './sub-master-manager.js';
 import { openDatabase, closeDatabase } from '../memory/database.js';
 import { buildBriefing } from '../memory/worker-briefing.js';
-import { parseSpawnMarkers, hasSpawnMarkers } from './spawn-parser.js';
+import { parseSpawnMarkers, hasSpawnMarkers, extractTaskSummaries } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
 import { parseAIResult } from './result-parser.js';
 import { formatWorkerBatch } from './worker-result-formatter.js';
@@ -4029,8 +4029,9 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           const cleanedOutput = spawnResult.cleanedOutput;
           const originalLength = response.length;
           const cleanedLength = cleanedOutput.length;
+          const spawnSummaries = extractTaskSummaries(spawnResult.markers);
           logger.debug(
-            { originalLength, cleanedLength, spawnCount: n },
+            { originalLength, cleanedLength, spawnCount: n, spawnSummaries },
             'SPAWN marker stripping applied',
           );
           if (cleanedLength < 80 && originalLength > 200) {
@@ -4443,11 +4444,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           const streamCleanedOutput = spawnResult.cleanedOutput;
           const streamOriginalLength = fullResponse.length;
           const streamCleanedLength = streamCleanedOutput.length;
+          const streamSpawnSummaries = extractTaskSummaries(spawnResult.markers);
           logger.debug(
             {
               originalLength: streamOriginalLength,
               cleanedLength: streamCleanedLength,
               spawnCount: streamN,
+              spawnSummaries: streamSpawnSummaries,
             },
             'SPAWN marker stripping applied',
           );
