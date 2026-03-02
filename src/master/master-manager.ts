@@ -47,6 +47,7 @@ import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
+import { DeepModeManager } from './deep-mode.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -68,7 +69,7 @@ import {
   ClassificationCacheSchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { MCPServer } from '../types/config.js';
+import type { MCPServer, DeepConfig } from '../types/config.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createModelRegistry } from '../core/model-registry.js';
 import type { ModelRegistry } from '../core/model-registry.js';
@@ -311,6 +312,8 @@ export interface MasterManagerOptions {
   adapterRegistry?: AdapterRegistry;
   /** MCP servers available for workers (from V2Config.mcp.servers, merged with configPath imports) */
   mcpServers?: MCPServer[];
+  /** Deep Mode configuration — controls default execution profile and per-phase model overrides */
+  deepConfig?: DeepConfig;
 }
 
 /**
@@ -395,6 +398,10 @@ export class MasterManager {
   private readonly pendingCancellationNotifications: string[] = [];
   /** KnowledgeRetriever for RAG-based context injection (OB-1344). Null until set via setKnowledgeRetriever(). */
   private knowledgeRetriever: KnowledgeRetriever | null = null;
+  /** Deep Mode manager — tracks multi-phase session state (OB-1403). */
+  private readonly deepMode: DeepModeManager;
+  /** Deep Mode configuration — controls default profile and per-phase model overrides (OB-1403). */
+  private readonly deepConfig: DeepConfig | undefined;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -413,6 +420,10 @@ export class MasterManager {
     this.workerRetryDelayMs = options.workerRetryDelayMs ?? 5000;
     this.modelRegistry = createModelRegistry(options.masterTool.name);
     this.mcpServers = options.mcpServers ?? [];
+    this.deepConfig = options.deepConfig;
+
+    // Instantiate DeepModeManager — multi-phase session state machine (OB-1403)
+    this.deepMode = new DeepModeManager({ workspacePath: this.workspacePath });
 
     // Initialise SubMasterManager when MemoryManager is available (OB-755 / OB-812)
     if (this.memory) {
@@ -4003,6 +4014,55 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       const taskClass = classification.class;
       const taskMaxTurns = classification.maxTurns;
       logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
+
+      // Deep Mode activation — OB-1403
+      // If the configured default profile is 'thorough' or 'manual' and the task class is
+      // 'complex-task', start a multi-phase Deep Mode session beginning with investigate phase.
+      // Fast profile (default) skips Deep Mode entirely and falls through to normal processing.
+      if (taskClass === 'complex-task') {
+        const effectiveProfile = this.deepConfig?.defaultProfile ?? 'fast';
+        if (effectiveProfile === 'thorough' || effectiveProfile === 'manual') {
+          const deepSessionId = this.deepMode.startSession(message.content, effectiveProfile);
+          if (deepSessionId) {
+            const currentPhase = this.deepMode.getCurrentPhase(deepSessionId);
+            const phasePrompt = this.deepMode.getPhaseSystemPrompt(deepSessionId);
+            logger.info(
+              { deepSessionId, profile: effectiveProfile, currentPhase },
+              'Deep Mode activated — starting with investigate phase',
+            );
+            // Return an early response indicating Deep Mode has started.
+            // Per-phase worker execution is wired in subsequent tasks (OB-1417+).
+            const response = [
+              `Deep Mode started (${effectiveProfile} profile) — **${currentPhase ?? 'investigate'} phase**`,
+              '',
+              phasePrompt
+                ? phasePrompt.split('\n')[0]
+                : 'Exploring and identifying relevant context.',
+              '',
+              effectiveProfile === 'manual'
+                ? 'I will pause after each phase for your review. Reply with `/proceed` to advance to the next phase.'
+                : 'I will run all phases automatically and report when complete.',
+            ].join('\n');
+            task.status = 'completed';
+            task.result = response;
+            task.completedAt = new Date().toISOString();
+            task.durationMs =
+              new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
+            task.metadata = { ...task.metadata, deepSessionId };
+            await this.recordTaskToStore(task);
+            await this.recordConversationMessage(sessionId, 'master', response);
+            void this.recordClassificationFeedback(
+              this.normalizeForCache(message.content),
+              true,
+              false,
+            );
+            this.onTaskCompleted();
+            this.state = 'ready';
+            await progress?.({ type: 'complete' });
+            return response;
+          }
+        }
+      }
 
       // Knowledge retrieval for codebase questions and single-tool tasks (OB-1345, OB-1349)
       // Query pre-indexed knowledge before building the Master prompt.
