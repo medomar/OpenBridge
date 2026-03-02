@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 139 | **In Progress:** 0 | **Done:** 33 (112 archived)
+> **Pending:** 138 | **In Progress:** 0 | **Done:** 34 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (24/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (25/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -151,7 +151,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 23  | OB-1419 | Create `DEEP_PLAN` worker prompt — for each finding: task description, files to modify, estimated complexity, dependencies on other tasks, risk level. Order by dependency and priority, group into parallel batches                                                                                                        | ✅ Done   |
 | 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ✅ Done   |
 | 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ✅ Done   |
-| 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ◻ Pending |
+| 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ✅ Done   |
 | 27  | OB-1423 | Add parallel execution in execute phase — when plan defines independent tasks (no dependencies), spawn multiple workers simultaneously. Respect WorkerRegistry concurrency limit. Collect all results before advancing to verify                                                                                            | ◻ Pending |
 | 28  | OB-1424 | Add Deep Mode result aggregation — after all phases, compile final summary: phases completed, findings count, tasks executed, test results, executive summary. Send as final response                                                                                                                                       | ◻ Pending |
 | 29  | OB-1425 | Add Deep Mode history persistence — store complete session in .openbridge/deep-mode/session-{timestamp}.json with all phase results, decisions, skipped items. Provides review and prompt evolution training data                                                                                                           | ◻ Pending |
