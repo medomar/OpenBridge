@@ -38,6 +38,7 @@ Scan the workspace at **${workspacePath}** and return a JSON object with its str
 4. Identify **configuration files** (package.json, tsconfig.json, requirements.txt, Cargo.toml, .env.example, etc.)
 5. List **skipped directories** (node_modules, .git, dist, etc.)
 6. Count **total files** in the workspace (excluding skipped directories)
+7. Note **asset directories** (images/, assets/, public/, media/, fonts/, data/, icons/, graphics/) and count image/media files (.png, .jpg, .svg, .mp4, .mp3, .ttf, .woff, etc.)
 
 ## Skip These Directories
 
@@ -133,6 +134,11 @@ ${JSON.stringify(structureScan, null, 2)}
 - Extensions: .xlsx, .csv, .pdf, .docx, .txt, .md (without code configs)
 - No build configs or dependency files
 - Directories: invoices/, reports/, contracts/, inventory/, sales/
+
+**Asset workspace indicators:**
+- Directories: images/, assets/, public/, media/, fonts/, icons/, graphics/
+- Extensions: .png, .jpg, .jpeg, .gif, .svg, .webp, .mp4, .mp3, .wav, .ttf, .woff, .woff2
+- May coexist with code (design systems, games, media applications)
 
 ## Output Format
 
@@ -259,7 +265,7 @@ Return ONLY valid JSON matching this schema:
 **IMPORTANT:**
 - Return ONLY the JSON object, no explanations
 - Be specific about file purposes (not generic descriptions)
-- Focus on files that matter (skip boilerplate)
+- Focus on source files and note asset directories (images, fonts, media, data files)
 - Use ISO 8601 format for exploredAt
 `;
 }
@@ -315,7 +321,7 @@ ${JSON.stringify(partialMap, null, 2)}
 Write a **2-3 sentence summary** that describes:
 1. What this workspace is (the project's main purpose)
 2. Key technologies/frameworks used
-3. Any notable characteristics (architecture, deployment, special features)
+3. Any notable characteristics (architecture, deployment, special features, or significant asset directories)
 
 ## Summary Style Guidelines
 
@@ -330,6 +336,10 @@ Write a **2-3 sentence summary** that describes:
 **For Mixed Workspaces:**
 - Balanced — technical for code, plain language for business data
 - Example: "E-commerce platform codebase (Node.js + React) with attached business data folders containing product catalogs, customer lists, and order CSVs."
+
+**For Asset-Heavy Workspaces:**
+- Note major asset directories and file type breakdown
+- Example: "Game project (Unity/C#) with 450 sprite assets in images/, 120 audio files in sounds/, and custom fonts in fonts/. Source code in Assets/Scripts/ handles game logic."
 
 ## Output Format
 
