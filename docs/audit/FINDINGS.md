@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 29 | **Fixed:** 63 | **Last Audit:** 2026-03-02
+> **Open:** 28 | **Fixed:** 64 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md)
 
@@ -33,7 +33,7 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F68 | Master AI doesn't know how to share generated files         | 🟠 High   | Can't receive test reports, code analysis results, or generated outputs | Open     |
 | OB-F71 | No user consent before risky/expensive worker operations    | 🟠 High   | Marketplace is production code — need confirmation before file edits    | Open     |
 | OB-F60 | Phase 3 directory dive retry logic is broken                | 🟠 High   | Marketplace has many directories — failed dives = knowledge gaps        | ✅ Fixed |
-| OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Re-exploration loops waste time when switching between projects         | Open     |
+| OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Re-exploration loops waste time when switching between projects         | ✅ Fixed |
 | OB-F63 | Prompt rollback stores new content as previousVersion       | 🟡 Medium | Bad prompts for Marketplace tasks can't be reverted                     | Open     |
 | OB-F61 | Progress calculation gives negative percentages             | 🟡 Medium | Confusing progress display during Marketplace exploration               | ✅ Fixed |
 
@@ -74,13 +74,14 @@ Improvements identified by analyzing [openclaw/openclaw](https://github.com/open
 
 ### Recently Fixed
 
-| #      | Finding                                                  | Severity  | Impact                                                                                  | Status    |
-| ------ | -------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- | --------- |
-| OB-F54 | Complex tasks use same 180s timeout as quick answers     | 🟠 High   | Complex tasks (25 turns) get 7.2s/turn, timeout every time, retry 4x → DLQ              | **Fixed** |
-| OB-F55 | Classification escalation over-triggers quick-answer     | 🟡 Medium | Global success rate escalates every quick-answer to tool-use, wasting budget            | **Fixed** |
-| OB-F77 | SPAWN marker stripping leaves empty/stub response        | 🟠 High   | Status message now generated when cleanedOutput < 80 and SPAWN markers found            | **Fixed** |
-| OB-F78 | No warning when response truncated after SPAWN stripping | 🟡 Medium | debug + warn logs added after SPAWN stripping in both streaming and non-streaming paths | **Fixed** |
-| OB-F61 | Progress calculation gives negative percentages          | 🟡 Medium | Removed erroneous subtraction — diveProgressPercent \* weight now produces 0%–50% range | **Fixed** |
+| #      | Finding                                                     | Severity  | Impact                                                                                   | Status    |
+| ------ | ----------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | --------- |
+| OB-F54 | Complex tasks use same 180s timeout as quick answers        | 🟠 High   | Complex tasks (25 turns) get 7.2s/turn, timeout every time, retry 4x → DLQ               | **Fixed** |
+| OB-F55 | Classification escalation over-triggers quick-answer        | 🟡 Medium | Global success rate escalates every quick-answer to tool-use, wasting budget             | **Fixed** |
+| OB-F77 | SPAWN marker stripping leaves empty/stub response           | 🟠 High   | Status message now generated when cleanedOutput < 80 and SPAWN markers found             | **Fixed** |
+| OB-F78 | No warning when response truncated after SPAWN stripping    | 🟡 Medium | debug + warn logs added after SPAWN stripping in both streaming and non-streaming paths  | **Fixed** |
+| OB-F61 | Progress calculation gives negative percentages             | 🟡 Medium | Removed erroneous subtraction — diveProgressPercent \* weight now produces 0%–50% range  | **Fixed** |
+| OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Added `writeAnalysisMarkerToStore()` + `workspaceMapSummary` update after re-exploration | **Fixed** |
 
 ---
 
