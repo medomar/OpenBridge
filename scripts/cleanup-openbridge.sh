@@ -15,10 +15,15 @@
 #   .openbridge/workspace-map.json     — stale project understanding
 #   .openbridge/analysis-marker.json   — triggers fresh exploration on next start
 #
+# SQLite cleanup (if openbridge.db exists and sqlite3 is available):
+#   system_config rows  WHERE key LIKE 'exploration%'
+#   workspace_state     all rows (analysis marker equivalent)
+#   context_chunks      rows older than 7 days
+#
 # Files preserved:
 #   .openbridge/prompts/               — user-customized prompt templates
 #   .openbridge/skills/                — user-defined skills (if present)
-#   .openbridge/openbridge.db          — SQLite memory (use --db-clean for DB cleanup)
+#   .openbridge/openbridge.db          — SQLite DB (stale rows cleaned in-place)
 # ─────────────────────────────────────────────────────────────────
 
 set -uo pipefail
@@ -34,7 +39,7 @@ for arg in "$@"; do
       DRY_RUN=true
       ;;
     --help|-h)
-      head -n 30 "$0" | grep "^#" | sed 's/^# \?//'
+      head -n 35 "$0" | grep "^#" | sed 's/^# \?//'
       exit 0
       ;;
     -*)
@@ -120,6 +125,70 @@ if [[ "$DELETED_COUNT" -eq 0 ]]; then
   echo "  (none found — already clean)"
 fi
 
+# ── SQLite database cleanup ───────────────────────────────────────
+
+DB_PATH="$OPENBRIDGE_DIR/openbridge.db"
+
+echo ""
+echo "SQLite database cleanup:"
+
+if [[ ! -f "$DB_PATH" ]]; then
+  echo "  (no openbridge.db found — skipping)"
+elif ! command -v sqlite3 &>/dev/null; then
+  echo "  (sqlite3 not found — skipping; install sqlite3 to enable DB cleanup)"
+else
+  # Helper: count rows and optionally delete them from a table.
+  # Skips silently if the table does not exist in this database.
+  _db_cleanup_table() {
+    local table="$1"
+    local sql_count="$2"
+    local sql_delete="$3"
+    local description="$4"
+
+    # Check that the table exists before querying it
+    local exists
+    exists=$(sqlite3 "$DB_PATH" \
+      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='${table}';" \
+      2>/dev/null || echo "0")
+
+    if [[ "$exists" == "0" ]]; then
+      return
+    fi
+
+    local count
+    count=$(sqlite3 "$DB_PATH" "$sql_count" 2>/dev/null || echo "0")
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  [would delete] ${count} row(s) from ${table} (${description})"
+    else
+      sqlite3 "$DB_PATH" "$sql_delete" 2>/dev/null || true
+      echo "  [deleted] ${count} row(s) from ${table} (${description})"
+    fi
+  }
+
+  # 1. Clear exploration state from key-value store
+  _db_cleanup_table \
+    "system_config" \
+    "SELECT COUNT(*) FROM system_config WHERE key LIKE 'exploration%';" \
+    "DELETE FROM system_config WHERE key LIKE 'exploration%';" \
+    "exploration state keys"
+
+  # 2. Clear workspace analysis marker (equivalent to analysis-marker.json)
+  _db_cleanup_table \
+    "workspace_state" \
+    "SELECT COUNT(*) FROM workspace_state;" \
+    "DELETE FROM workspace_state;" \
+    "workspace analysis marker"
+
+  # 3. Evict old exploration chunks (>7 days) from the chunk cache
+  #    Table is context_chunks; created_at is stored as ISO-8601 text.
+  _db_cleanup_table \
+    "context_chunks" \
+    "SELECT COUNT(*) FROM context_chunks WHERE datetime(created_at) < datetime('now', '-7 days');" \
+    "DELETE FROM context_chunks WHERE datetime(created_at) < datetime('now', '-7 days');" \
+    "stale exploration chunks (>7 days old)"
+fi
+
 # ── Preserved directories ─────────────────────────────────────────
 
 echo ""
@@ -132,9 +201,9 @@ if [[ -d "$OPENBRIDGE_DIR/skills" ]]; then
   echo "  [kept] $OPENBRIDGE_DIR/skills/"
   echo "         (user-defined skills)"
 fi
-if [[ -f "$OPENBRIDGE_DIR/openbridge.db" ]]; then
-  echo "  [kept] $OPENBRIDGE_DIR/openbridge.db"
-  echo "         (SQLite memory — use OB-1328 DB cleanup for stale rows)"
+if [[ -f "$DB_PATH" ]]; then
+  echo "  [kept] $DB_PATH"
+  echo "         (SQLite memory — stale rows cleaned in-place above)"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────
