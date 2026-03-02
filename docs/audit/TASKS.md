@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 185 | **In Progress:** 0 | **Done:** 76
+> **Pending:** 184 | **In Progress:** 0 | **Done:** 77
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -42,7 +42,7 @@
 | 75     | Context Injection                     | 8     | ✅     |
 | 76     | Targeted Reader                       | 7     | ✅     |
 | 77     | Chunk Enrichment                      | 8     | ✅     |
-| 85     | Environment Variable Protection       | 10    | ◻      |
+| 85     | Environment Variable Protection       | 10    | ✅     |
 | 81     | Master Output Awareness               | 7     | ◻      |
 | 86     | User Consent & Execution Transparency | 13    | ◻      |
 | Deep   | Deep Mode (OB-F56)                    | 35    | ◻      |
@@ -226,18 +226,18 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 > **Goal:** Strip sensitive environment variables before they reach workers. Marketplace backend uses DATABASE_URL, REDIS_URL, SMTP_PASSWORD, OPENAI_API_KEY, GITHUB_TOKEN and more — all inherited by workers.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                      | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1367 | Define `ENV_DENY_PATTERNS` constant in `src/types/config.ts` — array of glob patterns: AWS*\*, GITHUB*\_, GH\__, TOKEN*\*, SECRET*_, PASSWORD\__, PRIVATE*\*, DB*_, DATABASE\__, SMTP*\*, OPENAI*_, ANTHROPIC\__, API*KEY*, *\_SECRET, *\_TOKEN, *\_PASSWORD, \*\_CREDENTIAL, REDIS*_, MONGO\_\_, MYSQL*\*, POSTGRES*\*          | ✅ Done   |
-| 2   | OB-1368 | Add `security.envDenyPatterns` and `security.envAllowPatterns` to V2 config Zod schema in `src/types/config.ts` — optional arrays of glob patterns with defaults. envAllowPatterns overrides deny list (e.g., GITHUB_ACTIONS for CI). Add security section if missing                                                            | ✅ Done   |
-| 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ✅ Done   |
-| 4   | OB-1370 | Wire sanitizeEnv() into ClaudeAdapter in `src/core/adapters/claude-adapter.ts` — call in cleanEnv() method before passing env to child process. Runs in addition to existing CLAUDECODE stripping                                                                                                                                | ✅ Done   |
-| 5   | OB-1371 | Wire sanitizeEnv() into CodexAdapter in `src/core/adapters/codex-adapter.ts` — same pattern as Claude adapter                                                                                                                                                                                                                    | ✅ Done   |
-| 6   | OB-1372 | Wire sanitizeEnv() into AiderAdapter in `src/core/adapters/aider-adapter.ts` — same pattern as Claude and Codex adapters                                                                                                                                                                                                         | ✅ Done   |
-| 7   | OB-1373 | Add startup secret scan in `src/core/bridge.ts` — during initialization, scan process.env for keys matching deny patterns. Log warning with count and matched patterns: "Detected N environment variables matching secret patterns, will be stripped from workers"                                                               | ✅ Done   |
-| 8   | OB-1374 | Update `config.example.json` — add security section with envDenyPatterns and envAllowPatterns examples                                                                                                                                                                                                                           | ✅ Done   |
-| 9   | OB-1375 | Add tests in `tests/core/env-sanitizer.test.ts` — test: (1) AWS_SECRET_KEY stripped, (2) DATABASE_URL stripped, (3) PATH and HOME NOT stripped, (4) GITHUB_ACTIONS preserved when in allow list, (5) wildcard \*\_TOKEN matches AUTH_TOKEN, (6) empty deny list passes everything, (7) case-sensitive matching. At least 7 tests | ✅ Done   |
-| 10  | OB-1376 | Build + lint + typecheck + test validation for Phase 85 — Sprint 2 gate. Fix any failures                                                                                                                                                                                                                                        | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                      | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1367 | Define `ENV_DENY_PATTERNS` constant in `src/types/config.ts` — array of glob patterns: AWS*\*, GITHUB*\_, GH\__, TOKEN*\*, SECRET*_, PASSWORD\__, PRIVATE*\*, DB*_, DATABASE\__, SMTP*\*, OPENAI*_, ANTHROPIC\__, API*KEY*, *\_SECRET, *\_TOKEN, *\_PASSWORD, \*\_CREDENTIAL, REDIS*_, MONGO\_\_, MYSQL*\*, POSTGRES*\*          | ✅ Done |
+| 2   | OB-1368 | Add `security.envDenyPatterns` and `security.envAllowPatterns` to V2 config Zod schema in `src/types/config.ts` — optional arrays of glob patterns with defaults. envAllowPatterns overrides deny list (e.g., GITHUB_ACTIONS for CI). Add security section if missing                                                            | ✅ Done |
+| 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ✅ Done |
+| 4   | OB-1370 | Wire sanitizeEnv() into ClaudeAdapter in `src/core/adapters/claude-adapter.ts` — call in cleanEnv() method before passing env to child process. Runs in addition to existing CLAUDECODE stripping                                                                                                                                | ✅ Done |
+| 5   | OB-1371 | Wire sanitizeEnv() into CodexAdapter in `src/core/adapters/codex-adapter.ts` — same pattern as Claude adapter                                                                                                                                                                                                                    | ✅ Done |
+| 6   | OB-1372 | Wire sanitizeEnv() into AiderAdapter in `src/core/adapters/aider-adapter.ts` — same pattern as Claude and Codex adapters                                                                                                                                                                                                         | ✅ Done |
+| 7   | OB-1373 | Add startup secret scan in `src/core/bridge.ts` — during initialization, scan process.env for keys matching deny patterns. Log warning with count and matched patterns: "Detected N environment variables matching secret patterns, will be stripped from workers"                                                               | ✅ Done |
+| 8   | OB-1374 | Update `config.example.json` — add security section with envDenyPatterns and envAllowPatterns examples                                                                                                                                                                                                                           | ✅ Done |
+| 9   | OB-1375 | Add tests in `tests/core/env-sanitizer.test.ts` — test: (1) AWS_SECRET_KEY stripped, (2) DATABASE_URL stripped, (3) PATH and HOME NOT stripped, (4) GITHUB_ACTIONS preserved when in allow list, (5) wildcard \*\_TOKEN matches AUTH_TOKEN, (6) empty deny list passes everything, (7) case-sensitive matching. At least 7 tests | ✅ Done |
+| 10  | OB-1376 | Build + lint + typecheck + test validation for Phase 85 — Sprint 2 gate. Fix any failures                                                                                                                                                                                                                                        | ✅ Done |
 
 ---
 
