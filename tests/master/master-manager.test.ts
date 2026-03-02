@@ -1844,6 +1844,43 @@ describe('MasterManager', () => {
         expect(complex.class).toBe('complex-task');
         expect(complex.timeout).toBe(25 * 30_000); // 750_000ms
       });
+
+      // OB-1302: execution / delegation keyword and phrase tests
+      it('classifies "execute group A" as complex-task', async () => {
+        expect((await masterManager.classifyTask('execute group A')).class).toBe('complex-task');
+      });
+
+      it('classifies "start the execution" as complex-task', async () => {
+        expect((await masterManager.classifyTask('start the execution')).class).toBe(
+          'complex-task',
+        );
+      });
+
+      it('classifies "begin task 5" as complex-task', async () => {
+        expect((await masterManager.classifyTask('begin task 5')).class).toBe('complex-task');
+      });
+
+      it('classifies "launch the workers" as complex-task', async () => {
+        expect((await masterManager.classifyTask('launch the workers')).class).toBe('complex-task');
+      });
+
+      it('classifies "proceed with the plan" as complex-task', async () => {
+        expect((await masterManager.classifyTask('proceed with the plan')).class).toBe(
+          'complex-task',
+        );
+      });
+
+      it('classifies "run tasks" as complex-task', async () => {
+        expect((await masterManager.classifyTask('run tasks')).class).toBe('complex-task');
+      });
+
+      it('classifies "read file X" as tool-use (unchanged by new keywords)', async () => {
+        expect((await masterManager.classifyTask('read file X')).class).toBe('tool-use');
+      });
+
+      it('classifies "what is X?" as quick-answer (unchanged by new keywords)', async () => {
+        expect((await masterManager.classifyTask('what is X?')).class).toBe('quick-answer');
+      });
     });
 
     // -----------------------------------------------------------------------

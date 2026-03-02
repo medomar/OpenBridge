@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 259 | **In Progress:** 0 | **Done:** 2
+> **Pending:** 258 | **In Progress:** 0 | **Done:** 3
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -34,7 +34,7 @@
 
 | Phase  | Description                           | Tasks | Status       |
 | ------ | ------------------------------------- | ----- | ------------ |
-| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (1/9 done) |
+| 78a    | Classification & SPAWN Response Fixes | 9     | ◻ (3/9 done) |
 | 78b    | Code Audit Profile                    | 8     | ◻            |
 | 79     | Exploration Bug Fixes                 | 10    | ◻            |
 | 80     | .openbridge Data Cleanup              | 7     | ◻            |
@@ -73,11 +73,11 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 ### Phase 78a-1 — Classification Fix (OB-F76)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status    |
-| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1300 | Add execution/delegation keywords to the `complex-task` keyword list in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add `"execute"`, `"start"`, `"proceed"`, `"begin"`, `"launch"`, `"run tasks"`, `"start execution"`, `"execute group"`, `"start group"` to the keywords that trigger `complex-task` classification. Currently these words fall through to `tool-use` (15 turns) instead of `complex-task` (25 turns), causing the Master to lack the planning prompt needed for delegation      | ✅ Done   |
-| 2   | OB-1301 | Add pattern matching for delegation phrases in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add regex patterns to match "start the [noun]", "execute [noun]", "begin [noun]", "launch [noun]", "run the [noun]" as `complex-task` triggers. These multi-word phrases are common in delegation requests (e.g., "start the execution of group A") and the current keyword list only checks individual words                                                                                           | ✅ Done   |
-| 3   | OB-1302 | Add tests for the new execution keyword and pattern matching in `tests/master/master-manager.test.ts` — test: (1) "execute group A" → `complex-task`, (2) "start the execution" → `complex-task`, (3) "begin task 5" → `complex-task`, (4) "launch the workers" → `complex-task`, (5) "proceed with the plan" → `complex-task`, (6) "run tasks" → `complex-task`, (7) verify existing classifications still work (e.g., "read file X" stays `tool-use`, "what is X" stays `codebase-question`). At least 7 test cases | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Status  |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1300 | Add execution/delegation keywords to the `complex-task` keyword list in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add `"execute"`, `"start"`, `"proceed"`, `"begin"`, `"launch"`, `"run tasks"`, `"start execution"`, `"execute group"`, `"start group"` to the keywords that trigger `complex-task` classification. Currently these words fall through to `tool-use` (15 turns) instead of `complex-task` (25 turns), causing the Master to lack the planning prompt needed for delegation      | ✅ Done |
+| 2   | OB-1301 | Add pattern matching for delegation phrases in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — add regex patterns to match "start the [noun]", "execute [noun]", "begin [noun]", "launch [noun]", "run the [noun]" as `complex-task` triggers. These multi-word phrases are common in delegation requests (e.g., "start the execution of group A") and the current keyword list only checks individual words                                                                                           | ✅ Done |
+| 3   | OB-1302 | Add tests for the new execution keyword and pattern matching in `tests/master/master-manager.test.ts` — test: (1) "execute group A" → `complex-task`, (2) "start the execution" → `complex-task`, (3) "begin task 5" → `complex-task`, (4) "launch the workers" → `complex-task`, (5) "proceed with the plan" → `complex-task`, (6) "run tasks" → `complex-task`, (7) verify existing classifications still work (e.g., "read file X" stays `tool-use`, "what is X" stays `codebase-question`). At least 7 test cases | ✅ Done |
 
 ### Phase 78a-2 — SPAWN Response Fix (OB-F77)
 
