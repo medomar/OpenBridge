@@ -1481,8 +1481,7 @@ export class ExplorationCoordinator {
       const completedDives = state.directoryDives.filter((d) => d.status === 'completed').length;
       const totalDives = state.directoryDives.length;
       const diveProgressPercent = completedDives / totalDives;
-      completedWeight +=
-        phaseWeights.directory_dives * diveProgressPercent - phaseWeights.directory_dives;
+      completedWeight += phaseWeights.directory_dives * diveProgressPercent;
     }
 
     const completionPercent = Math.round(completedWeight);
