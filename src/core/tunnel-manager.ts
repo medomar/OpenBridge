@@ -40,6 +40,13 @@ export interface TunnelAdapter {
    * Returns the URL string if found, or null if this line does not contain a URL.
    */
   parseUrl(line: string): string | null;
+  /**
+   * Optional: fetch the public URL via a local API endpoint.
+   * Used as a parallel detection path alongside stdout parsing.
+   * Returns the URL string if found, or null if not yet available.
+   * TunnelManager will poll this every second after process starts.
+   */
+  fetchUrl?(port: number): Promise<string | null>;
 }
 
 type TunnelState = 'idle' | 'starting' | 'active' | 'stopped';
@@ -111,10 +118,19 @@ export class TunnelManager {
 
       this.child = child;
       let resolved = false;
+      let apiPollHandle: ReturnType<typeof setInterval> | null = null;
+
+      const cleanup = (): void => {
+        if (apiPollHandle !== null) {
+          clearInterval(apiPollHandle);
+          apiPollHandle = null;
+        }
+      };
 
       const timeoutHandle = setTimeout(() => {
         if (!resolved) {
           resolved = true;
+          cleanup();
           this.state = 'stopped';
           this.child = null;
           child.kill('SIGKILL');
@@ -134,6 +150,7 @@ export class TunnelManager {
           const url = this.adapter!.parseUrl(line.trim());
           if (url) {
             clearTimeout(timeoutHandle);
+            cleanup();
             resolved = true;
             this.publicUrl = url;
             this.state = 'active';
@@ -147,10 +164,41 @@ export class TunnelManager {
       child.stdout?.on('data', onOutput);
       child.stderr?.on('data', onOutput);
 
+      // If the adapter supports API-based URL detection, poll it in parallel
+      if (this.adapter!.fetchUrl) {
+        const adapterFetchUrl = this.adapter!.fetchUrl.bind(this.adapter);
+        // Give the process 1s to start before polling
+        const startPolling = (): void => {
+          apiPollHandle = setInterval(() => {
+            if (resolved) {
+              cleanup();
+              return;
+            }
+            adapterFetchUrl(port)
+              .then((url) => {
+                if (url !== null && !resolved) {
+                  clearTimeout(timeoutHandle);
+                  cleanup();
+                  resolved = true;
+                  this.publicUrl = url;
+                  this.state = 'active';
+                  logger.info({ toolName: this.toolName, url }, 'Tunnel active (via API)');
+                  resolve(url);
+                }
+              })
+              .catch(() => {
+                // API not ready yet — continue polling
+              });
+          }, 1_000);
+        };
+        setTimeout(startPolling, 1_000);
+      }
+
       child.on('error', (err) => {
         clearTimeout(timeoutHandle);
         if (!resolved) {
           resolved = true;
+          cleanup();
           this.state = 'stopped';
           this.child = null;
           logger.error({ toolName: this.toolName, err }, 'Tunnel process error');
@@ -160,6 +208,7 @@ export class TunnelManager {
 
       child.on('exit', (code, signal) => {
         clearTimeout(timeoutHandle);
+        cleanup();
         const wasActive = this.state === 'active';
         this.state = 'stopped';
         this.child = null;
