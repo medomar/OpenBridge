@@ -1145,4 +1145,27 @@ Working on both tasks.`;
       expect(workers.length).toBe(1);
     });
   });
+
+  describe('spawnTargetedReader — OB-1357', () => {
+    it('spawns a read-only worker with 5 max turns for targeted file reading', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Router handles all incoming messages via route()',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 400,
+      });
+
+      const result = await masterManager.spawnTargetedReader(
+        ['src/core/router.ts', 'src/core/auth.ts'],
+        'how does the router handle messages',
+      );
+
+      expect(result).toBe('Router handles all incoming messages via route()');
+
+      const spawnCall = getSpawnCallOpts(0);
+      expect(spawnCall?.maxTurns).toBe(5);
+      expect(spawnCall?.allowedTools).toEqual(['Read', 'Glob', 'Grep']);
+    });
+  });
 });

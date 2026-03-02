@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import type { Chunk } from '../../src/memory/chunk-store.js';
+import type { WorkspaceMap } from '../../src/types/master.js';
 
 // ---------------------------------------------------------------------------
 // Minimal mock types for MemoryManager and DotFolderManager
@@ -254,5 +255,103 @@ describe('KnowledgeRetriever.formatKnowledgeContext', () => {
     });
     expect(output.length).toBeLessThanOrEqual(4000);
     expect(output.endsWith('...')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KnowledgeRetriever.suggestTargetFiles — targeted reader file suggestion
+// OB-1357
+// ---------------------------------------------------------------------------
+
+describe('KnowledgeRetriever.suggestTargetFiles', () => {
+  let retriever: KnowledgeRetriever;
+
+  const baseWorkspaceMap: WorkspaceMap = {
+    workspacePath: '/workspace',
+    projectName: 'myapp',
+    projectType: 'node',
+    frameworks: [],
+    structure: {},
+    keyFiles: [],
+    entryPoints: [],
+    commands: {},
+    dependencies: [],
+    summary: 'A test project',
+    generatedAt: new Date().toISOString(),
+    schemaVersion: '1.0.0',
+  };
+
+  beforeEach(() => {
+    const memoryManager = { searchContext: vi.fn() };
+    const dotFolderManager = {
+      readWorkspaceMap: vi.fn(),
+      listDirDiveResults: vi.fn(),
+      readDirectoryDive: vi.fn(),
+    };
+    retriever = new KnowledgeRetriever(memoryManager as never, dotFolderManager as never);
+  });
+
+  it('returns file paths matching question keywords', () => {
+    const workspaceMap: WorkspaceMap = {
+      ...baseWorkspaceMap,
+      keyFiles: [
+        { path: 'src/core/router.ts', type: 'source', purpose: 'Message routing' },
+        { path: 'src/core/auth.ts', type: 'source', purpose: 'Authentication' },
+        { path: 'src/core/queue.ts', type: 'source', purpose: 'Queue management' },
+      ],
+    };
+
+    const files = retriever.suggestTargetFiles('how does router work', workspaceMap);
+
+    expect(files.length).toBeGreaterThan(0);
+    expect(files).toContain('src/core/router.ts');
+  });
+
+  it('returns empty array when no files match the question', () => {
+    const workspaceMap: WorkspaceMap = {
+      ...baseWorkspaceMap,
+      keyFiles: [{ path: 'src/core/router.ts', type: 'source', purpose: 'Message routing' }],
+    };
+
+    // "database migrations" has no overlap with "router" or "message routing"
+    const files = retriever.suggestTargetFiles(
+      'tell me about database migrations schema',
+      workspaceMap,
+    );
+
+    expect(files).toEqual([]);
+  });
+
+  it('limits results to at most 10 files', () => {
+    // Create 15 key files that all match on the "auth" keyword
+    const keyFiles = Array.from({ length: 15 }, (_, i) => ({
+      path: `src/modules/auth-handler-${i}.ts`,
+      type: 'source',
+      purpose: 'Authentication handler',
+    }));
+
+    const workspaceMap: WorkspaceMap = {
+      ...baseWorkspaceMap,
+      keyFiles,
+    };
+
+    const files = retriever.suggestTargetFiles('auth handler authentication', workspaceMap);
+
+    expect(files.length).toBeLessThanOrEqual(10);
+  });
+
+  it('scores explicit file reference higher than keyword match', () => {
+    const workspaceMap: WorkspaceMap = {
+      ...baseWorkspaceMap,
+      keyFiles: [
+        { path: 'src/core/router.ts', type: 'source', purpose: 'Message routing' },
+        { path: 'src/core/auth.ts', type: 'source', purpose: 'Auth module that routes requests' },
+      ],
+    };
+
+    // Explicit mention of "router.ts" should score it highest
+    const files = retriever.suggestTargetFiles('explain router.ts', workspaceMap);
+
+    expect(files[0]).toBe('src/core/router.ts');
   });
 });
