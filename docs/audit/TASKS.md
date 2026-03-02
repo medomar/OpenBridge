@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 204 | **In Progress:** 0 | **Done:** 57
+> **Pending:** 203 | **In Progress:** 0 | **Done:** 58
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -200,7 +200,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 3   | OB-1354 | Wire targeted reader into processMessage() — when needsWorker is true and confidence < 0.3, call suggestTargetFiles() then spawnTargetedReader(). Inject worker result into Master context before processing the message                                                                                                                     | ✅ Done   |
 | 4   | OB-1355 | Add targeted reader prompt template `TASK_TARGETED_READ` to `src/master/seed-prompts.ts` — instructions to read specified files, extract relevant information, summarize key findings in 3-5 bullet points with file paths and line numbers                                                                                                  | ✅ Done   |
 | 5   | OB-1356 | Add fallback behavior — if suggestTargetFiles() returns 0 files, let Master handle normally (no targeted reader). Log at debug level: "No target files identified, falling back to Master handling"                                                                                                                                          | ✅ Done   |
-| 6   | OB-1357 | Add tests for targeted reader in `tests/core/knowledge-retriever.test.ts` — test: (1) suggestTargetFiles returns file paths matching keywords, (2) returns empty array when no match, (3) limits to 10 files, (4) spawnTargetedReader uses read-only profile with 5 max turns. At least 4 tests                                              | ◻ Pending |
+| 6   | OB-1357 | Add tests for targeted reader in `tests/core/knowledge-retriever.test.ts` — test: (1) suggestTargetFiles returns file paths matching keywords, (2) returns empty array when no match, (3) limits to 10 files, (4) spawnTargetedReader uses read-only profile with 5 max turns. At least 4 tests                                              | ✅ Done   |
 | 7   | OB-1358 | Build + lint + typecheck + test validation for Phase 76. Fix any failures                                                                                                                                                                                                                                                                    | ◻ Pending |
 
 ---
