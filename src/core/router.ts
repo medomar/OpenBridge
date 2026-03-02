@@ -18,7 +18,7 @@ import type {
   SessionSummary,
 } from '../memory/index.js';
 import type { MessageQueue } from './queue.js';
-import type { RiskLevel } from '../types/agent.js';
+import type { RiskLevel, ExecutionProfile } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
@@ -684,6 +684,12 @@ export class Router {
     // Handle built-in "/audit" command — intercept before routing to Master AI
     if (/^\/audit(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleAuditCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/deep" command — starts/toggles/configures Deep Mode (OB-1407)
+    if (/^\/deep(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleDeepCommand(message, connector);
       return;
     }
 
@@ -1729,6 +1735,147 @@ export class Router {
       replyTo: message.id,
     });
     logger.info({ sender: message.sender }, 'Audit command handled');
+  }
+
+  /**
+   * Handle the built-in "/deep" command — starts Deep Mode, toggles it, or shows status.
+   *
+   * Syntax:
+   *   /deep            → toggle (start thorough if inactive, show status if active)
+   *   /deep thorough   → start automatic multi-phase execution
+   *   /deep manual     → start with pause between phases for user review
+   *   /deep off        → deactivate Deep Mode, abort all active sessions
+   */
+  private async handleDeepCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice(5).trim().toLowerCase(); // Remove "/deep"
+
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    // /deep off — abort all active sessions
+    if (rest === 'off') {
+      if (activeSessions.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'No active Deep Mode session to deactivate.',
+          replyTo: message.id,
+        });
+        return;
+      }
+      for (const sessionId of activeSessions) {
+        deepMode.abort(sessionId);
+      }
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Deep Mode deactivated — ${activeSessions.length} session(s) aborted.`,
+        replyTo: message.id,
+      });
+      logger.info(
+        { sender: message.sender, count: activeSessions.length },
+        'Deep Mode aborted via /deep off',
+      );
+      return;
+    }
+
+    // Unknown argument
+    if (rest !== '' && rest !== 'thorough' && rest !== 'manual') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: [
+          'Unknown Deep Mode option. Usage:',
+          '  /deep           — toggle (or show status if active)',
+          '  /deep thorough  — start automatic multi-phase execution',
+          '  /deep manual    — start with pause between phases',
+          '  /deep off       — deactivate Deep Mode',
+        ].join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // If already active, show current status
+    if (activeSessions.length > 0) {
+      const lines: string[] = ['*Deep Mode Status*', ''];
+      for (const sessionId of activeSessions) {
+        const state = deepMode.getSessionState(sessionId);
+        if (!state) continue;
+        const paused = deepMode.isPaused(sessionId);
+        const phase = state.currentPhase ?? 'done';
+        const completedPhases = Object.keys(state.phaseResults);
+        lines.push(`Profile: ${state.profile}`);
+        lines.push(
+          `Current phase: ${phase}${paused ? ' (paused — send /proceed to continue)' : ''}`,
+        );
+        if (completedPhases.length > 0) {
+          lines.push(`Completed: ${completedPhases.join(', ')}`);
+        }
+        lines.push(`Task: ${state.taskSummary.slice(0, 100)}`);
+      }
+      lines.push('');
+      lines.push('Send /deep off to deactivate.');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Start a new session — default to thorough when no arg provided (toggle on)
+    const effectiveProfile: ExecutionProfile = rest === 'manual' ? 'manual' : 'thorough';
+    const sessionId = deepMode.startSession(
+      `User-initiated via /deep ${effectiveProfile}`,
+      effectiveProfile,
+    );
+
+    if (!sessionId) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not started — fast profile skips multi-phase execution.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const currentPhase = deepMode.getCurrentPhase(sessionId);
+    const profileDescription =
+      effectiveProfile === 'manual'
+        ? 'I will pause after each phase for your review. Send /proceed to advance.'
+        : 'I will run all phases automatically and report when complete.';
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: [
+        `*Deep Mode started* (${effectiveProfile} profile)`,
+        `Current phase: *${currentPhase ?? 'investigate'}*`,
+        '',
+        profileDescription,
+        '',
+        'Send your task description and Deep Mode will guide multi-phase execution.',
+      ].join('\n'),
+      replyTo: message.id,
+    });
+    logger.info(
+      { sender: message.sender, sessionId, profile: effectiveProfile },
+      'Deep Mode activated via /deep command',
+    );
   }
 
   /**

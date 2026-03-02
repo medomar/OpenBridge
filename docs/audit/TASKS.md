@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 154 | **In Progress:** 0 | **Done:** 107
+> **Pending:** 153 | **In Progress:** 0 | **Done:** 108
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -306,7 +306,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 11  | OB-1407 | Add `/deep` command to Router — starts Deep Mode or toggles on/off. Usage: /deep (toggle), /deep thorough, /deep manual, /deep off. Shows current status if already active                                                                                                                 | ◻ Pending |
+| 11  | OB-1407 | Add `/deep` command to Router — starts Deep Mode or toggles on/off. Usage: /deep (toggle), /deep thorough, /deep manual, /deep off. Shows current status if already active                                                                                                                 | ✅ Done   |
 | 12  | OB-1408 | Add `/proceed` command to Router — advances to next Deep Mode phase. Responds with "No active Deep Mode session" if none active. In manual mode triggers next phase, in thorough mode is a no-op                                                                                           | ◻ Pending |
 | 13  | OB-1409 | Add `/focus N` command to Router — digs deeper into finding number N from current phase results. Spawns additional investigation worker focused on that specific item                                                                                                                      | ◻ Pending |
 | 14  | OB-1410 | Add `/skip N` command to Router — skips task/finding number N in current plan. Marks as skipped in Deep Mode state. Execute phase will not process skipped items                                                                                                                           | ◻ Pending |

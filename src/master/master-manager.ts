@@ -1942,6 +1942,11 @@ export class MasterManager {
     return this.workerRegistry;
   }
 
+  /** Return the DeepModeManager for external command handling (e.g. Router /deep command). */
+  public getDeepModeManager(): DeepModeManager {
+    return this.deepMode;
+  }
+
   /**
    * Format a concise worker summary string for stop command responses.
    * Returns "<shortId> (<model>, '<task preview>', <elapsed>)".
