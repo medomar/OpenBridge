@@ -1878,8 +1878,8 @@ describe('MasterManager', () => {
         expect((await masterManager.classifyTask('run tasks')).class).toBe('complex-task');
       });
 
-      it('classifies "read file X" as tool-use (unchanged by new keywords)', async () => {
-        expect((await masterManager.classifyTask('read file X')).class).toBe('tool-use');
+      it('classifies "read file X" as quick-answer (fallback is now quick-answer per OB-1581)', async () => {
+        expect((await masterManager.classifyTask('read file X')).class).toBe('quick-answer');
       });
 
       it('classifies "what is X?" as quick-answer (unchanged by new keywords)', async () => {
