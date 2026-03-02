@@ -18,7 +18,7 @@ import type {
   SessionSummary,
 } from '../memory/index.js';
 import type { MessageQueue } from './queue.js';
-import type { RiskLevel, ExecutionProfile } from '../types/agent.js';
+import type { RiskLevel, ExecutionProfile, DeepPhase } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
@@ -708,6 +708,12 @@ export class Router {
     // Handle built-in "/skip N" command — skip item N from Deep Mode plan (OB-1410)
     if (/^\/skip\s+\d+/i.test(message.content.trim())) {
       await this.handleSkipItemCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/phase" command — shows current Deep Mode phase and progress (OB-1411)
+    if (/^\/phase(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handlePhaseCommand(message, connector);
       return;
     }
 
@@ -2176,6 +2182,105 @@ export class Router {
     logger.info(
       { sender: message.sender, sessionId, itemIndex, phase: state.currentPhase },
       'Deep Mode item skipped via /skip command',
+    );
+  }
+
+  /**
+   * Handle the built-in "/phase" command — shows current phase and progress for Deep Mode.
+   *
+   * Displays for each active Deep Mode session:
+   *   - Profile name and task summary
+   *   - Current phase (or "complete" if all phases done)
+   *   - Completed phases with a brief output summary (first 200 chars)
+   *   - Pending phases not yet started
+   *   - Skipped items (if any)
+   *
+   * Responds with "No active Deep Mode session" when none exists.
+   * Responds with "Deep Mode not available" when Master AI is not initialized.
+   */
+  private async handlePhaseCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    if (activeSessions.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const phaseOrder: DeepPhase[] = ['investigate', 'report', 'plan', 'execute', 'verify'];
+    const sessionBlocks: string[] = [];
+
+    for (const sessionId of activeSessions) {
+      const state = deepMode.getSessionState(sessionId);
+      if (!state) continue;
+
+      const currentPhase = state.currentPhase;
+      const completedPhaseNames = phaseOrder.filter((p) => state.phaseResults[p] !== undefined);
+      const currentIndex = currentPhase ? phaseOrder.indexOf(currentPhase) : phaseOrder.length;
+      const pendingPhases = phaseOrder.slice(currentPhase ? currentIndex + 1 : phaseOrder.length);
+
+      const headerLines = [
+        `*Deep Mode — Phase Status*`,
+        `Profile: ${state.profile}`,
+        `Task: "${state.taskSummary}"`,
+        ``,
+        `Current phase: ${currentPhase ? `*${currentPhase}*` : 'complete'}`,
+      ];
+
+      const completedLines: string[] = [];
+      if (completedPhaseNames.length > 0) {
+        completedLines.push('', 'Completed phases:');
+        for (const phaseName of completedPhaseNames) {
+          const result = deepMode.getPhaseResult(sessionId, phaseName);
+          const snippet = result ? result.output.slice(0, 200).replace(/\n+/g, ' ').trim() : '';
+          const ellipsis = result && result.output.length > 200 ? '…' : '';
+          completedLines.push(`• ${phaseName} ✓${snippet ? ` — "${snippet}${ellipsis}"` : ''}`);
+        }
+      }
+
+      const pendingLines: string[] = [];
+      if (pendingPhases.length > 0) {
+        pendingLines.push('', 'Pending phases:');
+        for (const p of pendingPhases) {
+          pendingLines.push(`• ${p}`);
+        }
+      }
+
+      const skippedNote: string[] = [];
+      if (state.skippedItems.length > 0) {
+        skippedNote.push('', `Skipped items: ${state.skippedItems.join(', ')}`);
+      }
+
+      sessionBlocks.push(
+        [...headerLines, ...completedLines, ...pendingLines, ...skippedNote].join('\n'),
+      );
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: sessionBlocks.join('\n\n---\n\n') || 'No Deep Mode session details available.',
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, sessionCount: activeSessions.length },
+      'Deep Mode phase status shown via /phase',
     );
   }
 
