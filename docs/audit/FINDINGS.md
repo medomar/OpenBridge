@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 23 | **Fixed:** 59 | **Last Audit:** 2026-03-01
+> **Open:** 33 | **Fixed:** 59 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md)
 
@@ -47,6 +47,23 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F73 | WebChat has no authentication             | 🔴 Critical | Required for exposing WebChat beyond localhost (LAN, tunnel, PWA)         | Open   |
 | OB-F74 | WebChat UI is inlined HTML string         | 🟠 High     | Blocks all WebChat improvements — must extract before modernization       | Open   |
 | OB-F75 | WebChat not accessible from phone         | 🟠 High     | Phone access via LAN/tunnel + PWA makes WebChat a primary interface       | Open   |
+
+### Tier 2c — Community-Inspired Improvements (v0.0.13)
+
+Improvements identified by analyzing [openclaw/openclaw](https://github.com/openclaw/openclaw) (242K stars) and [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) (32K stars).
+
+| #      | Finding                                                           | Severity  | Improvement Impact                                                                | Inspired By | Status |
+| ------ | ----------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------- | ----------- | ------ |
+| OB-F79 | Memory has no vector search — FTS5 only                           | 🟠 High   | RAG returns keyword matches only, misses semantically similar content             | openclaw    | Open   |
+| OB-F80 | No structured observations from worker outputs                    | 🟠 High   | Worker results are free-form text — no typed facts, concepts, or files_touched    | claude-mem  | Open   |
+| OB-F81 | Memory retrieval returns full results — no progressive disclosure | 🟡 Medium | Every search loads full content, wastes tokens; no index → filter → detail flow   | claude-mem  | Open   |
+| OB-F82 | No content-hash deduplication for workspace chunks                | 🟡 Medium | Duplicate chunks stored during overlapping worker reads and re-exploration        | claude-mem  | Open   |
+| OB-F83 | No token economics tracking for exploration ROI                   | 🟡 Medium | Can't measure if exploration cost is worth the retrieval savings                  | claude-mem  | Open   |
+| OB-F84 | Master context window has no auto-compaction                      | 🟠 High   | Long Master sessions hit context limits; memory.md is manual, not auto-compacted  | openclaw    | Open   |
+| OB-F85 | No self-diagnostic command (`openbridge doctor`)                  | 🟡 Medium | No way to validate config, check AI tools, verify SQLite, test channel health     | openclaw    | Open   |
+| OB-F86 | No pairing-based auth for non-phone channels                      | 🟡 Medium | Discord/Telegram users need manual whitelist; no self-service pairing flow        | openclaw    | Open   |
+| OB-F87 | No skills directory for reusable capabilities                     | 🟡 Medium | Master rediscovers capabilities each session; no SKILL.md pattern for persistence | openclaw    | Open   |
+| OB-F88 | Worker results lack structured summary format                     | 🟡 Medium | No `completed/learned/next_steps` — Master can't track incomplete work            | claude-mem  | Open   |
 
 ### Tier 3 — Deferred (not blocking current work)
 
@@ -670,6 +687,236 @@ Three layers of the problem:
 **Dependencies chain:** OB-F74 (extract UI) → OB-F73 (add auth) → OB-F75 (expose + mobile)
 
 **See also:** OB-F69 Phase 82 (tunnel integration), [FUTURE.md — WebChat Modernization](FUTURE.md)
+
+### OB-F79 — Memory has no vector search — FTS5 only (High)
+
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) — uses `sqlite-vec` for vector embeddings with hybrid search (vector + FTS5 + SQLite filters), MMR (Maximal Marginal Relevance) for result diversity, and temporal decay scoring.
+
+**Problem:** OpenBridge's memory system (`src/memory/retrieval.ts`) uses FTS5 full-text search only. This works for keyword matches but misses semantically related content. When a user asks "how does authentication work?", FTS5 won't find chunks about "login flow", "JWT tokens", or "session management" unless those exact words are stored.
+
+**Impact:** RAG quality is limited to keyword matching. Large codebases with varied terminology produce poor retrieval results. Workers waste turns re-reading files that are already in the chunk store under different words.
+
+**Proposed solution:**
+
+1. Add `sqlite-vec` dependency for vector storage alongside existing FTS5
+2. Add embedding provider abstraction — support OpenAI `text-embedding-3-small`, local llama embeddings, or Voyage (user's choice via config)
+3. Hybrid search strategy: vector similarity + FTS5 text match + SQLite metadata filters
+4. MMR for result diversity — prevent returning 5 chunks from the same file
+5. Temporal decay — recent chunks rank higher than stale exploration data
+6. Batch embedding operations for efficient chunk processing during exploration
+7. Graceful fallback — if no embedding provider configured, fall back to FTS5-only (current behavior)
+
+**Key files:** `src/memory/retrieval.ts`, `src/memory/chunk-store.ts`, `src/memory/database.ts`, `src/types/config.ts`
+
+**Scope:** ~15–18 tasks across 2 phases. Integrates with planned RAG work (OB-F48, Phases 74–77).
+
+---
+
+### OB-F80 — No structured observations from worker outputs (High)
+
+**Inspired by:** [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — runs a dedicated observer agent that creates typed observations with title, subtitle, narrative, facts, concepts, and files_touched from every tool invocation.
+
+**Problem:** When workers complete tasks, their output is free-form text stored in `conversation_messages`. There's no structured extraction of what was learned — no typed records with facts, concepts, files read/modified, or knowledge gained. The Master reads the raw output and manually curates `memory.md`, but this is lossy and inconsistent.
+
+**Impact:** Valuable knowledge from worker sessions is lost or under-utilized. The same questions trigger new workers instead of querying past observations. `memory.md` is the only cross-session continuity mechanism, limited to 200 lines.
+
+**Proposed solution:**
+
+1. Add `observations` table to SQLite schema — columns: `id`, `session_id`, `type` (bugfix, architecture, investigation, etc.), `title`, `narrative`, `facts` (JSON array), `concepts` (JSON array), `files_read` (JSON array), `files_modified` (JSON array), `created_at`
+2. Add `observation-extractor.ts` — parses worker results into structured observations using a lightweight AI call (haiku-tier, 1-turn, all tools disabled)
+3. Wire extractor into `worker-result-formatter.ts` — extract observations after every worker completes
+4. Add FTS5 virtual table for observations with sync triggers
+5. Content-hash deduplication (SHA-256 of session_id + title + narrative) with 30s window to prevent duplicates
+6. Expose observations in retrieval.ts for RAG queries
+
+**Key files:** `src/memory/observation-store.ts` (new), `src/master/worker-result-formatter.ts`, `src/memory/database.ts`, `src/memory/retrieval.ts`
+
+**Scope:** ~12–15 tasks across 1–2 phases.
+
+---
+
+### OB-F81 — Memory retrieval returns full results — no progressive disclosure (Medium)
+
+**Inspired by:** [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — uses a 3-layer retrieval pattern: `search()` returns compact index (~50-100 tokens/result), `timeline()` provides chronological context, `get_observations()` fetches full details only for filtered IDs. Claims ~10x token savings.
+
+**Problem:** OpenBridge's `retrieval.ts` returns full chunk content for every search result. When the Master queries memory, it gets all matching content upfront — wasteful when only 2 of 20 results are relevant.
+
+**Impact:** Token waste during RAG queries. Master's context window fills with irrelevant retrieved content, reducing space for actual work.
+
+**Proposed solution:**
+
+1. Add `searchIndex()` — returns compact results: `{ id, title, score, snippet(50 chars), source_file }` (~50 tokens each)
+2. Add `getDetails(ids: string[])` — returns full content only for selected IDs
+3. Wire into Master's retrieval flow: search → filter → fetch details
+4. Master system prompt teaches the 2-step retrieval pattern
+
+**Key files:** `src/memory/retrieval.ts`, `src/master/master-system-prompt.ts`
+
+**Scope:** ~6–8 tasks.
+
+---
+
+### OB-F82 — No content-hash deduplication for workspace chunks (Medium)
+
+**Inspired by:** [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — uses SHA-256 content hash with 30-second deduplication window to prevent storing duplicate observations.
+
+**Problem:** When multiple workers read overlapping files, or when re-exploration runs, the same chunk content can be stored multiple times in `workspace_chunks`. There's no deduplication mechanism.
+
+**Impact:** Database bloat. FTS5 search returns duplicate results. Memory retrieval wastes tokens on repeated content.
+
+**Proposed solution:**
+
+1. Add `content_hash` column to `workspace_chunks` table (SHA-256 of `chunk_path + content`)
+2. Before INSERT, check for existing chunk with same hash — update timestamp if found, skip insert
+3. Add 30-second deduplication window for rapid successive writes
+4. Add migration to backfill hashes for existing chunks
+
+**Key files:** `src/memory/chunk-store.ts`, `src/memory/database.ts`, `src/memory/migration.ts`
+
+**Scope:** ~5–6 tasks.
+
+---
+
+### OB-F83 — No token economics tracking for exploration ROI (Medium)
+
+**Inspired by:** [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — tracks `discovery_tokens` (cost of creating each observation) vs `read_tokens` (cost of retrieving it), computing compression ROI.
+
+**Problem:** OpenBridge has no visibility into whether exploration is cost-effective. How many tokens does exploration consume? How many tokens does retrieval save compared to re-reading? Is the Master's exploration strategy efficient?
+
+**Impact:** No data to optimize exploration strategy or justify exploration cost. Can't tell if the Master is over-exploring or under-exploring.
+
+**Proposed solution:**
+
+1. Track `discovery_tokens` per chunk/observation — estimated from worker turn count and model
+2. Track `read_tokens` per retrieval — count tokens in returned content
+3. Add `token_economics` table: `chunk_id`, `discovery_tokens`, `retrieval_count`, `total_read_tokens`
+4. Add `/stats` command showing exploration ROI: "Explored with ~50K tokens, saved ~200K tokens across 15 retrievals (4x ROI)"
+
+**Key files:** `src/memory/chunk-store.ts`, `src/core/router.ts`, `src/memory/database.ts`
+
+**Scope:** ~6–8 tasks.
+
+---
+
+### OB-F84 — Master context window has no auto-compaction (High)
+
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) — implements session compaction that auto-summarizes conversation history when context window fills, with identifier preservation and retry logic.
+
+**Problem:** The Master AI runs long-lived sessions via `--session-id`. As conversations grow, the context window fills up. Currently, `memory.md` (200 lines, manually curated) is the only continuity mechanism. There's no automatic compaction of the Master's session history — old turns are simply dropped by the model when the window fills.
+
+**Impact:** Long Master sessions lose important context silently. Critical decisions from early in the session are forgotten. The Master may contradict earlier analysis or redo work.
+
+**Proposed solution:**
+
+1. Add `SessionCompactor` in `src/master/session-compactor.ts`
+2. Monitor Master session turn count — trigger compaction when approaching limit (e.g., >80% of `--max-turns`)
+3. Compaction strategy: summarize old turns into structured summary (identifiers preserved, key decisions kept)
+4. Write compaction summary to `memory.md` before starting new session segment
+5. Retry on compaction failure — don't lose the session silently
+6. Track which identifiers (file paths, function names, finding IDs) must be preserved across compaction
+
+**Key files:** `src/master/session-compactor.ts` (new), `src/master/master-manager.ts`, `src/master/dotfolder-manager.ts`
+
+**Scope:** ~10–12 tasks.
+
+---
+
+### OB-F85 — No self-diagnostic command (`openbridge doctor`) (Medium)
+
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) — has `openclaw doctor` command that validates DM policies, runs migration checks, and flags misconfigurations.
+
+**Problem:** When OpenBridge has issues (AI tool not found, SQLite corrupt, config invalid, channel not connecting), users have no diagnostic tool. They must read logs manually or ask for help.
+
+**Impact:** Poor DX and user experience. Common issues (missing `claude` binary, wrong Node version, corrupt `openbridge.db`, stale `.openbridge/`) take too long to diagnose.
+
+**Proposed solution:**
+
+1. Add `openbridge doctor` CLI command in `src/cli/doctor.ts`
+2. Checks to run:
+   - Node.js version >= 22 ✓/✗
+   - AI tools detected (claude, codex, aider) ✓/✗ with versions
+   - Config file valid (Zod parse) ✓/✗ with specific errors
+   - SQLite database healthy (integrity check, schema version, table counts) ✓/✗
+   - `.openbridge/` state (stale data, missing files, corrupted entries) ✓/✗
+   - Channel connectivity (WhatsApp session, Telegram bot token, Discord bot token) ✓/✗
+   - MCP servers reachable ✓/✗
+   - Disk space for logs/DB ✓/✗
+3. Output: color-coded summary with fix suggestions for each failing check
+4. Add `/doctor` chat command that runs the same checks and sends results via the channel
+
+**Key files:** `src/cli/doctor.ts` (new), `src/cli/index.ts`, `src/core/router.ts`
+
+**Scope:** ~8–10 tasks.
+
+---
+
+### OB-F86 — No pairing-based auth for non-phone channels (Medium)
+
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) — uses DM pairing codes for unknown senders. Unknown user gets a short code, owner approves via CLI, sender is added to local allowlist.
+
+**Problem:** OpenBridge uses phone number whitelisting for auth. This works for WhatsApp but is awkward for Discord (usernames, not phone numbers), Telegram (optional phone), and WebChat (no phone at all). Adding a new user requires editing `config.json` and restarting.
+
+**Impact:** Onboarding new users is manual and requires config file editing. No self-service approval flow for Discord/Telegram users.
+
+**Proposed solution:**
+
+1. When unknown sender messages OpenBridge, generate a 6-digit pairing code
+2. Send pairing code back to the unknown sender: "To connect, ask the admin to approve code: 482917"
+3. Owner approves via CLI: `openbridge pairing approve 482917` or via chat command: `/approve 482917`
+4. Approved sender is added to `access-store.ts` with appropriate role
+5. Pairing codes expire after 5 minutes
+6. Works alongside existing phone whitelist (not a replacement)
+
+**Key files:** `src/core/auth.ts`, `src/memory/access-store.ts`, `src/cli/access.ts`, `src/core/router.ts`
+
+**Scope:** ~8–10 tasks.
+
+---
+
+### OB-F87 — No skills directory for reusable capabilities (Medium)
+
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) — has 60+ bundled skills in `skills/` directory with `SKILL.md` files. Master discovers and uses skills autonomously. ClawHub registry for community sharing.
+
+**Problem:** OpenBridge discovers AI tools on the machine (Claude, Codex, etc.) but has no concept of reusable "skills" — structured capability descriptions that the Master can discover, learn, and apply. Every session starts from scratch, relying on exploration and system prompts.
+
+**Impact:** The Master rediscovers how to do common tasks each session. No way for users to share custom capabilities or for the Master to learn and package successful patterns.
+
+**Proposed solution:**
+
+1. Add `.openbridge/skills/` directory with `SKILL.md` pattern
+2. Each skill is a directory with `SKILL.md` (description, tools needed, example prompts, constraints)
+3. Master reads available skills on startup and includes them in its system prompt
+4. Master can create new skills from successful task patterns (extends existing prompt evolution)
+5. Built-in skills: `code-review`, `test-runner`, `dependency-audit`, `api-docs-generator`
+6. Future: community skill registry (like OpenClaw's ClawHub)
+
+**Key files:** `src/master/skill-manager.ts` (new), `src/master/master-system-prompt.ts`, `src/master/dotfolder-manager.ts`
+
+**Scope:** ~10–12 tasks.
+
+---
+
+### OB-F88 — Worker results lack structured summary format (Medium)
+
+**Inspired by:** [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — session summaries are structured as: `request`, `investigated`, `learned`, `completed`, `next_steps`, `notes`.
+
+**Problem:** Worker results are formatted as free-text by `worker-result-formatter.ts`. The Master receives unstructured text and must parse it manually. There's no standard format for what was completed, what was learned, or what remains unfinished.
+
+**Impact:** Master can't reliably track incomplete work across workers. No `next_steps` field means the Master doesn't know what a worker left undone. Cross-session continuity depends entirely on manual `memory.md` curation.
+
+**Proposed solution:**
+
+1. Define `WorkerSummary` schema in `src/types/agent.ts`: `{ request, investigated, completed, learned, next_steps, files_modified, files_read }`
+2. Update `worker-result-formatter.ts` to extract structured summaries from worker output
+3. Store summaries in `agent_activity` table (extend existing schema)
+4. Master reads summaries for context injection — particularly `next_steps` for incomplete work
+5. `memory.md` auto-updates with `learned` items from worker summaries
+
+**Key files:** `src/master/worker-result-formatter.ts`, `src/types/agent.ts`, `src/memory/activity-store.ts`, `src/master/dotfolder-manager.ts`
+
+**Scope:** ~8–10 tasks.
+
+---
 
 ### OB-F76 — Keyword classifier misses execution/delegation keywords (High)
 

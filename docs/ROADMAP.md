@@ -1,7 +1,8 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-01 | **Current Version:** v0.0.8
-> **Current Focus:** Marketplace Development Track — making OpenBridge effective for finishing the Marketplace projects.
+> **Last Updated:** 2026-03-02 | **Current Version:** v0.0.8
+> **Current Focus:** Marketplace Development Track (v0.0.9–v0.0.12) + Community-Inspired Improvements (v0.0.13).
+> **33 open findings** — 23 original + 10 community-inspired (from [openclaw](https://github.com/openclaw/openclaw) + [claude-mem](https://github.com/thedotmack/claude-mem) analysis).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -78,6 +79,7 @@ Everything that shipped — 652 tasks across 73 phases.
 | **v0.0.10** | 74–77, 85                    | RAG knowledge retrieval (FTS5 queries before spawning workers), env var secret protection      | ~42        |
 | **v0.0.11** | 81, 86                       | Master output sharing ([SHARE:*] markers), user consent for risky operations                   | ~20        |
 | **v0.0.12** | 82–84, 87–92, OB-F56, OB-193 | Deep Mode, WebChat modernization, tunnel + ephemeral apps, Docker sandbox                      | ~160       |
+| **v0.0.13** | 93–96                        | Structured observations, vector search, session compaction, doctor/pairing/skills              | ~95–110    |
 
 **Sprint 1 (v0.0.9)** — Foundation Fixes:
 
@@ -109,9 +111,31 @@ See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
 
 ---
 
-## Future Work (Post v0.0.12)
+## Community-Inspired Improvements (v0.0.13)
 
-All future features beyond the Marketplace track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
+**After the Marketplace track is complete**, OpenBridge levels up by adopting battle-tested patterns from the open-source community. These improvements were identified by analyzing two major projects:
+
+- **[openclaw/openclaw](https://github.com/openclaw/openclaw)** (242K stars) — Personal AI assistant with vector memory, 13+ channels, 60+ skills, session compaction, DM pairing, doctor command
+- **[thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)** (32K stars) — Memory compression plugin with structured observations, progressive disclosure, token economics, content-hash dedup
+
+**Sprint 5 (v0.0.13)** — Community-Inspired:
+
+- Structured observations from worker outputs — typed records with facts, concepts, files_touched (OB-F80, [claude-mem](https://github.com/thedotmack/claude-mem))
+- Worker summaries with `completed/learned/next_steps` format (OB-F88, [claude-mem](https://github.com/thedotmack/claude-mem))
+- Content-hash deduplication for workspace chunks (OB-F82, [claude-mem](https://github.com/thedotmack/claude-mem))
+- Vector search via `sqlite-vec` + hybrid retrieval (vector + FTS5 + metadata) (OB-F79, [openclaw](https://github.com/openclaw/openclaw))
+- Progressive disclosure — 2-step retrieval with ~10x token savings (OB-F81, [claude-mem](https://github.com/thedotmack/claude-mem))
+- Session compaction — auto-summarize Master context when window fills (OB-F84, [openclaw](https://github.com/openclaw/openclaw))
+- Token economics — track exploration cost vs retrieval savings (OB-F83, [claude-mem](https://github.com/thedotmack/claude-mem))
+- `openbridge doctor` — self-diagnostic CLI command (OB-F85, [openclaw](https://github.com/openclaw/openclaw))
+- Pairing-based auth — self-service approval for Discord/Telegram users (OB-F86, [openclaw](https://github.com/openclaw/openclaw))
+- Skills directory — reusable `SKILL.md` capabilities the Master discovers (OB-F87, [openclaw](https://github.com/openclaw/openclaw))
+
+---
+
+## Future Work (Post v0.0.13)
+
+All future features beyond the community-inspired track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 ### Deferred finalization:
 
@@ -170,30 +194,55 @@ All future features beyond the Marketplace track are tracked in [docs/audit/FUTU
                         │    ├── Phase 81: Master Output Awareness
                         │    └── Phase 86: User Consent
                         │
-                        └──► ⬜ Sprint 4 (v0.0.12): Phases 82–84, 87–92, OB-F56, OB-193
-                             ├── Deep Mode (OB-F56): Multi-phase execution
-                             ├── Phases 88–92: WebChat Modernization (UI, auth, PWA, history, Deep Mode UI)
-                             ├── Phases 82–84: Tunnel + Ephemeral Apps + Interaction Relay
-                             ├── Phase 87: Document Visibility Controls
-                             └── OB-193: Docker Sandbox
+                        ├──► ⬜ Sprint 4 (v0.0.12): Phases 82–84, 87–92, OB-F56, OB-193
+                        │    ├── Deep Mode (OB-F56): Multi-phase execution
+                        │    ├── Phases 88–92: WebChat Modernization (UI, auth, PWA, history, Deep Mode UI)
+                        │    ├── Phases 82–84: Tunnel + Ephemeral Apps + Interaction Relay
+                        │    ├── Phase 87: Document Visibility Controls
+                        │    └── OB-193: Docker Sandbox
+                        │
+                        │  ── Community-Inspired Improvements ──
+                        │  (openclaw + claude-mem patterns)
+                        │
+                        └──► ⬜ Sprint 5 (v0.0.13): Phases 93–96
+                             ├── Phase 93: Structured Observations + Worker Summaries + Chunk Dedup
+                             │   (claude-mem: typed observations, next_steps, content-hash dedup)
+                             │
+                             ├── Phase 94: Vector Search + Hybrid Retrieval
+                             │   (openclaw: sqlite-vec, MMR, temporal decay)
+                             │   (claude-mem: progressive disclosure, 2-step retrieval)
+                             │
+                             ├── Phase 95: Session Compaction + Token Economics
+                             │   (openclaw: auto-compaction with identifier preservation)
+                             │   (claude-mem: discovery vs read token tracking, ROI)
+                             │
+                             └── Phase 96: Doctor + Pairing + Skills
+                                  ├── 96a: openbridge doctor (openclaw: self-diagnostics)
+                                  ├── 96b: Pairing-based auth (openclaw: DM pairing codes)
+                                  └── 96c: Skills directory (openclaw: SKILL.md, 60+ skills)
 ```
 
 ---
 
 ## Version Milestones
 
-| Version    | Status | Key Features                                                                          | Tasks |
-| ---------- | ------ | ------------------------------------------------------------------------------------- | ----- |
-| **v0.0.1** | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310   |
-| **v0.0.2** | Done   | Exploration progress, worker resilience, worker control, responsive Master            | 42    |
-| **v0.0.3** | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50    |
-| **v0.0.4** | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41    |
-| **v0.0.5** | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21    |
-| **v0.0.6** | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14    |
-| **v0.0.7** | Done   | Telegram/Discord message splitting, live context fixes                                | 18    |
-| **v0.0.8** | Done   | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95    |
+| Version     | Status  | Key Features                                                                          | Tasks   |
+| ----------- | ------- | ------------------------------------------------------------------------------------- | ------- |
+| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310     |
+| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master            | 42      |
+| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50      |
+| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41      |
+| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21      |
+| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14      |
+| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                | 18      |
+| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95      |
+| **v0.0.9**  | Planned | Classification fixes, code-audit profile, exploration bugs, data cleanup              | ~34     |
+| **v0.0.10** | Planned | RAG knowledge retrieval, env var protection                                           | ~42     |
+| **v0.0.11** | Planned | Master output sharing, user consent                                                   | ~20     |
+| **v0.0.12** | Planned | Deep Mode, WebChat modernization, tunnel + ephemeral apps, Docker sandbox             | ~160    |
+| **v0.0.13** | Planned | Structured observations, vector search, session compaction, doctor/pairing/skills     | ~95–110 |
 
-**Total shipped: 652 tasks across 73 phases.**
+**Total shipped: 652 tasks across 73 phases. Planned: ~351–366 tasks across Phases 74–96.**
 
 ---
 
@@ -209,6 +258,7 @@ These guide what we build and how:
 6. **Plugin architecture** — new channels and AI tools are added via interfaces, not forks
 7. **Workers are briefed** — every worker receives relevant project context, past task history, and learned patterns
 8. **Memory improves with use** — learnings, prompt effectiveness, and model selection automatically improve over time
+9. **Community-informed, independently built** — we study what works at scale ([openclaw](https://github.com/openclaw/openclaw), [claude-mem](https://github.com/thedotmack/claude-mem)) and adapt the best patterns to OpenBridge's architecture, keeping full control of our codebase
 
 ---
 
