@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
 import { parseAIResult, parseAIResultWithRetry } from '../../src/master/result-parser.js';
 
 describe('parseAIResult', () => {
@@ -207,6 +208,95 @@ Text after
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.rawOutput.length).toBe(500);
+      }
+    });
+  });
+
+  describe('Schema validation', () => {
+    const TestSchema = z.object({
+      name: z.string(),
+      count: z.number(),
+    });
+
+    it('should validate parsed JSON against schema when schema is provided', () => {
+      const output = JSON.stringify({ name: 'test', count: 42 });
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual({ name: 'test', count: 42 });
+      }
+    });
+
+    it('should return ParseError when schema validation fails', () => {
+      const output = JSON.stringify({ name: 'test', count: 'not-a-number' });
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('Schema validation failed');
+        expect(result.rawOutput).toBe(output);
+      }
+    });
+
+    it('should return ParseError when required schema field is missing', () => {
+      const output = JSON.stringify({ name: 'test' }); // missing count
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('Schema validation failed');
+      }
+    });
+
+    it('should work without schema (backward compat) — returns success for valid JSON', () => {
+      const output = JSON.stringify({ anything: true });
+      const result = parseAIResult(output, 'test');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual({ anything: true });
+      }
+    });
+
+    it('should validate after markdown fence extraction when schema provided', () => {
+      const output = `
+Here is the result:
+\`\`\`json
+{"name":"markdown","count":7}
+\`\`\`
+      `;
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual({ name: 'markdown', count: 7 });
+        expect(result.method).toBe('markdown');
+      }
+    });
+
+    it('should return ParseError when markdown-extracted JSON fails schema validation', () => {
+      const output = `
+\`\`\`json
+{"name":"markdown","count":"wrong-type"}
+\`\`\`
+      `;
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('Schema validation failed');
+      }
+    });
+
+    it('should validate after regex extraction when schema provided', () => {
+      const output = `Some prefix text {"name":"regex","count":99} some suffix`;
+      const result = parseAIResult(output, 'test', TestSchema);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual({ name: 'regex', count: 99 });
+        expect(result.method).toBe('regex');
       }
     });
   });

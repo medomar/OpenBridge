@@ -8,6 +8,8 @@
  * 4. Return parse error for retry handling
  */
 
+import { type ZodSchema } from 'zod';
+
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('result-parser');
@@ -27,18 +29,52 @@ export interface ParseError {
 export type ParsedAIResult<T> = ParseResult<T> | ParseError;
 
 /**
+ * Validate parsed data against an optional Zod schema.
+ * Returns a ParseResult on success, or ParseError on schema validation failure.
+ */
+function validateParsed<T>(
+  data: unknown,
+  schema: ZodSchema<T> | undefined,
+  stdout: string,
+  label: string,
+  method: 'direct' | 'markdown' | 'regex',
+): ParsedAIResult<T> {
+  if (!schema) {
+    return { success: true, data: data as T, method };
+  }
+  const validation = schema.safeParse(data);
+  if (!validation.success) {
+    logger.error(
+      { label, method, errors: validation.error.errors },
+      'Schema validation failed for parsed JSON',
+    );
+    return {
+      success: false,
+      error: `Schema validation failed: ${validation.error.message}`,
+      rawOutput: stdout,
+    };
+  }
+  return { success: true, data: validation.data, method };
+}
+
+/**
  * Parse AI output to extract JSON result
  *
  * @param stdout - Raw output from AI command
  * @param label - Human-readable label for logging (e.g., "structure scan")
+ * @param schema - Optional Zod schema to validate the parsed JSON against
  * @returns Parsed result or error
  */
-export function parseAIResult<T>(stdout: string, label: string): ParsedAIResult<T> {
+export function parseAIResult<T>(
+  stdout: string,
+  label: string,
+  schema?: ZodSchema<T>,
+): ParsedAIResult<T> {
   // Strategy 1: Direct JSON.parse()
   try {
-    const data = JSON.parse(stdout) as T;
+    const data = JSON.parse(stdout) as unknown;
     logger.debug({ label, method: 'direct' }, 'AI result parsed successfully (direct)');
-    return { success: true, data, method: 'direct' };
+    return validateParsed<T>(data, schema, stdout, label, 'direct');
   } catch (directError) {
     logger.debug(
       { label, error: String(directError) },
@@ -50,9 +86,9 @@ export function parseAIResult<T>(stdout: string, label: string): ParsedAIResult<
   const markdownMatch = stdout.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
   if (markdownMatch?.[1]) {
     try {
-      const data = JSON.parse(markdownMatch[1]) as T;
+      const data = JSON.parse(markdownMatch[1]) as unknown;
       logger.debug({ label, method: 'markdown' }, 'AI result parsed successfully (markdown fence)');
-      return { success: true, data, method: 'markdown' };
+      return validateParsed<T>(data, schema, stdout, label, 'markdown');
     } catch (markdownError) {
       logger.debug(
         { label, error: String(markdownError) },
@@ -99,12 +135,12 @@ export function parseAIResult<T>(stdout: string, label: string): ParsedAIResult<
             // Found matching closing brace
             const jsonCandidate = stdout.slice(braceIndex, i + 1);
             try {
-              const data = JSON.parse(jsonCandidate) as T;
+              const data = JSON.parse(jsonCandidate) as unknown;
               logger.debug(
                 { label, method: 'regex' },
                 'AI result parsed successfully (regex extraction)',
               );
-              return { success: true, data, method: 'regex' };
+              return validateParsed<T>(data, schema, stdout, label, 'regex');
             } catch (regexError) {
               logger.debug(
                 { label, error: String(regexError) },
