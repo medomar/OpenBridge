@@ -6196,6 +6196,50 @@ ${currentContent}
   }
 
   /**
+   * Spawns a lightweight read-only worker to answer a focused question about
+   * specific files. Used by the targeted reader path when RAG confidence < 0.3.
+   *
+   * OB-1353
+   */
+  public async spawnTargetedReader(filePaths: string[], question: string): Promise<string> {
+    const fileList = filePaths.map((p) => `- ${p}`).join('\n');
+    const prompt = [
+      'Read these files and answer the following question.',
+      '',
+      '## Files to Read',
+      fileList,
+      '',
+      '## Question',
+      question,
+    ].join('\n');
+
+    const model = this.modelRegistry.resolveModelOrTier('fast');
+
+    logger.debug(
+      { fileCount: filePaths.length, question: question.slice(0, 80) },
+      'Spawning targeted reader worker',
+    );
+
+    const result = await this.agentRunner.spawn({
+      prompt,
+      workspacePath: this.workspacePath,
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: 5,
+      model,
+    });
+
+    if (result.exitCode !== 0) {
+      logger.warn(
+        { exitCode: result.exitCode, fileCount: filePaths.length },
+        'Targeted reader worker failed',
+      );
+      return '';
+    }
+
+    return result.stdout.trim();
+  }
+
+  /**
    * Parse delegation markers from Master AI output.
    * Format: [DELEGATE:tool-name]prompt text[/DELEGATE]
    *
