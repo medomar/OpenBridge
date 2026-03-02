@@ -538,6 +538,141 @@ Here is what I found in the specified files:
 };
 
 /**
+ * Deep Mode: Investigate Phase
+ *
+ * Explores the codebase to identify relevant files, patterns, dependencies,
+ * and potential issues related to the user's request.
+ * All examined files are listed. Findings are numbered and categorized by type.
+ */
+export const DEEP_INVESTIGATE: SeedPrompt = {
+  id: 'deep-investigate',
+  filename: 'deep-investigate.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Deep Mode investigation: explore codebase, identify relevant files, patterns, dependencies, and potential issues. List every file examined. Number and categorize all findings.',
+  content: `# Deep Mode — Investigate Phase
+
+Thoroughly explore the codebase at **{{workspacePath}}** and identify all issues, patterns, and dependencies relevant to the following request.
+
+## User Request
+
+{{userRequest}}
+
+## Workspace Context
+
+**Project:** {{projectName}}
+**Type:** {{projectType}}
+**Frameworks:** {{frameworks}}
+
+**Known files and structure:**
+{{structure}}
+
+## Instructions
+
+### Step 1 — Identify Relevant Files
+
+Determine which files in the workspace are relevant to the request.  Consider:
+
+- Source files that implement the feature, module, or area in question
+- Test files covering that area
+- Configuration files (tsconfig.json, eslint.config.js, package.json, etc.)
+- Documentation files (README, CHANGELOG, architecture docs)
+- Type definitions and shared interfaces
+- Any file imported by or importing the affected code
+
+Use glob patterns and grep to locate files. Read each relevant file in full.
+
+### Step 2 — Examine Each File
+
+For every file you read:
+
+1. Note the **file path** and a one-line summary of its purpose.
+2. Identify the **relevant sections** (functions, classes, types, configs) related to the request.
+3. Note any **issues**: bugs, missing error handling, inconsistencies, deprecated patterns, missing tests.
+4. Note any **dependencies**: what this file imports and what imports it.
+
+### Step 3 — Categorize Findings
+
+Group your findings into the following categories:
+
+| Category | Description |
+| --- | --- |
+| \`bug\` | Logic errors, incorrect behaviour, crashes |
+| \`missing-test\` | Untested functionality or missing test cases |
+| \`type-error\` | TypeScript type inconsistencies or unsafe casts |
+| \`pattern\` | Architectural patterns observed (good or concerning) |
+| \`dependency\` | Import graph, circular deps, missing deps |
+| \`config\` | Configuration gaps, wrong defaults, missing env vars |
+| \`documentation\` | Missing, stale, or incorrect docs/comments |
+| \`performance\` | Inefficient algorithms, N+1 queries, unnecessary re-renders |
+| \`security\` | Input validation gaps, exposed secrets, unsafe operations |
+| \`other\` | Anything that doesn't fit the categories above |
+
+Assign each finding to exactly one category.
+
+### Step 4 — Produce Findings List
+
+Number every finding starting from 1. Each finding must include:
+
+- **Number:** unique integer for reference in subsequent phases
+- **Category:** one of the categories above
+- **Severity:** \`critical\` | \`high\` | \`medium\` | \`low\` | \`info\`
+- **File:** path relative to workspace root, with line number(s) if applicable
+- **Title:** short one-line summary (≤ 80 characters)
+- **Description:** detailed explanation — what the issue is, why it matters, evidence from the code
+- **Suggestion:** concrete recommended next step (read-only; do NOT implement in this phase)
+
+## Output Format
+
+Provide your response in two sections:
+
+### Files Examined
+
+List every file you read, one per line:
+
+\`\`\`
+src/core/router.ts          — message routing and command handling
+src/types/agent.ts          — agent and task type definitions
+tests/core/router.test.ts   — router unit tests
+\`\`\`
+
+### Findings
+
+List every finding in the following format:
+
+---
+
+**Finding #1** · \`bug\` · severity: \`high\`
+**File:** \`src/core/router.ts:142\`
+**Title:** /history handler returns undefined instead of OutboundMessage
+**Description:** The \`/history\` branch at line 142 falls through without returning a value. This causes the caller to receive \`undefined\` and crash when trying to access \`.content\`.
+**Suggestion:** Return a valid \`OutboundMessage\` object from the \`/history\` branch.
+
+---
+
+**Finding #2** · \`missing-test\` · severity: \`medium\`
+**File:** \`src/core/router.ts\`
+**Title:** No test coverage for /stop-all command
+**Description:** The \`/stop-all\` command is implemented at line 310 but has no corresponding test in \`tests/core/router.test.ts\`.
+**Suggestion:** Add a test case that calls \`/stop-all\` and asserts workers are terminated.
+
+---
+
+Continue this pattern for all findings, incrementing the number each time.
+
+## Rules
+
+- **Read only — do NOT modify any files.**
+- List every file you examined, even if it contained no findings.
+- If a file path does not exist, note it as missing and continue.
+- Do not summarise or skip findings — completeness is more important than brevity.
+- Reference specific line numbers wherever possible.
+- End your response with the Findings section so the report phase can process it.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -572,6 +707,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_CODE_AUDIT,
   TASK_GENERATE_OUTPUT,
   TASK_TARGETED_READ,
+  DEEP_INVESTIGATE,
 ];
 
 /**
