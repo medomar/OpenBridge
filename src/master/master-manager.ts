@@ -2850,16 +2850,35 @@ export class MasterManager {
       };
     }
 
-    // Tool-use keywords — single-action file generation or targeted edits
-    const toolUseKeywords = [
+    // Text-generation keywords — content creation tasks that require no file tools.
+    // e.g. "write a tweet", "draft a LinkedIn post", "rephrase this shorter"
+    // These are quick-answer (5 turns, no tools) not tool-use (OB-1580).
+    const textGenKeywords = [
+      'create post',
+      'linkedin',
+      'tweet',
+      'rewrite',
+      'rephrase',
+      'reformulate',
+      'draft',
+      'compose',
+      'shorter',
+      'longer',
+      'attractive',
       'generate',
-      'create',
       'write',
-      'fix',
-      'update file',
-      'add to',
-      'make a',
     ];
+    if (textGenKeywords.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'quick-answer',
+        maxTurns: MESSAGE_MAX_TURNS_QUICK,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+        reason: 'keyword match: text-generation',
+      };
+    }
+
+    // Tool-use keywords — single-action file generation or targeted edits
+    const toolUseKeywords = ['create', 'fix', 'update file', 'add to', 'make a'];
     if (toolUseKeywords.some((kw) => lower.includes(kw))) {
       return {
         class: 'tool-use',

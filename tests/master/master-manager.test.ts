@@ -1723,9 +1723,9 @@ describe('MasterManager', () => {
         );
       });
 
-      it('classifies "generate an HTML report" as tool-use', async () => {
+      it('classifies "generate an HTML report" as quick-answer (text-generation)', async () => {
         expect((await masterManager.classifyTask('generate an HTML report')).class).toBe(
-          'tool-use',
+          'quick-answer',
         );
       });
 
@@ -1735,10 +1735,10 @@ describe('MasterManager', () => {
         );
       });
 
-      it('classifies "write a README section about configuration" as tool-use', async () => {
+      it('classifies "write a README section about configuration" as quick-answer (text-generation)', async () => {
         expect(
           (await masterManager.classifyTask('write a README section about configuration')).class,
-        ).toBe('tool-use');
+        ).toBe('quick-answer');
       });
 
       it('classifies "fix the bug in queue.ts line 42" as tool-use', async () => {
@@ -1778,8 +1778,10 @@ describe('MasterManager', () => {
         );
       });
 
-      it('is case-insensitive (GENERATE → tool-use)', async () => {
-        expect((await masterManager.classifyTask('GENERATE a config file')).class).toBe('tool-use');
+      it('is case-insensitive (GENERATE → quick-answer / text-generation)', async () => {
+        expect((await masterManager.classifyTask('GENERATE a config file')).class).toBe(
+          'quick-answer',
+        );
       });
 
       it('falls back to tool-use when AI returns an unrecognised response', async () => {
@@ -1838,7 +1840,7 @@ describe('MasterManager', () => {
         expect(quick.class).toBe('quick-answer');
         expect(quick.timeout).toBe(5 * 30_000); // 150_000ms
 
-        const toolUse = await masterManager.classifyTask('generate a config file');
+        const toolUse = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(toolUse.class).toBe('tool-use');
         expect(toolUse.timeout).toBe(15 * 30_000); // 450_000ms
 
@@ -2113,13 +2115,13 @@ describe('MasterManager', () => {
       });
 
       it('processMessage() falls back to keyword heuristics when AI classifier fails during processing', async () => {
-        // Call 0: AI classifier fails → keyword fallback gives tool-use for "generate"
+        // Call 0: AI classifier fails → keyword fallback gives tool-use for "fix"
         mockSpawn.mockRejectedValueOnce(new Error('AI unavailable'));
 
         // Call 1: Master processes the task with keyword-classified maxTurns
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
-          stdout: 'config.json generated.',
+          stdout: 'queue.ts fixed.',
           stderr: '',
           retryCount: 0,
           durationMs: 200,
@@ -2129,8 +2131,8 @@ describe('MasterManager', () => {
           id: 'msg-ai-fallback',
           source: 'test',
           sender: '+1234567890',
-          rawContent: '/ai generate a config file',
-          content: 'generate a config file',
+          rawContent: '/ai fix the bug in queue.ts',
+          content: 'fix the bug in queue.ts',
           timestamp: new Date(),
         };
 
@@ -2145,7 +2147,7 @@ describe('MasterManager', () => {
         // Timeout derived from keyword-fallback turns: 15 × 30s = 450s
         expect(taskCall?.timeout).toBe(15 * 30_000);
 
-        expect(response).toBe('config.json generated.');
+        expect(response).toBe('queue.ts fixed.');
       });
     });
 
@@ -2195,8 +2197,8 @@ describe('MasterManager', () => {
           total_tasks: 30,
         });
 
-        // "generate a config file" classifies as tool-use by keywords
-        const result = await masterManager.classifyTask('generate a config file');
+        // "fix the bug in queue.ts" classifies as tool-use by keywords
+        const result = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(25);
         expect(result.timeout).toBe(25 * 30_000);
