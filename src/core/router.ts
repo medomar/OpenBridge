@@ -808,6 +808,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/help" command — lists all available commands (OB-1430)
+    if (/^\/help$/i.test(message.content.trim())) {
+      await this.handleHelpCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -2864,6 +2870,42 @@ export class Router {
 
     // Default: WhatsApp, Telegram, Discord
     return ['*Conversation Transcript*', '', ...rows].join('\n');
+  }
+
+  /**
+   * Handle the built-in "/help" command — list all available commands.
+   *
+   * Displays all built-in commands with brief descriptions, grouped by category:
+   *   General: status, stop, explore, history, /audit
+   *   Deep Mode: /deep, /proceed, /focus N, /skip N, /phase
+   */
+  private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const lines: string[] = [
+      '*OpenBridge Commands*',
+      '',
+      '*General*',
+      '• status — show active workers, exploration progress, and daily cost',
+      '• stop — stop all active workers',
+      '• explore — re-explore the workspace',
+      '• history — show recent conversation history',
+      '• /audit — list recent worker spawns',
+      '',
+      '*Deep Mode*',
+      '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',
+      '• /proceed — advance to the next Deep Mode phase',
+      '• /focus N — dig deeper into finding number N from the current plan',
+      '• /skip N — skip item N from the current Deep Mode plan',
+      '• /phase — show current Deep Mode phase and progress',
+    ];
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender }, 'Help command shown via /help');
   }
 
   /** Drain a streaming provider response, returning the final ProviderResult */
