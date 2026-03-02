@@ -386,6 +386,100 @@ Report every finding using the format below.  Use **severity levels**:
 };
 
 /**
+ * Task: Generate Output
+ *
+ * Generates a file output (HTML report, JSON data export, PDF, etc.) and
+ * places it in .openbridge/generated/ so it can be shared via SHARE markers.
+ */
+export const TASK_GENERATE_OUTPUT: SeedPrompt = {
+  id: 'task-generate-output',
+  filename: 'task-generate-output.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Generates a file output in .openbridge/generated/ and appends a SHARE marker so the Master can deliver it to the user',
+  content: `# Task: Generate Output File
+
+Generate a file based on the user request and write it to the output directory.
+
+## User Request
+
+{{userMessage}}
+
+## Workspace Context
+
+**Project:** {{projectName}}
+**Type:** {{projectType}}
+**Workspace path:** {{workspacePath}}
+
+## Output Directory
+
+Write all generated files to:
+\`{{workspacePath}}/.openbridge/generated/\`
+
+Create the directory if it does not exist.
+
+## Format Selection
+
+Choose the output format that best matches the user request:
+
+| Output type | Format | File extension |
+| --- | --- | --- |
+| Report, dashboard, or interactive output | HTML | \`.html\` |
+| Structured data export | JSON | \`.json\` |
+| Tabular data | CSV | \`.csv\` |
+| Document / printable report | PDF (or Markdown if PDF tooling unavailable) | \`.pdf\` / \`.md\` |
+| Plain text output | Text | \`.txt\` |
+
+If the user specifies a format, use that format exactly.
+
+## Instructions
+
+1. Determine the appropriate output format from the table above (or use the user-specified format).
+2. Generate the content based on the user request and workspace context.
+3. Write the file to \`{{workspacePath}}/.openbridge/generated/<descriptive-filename>.<ext>\`.
+   - Use a short, descriptive filename (e.g., \`test-report.html\`, \`api-audit.json\`, \`summary.md\`).
+   - Do NOT overwrite existing files — use a unique name if the file already exists.
+4. After writing the file, append a SHARE marker at the very end of your response.
+
+## SHARE Marker
+
+After writing the file, end your response with one of these SHARE markers based on format:
+
+**HTML report → GitHub Pages (public URL):**
+\`\`\`
+[SHARE:github-pages]{"path":"{{workspacePath}}/.openbridge/generated/<filename>.html"}[/SHARE]
+\`\`\`
+
+**PDF, DOC, or binary document → WhatsApp/Telegram attachment:**
+\`\`\`
+[SHARE:whatsapp]{"path":"{{workspacePath}}/.openbridge/generated/<filename>.pdf"}[/SHARE]
+\`\`\`
+
+**JSON, CSV, or data file → WhatsApp/Telegram attachment:**
+\`\`\`
+[SHARE:whatsapp]{"path":"{{workspacePath}}/.openbridge/generated/<filename>.json"}[/SHARE]
+\`\`\`
+
+**Large text or Markdown → WhatsApp/Telegram attachment:**
+\`\`\`
+[SHARE:whatsapp]{"path":"{{workspacePath}}/.openbridge/generated/<filename>.md"}[/SHARE]
+\`\`\`
+
+Replace \`<filename>\` with the actual filename you wrote.
+Use the SHARE target that matches the active messaging channel (whatsapp, telegram, github-pages, or email).
+
+## Rules
+
+- Write only to \`.openbridge/generated/\` — do NOT modify workspace source files.
+- Always include a SHARE marker at the end of your response so the Master can deliver the file.
+- Keep the generated content accurate and relevant to the user request.
+- If you cannot determine the correct format, default to HTML (most universally useful).
+- If generating HTML, include basic styling so the report is readable in a browser.
+`,
+};
+
+/**
  * Task: Targeted Read
  *
  * Reads specific files and answers a focused question with bullet-point findings.
@@ -452,6 +546,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_EXECUTE,
   TASK_VERIFY,
   TASK_CODE_AUDIT,
+  TASK_GENERATE_OUTPUT,
   TASK_TARGETED_READ,
 ];
 
