@@ -136,4 +136,9 @@ export class ClaudeAdapter implements CLIAdapter {
     // Full model IDs follow the pattern: claude-<variant>-<version>
     return /^claude-[a-z0-9]+-[a-z0-9._-]+$/.test(model);
   }
+
+  supportedProfiles(): readonly CapabilityLevel[] {
+    // Claude enforces all profiles natively via --allowedTools named tool lists.
+    return ['read-only', 'code-edit', 'full-access'];
+  }
 }

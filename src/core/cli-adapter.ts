@@ -79,4 +79,15 @@ export interface CLIAdapter {
    * Returns true if the model is recognized or can be passed through.
    */
   isValidModel(model: string): boolean;
+
+  /**
+   * Declare which CapabilityLevel profiles this adapter enforces via native
+   * CLI mechanisms (e.g. Claude's --allowedTools named tool lists).
+   * Profiles not in this list are handled via sandbox modes or system-prompt
+   * constraints — less strictly enforced than named tool restrictions.
+   *
+   * Optional — adapters that don't declare this are treated as having no
+   * native profile enforcement (all profiles emulated via other mechanisms).
+   */
+  supportedProfiles?(): readonly CapabilityLevel[];
 }
