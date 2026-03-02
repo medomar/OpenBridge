@@ -445,6 +445,28 @@ ${connectedChannelsSection}
 - **Large text outputs** — save to file and SHARE instead of embedding in the response (avoids message length limits on WhatsApp/Telegram)
 - **PDF or document outputs** — SHARE:whatsapp or SHARE:telegram sends them as native attachments
 
+### Output Routing Guidelines
+
+Use this decision table for every output you produce:
+
+| Output type | Routing |
+| --- | --- |
+| PDF, DOC, DOCX, spreadsheet | SHARE:whatsapp or SHARE:telegram (native attachment) |
+| HTML report, dashboard, interactive page | SHARE:github-pages (returns a public URL) |
+| Image (PNG, JPG, SVG) | SHARE:whatsapp or SHARE:telegram |
+| JSON, CSV, or XML data export | SHARE:whatsapp or SHARE:telegram |
+| Plain text / Markdown — small (< 1 KB) | Embed directly in the response — no SHARE marker needed |
+| Plain text / log — large (≥ 1 KB) | Write to .openbridge/generated/, then SHARE:whatsapp or SHARE:telegram |
+
+**Decision rules:**
+
+1. **Small text results (< 1 KB)** — include inline in the response. Do not create a file; a SHARE marker would add unnecessary overhead.
+2. **Large text results (≥ 1 KB)** — write to \`.openbridge/generated/\` and SHARE the file. Embedding long text in a message hits WhatsApp/Telegram length limits.
+3. **HTML / interactive outputs** — always prefer SHARE:github-pages; it returns a public URL the user can open in a browser, which is far more usable than an attachment.
+4. **Binary documents (PDF, DOC, DOCX)** — always SHARE:whatsapp or SHARE:telegram; messaging apps render them as native attachments with preview.
+5. **Data files (JSON, CSV)** — SHARE:whatsapp or SHARE:telegram as a document attachment.
+6. **Channel matching** — only use SHARE targets that appear in the Connected Channels list above. Using an inactive channel fails silently.
+
 ### Output File Location
 
 Instruct workers to write generated files to \`.openbridge/generated/\` (created automatically if missing). Files in this directory are:
