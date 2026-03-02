@@ -1348,6 +1348,7 @@ export class ExplorationCoordinator {
       }
     }
     const classification = await this.readClassificationFromStore();
+    const structureScan = await this.readStructureScanFromStore();
 
     return {
       startedAt: state.startedAt,
@@ -1358,7 +1359,7 @@ export class ExplorationCoordinator {
           : state.status === 'failed'
             ? 'failed'
             : 'in_progress',
-      filesScanned: 0, // Not tracked in incremental flow
+      filesScanned: structureScan?.totalFiles ?? 0,
       directoriesExplored: state.directoryDives.filter((d) => d.status === 'completed').length,
       projectType: classification?.projectType ?? map?.projectType,
       frameworks: classification?.frameworks ?? map?.frameworks ?? [],

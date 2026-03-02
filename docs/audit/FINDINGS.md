@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 27 | **Fixed:** 65 | **Last Audit:** 2026-03-02
+> **Open:** 26 | **Fixed:** 66 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md)
 
@@ -67,10 +67,10 @@ Improvements identified by analyzing [openclaw/openclaw](https://github.com/open
 
 ### Tier 3 — Deferred (not blocking current work)
 
-| #      | Finding                                           | Severity | Notes                                                  | Status |
-| ------ | ------------------------------------------------- | -------- | ------------------------------------------------------ | ------ |
-| OB-F64 | `filesScanned` always 0 in exploration summary    | 🟢 Low   | Cosmetic — doesn't affect functionality                | Open   |
-| OB-F65 | Exploration prompts have no media/asset awareness | 🟢 Low   | Marketplace projects are code-focused, not media-heavy | Open   |
+| #      | Finding                                           | Severity | Notes                                                  | Status   |
+| ------ | ------------------------------------------------- | -------- | ------------------------------------------------------ | -------- |
+| OB-F64 | `filesScanned` always 0 in exploration summary    | 🟢 Low   | Cosmetic — doesn't affect functionality                | ✅ Fixed |
+| OB-F65 | Exploration prompts have no media/asset awareness | 🟢 Low   | Marketplace projects are code-focused, not media-heavy | Open     |
 
 ### Recently Fixed
 
