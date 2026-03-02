@@ -293,6 +293,30 @@ export class DeepModeManager {
   }
 
   /**
+   * Mark a specific plan item as skipped (1-based index).
+   *
+   * Appends itemIndex to state.skippedItems so that the execute phase can
+   * exclude it when processing the task list. Idempotent — calling with the
+   * same index twice has no additional effect.
+   *
+   * @param sessionId  Active session identifier.
+   * @param itemIndex  1-based index of the plan item to skip.
+   */
+  skipItem(sessionId: string, itemIndex: number): void {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      logger.warn({ sessionId }, 'skipItem() called on unknown session');
+      return;
+    }
+
+    if (!state.skippedItems.includes(itemIndex)) {
+      state.skippedItems.push(itemIndex);
+    }
+
+    logger.info({ sessionId, skippedItem: itemIndex }, 'Deep Mode item marked as skipped');
+  }
+
+  /**
    * Focus investigation on a specific plan item (1-based index).
    *
    * Records the item as "focused" for the current session. Callers can
