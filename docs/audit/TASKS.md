@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 149 | **In Progress:** 0 | **Done:** 0 (112 archived)
+> **Pending:** 171 | **In Progress:** 0 | **Done:** 1 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -33,28 +33,80 @@
 
 ## Task Summary
 
-| Phase  | Description                       | Tasks | Status         |
-| ------ | --------------------------------- | ----- | -------------- |
-| Deep   | Deep Mode (OB-F56) — remaining    | 20    | ◻ (15/35 done) |
-| 82     | Tunnel Integration                | 10    | ◻              |
-| 83     | Ephemeral App Server              | 12    | ◻              |
-| 84     | Interaction Relay                 | 8     | ◻              |
-| 87     | Document Visibility Controls      | 14    | ◻              |
-| 88     | WebChat Frontend Extraction       | 15    | ◻              |
-| 89     | WebChat Authentication            | 12    | ◻              |
-| 90     | Phone Access + Mobile PWA         | 15    | ◻              |
-| 91     | Conversation History + Rich Input | 15    | ◻              |
-| 92     | Settings Panel + Deep Mode UI     | 12    | ◻              |
-| Docker | Docker Sandbox                    | 16    | ◻              |
+| Phase  | Description                          | Tasks | Status         |
+| ------ | ------------------------------------ | ----- | -------------- |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (1/23 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
+| 82     | Tunnel Integration                   | 10    | ◻              |
+| 83     | Ephemeral App Server                 | 12    | ◻              |
+| 84     | Interaction Relay                    | 8     | ◻              |
+| 87     | Document Visibility Controls         | 14    | ◻              |
+| 88     | WebChat Frontend Extraction          | 15    | ◻              |
+| 89     | WebChat Authentication               | 12    | ◻              |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻              |
+| 91     | Conversation History + Rich Input    | 15    | ◻              |
+| 92     | Settings Panel + Deep Mode UI        | 12    | ◻              |
+| Docker | Docker Sandbox                       | 16    | ◻              |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
-**Sprint 4 Remaining:** 149 tasks (v0.0.12)
+**Sprint 4 Remaining:** 171 tasks (v0.0.12)
 
 See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md) for version milestones.
 
 ---
 
-# Sprint 4: Platform Completion (v0.0.12) — 164 tasks
+# Sprint 4: Platform Completion (v0.0.12) — 172 tasks
+
+## Phase RWT — Real-World Testing Fixes (OB-F89–F92) — 23 tasks
+
+> **Goal:** Fix critical issues discovered during first real-world test session (2026-03-02). Codex multi-AI delegation is broken (raw JSON output, wasted turns), RAG system returns nothing, classifier wastes tokens on text tasks. These fixes should run FIRST before other Sprint 4 work.
+
+### RWT-1 — Codex Streaming Output Parsing (OB-F89) — 6 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                       | Status    |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1561 | Apply `parseOutput()` to final accumulated stdout in `execOnceStreaming()` in `src/core/agent-runner.ts` — after the streaming generator completes, check if `config.parseOutput` exists and apply it to `result.stdout` before returning. Same pattern as `execOnce()` line ~803 | ✅ Done   |
+| 2   | OB-1562 | Add Codex JSONL incremental parser in `src/core/adapters/codex-adapter.ts` — new `parseCodexStreamChunk()` that extracts human-readable text from streaming events: `type: "message"` content, `type: "command_execution"` output, `type: "reasoning"` text (if not hidden)       | ◻ Pending |
+| 3   | OB-1563 | Wire incremental parser into `spawnWithStreamingHandle()` — when adapter has a stream parser, transform chunks before yielding to progress callbacks. Users see readable text in real-time, not raw JSON                                                                          | ◻ Pending |
+| 4   | OB-1564 | Update `worker-result-formatter.ts` — add fallback: if worker result looks like raw JSONL (starts with `{"type":`), run it through `parseCodexJsonlOutput()` before formatting. Defensive guard for any missed paths                                                              | ◻ Pending |
+| 5   | OB-1565 | Verify `-o` tempfile fallback works for Codex streaming — Codex adapter adds `-o /tmp/file` flag. Check if tempfile is written during streaming mode and can be used as primary output source instead of stdout parsing                                                           | ◻ Pending |
+| 6   | OB-1566 | Add tests in `tests/core/agent-runner-codex-streaming.test.ts` — test: (1) execOnceStreaming applies parseOutput, (2) Codex JSONL chunks parsed to readable text, (3) spawnWithStreamingHandle returns parsed output, (4) raw JSONL fallback in formatter. At least 4 tests       | ◻ Pending |
+
+### RWT-2 — RAG Zero Results Fix (OB-F90) — 8 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                             | Status    |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 7   | OB-1567 | Relax `buildSearchQuery()` in `src/core/knowledge-retriever.ts` — reduce minimum token length from 3 to 2 chars, trim stop word list to only true stop words (a, the, is, it, etc.), keep domain terms (api, ui, db, cli, ai). Add fallback: if all tokens filtered, use original query | ◻ Pending |
+| 8   | OB-1568 | Add WARN log when `buildSearchQuery()` produces empty query — log original question, filtered tokens, and reason (all stop words, all too short). Helps diagnose RAG failures in production                                                                                             | ◻ Pending |
+| 9   | OB-1569 | Ensure exploration stores chunks even when workspace map is reused — in `MasterManager.start()`, after "skipping exploration" path, verify FTS5 chunk count > 0. If zero, force chunk indexing from existing workspace map                                                              | ◻ Pending |
+| 10  | OB-1570 | Auto-store worker results in chunk store — in `master-manager.ts` after worker completes, call `knowledgeRetriever.storeWorkerResult()` automatically. Currently only called explicitly in some paths                                                                                   | ◻ Pending |
+| 11  | OB-1571 | Add startup diagnostic for RAG health — on MasterManager start, count chunks in FTS5 table. Log INFO with count. If zero, log WARN: "RAG has no indexed chunks — retrieval will return empty results"                                                                                   | ◻ Pending |
+| 12  | OB-1572 | Add `hybridSearch()` fallback — in `src/memory/retrieval.ts`, if sanitized FTS5 query is empty string, fall back to recent chunks by timestamp (last 20) instead of returning empty array                                                                                               | ◻ Pending |
+| 13  | OB-1573 | Wire workspace map content into chunk store on first load — when `readWorkspaceMapFromStore()` returns a map but `searchContext()` returns 0 chunks, index the map content as chunks so FTS5 has something to search                                                                    | ◻ Pending |
+| 14  | OB-1574 | Add tests in `tests/core/knowledge-retriever-rag.test.ts` — test: (1) buildSearchQuery keeps short domain terms, (2) empty query falls back to original, (3) WARN logged on empty query, (4) zero chunks triggers re-indexing, (5) hybridSearch fallback returns recent chunks. 5 tests | ◻ Pending |
+
+### RWT-3 — Codex Worker Tool Compatibility (OB-F91) — 5 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 15  | OB-1575 | Audit Codex CLI `--allowedTools` support in `src/core/adapters/codex-adapter.ts` — verify which tool names Codex accepts. If different from Claude, add tool name mapping in the adapter. If unsupported, remove `--allowedTools` from Codex spawn config and rely on system prompt instead | ◻ Pending |
+| 16  | OB-1576 | Add Codex-specific worker system prompt prefix in `src/master/seed-prompts.ts` — when tool is codex, prepend: "Use file reading commands to read files. Do NOT use complex bash/shell scripts for file operations. Use simple, direct commands."                                            | ◻ Pending |
+| 17  | OB-1577 | Add tool profile validation per adapter — in `src/core/adapter-registry.ts`, each adapter declares supported profiles. If Codex doesn't support `read-only` tool restrictions, fall back to `full-access` with system prompt constraints instead of broken tool restrictions                | ◻ Pending |
+| 18  | OB-1578 | Limit Codex worker shell complexity — in Codex adapter, if `read-only` profile, add system prompt instruction: "For this task, only read files. Do not create or modify files. Do not run complex scripts. Keep commands simple and direct."                                                | ◻ Pending |
+| 19  | OB-1579 | Add tests in `tests/core/codex-worker-tools.test.ts` — test: (1) Codex adapter tool name mapping, (2) read-only profile adds system prompt constraints, (3) unsupported allowedTools handled gracefully, (4) worker prompt includes file-reading guidance. At least 4 tests                 | ◻ Pending |
+
+### RWT-4 — Classifier Text-Generation Fix (OB-F92) — 4 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                     | Status    |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 20  | OB-1580 | Add `text-generation` task class keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: generate, write, draft, compose, create post, tweet, linkedin, rewrite, rephrase, reformulate, shorter, longer, attractive. Map to quick-answer class (5 turns, no tools) | ◻ Pending |
+| 21  | OB-1581 | Change keyword fallback from `tool-use` to `quick-answer` — when no keywords match, default to quick-answer (5 turns) instead of tool-use (15 turns). Most unrecognized conversational messages don't need tools                                                                                | ◻ Pending |
+| 22  | OB-1582 | Add conversation context to classifier — if the last 3 messages were text-generation (writing posts, tweets), classify follow-up messages ("shorter", "better hook", "mix of 1 and 3") as text-generation too. Check conversation history in `buildConversationContext()`                       | ◻ Pending |
+| 23  | OB-1583 | Add text-generation test cases in `tests/master/classifier.test.ts` — test: (1) "generate LinkedIn post" → quick-answer, (2) "shorter version" → quick-answer, (3) "tweet for non-developers" → quick-answer, (4) fallback is quick-answer not tool-use. At least 4 tests                       | ◻ Pending |
+
+---
+
+---
 
 ## Phase Deep — Deep Mode (OB-F56) — 35 tasks
 
@@ -332,6 +384,6 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 13  | OB-1557 | Add startup health check — verify Docker daemon running before enabling sandbox. If unavailable, warn and fall back to unsandboxed. Recheck every 5 min                                                                                                                                                     | ◻ Pending |
 | 14  | OB-1558 | Add fallback in AgentRunner — if docker mode set but Docker unavailable, fall back to direct spawn with warning. Never silently fail                                                                                                                                                                        | ◻ Pending |
 | 15  | OB-1559 | Add tests in `tests/core/docker-sandbox.test.ts` — test: (1) isAvailable checks daemon, (2) createContainer builds correct command, (3) workspace read-only, (4) .openbridge read-write, (5) env vars sanitized, (6) resource limits applied, (7) cleanup after exit. At least 7 tests (mock child_process) | ◻ Pending |
-| 16  | OB-1560 | Build + lint + typecheck + test validation for Sprint 4 — all 159 tasks must pass before tagging v0.0.12. Fix any failures                                                                                                                                                                                  | ◻ Pending |
+| 16  | OB-1560 | Build + lint + typecheck + test validation for Sprint 4 — all 172 tasks must pass before tagging v0.0.12. Fix any failures                                                                                                                                                                                  | ◻ Pending |
 
 ---
