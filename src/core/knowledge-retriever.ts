@@ -241,6 +241,91 @@ export class KnowledgeRetriever {
   }
 
   /**
+   * Format a {@link KnowledgeResult} into a concise context string suitable
+   * for injection into a system prompt.
+   *
+   * OB-1339: Produces a "Relevant Knowledge" header followed by source-grouped
+   * sections (FTS5 chunks, workspace-map entries, dir-dive summaries) and a
+   * confidence percentage footer. Output is hard-truncated to 4000 characters.
+   */
+  formatKnowledgeContext(result: KnowledgeResult): string {
+    if (result.chunks.length === 0) {
+      return '';
+    }
+
+    const lines: string[] = ['## Relevant Knowledge'];
+
+    // Assign each chunk to its source group based on the chunk's category /
+    // scope heuristic.  Chunks carry no explicit source tag, so we infer:
+    //   • FTS5 chunks  → any category (they come from the DB, scope is a path)
+    //   • workspace-map chunks → category === 'structure' AND scope ends in a
+    //     filename (single path segment after the last slash)
+    //   • dir-dive chunks → category === 'structure' AND scope is a dir path
+    //
+    // For simplicity we use the order in which sources were populated: the
+    // first `result.sources.length` groups are valid; within each group we
+    // include up to 5 chunks.
+
+    const fts5Chunks: Chunk[] = [];
+    const mapChunks: Chunk[] = [];
+    const diveChunks: Chunk[] = [];
+
+    for (const chunk of result.chunks) {
+      // Workspace-map synthetic chunks have a single-line content like
+      // "path/to/file.ts (type): purpose"
+      if (
+        chunk.category === 'structure' &&
+        /^[^\n]+ \(\w+\): .+$/.test(chunk.content) &&
+        chunk.content.split('\n').length === 1
+      ) {
+        mapChunks.push(chunk);
+      } else if (
+        chunk.category === 'structure' &&
+        chunk.content.includes('\n') &&
+        !chunk.scope.match(/\.\w{1,5}$/)
+      ) {
+        // Dir-dive chunks are multi-line and scope is a directory path
+        diveChunks.push(chunk);
+      } else {
+        fts5Chunks.push(chunk);
+      }
+    }
+
+    // FTS5 section
+    if (result.sources.includes('fts5') && fts5Chunks.length > 0) {
+      lines.push('\n### Code Chunks');
+      for (const chunk of fts5Chunks.slice(0, 5)) {
+        lines.push(`\n**${chunk.scope}** (${chunk.category}):\n${chunk.content.trim()}`);
+      }
+    }
+
+    // Workspace-map section
+    if (result.sources.includes('workspace-map') && mapChunks.length > 0) {
+      lines.push('\n### Key Files');
+      for (const chunk of mapChunks.slice(0, 5)) {
+        lines.push(`- ${chunk.content.trim()}`);
+      }
+    }
+
+    // Dir-dive section
+    if (result.sources.includes('dir-dive') && diveChunks.length > 0) {
+      lines.push('\n### Directory Summaries');
+      for (const chunk of diveChunks.slice(0, 3)) {
+        lines.push(`\n${chunk.content.trim()}`);
+      }
+    }
+
+    // Confidence footer
+    const pct = Math.round(result.confidence * 100);
+    lines.push(`\n*Confidence: ${pct}%*`);
+
+    const full = lines.join('\n');
+    // Hard-truncate to 4000 chars
+    if (full.length <= 4000) return full;
+    return full.slice(0, 3997) + '...';
+  }
+
+  /**
    * Query the local knowledge store for information relevant to the given
    * question.  Returns a {@link KnowledgeResult} with matched chunks, a
    * confidence score, and the source types that contributed results.
