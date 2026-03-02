@@ -357,11 +357,11 @@ describe('migration.ts', () => {
       ).c;
       expect(checkpointColCount).toBe(1);
 
-      // All three versions must be recorded in schema_versions
+      // All four versions must be recorded in schema_versions
       const versions = rawDb
         .prepare('SELECT version FROM schema_versions ORDER BY version')
         .all() as { version: number }[];
-      expect(versions.map((r) => r.version)).toEqual([1, 2, 3]);
+      expect(versions.map((r) => r.version)).toEqual([1, 2, 3, 4]);
 
       rawDb.close();
     });

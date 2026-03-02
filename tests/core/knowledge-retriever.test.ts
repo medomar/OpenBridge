@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type Database from 'better-sqlite3';
+import { KnowledgeRetriever, extractEntities } from '../../src/core/knowledge-retriever.js';
+import { QACacheStore } from '../../src/memory/qa-cache-store.js';
+import { openDatabase, closeDatabase } from '../../src/memory/database.js';
 import type { Chunk } from '../../src/memory/chunk-store.js';
 import type { WorkspaceMap } from '../../src/types/master.js';
 
@@ -360,5 +363,190 @@ describe('KnowledgeRetriever.suggestTargetFiles', () => {
     const files = retriever.suggestTargetFiles('explain router.ts', workspaceMap);
 
     expect(files[0]).toBe('src/core/router.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractEntities — OB-1363
+// ---------------------------------------------------------------------------
+
+describe('extractEntities', () => {
+  it('extracts file paths matching src/.../*.ext pattern', () => {
+    const text = 'See src/core/router.ts and src/memory/index.ts for details.';
+    const { filePaths } = extractEntities(text);
+    expect(filePaths).toContain('src/core/router.ts');
+    expect(filePaths).toContain('src/memory/index.ts');
+  });
+
+  it('extracts function names from function declarations', () => {
+    const text = 'function handleMessage(msg) { return true; } async function processQueue() { }';
+    const { functionNames } = extractEntities(text);
+    expect(functionNames).toContain('handleMessage');
+    expect(functionNames).toContain('processQueue');
+  });
+
+  it('extracts function names from const arrow/function expressions', () => {
+    const text = 'const parseResult = async (input) => {}; const buildQuery = function() {}';
+    const { functionNames } = extractEntities(text);
+    expect(functionNames).toContain('parseResult');
+    expect(functionNames).toContain('buildQuery');
+  });
+
+  it('extracts module names from import statements', () => {
+    const text = "import { foo } from './foo.js';\nimport type { Bar } from '../types/bar.js';";
+    const { moduleNames } = extractEntities(text);
+    expect(moduleNames).toContain('./foo.js');
+    expect(moduleNames).toContain('../types/bar.js');
+  });
+
+  it('deduplicates repeated file paths', () => {
+    const text = 'src/core/router.ts src/core/router.ts src/core/router.ts';
+    const { filePaths } = extractEntities(text);
+    expect(filePaths.filter((p) => p === 'src/core/router.ts')).toHaveLength(1);
+  });
+
+  it('returns empty arrays for plain English with no code entities', () => {
+    const { filePaths, functionNames, moduleNames } = extractEntities(
+      'This is a plain English sentence with no code at all.',
+    );
+    expect(filePaths).toEqual([]);
+    expect(functionNames).toEqual([]);
+    expect(moduleNames).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KnowledgeRetriever.storeWorkerResult — OB-1359
+// ---------------------------------------------------------------------------
+
+type MockMemoryManagerFull = {
+  searchContext: ReturnType<typeof vi.fn>;
+  getDb: ReturnType<typeof vi.fn>;
+  storeChunks: ReturnType<typeof vi.fn>;
+};
+
+describe('KnowledgeRetriever.storeWorkerResult', () => {
+  let memoryManager: MockMemoryManagerFull;
+  let dotFolderManager: MockDotFolderManager;
+  let retriever: KnowledgeRetriever;
+
+  beforeEach(() => {
+    memoryManager = {
+      searchContext: vi.fn().mockResolvedValue([]),
+      getDb: vi.fn().mockReturnValue(null),
+      storeChunks: vi.fn().mockResolvedValue(undefined),
+    };
+    dotFolderManager = {
+      readWorkspaceMap: vi.fn().mockResolvedValue(null),
+      listDirDiveResults: vi.fn().mockResolvedValue([]),
+      readDirectoryDive: vi.fn(),
+    };
+    retriever = new KnowledgeRetriever(memoryManager as never, dotFolderManager as never);
+  });
+
+  it('calls storeChunks with source_hash "worker-read"', async () => {
+    await retriever.storeWorkerResult('Some worker output text', 'What is auth?', [
+      'src/core/auth.ts',
+    ]);
+    expect(memoryManager.storeChunks).toHaveBeenCalledOnce();
+    const [chunks] = memoryManager.storeChunks.mock.calls[0] as [Chunk[]];
+    expect(chunks[0].source_hash).toBe('worker-read');
+  });
+
+  it('uses the first provided file path as the chunk scope', async () => {
+    await retriever.storeWorkerResult('Output text', 'Q?', [
+      'src/core/router.ts',
+      'src/core/auth.ts',
+    ]);
+    const [chunks] = memoryManager.storeChunks.mock.calls[0] as [Chunk[]];
+    expect(chunks[0].scope).toBe('src/core/router.ts');
+  });
+
+  it('embeds the question in the chunk content', async () => {
+    await retriever.storeWorkerResult('Worker output', 'How does auth work?', ['src/auth.ts']);
+    const [chunks] = memoryManager.storeChunks.mock.calls[0] as [Chunk[]];
+    expect(chunks[0].content).toContain('How does auth work?');
+  });
+
+  it('does not call storeChunks for whitespace-only workerOutput', async () => {
+    await retriever.storeWorkerResult('   ', 'Q?', []);
+    expect(memoryManager.storeChunks).not.toHaveBeenCalled();
+  });
+
+  it('falls back to "worker-read" scope when no file paths are supplied', async () => {
+    await retriever.storeWorkerResult('plain output with no file refs', '', []);
+    const [chunks] = memoryManager.storeChunks.mock.calls[0] as [Chunk[]];
+    expect(chunks[0].scope).toBe('worker-read');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KnowledgeRetriever.query — Q&A cache integration — OB-1362
+// ---------------------------------------------------------------------------
+
+describe('KnowledgeRetriever.query — Q&A cache integration', () => {
+  let db: Database.Database;
+  let memoryManager: MockMemoryManagerFull;
+  let dotFolderManager: MockDotFolderManager;
+  let retriever: KnowledgeRetriever;
+
+  beforeEach(() => {
+    db = openDatabase(':memory:');
+    memoryManager = {
+      searchContext: vi.fn().mockResolvedValue([]),
+      getDb: vi.fn().mockReturnValue(db),
+      storeChunks: vi.fn().mockResolvedValue(undefined),
+    };
+    dotFolderManager = {
+      readWorkspaceMap: vi.fn().mockResolvedValue(null),
+      listDirDiveResults: vi.fn().mockResolvedValue([]),
+      readDirectoryDive: vi.fn(),
+    };
+    retriever = new KnowledgeRetriever(memoryManager as never, dotFolderManager as never);
+  });
+
+  afterEach(() => {
+    closeDatabase(db);
+  });
+
+  it('returns cached answer on Q&A cache hit (confidence >= 0.7)', async () => {
+    const qaCache = new QACacheStore(db);
+    qaCache.store({
+      question: 'how does router work',
+      answer: 'Router routes messages between connectors and providers.',
+      confidence: 0.9,
+    });
+
+    const result = await retriever.query('how does router work');
+
+    expect(result.sources).toContain('qa-cache');
+    expect(result.chunks[0].content).toBe(
+      'Router routes messages between connectors and providers.',
+    );
+    expect(result.confidence).toBe(0.9);
+    expect(result.needsWorker).toBe(false);
+  });
+
+  it('falls through to FTS5 on cache miss (no matching entry)', async () => {
+    const ftsChunks: Chunk[] = [makeChunk('src/core/router.ts', 'Router handles message routing')];
+    memoryManager.searchContext.mockResolvedValue(ftsChunks);
+
+    const result = await retriever.query('router message handling throughput');
+
+    expect(result.sources).not.toContain('qa-cache');
+    expect(result.sources).toContain('fts5');
+  });
+
+  it('skips cache entries with confidence below 0.7', async () => {
+    const qaCache = new QACacheStore(db);
+    qaCache.store({
+      question: 'how does router work',
+      answer: 'Low confidence answer.',
+      confidence: 0.5,
+    });
+
+    const result = await retriever.query('how does router work');
+
+    expect(result.sources).not.toContain('qa-cache');
   });
 });
