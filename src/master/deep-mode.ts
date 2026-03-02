@@ -53,6 +53,67 @@ export const PHASE_MODEL_MAP: Record<DeepPhase, ModelTier> = {
   verify: 'fast',
 };
 
+// ── Per-Phase System Prompts ───────────────────────────────────────
+
+/**
+ * Focused system prompt injection for each Deep Mode phase.
+ *
+ * These strings are appended to the Master AI system prompt at the start of each
+ * phase to steer the model toward the phase-appropriate goal. Callers retrieve
+ * them via getPhaseSystemPrompt() and pass them as --append-system-prompt.
+ */
+export const PHASE_SYSTEM_PROMPTS: Record<DeepPhase, string> = {
+  investigate: `## Deep Mode — Investigate Phase
+
+Your goal in this phase is to **explore and identify**. Do not implement or modify anything.
+
+- Read source files, configs, tests, and documentation thoroughly.
+- Identify issues, gaps, risks, and opportunities relevant to the user's request.
+- Collect concrete evidence: file paths, line numbers, code snippets, error messages.
+- Produce a comprehensive list of findings. Be specific — vague findings are not useful.
+- End your output with a clearly structured "Findings" section that the next phase can summarise.`,
+
+  report: `## Deep Mode — Report Phase
+
+Your goal in this phase is to **summarise findings** from the investigation into a clear, actionable report.
+
+- Organise findings by severity or priority (critical → high → medium → low).
+- For each finding include: what it is, why it matters, and where it lives (file:line).
+- Do not implement fixes yet — focus on clear, accurate documentation.
+- Keep the report concise enough for a non-developer to understand the key points.
+- End with a numbered list of recommended next steps that will feed into the plan phase.`,
+
+  plan: `## Deep Mode — Plan Phase
+
+Your goal in this phase is to **create an actionable plan** based on the report findings.
+
+- Convert each finding or recommendation into a concrete, numbered task.
+- Order tasks by dependency and priority — tasks that others depend on come first.
+- For each task specify: what to do, which files to touch, and the expected outcome.
+- Flag tasks that require user input or approval before execution.
+- Produce a final numbered task list. This list will be executed step-by-step in the next phase.`,
+
+  execute: `## Deep Mode — Execute Phase
+
+Your goal in this phase is to **implement the plan** produced in the previous phase.
+
+- Work through the task list in order, one task at a time.
+- Make only the changes described in the plan — do not scope-creep.
+- After each task, confirm what was changed and check for side effects.
+- If a task is blocked or unsafe to execute, stop and report the blocker — do not skip silently.
+- End with a summary of all changes made and any tasks that were deferred.`,
+
+  verify: `## Deep Mode — Verify Phase
+
+Your goal in this phase is to **run tests and checks** to confirm the implementation is correct.
+
+- Run the project's test suite (npm test, pytest, cargo test, etc. as appropriate).
+- Run linting and type checks if available (npm run lint, npm run typecheck, etc.).
+- Read the output carefully — flag any failures, warnings, or regressions.
+- Confirm that each executed task from the plan phase produced the expected outcome.
+- End with a pass/fail verdict and a list of any remaining issues that need follow-up.`,
+};
+
 // ── MasterManager Surface ─────────────────────────────────────────
 
 /**
@@ -376,5 +437,29 @@ export class DeepModeManager {
 
     const phase = state.currentPhase;
     return overrides?.[phase] ?? PHASE_MODEL_MAP[phase];
+  }
+
+  /**
+   * Return the system prompt injection for the current phase of a session.
+   *
+   * The returned string is intended to be appended to the Master AI system prompt
+   * (via --append-system-prompt) to steer the model toward the phase-appropriate goal.
+   *
+   * Callers may supply per-phase prompt overrides to replace individual built-in
+   * prompts — useful for domain-specific Deep Mode configurations.
+   *
+   * @param sessionId  Session to query.
+   * @param overrides  Optional per-phase prompt overrides.
+   * @returns          The system prompt string, or `undefined` if session not found / done.
+   */
+  getPhaseSystemPrompt(
+    sessionId: string,
+    overrides?: Partial<Record<DeepPhase, string>>,
+  ): string | undefined {
+    const state = this.sessions.get(sessionId);
+    if (!state || !state.currentPhase) return undefined;
+
+    const phase = state.currentPhase;
+    return overrides?.[phase] ?? PHASE_SYSTEM_PROMPTS[phase];
   }
 }

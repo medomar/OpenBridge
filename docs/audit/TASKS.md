@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 160 | **In Progress:** 0 | **Done:** 101
+> **Pending:** 159 | **In Progress:** 0 | **Done:** 102
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -295,7 +295,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 2   | OB-1398 | Create `src/master/deep-mode.ts` — DeepModeManager class with MasterManager reference. Methods: startSession(), advancePhase(), getCurrentPhase(), getPhaseResult(), skipPhase(), focusOnItem(), isActive(), abort(). Manages phase state machine lifecycle                                           | ✅ Done   |
 | 3   | OB-1399 | Add phase transition logic to DeepModeManager — advancePhase() moves investigate to report to plan to execute to verify to done. Thorough profile auto-advances, manual profile pauses between phases, fast profile skips Deep Mode                                                                   | ✅ Done   |
 | 4   | OB-1400 | Add per-phase model selection — PHASE_MODEL_MAP: investigate=powerful, report=balanced, plan=powerful, execute=balanced, verify=fast. Model tier passed to Master session per phase. Users can override via config                                                                                    | ✅ Done   |
-| 5   | OB-1401 | Add per-phase system prompts — each phase gets focused injection: investigate (explore and identify), report (summarize findings), plan (create actionable plan), execute (implement the plan), verify (run tests and checks)                                                                         | ◻ Pending |
+| 5   | OB-1401 | Add per-phase system prompts — each phase gets focused injection: investigate (explore and identify), report (summarize findings), plan (create actionable plan), execute (implement the plan), verify (run tests and checks)                                                                         | ✅ Done   |
 | 6   | OB-1402 | Add `deep.defaultProfile` and `deep.phaseModels` config options to `src/types/config.ts` — defaultProfile: fast/thorough/manual (default: fast). phaseModels: per-phase model tier overrides                                                                                                          | ◻ Pending |
 | 7   | OB-1403 | Wire DeepModeManager into MasterManager — instantiate during init. In processMessage(), check task class and user profile to determine if Deep Mode should activate. If thorough or manual, create session and start with investigate phase                                                           | ◻ Pending |
 | 8   | OB-1404 | Add Deep Mode task class detection — in classifyTaskByKeywords(), add keywords: audit, deep analysis, thorough review, security review, full review, investigate. Set suggestDeepMode: true in classification result so Master can offer Deep Mode                                                    | ◻ Pending |
