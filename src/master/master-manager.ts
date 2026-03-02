@@ -44,6 +44,7 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
+import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import type {
   MasterState,
   ExplorationSummary,
@@ -388,6 +389,8 @@ export class MasterManager {
   private readonly workerAbortHandles: Map<string, () => void> = new Map();
   /** Cancellation notifications queued for injection into the next Master call (OB-884). */
   private readonly pendingCancellationNotifications: string[] = [];
+  /** KnowledgeRetriever for RAG-based context injection (OB-1344). Null until set via setKnowledgeRetriever(). */
+  private knowledgeRetriever: KnowledgeRetriever | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -1953,6 +1956,14 @@ export class MasterManager {
    */
   public setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /**
+   * Set the KnowledgeRetriever for RAG-based context injection (OB-1344).
+   * Bridge calls this after MemoryManager is initialized and DotFolderManager is ready.
+   */
+  public setKnowledgeRetriever(retriever: KnowledgeRetriever): void {
+    this.knowledgeRetriever = retriever;
   }
 
   /**

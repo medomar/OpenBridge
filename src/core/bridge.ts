@@ -7,6 +7,8 @@ import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
 import type { MasterManager } from '../master/master-manager.js';
+import { DotFolderManager } from '../master/dotfolder-manager.js';
+import { KnowledgeRetriever } from './knowledge-retriever.js';
 import { MemoryManager } from '../memory/index.js';
 import { createMediaManager } from './media-manager.js';
 import type { MediaManager } from './media-manager.js';
@@ -204,6 +206,14 @@ export class Bridge {
       this.router.setMaster(this.master);
       this.master.setRouter(this.router);
       logger.info('Master AI wired into router (V2 mode — providers skipped)');
+
+      // Wire KnowledgeRetriever after MemoryManager and DotFolderManager are ready (OB-1344)
+      if (this.memory && this.workspacePath) {
+        const dotFolder = new DotFolderManager(this.workspacePath);
+        const retriever = new KnowledgeRetriever(this.memory, dotFolder);
+        this.master.setKnowledgeRetriever(retriever);
+        logger.info('KnowledgeRetriever wired into Master AI');
+      }
     } else {
       // V0 flow: initialize providers and wire orchestrator
       for (const providerConfig of this.config.providers) {
