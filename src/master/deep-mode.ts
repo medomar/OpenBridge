@@ -36,6 +36,37 @@ import {
 /** Callback type for emitting Deep Mode phase progress events. */
 type PhaseProgressReporter = (event: ProgressEvent) => Promise<void>;
 
+// ── Final Summary Types ────────────────────────────────────────────
+
+/**
+ * Aggregated result produced after all Deep Mode phases complete.
+ * Returned by `compileFinalSummary()` for display to the user.
+ */
+export interface DeepModeFinalSummary {
+  /** Number of phases that produced results (max 5). */
+  phasesCompleted: number;
+  /** Human-readable list of completed phase names. */
+  completedPhaseNames: string[];
+  /** Number of findings extracted from the report/investigate output. */
+  findingsCount: number;
+  /** Number of tasks that were executed (plan tasks minus skipped). */
+  tasksExecuted: number;
+  /** Number of tasks skipped by the user. */
+  tasksSkipped: number;
+  /** Pass/fail verdict from the verify phase, or null if verify was skipped. */
+  testVerdict: 'pass' | 'fail' | null;
+  /** First sentence or paragraph of the executive summary from the report. */
+  executiveSummary: string;
+  /** Original user request that triggered Deep Mode. */
+  taskSummary: string;
+  /** ISO timestamp when the session started. */
+  startedAt: string;
+  /** ISO timestamp when the final phase completed. */
+  completedAt: string;
+  /** Full formatted Markdown text ready to send as the final chat response. */
+  formattedResponse: string;
+}
+
 // ── Parallel Execution Types ───────────────────────────────────────
 
 /**
@@ -206,6 +237,122 @@ function groupTasksByDependency(tasks: DeepPlanTask[]): DeepExecuteBatch[] {
 }
 
 const logger = createLogger('deep-mode');
+
+// ── Final Summary Helpers ──────────────────────────────────────────
+
+/**
+ * Count numbered findings in phase output text.
+ *
+ * Recognises patterns like:
+ *   "Finding 1:", "Finding #1:", "1.", "1)", "**1.**", "**Finding 1**"
+ *
+ * Returns 0 when no numbered items are found.
+ */
+function countFindings(text: string): number {
+  const patterns = [
+    /\bFinding\s+#?\d+/gi,
+    /^\s*\d+\.\s+\S/gm,
+    /^\s*\d+\)\s+\S/gm,
+    /\*\*Finding\s+#?\d+\*\*/gi,
+    /^\s*\*\*\d+\.\*\*/gm,
+  ];
+
+  let max = 0;
+  for (const re of patterns) {
+    const matches = text.match(re);
+    if (matches && matches.length > max) {
+      max = matches.length;
+    }
+  }
+  return max;
+}
+
+/**
+ * Count task entries in plan phase output.
+ *
+ * Recognises "**Task #N**" headers as individual tasks.
+ */
+function countPlanTasks(text: string): number {
+  const matches = text.match(/\*\*Task\s+#\d+\*\*/gi);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Extract the verify phase verdict from its output.
+ *
+ * Looks for explicit PASSED / FAILED verdicts as well as test-runner
+ * summary lines (e.g., "X passed", "X failing").
+ *
+ * Returns 'pass' if only pass signals are found, 'fail' if any fail signal
+ * is found, or null when the output is ambiguous / unavailable.
+ */
+function extractVerifyVerdict(output: string): 'pass' | 'fail' | null {
+  if (!output) return null;
+
+  const lower = output.toLowerCase();
+
+  const failPatterns = [
+    /\bfailed?\b/,
+    /\bfailure\b/,
+    /\berror\b/,
+    /\d+\s+failing/,
+    /overall.*fail/,
+    /verdict.*fail/,
+    /fail.*verdict/,
+  ];
+  const passPatterns = [
+    /\bpassed?\b/,
+    /\ball.*pass/,
+    /overall.*pass/,
+    /verdict.*pass/,
+    /pass.*verdict/,
+    /\d+\s+passed/,
+  ];
+
+  const hasFail = failPatterns.some((re) => re.test(lower));
+  const hasPass = passPatterns.some((re) => re.test(lower));
+
+  if (hasFail) return 'fail';
+  if (hasPass) return 'pass';
+  return null;
+}
+
+/**
+ * Extract the executive summary from the report phase output.
+ *
+ * Tries (in order):
+ *   1. Content under an "Executive Summary" heading
+ *   2. The first non-empty paragraph
+ *   3. The first 300 characters of the output
+ */
+function extractExecutiveSummary(reportOutput: string): string {
+  if (!reportOutput) return '(no report available)';
+
+  // Try to find an "Executive Summary" section
+  const execMatch = /(?:##?\s*Executive\s+Summary\s*\n)([\s\S]+?)(?=\n##|\n---|\n\*\*|\s*$)/i.exec(
+    reportOutput,
+  );
+  if (execMatch) {
+    const summary = (execMatch[1] ?? '').trim();
+    if (summary.length > 0) {
+      return summary.length > 500 ? summary.slice(0, 500) + '…' : summary;
+    }
+  }
+
+  // Fallback: first non-empty paragraph
+  const paragraphs = reportOutput
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/^#+\s*/, '').trim())
+    .filter((p) => p.length > 20);
+  if (paragraphs.length > 0) {
+    const para = paragraphs[0] ?? '';
+    return para.length > 500 ? para.slice(0, 500) + '…' : para;
+  }
+
+  // Last resort: first 300 chars
+  const truncated = reportOutput.slice(0, 300).trim();
+  return truncated.length > 0 ? truncated + '…' : '(no summary available)';
+}
 
 // ── Phase Ordering ────────────────────────────────────────────────
 
@@ -914,6 +1061,141 @@ export class DeepModeManager {
         }),
       )
       .filter((p): p is string => p !== undefined);
+  }
+
+  // ── Final Summary ─────────────────────────────────────────────
+
+  /**
+   * Compile a final summary of a completed (or aborted) Deep Mode session.
+   *
+   * Aggregates results from all phases and produces a structured summary with:
+   * - Phases completed and their completion timestamps
+   * - Findings count (extracted from report/investigate output)
+   * - Tasks executed vs skipped (from plan output)
+   * - Test verdict (from verify output)
+   * - Executive summary (from report output)
+   *
+   * The `formattedResponse` field in the returned object is a Markdown string
+   * ready to be sent directly as the final message to the user.
+   *
+   * @param sessionId  Session to summarise (can be active or already removed).
+   * @param state      Optional pre-fetched state (used when session already removed from memory).
+   * @returns          `DeepModeFinalSummary`, or `null` when the session is not found
+   *                   and no state was provided.
+   */
+  compileFinalSummary(
+    sessionId: string,
+    state?: Readonly<DeepModeState>,
+  ): DeepModeFinalSummary | null {
+    const resolvedState = state ?? this.sessions.get(sessionId);
+    if (!resolvedState) {
+      logger.warn({ sessionId }, 'compileFinalSummary() called on unknown session');
+      return null;
+    }
+
+    const { phaseResults, taskSummary, startedAt, skippedItems } = resolvedState;
+
+    // --- Phases completed ------------------------------------------------
+    const completedPhaseNames = PHASE_ORDER.filter((p) => phaseResults[p] !== undefined);
+    const phasesCompleted = completedPhaseNames.length;
+
+    // --- Findings count ---------------------------------------------------
+    // Prefer report output; fall back to investigate output
+    const reportOutput = phaseResults['report']?.output ?? '';
+    const investigateOutput = phaseResults['investigate']?.output ?? '';
+    const findingsSource = reportOutput.length > 0 ? reportOutput : investigateOutput;
+    const findingsCount = countFindings(findingsSource);
+
+    // --- Tasks executed / skipped -----------------------------------------
+    const planOutput = phaseResults['plan']?.output ?? '';
+    const totalPlanTasks = countPlanTasks(planOutput);
+    const tasksSkipped = skippedItems.length;
+    const tasksExecuted = Math.max(0, totalPlanTasks - tasksSkipped);
+
+    // --- Test verdict ------------------------------------------------------
+    const verifyOutput = phaseResults['verify']?.output ?? '';
+    const testVerdict = verifyOutput.length > 0 ? extractVerifyVerdict(verifyOutput) : null;
+
+    // --- Executive summary ------------------------------------------------
+    const executiveSummary = extractExecutiveSummary(reportOutput);
+
+    // --- Completion timestamp ---------------------------------------------
+    // Use the completedAt of the last completed phase, falling back to now
+    const lastPhaseResult = completedPhaseNames
+      .map((p) => phaseResults[p])
+      .filter((r): r is DeepPhaseResult => r !== undefined)
+      .sort((a, b) => a.completedAt.localeCompare(b.completedAt))
+      .at(-1);
+    const completedAt = lastPhaseResult?.completedAt ?? new Date().toISOString();
+
+    // --- Duration ---------------------------------------------------------
+    const durationMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+    const durationMin = Math.round(durationMs / 60_000);
+    const durationStr = durationMin >= 1 ? `${durationMin} min` : '< 1 min';
+
+    // --- Build formatted response -----------------------------------------
+    const phaseStatusLines = PHASE_ORDER.map((p) => {
+      const result = phaseResults[p];
+      if (result) {
+        return `  - ✅ **${p.charAt(0).toUpperCase() + p.slice(1)}** — completed at ${new Date(result.completedAt).toLocaleTimeString()}`;
+      }
+      return `  - ⏭️ **${p.charAt(0).toUpperCase() + p.slice(1)}** — skipped`;
+    }).join('\n');
+
+    const verdictLine =
+      testVerdict === 'pass'
+        ? '✅ All checks passed'
+        : testVerdict === 'fail'
+          ? '❌ Some checks failed — see verify phase output'
+          : '⚠️ No test results available';
+
+    const formattedResponse = [
+      `## Deep Mode Complete — "${taskSummary}"`,
+      '',
+      `**Duration:** ${durationStr} | **Phases:** ${phasesCompleted}/5`,
+      '',
+      '### Phase Summary',
+      phaseStatusLines,
+      '',
+      '### Results',
+      `- **Findings identified:** ${findingsCount > 0 ? findingsCount : 'see report'}`,
+      `- **Tasks executed:** ${tasksExecuted}${tasksSkipped > 0 ? ` (${tasksSkipped} skipped)` : ''}`,
+      `- **Test verdict:** ${verdictLine}`,
+      '',
+      '### Executive Summary',
+      executiveSummary,
+      ...(verifyOutput.length > 0 && testVerdict === 'fail'
+        ? ['', '### Verify Output', '```', verifyOutput.slice(0, 800).trim(), '```']
+        : []),
+    ].join('\n');
+
+    const summary: DeepModeFinalSummary = {
+      phasesCompleted,
+      completedPhaseNames,
+      findingsCount,
+      tasksExecuted,
+      tasksSkipped,
+      testVerdict,
+      executiveSummary,
+      taskSummary,
+      startedAt,
+      completedAt,
+      formattedResponse,
+    };
+
+    logger.info(
+      {
+        sessionId,
+        phasesCompleted,
+        findingsCount,
+        tasksExecuted,
+        tasksSkipped,
+        testVerdict,
+      },
+      'Deep Mode final summary compiled',
+    );
+
+    return summary;
   }
 
   // ── Phase Worker Prompt Builder ────────────────────────────────
