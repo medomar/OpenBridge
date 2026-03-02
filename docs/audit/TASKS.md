@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 168 | **In Progress:** 0 | **Done:** 93
+> **Pending:** 167 | **In Progress:** 0 | **Done:** 94
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -274,7 +274,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 7   | OB-1390 | Show cost estimate in confirmation prompt — include "Estimated: ~N turns, ~$X.XX, ~Y min" from estimateCost(). Helps users make informed decisions                                                                                                                                                                                       | ✅ Done   |
 | 8   | OB-1391 | Add execution summary after worker completes — Router sends summary: "Worker completed (Ns, N turns): files read count, files modified count, commands run count". Parse from worker result or activity store                                                                                                                            | ✅ Done   |
 | 9   | OB-1392 | Add `/audit` command to Router — shows last 10 worker spawns with task ID, profile, tools, duration, estimated cost, result status. Read from agent_activity table                                                                                                                                                                       | ✅ Done   |
-| 10  | OB-1393 | Add audit log persistence to `src/core/audit-logger.ts` — write execution traces to .openbridge/audit/ as JSON files. Each spawn creates audit-{timestamp}-{taskId}.json with profile, tools, duration, cost, files modified, result. Auto-cleanup files older than 30 days                                                              | ◻ Pending |
+| 10  | OB-1393 | Add audit log persistence to `src/core/audit-logger.ts` — write execution traces to .openbridge/audit/ as JSON files. Each spawn creates audit-{timestamp}-{taskId}.json with profile, tools, duration, cost, files modified, result. Auto-cleanup files older than 30 days                                                              | ✅ Done   |
 | 11  | OB-1394 | Add per-user consent preferences to `src/memory/access-store.ts` — extend access entry with consentMode: always-ask (default), auto-approve-read, auto-approve-all. Skip confirmation for low risk when auto-approve-read, skip all when auto-approve-all                                                                                | ◻ Pending |
 | 12  | OB-1395 | Add tests in `tests/core/router.test.ts` — test: (1) high-risk SPAWN triggers confirmation, (2) low-risk proceeds without confirmation, (3) /confirm executes pending worker, (4) /skip cancels it, (5) timeout auto-cancels after 60s, (6) cost estimation returns reasonable values, (7) /audit shows recent history. At least 7 tests | ◻ Pending |
 | 13  | OB-1396 | Build + lint + typecheck + test validation for Phase 86 — Sprint 3 gate. Fix any failures                                                                                                                                                                                                                                                | ◻ Pending |
