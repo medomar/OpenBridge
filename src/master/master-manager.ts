@@ -3706,6 +3706,17 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // Update exploration summary from the map
       await this.loadExplorationSummary();
 
+      // Cache the map summary for context injection
+      const reExploreMap = await this.readWorkspaceMapFromStore();
+      if (reExploreMap) {
+        this.workspaceMapSummary = this.buildMapSummary(reExploreMap);
+      }
+
+      // Write analysis marker so next startup skips unnecessary re-exploration
+      const reExploreMarker = await this.changeTracker.buildCurrentMarker('full', 0);
+      await this.writeAnalysisMarkerToStore(reExploreMarker);
+      this.mapLastVerifiedAt = reExploreMarker.lastVerifiedAt ?? reExploreMarker.analyzedAt;
+
       // Log re-exploration completion
       if (this.memory) {
         await this.memory.logExploration({
