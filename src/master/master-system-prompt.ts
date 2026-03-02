@@ -36,6 +36,8 @@ export interface MasterSystemPromptContext {
   activeConnectorNames?: string[];
   /** Port the local file server is listening on (e.g. 3001). Undefined when the server is not running. */
   fileServerPort?: number;
+  /** Public tunnel URL when a tunnel is active (e.g. 'https://abc123.trycloudflare.com'). Undefined when no tunnel is running. */
+  tunnelUrl?: string;
 }
 
 /**
@@ -109,7 +111,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
-  const fileServerSection = formatFileServerSection(context.fileServerPort);
+  const fileServerSection = formatFileServerSection(context.fileServerPort, context.tunnelUrl);
 
   // Resolve model names from registry (defaults to Claude aliases if no registry)
   const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
@@ -702,20 +704,41 @@ function formatToolSelectionGuidelines(tools: DiscoveredTool[], masterToolName: 
   return lines.join('\n');
 }
 
-function formatFileServerSection(port?: number): string {
+function formatFileServerSection(port?: number, tunnelUrl?: string): string {
   if (port === undefined) return '';
 
-  const baseUrl = `http://localhost:${port}`;
+  const localhostUrl = `http://localhost:${port}`;
+
+  if (tunnelUrl) {
+    return [
+      '',
+      '### File Server (Internet-accessible via Tunnel)',
+      '',
+      `The file server is running and exposed publicly via a tunnel:`,
+      '',
+      `- **Public URL:** \`${tunnelUrl}\` — share this link with anyone; accessible from the internet`,
+      `- **Local URL:** \`${localhostUrl}\` — also accessible on this machine`,
+      '',
+      `Files written to \`.openbridge/generated/\` are immediately accessible at:`,
+      `\`${tunnelUrl}/shared/<filename>\``,
+      '',
+      `Use the public URL in your responses so users on any device (phone, browser) can open the link directly.`,
+      '',
+    ].join('\n');
+  }
+
   return [
     '',
     '### Local File Server',
     '',
-    `The local file server is running at \`${baseUrl}\`. Files written to \`.openbridge/generated/\` are immediately accessible via:`,
+    `The local file server is running at \`${localhostUrl}\`. Files written to \`.openbridge/generated/\` are immediately accessible via:`,
     '',
-    `- **Direct URL:** \`${baseUrl}/shared/<filename>\` — link the user directly to the generated file`,
+    `- **Direct URL:** \`${localhostUrl}/shared/<filename>\` — link the user directly to the generated file`,
     `- **Shareable link:** Created automatically when you use a SHARE marker — includes a UUID and 24-hour expiry`,
     '',
-    `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${baseUrl}/shared/<filename>\` in your response.`,
+    `**Note:** These URLs are only accessible on localhost. Files are not reachable from the internet or other devices unless a tunnel is configured.`,
+    '',
+    `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${localhostUrl}/shared/<filename>\` in your response.`,
     '',
   ].join('\n');
 }
