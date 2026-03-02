@@ -120,6 +120,14 @@ describe('generateMasterSystemPrompt', () => {
     expect(prompt).toContain('[INCOMPLETE: step X/Y]');
     expect(prompt).toContain('system can retry with a higher budget');
   });
+
+  it('should include RAG guidance for codebase questions', () => {
+    const prompt = generateMasterSystemPrompt(baseContext);
+    expect(prompt).toContain('Using Pre-fetched Knowledge (RAG)');
+    expect(prompt).toContain('Pre-fetched Knowledge (from RAG)');
+    expect(prompt).toContain('Use it to answer directly');
+    expect(prompt).toContain('Only spawn a `read-only` worker');
+  });
 });
 
 describe('formatPreFetchedKnowledgeSection', () => {
