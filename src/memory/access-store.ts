@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { ExecutionProfile } from '../types/agent.js';
+import type { DeepPhase, ExecutionProfile } from '../types/agent.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +33,8 @@ export interface AccessControlEntry {
   consentMode?: ConsentMode;
   /** Execution profile preference for Deep Mode (default: 'fast'). */
   executionProfile?: ExecutionProfile;
+  /** Per-phase model overrides for Deep Mode. Keys are DeepPhase names; values are model IDs. */
+  modelPreferences?: Partial<Record<DeepPhase, string>>;
   created_at?: string;
   updated_at?: string;
 }
@@ -51,6 +53,7 @@ interface AccessControlRow {
   active: number;
   consent_mode: string | null;
   execution_profile: string | null;
+  model_preferences: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +80,15 @@ function parseExecutionProfile(raw: string | null): ExecutionProfile {
   return 'fast';
 }
 
+function parseModelPreferences(raw: string | null): Partial<Record<DeepPhase, string>> | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Partial<Record<DeepPhase, string>>;
+  } catch {
+    return undefined;
+  }
+}
+
 function rowToEntry(row: AccessControlRow): AccessControlEntry {
   return {
     id: row.id,
@@ -92,6 +104,7 @@ function rowToEntry(row: AccessControlRow): AccessControlEntry {
     active: row.active === 1,
     consentMode: parseConsentMode(row.consent_mode),
     executionProfile: parseExecutionProfile(row.execution_profile),
+    modelPreferences: parseModelPreferences(row.model_preferences),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -127,6 +140,9 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
   const now = new Date().toISOString();
   const existing = getAccess(db, entry.user_id, entry.channel);
 
+  const modelPrefsJson =
+    entry.modelPreferences != null ? JSON.stringify(entry.modelPreferences) : null;
+
   if (existing) {
     db.prepare(
       `UPDATE access_control SET
@@ -140,6 +156,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
          active               = ?,
          consent_mode         = ?,
          execution_profile    = ?,
+         model_preferences    = ?,
          updated_at           = ?
        WHERE user_id = ? AND channel = ?`,
     ).run(
@@ -153,6 +170,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.active !== false ? 1 : 0,
       entry.consentMode ?? 'always-ask',
       entry.executionProfile ?? 'fast',
+      modelPrefsJson,
       now,
       entry.user_id,
       entry.channel,
@@ -162,8 +180,8 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       `INSERT INTO access_control
          (user_id, channel, role, scopes, allowed_actions, blocked_actions,
           max_cost_per_day_usd, daily_cost_used, cost_reset_at, active,
-          consent_mode, execution_profile, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          consent_mode, execution_profile, model_preferences, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       entry.user_id,
       entry.channel,
@@ -177,6 +195,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.active !== false ? 1 : 0,
       entry.consentMode ?? 'always-ask',
       entry.executionProfile ?? 'fast',
+      modelPrefsJson,
       now,
       now,
     );
@@ -239,6 +258,19 @@ export function getExecutionProfile(
 ): ExecutionProfile {
   const entry = getAccess(db, userId, channel);
   return entry?.executionProfile ?? 'fast';
+}
+
+/**
+ * Return per-phase model overrides for a specific user+channel pair.
+ * Returns an empty object when no entry exists or no preferences are set.
+ */
+export function getModelPreferences(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+): Partial<Record<DeepPhase, string>> {
+  const entry = getAccess(db, userId, channel);
+  return entry?.modelPreferences ?? {};
 }
 
 /**

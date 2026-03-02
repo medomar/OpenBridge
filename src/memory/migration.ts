@@ -150,6 +150,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    description: 'Add model_preferences column to access_control',
+    apply: (db): void => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('access_control') WHERE name='model_preferences'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec(`ALTER TABLE access_control ADD COLUMN model_preferences TEXT DEFAULT NULL`);
+      }
+    },
+  },
 ];
 
 /**
