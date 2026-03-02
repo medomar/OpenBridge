@@ -9,6 +9,8 @@ export default tseslint.config(
       'dist/',
       'coverage/',
       'node_modules/',
+      '.wwebjs_auth/**',
+      '.wwebjs_cache/**',
       '*.config.js',
       '*.config.ts',
       '**/_archived/**',
