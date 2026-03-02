@@ -128,15 +128,15 @@ describe('AiderAdapter.buildSpawnConfig', () => {
 // ── cleanEnv ────────────────────────────────────────────────────────
 
 describe('AiderAdapter.cleanEnv', () => {
-  it('preserves OPENAI_API_KEY and ANTHROPIC_API_KEY', () => {
+  it('strips OPENAI_API_KEY and ANTHROPIC_API_KEY via deny patterns', () => {
     const env = {
       OPENAI_API_KEY: 'sk-test',
       ANTHROPIC_API_KEY: 'sk-ant-test',
       CLAUDECODE: '1',
     };
     const cleaned = adapter.cleanEnv(env);
-    expect(cleaned.OPENAI_API_KEY).toBe('sk-test');
-    expect(cleaned.ANTHROPIC_API_KEY).toBe('sk-ant-test');
+    expect(cleaned.OPENAI_API_KEY).toBeUndefined();
+    expect(cleaned.ANTHROPIC_API_KEY).toBeUndefined();
     expect(cleaned.CLAUDECODE).toBeUndefined();
   });
 
