@@ -329,12 +329,15 @@ get_pending_tasks() {
   local phase="$2"
 
   local raw_tasks
+  # Match only lines where the STATUS column (second-to-last pipe field) contains "Pending".
+  # The last field is empty due to trailing "|", so status is $(NF-1).
+  # This avoids false positives when task descriptions contain the word "pending".
   if [[ "$phase" != "none" ]]; then
     raw_tasks=$(sed -nE "/^## Phase $phase/,/^## Phase |^## Status|^---$/p" "$tasks_file" \
-      | grep -i 'Pending' \
+      | awk -F'|' 'NF>=5 && tolower($(NF-1)) ~ /pending/' \
       | grep -oE 'OB-[0-9]+')
   else
-    raw_tasks=$(grep -i 'Pending' "$tasks_file" \
+    raw_tasks=$(awk -F'|' 'NF>=5 && tolower($(NF-1)) ~ /pending/' "$tasks_file" \
       | grep -v '^>' \
       | grep -oE 'OB-[0-9]+')
   fi

@@ -1524,4 +1524,81 @@ describe('ExplorationCoordinator', () => {
         durationMs: 0,
       });
   }
+
+  describe('Progress Calculation (getProgress()) (OB-F61)', () => {
+    it('should return non-negative completionPercent when directory_dives has not started', async () => {
+      // Arrange: write state where structure_scan(15) + classification(15) are done,
+      // directory_dives is in_progress with 0 of 2 dives completed.
+      // Bug (OB-F61): old formula gave 15 + 15 + 50*0 - 50 = -20; fixed formula gives 30.
+      const dotFolder = new DotFolderManager(testWorkspace);
+      await dotFolder.initialize();
+
+      const state: ExplorationState = {
+        currentPhase: 'directory_dives',
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+        phases: {
+          structure_scan: 'completed',
+          classification: 'completed',
+          directory_dives: 'in_progress',
+          assembly: 'pending',
+          finalization: 'pending',
+        },
+        directoryDives: [
+          { path: 'src', status: 'pending', attempts: 0 },
+          { path: 'tests', status: 'pending', attempts: 0 },
+        ],
+        totalCalls: 2,
+        totalAITimeMs: 5000,
+      };
+
+      await dotFolder.writeExplorationState(state);
+
+      // Act: coordinator reads from dotFolder (no memory configured)
+      const progress = await coordinator.getProgress();
+
+      // Assert: completionPercent is 30 (structure_scan 15 + classification 15)
+      // and NOT negative (which was the pre-fix bug: -20)
+      expect(progress).not.toBeNull();
+      expect(progress!.completionPercent).toBeGreaterThanOrEqual(0);
+      expect(progress!.completionPercent).toBe(30);
+      expect(progress!.directoriesTotal).toBe(2);
+      expect(progress!.directoriesCompleted).toBe(0);
+    });
+
+    it('should report partial progress as dives complete', async () => {
+      // Arrange: 1 of 2 dives completed → directory_dives contributes 50 * 0.5 = 25
+      const dotFolder = new DotFolderManager(testWorkspace);
+      await dotFolder.initialize();
+
+      const state: ExplorationState = {
+        currentPhase: 'directory_dives',
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+        phases: {
+          structure_scan: 'completed',
+          classification: 'completed',
+          directory_dives: 'in_progress',
+          assembly: 'pending',
+          finalization: 'pending',
+        },
+        directoryDives: [
+          { path: 'src', status: 'completed', attempts: 1 },
+          { path: 'tests', status: 'pending', attempts: 0 },
+        ],
+        totalCalls: 3,
+        totalAITimeMs: 8000,
+      };
+
+      await dotFolder.writeExplorationState(state);
+
+      const progress = await coordinator.getProgress();
+
+      // structure_scan(15) + classification(15) + directory_dives(50 * 0.5 = 25) = 55
+      expect(progress).not.toBeNull();
+      expect(progress!.completionPercent).toBe(55);
+      expect(progress!.directoriesCompleted).toBe(1);
+      expect(progress!.directoriesFailed).toBe(0);
+    });
+  });
 });

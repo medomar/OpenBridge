@@ -371,6 +371,55 @@ describe('Prompt Library', () => {
     });
   });
 
+  describe('Prompt Template previousVersion (OB-F63)', () => {
+    it('should store undefined previousVersion on first write', async () => {
+      // First write — no previous file exists, so previousVersion must be undefined
+      await dotFolder.writePromptTemplate('evolving-prompt.md', '# First version', {
+        id: 'evolving-prompt',
+        version: '1.0.0',
+        description: 'Evolving prompt',
+        category: 'task',
+        usageCount: 0,
+        successCount: 0,
+      });
+
+      const template = await dotFolder.getPromptTemplate('evolving-prompt');
+      expect(template).not.toBeNull();
+      expect(template!.previousVersion).toBeUndefined();
+    });
+
+    it('should store actual previous file content in previousVersion on overwrite', async () => {
+      const firstContent = '# First version of the prompt';
+      const secondContent = '# Second version of the prompt — updated';
+
+      // First write
+      await dotFolder.writePromptTemplate('evolving-prompt.md', firstContent, {
+        id: 'evolving-prompt',
+        version: '1.0.0',
+        description: 'Evolving prompt',
+        category: 'task',
+        usageCount: 0,
+        successCount: 0,
+      });
+
+      // Second write — should store firstContent as previousVersion (not secondContent)
+      await dotFolder.writePromptTemplate('evolving-prompt.md', secondContent, {
+        id: 'evolving-prompt',
+        version: '1.1.0',
+        description: 'Evolving prompt — updated',
+        category: 'task',
+        usageCount: 0,
+        successCount: 0,
+      });
+
+      const template = await dotFolder.getPromptTemplate('evolving-prompt');
+      expect(template).not.toBeNull();
+      // previousVersion must be the OLD content, not the new content
+      expect(template!.previousVersion).toBe(firstContent);
+      expect(template!.previousVersion).not.toBe(secondContent);
+    });
+  });
+
   describe('Prompt Template Validation', () => {
     it('should validate prompt template schema on write', async () => {
       const invalidTemplate: any = {
