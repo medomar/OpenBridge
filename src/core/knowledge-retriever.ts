@@ -3,6 +3,7 @@ import type { MemoryManager, Chunk } from '../memory/index.js';
 import { QACacheStore } from '../memory/qa-cache-store.js';
 import type { DotFolderManager } from '../master/dotfolder-manager.js';
 import type { WorkspaceMap } from '../types/master.js';
+import { createLogger } from './logger.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -148,6 +149,7 @@ export class KnowledgeRetriever {
   private readonly memoryManager: MemoryManager;
   private readonly dotFolderManager: DotFolderManager;
   private qaCache: QACacheStore | null = null;
+  private readonly logger = createLogger('knowledge-retriever');
 
   constructor(memoryManager: MemoryManager, dotFolderManager: DotFolderManager) {
     this.memoryManager = memoryManager;
@@ -171,10 +173,32 @@ export class KnowledgeRetriever {
    * FTS5 always has something to search with.
    */
   private buildSearchQuery(question: string): string {
-    const tokens = question
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((term) => term.length > 1 && !STOP_WORDS.has(term));
+    const rawTokens = question.toLowerCase().split(/\s+/).filter(Boolean);
+    const tokens = rawTokens.filter((term) => term.length > 1 && !STOP_WORDS.has(term));
+
+    if (tokens.length === 0 && rawTokens.length > 0) {
+      const tooShort = rawTokens.filter((t) => t.length <= 1);
+      const stopWordsFiltered = rawTokens.filter((t) => t.length > 1 && STOP_WORDS.has(t));
+      let reason: string;
+      if (tooShort.length > 0 && stopWordsFiltered.length > 0) {
+        reason = 'mixed: some tokens too short, some are stop words';
+      } else if (tooShort.length > 0) {
+        reason = 'all tokens too short (length <= 1)';
+      } else {
+        reason = 'all tokens are stop words';
+      }
+      this.logger.warn(
+        {
+          originalQuestion: question,
+          filteredTokens: rawTokens,
+          tooShort,
+          stopWordsFiltered,
+          reason,
+        },
+        'buildSearchQuery: all tokens filtered — falling back to original query',
+      );
+    }
+
     return tokens.length > 0 ? tokens.join(' ') : question.trim();
   }
 
