@@ -609,6 +609,8 @@ export interface AgentResult {
    * before completing the task. The result is incomplete.
    */
   turnsExhausted?: boolean;
+  /** Last agentic turn count reported during streaming (undefined if not tracked) */
+  turnsUsed?: number;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -1392,6 +1394,7 @@ export class AgentRunner {
     const promise = (async (): Promise<AgentResult> => {
       const attemptRecords: AttemptRecord[] = [];
       let attempt = 0;
+      let lastTurnsUsed = 0;
 
       // The first iteration uses the already-started streaming handle.
       let currentStreaming: ReturnType<typeof execOnceStreaming> = firstStreaming;
@@ -1420,6 +1423,7 @@ export class AgentRunner {
             if (onProgress) {
               const indicator = parseTurnIndicator(chunk);
               if (indicator) {
+                lastTurnsUsed = indicator.turnsUsed;
                 onProgress(indicator);
               }
             }
@@ -1456,6 +1460,7 @@ export class AgentRunner {
             modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
             costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
             turnsExhausted: turnsExhausted || undefined,
+            turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
           };
 
           if (turnsExhausted) {

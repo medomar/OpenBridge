@@ -203,6 +203,38 @@ export function classifyMessagePriority(content: string): MessagePriority {
   return 2;
 }
 
+/**
+ * Parse approximate counts of file reads, file modifications, and commands run
+ * from a worker's stdout content. Uses heuristic regex patterns since the Claude
+ * CLI --print mode outputs plain text rather than structured tool-call logs.
+ *
+ * Counts are best-effort: they reflect what the AI described doing, not raw tool calls.
+ */
+function parseWorkerStats(content: string): {
+  filesRead: number;
+  filesModified: number;
+  commandsRun: number;
+} {
+  // File modification: action verbs before a backtick-wrapped file path
+  const modifiedRe =
+    /\b(?:edit(?:ed|ing)?|writ(?:e|ing|ten)|creat(?:e|ed|ing)|modif(?:y|ied|ying)|updat(?:e|ed|ing)|add(?:ed|ing)\s+to|rewrit(?:e|ing|ten))\b[^`\n]{0,50}`[^`]+\.[a-zA-Z0-9]{1,6}`/gi;
+
+  // File reads: action verbs indicating a file was read
+  const readRe =
+    /\b(?:read(?:ing)?|examin(?:e|ed|ing)|analyz(?:e|ed|ing)|check(?:ed|ing)?|look(?:ed|ing)\s+at|review(?:ed|ing)?|inspect(?:ed|ing)?|open(?:ed|ing)?|search(?:ed|ing)?\s+(?:in|through))\b[^`\n]{0,50}`[^`]+\.[a-zA-Z0-9]{1,6}`/gi;
+
+  // Shell commands: backtick-wrapped strings starting with common CLI tools
+  const commandRe =
+    /`(?:npm|yarn|pnpm|npx|git|bash|sh|node|python3?|pip3?|cargo|go|make|docker|kubectl|curl|wget|tsc|eslint|prettier|vitest|jest)\s[^`]+`/gi;
+
+  const filesModified = (content.match(modifiedRe) ?? []).length;
+  const filesReadRaw = (content.match(readRe) ?? []).length;
+  const filesRead = Math.max(0, filesReadRaw - filesModified);
+  const commandsRun = (content.match(commandRe) ?? []).length;
+
+  return { filesRead, filesModified, commandsRun };
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -448,14 +480,73 @@ export class Router {
    * Send a progress event to a specific connector (best-effort).
    * Used by MasterManager to emit typed ProgressEvents to the right connector
    * without going through the full routing flow.
+   *
+   * When the event is `worker-result`, also sends a plain-text execution summary
+   * to the user (OB-1391): "Worker completed (Ns, N turns): N files read, N files modified, N commands run".
    */
   async sendProgress(source: string, recipient: string, event: ProgressEvent): Promise<void> {
     const connector = this.connectors.get(source);
-    if (!connector?.sendProgress) return;
+    if (!connector) return;
+    if (connector.sendProgress) {
+      try {
+        await connector.sendProgress(event, recipient);
+      } catch (err) {
+        logger.warn({ err, source, recipient }, 'sendProgress: failed to send progress event');
+      }
+    }
+
+    // Send execution summary after each worker completes (OB-1391)
+    if (event.type === 'worker-result') {
+      await this.sendWorkerExecutionSummary(connector, recipient, event);
+    }
+  }
+
+  /**
+   * Format and send a plain-text execution summary to the user after a worker completes.
+   * Format: "Worker [N/T] completed (Xs, N turns): N files read, N files modified, N commands run"
+   * Counts are parsed from the worker's stdout content using heuristic patterns (OB-1391).
+   */
+  private async sendWorkerExecutionSummary(
+    connector: Connector,
+    recipient: string,
+    event: Extract<ProgressEvent, { type: 'worker-result' }>,
+  ): Promise<void> {
+    const durationSec = event.durationMs !== undefined ? Math.round(event.durationMs / 1000) : null;
+    const { filesRead, filesModified, commandsRun } = parseWorkerStats(event.content);
+
+    const timePart = durationSec !== null ? `${durationSec}s` : '?s';
+    const turnsPart =
+      event.turnsUsed !== undefined && event.turnsUsed > 0
+        ? `${event.turnsUsed} turn${event.turnsUsed !== 1 ? 's' : ''}`
+        : null;
+    const durationStr = turnsPart ? `${timePart}, ${turnsPart}` : timePart;
+
+    const status = event.success ? 'completed' : 'failed';
+    const workerLabel = event.total > 1 ? `Worker ${event.workerIndex}/${event.total}` : 'Worker';
+
+    const summary =
+      `${workerLabel} ${status} (${durationStr}): ` +
+      `${filesRead} file${filesRead !== 1 ? 's' : ''} read, ` +
+      `${filesModified} file${filesModified !== 1 ? 's' : ''} modified, ` +
+      `${commandsRun} command${commandsRun !== 1 ? 's' : ''} run`;
+
+    const msg: OutboundMessage = {
+      target: connector.name,
+      recipient,
+      content: summary,
+    };
+
     try {
-      await connector.sendProgress(event, recipient);
+      await connector.sendMessage(msg);
+      logger.debug(
+        { recipient, workerIndex: event.workerIndex, total: event.total, durationSec },
+        'Worker execution summary sent',
+      );
     } catch (err) {
-      logger.warn({ err, source, recipient }, 'sendProgress: failed to send progress event');
+      logger.warn(
+        { err, recipient },
+        'sendWorkerExecutionSummary: failed to send execution summary',
+      );
     }
   }
 

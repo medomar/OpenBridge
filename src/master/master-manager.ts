@@ -4254,6 +4254,8 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
                   tool: workerMarker.body.tool,
                   content,
                   success: workerResult.exitCode === 0,
+                  durationMs: workerResult.durationMs,
+                  turnsUsed: workerResult.turnsUsed,
                 });
               }
             },
@@ -4674,6 +4676,8 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
                 tool: workerMarker.body.tool,
                 content,
                 success: workerResult.exitCode === 0,
+                durationMs: workerResult.durationMs,
+                turnsUsed: workerResult.turnsUsed,
               });
             }
           };
