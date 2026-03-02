@@ -705,6 +705,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/skip N" command — skip item N from Deep Mode plan (OB-1410)
+    if (/^\/skip\s+\d+/i.test(message.content.trim())) {
+      await this.handleSkipItemCommand(message, connector);
+      return;
+    }
+
     // Checkpoint-handle-resume cycle for urgent messages.
     // When a priority-1 message was flagged by the queue (sender had a message in flight when
     // this arrived), checkpoint session state before processing so that:
@@ -2087,6 +2093,90 @@ export class Router {
         content: `Focused investigation of finding #${itemIndex} failed: ${errMsg}`,
       });
     }
+  }
+
+  /**
+   * Handle the built-in "/skip N" command — marks plan item N as skipped in Deep Mode.
+   *
+   * Behaviour:
+   *   1. Parses N from "/skip N".
+   *   2. Marks item N as skipped in the active Deep Mode session via skipItem().
+   *   3. Confirms to the user that the item has been skipped.
+   *   4. The execute phase will not process skipped items.
+   *
+   * Responds with "No active Deep Mode session" when no session exists.
+   * Responds with usage guidance when N is missing or invalid.
+   */
+  private async handleSkipItemCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Parse item number N from "/skip N"
+    const trimmed = message.content.trim();
+    const match = /^\/skip\s+(\d+)/i.exec(trimmed);
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /skip N — provide a task number (e.g., /skip 3)',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const itemIndex = parseInt(match[1]!, 10);
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    if (activeSessions.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Use the first active session
+    const sessionId = activeSessions[0]!;
+    const state = deepMode.getSessionState(sessionId);
+
+    if (!state) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Mark the item as skipped in the session state
+    deepMode.skipItem(sessionId, itemIndex);
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Task #${itemIndex} marked as skipped — it will not be processed in the execute phase.\nTask: "${state.taskSummary}"`,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, sessionId, itemIndex, phase: state.currentPhase },
+      'Deep Mode item skipped via /skip command',
+    );
   }
 
   /**
