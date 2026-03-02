@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 219 | **In Progress:** 0 | **Done:** 42
+> **Pending:** 218 | **In Progress:** 0 | **Done:** 43
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -167,7 +167,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 6   | OB-1339 | Add `formatKnowledgeContext(result: KnowledgeResult): string` method to `KnowledgeRetriever` — formats retrieved chunks into a concise context string for system prompt injection. Format: "Relevant Knowledge" header with sections for chunks, workspace map, and confidence percentage. Truncate total context to 4000 chars                                                                              | ✅ Done   |
 | 7   | OB-1340 | Add `listDirDiveResults()` method to `DotFolderManager` in `src/master/dotfolder-manager.ts` — returns an array of `{ dirPath: string, resultPath: string }` by scanning `.openbridge/exploration/dir-dives/` directory. Handle case where directory does not exist (return empty array)                                                                                                                     | ✅ Done   |
 | 8   | OB-1341 | Add `searchFTS5(query: string, limit?: number): ChunkRow[]` method to `ChunkStore` in `src/memory/chunk-store.ts` if it does not exist — query the `workspace_chunks_fts` FTS5 virtual table with the given search terms. Return matching chunks ordered by FTS5 rank. Default limit: 10. Handle empty query and FTS5 syntax errors                                                                          | ✅ Done   |
-| 9   | OB-1342 | Add tests for `KnowledgeRetriever` in `tests/core/knowledge-retriever.test.ts` — test: (1) query returns chunks from FTS5 when matches exist, (2) workspace map matches when file paths mentioned, (3) confidence is 0 when no chunks found, (4) confidence increases with more results, (5) needsWorker is true when confidence < 0.3, (6) formatKnowledgeContext truncates at 4000 chars. At least 6 tests | ◻ Pending |
+| 9   | OB-1342 | Add tests for `KnowledgeRetriever` in `tests/core/knowledge-retriever.test.ts` — test: (1) query returns chunks from FTS5 when matches exist, (2) workspace map matches when file paths mentioned, (3) confidence is 0 when no chunks found, (4) confidence increases with more results, (5) needsWorker is true when confidence < 0.3, (6) formatKnowledgeContext truncates at 4000 chars. At least 6 tests | ✅ Done   |
 | 10  | OB-1343 | Build + lint + typecheck + test validation for Phase 74 — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures before marking this task done                                                                                                                                                                                                                           | ◻ Pending |
 
 ---
