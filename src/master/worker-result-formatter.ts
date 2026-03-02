@@ -11,6 +11,7 @@
 
 import type { AgentResult, ErrorCategory } from '../core/agent-runner.js';
 import { classifyError } from '../core/agent-runner.js';
+import { parseCodexJsonlOutput } from '../core/adapters/codex-adapter.js';
 
 /**
  * Metadata about a completed worker execution.
@@ -43,6 +44,22 @@ export interface WorkerResultMeta {
 }
 
 /**
+ * Defensive guard: if output looks like raw Codex JSONL (starts with `{"type":`),
+ * parse it through parseCodexJsonlOutput() to extract readable text.
+ *
+ * This catches any code paths where parseOutput() was not applied before the
+ * worker result reached the formatter (e.g., non-streaming fallbacks, edge cases
+ * in adapter wiring, or future adapters that emit JSONL without a parseOutput hook).
+ */
+export function sanitizeWorkerOutput(output: string): string {
+  const trimmed = output.trimStart();
+  if (trimmed.startsWith('{"type":')) {
+    return parseCodexJsonlOutput(output);
+  }
+  return output;
+}
+
+/**
  * Format a successful worker result for injection into the Master session.
  *
  * Output format:
@@ -53,8 +70,9 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
   const modelLabel = formatModelLabel(meta.tool, meta.model);
   const durationLabel = formatDuration(meta.durationMs);
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
+  const safeOutput = sanitizeWorkerOutput(output);
 
-  return `[WORKER RESULT (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel})]\n${output.trim()}\n[/WORKER RESULT]`;
+  return `[WORKER RESULT (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel})]\n${safeOutput.trim()}\n[/WORKER RESULT]`;
 }
 
 /**
