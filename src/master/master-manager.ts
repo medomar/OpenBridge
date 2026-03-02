@@ -1149,6 +1149,27 @@ export class MasterManager {
           gitInitialized: true,
         };
 
+        // OB-1569: Ensure FTS5 has indexed chunks even when exploration is skipped.
+        // If the chunk store is empty, decompose the workspace map into searchable chunks.
+        if (this.memory) {
+          try {
+            const chunkCount = await this.memory.countChunks();
+            if (chunkCount === 0) {
+              logger.warn(
+                'FTS5 chunk store is empty after skip-exploration — indexing workspace map (OB-1569)',
+              );
+              await this.indexWorkspaceMapAsChunks(map);
+            } else {
+              logger.info({ chunkCount }, 'FTS5 chunk store has indexed content — RAG ready');
+            }
+          } catch (err) {
+            logger.warn(
+              { err },
+              'Failed to verify/index FTS5 chunks after skip-exploration (OB-1569)',
+            );
+          }
+        }
+
         this.workspaceMapSummary = this.buildMapSummary(map);
         this.state = 'ready';
         logger.info({ projectType: map.projectType }, 'Master AI ready (loaded existing map)');
@@ -1747,6 +1768,89 @@ export class MasterManager {
     }
 
     return parts.join('\n');
+  }
+
+  /**
+   * Index workspace map content as individual searchable FTS5 chunks (OB-1569).
+   * Called when the workspace map is reused from cache but the chunk store is
+   * empty — ensures FTS5 has something to search on first query.
+   */
+  private async indexWorkspaceMapAsChunks(map: WorkspaceMap): Promise<void> {
+    if (!this.memory) return;
+
+    const chunks: Array<{
+      scope: string;
+      category: 'structure' | 'patterns' | 'dependencies' | 'api' | 'config';
+      content: string;
+      source_hash: string;
+    }> = [];
+
+    // Summary chunk — project overview (always useful for general queries)
+    const summaryParts: string[] = [`Project: ${map.projectName}`, `Type: ${map.projectType}`];
+    if (map.frameworks.length > 0) summaryParts.push(`Frameworks: ${map.frameworks.join(', ')}`);
+    if (map.summary) summaryParts.push(`Summary: ${map.summary}`);
+    if (map.entryPoints.length > 0)
+      summaryParts.push(`Entry points: ${map.entryPoints.join(', ')}`);
+    chunks.push({
+      scope: '_workspace_summary',
+      category: 'structure',
+      content: summaryParts.join('\n'),
+      source_hash: 'workspace-map-index',
+    });
+
+    // Key files chunk — what each important file does
+    if (map.keyFiles.length > 0) {
+      const fileLines = map.keyFiles.map((f) => `${f.path} (${f.type}): ${f.purpose}`).join('\n');
+      chunks.push({
+        scope: '_workspace_key_files',
+        category: 'structure',
+        content: `Key files:\n${fileLines}`,
+        source_hash: 'workspace-map-index',
+      });
+    }
+
+    // Directory structure chunk
+    const structureEntries = Object.entries(map.structure);
+    if (structureEntries.length > 0) {
+      const structureLines = structureEntries
+        .map(([dir, info]) => `${info.path ?? dir}/: ${info.purpose}`)
+        .join('\n');
+      chunks.push({
+        scope: '_workspace_structure',
+        category: 'structure',
+        content: `Directory structure:\n${structureLines}`,
+        source_hash: 'workspace-map-index',
+      });
+    }
+
+    // Commands chunk
+    const commandEntries = Object.entries(map.commands);
+    if (commandEntries.length > 0) {
+      const commandLines = commandEntries.map(([name, cmd]) => `${name}: ${cmd}`).join('\n');
+      chunks.push({
+        scope: '_workspace_commands',
+        category: 'config',
+        content: `Available commands:\n${commandLines}`,
+        source_hash: 'workspace-map-index',
+      });
+    }
+
+    // Dependencies chunk (first 50 to avoid oversized chunks)
+    if (map.dependencies.length > 0) {
+      const depLines = map.dependencies
+        .slice(0, 50)
+        .map((d) => `${d.name}${d.version ? `@${d.version}` : ''}${d.type ? ` (${d.type})` : ''}`)
+        .join('\n');
+      chunks.push({
+        scope: '_workspace_deps',
+        category: 'dependencies',
+        content: `Dependencies:\n${depLines}`,
+        source_hash: 'workspace-map-index',
+      });
+    }
+
+    await this.memory.storeChunks(chunks);
+    logger.info({ chunkCount: chunks.length }, 'Indexed workspace map into FTS5 chunks (OB-1569)');
   }
 
   /**
