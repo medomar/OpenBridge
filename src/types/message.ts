@@ -26,6 +26,10 @@ export type ProgressEvent =
       tool?: string;
       content: string;
       success: boolean;
+      /** Actual wall-clock duration of the worker execution in milliseconds */
+      durationMs?: number;
+      /** Last reported agentic turn count from the worker's streaming output */
+      turnsUsed?: number;
     }
   | { type: 'synthesizing' }
   | { type: 'complete' }
