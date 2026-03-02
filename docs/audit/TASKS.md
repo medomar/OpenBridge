@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 163 | **In Progress:** 0 | **Done:** 98
+> **Pending:** 162 | **In Progress:** 0 | **Done:** 99
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -292,7 +292,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                           | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1397 | Define Deep Mode types in `src/types/agent.ts` — add ExecutionProfile type (fast, thorough, manual), DeepPhase type (investigate, report, plan, execute, verify), DeepModeState interface with profile, currentPhase, phaseResults map, startedAt, taskSummary                                        | ✅ Done   |
-| 2   | OB-1398 | Create `src/master/deep-mode.ts` — DeepModeManager class with MasterManager reference. Methods: startSession(), advancePhase(), getCurrentPhase(), getPhaseResult(), skipPhase(), focusOnItem(), isActive(), abort(). Manages phase state machine lifecycle                                           | ◻ Pending |
+| 2   | OB-1398 | Create `src/master/deep-mode.ts` — DeepModeManager class with MasterManager reference. Methods: startSession(), advancePhase(), getCurrentPhase(), getPhaseResult(), skipPhase(), focusOnItem(), isActive(), abort(). Manages phase state machine lifecycle                                           | ✅ Done   |
 | 3   | OB-1399 | Add phase transition logic to DeepModeManager — advancePhase() moves investigate to report to plan to execute to verify to done. Thorough profile auto-advances, manual profile pauses between phases, fast profile skips Deep Mode                                                                   | ◻ Pending |
 | 4   | OB-1400 | Add per-phase model selection — PHASE_MODEL_MAP: investigate=powerful, report=balanced, plan=powerful, execute=balanced, verify=fast. Model tier passed to Master session per phase. Users can override via config                                                                                    | ◻ Pending |
 | 5   | OB-1401 | Add per-phase system prompts — each phase gets focused injection: investigate (explore and identify), report (summarize findings), plan (create actionable plan), execute (implement the plan), verify (run tests and checks)                                                                         | ◻ Pending |
