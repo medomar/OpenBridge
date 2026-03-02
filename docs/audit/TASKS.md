@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 156 | **In Progress:** 0 | **Done:** 105
+> **Pending:** 155 | **In Progress:** 0 | **Done:** 106
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -299,7 +299,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 6   | OB-1402 | Add `deep.defaultProfile` and `deep.phaseModels` config options to `src/types/config.ts` — defaultProfile: fast/thorough/manual (default: fast). phaseModels: per-phase model tier overrides                                                                                                          | ✅ Done   |
 | 7   | OB-1403 | Wire DeepModeManager into MasterManager — instantiate during init. In processMessage(), check task class and user profile to determine if Deep Mode should activate. If thorough or manual, create session and start with investigate phase                                                           | ✅ Done   |
 | 8   | OB-1404 | Add Deep Mode task class detection — in classifyTaskByKeywords(), add keywords: audit, deep analysis, thorough review, security review, full review, investigate. Set suggestDeepMode: true in classification result so Master can offer Deep Mode                                                    | ✅ Done   |
-| 9   | OB-1405 | Add Deep Mode state persistence — store active sessions in agent_activity table with type: deep-mode. On restart, check for incomplete sessions and offer resume. Store phase results in SQLite                                                                                                       | ◻ Pending |
+| 9   | OB-1405 | Add Deep Mode state persistence — store active sessions in agent_activity table with type: deep-mode. On restart, check for incomplete sessions and offer resume. Store phase results in SQLite                                                                                                       | ✅ Done   |
 | 10  | OB-1406 | Add tests in `tests/master/deep-mode.test.ts` — test: (1) correct phase transition order, (2) manual pauses between phases, (3) thorough auto-advances, (4) fast skips Deep Mode, (5) skipPhase moves to next, (6) focusOnItem repeats investigation, (7) model selection per phase. At least 7 tests | ◻ Pending |
 
 ### Phase Deep-2 — Interactive Commands (10 tasks)

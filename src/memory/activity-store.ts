@@ -26,7 +26,7 @@ export type ExplorationProgressUpdate = Partial<
 
 export interface ActivityRecord {
   id: string;
-  type: 'master' | 'worker' | 'sub-master' | 'explorer';
+  type: 'master' | 'worker' | 'sub-master' | 'explorer' | 'deep-mode';
   model?: string;
   profile?: string;
   task_summary?: string;
@@ -122,6 +122,17 @@ export function getActiveAgents(db: Database.Database): ActivityRecord[] {
       `SELECT * FROM agent_activity
        WHERE status IN ('starting', 'running', 'completing')
        ORDER BY started_at ASC`,
+    )
+    .all() as ActivityRecord[];
+}
+
+/** Return all agent_activity rows for Deep Mode sessions, most recent first. */
+export function getDeepModeSessions(db: Database.Database): ActivityRecord[] {
+  return db
+    .prepare(
+      `SELECT * FROM agent_activity
+       WHERE type = 'deep-mode'
+       ORDER BY started_at DESC`,
     )
     .all() as ActivityRecord[];
 }
