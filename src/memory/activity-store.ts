@@ -126,6 +126,18 @@ export function getActiveAgents(db: Database.Database): ActivityRecord[] {
     .all() as ActivityRecord[];
 }
 
+/** Return the last N worker spawns (type='worker'), most recent first. */
+export function getRecentWorkerSpawns(db: Database.Database, limit = 10): ActivityRecord[] {
+  return db
+    .prepare(
+      `SELECT * FROM agent_activity
+       WHERE type = 'worker'
+       ORDER BY started_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as ActivityRecord[];
+}
+
 /**
  * Mark all in-flight agent_activity rows as 'done' on startup.
  * Any row still 'starting', 'running', or 'completing' from a previous

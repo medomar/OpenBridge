@@ -61,6 +61,7 @@ import {
   insertActivity as _insertActivity,
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
+  getRecentWorkerSpawns as _getRecentWorkerSpawns,
   cleanupOldActivity as _cleanupOldActivity,
   markStaleActivityDone as _markStaleActivityDone,
   getDailyCost as _getDailyCost,
@@ -589,6 +590,12 @@ export class MemoryManager {
   getActiveAgents(): Promise<ActivityRecord[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getActiveAgents(this.db));
+  }
+
+  /** Return the last N worker spawns (type='worker'), most recent first. */
+  getRecentWorkerSpawns(limit?: number): Promise<ActivityRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getRecentWorkerSpawns(this.db, limit));
   }
 
   cleanupOldActivity(cutoffHours?: number): Promise<void> {
