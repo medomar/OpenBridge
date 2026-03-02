@@ -2753,8 +2753,17 @@ export class MasterManager {
    * Keyword-based task classifier — instant fallback when the AI classifier
    * is unavailable or times out. Returns 'quick-answer' as the default so that
    * unrecognized conversational messages don't waste turns on tools (OB-1581).
+   *
+   * @param recentUserMessages - Last few user messages from the current session.
+   *   When provided, the classifier checks conversation context: if the previous
+   *   messages were text-generation tasks, short follow-up messages ("shorter",
+   *   "better hook", "mix of 1 and 3") are also classified as text-generation
+   *   instead of the default quick-answer or tool-use (OB-1582).
    */
-  private classifyTaskByKeywords(content: string): ClassificationResult {
+  private classifyTaskByKeywords(
+    content: string,
+    recentUserMessages?: string[],
+  ): ClassificationResult {
     const lower = content.toLowerCase();
 
     // Deep Mode keywords — thorough analysis tasks that benefit from multi-phase investigation
@@ -2877,6 +2886,24 @@ export class MasterManager {
       };
     }
 
+    // Conversation context — if the last 3 user messages were text-generation tasks,
+    // classify short follow-up messages as text-generation too (OB-1582).
+    // e.g. after writing a LinkedIn post, "better hook", "mix of 1 and 3", "try option 2"
+    // are continuation requests, not new tool-use or complex-task invocations.
+    if (recentUserMessages && recentUserMessages.length > 0) {
+      const recentTextGenCount = recentUserMessages
+        .slice(-3)
+        .filter((msg) => textGenKeywords.some((kw) => msg.toLowerCase().includes(kw))).length;
+      if (recentTextGenCount >= 1 && lower.length <= 120) {
+        return {
+          class: 'quick-answer',
+          maxTurns: MESSAGE_MAX_TURNS_QUICK,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+          reason: 'conversation context: text-generation follow-up',
+        };
+      }
+    }
+
     // Tool-use keywords — single-action file generation or targeted edits
     const toolUseKeywords = ['create', 'fix', 'update file', 'add to', 'make a'];
     if (toolUseKeywords.some((kw) => lower.includes(kw))) {
@@ -2937,8 +2964,11 @@ export class MasterManager {
    * The AI is given the workspace context (project type, frameworks) so it can
    * calibrate the turn budget based on scope (e.g. "full-stack app" → more turns
    * than "simple HTML page").
+   *
+   * @param sessionId - When provided, fetches the last few user messages from the
+   *   session so the keyword classifier can apply conversation context (OB-1582).
    */
-  public async classifyTask(content: string): Promise<ClassificationResult> {
+  public async classifyTask(content: string, sessionId?: string): Promise<ClassificationResult> {
     const CLASSIFIER_TIMEOUT_MS = 5000;
 
     // Check in-memory cache first (0ms, avoids AI call for repeated patterns)
@@ -2959,6 +2989,24 @@ export class MasterManager {
       this.classificationCache.delete(cacheKey);
     }
 
+    // Fetch recent user messages from session history for conversation context (OB-1582).
+    // Used by the keyword classifier to detect text-generation follow-ups.
+    let recentUserMessages: string[] | undefined;
+    if (sessionId && this.memory) {
+      try {
+        const sessionMessages = await this.memory.getSessionHistory(sessionId, 6);
+        const userMessages = sessionMessages
+          .filter((e) => e.role === 'user')
+          .slice(-3)
+          .map((e) => e.content);
+        if (userMessages.length > 0) {
+          recentUserMessages = userMessages;
+        }
+      } catch {
+        // Non-fatal: conversation context is a best-effort enhancement
+      }
+    }
+
     // Skip AI classifier for non-Claude adapters — the fast-tier AI call is
     // designed for Claude's haiku model. Other adapters (Codex, Aider) don't
     // handle short single-turn classifier prompts well (e.g. Codex returns
@@ -2968,7 +3016,7 @@ export class MasterManager {
         { adapter: this.adapter.name },
         'Skipping AI classifier for non-Claude adapter, using keyword heuristics',
       );
-      const keywordResult = this.classifyTaskByKeywords(content);
+      const keywordResult = this.classifyTaskByKeywords(content, recentUserMessages);
       this.classificationCache.set(cacheKey, {
         normalizedKey: cacheKey,
         result: keywordResult,
@@ -3121,7 +3169,7 @@ export class MasterManager {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      classificationResult = this.classifyTaskByKeywords(content);
+      classificationResult = this.classifyTaskByKeywords(content, recentUserMessages);
     }
 
     // Apply classification learning: if aggregate data shows this class underperforms,
@@ -4296,7 +4344,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       await progress?.({ type: 'classifying' });
 
       // Classify message to determine appropriate turn budget
-      const classification = await this.classifyTask(message.content);
+      const classification = await this.classifyTask(message.content, sessionId);
       const taskClass = classification.class;
       const taskMaxTurns = classification.maxTurns;
       logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
@@ -4848,7 +4896,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       await streamProgress?.({ type: 'classifying' });
 
       // Classify message to determine appropriate turn budget and prompt
-      const streamClassification = await this.classifyTask(message.content);
+      const streamClassification = await this.classifyTask(message.content, streamSessionId);
       const streamTaskClass = streamClassification.class;
       const streamPromptToSend =
         streamTaskClass === 'complex-task'
