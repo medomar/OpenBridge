@@ -222,14 +222,34 @@ export class KnowledgeRetriever {
   }
 
   /**
+   * Compute confidence score (0.0–1.0) based on chunk count and source diversity.
+   *
+   * OB-1338:
+   * - Chunk count component: 0 chunks → 0.0, 5+ chunks → 0.8 (linear).
+   * - Source diversity bonus: +0.1 per additional source type beyond first,
+   *   capped at +0.2 (so 3 sources gives the full bonus).
+   * - Total is capped at 1.0.
+   */
+  private computeConfidence(chunkCount: number, sourceCount: number): number {
+    // Chunk count component: scales linearly from 0 (0 chunks) to 0.8 (5+ chunks)
+    const countComponent = Math.min(chunkCount / 5, 1) * 0.8;
+
+    // Diversity bonus: +0.1 per additional source beyond the first, max +0.2
+    const diversityBonus = Math.min(Math.max(sourceCount - 1, 0) * 0.1, 0.2);
+
+    return Math.min(countComponent + diversityBonus, 1.0);
+  }
+
+  /**
    * Query the local knowledge store for information relevant to the given
    * question.  Returns a {@link KnowledgeResult} with matched chunks, a
    * confidence score, and the source types that contributed results.
    *
    * OB-1335: FTS5 chunk search — searches workspace_chunks via FTS5 MATCH and
    * returns up to 10 results ordered by BM25 rank score.
-   * Subsequent tasks (OB-1336 through OB-1339) add workspace-map matching,
-   * dir-dive loading, confidence scoring, and context formatting.
+   * OB-1336: workspace map key-file matching.
+   * OB-1337: dir-dive JSON loading.
+   * OB-1338: confidence scoring + needsWorker flag.
    */
   async query(question: string): Promise<KnowledgeResult> {
     const result: KnowledgeResult = { chunks: [], confidence: 0, sources: [] };
@@ -262,6 +282,12 @@ export class KnowledgeRetriever {
         result.chunks.push(...diveChunks);
         result.sources.push('dir-dive');
       }
+    }
+
+    // --- Confidence scoring (OB-1338) ---
+    result.confidence = this.computeConfidence(result.chunks.length, result.sources.length);
+    if (result.confidence < 0.3) {
+      result.needsWorker = true;
     }
 
     return result;
