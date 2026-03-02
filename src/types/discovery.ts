@@ -35,6 +35,9 @@ export const ScanResultSchema = z.object({
   /** VS Code extensions discovered via extension directory scan */
   vscodeExtensions: z.array(DiscoveredToolSchema),
 
+  /** Tunnel tools discovered via which/where commands (cloudflared, ngrok, localtunnel) */
+  tunnelTools: z.array(DiscoveredToolSchema),
+
   /** Selected master AI tool (highest priority available tool) */
   master: DiscoveredToolSchema.nullable(),
 

@@ -1,4 +1,4 @@
-import { scanForCLITools, selectMaster } from './tool-scanner.js';
+import { scanForCLITools, scanForTunnelTools, selectMaster } from './tool-scanner.js';
 import { scanVSCodeExtensions } from './vscode-scanner.js';
 import type { ScanResult } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
@@ -25,6 +25,10 @@ export async function scanForAITools(): Promise<ScanResult> {
   const vscodeExtensions = await scanVSCodeExtensions();
   logger.info({ count: vscodeExtensions.length }, 'VS Code extension scan complete');
 
+  // Scan for tunnel tools (synchronous)
+  const tunnelTools = scanForTunnelTools();
+  logger.info({ count: tunnelTools.length }, 'Tunnel tool scan complete');
+
   // Select master from CLI tools (VS Code extensions cannot be Master)
   const master = selectMaster(cliTools);
 
@@ -35,11 +39,12 @@ export async function scanForAITools(): Promise<ScanResult> {
   }
 
   const timestamp = new Date().toISOString();
-  const totalDiscovered = cliTools.length + vscodeExtensions.length;
+  const totalDiscovered = cliTools.length + vscodeExtensions.length + tunnelTools.length;
 
   const result: ScanResult = {
     cliTools,
     vscodeExtensions,
+    tunnelTools,
     master,
     timestamp,
     totalDiscovered,
@@ -50,6 +55,7 @@ export async function scanForAITools(): Promise<ScanResult> {
       totalDiscovered,
       cliTools: cliTools.length,
       vscodeExtensions: vscodeExtensions.length,
+      tunnelTools: tunnelTools.length,
       master: master?.name ?? 'none',
     },
     'AI tool discovery complete',
@@ -59,5 +65,5 @@ export async function scanForAITools(): Promise<ScanResult> {
 }
 
 // Re-export individual scanners for advanced use cases
-export { scanForCLITools, selectMaster } from './tool-scanner.js';
+export { scanForCLITools, scanForTunnelTools, selectMaster } from './tool-scanner.js';
 export { scanVSCodeExtensions } from './vscode-scanner.js';

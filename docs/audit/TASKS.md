@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 129 | **In Progress:** 0 | **Done:** 43 (112 archived)
+> **Pending:** 128 | **In Progress:** 0 | **Done:** 44 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -49,7 +49,7 @@
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
-**Sprint 4 Remaining:** 170 tasks (v0.0.12)
+**Sprint 4 Remaining:** 169 tasks (v0.0.12)
 
 See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md) for version milestones.
 
@@ -175,7 +175,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1432 | Auto-detect tunnel tools in `src/discovery/tool-scanner.ts` — add cloudflared, ngrok, localtunnel to detection list using which. Add metadata: name, version command, priority (cloudflared > ngrok > localtunnel). Return in scan results                                                  | ◻ Pending |
+| 1   | OB-1432 | Auto-detect tunnel tools in `src/discovery/tool-scanner.ts` — add cloudflared, ngrok, localtunnel to detection list using which. Add metadata: name, version command, priority (cloudflared > ngrok > localtunnel). Return in scan results                                                  | ✅ Done   |
 | 2   | OB-1433 | Create `src/core/tunnel-manager.ts` — TunnelManager class with methods: start(port) returns public URL, stop(), getUrl(), isActive(). Constructor takes detected tunnel tool name and optional config                                                                                       | ◻ Pending |
 | 3   | OB-1434 | Implement cloudflared tunnel adapter — spawn `cloudflared tunnel --url localhost:{port}` as child process. Parse public URL from stdout. Handle errors and unexpected exits. Preferred — free, no signup                                                                                    | ◻ Pending |
 | 4   | OB-1435 | Implement ngrok tunnel adapter — spawn `ngrok http {port}`. Query ngrok API at localhost:4040 for public URL. Handle auth token requirement. Fallback if cloudflared unavailable                                                                                                            | ◻ Pending |
