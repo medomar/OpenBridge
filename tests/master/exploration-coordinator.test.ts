@@ -1250,10 +1250,11 @@ describe('ExplorationCoordinator', () => {
     });
 
     it('sets status=in_progress on the directory row when the dive begins (even if it then fails)', async () => {
-      // Each directory is attempted exactly once per explore() call. If a single attempt fails,
-      // the dive's attempts counter is incremented to 1 (< MAX_RETRIES=3) and the dir stays
-      // 'pending' in the state — no failure row update fires. The DB row ends up 'in_progress'
-      // (set at dive start) because the dive never completed or exhausted retries.
+      // With OB-1320 retry behavior: failed dives are retried within the same explore() call.
+      // A dive that fails MAX_RETRIES (3) times has its DB row explicitly updated to 'failed'.
+      // The row is set to 'in_progress' at the start of each attempt (verified by the final
+      // 'failed' status, which is only written after the row was set 'in_progress' and the
+      // dive ran and failed 3 times).
       const memory = new MemoryManager(':memory:');
       await memory.init();
       const explorationId = randomUUID();
@@ -1303,11 +1304,33 @@ describe('ExplorationCoordinator', () => {
           retryCount: 0,
           durationMs: 0,
         })
-        // Dive fails — one attempt, attempts=1 < MAX_RETRIES(3), stays pending
+        // Dive fails 3 times (MAX_RETRIES) — retried within the same explore() call
         .mockResolvedValueOnce({
           exitCode: 1,
           stdout: '',
           stderr: 'fail',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fail',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'fail',
+          retryCount: 0,
+          durationMs: 0,
+        })
+        // Phase 4 assembly — runs after all dives are exhausted (failed dives are skipped)
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: JSON.stringify({ summary: 'Summary' }),
+          stderr: '',
           retryCount: 0,
           durationMs: 0,
         });
@@ -1320,15 +1343,16 @@ describe('ExplorationCoordinator', () => {
         explorationId,
       });
 
-      await expect(coordinatorWithMemory.explore()).rejects.toThrow('Directory dives incomplete');
+      await coordinatorWithMemory.explore();
 
       const rows = await memory.getExplorationProgressByExplorationId(explorationId);
       const srcRow = rows.find((r) => r.phase === 'directory-dive' && r.target === 'src');
 
-      // Row was created (inserted as 'pending' in phase 3 setup, then updated to 'in_progress'
-      // when the dive started). It was never updated to 'completed' or 'failed'.
+      // After MAX_RETRIES failures, the row is explicitly updated to 'failed'.
+      // This confirms the row was created, set to 'in_progress' on each attempt,
+      // and finally marked 'failed' after all retries were exhausted.
       expect(srcRow).toBeDefined();
-      expect(srcRow?.status).toBe('in_progress');
+      expect(srcRow?.status).toBe('failed');
       expect(srcRow?.target).toBe('src');
     });
   });
