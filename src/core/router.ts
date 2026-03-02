@@ -659,6 +659,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/audit" command — intercept before routing to Master AI
+    if (/^\/audit(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleAuditCommand(message, connector);
+      return;
+    }
+
     // Checkpoint-handle-resume cycle for urgent messages.
     // When a priority-1 message was flagged by the queue (sender had a message in flight when
     // this arrived), checkpoint session state before processing so that:
@@ -1658,6 +1664,124 @@ export class Router {
       content: lines.join('\n'),
       replyTo: message.id,
     });
+  }
+
+  /**
+   * Handle the built-in "/audit" command.
+   * Shows the last 10 worker spawns with task ID, profile, duration, estimated cost, and result status.
+   * Reads from the agent_activity table via MemoryManager.
+   *
+   * Syntax:
+   *   "/audit"   → list last 10 worker spawns
+   */
+  private async handleAuditCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.memory) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Audit log not available — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let spawns: ActivityRecord[];
+    try {
+      spawns = await this.memory.getRecentWorkerSpawns(10);
+    } catch (err) {
+      logger.warn({ err }, 'handleAuditCommand: failed to query worker spawns');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Audit log temporarily unavailable — could not query activity records.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const content = this.formatAuditLog(spawns, connector.name);
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content,
+      replyTo: message.id,
+    });
+    logger.info({ sender: message.sender }, 'Audit command handled');
+  }
+
+  /**
+   * Format the last N worker spawns for the given channel.
+   *   webchat   → HTML table
+   *   console   → ASCII table
+   *   all other → numbered list (WhatsApp, Telegram, Discord)
+   */
+  private formatAuditLog(spawns: ActivityRecord[], channel: string): string {
+    if (spawns.length === 0) {
+      return '*Worker Audit Log*\n\nNo worker spawns recorded yet.';
+    }
+
+    const formatDate = (iso: string): string => iso.slice(0, 16).replace('T', ' ');
+    const formatDurationMs = (startIso: string, endIso: string | undefined): string => {
+      if (!endIso) return 'running';
+      const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+      return formatDuration(ms);
+    };
+    const formatCost = (costUsd: number | undefined): string =>
+      costUsd !== undefined ? `$${costUsd.toFixed(3)}` : 'n/a';
+    const shortId = (id: string): string => id.slice(-8);
+
+    if (channel === 'webchat') {
+      const rows = spawns
+        .map(
+          (s) =>
+            `<tr><td>${escapeHtml(shortId(s.id))}</td>` +
+            `<td>${escapeHtml(s.profile ?? '—')}</td>` +
+            `<td>${escapeHtml(s.model ?? '—')}</td>` +
+            `<td>${formatDurationMs(s.started_at, s.completed_at)}</td>` +
+            `<td>${formatCost(s.cost_usd)}</td>` +
+            `<td>${escapeHtml(s.status)}</td>` +
+            `<td>${escapeHtml((s.task_summary ?? '').slice(0, 60))}</td></tr>`,
+        )
+        .join('');
+      return (
+        '<b>Worker Audit Log</b>' +
+        '<table><tr><th>ID</th><th>Profile</th><th>Model</th><th>Duration</th>' +
+        '<th>Cost</th><th>Status</th><th>Task</th></tr>' +
+        rows +
+        '</table>'
+      );
+    }
+
+    if (channel === 'console') {
+      const header = ' # | ID       | Profile    | Duration | Cost    | Status    | Task';
+      const sep = '-'.repeat(header.length);
+      const rows = spawns.map((s, i) => {
+        const idx = String(i + 1).padStart(2);
+        const id = shortId(s.id).padEnd(8);
+        const profile = (s.profile ?? '—').padEnd(10).slice(0, 10);
+        const dur = formatDurationMs(s.started_at, s.completed_at).padEnd(8);
+        const cost = formatCost(s.cost_usd).padEnd(7);
+        const status = (s.status ?? '—').padEnd(9).slice(0, 9);
+        const task = (s.task_summary ?? '').slice(0, 40);
+        return ` ${idx} | ${id} | ${profile} | ${dur} | ${cost} | ${status} | ${task}`;
+      });
+      return ['*Worker Audit Log*', header, sep, ...rows, sep].join('\n');
+    }
+
+    // Default: WhatsApp, Telegram, Discord — numbered list
+    const rowLines = spawns.map((s, i) => {
+      const idx = i + 1;
+      const id = shortId(s.id);
+      const profile = s.profile ?? '—';
+      const model = s.model ?? '—';
+      const dur = formatDurationMs(s.started_at, s.completed_at);
+      const cost = formatCost(s.cost_usd);
+      const status = s.status;
+      const task = (s.task_summary ?? '').slice(0, 80);
+      const date = formatDate(s.started_at);
+      return `${idx}. [${id}] ${profile} (${model})\n   ${date} · ${dur} · ${cost} · ${status}\n   ${task}`;
+    });
+    return ['*Worker Audit Log*', '', ...rowLines].join('\n');
   }
 
   /**
