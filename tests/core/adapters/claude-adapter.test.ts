@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ClaudeAdapter } from '../../../src/core/adapters/claude-adapter.js';
 import { buildArgs } from '../../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../../src/core/agent-runner.js';
+import { SecurityConfigSchema } from '../../../src/types/config.js';
 
 const adapter = new ClaudeAdapter();
 
@@ -160,11 +161,32 @@ describe('ClaudeAdapter.cleanEnv', () => {
   it('removes CLAUDE_AGENT_SDK_* env vars', () => {
     const env = {
       CLAUDE_AGENT_SDK_FOO: 'bar',
-      OPENAI_API_KEY: 'sk-test',
+      NODE_ENV: 'test',
     };
     const cleaned = adapter.cleanEnv(env);
     expect(cleaned.CLAUDE_AGENT_SDK_FOO).toBeUndefined();
+    expect(cleaned.NODE_ENV).toBe('test');
+  });
+
+  it('strips secret env vars via deny patterns (e.g. OPENAI_API_KEY)', () => {
+    const env = {
+      OPENAI_API_KEY: 'sk-test',
+      AWS_SECRET_ACCESS_KEY: 'secret',
+      PATH: '/usr/bin',
+    };
+    const cleaned = adapter.cleanEnv(env);
+    expect(cleaned.OPENAI_API_KEY).toBeUndefined();
+    expect(cleaned.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(cleaned.PATH).toBe('/usr/bin');
+  });
+
+  it('preserves vars in allow list even if they match deny patterns', () => {
+    const config = SecurityConfigSchema.parse({ envAllowPatterns: ['OPENAI_API_KEY'] });
+    const adapterWithConfig = new ClaudeAdapter(config);
+    const env = { OPENAI_API_KEY: 'sk-test', AWS_SECRET_KEY: 'secret' };
+    const cleaned = adapterWithConfig.cleanEnv(env);
     expect(cleaned.OPENAI_API_KEY).toBe('sk-test');
+    expect(cleaned.AWS_SECRET_KEY).toBeUndefined();
   });
 
   it('does not mutate the original env object', () => {

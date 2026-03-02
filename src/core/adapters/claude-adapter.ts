@@ -22,11 +22,21 @@ import type { SpawnOptions } from '../agent-runner.js';
 import { sanitizePrompt, MODEL_ALIASES, DEFAULT_MAX_TURNS_TASK } from '../agent-runner.js';
 import type { ModelAlias } from '../agent-runner.js';
 import { createLogger } from '../logger.js';
+import { sanitizeEnv } from '../env-sanitizer.js';
+import { SecurityConfigSchema } from '../../types/config.js';
+import type { SecurityConfig } from '../../types/config.js';
 
 const logger = createLogger('claude-adapter');
 
+const DEFAULT_SECURITY_CONFIG: SecurityConfig = SecurityConfigSchema.parse({});
+
 export class ClaudeAdapter implements CLIAdapter {
   readonly name = 'claude';
+  private readonly securityConfig: SecurityConfig;
+
+  constructor(securityConfig?: SecurityConfig) {
+    this.securityConfig = securityConfig ?? DEFAULT_SECURITY_CONFIG;
+  }
 
   buildSpawnConfig(opts: SpawnOptions): CLISpawnConfig {
     const args: string[] = [];
@@ -98,7 +108,7 @@ export class ClaudeAdapter implements CLIAdapter {
         delete cleaned[key];
       }
     }
-    return cleaned;
+    return sanitizeEnv(cleaned, this.securityConfig);
   }
 
   mapCapabilityLevel(level: CapabilityLevel): string[] | undefined {
