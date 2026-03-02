@@ -327,6 +327,42 @@ export const TaskManifestSchema = z.object({
   mcpServers: z.array(MCPServerSchema).optional(),
 });
 
+// ── Deep Mode ────────────────────────────────────────────────────
+
+/** Execution profile that controls whether and how Deep Mode operates */
+export const ExecutionProfileSchema = z.enum(['fast', 'thorough', 'manual']);
+
+/** Phases of a Deep Mode session, executed in order */
+export const DeepPhaseSchema = z.enum(['investigate', 'report', 'plan', 'execute', 'verify']);
+
+/** Result stored for a completed Deep Mode phase */
+export const DeepPhaseResultSchema = z.object({
+  /** The phase that produced this result */
+  phase: DeepPhaseSchema,
+  /** Raw output from the worker agent */
+  output: z.string(),
+  /** When the phase completed */
+  completedAt: z.string().datetime(),
+});
+
+/** Live state for an active Deep Mode session */
+export const DeepModeStateSchema = z.object({
+  /** Unique session identifier */
+  sessionId: z.string().min(1),
+  /** Execution profile in use */
+  profile: ExecutionProfileSchema,
+  /** The phase currently executing (undefined when done) */
+  currentPhase: DeepPhaseSchema.optional(),
+  /** Results keyed by phase name — populated as phases complete */
+  phaseResults: z.record(z.string(), DeepPhaseResultSchema).default({}),
+  /** When this Deep Mode session started */
+  startedAt: z.string().datetime(),
+  /** One-line summary of the original user request */
+  taskSummary: z.string(),
+  /** Indices (1-based) of plan items the user has skipped */
+  skippedItems: z.array(z.number().int().positive()).default([]),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -349,3 +385,7 @@ export type BuiltInProfileName = z.infer<typeof BuiltInProfileNameSchema>;
 export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 export type ProfilesRegistry = z.infer<typeof ProfilesRegistrySchema>;
 export type TaskManifest = z.infer<typeof TaskManifestSchema>;
+export type ExecutionProfile = z.infer<typeof ExecutionProfileSchema>;
+export type DeepPhase = z.infer<typeof DeepPhaseSchema>;
+export type DeepPhaseResult = z.infer<typeof DeepPhaseResultSchema>;
+export type DeepModeState = z.infer<typeof DeepModeStateSchema>;
