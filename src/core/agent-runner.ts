@@ -1450,8 +1450,18 @@ export class AgentRunner {
           const retryCount = attempt;
           const turnsExhausted = isMaxTurnsExhausted(stdout);
 
+          // Apply adapter-specific output parsing (e.g. Codex --json JSONL extraction)
+          let parsedStdout = stdout;
+          if (currentConfig.parseOutput) {
+            try {
+              parsedStdout = currentConfig.parseOutput(stdout);
+            } catch (parseErr) {
+              logger.warn({ parseErr }, 'parseOutput threw — falling back to raw stdout');
+            }
+          }
+
           const result: AgentResult = {
-            stdout,
+            stdout: parsedStdout,
             stderr: streamResult!.stderr,
             exitCode: 0,
             durationMs,
@@ -1618,8 +1628,18 @@ export class AgentRunner {
         const retryCount = attempt;
         const turnsExhausted = isMaxTurnsExhausted(stdout);
 
+        // Apply adapter-specific output parsing (e.g. Codex --json JSONL extraction)
+        let parsedStdout = stdout;
+        if (currentConfig.parseOutput) {
+          try {
+            parsedStdout = currentConfig.parseOutput(stdout);
+          } catch (parseErr) {
+            logger.warn({ parseErr }, 'parseOutput threw — falling back to raw stdout');
+          }
+        }
+
         const result: AgentResult = {
-          stdout,
+          stdout: parsedStdout,
           stderr: streamResult!.stderr,
           exitCode: 0,
           durationMs,
