@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 192 | **In Progress:** 0 | **Done:** 69
+> **Pending:** 191 | **In Progress:** 0 | **Done:** 70
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -230,7 +230,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1367 | Define `ENV_DENY_PATTERNS` constant in `src/types/config.ts` — array of glob patterns: AWS*\*, GITHUB*\_, GH\__, TOKEN*\*, SECRET*_, PASSWORD\__, PRIVATE*\*, DB*_, DATABASE\__, SMTP*\*, OPENAI*_, ANTHROPIC\__, API*KEY*, *\_SECRET, *\_TOKEN, *\_PASSWORD, \*\_CREDENTIAL, REDIS*_, MONGO\_\_, MYSQL*\*, POSTGRES*\*          | ✅ Done   |
 | 2   | OB-1368 | Add `security.envDenyPatterns` and `security.envAllowPatterns` to V2 config Zod schema in `src/types/config.ts` — optional arrays of glob patterns with defaults. envAllowPatterns overrides deny list (e.g., GITHUB_ACTIONS for CI). Add security section if missing                                                            | ✅ Done   |
-| 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ◻ Pending |
+| 3   | OB-1369 | Create `src/core/env-sanitizer.ts` — export sanitizeEnv(env, config) function. For each env var name, check against deny patterns using glob matching. If denied AND not in allow list, strip it. Return new clean object without modifying process.env                                                                          | ✅ Done   |
 | 4   | OB-1370 | Wire sanitizeEnv() into ClaudeAdapter in `src/core/adapters/claude-adapter.ts` — call in cleanEnv() method before passing env to child process. Runs in addition to existing CLAUDECODE stripping                                                                                                                                | ◻ Pending |
 | 5   | OB-1371 | Wire sanitizeEnv() into CodexAdapter in `src/core/adapters/codex-adapter.ts` — same pattern as Claude adapter                                                                                                                                                                                                                    | ◻ Pending |
 | 6   | OB-1372 | Wire sanitizeEnv() into AiderAdapter in `src/core/adapters/aider-adapter.ts` — same pattern as Claude and Codex adapters                                                                                                                                                                                                         | ◻ Pending |
