@@ -16,6 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 
+import type { ModelTier } from '../core/model-registry.js';
 import { createLogger } from '../core/logger.js';
 import type {
   DeepModeState,
@@ -30,6 +31,27 @@ const logger = createLogger('deep-mode');
 
 /** Canonical order of Deep Mode phases */
 const PHASE_ORDER: DeepPhase[] = ['investigate', 'report', 'plan', 'execute', 'verify'];
+
+// ── Per-Phase Model Selection ──────────────────────────────────────
+
+/**
+ * Default model tier for each Deep Mode phase.
+ *
+ * - investigate: powerful — thorough code/context exploration requires the best model
+ * - report:      balanced — summarising findings is less reasoning-intensive
+ * - plan:        powerful — high-quality planning reduces downstream errors
+ * - execute:     balanced — implementation tasks are well-scoped; balanced is sufficient
+ * - verify:      fast     — test running + pass/fail checks are straightforward
+ *
+ * Users can override individual entries via `deep.phaseModels` in config (OB-1402).
+ */
+export const PHASE_MODEL_MAP: Record<DeepPhase, ModelTier> = {
+  investigate: 'powerful',
+  report: 'balanced',
+  plan: 'powerful',
+  execute: 'balanced',
+  verify: 'fast',
+};
 
 // ── MasterManager Surface ─────────────────────────────────────────
 
@@ -331,5 +353,28 @@ export class DeepModeManager {
    */
   getActiveSessions(): string[] {
     return [...this.sessions.keys()];
+  }
+
+  // ── Per-Phase Model Selection ──────────────────────────────────
+
+  /**
+   * Return the recommended model tier for the current phase of a session.
+   *
+   * Applies user-supplied per-phase overrides (from `deep.phaseModels` config,
+   * added in OB-1402) on top of the built-in PHASE_MODEL_MAP defaults.
+   *
+   * @param sessionId  Session to query.
+   * @param overrides  Optional per-phase model tier overrides (from config).
+   * @returns          The model tier, or `undefined` if session not found / done.
+   */
+  getPhaseModelTier(
+    sessionId: string,
+    overrides?: Partial<Record<DeepPhase, ModelTier>>,
+  ): ModelTier | undefined {
+    const state = this.sessions.get(sessionId);
+    if (!state || !state.currentPhase) return undefined;
+
+    const phase = state.currentPhase;
+    return overrides?.[phase] ?? PHASE_MODEL_MAP[phase];
   }
 }
