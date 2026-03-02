@@ -35,6 +35,32 @@
     "whitelist": ["+1234567890"],
     "prefix": "/ai"
   },
+  "security": {
+    "envDenyPatterns": [
+      "AWS_*",
+      "GITHUB_*",
+      "GH_*",
+      "TOKEN*",
+      "*_TOKEN",
+      "SECRET*",
+      "*_SECRET",
+      "PASSWORD*",
+      "*_PASSWORD",
+      "PRIVATE_*",
+      "DB_*",
+      "DATABASE_*",
+      "SMTP_*",
+      "OPENAI_*",
+      "ANTHROPIC_*",
+      "API*KEY*",
+      "*_CREDENTIAL",
+      "REDIS_*",
+      "MONGO_*",
+      "MYSQL_*",
+      "POSTGRES_*"
+    ],
+    "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"]
+  },
   "_mcp_note": "MCP integration is scaffolded but not yet fully validated. Enable at your own risk.",
   "mcp": {
     "enabled": false,
