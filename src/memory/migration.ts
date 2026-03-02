@@ -36,7 +36,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 1,
     description: 'Add pid column to agent_activity',
-    apply: (db) => {
+    apply: (db): void => {
       const has =
         (
           db
@@ -53,7 +53,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 2,
     description: 'Add title column to conversations',
-    apply: (db) => {
+    apply: (db): void => {
       const has =
         (
           db
@@ -70,7 +70,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 3,
     description: 'Add checkpoint_data column to sessions',
-    apply: (db) => {
+    apply: (db): void => {
       const has =
         (
           db
