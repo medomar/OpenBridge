@@ -1065,6 +1065,161 @@ None. (Or list any test failures that existed before your changes.)
 };
 
 /**
+ * Deep Mode: Verify Phase
+ *
+ * Runs the full project verification suite (npm test, lint, typecheck, build)
+ * after the Execute phase completes. Reports pass/fail for each command,
+ * identifies the root cause of any failures, and attributes failures to the
+ * task that introduced them.
+ */
+export const DEEP_VERIFY: SeedPrompt = {
+  id: 'deep-verify',
+  filename: 'deep-verify.md',
+  category: 'verification',
+  version: '1.0.0',
+  description:
+    'Deep Mode verification: run npm test, lint, typecheck, and build. Report pass/fail for each command. Identify the root cause of failures and which executed task introduced them.',
+  content: `# Deep Mode — Verify Phase
+
+Run the full verification suite on the workspace to confirm the executed tasks are correct and have not introduced regressions.
+
+## Original Request
+
+{{userRequest}}
+
+## Executed Tasks
+
+The following tasks were completed in the Execute phase. Use this list to attribute failures to specific tasks.
+
+{{executedTasks}}
+
+## Instructions
+
+### Step 1 — Run Verification Commands
+
+Run each command in order and capture the **full output** (stdout + stderr):
+
+1. \`npm test\` — run the full test suite
+2. \`npm run lint\` — check for linting errors
+3. \`npm run typecheck\` — check for TypeScript type errors
+4. \`npm run build\` — compile and build the project
+
+**Timeout:** Allow up to 5 minutes per command. If a command exceeds the timeout, mark it as \`timeout\` and continue to the next.
+
+**Unavailable commands:** If a script is not listed in \`package.json\`, mark it as \`not-configured\` and continue.
+
+### Step 2 — Analyse Failures
+
+For every command that produced errors, failures, or a non-zero exit code:
+
+1. Read the error message and stack trace carefully.
+2. Identify the **root cause** — the specific file, function, or configuration responsible.
+3. Check the list of executed tasks to determine which task most likely **introduced** the failure:
+   - Cross-reference the failing file path against the "Files to Modify" listed for each task.
+   - If the failure is in a file changed by Task #N, attribute it to Task #N.
+   - If no executed task touched the failing file, mark it as \`pre-existing\`.
+4. Determine whether the failure is **blocking** (must be fixed before the session is complete) or **informational** (does not prevent the build from working).
+
+### Step 3 — Report Results
+
+For each command, report:
+- Pass or fail
+- Exit code
+- Summary counts (tests passed/failed, error count, etc.)
+- Any failures with root cause and task attribution
+
+## Output Format
+
+Produce your verification report in **Markdown** using the following structure.
+
+---
+
+## Verification Report
+
+### Command Results
+
+| Command | Status | Exit Code | Summary |
+| --- | --- | --- | --- |
+| \`npm test\` | ✅ Pass | 0 | 247 passed, 0 failed |
+| \`npm run lint\` | ❌ Fail | 1 | 2 errors, 4 warnings |
+| \`npm run typecheck\` | ✅ Pass | 0 | 0 errors |
+| \`npm run build\` | ✅ Pass | 0 | Compiled successfully |
+
+---
+
+### Failures
+
+For each failed command, list every error:
+
+---
+
+**Failure #1** — \`npm run lint\`
+**File:** \`src/core/router.ts:142\`
+**Error:** \`@typescript-eslint/no-floating-promises — promise not awaited\`
+**Root Cause:** The fix applied in Task #3 added a \`processMessage()\` call without awaiting it.
+**Introduced By:** Task #3 — Fix /history handler undefined return
+**Blocking:** Yes — CI will fail on this error.
+**Fix Suggestion:** Add \`await\` before the \`processMessage()\` call at line 142.
+
+---
+
+**Failure #2** — \`npm run lint\`
+**File:** \`src/master/master-manager.ts:307\`
+**Error:** \`@typescript-eslint/no-explicit-any — avoid using the \`any\` type\`
+**Root Cause:** Pre-existing lint warning not related to any executed task.
+**Introduced By:** Pre-existing (not caused by executed tasks)
+**Blocking:** No — warning only (exit code 1 is from the first error).
+**Fix Suggestion:** Type the parameter explicitly instead of using \`any\`.
+
+---
+
+Continue for all failures.
+
+---
+
+### Summary
+
+- **Total commands run:** N
+- **Passed:** N
+- **Failed:** N
+- **Not configured:** N (list which)
+- **Timeout:** N (list which)
+
+**Failures introduced by executed tasks:**
+- Task #3 introduced 1 lint error (Failure #1)
+
+**Pre-existing failures:**
+- 1 lint warning (Failure #2) — existed before this session
+
+**Overall verdict:** ✅ All executed changes are correct — pre-existing issues only
+(or)
+**Overall verdict:** ❌ Executed changes introduced N failures — must be fixed
+
+---
+
+### Recommended Fixes
+
+List only failures introduced by executed tasks. For each:
+
+1. **Failure #N** — one-sentence fix description
+   - File: \`path/to/file.ts\`
+   - Line: N
+   - Fix: (concrete, actionable instruction)
+
+If there are no failures introduced by executed tasks, write: "No fixes required — all failures are pre-existing."
+
+## Rules
+
+- **Do NOT modify any files** — this is a read-and-report phase. Report failures; do not fix them.
+- Run all four commands even if an earlier command fails — capture results for all.
+- Pre-existing failures must be clearly labelled — do not attribute them to executed tasks.
+- If you cannot determine which task introduced a failure, write "Unknown — further investigation needed".
+- The "Overall verdict" line is the most important output — the Deep Mode Manager uses it to decide whether to proceed or roll back.
+- If all commands pass, write a brief success summary and mark the verdict as ✅.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -1103,6 +1258,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   DEEP_REPORT,
   DEEP_PLAN,
   DEEP_EXECUTE,
+  DEEP_VERIFY,
 ];
 
 /**
