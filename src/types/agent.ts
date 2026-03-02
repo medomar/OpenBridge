@@ -267,6 +267,20 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
   },
 };
 
+// ── Risk Classification ─────────────────────────────────────────
+
+/** Risk level associated with a tool profile */
+export const RiskLevelSchema = z.enum(['low', 'medium', 'high', 'critical']);
+
+/** Maps each built-in profile to its risk level */
+export const PROFILE_RISK_MAP: Record<BuiltInProfileName, RiskLevel> = {
+  'read-only': 'low',
+  'code-audit': 'low',
+  'code-edit': 'medium',
+  'full-access': 'high',
+  master: 'critical',
+};
+
 // ── Profiles Registry ───────────────────────────────────────────
 
 /**
@@ -332,5 +346,6 @@ export type TaskProgressEvent = z.infer<typeof TaskProgressEventSchema>;
 export type ScriptEvent = z.infer<typeof ScriptEventSchema>;
 export type ToolProfile = z.infer<typeof ToolProfileSchema>;
 export type BuiltInProfileName = z.infer<typeof BuiltInProfileNameSchema>;
+export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 export type ProfilesRegistry = z.infer<typeof ProfilesRegistrySchema>;
 export type TaskManifest = z.infer<typeof TaskManifestSchema>;
