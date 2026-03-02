@@ -32,6 +32,8 @@ export interface MasterSystemPromptContext {
   modelRegistry?: ModelRegistry;
   /** MCP servers available for workers (from V2Config.mcp.servers) */
   mcpServers?: MCPServer[];
+  /** Names of the connectors that are currently active (e.g. ['whatsapp', 'console']) */
+  activeConnectorNames?: string[];
 }
 
 /**
@@ -104,6 +106,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const profilesSection = formatProfiles(context.customProfiles);
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
+  const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
 
   // Resolve model names from registry (defaults to Claude aliases if no registry)
   const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
@@ -412,7 +415,7 @@ When you or a worker generates a file (test report, analysis result, code review
 - **SHARE:telegram** — Sends the file as a Telegram document attachment
 - **SHARE:github-pages** — Publishes HTML files to GitHub Pages and returns a public URL (best for reports, dashboards, interactive outputs)
 - **SHARE:email** — Emails the file to a specified address (requires \`"to"\` field)
-
+${connectedChannelsSection}
 ### Examples
 
 **Share a test report via WhatsApp:**
@@ -614,6 +617,30 @@ function formatToolSelectionGuidelines(tools: DiscoveredTool[], masterToolName: 
   lines.push('');
   lines.push(
     '> If the requested tool is unavailable, the worker automatically falls back to the Master tool.',
+  );
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+function formatConnectedChannelsSection(names?: string[]): string {
+  if (!names || names.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '### Connected Channels',
+    '',
+    'The following channels are currently active and can receive SHARE deliveries:',
+    '',
+  ];
+
+  for (const name of names) {
+    lines.push(`- **${name}**`);
+  }
+
+  lines.push('');
+  lines.push(
+    'Only use SHARE targets that match an active channel. Sending to an inactive channel will fail silently.',
   );
   lines.push('');
 

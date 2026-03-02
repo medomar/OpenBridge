@@ -259,6 +259,10 @@ async function startV2Flow(
   // but MasterManager still holds the old (uninitialised) reference.
   masterManager.memory = bridge.getMemory();
 
+  // Inform MasterManager which connectors are active — included in the Master system prompt
+  // so the Master knows which SHARE targets are available (e.g. whatsapp, telegram, console).
+  masterManager.setActiveConnectorNames(bridge.getActiveConnectorNames());
+
   // Wire MCP servers into the health endpoint (runs after bridge.start() initialises the health server)
   if (v2Config.mcp?.enabled !== false && (v2Config.mcp?.servers ?? []).length > 0) {
     bridge.setMcpServers(v2Config.mcp?.servers ?? []);
