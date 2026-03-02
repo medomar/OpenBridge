@@ -10,6 +10,12 @@ vi.mock('../../src/core/agent-runner.js', () => ({
     spawnWithHandle: vi.fn(),
   })),
   TOOLS_READ_ONLY: ['Read', 'Glob', 'Grep'],
+  estimateCost: vi.fn().mockReturnValue({
+    estimatedTurns: 10,
+    costString: '~$0.30',
+    timeString: '~2 min',
+  }),
+  DEFAULT_MAX_TURNS_TASK: 15,
 }));
 
 import { Router, classifyMessagePriority } from '../../src/core/router.js';
@@ -24,7 +30,8 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { publishToGitHubPages } from '../../src/core/github-publisher.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { ActivityRecord } from '../../src/memory/index.js';
+import type { ActivityRecord, MemoryManager } from '../../src/memory/index.js';
+import type { ParsedSpawnMarker } from '../../src/master/spawn-parser.js';
 
 function createMessage(): InboundMessage {
   return {
@@ -2061,6 +2068,303 @@ describe('Router', () => {
       const content = provider.processedMessages[0]?.content ?? '';
       expect(content).toContain('**video**:');
       expect(content).not.toContain('**video** (');
+    });
+  });
+
+  describe('spawn confirmation and audit (OB-1395)', () => {
+    function createSpawnMarker(profile: string, prompt: string): ParsedSpawnMarker {
+      return {
+        profile,
+        body: { prompt },
+        rawMatch: `[SPAWN:${profile}]{"prompt":"${prompt}"}[/SPAWN]`,
+      };
+    }
+
+    it('high-risk SPAWN (full-access profile) triggers confirmation prompt', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true });
+      await connector.initialize();
+
+      const marker = createSpawnMarker('full-access', 'Edit all configuration files');
+      const message = createMessage();
+
+      const needsConfirmation = await router.requestSpawnConfirmation(
+        message.sender,
+        connector,
+        [marker],
+        message,
+      );
+
+      expect(needsConfirmation).toBe(true);
+      expect(connector.sentMessages).toHaveLength(1);
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('Confirmation required');
+      expect(content).toContain('full-access');
+      expect(content).toContain('"go"');
+      expect(content).toContain('"skip"');
+      expect(content).toContain('~$0.30');
+
+      // Clean up pending timeout to avoid leaking fake timers
+      router.takePendingSpawnConfirmation(message.sender);
+    });
+
+    it('low-risk SPAWN (read-only profile) proceeds without confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true });
+      await connector.initialize();
+
+      const marker = createSpawnMarker('read-only', 'Read source files');
+      const message = createMessage();
+
+      const needsConfirmation = await router.requestSpawnConfirmation(
+        message.sender,
+        connector,
+        [marker],
+        message,
+      );
+
+      expect(needsConfirmation).toBe(false);
+      expect(connector.sentMessages).toHaveLength(0);
+    });
+
+    it('/confirm approves pending spawn and re-routes the original message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'Worker executed' });
+      provider.streamMessage = undefined;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setSecurityConfig({ confirmHighRisk: true });
+      await connector.initialize();
+
+      const originalMessage = createMessage(); // content: 'hello'
+      const marker = createSpawnMarker('full-access', 'Task to execute');
+
+      // Set up pending confirmation
+      await router.requestSpawnConfirmation(
+        originalMessage.sender,
+        connector,
+        [marker],
+        originalMessage,
+      );
+      expect(connector.sentMessages).toHaveLength(1); // confirmation prompt sent
+
+      // Send /confirm — should re-route the original message
+      const confirmMessage: InboundMessage = {
+        id: 'confirm-1',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: '/confirm',
+        content: '/confirm',
+        timestamp: new Date(),
+      };
+      await router.route(confirmMessage);
+
+      // Provider should have received the original message content
+      expect(provider.processedMessages.length).toBeGreaterThan(0);
+      expect(provider.processedMessages[provider.processedMessages.length - 1]?.content).toBe(
+        'hello',
+      );
+
+      // Pending entry should be cleared
+      expect(router.hasPendingSpawnConfirmation('+1234567890')).toBe(false);
+    });
+
+    it('/skip cancels the pending spawn and sends cancellation notice', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'fallback' });
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setSecurityConfig({ confirmHighRisk: true });
+      await connector.initialize();
+
+      const originalMessage = createMessage();
+      const marker = createSpawnMarker('full-access', 'Task to skip');
+
+      // Set up pending confirmation
+      await router.requestSpawnConfirmation(
+        originalMessage.sender,
+        connector,
+        [marker],
+        originalMessage,
+      );
+      expect(connector.sentMessages).toHaveLength(1); // confirmation prompt
+
+      // Send /skip
+      const skipMessage: InboundMessage = {
+        id: 'skip-1',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: '/skip',
+        content: '/skip',
+        timestamp: new Date(),
+      };
+      await router.route(skipMessage);
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('Spawn cancelled.');
+      expect(router.hasPendingSpawnConfirmation('+1234567890')).toBe(false);
+    });
+
+    it('pending spawn auto-cancels after 60 second timeout', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true });
+      await connector.initialize();
+
+      const originalMessage = createMessage();
+      const marker = createSpawnMarker('full-access', 'Task that times out');
+
+      await router.requestSpawnConfirmation(
+        originalMessage.sender,
+        connector,
+        [marker],
+        originalMessage,
+      );
+      expect(connector.sentMessages).toHaveLength(1); // confirmation prompt
+      expect(router.hasPendingSpawnConfirmation('+1234567890')).toBe(true);
+
+      // Advance past the 60-second timeout
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      // Timeout message should have been sent
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('timed out');
+      expect(router.hasPendingSpawnConfirmation('+1234567890')).toBe(false);
+    });
+
+    it('estimateCost returns reasonable values for different model tiers', async () => {
+      const { estimateCost: realEstimateCost } = (await vi.importActual(
+        '../../src/core/agent-runner.js',
+      )) as unknown as {
+        estimateCost: (
+          _profile: string,
+          maxTurns: number,
+          modelTier: string,
+        ) => { estimatedTurns: number; costString: string; timeString: string };
+      };
+
+      const fastResult = realEstimateCost('read-only', 10, 'fast');
+      expect(fastResult.estimatedTurns).toBe(10);
+      expect(fastResult.costString).toMatch(/^~\$[\d.]+$/);
+      expect(parseFloat(fastResult.costString.slice(2))).toBeGreaterThan(0);
+      expect(fastResult.timeString).toMatch(/^~\d+ min$/);
+
+      const balancedResult = realEstimateCost('full-access', 15, 'balanced');
+      expect(balancedResult.estimatedTurns).toBe(15);
+      expect(parseFloat(balancedResult.costString.slice(2))).toBeGreaterThan(
+        parseFloat(fastResult.costString.slice(2)),
+      );
+
+      const powerfulResult = realEstimateCost('master', 5, 'powerful');
+      expect(powerfulResult.estimatedTurns).toBe(5);
+      expect(parseFloat(powerfulResult.costString.slice(2))).toBeGreaterThan(0);
+    });
+
+    it('/audit shows recent worker spawn history from memory', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'fallback' });
+      provider.streamMessage = undefined;
+
+      const mockSpawns: ActivityRecord[] = [
+        {
+          id: 'worker-1234567890ab',
+          type: 'worker',
+          model: 'claude-3-5-sonnet',
+          profile: 'read-only',
+          task_summary: 'Read and analyze source files',
+          status: 'done',
+          started_at: '2024-01-01T10:00:00.000Z',
+          updated_at: '2024-01-01T10:05:00.000Z',
+          completed_at: '2024-01-01T10:05:00.000Z',
+          cost_usd: 0.05,
+        },
+        {
+          id: 'worker-0987654321cd',
+          type: 'worker',
+          model: 'claude-3-5-sonnet',
+          profile: 'code-edit',
+          task_summary: 'Edit configuration files',
+          status: 'done',
+          started_at: '2024-01-01T11:00:00.000Z',
+          updated_at: '2024-01-01T11:10:00.000Z',
+          completed_at: '2024-01-01T11:10:00.000Z',
+          cost_usd: 0.12,
+        },
+      ];
+
+      const mockMemory = {
+        getRecentWorkerSpawns: vi.fn().mockResolvedValue(mockSpawns),
+        getConsentMode: vi.fn().mockResolvedValue('always-ask'),
+        searchConversations: vi.fn().mockResolvedValue([]),
+        getChunks: vi.fn().mockResolvedValue([]),
+      } as unknown as MemoryManager;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(mockMemory);
+      await connector.initialize();
+
+      const auditMessage: InboundMessage = {
+        id: 'audit-1',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: '/audit',
+        content: '/audit',
+        timestamp: new Date(),
+      };
+      await router.route(auditMessage);
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('Worker Audit Log');
+      expect(content).toContain('read-only');
+      expect(content).toContain('code-edit');
+    });
+
+    it('/audit responds with empty message when no worker spawns recorded', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'fallback' });
+      provider.streamMessage = undefined;
+
+      const mockMemory = {
+        getRecentWorkerSpawns: vi.fn().mockResolvedValue([]),
+        getConsentMode: vi.fn().mockResolvedValue('always-ask'),
+        searchConversations: vi.fn().mockResolvedValue([]),
+        getChunks: vi.fn().mockResolvedValue([]),
+      } as unknown as MemoryManager;
+
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(mockMemory);
+      await connector.initialize();
+
+      const auditMessage: InboundMessage = {
+        id: 'audit-2',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: '/audit',
+        content: '/audit',
+        timestamp: new Date(),
+      };
+      await router.route(auditMessage);
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('No worker spawns recorded');
     });
   });
 });
