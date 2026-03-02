@@ -80,6 +80,9 @@ export class FileServer {
    */
   private readonly inMemoryLinks: SharedLinksMap = {};
 
+  /** Public tunnel URL when a tunnel is active, null otherwise */
+  private publicUrl: string | null = null;
+
   constructor(
     workspacePath: string,
     port: number = DEFAULT_PORT,
@@ -93,6 +96,17 @@ export class FileServer {
   /** Returns the base URL for the file server */
   get baseUrl(): string {
     return `http://localhost:${this.port}`;
+  }
+
+  /** Set the public tunnel URL. Pass null to clear and fall back to localhost. */
+  setPublicUrl(url: string | null): void {
+    this.publicUrl = url;
+    logger.info({ publicUrl: url }, 'File server public URL updated');
+  }
+
+  /** Returns the public URL when a tunnel is active, localhost URL otherwise. */
+  getFileUrl(): string {
+    return this.publicUrl ?? this.baseUrl;
   }
 
   /** Returns the path to the generated files directory */
@@ -160,7 +174,7 @@ export class FileServer {
 
     await this.saveLink(uuid, entry);
 
-    const url = `${this.baseUrl}/shared/${uuid}/${encodeURIComponent(filename)}`;
+    const url = `${this.getFileUrl()}/shared/${uuid}/${encodeURIComponent(filename)}`;
     logger.info({ uuid, filename, expiresAt }, 'Shareable link created');
     return url;
   }

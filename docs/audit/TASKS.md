@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 124 | **In Progress:** 0 | **Done:** 48 (112 archived)
+> **Pending:** 123 | **In Progress:** 0 | **Done:** 49 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -180,7 +180,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 3   | OB-1434 | Implement cloudflared tunnel adapter — spawn `cloudflared tunnel --url localhost:{port}` as child process. Parse public URL from stdout. Handle errors and unexpected exits. Preferred — free, no signup                                                                                    | ✅ Done   |
 | 4   | OB-1435 | Implement ngrok tunnel adapter — spawn `ngrok http {port}`. Query ngrok API at localhost:4040 for public URL. Handle auth token requirement. Fallback if cloudflared unavailable                                                                                                            | ✅ Done   |
 | 5   | OB-1436 | Wire TunnelManager into Bridge startup in `src/core/bridge.ts` — if tunnel tool detected and tunnel.enabled is true, start tunnel during initialization. Store and log public URL                                                                                                           | ✅ Done   |
-| 6   | OB-1437 | Update file-server to return public URL in `src/core/file-server.ts` — add setPublicUrl() method. getFileUrl() returns tunnel URL when active, localhost otherwise                                                                                                                          | ◻ Pending |
+| 6   | OB-1437 | Update file-server to return public URL in `src/core/file-server.ts` — add setPublicUrl() method. getFileUrl() returns tunnel URL when active, localhost otherwise                                                                                                                          | ✅ Done   |
 | 7   | OB-1438 | Update Master system prompt with tunnel capability — when tunnel active, add public URL info. When not active, note files only accessible on localhost                                                                                                                                      | ◻ Pending |
 | 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ◻ Pending |
 | 9   | OB-1440 | Add tunnel config to `src/types/config.ts` — tunnel section: enabled (default: false), provider (auto/cloudflared/ngrok, default: auto), subdomain (optional). Add to schema and config.example.json                                                                                        | ◻ Pending |
