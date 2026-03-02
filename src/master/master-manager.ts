@@ -46,6 +46,7 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
+import { applyToolPromptPrefix } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { DeepModeManager } from './deep-mode.js';
 import type {
@@ -6094,6 +6095,11 @@ ${currentContent}
         logger.info({ requestedTool, workerId }, 'Worker using tool-specific adapter');
       }
     }
+
+    // Apply tool-specific worker prompt prefix (OB-1576).
+    // Codex workers waste turns on shell gymnastics — the prefix steers them
+    // toward simple, direct file-reading commands (OB-F91).
+    workerPrompt = applyToolPromptPrefix(workerPrompt, toolUsed);
 
     // Adaptive model selection (OB-724): marker override → learned best model → heuristics
     if (!resolvedModel && this.memory) {
