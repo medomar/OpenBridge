@@ -84,6 +84,38 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 4,
+    description: 'Add qa_cache table and qa_cache_fts virtual table',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='qa_cache'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE qa_cache (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            question     TEXT    NOT NULL,
+            answer       TEXT    NOT NULL,
+            confidence   REAL    NOT NULL DEFAULT 0.5,
+            file_paths   TEXT,
+            created_at   TEXT    NOT NULL,
+            accessed_at  TEXT    NOT NULL,
+            access_count INTEGER NOT NULL DEFAULT 0
+          );
+          CREATE VIRTUAL TABLE qa_cache_fts
+            USING fts5(question, content=qa_cache, content_rowid=id);
+          CREATE INDEX idx_qa_cache_created    ON qa_cache(created_at);
+          CREATE INDEX idx_qa_cache_confidence ON qa_cache(confidence);
+        `);
+      }
+    },
+  },
 ];
 
 /**
