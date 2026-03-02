@@ -771,7 +771,17 @@ export class DotFolderManager {
     metadata: Omit<PromptTemplate, 'filePath' | 'createdAt' | 'updatedAt'>,
   ): Promise<void> {
     await fs.mkdir(this.promptsPath, { recursive: true });
-    await fs.writeFile(path.join(this.promptsPath, filename), content, 'utf-8');
+
+    const filePath = path.join(this.promptsPath, filename);
+    let previousFileContent: string | undefined;
+    try {
+      previousFileContent = await fs.readFile(filePath, 'utf-8');
+    } catch {
+      // File does not exist yet — first-time write, no previous version
+      previousFileContent = undefined;
+    }
+
+    await fs.writeFile(filePath, content, 'utf-8');
 
     const now = new Date().toISOString();
     const existing = await this.readPromptManifest();
@@ -784,7 +794,7 @@ export class DotFolderManager {
       filePath: filename,
       createdAt,
       updatedAt: now,
-      previousVersion: existingEntry ? content : undefined,
+      previousVersion: previousFileContent,
       previousSuccessRate: existingEntry?.successRate,
     });
 
