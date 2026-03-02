@@ -353,6 +353,13 @@ export class CodexAdapter implements CLIAdapter {
     return undefined;
   }
 
+  supportedProfiles(): readonly CapabilityLevel[] {
+    // Codex uses --sandbox modes + system-prompt constraints, not --allowedTools named
+    // tool lists. No profiles are natively enforced via named tool restrictions.
+    // The adapter emulates profile restrictions via sandbox mode and injected constraints.
+    return [];
+  }
+
   isValidModel(model: string): boolean {
     // ChatGPT-account auth only supports gpt-5.2-codex (the default in v0.104.0).
     // o3, o4-mini, codex-mini are rejected with "not supported when using Codex with a ChatGPT account".

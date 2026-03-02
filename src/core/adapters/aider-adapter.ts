@@ -109,4 +109,10 @@ export class AiderAdapter implements CLIAdapter {
     // Accept anything non-empty — aider will validate at runtime.
     return model.length > 0;
   }
+
+  supportedProfiles(): readonly CapabilityLevel[] {
+    // Aider manages its own file access via git integration — no --allowedTools support.
+    // Access control is applied via --no-auto-commits for read-only tasks.
+    return [];
+  }
 }

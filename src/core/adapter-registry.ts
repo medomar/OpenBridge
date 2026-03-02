@@ -6,7 +6,7 @@
  * can be registered via register() and take priority over built-ins.
  */
 
-import type { CLIAdapter } from './cli-adapter.js';
+import type { CLIAdapter, CapabilityLevel } from './cli-adapter.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
@@ -52,6 +52,42 @@ export class AdapterRegistry {
   /** Check if an adapter exists (registered or built-in) for a tool name */
   has(name: string): boolean {
     return this.adapters.has(name) || name in BUILT_IN_ADAPTERS;
+  }
+
+  /**
+   * Validate whether an adapter natively enforces a capability profile.
+   *
+   * Returns `{ supported: true }` if the adapter enforces the profile via
+   * native CLI mechanisms (e.g. Claude's --allowedTools named tool lists).
+   * Returns `{ supported: false }` if the adapter emulates the profile via
+   * sandbox modes or system-prompt constraints instead (e.g. Codex, Aider).
+   *
+   * Callers can use this to decide whether additional system-prompt constraints
+   * are needed or whether to accept the adapter's emulated enforcement.
+   * This does NOT change spawn behavior — adapters always handle tool profiles
+   * in buildSpawnConfig(), using whatever mechanism they support.
+   */
+  resolveProfileForAdapter(adapterName: string, profile: CapabilityLevel): { supported: boolean } {
+    const adapter = this.get(adapterName);
+    if (!adapter) {
+      logger.debug(
+        { adapterName, profile },
+        'resolveProfileForAdapter: no adapter found — profile support unknown',
+      );
+      return { supported: false };
+    }
+
+    const profiles = adapter.supportedProfiles?.();
+    if (!profiles || !profiles.includes(profile)) {
+      logger.debug(
+        { adapterName, profile },
+        'Adapter does not natively enforce profile via tool lists — ' +
+          'profile emulated via sandbox mode or system-prompt constraints',
+      );
+      return { supported: false };
+    }
+
+    return { supported: true };
   }
 }
 
