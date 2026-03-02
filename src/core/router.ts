@@ -717,6 +717,18 @@ export class Router {
       return;
     }
 
+    // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
+    if (
+      /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
+        message.content.trim(),
+      ) &&
+      this.master !== undefined &&
+      this.master.getDeepModeManager().getActiveSessions().length > 0
+    ) {
+      await this.handleModelOverrideCommand(message, connector);
+      return;
+    }
+
     // Checkpoint-handle-resume cycle for urgent messages.
     // When a priority-1 message was flagged by the queue (sender had a message in flight when
     // this arrived), checkpoint session state before processing so that:
@@ -2281,6 +2293,126 @@ export class Router {
     logger.info(
       { sender: message.sender, sessionCount: activeSessions.length },
       'Deep Mode phase status shown via /phase',
+    );
+  }
+
+  /**
+   * Handle natural language model override requests in Deep Mode (OB-1412).
+   *
+   * Parses phrases like:
+   *   - "use opus for task 1"      → override task 1 with 'powerful' tier
+   *   - "use haiku for this"       → override current task (index 0) with 'fast' tier
+   *   - "use balanced for task 3"  → override task 3 with 'balanced' tier
+   *
+   * Model name → tier mapping:
+   *   opus               → powerful
+   *   sonnet / claude    → balanced
+   *   haiku              → fast
+   *   powerful / balanced / fast   → pass-through tier names
+   *
+   * Responds with a confirmation message that echoes the override back to the user.
+   * Responds with an error if no active Deep Mode session exists.
+   */
+  private async handleModelOverrideCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Deep Mode not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const deepMode = this.master.getDeepModeManager();
+    const activeSessions = deepMode.getActiveSessions();
+
+    if (activeSessions.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No active Deep Mode session — model override has no effect.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const text = message.content.trim();
+
+    // Extract model name from the message
+    const modelMatch =
+      /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.exec(
+        text,
+      );
+    if (!modelMatch) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Could not parse model name. Try: "use opus for task 1" or "use haiku for this".',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const modelName = modelMatch[1]!.toLowerCase();
+
+    // Map model name to ModelTier
+    const MODEL_NAME_TO_TIER: Record<string, 'fast' | 'balanced' | 'powerful'> = {
+      opus: 'powerful',
+      sonnet: 'balanced',
+      claude: 'balanced',
+      haiku: 'fast',
+      fast: 'fast',
+      balanced: 'balanced',
+      powerful: 'powerful',
+    };
+    const modelTier = MODEL_NAME_TO_TIER[modelName];
+    if (!modelTier) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Unknown model "${modelName}". Supported: opus (powerful), sonnet (balanced), haiku (fast).`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Extract task index from "for task N" or "for this"
+    const taskMatch = /\bfor\s+task\s*#?\s*(\d+)\b/i.exec(text);
+    const isThis = /\bfor\s+this\b|\bthis\s+task\b/i.test(text) && !taskMatch;
+    const taskIndex = taskMatch ? parseInt(taskMatch[1]!, 10) : 0; // 0 = current task sentinel
+
+    // Apply the override to all active sessions (typically only one)
+    for (const sessionId of activeSessions) {
+      deepMode.setTaskModelOverride(sessionId, taskIndex, modelTier);
+    }
+
+    // Build a human-readable confirmation
+    const tierLabel =
+      modelTier === 'powerful'
+        ? 'opus (powerful)'
+        : modelTier === 'balanced'
+          ? 'sonnet (balanced)'
+          : 'haiku (fast)';
+    const scopeLabel = taskMatch
+      ? `task ${taskIndex}`
+      : isThis
+        ? 'the current task'
+        : 'the current task';
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Model override set — ${scopeLabel} will use *${tierLabel}*.\n\nThis applies when the execute phase processes that task. Use /phase to see current Deep Mode status.`,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, modelTier, taskIndex, sessionCount: activeSessions.length },
+      'Deep Mode model override applied via chat (OB-1412)',
     );
   }
 

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 149 | **In Progress:** 0 | **Done:** 23 (112 archived)
+> **Pending:** 148 | **In Progress:** 0 | **Done:** 24 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -136,7 +136,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 13  | OB-1409 | Add `/focus N` command to Router — digs deeper into finding number N from current phase results. Spawns additional investigation worker focused on that specific item                                                                                                                      | ✅ Done   |
 | 14  | OB-1410 | Add `/skip N` command to Router — skips task/finding number N in current plan. Marks as skipped in Deep Mode state. Execute phase will not process skipped items                                                                                                                           | ✅ Done   |
 | 15  | OB-1411 | Add `/phase` command to Router — shows current phase and progress: phase name, completed phases, pending phases, profile name. Shows phase results summary for completed phases                                                                                                            | ✅ Done   |
-| 16  | OB-1412 | Add model override via chat — parse "use opus for task 1" or "use haiku for this" from user message. Override per-phase model for that specific task. Confirm the override to user                                                                                                         | ◻ Pending |
+| 16  | OB-1412 | Add model override via chat — parse "use opus for task 1" or "use haiku for this" from user message. Override per-phase model for that specific task. Confirm the override to user                                                                                                         | ✅ Done   |
 | 17  | OB-1413 | Add natural language phase navigation — recognize "proceed", "go", "next", "continue" as /proceed. Recognize "focus on #3", "dig into finding 3" as /focus 3. Recognize "skip item 2" as /skip 2                                                                                           | ◻ Pending |
 | 18  | OB-1414 | Add Deep Mode progress events — emit progress events during phase transitions with type, phase, status, resultSummary. Wire into existing WebSocket progress broadcasting                                                                                                                  | ◻ Pending |
 | 19  | OB-1415 | Add phase transition messages — when phase completes, send summary to user with item count and summaries. Include guidance for next actions (proceed, focus on N, etc.) tailored per phase                                                                                                 | ◻ Pending |
