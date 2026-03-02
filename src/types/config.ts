@@ -182,9 +182,9 @@ export const ENV_DENY_PATTERNS: readonly string[] = [
 /** Schema for security configuration — env var sanitization for workers */
 export const SecurityConfigSchema = z.object({
   /** Glob patterns for env vars to strip from worker environments (denylist mode) */
-  envDenyPatterns: z.array(z.string()).optional(),
-  /** Glob patterns for the ONLY env vars workers receive (allowlist mode, overrides deny) */
-  envAllowPatterns: z.array(z.string()).optional(),
+  envDenyPatterns: z.array(z.string()).default([...ENV_DENY_PATTERNS]),
+  /** Glob patterns for env vars to always allow even if matched by deny list (e.g. GITHUB_ACTIONS for CI) */
+  envAllowPatterns: z.array(z.string()).default([]),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
@@ -208,6 +208,7 @@ export const V2ConfigSchema = z
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
     mcp: MCPConfigSchema.optional(),
+    security: SecurityConfigSchema.optional(),
     email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
     router: RouterConfigSchema.optional(),
