@@ -9,6 +9,7 @@ import type { WorkspaceMap } from '../../src/types/master.js';
 
 type MockMemoryManager = {
   searchContext: ReturnType<typeof vi.fn>;
+  getDb: ReturnType<typeof vi.fn>;
 };
 
 type MockDotFolderManager = {
@@ -35,7 +36,7 @@ describe('KnowledgeRetriever.query — FTS5 chunk search', () => {
   let retriever: KnowledgeRetriever;
 
   beforeEach(() => {
-    memoryManager = { searchContext: vi.fn() };
+    memoryManager = { searchContext: vi.fn(), getDb: vi.fn().mockReturnValue(null) };
     dotFolderManager = {
       readWorkspaceMap: vi.fn(),
       listDirDiveResults: vi.fn(),
@@ -82,7 +83,10 @@ describe('KnowledgeRetriever.query — workspace map key-file matching', () => {
   let retriever: KnowledgeRetriever;
 
   beforeEach(() => {
-    memoryManager = { searchContext: vi.fn().mockResolvedValue([]) };
+    memoryManager = {
+      searchContext: vi.fn().mockResolvedValue([]),
+      getDb: vi.fn().mockReturnValue(null),
+    };
     dotFolderManager = {
       readWorkspaceMap: vi.fn(),
       listDirDiveResults: vi.fn().mockResolvedValue([]),
@@ -137,7 +141,7 @@ describe('KnowledgeRetriever.query — confidence scoring', () => {
   let retriever: KnowledgeRetriever;
 
   beforeEach(() => {
-    memoryManager = { searchContext: vi.fn() };
+    memoryManager = { searchContext: vi.fn(), getDb: vi.fn().mockReturnValue(null) };
     dotFolderManager = {
       readWorkspaceMap: vi.fn().mockResolvedValue(null),
       listDirDiveResults: vi.fn().mockResolvedValue([]),
@@ -205,7 +209,10 @@ describe('KnowledgeRetriever.formatKnowledgeContext', () => {
   let retriever: KnowledgeRetriever;
 
   beforeEach(() => {
-    const memoryManager: MockMemoryManager = { searchContext: vi.fn() };
+    const memoryManager: MockMemoryManager = {
+      searchContext: vi.fn(),
+      getDb: vi.fn().mockReturnValue(null),
+    };
     const dotFolderManager: MockDotFolderManager = {
       readWorkspaceMap: vi.fn(),
       listDirDiveResults: vi.fn(),
@@ -282,7 +289,7 @@ describe('KnowledgeRetriever.suggestTargetFiles', () => {
   };
 
   beforeEach(() => {
-    const memoryManager = { searchContext: vi.fn() };
+    const memoryManager = { searchContext: vi.fn(), getDb: vi.fn().mockReturnValue(null) };
     const dotFolderManager = {
       readWorkspaceMap: vi.fn(),
       listDirDiveResults: vi.fn(),

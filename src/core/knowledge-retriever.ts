@@ -1,5 +1,6 @@
 import * as nodePath from 'node:path';
 import type { MemoryManager, Chunk } from '../memory/index.js';
+import { QACacheStore } from '../memory/qa-cache-store.js';
 import type { DotFolderManager } from '../master/dotfolder-manager.js';
 import type { WorkspaceMap } from '../types/master.js';
 
@@ -98,10 +99,19 @@ const STOP_WORDS = new Set([
 export class KnowledgeRetriever {
   private readonly memoryManager: MemoryManager;
   private readonly dotFolderManager: DotFolderManager;
+  private qaCache: QACacheStore | null = null;
 
   constructor(memoryManager: MemoryManager, dotFolderManager: DotFolderManager) {
     this.memoryManager = memoryManager;
     this.dotFolderManager = dotFolderManager;
+  }
+
+  private getQACache(): QACacheStore | null {
+    if (this.qaCache) return this.qaCache;
+    const db = this.memoryManager.getDb();
+    if (!db) return null;
+    this.qaCache = new QACacheStore(db);
+    return this.qaCache;
   }
 
   /**
@@ -473,6 +483,27 @@ export class KnowledgeRetriever {
    * OB-1338: confidence scoring + needsWorker flag.
    */
   async query(question: string): Promise<KnowledgeResult> {
+    // --- Q&A cache check (OB-1362) ---
+    const qaCache = this.getQACache();
+    if (qaCache) {
+      const [entry] = qaCache.findSimilar(question, 1);
+      if (entry !== undefined) {
+        const ageMs = entry.created_at
+          ? Date.now() - new Date(entry.created_at).getTime()
+          : Infinity;
+        const withinTtl = ageMs <= 24 * 60 * 60 * 1000;
+        if (entry.confidence >= 0.7 && withinTtl && entry.id !== undefined) {
+          qaCache.incrementAccess(entry.id);
+          return {
+            chunks: [{ scope: 'qa-cache', category: 'patterns', content: entry.answer }],
+            confidence: entry.confidence,
+            sources: ['qa-cache'],
+            needsWorker: false,
+          };
+        }
+      }
+    }
+
     const result: KnowledgeResult = { chunks: [], confidence: 0, sources: [] };
 
     // --- FTS5 chunk search (OB-1335) ---
