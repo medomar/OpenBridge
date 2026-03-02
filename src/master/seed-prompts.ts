@@ -284,6 +284,108 @@ Return a JSON object with verification results:
 };
 
 /**
+ * Task: Code Audit
+ *
+ * Runs test suites, linters, and type checkers; reports findings with severity,
+ * file, line, description, and fix suggestion.
+ */
+export const TASK_CODE_AUDIT: SeedPrompt = {
+  id: 'task-code-audit',
+  filename: 'task-code-audit.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Runs tests, linter, and type checker; reports findings with severity, location, and fix suggestions',
+  content: `# Task: Code Audit
+
+Perform a code audit on the workspace at **{{workspacePath}}**.
+
+## Step 1 — Run Verification Commands
+
+Run each command in order and capture its output:
+
+1. \`npm test\` — run the full test suite
+2. \`npm run lint\` — check for linting errors
+3. \`npm run typecheck\` — check for TypeScript type errors
+
+If a command is not available (missing from package.json scripts), skip it and note it as "not configured".
+
+## Step 2 — Analyse Failures
+
+For each failing test:
+1. Read the test file to understand what is being tested
+2. Read the source file under test to find the root cause
+3. Note the file path, line number, error message, and likely fix
+
+For each lint error:
+1. Note the rule name, file path, line number, and description
+2. Determine the fix (auto-fixable, minor refactor, or design change)
+
+For each type error:
+1. Note the file path, line number, error message (e.g. TS2345)
+2. Determine the fix
+
+## Step 3 — Report Findings
+
+Report every finding using the format below.  Use **severity levels**:
+- \`critical\` — test failure or type error that breaks the build
+- \`high\` — lint error that blocks CI or indicates a likely runtime bug
+- \`medium\` — lint warning or non-critical type issue
+- \`low\` — style issue or informational note
+
+\`\`\`json
+{
+  "summary": {
+    "testsPassed": 42,
+    "testsFailed": 3,
+    "testsSkipped": 1,
+    "lintErrors": 2,
+    "lintWarnings": 4,
+    "typeErrors": 1,
+    "commandsRun": ["npm test", "npm run lint", "npm run typecheck"],
+    "commandsSkipped": []
+  },
+  "findings": [
+    {
+      "severity": "critical",
+      "category": "test",
+      "file": "src/core/router.ts",
+      "line": 142,
+      "description": "Test 'routes /history to handler' fails — handler returns undefined instead of OutboundMessage",
+      "fixSuggestion": "Return a valid OutboundMessage object from the /history branch (line 142)"
+    },
+    {
+      "severity": "high",
+      "category": "lint",
+      "file": "src/master/master-manager.ts",
+      "line": 307,
+      "description": "@typescript-eslint/no-floating-promises — promise not awaited",
+      "fixSuggestion": "Add await before the call, or explicitly void it with \`void someCall()\`"
+    },
+    {
+      "severity": "medium",
+      "category": "typecheck",
+      "file": "src/memory/chunk-store.ts",
+      "line": 88,
+      "description": "TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'",
+      "fixSuggestion": "Add a null-check guard before passing the value, or widen the parameter type"
+    }
+  ],
+  "auditedAt": "2026-02-22T12:00:00.000Z"
+}
+\`\`\`
+
+## Rules
+
+- Run commands with a reasonable timeout (5 minutes per command).
+- Do NOT modify any files — this is a read-and-report audit only.
+- If all commands pass with zero errors, report an empty findings array and set a clear summary.
+- Report test pass/fail counts even when all tests pass.
+- Return ONLY the JSON object — no extra markdown, no preamble.
+`,
+};
+
+/**
  * All seed prompts in order
  */
 export const SEED_PROMPTS: SeedPrompt[] = [
@@ -291,6 +393,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   EXPLORATION_CLASSIFICATION,
   TASK_EXECUTE,
   TASK_VERIFY,
+  TASK_CODE_AUDIT,
 ];
 
 /**
