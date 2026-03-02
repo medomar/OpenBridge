@@ -1,3 +1,4 @@
+import * as nodePath from 'node:path';
 import type { MemoryManager, Chunk } from '../memory/index.js';
 import type { DotFolderManager } from '../master/dotfolder-manager.js';
 
@@ -116,6 +117,48 @@ export class KnowledgeRetriever {
   }
 
   /**
+   * Match workspace map key files against terms extracted from the question.
+   * Returns synthetic Chunk objects for each matched file.
+   *
+   * OB-1336: workspace map key-file matching — scans keyFiles for filenames or
+   * module names mentioned in the question.
+   */
+  private matchKeyFiles(
+    question: string,
+    keyFiles: Array<{ path: string; type: string; purpose: string }>,
+  ): Chunk[] {
+    // Extract explicit file references like "router.ts", "auth.js"
+    const fileRefPattern = /\b[\w-]+\.\w{1,5}\b/g;
+    const explicitRefs = (question.match(fileRefPattern) ?? []).map((r) => r.toLowerCase());
+
+    // Extract module-name terms (non-stop-words, >= 3 chars)
+    const moduleTerms = question
+      .toLowerCase()
+      .split(/[\s.,!?;:'"()[\]{}]+/)
+      .filter((term) => term.length >= 3 && !STOP_WORDS.has(term));
+
+    return keyFiles
+      .filter((kf) => {
+        const kfLower = kf.path.toLowerCase();
+        const baseName = nodePath.basename(kfLower);
+        const baseNoExt = baseName.replace(/\.[^.]+$/, '');
+
+        // Explicit file reference match (e.g., "router.ts" in question matches path)
+        if (explicitRefs.some((ref) => kfLower.includes(ref))) return true;
+
+        // Module name match (e.g., "router" matches basename "router.ts")
+        if (moduleTerms.some((term) => baseNoExt === term || baseNoExt.includes(term))) return true;
+
+        return false;
+      })
+      .map((kf) => ({
+        scope: kf.path,
+        category: 'structure' as const,
+        content: `${kf.path} (${kf.type}): ${kf.purpose}`,
+      }));
+  }
+
+  /**
    * Query the local knowledge store for information relevant to the given
    * question.  Returns a {@link KnowledgeResult} with matched chunks, a
    * confidence score, and the source types that contributed results.
@@ -135,6 +178,16 @@ export class KnowledgeRetriever {
       if (fts5Chunks.length > 0) {
         result.chunks.push(...fts5Chunks);
         result.sources.push('fts5');
+      }
+    }
+
+    // --- Workspace map key-file matching (OB-1336) ---
+    const workspaceMap = await this.dotFolderManager.readWorkspaceMap();
+    if (workspaceMap && workspaceMap.keyFiles.length > 0) {
+      const mapChunks = this.matchKeyFiles(question, workspaceMap.keyFiles);
+      if (mapChunks.length > 0) {
+        result.chunks.push(...mapChunks);
+        result.sources.push('workspace-map');
       }
     }
 
