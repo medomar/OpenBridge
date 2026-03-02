@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import type { ExecutionProfile } from '../types/agent.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,8 @@ export interface AccessControlEntry {
   active?: boolean;
   /** Consent preference for high-risk spawn confirmation prompts (default: 'always-ask'). */
   consentMode?: ConsentMode;
+  /** Execution profile preference for Deep Mode (default: 'fast'). */
+  executionProfile?: ExecutionProfile;
   created_at?: string;
   updated_at?: string;
 }
@@ -47,6 +50,7 @@ interface AccessControlRow {
   cost_reset_at: string | null;
   active: number;
   consent_mode: string | null;
+  execution_profile: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +68,15 @@ function parseConsentMode(raw: string | null): ConsentMode {
   return 'always-ask';
 }
 
+const VALID_EXECUTION_PROFILES = new Set<ExecutionProfile>(['fast', 'thorough', 'manual']);
+
+function parseExecutionProfile(raw: string | null): ExecutionProfile {
+  if (raw && VALID_EXECUTION_PROFILES.has(raw as ExecutionProfile)) {
+    return raw as ExecutionProfile;
+  }
+  return 'fast';
+}
+
 function rowToEntry(row: AccessControlRow): AccessControlEntry {
   return {
     id: row.id,
@@ -78,6 +91,7 @@ function rowToEntry(row: AccessControlRow): AccessControlEntry {
     cost_reset_at: row.cost_reset_at,
     active: row.active === 1,
     consentMode: parseConsentMode(row.consent_mode),
+    executionProfile: parseExecutionProfile(row.execution_profile),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -125,6 +139,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
          cost_reset_at        = ?,
          active               = ?,
          consent_mode         = ?,
+         execution_profile    = ?,
          updated_at           = ?
        WHERE user_id = ? AND channel = ?`,
     ).run(
@@ -137,6 +152,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.cost_reset_at ?? null,
       entry.active !== false ? 1 : 0,
       entry.consentMode ?? 'always-ask',
+      entry.executionProfile ?? 'fast',
       now,
       entry.user_id,
       entry.channel,
@@ -146,8 +162,8 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       `INSERT INTO access_control
          (user_id, channel, role, scopes, allowed_actions, blocked_actions,
           max_cost_per_day_usd, daily_cost_used, cost_reset_at, active,
-          consent_mode, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          consent_mode, execution_profile, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       entry.user_id,
       entry.channel,
@@ -160,6 +176,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.cost_reset_at ?? null,
       entry.active !== false ? 1 : 0,
       entry.consentMode ?? 'always-ask',
+      entry.executionProfile ?? 'fast',
       now,
       now,
     );
@@ -209,6 +226,19 @@ export function getConsentMode(
 ): ConsentMode {
   const entry = getAccess(db, userId, channel);
   return entry?.consentMode ?? 'always-ask';
+}
+
+/**
+ * Return the execution profile preference for a specific user+channel pair.
+ * Falls back to 'fast' when no entry exists.
+ */
+export function getExecutionProfile(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+): ExecutionProfile {
+  const entry = getAccess(db, userId, channel);
+  return entry?.executionProfile ?? 'fast';
 }
 
 /**
