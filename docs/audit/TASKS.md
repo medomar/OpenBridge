@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 210 | **In Progress:** 0 | **Done:** 51
+> **Pending:** 209 | **In Progress:** 0 | **Done:** 52
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -39,7 +39,7 @@
 | 79     | Exploration Bug Fixes                 | 10    | ✅     |
 | 80     | .openbridge Data Cleanup              | 7     | ✅     |
 | 74     | Knowledge Retriever                   | 10    | ✅     |
-| 75     | Context Injection                     | 8     | ◻      |
+| 75     | Context Injection                     | 8     | ✅     |
 | 76     | Targeted Reader                       | 7     | ◻      |
 | 77     | Chunk Enrichment                      | 8     | ◻      |
 | 85     | Environment Variable Protection       | 10    | ◻      |
@@ -176,16 +176,16 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 > **Goal:** Wire the Knowledge Retriever into the Master's message processing pipeline. When a `codebase-question` message arrives, inject retrieved knowledge context before the Master processes it. Eliminates redundant file reads for questions about already-analyzed code.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                      | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1344 | Instantiate `KnowledgeRetriever` in `Bridge` class in `src/core/bridge.ts` — create during bridge initialization after MemoryManager and DotFolderManager are ready. Pass it to `MasterManager` via a new `setKnowledgeRetriever(retriever)` method. Store as `this.knowledgeRetriever` in MasterManager         | ✅ Done   |
-| 2   | OB-1345 | In `processMessage()` in `src/master/master-manager.ts`, after task classification, if task class is `codebase-question`, call `this.knowledgeRetriever.query(userMessage)` before building the Master prompt. If confidence >= 0.3, inject formatted knowledge context into the system prompt                   | ✅ Done   |
-| 3   | OB-1346 | Update `buildSystemPrompt()` in `src/master/master-system-prompt.ts` — add optional `knowledgeContext?: string` parameter. When provided, append after workspace map summary: "Pre-fetched Knowledge (from RAG)" section. Tells the Master what it already knows to avoid redundant worker spawns                | ✅ Done   |
-| 4   | OB-1347 | Add `codebase-question` RAG guidance to Master system prompt in `src/master/master-system-prompt.ts` — instructions: "When you see a Pre-fetched Knowledge section, use it to answer directly if confidence is high enough. Only spawn a read-only worker if pre-fetched knowledge does not cover the question." | ✅ Done   |
-| 5   | OB-1348 | Add knowledge retrieval logging — in processMessage(), after RAG query, log at info level: question substring, confidence, chunk count, sources. Log at debug level when confidence < 0.3: "Low confidence, worker may be needed"                                                                                | ✅ Done   |
-| 6   | OB-1349 | Add RAG bypass for non-question task classes — only run knowledge retriever for `codebase-question` and `tool-use` task classes. Skip for `complex-task`, `general-chat`, and other classes where Master needs to plan and delegate                                                                              | ✅ Done   |
-| 7   | OB-1350 | Add tests for context injection in `tests/master/master-manager.test.ts` — test: (1) codebase-question triggers retrieval, (2) high-confidence injects context, (3) low-confidence does not inject, (4) complex-task does not trigger retrieval, (5) setKnowledgeRetriever stores correctly. At least 5 tests    | ✅ Done   |
-| 8   | OB-1351 | Build + lint + typecheck + test validation for Phase 75 — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures                                                                                                                                                             | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                      | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1344 | Instantiate `KnowledgeRetriever` in `Bridge` class in `src/core/bridge.ts` — create during bridge initialization after MemoryManager and DotFolderManager are ready. Pass it to `MasterManager` via a new `setKnowledgeRetriever(retriever)` method. Store as `this.knowledgeRetriever` in MasterManager         | ✅ Done |
+| 2   | OB-1345 | In `processMessage()` in `src/master/master-manager.ts`, after task classification, if task class is `codebase-question`, call `this.knowledgeRetriever.query(userMessage)` before building the Master prompt. If confidence >= 0.3, inject formatted knowledge context into the system prompt                   | ✅ Done |
+| 3   | OB-1346 | Update `buildSystemPrompt()` in `src/master/master-system-prompt.ts` — add optional `knowledgeContext?: string` parameter. When provided, append after workspace map summary: "Pre-fetched Knowledge (from RAG)" section. Tells the Master what it already knows to avoid redundant worker spawns                | ✅ Done |
+| 4   | OB-1347 | Add `codebase-question` RAG guidance to Master system prompt in `src/master/master-system-prompt.ts` — instructions: "When you see a Pre-fetched Knowledge section, use it to answer directly if confidence is high enough. Only spawn a read-only worker if pre-fetched knowledge does not cover the question." | ✅ Done |
+| 5   | OB-1348 | Add knowledge retrieval logging — in processMessage(), after RAG query, log at info level: question substring, confidence, chunk count, sources. Log at debug level when confidence < 0.3: "Low confidence, worker may be needed"                                                                                | ✅ Done |
+| 6   | OB-1349 | Add RAG bypass for non-question task classes — only run knowledge retriever for `codebase-question` and `tool-use` task classes. Skip for `complex-task`, `general-chat`, and other classes where Master needs to plan and delegate                                                                              | ✅ Done |
+| 7   | OB-1350 | Add tests for context injection in `tests/master/master-manager.test.ts` — test: (1) codebase-question triggers retrieval, (2) high-confidence injects context, (3) low-confidence does not inject, (4) complex-task does not trigger retrieval, (5) setKnowledgeRetriever stores correctly. At least 5 tests    | ✅ Done |
+| 8   | OB-1351 | Build + lint + typecheck + test validation for Phase 75 — run `npm run lint && npm run typecheck && npm run test && npm run build`. Fix any failures                                                                                                                                                             | ✅ Done |
 
 ---
 
