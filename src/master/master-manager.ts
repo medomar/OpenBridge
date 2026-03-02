@@ -278,6 +278,9 @@ export interface ClassificationResult {
   timeout: number;
   /** Brief reason for the classification (for logging/debugging) */
   reason: string;
+  /** When true, the task matches deep-mode keywords (audit, thorough review, etc.)
+   *  and the Master should offer or activate Deep Mode analysis (OB-1404). */
+  suggestDeepMode?: boolean;
 }
 
 /**
@@ -2511,6 +2514,26 @@ export class MasterManager {
    */
   private classifyTaskByKeywords(content: string): ClassificationResult {
     const lower = content.toLowerCase();
+
+    // Deep Mode keywords — thorough analysis tasks that benefit from multi-phase investigation
+    // These are a specialised subset of complex tasks (OB-1404)
+    const deepModeKeywords = [
+      'audit',
+      'deep analysis',
+      'thorough review',
+      'security review',
+      'full review',
+      'investigate',
+    ];
+    if (deepModeKeywords.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'complex-task',
+        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
+        reason: 'keyword match: complex-task (deep-mode candidate)',
+        suggestDeepMode: true,
+      };
+    }
 
     // Complex task keywords — multi-step work requiring planning and delegation
     const complexKeywords = [
