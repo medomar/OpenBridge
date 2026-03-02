@@ -386,6 +386,64 @@ Report every finding using the format below.  Use **severity levels**:
 };
 
 /**
+ * Task: Targeted Read
+ *
+ * Reads specific files and answers a focused question with bullet-point findings.
+ * Used by the targeted reader path when RAG confidence is low (< 0.3).
+ */
+export const TASK_TARGETED_READ: SeedPrompt = {
+  id: 'task-targeted-read',
+  filename: 'task-targeted-read.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Reads specified files, extracts relevant information, and summarizes findings in 3-5 bullet points with file paths and line numbers',
+  content: `# Task: Targeted File Read
+
+Read the specified files and answer the following question.
+
+## Files to Read
+
+{{filePaths}}
+
+## Question
+
+{{question}}
+
+## Instructions
+
+1. Read each file listed above in full.
+2. Identify the sections most relevant to the question.
+3. Extract the key information that directly answers the question.
+4. Summarize your findings in **3–5 bullet points**.
+
+## Output Format
+
+Respond with a short preamble (1 sentence) and then your bullet-point findings.
+
+Each bullet must include:
+- The **file path** and **line number(s)** where the information was found
+- A concise description of what was found
+
+Example:
+
+Here is what I found in the specified files:
+
+- \`src/core/router.ts:142\` — The \`/history\` command handler returns the last 20 messages from the conversation store.
+- \`src/memory/conversation-store.ts:88\` — \`getRecentMessages()\` accepts a \`limit\` parameter (default 20) and returns messages ordered by timestamp descending.
+- \`src/types/message.ts:34\` — \`OutboundMessage\` requires \`to\`, \`content\`, and \`messageId\` fields; \`content\` must be a non-empty string.
+
+## Rules
+
+- Read **only** the listed files — do not read additional files unless a listed file imports something critical.
+- Do NOT modify any files — this is a read-only task.
+- If a file does not exist, note it as missing and continue with the remaining files.
+- If none of the files contain relevant information, say so explicitly.
+- Keep your response concise — 3–5 bullets is the target.
+`,
+};
+
+/**
  * All seed prompts in order
  */
 export const SEED_PROMPTS: SeedPrompt[] = [
@@ -394,6 +452,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_EXECUTE,
   TASK_VERIFY,
   TASK_CODE_AUDIT,
+  TASK_TARGETED_READ,
 ];
 
 /**
