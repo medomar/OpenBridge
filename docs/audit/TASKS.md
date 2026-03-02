@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 141 | **In Progress:** 0 | **Done:** 31 (112 archived)
+> **Pending:** 140 | **In Progress:** 0 | **Done:** 32 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (22/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (23/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -149,7 +149,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 21  | OB-1417 | Create `DEEP_INVESTIGATE` worker prompt in `src/master/seed-prompts.ts` — instructions to explore codebase, identify relevant files, patterns, dependencies, potential issues. List every file examined. Categorize findings by type. Number each finding for reference                                                     | ✅ Done   |
 | 22  | OB-1418 | Create `DEEP_REPORT` worker prompt — organize investigation findings into: Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, Recommendations                                                                                                                                     | ✅ Done   |
 | 23  | OB-1419 | Create `DEEP_PLAN` worker prompt — for each finding: task description, files to modify, estimated complexity, dependencies on other tasks, risk level. Order by dependency and priority, group into parallel batches                                                                                                        | ✅ Done   |
-| 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ◻ Pending |
+| 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ✅ Done   |
 | 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ◻ Pending |
 | 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ◻ Pending |
 | 27  | OB-1423 | Add parallel execution in execute phase — when plan defines independent tasks (no dependencies), spawn multiple workers simultaneously. Respect WorkerRegistry concurrency limit. Collect all results before advancing to verify                                                                                            | ◻ Pending |

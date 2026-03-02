@@ -933,6 +933,138 @@ Continue for all tasks, incrementing the number.
 };
 
 /**
+ * Deep Mode: Execute Phase
+ *
+ * Executes a specific task from the plan. Makes minimum changes to satisfy
+ * the task description, runs tests after the change, and reports exactly
+ * what was modified together with pass/fail test results.
+ */
+export const DEEP_EXECUTE: SeedPrompt = {
+  id: 'deep-execute',
+  filename: 'deep-execute.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Deep Mode execution: implement a single plan task with minimum changes, run tests after, and report changes made and test results.',
+  content: `# Deep Mode — Execute Phase
+
+Execute the following task from the plan. Make the **minimum changes** required to satisfy the task description. Run tests after your changes and report the outcome.
+
+## Original Request
+
+{{userRequest}}
+
+## Task to Execute
+
+**Task #{{taskNumber}}** — {{taskTitle}}
+
+**Files to Modify:**
+{{filesToModify}}
+
+**Description:**
+{{taskDescription}}
+
+**Constraints:**
+{{constraints}}
+
+## Execution Plan (for reference)
+
+{{planContext}}
+
+## Instructions
+
+### Step 1 — Read Before Modifying
+
+Before making any changes:
+
+1. Read every file listed in "Files to Modify" in full.
+2. Read any files that are directly imported by or import from those files if understanding the interface is required.
+3. Identify the exact lines that need to change.
+4. Confirm the change is minimal — if the same outcome can be achieved by modifying fewer lines, prefer that.
+
+### Step 2 — Apply Changes
+
+Apply the changes described in the task.  Rules:
+
+- **Minimum diff** — change only what the task requires. Do not reformat, refactor, or clean up unrelated code.
+- **Do not modify files not listed** in "Files to Modify" unless a type or import in a listed file forces a change elsewhere. If an unlisted file must change, note it in your report.
+- **Do not add** docstrings, comments, or type annotations to code you did not change.
+- **Preserve existing style** — match surrounding indentation, quote style, and naming conventions.
+- If the task description says to add a test, write it in the appropriate test file.
+- If the task description says to add a prompt or constant, add it in the appropriate module.
+
+### Step 3 — Run Tests
+
+After applying all changes, run the project test suite:
+
+\`\`\`
+npm test
+\`\`\`
+
+If \`npm test\` is not available or fails with a "script not found" error, try:
+
+\`\`\`
+npx vitest run
+\`\`\`
+
+Capture the full output, including pass/fail counts and any error messages.
+
+If tests fail, determine whether:
+- The failure is **caused by your changes** (you must fix it before finishing)
+- The failure is **pre-existing** (note it but do not fix unrelated issues)
+
+Fix only failures introduced by your changes. Do NOT fix pre-existing failures.
+
+### Step 4 — Report
+
+Write a concise report covering:
+
+1. **Changes Made** — list every file changed, with a one-sentence description per change
+2. **Lines Changed** — for each file, the approximate line range (e.g. "added lines 142–155")
+3. **Test Results** — pass/fail counts and any new failures
+4. **Pre-existing Failures** — note any test failures that existed before your changes (do not fix these)
+5. **Notes** — any deviations from the plan, unlisted files touched, or important observations
+
+## Output Format
+
+Provide your response in the following structure:
+
+### Changes Made
+
+| File | Lines Changed | Description |
+| --- | --- | --- |
+| \`src/core/router.ts\` | 142–155 | Added return statement in /history branch |
+| \`tests/core/router.test.ts\` | 310–330 | Added test case for /history undefined return |
+
+### Test Results
+
+\`\`\`
+✓ 247 tests passed
+✗ 0 tests failed
+\`\`\`
+
+(Paste the relevant portion of test output here — pass/fail counts and any failure messages.)
+
+### Pre-existing Failures
+
+None. (Or list any test failures that existed before your changes.)
+
+### Notes
+
+(Any deviations, unlisted files touched, or observations. If none, write "None.")
+
+## Rules
+
+- Make the **minimum change** that satisfies the task — do not improve unrelated code.
+- If a change would break other tests, find a different approach or report the conflict.
+- Do NOT skip the test step — tests must run after every change.
+- Do NOT mark the task as done if tests fail due to your changes.
+- Stay within the listed files unless there is no alternative.
+- Report honestly — if you could not complete the task, explain why.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -970,6 +1102,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   DEEP_INVESTIGATE,
   DEEP_REPORT,
   DEEP_PLAN,
+  DEEP_EXECUTE,
 ];
 
 /**
