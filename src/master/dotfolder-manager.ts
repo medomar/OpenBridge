@@ -910,4 +910,27 @@ export class DotFolderManager {
     await fs.mkdir(this.contextPath, { recursive: true });
     await fs.writeFile(this.getMemoryFilePath(), content, 'utf-8');
   }
+
+  // ── Dir-Dive Enumeration ───────────────────────────────────────
+
+  /**
+   * List all available directory dive results in `.openbridge/exploration/dirs/`.
+   * Returns an array of `{ dirPath, resultPath }` for each `*.json` file found.
+   * Returns an empty array if the directory does not exist.
+   *
+   * OB-1337 / OB-1340: used by KnowledgeRetriever.query() for dir-dive JSON loading.
+   */
+  public async listDirDiveResults(): Promise<Array<{ dirPath: string; resultPath: string }>> {
+    try {
+      const entries = await fs.readdir(this.explorationDirsPath, { withFileTypes: true });
+      return entries
+        .filter((e) => e.isFile() && e.name.endsWith('.json'))
+        .map((e) => ({
+          dirPath: e.name.replace(/\.json$/, ''),
+          resultPath: path.join(this.explorationDirsPath, e.name),
+        }));
+    } catch {
+      return [];
+    }
+  }
 }
