@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 157 | **In Progress:** 0 | **Done:** 15 (112 archived)
+> **Pending:** 156 | **In Progress:** 0 | **Done:** 16 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -35,7 +35,7 @@
 
 | Phase  | Description                          | Tasks | Status         |
 | ------ | ------------------------------------ | ----- | -------------- |
-| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (15/23 done) |
+| RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ◻ (16/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (15/35 done) |
 | 82     | Tunnel Integration                   | 10    | ◻              |
 | 83     | Ephemeral App Server                 | 12    | ◻              |
@@ -90,7 +90,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 15  | OB-1575 | Audit Codex CLI `--allowedTools` support in `src/core/adapters/codex-adapter.ts` — verify which tool names Codex accepts. If different from Claude, add tool name mapping in the adapter. If unsupported, remove `--allowedTools` from Codex spawn config and rely on system prompt instead | ✅ Done   |
-| 16  | OB-1576 | Add Codex-specific worker system prompt prefix in `src/master/seed-prompts.ts` — when tool is codex, prepend: "Use file reading commands to read files. Do NOT use complex bash/shell scripts for file operations. Use simple, direct commands."                                            | ◻ Pending |
+| 16  | OB-1576 | Add Codex-specific worker system prompt prefix in `src/master/seed-prompts.ts` — when tool is codex, prepend: "Use file reading commands to read files. Do NOT use complex bash/shell scripts for file operations. Use simple, direct commands."                                            | ✅ Done   |
 | 17  | OB-1577 | Add tool profile validation per adapter — in `src/core/adapter-registry.ts`, each adapter declares supported profiles. If Codex doesn't support `read-only` tool restrictions, fall back to `full-access` with system prompt constraints instead of broken tool restrictions                | ◻ Pending |
 | 18  | OB-1578 | Limit Codex worker shell complexity — in Codex adapter, if `read-only` profile, add system prompt instruction: "For this task, only read files. Do not create or modify files. Do not run complex scripts. Keep commands simple and direct."                                                | ◻ Pending |
 | 19  | OB-1579 | Add tests in `tests/core/codex-worker-tools.test.ts` — test: (1) Codex adapter tool name mapping, (2) read-only profile adds system prompt constraints, (3) unsupported allowedTools handled gracefully, (4) worker prompt includes file-reading guidance. At least 4 tests                 | ◻ Pending |

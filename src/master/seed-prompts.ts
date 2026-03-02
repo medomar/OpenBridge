@@ -538,6 +538,30 @@ Here is what I found in the specified files:
 };
 
 /**
+ * Codex-specific worker system prompt prefix.
+ *
+ * Prepended to all Codex worker prompts to guide file access behavior.
+ * Codex workers waste turns on inline bash/Python gymnastics instead of using
+ * direct file-reading commands — this prefix steers them toward simple, direct
+ * file operations (OB-F91).
+ */
+export const CODEX_WORKER_PREFIX =
+  'Use file reading commands to read files. Do NOT use complex bash/shell scripts for file operations. Use simple, direct commands.\n\n---\n\n';
+
+/**
+ * Returns a tool-specific system prompt prefix to prepend to a worker prompt.
+ * Returns an empty string for tools that don't need a prefix (e.g., Claude).
+ *
+ * @param toolName - The name of the AI tool being used (e.g., "codex", "claude")
+ */
+export function applyToolPromptPrefix(prompt: string, toolName: string): string {
+  if (toolName.toLowerCase().includes('codex')) {
+    return CODEX_WORKER_PREFIX + prompt;
+  }
+  return prompt;
+}
+
+/**
  * All seed prompts in order
  */
 export const SEED_PROMPTS: SeedPrompt[] = [
