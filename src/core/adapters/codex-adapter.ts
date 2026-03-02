@@ -18,13 +18,16 @@
  *   -c, --config <FILE>           Config file for MCP server definitions (MCP passthrough)
  *   <prompt>                      Positional argument (after exec)
  *
- * Feature mapping (lossy — Codex doesn't support these):
+ * Feature mapping (lossy — Codex doesn't support these Claude CLI features):
  *   --max-turns        → dropped (codex runs to completion)
  *   --max-budget-usd   → dropped
  *   --session-id       → new named session (omits --ephemeral so Codex saves state)
  *   --resume-session   → `codex exec resume --last` (or explicit session ID)
  *   --append-system-prompt → prepended to prompt text
- *   --allowedTools     → mapped to --sandbox via heuristic
+ *   --allowedTools     → NOT passed to Codex (unsupported); mapped to --sandbox for access
+ *                        control + system prompt constraints for behavioral guidance.
+ *                        Codex uses shell-level sandbox modes (read-only, workspace-write,
+ *                        danger-full-access) rather than named tool lists.
  */
 
 import { readFileSync, unlinkSync } from 'node:fs';
@@ -145,6 +148,32 @@ const CAPABILITY_TO_SANDBOX: Record<CapabilityLevel, string> = {
   'full-access': 'danger-full-access',
 };
 
+/**
+ * System prompt constraints injected when tool restrictions are specified via allowedTools.
+ *
+ * Codex CLI does NOT support --allowedTools (Claude-style named tool restriction lists).
+ * Instead, we rely on two complementary mechanisms:
+ *   1. --sandbox <mode>  — shell-level access control (blocks filesystem writes in read-only)
+ *   2. System prompt     — behavioral guidance telling Codex how to approach the task
+ *
+ * Without explicit guidance, Codex workers on read-only tasks tend to resort to complex
+ * inline Python scripts via `/bin/zsh -lc "python -c '...'"` with deeply nested shell
+ * escaping, exhausting their turn budget without reading any files. The constraint text
+ * below steers Codex toward simple, direct commands that work within the sandbox.
+ */
+const SANDBOX_CONSTRAINTS: Record<string, string> = {
+  'read-only':
+    'IMPORTANT: For this task, only READ files. Do NOT create, modify, or delete any files.\n' +
+    'Do NOT run complex bash scripts, inline Python (-c "..."), or deeply nested shell escaping.\n' +
+    'Use simple, direct shell commands: cat, head, tail, grep, find, ls.\n' +
+    'Example: to read a file use `cat /path/to/file`. To search use `grep -r "pattern" /dir`.\n' +
+    'Keep every command short and direct — avoid multi-line shell gymnastics.',
+  'workspace-write':
+    'For this task, you can read and write files.\n' +
+    'Prefer direct file operations (cat, head, tail, grep, sed, echo, tee) over complex scripts.\n' +
+    'Keep shell commands simple and avoid deeply nested shell escaping.',
+};
+
 export class CodexAdapter implements CLIAdapter {
   readonly name = 'codex';
   private readonly securityConfig: SecurityConfig;
@@ -167,8 +196,17 @@ export class CodexAdapter implements CLIAdapter {
       args.push('--model', opts.model);
     }
 
-    // Map allowedTools → sandbox mode via heuristic
+    // Map allowedTools → sandbox mode via heuristic.
+    // Codex does not support --allowedTools (Claude-style named tool lists). Instead, we:
+    //   1. Infer a --sandbox mode from the tool list for shell-level access control
+    //   2. Inject a system prompt constraint to guide behavioral compliance (see below)
     const sandboxMode = this.inferSandboxMode(opts.allowedTools);
+    if (opts.allowedTools && opts.allowedTools.length > 0) {
+      logger.debug(
+        { allowedTools: opts.allowedTools, sandboxMode },
+        'codex: --allowedTools not supported — mapped to --sandbox mode + system prompt constraints',
+      );
+    }
     if (sandboxMode) {
       if (sandboxMode === 'danger-full-access') {
         // Use --full-auto for full access (enables auto-approve + full sandbox)
@@ -214,10 +252,30 @@ export class CodexAdapter implements CLIAdapter {
     const tempFile = join(tmpdir(), `ob-codex-${Date.now()}-${randomBytes(4).toString('hex')}.txt`);
     args.push('-o', tempFile);
 
-    // systemPrompt: prepend to the prompt text (codex has no --append-system-prompt)
+    // Build the combined prompt with system-level guidance prepended.
+    // Codex has no --append-system-prompt flag, so all guidance is prepended to the prompt.
+    //
+    // Order (first → last in the text):
+    //   1. Sandbox constraint — behavioral guidance when tool restrictions were specified
+    //   2. User system prompt — caller-supplied context or instructions
+    //   3. Task prompt        — the actual task description
     let prompt = sanitizePrompt(opts.prompt);
+    const systemParts: string[] = [];
+
+    // Inject sandbox constraint as substitute for --allowedTools when restrictions are set
+    if (opts.allowedTools && opts.allowedTools.length > 0) {
+      const constraint = SANDBOX_CONSTRAINTS[sandboxMode];
+      if (constraint) {
+        systemParts.push(constraint);
+      }
+    }
+
     if (opts.systemPrompt) {
-      prompt = opts.systemPrompt + '\n\n' + prompt;
+      systemParts.push(opts.systemPrompt);
+    }
+
+    if (systemParts.length > 0) {
+      prompt = systemParts.join('\n\n') + '\n\n' + prompt;
     }
 
     // Prompt is positional for codex exec
