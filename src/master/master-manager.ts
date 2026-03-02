@@ -6473,6 +6473,18 @@ ${currentContent}
         await this.recordConversationMessage(workerSessionId, 'worker', result.stdout.trim());
       }
 
+      // Auto-store worker results in chunk store for future RAG retrieval (OB-1570)
+      if (result.exitCode === 0 && result.stdout.trim() && this.knowledgeRetriever) {
+        try {
+          await this.knowledgeRetriever.storeWorkerResult(result.stdout.trim(), body.prompt, []);
+        } catch (storeErr) {
+          logger.warn(
+            { workerId, error: storeErr },
+            'Failed to store worker result in chunk store',
+          );
+        }
+      }
+
       // Record learning entry for this worker execution (OB-171: learnings store)
       await this.recordWorkerLearning(taskRecord, result, profile, spawnOpts.model);
 
