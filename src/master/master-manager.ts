@@ -399,6 +399,8 @@ export class MasterManager {
   private readonly workerAbortHandles: Map<string, () => void> = new Map();
   /** Cancellation notifications queued for injection into the next Master call (OB-884). */
   private readonly pendingCancellationNotifications: string[] = [];
+  /** Deep Mode resume offers queued for injection into the next Master call (OB-1405). */
+  private readonly pendingDeepModeResumeOffers: string[] = [];
   /** KnowledgeRetriever for RAG-based context injection (OB-1344). Null until set via setKnowledgeRetriever(). */
   private knowledgeRetriever: KnowledgeRetriever | null = null;
   /** Deep Mode manager — tracks multi-phase session state (OB-1403). */
@@ -1105,6 +1107,12 @@ export class MasterManager {
     // creating the new master session, so the fresh 'running' row isn't wiped.
     this.cleanupStuckActivities();
 
+    // Check system_config for incomplete Deep Mode sessions from a previous run.
+    // Must run after dotFolder.initialize() (memory is ready) and after
+    // cleanupStuckActivities() (so we don't interfere with activity cleanup).
+    // Reads from system_config which is never touched by agent_activity cleanup (OB-1405).
+    await this.checkIncompleteDeepModeSessions();
+
     // Initialize Master session — so exploration can use it
     await this.initMasterSession();
 
@@ -1214,6 +1222,99 @@ export class MasterManager {
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to clean up stuck agent_activity rows');
+    }
+  }
+
+  /**
+   * Persist the current in-memory state of a Deep Mode session to SQLite.
+   *
+   * Stores the full DeepModeState JSON in system_config under
+   * `deep_mode:sessions:<sessionId>`.  Because system_config is never wiped by
+   * the agent_activity startup cleanup, the state survives process restarts and
+   * can be found by checkIncompleteDeepModeSessions() on the next run (OB-1405).
+   *
+   * Also inserts (or updates) a tracking row in agent_activity with type='deep-mode'
+   * for dashboard/audit visibility.
+   */
+  private async persistDeepModeSession(sessionId: string): Promise<void> {
+    if (!this.memory) return;
+
+    const state = this.deepMode.getSessionState(sessionId);
+    if (!state) return;
+
+    // Store full state JSON — this survives the startup agent_activity cleanup
+    await this.memory.upsertDeepModeState(sessionId, state);
+
+    // Insert / update the audit row in agent_activity
+    const now = new Date().toISOString();
+    const isActive = state.currentPhase !== undefined;
+    try {
+      await this.memory.insertActivity({
+        id: sessionId,
+        type: 'deep-mode',
+        profile: state.profile,
+        task_summary: state.taskSummary.slice(0, 200),
+        status: isActive ? 'running' : 'done',
+        started_at: state.startedAt,
+        updated_at: now,
+        ...(isActive ? {} : { completed_at: now }),
+      });
+    } catch {
+      // Row may already exist (INSERT OR IGNORE) — update instead
+      await this.memory.updateActivity(sessionId, {
+        status: isActive ? 'running' : 'done',
+        ...(isActive ? {} : { completed_at: now }),
+      });
+    }
+
+    logger.debug(
+      { sessionId, currentPhase: state.currentPhase },
+      'Deep Mode session state persisted to SQLite',
+    );
+  }
+
+  /**
+   * Check system_config for Deep Mode sessions from a previous process run that
+   * did not complete all phases.  Queues resume offers into
+   * pendingDeepModeResumeOffers so the Master AI notifies the user on the next
+   * message (OB-1405).
+   *
+   * Called once during start() after cleanupStuckActivities().
+   */
+  private async checkIncompleteDeepModeSessions(): Promise<void> {
+    if (!this.memory) return;
+
+    try {
+      const incomplete = await this.memory.listIncompleteDeepModeSessions();
+      if (incomplete.length === 0) return;
+
+      logger.info(
+        { count: incomplete.length },
+        'Found incomplete Deep Mode sessions from previous run',
+      );
+
+      for (const { sessionId, stateJson } of incomplete) {
+        try {
+          const state = JSON.parse(stateJson) as {
+            taskSummary?: string;
+            currentPhase?: string;
+            profile?: string;
+          };
+          const summary = state.taskSummary ?? '(unknown task)';
+          const phase = state.currentPhase ?? '(unknown phase)';
+          const profile = state.profile ?? 'thorough';
+
+          this.pendingDeepModeResumeOffers.push(
+            `There is an incomplete Deep Mode session (${profile} profile, paused at **${phase}** phase) ` +
+              `for the task: "${summary}". Session ID: ${sessionId}. ` +
+              `Inform the user and offer to resume or discard the session.`,
+          );
+        } catch {
+          // Skip malformed entries
+        }
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Failed to check for incomplete Deep Mode sessions on startup');
     }
   }
 
@@ -1454,6 +1555,16 @@ export class MasterManager {
         (opts.systemPrompt ?? '') +
         '\n\n## IMPORTANT — Worker Cancellation Events\n\n' +
         notifications.join('\n');
+    }
+
+    // Drain pending Deep Mode resume offers (OB-1405).
+    // These are queued during startup when incomplete sessions from a prior run are found.
+    if (this.pendingDeepModeResumeOffers.length > 0) {
+      const offers = this.pendingDeepModeResumeOffers.splice(0);
+      opts.systemPrompt =
+        (opts.systemPrompt ?? '') +
+        '\n\n## IMPORTANT — Incomplete Deep Mode Sessions\n\n' +
+        offers.join('\n\n');
     }
 
     return opts;
@@ -4047,6 +4158,9 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         if (effectiveProfile === 'thorough' || effectiveProfile === 'manual') {
           const deepSessionId = this.deepMode.startSession(message.content, effectiveProfile);
           if (deepSessionId) {
+            // Persist new session to SQLite so it survives process restarts (OB-1405)
+            await this.persistDeepModeSession(deepSessionId);
+
             const currentPhase = this.deepMode.getCurrentPhase(deepSessionId);
             const phasePrompt = this.deepMode.getPhaseSystemPrompt(deepSessionId);
             logger.info(

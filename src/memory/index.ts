@@ -62,6 +62,7 @@ import {
   updateActivity as _updateActivity,
   getActiveAgents as _getActiveAgents,
   getRecentWorkerSpawns as _getRecentWorkerSpawns,
+  getDeepModeSessions as _getDeepModeSessions,
   cleanupOldActivity as _cleanupOldActivity,
   markStaleActivityDone as _markStaleActivityDone,
   getDailyCost as _getDailyCost,
@@ -598,6 +599,81 @@ export class MemoryManager {
   getRecentWorkerSpawns(limit?: number): Promise<ActivityRecord[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getRecentWorkerSpawns(this.db, limit));
+  }
+
+  /** Return all agent_activity rows for Deep Mode sessions, most recent first. */
+  getDeepModeSessions(): Promise<ActivityRecord[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getDeepModeSessions(this.db));
+  }
+
+  // -------------------------------------------------------------------------
+  // Deep Mode state persistence (system_config — OB-1405)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Store a Deep Mode session state as JSON in system_config under
+   * `deep_mode:sessions:<sessionId>`.  Survives process restarts because
+   * system_config is unaffected by the agent_activity cleanup on startup.
+   */
+  upsertDeepModeState(sessionId: string, state: unknown): Promise<void> {
+    return this.setSystemConfig(`deep_mode:sessions:${sessionId}`, JSON.stringify(state));
+  }
+
+  /**
+   * Read the stored Deep Mode session state JSON for a given sessionId.
+   * Returns null when no state has been stored yet.
+   */
+  getDeepModeState(sessionId: string): Promise<string | null> {
+    return this.getSystemConfig(`deep_mode:sessions:${sessionId}`);
+  }
+
+  /**
+   * Delete the persisted Deep Mode session state for a given sessionId.
+   * Called when a session is aborted or completes all phases.
+   */
+  clearDeepModeState(sessionId: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    this.db
+      .prepare('DELETE FROM system_config WHERE key = ?')
+      .run(`deep_mode:sessions:${sessionId}`);
+    return Promise.resolve();
+  }
+
+  /**
+   * Return all incomplete Deep Mode sessions — those stored in system_config
+   * whose serialised state still has a `currentPhase` set (i.e. not yet done).
+   *
+   * Because system_config is never modified by the startup agent_activity cleanup,
+   * incomplete sessions from a crashed/killed process are detected here even after
+   * `markStaleActivityDone()` has run.
+   */
+  listIncompleteDeepModeSessions(): Promise<Array<{ sessionId: string; stateJson: string }>> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+
+    interface Row {
+      key: string;
+      value: string;
+    }
+
+    const prefix = 'deep_mode:sessions:';
+    const rows = this.db
+      .prepare(`SELECT key, value FROM system_config WHERE key LIKE ?`)
+      .all(`${prefix}%`) as Row[];
+
+    const incomplete: Array<{ sessionId: string; stateJson: string }> = [];
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.value) as { currentPhase?: string };
+        if (parsed.currentPhase !== undefined) {
+          incomplete.push({ sessionId: row.key.slice(prefix.length), stateJson: row.value });
+        }
+      } catch {
+        // Skip malformed entries
+      }
+    }
+
+    return Promise.resolve(incomplete);
   }
 
   cleanupOldActivity(cutoffHours?: number): Promise<void> {
