@@ -2367,4 +2367,266 @@ describe('Router', () => {
       expect(connector.sentMessages[0]?.content).toContain('No worker spawns recorded');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // OB-1416: Deep Mode command tests
+  // ---------------------------------------------------------------------------
+
+  describe('Deep Mode commands (OB-1416)', () => {
+    function createDeepMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'msg-deep',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockDeepModeManager(
+      opts: {
+        activeSessions?: string[];
+        sessionState?: Record<string, unknown> | null;
+        isPaused?: boolean;
+        currentPhase?: string;
+        startSessionResult?: string | null;
+        phaseResult?: Record<string, unknown> | null;
+      } = {},
+    ) {
+      return {
+        startSession: vi.fn().mockReturnValue(opts.startSessionResult ?? 'session-1'),
+        abort: vi.fn(),
+        getActiveSessions: vi.fn().mockReturnValue(opts.activeSessions ?? []),
+        getSessionState: vi.fn().mockReturnValue(opts.sessionState ?? null),
+        isPaused: vi.fn().mockReturnValue(opts.isPaused ?? false),
+        resume: vi.fn(),
+        focusOnItem: vi.fn(),
+        skipItem: vi.fn(),
+        getPhaseResult: vi.fn().mockReturnValue(opts.phaseResult ?? null),
+        getCurrentPhase: vi.fn().mockReturnValue(opts.currentPhase ?? 'investigate'),
+        setTaskModelOverride: vi.fn().mockReturnValue(true),
+      };
+    }
+
+    function createMockMasterWithDeepMode(deepMode: ReturnType<typeof createMockDeepModeManager>) {
+      return {
+        processMessage: vi.fn().mockResolvedValue('Deep investigation result'),
+        getState: vi.fn(() => 'ready' as const),
+        getDeepModeManager: vi.fn().mockReturnValue(deepMode),
+      } as unknown as MasterManager;
+    }
+
+    it('/deep thorough activates Deep Mode and sends activation message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({ activeSessions: [] });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/deep thorough'));
+
+      expect(deepMode.startSession).toHaveBeenCalledWith(
+        expect.stringContaining('thorough'),
+        'thorough',
+      );
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Deep Mode started');
+      expect(connector.sentMessages[0]?.content).toContain('thorough');
+    });
+
+    it('/proceed resumes a paused manual session and reports the current phase', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1'],
+        sessionState: {
+          sessionId: 'session-1',
+          profile: 'manual',
+          currentPhase: 'plan',
+          phaseResults: {},
+          startedAt: new Date().toISOString(),
+          taskSummary: 'Review auth system',
+          skippedItems: [],
+          taskModelOverrides: {},
+        },
+        isPaused: true,
+        currentPhase: 'plan',
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/proceed'));
+
+      expect(deepMode.resume).toHaveBeenCalledWith('session-1');
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('plan');
+    });
+
+    it('/focus 3 records the focus, calls Master, and sends investigation result', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1'],
+        sessionState: {
+          sessionId: 'session-1',
+          profile: 'thorough',
+          currentPhase: 'investigate',
+          phaseResults: {},
+          startedAt: new Date().toISOString(),
+          taskSummary: 'Review auth system',
+          skippedItems: [],
+          taskModelOverrides: {},
+        },
+        currentPhase: 'investigate',
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/focus 3'));
+
+      expect(deepMode.focusOnItem).toHaveBeenCalledWith('session-1', 3);
+      // processMessage should be called once for the focused investigation
+      expect(master.processMessage).toHaveBeenCalledOnce();
+      // First message is the immediate confirmation; second is Master's response
+      expect(connector.sentMessages[0]?.content).toContain('#3');
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toBe('Deep investigation result');
+    });
+
+    it('/skip 2 marks the item as skipped and sends a confirmation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1'],
+        sessionState: {
+          sessionId: 'session-1',
+          profile: 'thorough',
+          currentPhase: 'plan',
+          phaseResults: {},
+          startedAt: new Date().toISOString(),
+          taskSummary: 'Fix security issues',
+          skippedItems: [],
+          taskModelOverrides: {},
+        },
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/skip 2'));
+
+      expect(deepMode.skipItem).toHaveBeenCalledWith('session-1', 2);
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('#2');
+      expect(connector.sentMessages[0]?.content).toContain('skipped');
+    });
+
+    it('/phase shows current phase, completed phases, and profile', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1'],
+        sessionState: {
+          sessionId: 'session-1',
+          profile: 'thorough',
+          currentPhase: 'plan',
+          phaseResults: {
+            investigate: {
+              phase: 'investigate',
+              output: 'Found 3 security issues.',
+              completedAt: new Date().toISOString(),
+            },
+          },
+          startedAt: new Date().toISOString(),
+          taskSummary: 'Audit security',
+          skippedItems: [],
+          taskModelOverrides: {},
+        },
+        currentPhase: 'plan',
+        phaseResult: {
+          phase: 'investigate',
+          output: 'Found 3 security issues.',
+          completedAt: new Date().toISOString(),
+        },
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/phase'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const content = connector.sentMessages[0]?.content ?? '';
+      expect(content).toContain('Phase Status');
+      expect(content).toContain('plan');
+      expect(content).toContain('thorough');
+    });
+
+    it('natural language "proceed" routes to the proceed handler when a session is active', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1'],
+        sessionState: {
+          sessionId: 'session-1',
+          profile: 'manual',
+          currentPhase: 'report',
+          phaseResults: {},
+          startedAt: new Date().toISOString(),
+          taskSummary: 'Fix auth system',
+          skippedItems: [],
+          taskModelOverrides: {},
+        },
+        isPaused: true,
+        currentPhase: 'report',
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      // Plain "proceed" (no leading slash) should trigger the proceed handler
+      await router.route(createDeepMsg('proceed'));
+
+      expect(deepMode.resume).toHaveBeenCalledWith('session-1');
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('report');
+    });
+
+    it('/deep off aborts all active sessions and sends a deactivation message', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const deepMode = createMockDeepModeManager({
+        activeSessions: ['session-1', 'session-2'],
+      });
+      const master = createMockMasterWithDeepMode(deepMode);
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      await connector.initialize();
+
+      await router.route(createDeepMsg('/deep off'));
+
+      expect(deepMode.abort).toHaveBeenCalledTimes(2);
+      expect(deepMode.abort).toHaveBeenCalledWith('session-1');
+      expect(deepMode.abort).toHaveBeenCalledWith('session-2');
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('deactivated');
+    });
+  });
 });
