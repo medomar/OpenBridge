@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 128 | **In Progress:** 0 | **Done:** 44 (112 archived)
+> **Pending:** 127 | **In Progress:** 0 | **Done:** 45 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -176,7 +176,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1432 | Auto-detect tunnel tools in `src/discovery/tool-scanner.ts` — add cloudflared, ngrok, localtunnel to detection list using which. Add metadata: name, version command, priority (cloudflared > ngrok > localtunnel). Return in scan results                                                  | ✅ Done   |
-| 2   | OB-1433 | Create `src/core/tunnel-manager.ts` — TunnelManager class with methods: start(port) returns public URL, stop(), getUrl(), isActive(). Constructor takes detected tunnel tool name and optional config                                                                                       | ◻ Pending |
+| 2   | OB-1433 | Create `src/core/tunnel-manager.ts` — TunnelManager class with methods: start(port) returns public URL, stop(), getUrl(), isActive(). Constructor takes detected tunnel tool name and optional config                                                                                       | ✅ Done   |
 | 3   | OB-1434 | Implement cloudflared tunnel adapter — spawn `cloudflared tunnel --url localhost:{port}` as child process. Parse public URL from stdout. Handle errors and unexpected exits. Preferred — free, no signup                                                                                    | ◻ Pending |
 | 4   | OB-1435 | Implement ngrok tunnel adapter — spawn `ngrok http {port}`. Query ngrok API at localhost:4040 for public URL. Handle auth token requirement. Fallback if cloudflared unavailable                                                                                                            | ◻ Pending |
 | 5   | OB-1436 | Wire TunnelManager into Bridge startup in `src/core/bridge.ts` — if tunnel tool detected and tunnel.enabled is true, start tunnel during initialization. Store and log public URL                                                                                                           | ◻ Pending |
