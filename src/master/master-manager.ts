@@ -6,6 +6,7 @@ import {
   generateMasterSystemPrompt,
   formatLearnedPatternsSection,
   formatPreFetchedKnowledgeSection,
+  formatTargetedReaderSection,
 } from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
@@ -3989,6 +3990,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // Skip for 'complex-task' — Master needs to plan and delegate; RAG context is not useful
       // at planning time and adds noise to the delegation prompt.
       let knowledgeContext: string | undefined;
+      let targetedReaderContext: string | undefined;
       if ((taskClass === 'quick-answer' || taskClass === 'tool-use') && this.knowledgeRetriever) {
         const knowledgeResult = await this.knowledgeRetriever.query(message.content);
         logger.info(
@@ -4005,6 +4007,27 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             { confidence: knowledgeResult.confidence },
             'Low confidence, worker may be needed',
           );
+          // Targeted reader: suggest files from workspace map and spawn a focused
+          // read-only worker to answer the question. (OB-1354)
+          const workspaceMap = await this.dotFolder.readWorkspaceMap();
+          if (workspaceMap) {
+            const suggestedFiles = this.knowledgeRetriever.suggestTargetFiles(
+              message.content,
+              workspaceMap,
+            );
+            if (suggestedFiles.length > 0) {
+              logger.debug(
+                { fileCount: suggestedFiles.length },
+                'Low RAG confidence — spawning targeted reader',
+              );
+              const readerResult = await this.spawnTargetedReader(suggestedFiles, message.content);
+              if (readerResult) {
+                targetedReaderContext = readerResult;
+              }
+            } else {
+              logger.debug('No target files identified, falling back to Master handling');
+            }
+          }
         }
         if (knowledgeResult.confidence >= 0.3) {
           knowledgeContext = this.knowledgeRetriever.formatKnowledgeContext(knowledgeResult);
@@ -4088,6 +4111,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           '\n\n' +
           formatPreFetchedKnowledgeSection(knowledgeContext);
       }
+      // Inject targeted reader result into the Master's system prompt (OB-1354)
+      if (targetedReaderContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') +
+          '\n\n' +
+          formatTargetedReaderSection(targetedReaderContext);
+      }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
 
@@ -4116,6 +4146,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             (retryOpts.systemPrompt ?? '') +
             '\n\n' +
             formatPreFetchedKnowledgeSection(knowledgeContext);
+        }
+        // Re-inject targeted reader result into retry opts as well (OB-1354)
+        if (targetedReaderContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') +
+            '\n\n' +
+            formatTargetedReaderSection(targetedReaderContext);
         }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
