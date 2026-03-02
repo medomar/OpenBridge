@@ -95,6 +95,7 @@ export class Bridge {
       this.memory = new MemoryManager(dbPath);
       this.fileServer = new FileServer(options.workspacePath);
       this.router.setWorkspacePath(options.workspacePath);
+      this.auditLogger.setWorkspacePath(options.workspacePath);
     }
 
     if (options?.mcpRegistry) {
