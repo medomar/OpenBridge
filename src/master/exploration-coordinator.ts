@@ -57,8 +57,29 @@ import type { MemoryManager } from '../memory/index.js';
 import type { Chunk } from '../memory/chunk-store.js';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { z } from 'zod';
 
 const logger = createLogger('exploration-coordinator');
+
+// Validation schemas for AI output — the coordinator overrides timestamps and durations after
+// parsing (AI-generated datetimes often fail strict .datetime() validation), so those fields
+// are made optional with defaults here to validate structure without false datetime failures.
+// Cast to z.ZodType<T> because .optional().default() changes the _input type to `T | undefined`
+// while the _output type remains T — the cast is safe since output shapes are identical.
+const StructureScanAISchema = StructureScanSchema.extend({
+  scannedAt: z.string().optional().default(''),
+  durationMs: z.number().int().nonnegative().optional().default(0),
+}) as z.ZodType<StructureScan>;
+
+const ClassificationAISchema = ClassificationSchema.extend({
+  classifiedAt: z.string().optional().default(''),
+  durationMs: z.number().int().nonnegative().optional().default(0),
+}) as z.ZodType<Classification>;
+
+const DirectoryDiveResultAISchema = DirectoryDiveResultSchema.extend({
+  exploredAt: z.string().optional().default(''),
+  durationMs: z.number().int().nonnegative().optional().default(0),
+}) as z.ZodType<DirectoryDiveResult>;
 
 const PHASE_TIMEOUT = 300_000; // 5 minutes per phase (large workspaces need more time)
 const DIRECTORY_DIVE_TIMEOUT = 180_000; // 3 minutes per directory dive
@@ -735,7 +756,11 @@ export class ExplorationCoordinator {
       throw new Error(`Structure scan failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
-    const parsed = parseAIResult<StructureScan>(result.stdout, 'structure scan');
+    const parsed = parseAIResult<StructureScan>(
+      result.stdout,
+      'structure scan',
+      StructureScanAISchema,
+    );
     if (!parsed.success) {
       await this.failPhaseRow(phase1RowId);
       throw new Error(`Failed to parse structure scan result: ${parsed.error}`);
@@ -798,7 +823,11 @@ export class ExplorationCoordinator {
       throw new Error(`Classification failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
-    const parsed = parseAIResult<Classification>(result.stdout, 'classification');
+    const parsed = parseAIResult<Classification>(
+      result.stdout,
+      'classification',
+      ClassificationAISchema,
+    );
     if (!parsed.success) {
       await this.failPhaseRow(phase2RowId);
       throw new Error(`Failed to parse classification result: ${parsed.error}`);
@@ -1033,7 +1062,11 @@ export class ExplorationCoordinator {
       );
     }
 
-    const parsed = parseAIResult<DirectoryDiveResult>(result.stdout, `directory dive: ${dirPath}`);
+    const parsed = parseAIResult<DirectoryDiveResult>(
+      result.stdout,
+      `directory dive: ${dirPath}`,
+      DirectoryDiveResultAISchema,
+    );
     if (!parsed.success) {
       throw new Error(`Failed to parse directory dive result for ${dirPath}: ${parsed.error}`);
     }
