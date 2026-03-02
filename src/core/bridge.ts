@@ -4,6 +4,10 @@ import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
 import { V2ConfigSchema, ENV_DENY_PATTERNS } from '../types/config.js';
 import { warnAboutExposedSecrets } from './env-sanitizer.js';
+import { TunnelManager } from './tunnel-manager.js';
+// Side-effect imports: each adapter auto-registers with TunnelManager on load
+import './cloudflared-adapter.js';
+import './ngrok-adapter.js';
 import type { InboundMessage, OutboundMessage } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
 import type { AIProvider } from '../types/provider.js';
@@ -43,6 +47,8 @@ export interface BridgeOptions {
   mcpRegistry?: McpRegistry;
   /** Security config — controls which env vars are stripped from worker processes */
   securityConfig?: SecurityConfig;
+  /** Tunnel tool name (e.g. 'cloudflared', 'ngrok') — when set, starts a tunnel on the file server port during start() */
+  tunnelTool?: string;
 }
 
 export class Bridge {
@@ -63,6 +69,8 @@ export class Bridge {
   private mcpRegistry: McpRegistry | null = null;
   private readonly securityConfig: SecurityConfig | undefined;
   private fileServer: FileServer | null = null;
+  private tunnelManager: TunnelManager | null = null;
+  private tunnelPublicUrl: string | null = null;
   private readonly workspacePath: string | undefined;
   private readonly connectors: Connector[] = [];
   private readonly providers: AIProvider[] = [];
@@ -102,6 +110,10 @@ export class Bridge {
       this.mcpRegistry = options.mcpRegistry;
     }
 
+    if (options?.tunnelTool) {
+      this.tunnelManager = new TunnelManager(options.tunnelTool);
+    }
+
     this.securityConfig = options?.securityConfig;
   }
 
@@ -120,6 +132,11 @@ export class Bridge {
     if (!this.fileServer) return null;
     const match = this.fileServer.baseUrl.match(/:(\d+)$/);
     return match ? parseInt(match[1]!, 10) : null;
+  }
+
+  /** Returns the tunnel public URL if a tunnel is active, or null if not running */
+  getTunnelUrl(): string | null {
+    return this.tunnelPublicUrl;
   }
 
   /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
@@ -390,6 +407,25 @@ export class Bridge {
       }
     }
 
+    // Start tunnel if configured — expose file server to the internet (non-fatal)
+    if (this.tunnelManager && this.fileServer) {
+      const fileServerPort = this.getFileServerPort();
+      if (fileServerPort !== null) {
+        try {
+          this.tunnelPublicUrl = await this.tunnelManager.start(fileServerPort);
+          logger.info(
+            { url: this.tunnelPublicUrl },
+            'Tunnel started — file server accessible at public URL',
+          );
+        } catch (error) {
+          logger.warn(
+            { err: error },
+            'Tunnel failed to start — continuing with localhost access only',
+          );
+        }
+      }
+    }
+
     // Start config file watcher for hot-reload
     if (this.configPath) {
       this.configWatcher = new ConfigWatcher(this.configPath);
@@ -479,6 +515,12 @@ export class Bridge {
       } catch (error) {
         logger.warn({ err: error }, 'Error stopping file server');
       }
+    }
+
+    if (this.tunnelManager) {
+      this.tunnelManager.stop();
+      this.tunnelPublicUrl = null;
+      logger.info('Tunnel stopped');
     }
 
     if (this.memory) {
