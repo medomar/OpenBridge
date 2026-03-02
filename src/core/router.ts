@@ -650,6 +650,16 @@ export class Router {
       message.content.trim().toLowerCase() === 'go' ||
       message.content.trim().toLowerCase() === '/confirm'
     ) {
+      // "go" with no pending spawn but Deep Mode active → treat as /proceed (OB-1413)
+      if (
+        message.content.trim().toLowerCase() === 'go' &&
+        !this.pendingSpawnConfirmations.has(message.sender) &&
+        this.master !== undefined &&
+        this.master.getDeepModeManager().getActiveSessions().length > 0
+      ) {
+        await this.handleProceedCommand(message, connector);
+        return;
+      }
       await this.handleConfirmSpawnCommand(message, connector);
       return;
     }
@@ -727,6 +737,53 @@ export class Router {
     ) {
       await this.handleModelOverrideCommand(message, connector);
       return;
+    }
+
+    // Natural language Deep Mode navigation — regex checked first (short-circuit before
+    // getDeepModeManager()) to avoid calling it on every message (OB-1413)
+    {
+      const trimmedNl = message.content.trim();
+
+      // "proceed" / "next" / "continue" → /proceed
+      if (
+        /^(?:proceed|next|continue)\s*$/i.test(trimmedNl) &&
+        this.master !== undefined &&
+        this.master.getDeepModeManager().getActiveSessions().length > 0
+      ) {
+        await this.handleProceedCommand(message, connector);
+        return;
+      }
+
+      // "focus on #3", "dig into finding 3", "investigate 3", "look at item 3" → /focus 3
+      const focusNlMatch =
+        /\b(?:focus\s+on|dig\s+into|investigate|look\s+at)\s+(?:finding\s+|item\s+|#)?(\d+)/i.exec(
+          trimmedNl,
+        );
+      if (
+        focusNlMatch !== null &&
+        this.master !== undefined &&
+        this.master.getDeepModeManager().getActiveSessions().length > 0
+      ) {
+        await this.handleFocusCommand(
+          { ...message, content: `/focus ${focusNlMatch[1]}` },
+          connector,
+        );
+        return;
+      }
+
+      // "skip item 2", "skip finding 2", "skip task 2", "skip 2" → /skip 2
+      const skipNlMatch = /\bskip\s+(?:item\s+|finding\s+|task\s+|#)?(\d+)/i.exec(trimmedNl);
+      if (
+        skipNlMatch !== null &&
+        this.master !== undefined &&
+        this.master.getDeepModeManager().getActiveSessions().length > 0
+      ) {
+        await this.handleSkipItemCommand(
+          { ...message, content: `/skip ${skipNlMatch[1]}` },
+          connector,
+        );
+        return;
+      }
     }
 
     // Checkpoint-handle-resume cycle for urgent messages.
