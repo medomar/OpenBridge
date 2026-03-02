@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { generateMasterSystemPrompt } from '../../src/master/master-system-prompt.js';
+import {
+  generateMasterSystemPrompt,
+  formatPreFetchedKnowledgeSection,
+} from '../../src/master/master-system-prompt.js';
 import type { MasterSystemPromptContext } from '../../src/master/master-system-prompt.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
@@ -116,6 +119,35 @@ describe('generateMasterSystemPrompt', () => {
     expect(prompt).toContain('Turn-Budget Warnings');
     expect(prompt).toContain('[INCOMPLETE: step X/Y]');
     expect(prompt).toContain('system can retry with a higher budget');
+  });
+});
+
+describe('formatPreFetchedKnowledgeSection', () => {
+  it('should wrap knowledge context in a Pre-fetched Knowledge section', () => {
+    const raw = '## Relevant Knowledge\n\nSome content here.';
+    const result = formatPreFetchedKnowledgeSection(raw);
+    expect(result).toContain('## Pre-fetched Knowledge (from RAG)');
+    expect(result).toContain('Some content here.');
+  });
+
+  it('should trim leading/trailing whitespace from the knowledge context', () => {
+    const raw = '  \n  Content with surrounding whitespace  \n  ';
+    const result = formatPreFetchedKnowledgeSection(raw);
+    expect(result).toBe(
+      '## Pre-fetched Knowledge (from RAG)\n\nContent with surrounding whitespace',
+    );
+  });
+
+  it('should separate the header from the content with a blank line', () => {
+    const raw = 'Chunk content.';
+    const result = formatPreFetchedKnowledgeSection(raw);
+    expect(result).toBe('## Pre-fetched Knowledge (from RAG)\n\nChunk content.');
+  });
+
+  it('should preserve multi-line knowledge context', () => {
+    const raw = 'Line 1\nLine 2\nLine 3';
+    const result = formatPreFetchedKnowledgeSection(raw);
+    expect(result).toContain('Line 1\nLine 2\nLine 3');
   });
 });
 

@@ -5,6 +5,7 @@ import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
 import {
   generateMasterSystemPrompt,
   formatLearnedPatternsSection,
+  formatPreFetchedKnowledgeSection,
 } from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
@@ -4064,9 +4065,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       if (learnedPatternsContext) {
         spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
       }
-      // Inject pre-fetched knowledge context into the Master's system prompt (OB-1345)
+      // Inject pre-fetched knowledge context into the Master's system prompt (OB-1345, OB-1346)
       if (knowledgeContext) {
-        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + knowledgeContext;
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') +
+          '\n\n' +
+          formatPreFetchedKnowledgeSection(knowledgeContext);
       }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
@@ -4090,9 +4094,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         if (learnedPatternsContext) {
           retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
         }
-        // Re-inject knowledge context into retry opts as well (OB-1345)
+        // Re-inject knowledge context into retry opts as well (OB-1345, OB-1346)
         if (knowledgeContext) {
-          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + knowledgeContext;
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') +
+            '\n\n' +
+            formatPreFetchedKnowledgeSection(knowledgeContext);
         }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();

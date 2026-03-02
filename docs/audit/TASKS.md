@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 215 | **In Progress:** 0 | **Done:** 46
+> **Pending:** 214 | **In Progress:** 0 | **Done:** 47
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -180,7 +180,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1344 | Instantiate `KnowledgeRetriever` in `Bridge` class in `src/core/bridge.ts` — create during bridge initialization after MemoryManager and DotFolderManager are ready. Pass it to `MasterManager` via a new `setKnowledgeRetriever(retriever)` method. Store as `this.knowledgeRetriever` in MasterManager         | ✅ Done   |
 | 2   | OB-1345 | In `processMessage()` in `src/master/master-manager.ts`, after task classification, if task class is `codebase-question`, call `this.knowledgeRetriever.query(userMessage)` before building the Master prompt. If confidence >= 0.3, inject formatted knowledge context into the system prompt                   | ✅ Done   |
-| 3   | OB-1346 | Update `buildSystemPrompt()` in `src/master/master-system-prompt.ts` — add optional `knowledgeContext?: string` parameter. When provided, append after workspace map summary: "Pre-fetched Knowledge (from RAG)" section. Tells the Master what it already knows to avoid redundant worker spawns                | ◻ Pending |
+| 3   | OB-1346 | Update `buildSystemPrompt()` in `src/master/master-system-prompt.ts` — add optional `knowledgeContext?: string` parameter. When provided, append after workspace map summary: "Pre-fetched Knowledge (from RAG)" section. Tells the Master what it already knows to avoid redundant worker spawns                | ✅ Done   |
 | 4   | OB-1347 | Add `codebase-question` RAG guidance to Master system prompt in `src/master/master-system-prompt.ts` — instructions: "When you see a Pre-fetched Knowledge section, use it to answer directly if confidence is high enough. Only spawn a read-only worker if pre-fetched knowledge does not cover the question." | ◻ Pending |
 | 5   | OB-1348 | Add knowledge retrieval logging — in processMessage(), after RAG query, log at info level: question substring, confidence, chunk count, sources. Log at debug level when confidence < 0.3: "Low confidence, worker may be needed"                                                                                | ◻ Pending |
 | 6   | OB-1349 | Add RAG bypass for non-question task classes — only run knowledge retriever for `codebase-question` and `tool-use` task classes. Skip for `complex-task`, `general-chat`, and other classes where Master needs to plan and delegate                                                                              | ◻ Pending |
