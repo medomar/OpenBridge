@@ -6,6 +6,16 @@ import type Database from 'better-sqlite3';
 
 export type AccessRole = 'owner' | 'admin' | 'developer' | 'viewer' | 'custom';
 
+/**
+ * Per-user consent preference for high-risk spawn confirmation prompts.
+ *
+ * - `always-ask`        (default) — always prompt before high/critical-risk workers.
+ * - `auto-approve-read` — skip confirmation for low-risk (read-only, code-audit) profiles;
+ *                         still prompt for medium/high/critical-risk profiles.
+ * - `auto-approve-all`  — never prompt; all workers proceed without confirmation.
+ */
+export type ConsentMode = 'always-ask' | 'auto-approve-read' | 'auto-approve-all';
+
 export interface AccessControlEntry {
   id?: number;
   user_id: string;
@@ -18,6 +28,8 @@ export interface AccessControlEntry {
   daily_cost_used?: number;
   cost_reset_at?: string | null;
   active?: boolean;
+  /** Consent preference for high-risk spawn confirmation prompts (default: 'always-ask'). */
+  consentMode?: ConsentMode;
   created_at?: string;
   updated_at?: string;
 }
@@ -34,8 +46,22 @@ interface AccessControlRow {
   daily_cost_used: number;
   cost_reset_at: string | null;
   active: number;
+  consent_mode: string | null;
   created_at: string;
   updated_at: string;
+}
+
+const VALID_CONSENT_MODES = new Set<ConsentMode>([
+  'always-ask',
+  'auto-approve-read',
+  'auto-approve-all',
+]);
+
+function parseConsentMode(raw: string | null): ConsentMode {
+  if (raw && VALID_CONSENT_MODES.has(raw as ConsentMode)) {
+    return raw as ConsentMode;
+  }
+  return 'always-ask';
 }
 
 function rowToEntry(row: AccessControlRow): AccessControlEntry {
@@ -51,6 +77,7 @@ function rowToEntry(row: AccessControlRow): AccessControlEntry {
     daily_cost_used: row.daily_cost_used,
     cost_reset_at: row.cost_reset_at,
     active: row.active === 1,
+    consentMode: parseConsentMode(row.consent_mode),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -97,6 +124,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
          daily_cost_used      = ?,
          cost_reset_at        = ?,
          active               = ?,
+         consent_mode         = ?,
          updated_at           = ?
        WHERE user_id = ? AND channel = ?`,
     ).run(
@@ -108,6 +136,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.daily_cost_used ?? 0,
       entry.cost_reset_at ?? null,
       entry.active !== false ? 1 : 0,
+      entry.consentMode ?? 'always-ask',
       now,
       entry.user_id,
       entry.channel,
@@ -117,8 +146,8 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       `INSERT INTO access_control
          (user_id, channel, role, scopes, allowed_actions, blocked_actions,
           max_cost_per_day_usd, daily_cost_used, cost_reset_at, active,
-          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          consent_mode, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       entry.user_id,
       entry.channel,
@@ -130,6 +159,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.daily_cost_used ?? 0,
       entry.cost_reset_at ?? null,
       entry.active !== false ? 1 : 0,
+      entry.consentMode ?? 'always-ask',
       now,
       now,
     );
@@ -166,6 +196,19 @@ export function incrementDailyCost(
          updated_at      = ?
      WHERE user_id = ? AND channel = ?`,
   ).run(costUsd, now, userId, channel);
+}
+
+/**
+ * Return the consent mode for a specific user+channel pair.
+ * Falls back to 'always-ask' when no entry exists.
+ */
+export function getConsentMode(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+): ConsentMode {
+  const entry = getAccess(db, userId, channel);
+  return entry?.consentMode ?? 'always-ask';
 }
 
 /**

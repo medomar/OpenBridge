@@ -116,6 +116,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 5,
+    description: 'Add consent_mode column to access_control',
+    apply: (db): void => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('access_control') WHERE name='consent_mode'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec(`ALTER TABLE access_control ADD COLUMN consent_mode TEXT DEFAULT 'always-ask'`);
+      }
+    },
+  },
 ];
 
 /**

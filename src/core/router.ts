@@ -365,6 +365,28 @@ export class Router {
   ): Promise<boolean> {
     if (!this.securityConfig?.confirmHighRisk) return false;
 
+    // Check per-user consent preference — skip confirmation when the user has opted out
+    if (this.memory) {
+      const consentMode = await this.memory.getConsentMode(sender, message.source);
+      if (consentMode === 'auto-approve-all') {
+        logger.debug({ sender, consentMode }, 'Skipping spawn confirmation — auto-approve-all');
+        return false;
+      }
+      if (consentMode === 'auto-approve-read') {
+        const allLowRisk = markers.every((m) => {
+          const risk = this.getProfileRisk(m.profile);
+          return risk === 'low';
+        });
+        if (allLowRisk) {
+          logger.debug(
+            { sender, consentMode },
+            'Skipping spawn confirmation — auto-approve-read with all low-risk profiles',
+          );
+          return false;
+        }
+      }
+    }
+
     const highRiskMarkers = markers.filter((m) => {
       const risk = this.getProfileRisk(m.profile);
       return risk === 'high' || risk === 'critical';

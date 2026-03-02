@@ -80,7 +80,9 @@ import {
   removeAccess as _removeAccess,
   resetDailyCosts as _resetDailyCosts,
   incrementDailyCost as _incrementDailyCost,
+  getConsentMode as _getConsentMode,
   type AccessControlEntry,
+  type ConsentMode,
 } from './access-store.js';
 import {
   registerSubMaster as _registerSubMaster,
@@ -140,7 +142,7 @@ export type {
   ExplorationProgressRecord,
   ExplorationProgressUpdate,
 } from './activity-store.js';
-export type { AccessControlEntry, AccessRole } from './access-store.js';
+export type { AccessControlEntry, AccessRole, ConsentMode } from './access-store.js';
 export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 export type { QACacheEntry } from './qa-cache-store.js';
@@ -664,6 +666,11 @@ export class MemoryManager {
   getAccess(userId: string, channel: string): Promise<AccessControlEntry | null> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getAccess(this.db, userId, channel));
+  }
+
+  getConsentMode(userId: string, channel: string): Promise<ConsentMode> {
+    if (!this.db) return Promise.resolve('always-ask');
+    return Promise.resolve(_getConsentMode(this.db, userId, channel));
   }
 
   setAccess(entry: AccessControlEntry): Promise<void> {
