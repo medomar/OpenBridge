@@ -10,6 +10,7 @@ import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 /** Helper to extract SpawnOptions from mock call args */
 function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
@@ -127,7 +128,7 @@ describe('MasterManager', () => {
 
   beforeEach(async () => {
     // Create temporary test workspace
-    testWorkspace = path.join(process.cwd(), 'test-workspace-master-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-master-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     // Create test tools

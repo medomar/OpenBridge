@@ -6,6 +6,7 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 /** Helper to extract SpawnOptions from mock call args */
 function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
@@ -146,7 +147,7 @@ describe('MasterManager - SPAWN Task Decomposition', () => {
       },
     );
 
-    testWorkspace = path.join(process.cwd(), 'test-workspace-spawn-' + Date.now());
+    testWorkspace = path.join(os.tmpdir(), 'test-workspace-spawn-' + Date.now());
     await fs.mkdir(testWorkspace, { recursive: true });
 
     const dotFolderManager = new DotFolderManager(testWorkspace);
