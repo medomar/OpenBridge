@@ -117,6 +117,69 @@ export class KnowledgeRetriever {
   }
 
   /**
+   * Search directory dive JSONs for content relevant to the question.
+   * Returns synthetic Chunk objects for matching dives.
+   *
+   * OB-1337: dir-dive JSON loading — scans exploration/dirs/*.json for
+   * directory dive results whose path, key files, or insights match the
+   * question search terms.
+   */
+  private async searchDirDives(
+    question: string,
+    dives: Array<{ dirPath: string; resultPath: string }>,
+  ): Promise<Chunk[]> {
+    const searchTerms = this.buildSearchQuery(question).split(/\s+/).filter(Boolean);
+    if (searchTerms.length === 0) return [];
+
+    const questionLower = question.toLowerCase();
+    const chunks: Chunk[] = [];
+
+    for (const { dirPath } of dives) {
+      const dive = await this.dotFolderManager.readDirectoryDive(dirPath);
+      if (!dive) continue;
+
+      const diveLower = dive.path.toLowerCase();
+      const purposeLower = dive.purpose.toLowerCase();
+
+      // Directory path or purpose matches a search term, or question explicitly references the dir
+      const dirMatches =
+        questionLower.includes(diveLower) ||
+        searchTerms.some((t) => diveLower.includes(t) || purposeLower.includes(t));
+
+      // Key files in this dive relevant to the question
+      const relevantFiles = dive.keyFiles.filter((kf) => {
+        const kfLower = kf.path.toLowerCase();
+        const kfPurposeLower = kf.purpose.toLowerCase();
+        return searchTerms.some((t) => kfLower.includes(t) || kfPurposeLower.includes(t));
+      });
+
+      // Insights in this dive relevant to the question
+      const relevantInsights = dive.insights.filter((insight) =>
+        searchTerms.some((t) => insight.toLowerCase().includes(t)),
+      );
+
+      if (!dirMatches && relevantFiles.length === 0 && relevantInsights.length === 0) continue;
+
+      // Build a compact content string for this dive
+      const lines: string[] = [`${dive.path}: ${dive.purpose}`];
+      for (const kf of relevantFiles.slice(0, 5)) {
+        lines.push(`  ${kf.path} (${kf.type}): ${kf.purpose}`);
+      }
+      for (const insight of relevantInsights.slice(0, 3)) {
+        lines.push(`  ${insight}`);
+      }
+
+      chunks.push({
+        scope: dive.path,
+        category: 'structure' as const,
+        content: lines.join('\n'),
+      });
+    }
+
+    return chunks;
+  }
+
+  /**
    * Match workspace map key files against terms extracted from the question.
    * Returns synthetic Chunk objects for each matched file.
    *
@@ -188,6 +251,16 @@ export class KnowledgeRetriever {
       if (mapChunks.length > 0) {
         result.chunks.push(...mapChunks);
         result.sources.push('workspace-map');
+      }
+    }
+
+    // --- Dir-dive JSON loading (OB-1337) ---
+    const dirDives = await this.dotFolderManager.listDirDiveResults();
+    if (dirDives.length > 0) {
+      const diveChunks = await this.searchDirDives(question, dirDives);
+      if (diveChunks.length > 0) {
+        result.chunks.push(...diveChunks);
+        result.sources.push('dir-dive');
       }
     }
 
