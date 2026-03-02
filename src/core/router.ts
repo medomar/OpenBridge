@@ -521,6 +521,11 @@ export class Router {
     if (event.type === 'worker-result') {
       await this.sendWorkerExecutionSummary(connector, recipient, event);
     }
+
+    // Send phase transition message when a Deep Mode phase completes (OB-1415)
+    if (event.type === 'deep-phase' && event.status === 'completed') {
+      await this.sendDeepPhaseTransitionMessage(connector, recipient, event);
+    }
   }
 
   /**
@@ -568,6 +573,82 @@ export class Router {
       logger.warn(
         { err, recipient },
         'sendWorkerExecutionSummary: failed to send execution summary',
+      );
+    }
+  }
+
+  /**
+   * Build and send a phase transition message to the user after a Deep Mode phase completes.
+   *
+   * Includes a completion header with item count, a brief snippet of the phase output, and
+   * per-phase guidance for the next available actions (/proceed, /focus N, /skip N, etc.).
+   *
+   * Called from sendProgress() when a deep-phase event with status 'completed' arrives (OB-1415).
+   */
+  private async sendDeepPhaseTransitionMessage(
+    connector: Connector,
+    recipient: string,
+    event: Extract<ProgressEvent, { type: 'deep-phase' }>,
+  ): Promise<void> {
+    const { sessionId, phase } = event;
+
+    // Try to get the full phase result for item counting and an extended snippet
+    const fullResult = this.master
+      ?.getDeepModeManager()
+      .getPhaseResult(sessionId, phase as DeepPhase);
+
+    const outputText = fullResult?.output ?? event.resultSummary ?? '';
+
+    // Count numbered list items (e.g. "1. Finding" or "1) Task")
+    const numberedCount = (outputText.match(/^\s*\d+[.)]\s/gm) ?? []).length;
+    const itemCount = numberedCount > 0 ? numberedCount : undefined;
+
+    // Build a concise summary snippet (first 300 chars of the result)
+    const snippet =
+      outputText.length > 0
+        ? outputText.slice(0, 300).trimEnd() + (outputText.length > 300 ? '…' : '')
+        : '';
+
+    // Per-phase completion header and tailored next-action guidance
+    const phaseMessages: Record<string, { header: string; guidance: string }> = {
+      investigate: {
+        header: `*Investigation complete*${itemCount !== undefined ? ` — ${itemCount} finding${itemCount !== 1 ? 's' : ''} identified` : ''}.`,
+        guidance:
+          'To dig deeper into a finding: `/focus N`\nTo proceed to the report phase: `/proceed`',
+      },
+      report: {
+        header: `*Report ready*${itemCount !== undefined ? ` — ${itemCount} item${itemCount !== 1 ? 's' : ''}` : ''}.`,
+        guidance:
+          'To focus on a specific finding: `/focus N`\nTo proceed to the plan phase: `/proceed`',
+      },
+      plan: {
+        header: `*Plan ready*${itemCount !== undefined ? ` — ${itemCount} task${itemCount !== 1 ? 's' : ''}` : ''}.`,
+        guidance: 'To skip a task: `/skip N`\nTo execute the plan: `/proceed`',
+      },
+      execute: {
+        header: '*Execution complete.*',
+        guidance: 'To run verification checks: `/proceed`',
+      },
+      verify: {
+        header: '*Verification complete. Deep Mode session finished.*',
+        guidance: 'Send `/phase` to review the full results.',
+      },
+    };
+
+    const phaseInfo = phaseMessages[phase];
+    if (!phaseInfo) return; // Unknown phase — skip
+
+    const parts: string[] = [phaseInfo.header];
+    if (snippet) parts.push('', snippet);
+    parts.push('', phaseInfo.guidance);
+
+    try {
+      await connector.sendMessage({ target: connector.name, recipient, content: parts.join('\n') });
+      logger.debug({ recipient, sessionId, phase }, 'Deep Mode phase transition message sent');
+    } catch (err) {
+      logger.warn(
+        { err, recipient, sessionId, phase },
+        'sendDeepPhaseTransitionMessage: failed to send',
       );
     }
   }
