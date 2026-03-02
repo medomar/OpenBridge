@@ -262,12 +262,13 @@ export class CodexAdapter implements CLIAdapter {
     let prompt = sanitizePrompt(opts.prompt);
     const systemParts: string[] = [];
 
-    // Inject sandbox constraint as substitute for --allowedTools when restrictions are set
-    if (opts.allowedTools && opts.allowedTools.length > 0) {
-      const constraint = SANDBOX_CONSTRAINTS[sandboxMode];
-      if (constraint) {
-        systemParts.push(constraint);
-      }
+    // Inject behavioral constraint based on sandbox mode — always applied so Codex
+    // receives guidance appropriate for its access level.  In particular, read-only
+    // workers always get the file-read-only instruction, preventing shell gymnastics
+    // even when no explicit allowedTools list was passed.
+    const constraint = SANDBOX_CONSTRAINTS[sandboxMode];
+    if (constraint) {
+      systemParts.push(constraint);
     }
 
     if (opts.systemPrompt) {

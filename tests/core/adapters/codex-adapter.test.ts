@@ -36,8 +36,8 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     expect(config.args).toContain('--ephemeral');
     expect(config.args).toContain('--json');
     expect(config.args).toContain('-o');
-    // Prompt must be last
-    expect(config.args[config.args.length - 1]).toBe('List all files');
+    // Prompt is always last; it includes the read-only constraint prefix
+    expect(config.args[config.args.length - 1]).toContain('List all files');
   });
 
   it('always includes --skip-git-repo-check (required for non-git workspaces)', () => {
@@ -123,7 +123,8 @@ describe('CodexAdapter.buildSpawnConfig', () => {
       systemPrompt: 'You are helpful',
     });
     const prompt = config.args[config.args.length - 1];
-    expect(prompt).toBe('You are helpful\n\nDo something');
+    // systemPrompt is placed after the sandbox constraint and before the task prompt
+    expect(prompt).toContain('You are helpful\n\nDo something');
   });
 
   it('drops maxTurns silently (codex has no equivalent)', () => {
@@ -178,7 +179,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     });
     const ephemeralIdx = config.args.indexOf('--ephemeral');
     const jsonIdx = config.args.indexOf('--json');
-    const promptIdx = config.args.indexOf('Task');
+    const promptIdx = config.args.length - 1; // prompt is always last
     expect(ephemeralIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeGreaterThan(ephemeralIdx);
     expect(promptIdx).toBeGreaterThan(jsonIdx);
@@ -202,7 +203,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
       workspacePath: '/tmp/test',
     });
     const oIdx = config.args.indexOf('-o');
-    const promptIdx = config.args.indexOf('Task');
+    const promptIdx = config.args.length - 1; // prompt is always last
     expect(oIdx).toBeGreaterThanOrEqual(0);
     expect(promptIdx).toBeGreaterThan(oIdx + 1); // -o <file> <prompt>
   });
@@ -289,7 +290,7 @@ describe('CodexAdapter.buildSpawnConfig', () => {
     });
     const cIdx = config.args.indexOf('-c');
     const jsonIdx = config.args.indexOf('--json');
-    const promptIdx = config.args.indexOf('Task');
+    const promptIdx = config.args.length - 1; // prompt is always last
     expect(cIdx).toBeGreaterThanOrEqual(0);
     expect(jsonIdx).toBeGreaterThan(cIdx);
     expect(promptIdx).toBeGreaterThan(jsonIdx);
