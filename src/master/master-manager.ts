@@ -4027,6 +4027,18 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           // If the cleaned output (text outside SPAWN markers) is very short, prepare
           // a status message to show the user instead of a near-empty stub response.
           const cleanedOutput = spawnResult.cleanedOutput;
+          const originalLength = response.length;
+          const cleanedLength = cleanedOutput.length;
+          logger.debug(
+            { originalLength, cleanedLength, spawnCount: n },
+            'SPAWN marker stripping applied',
+          );
+          if (cleanedLength < 80 && originalLength > 200) {
+            logger.warn(
+              { originalLength, cleanedLength, spawnCount: n },
+              'Response truncated after SPAWN marker removal — generating status message',
+            );
+          }
           let statusMessage: string | undefined;
           if (cleanedOutput.length < 80) {
             const taskSummaries = spawnResult.markers.map((m) => {
@@ -4429,6 +4441,26 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           // If the cleaned output (text outside SPAWN markers) is very short, prepare
           // a status message to show the user instead of a near-empty stub response.
           const streamCleanedOutput = spawnResult.cleanedOutput;
+          const streamOriginalLength = fullResponse.length;
+          const streamCleanedLength = streamCleanedOutput.length;
+          logger.debug(
+            {
+              originalLength: streamOriginalLength,
+              cleanedLength: streamCleanedLength,
+              spawnCount: streamN,
+            },
+            'SPAWN marker stripping applied',
+          );
+          if (streamCleanedLength < 80 && streamOriginalLength > 200) {
+            logger.warn(
+              {
+                originalLength: streamOriginalLength,
+                cleanedLength: streamCleanedLength,
+                spawnCount: streamN,
+              },
+              'Response truncated after SPAWN marker removal — generating status message',
+            );
+          }
           let streamStatusMessage: string | undefined;
           if (streamCleanedOutput.length < 80) {
             const streamTaskSummaries = spawnResult.markers.map((m) => {
