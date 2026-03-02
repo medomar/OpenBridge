@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 135 | **In Progress:** 0 | **Done:** 37 (112 archived)
+> **Pending:** 134 | **In Progress:** 0 | **Done:** 38 (112 archived)
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -36,7 +36,7 @@
 | Phase  | Description                          | Tasks | Status          |
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
-| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (28/35 done)  |
+| Deep   | Deep Mode (OB-F56) — remaining       | 20    | ◻ (29/35 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -144,18 +144,18 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 
 ### Phase Deep-3 — Phase-Aware Workers (10 tasks)
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                 | Status    |
-| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 21  | OB-1417 | Create `DEEP_INVESTIGATE` worker prompt in `src/master/seed-prompts.ts` — instructions to explore codebase, identify relevant files, patterns, dependencies, potential issues. List every file examined. Categorize findings by type. Number each finding for reference                                                     | ✅ Done   |
-| 22  | OB-1418 | Create `DEEP_REPORT` worker prompt — organize investigation findings into: Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, Recommendations                                                                                                                                     | ✅ Done   |
-| 23  | OB-1419 | Create `DEEP_PLAN` worker prompt — for each finding: task description, files to modify, estimated complexity, dependencies on other tasks, risk level. Order by dependency and priority, group into parallel batches                                                                                                        | ✅ Done   |
-| 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ✅ Done   |
-| 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ✅ Done   |
-| 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ✅ Done   |
-| 27  | OB-1423 | Add parallel execution in execute phase — when plan defines independent tasks (no dependencies), spawn multiple workers simultaneously. Respect WorkerRegistry concurrency limit. Collect all results before advancing to verify                                                                                            | ✅ Done   |
-| 28  | OB-1424 | Add Deep Mode result aggregation — after all phases, compile final summary: phases completed, findings count, tasks executed, test results, executive summary. Send as final response                                                                                                                                       | ✅ Done   |
-| 29  | OB-1425 | Add Deep Mode history persistence — store complete session in .openbridge/deep-mode/session-{timestamp}.json with all phase results, decisions, skipped items. Provides review and prompt evolution training data                                                                                                           | ✅ Done   |
-| 30  | OB-1426 | Add tests in `tests/master/deep-mode.test.ts` — test: (1) investigation prompt includes task context, (2) report receives investigation results, (3) plan receives report, (4) execute spawns per plan, (5) verify runs checks, (6) parallel execution respects limits, (7) final summary includes counts. At least 7 tests | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                 | Status  |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 21  | OB-1417 | Create `DEEP_INVESTIGATE` worker prompt in `src/master/seed-prompts.ts` — instructions to explore codebase, identify relevant files, patterns, dependencies, potential issues. List every file examined. Categorize findings by type. Number each finding for reference                                                     | ✅ Done |
+| 22  | OB-1418 | Create `DEEP_REPORT` worker prompt — organize investigation findings into: Executive Summary, Detailed Findings (numbered with severity), Files Affected, Dependencies, Recommendations                                                                                                                                     | ✅ Done |
+| 23  | OB-1419 | Create `DEEP_PLAN` worker prompt — for each finding: task description, files to modify, estimated complexity, dependencies on other tasks, risk level. Order by dependency and priority, group into parallel batches                                                                                                        | ✅ Done |
+| 24  | OB-1420 | Create `DEEP_EXECUTE` worker prompt — execute specific task from plan with given files and constraints. Make minimum changes, run tests after, report changes and test results                                                                                                                                              | ✅ Done |
+| 25  | OB-1421 | Create `DEEP_VERIFY` worker prompt — run npm test, lint, typecheck, build. Report pass/fail for each. Identify cause of failures and which task introduced them                                                                                                                                                             | ✅ Done |
+| 26  | OB-1422 | Wire phase-specific prompts into DeepModeManager — use corresponding DEEP\_\* template per phase. Pass previous phase results as context: investigation feeds report, report feeds plan, plan feeds execute                                                                                                                 | ✅ Done |
+| 27  | OB-1423 | Add parallel execution in execute phase — when plan defines independent tasks (no dependencies), spawn multiple workers simultaneously. Respect WorkerRegistry concurrency limit. Collect all results before advancing to verify                                                                                            | ✅ Done |
+| 28  | OB-1424 | Add Deep Mode result aggregation — after all phases, compile final summary: phases completed, findings count, tasks executed, test results, executive summary. Send as final response                                                                                                                                       | ✅ Done |
+| 29  | OB-1425 | Add Deep Mode history persistence — store complete session in .openbridge/deep-mode/session-{timestamp}.json with all phase results, decisions, skipped items. Provides review and prompt evolution training data                                                                                                           | ✅ Done |
+| 30  | OB-1426 | Add tests in `tests/master/deep-mode.test.ts` — test: (1) investigation prompt includes task context, (2) report receives investigation results, (3) plan receives report, (4) execute spawns per plan, (5) verify runs checks, (6) parallel execution respects limits, (7) final summary includes counts. At least 7 tests | ✅ Done |
 
 ### Phase Deep-4 — User Preferences & Polish (5 tasks)
 

@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Prevent actual file-system writes from compileFinalSummary → persistSession
+vi.mock('node:fs/promises', () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
 import {
   DeepModeManager,
   PHASE_MODEL_MAP,
@@ -689,5 +695,311 @@ describe('DeepModeManager.buildBatchWorkerPrompts()', () => {
     const sid = manager.startSession('refactor task', 'thorough')!;
     const emptyBatch: DeepExecuteBatch = [];
     expect(manager.buildBatchWorkerPrompts(sid, emptyBatch)).toEqual([]);
+  });
+});
+
+// ── buildWorkerPrompt — phase context injection ────────────────────
+
+describe('DeepModeManager.buildWorkerPrompt()', () => {
+  let manager: DeepModeManager;
+
+  beforeEach(() => {
+    manager = new DeepModeManager(fakeHost);
+  });
+
+  it('(1) investigation prompt includes the user task context and workspacePath', () => {
+    const sid = manager.startSession('fix the authentication bug', 'thorough')!;
+    const prompt = manager.buildWorkerPrompt(sid, {
+      workspacePath: '/tmp/test-workspace',
+      projectName: 'TestApp',
+      projectType: 'Node.js / TypeScript',
+      frameworks: 'Express, Vitest',
+      structure: 'src/ tests/ package.json',
+    });
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain('fix the authentication bug');
+    expect(prompt).toContain('/tmp/test-workspace');
+  });
+
+  it('(2) report phase prompt receives investigation findings as context', () => {
+    const sid = manager.startSession('analyse security', 'thorough')!;
+    const investigateOutput =
+      '**Finding #1** · bug · severity: high — SQL injection in login route\n' +
+      '**Finding #2** · missing-test · severity: medium — no test for /logout';
+    manager.advancePhase(sid, {
+      phase: 'investigate',
+      output: investigateOutput,
+      completedAt: new Date().toISOString(),
+    });
+    // session is now in the report phase
+    const prompt = manager.buildWorkerPrompt(sid);
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain(investigateOutput);
+  });
+
+  it('(3) plan phase prompt receives report findings as context', () => {
+    const sid = manager.startSession('refactor module', 'thorough')!;
+    const reportOutput =
+      '## Executive Summary\nThe codebase has critical security issues.\n\n' +
+      '**Finding #1** · high priority item requiring immediate fix.';
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, {
+      phase: 'report',
+      output: reportOutput,
+      completedAt: new Date().toISOString(),
+    });
+    // session is now in the plan phase
+    const prompt = manager.buildWorkerPrompt(sid);
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain(reportOutput);
+  });
+
+  it('(4) execute phase prompt includes plan context and task-specific details', () => {
+    const sid = manager.startSession('implement features', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+    // session is now in the execute phase
+    const prompt = manager.buildWorkerPrompt(sid, {
+      taskNumber: 1,
+      taskTitle: 'Fix return value in router',
+      taskDescription: 'Add a missing return statement at line 142',
+      filesToModify: 'src/core/router.ts',
+    });
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain('Task #1');
+    expect(prompt).toContain('Fix return value in router');
+    expect(prompt).toContain(SAMPLE_PLAN_OUTPUT);
+  });
+
+  it('(5) verify phase prompt includes executed task output so checks run against it', () => {
+    const sid = manager.startSession('verify implementation', 'thorough')!;
+    const executeOutput =
+      'Modified src/core/router.ts line 142 — added return statement. ' +
+      'All changes from the plan have been applied.';
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, makeResult('plan'));
+    manager.advancePhase(sid, {
+      phase: 'execute',
+      output: executeOutput,
+      completedAt: new Date().toISOString(),
+    });
+    // session is now in the verify phase
+    const prompt = manager.buildWorkerPrompt(sid);
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain(executeOutput);
+  });
+
+  it('uses fallback placeholder when previous phase has no result', () => {
+    // Simulate report phase with no investigate result stored
+    const sid = manager.startSession('edge-case task', 'thorough')!;
+    // Skip investigate (no result stored) then advance
+    manager.skipPhase(sid); // investigate → report (no result)
+    const prompt = manager.buildWorkerPrompt(sid);
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain('no investigation results available');
+  });
+
+  it('returns undefined for an unknown session', () => {
+    expect(manager.buildWorkerPrompt('ghost-session')).toBeUndefined();
+  });
+
+  it('returns undefined when all phases are complete', () => {
+    const sid = manager.startSession('done task', 'thorough')!;
+    const phases: DeepPhase[] = ['investigate', 'report', 'plan', 'execute', 'verify'];
+    for (const phase of phases) {
+      manager.advancePhase(sid, makeResult(phase));
+    }
+    expect(manager.buildWorkerPrompt(sid)).toBeUndefined();
+  });
+});
+
+// ── (6) Parallel execution respects limits ────────────────────────
+
+describe('DeepModeManager — parallel execution batching', () => {
+  let manager: DeepModeManager;
+
+  beforeEach(() => {
+    manager = new DeepModeManager(fakeHost);
+  });
+
+  it('tasks within the same batch have no inter-dependencies', () => {
+    const sid = manager.startSession('parallel task', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT, // batch 1: tasks #1, #2 — batch 2: task #3 (deps on 1,2)
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid)!;
+    expect(batches).toBeDefined();
+    expect(batches).toHaveLength(2);
+
+    // First batch: tasks #1 and #2 are independent — no deps on each other
+    const batch1Nums = batches[0].map((t) => t.taskNumber);
+    const batch2Nums = batches[1].map((t) => t.taskNumber);
+    expect(batch1Nums).toContain(1);
+    expect(batch1Nums).toContain(2);
+    // Second batch: task #3 depends on #1 and #2 so must be separate
+    expect(batch2Nums).toContain(3);
+  });
+
+  it('skipped tasks are excluded from all batches (respects concurrency limits)', () => {
+    const sid = manager.startSession('partial execution', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+    manager.skipItem(sid, 2); // skip task #2
+
+    const batches = manager.getExecuteBatches(sid)!;
+    const allNums = batches.flatMap((b) => b.map((t) => t.taskNumber));
+    expect(allNums).not.toContain(2);
+    expect(allNums).toContain(1);
+    expect(allNums).toContain(3);
+  });
+
+  it('each task appears exactly once across all batches', () => {
+    const sid = manager.startSession('exact once', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT,
+      completedAt: new Date().toISOString(),
+    });
+
+    const batches = manager.getExecuteBatches(sid)!;
+    const allNums = batches.flatMap((b) => b.map((t) => t.taskNumber)).sort((a, b) => a - b);
+    expect(allNums).toEqual([1, 2, 3]);
+  });
+});
+
+// ── (7) compileFinalSummary includes counts ───────────────────────
+
+describe('DeepModeManager.compileFinalSummary()', () => {
+  let manager: DeepModeManager;
+
+  beforeEach(() => {
+    manager = new DeepModeManager(fakeHost);
+  });
+
+  it('(7) includes correct phasesCompleted count after partial run', () => {
+    const sid = manager.startSession('analyse codebase', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, makeResult('plan'));
+    // session still active (execute + verify not run)
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.phasesCompleted).toBe(3);
+    expect(summary!.completedPhaseNames).toEqual(['investigate', 'report', 'plan']);
+  });
+
+  it('includes findingsCount extracted from numbered items in report output', () => {
+    const sid = manager.startSession('security check', 'thorough')!;
+    const reportOutput = [
+      '## Executive Summary',
+      'Critical issues found.',
+      '',
+      '**Finding #1** · bug · severity: critical',
+      '**Finding #2** · missing-test · severity: medium',
+      '**Finding #3** · security · severity: high',
+    ].join('\n');
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, {
+      phase: 'report',
+      output: reportOutput,
+      completedAt: new Date().toISOString(),
+    });
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.findingsCount).toBe(3);
+  });
+
+  it('includes tasksExecuted and tasksSkipped counts from plan output', () => {
+    const sid = manager.startSession('big refactor', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, {
+      phase: 'plan',
+      output: SAMPLE_PLAN_OUTPUT, // 3 tasks defined
+      completedAt: new Date().toISOString(),
+    });
+    manager.skipItem(sid, 1); // user skips task #1
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.tasksSkipped).toBe(1);
+    expect(summary!.tasksExecuted).toBe(2); // 3 total - 1 skipped
+  });
+
+  it('detects a pass verdict from the verify output', () => {
+    const sid = manager.startSession('check implementation', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, makeResult('plan'));
+    manager.advancePhase(sid, makeResult('execute'));
+    manager.advancePhase(sid, {
+      phase: 'verify',
+      output: '✅ All tests passed — 150 tests passed, 0 skipped\nOverall verdict: PASSED',
+      completedAt: new Date().toISOString(),
+    });
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.testVerdict).toBe('pass');
+  });
+
+  it('detects a fail verdict from the verify output', () => {
+    const sid = manager.startSession('check implementation', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+    manager.advancePhase(sid, makeResult('report'));
+    manager.advancePhase(sid, makeResult('plan'));
+    manager.advancePhase(sid, makeResult('execute'));
+    manager.advancePhase(sid, {
+      phase: 'verify',
+      output: '❌ 3 failing tests found — npm test failed\nVerdict: FAILED',
+      completedAt: new Date().toISOString(),
+    });
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.testVerdict).toBe('fail');
+  });
+
+  it('taskSummary in the result matches the original user request', () => {
+    const sid = manager.startSession('fix memory leak', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.taskSummary).toBe('fix memory leak');
+  });
+
+  it('formattedResponse includes task summary in the title line', () => {
+    const sid = manager.startSession('fix memory leak', 'thorough')!;
+    manager.advancePhase(sid, makeResult('investigate'));
+
+    const summary = manager.compileFinalSummary(sid);
+    expect(summary).not.toBeNull();
+    expect(summary!.formattedResponse).toContain('fix memory leak');
+  });
+
+  it('returns null for an unknown session', () => {
+    const summary = manager.compileFinalSummary('ghost-session');
+    expect(summary).toBeNull();
   });
 });
