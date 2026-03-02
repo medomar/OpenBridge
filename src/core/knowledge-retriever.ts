@@ -24,14 +24,19 @@ export interface ExtractedEntities {
 // ---------------------------------------------------------------------------
 // Stop words for FTS5 query parsing
 // ---------------------------------------------------------------------------
-
+// Only true function words — articles, conjunctions, prepositions, auxiliary
+// verbs, and pronouns. Domain-relevant short terms like "api", "ui", "db",
+// "cli", "ai" are intentionally NOT listed here so they survive the filter.
 const STOP_WORDS = new Set([
+  // Articles
   'a',
   'an',
   'the',
+  // Conjunctions
   'and',
   'or',
   'but',
+  // Prepositions
   'in',
   'on',
   'at',
@@ -41,6 +46,8 @@ const STOP_WORDS = new Set([
   'with',
   'by',
   'from',
+  'into',
+  // Verb forms
   'is',
   'are',
   'was',
@@ -54,6 +61,7 @@ const STOP_WORDS = new Set([
   'do',
   'does',
   'did',
+  // Modal verbs
   'will',
   'would',
   'could',
@@ -61,36 +69,20 @@ const STOP_WORDS = new Set([
   'may',
   'might',
   'can',
+  // Pronouns / determiners
+  'it',
+  'its',
   'this',
   'that',
   'these',
   'those',
-  'it',
-  'its',
-  'what',
-  'which',
-  'who',
-  'how',
-  'where',
-  'when',
-  'why',
-  'not',
-  'no',
-  'so',
-  'if',
-  'as',
-  'about',
-  'into',
-  'through',
-  'than',
-  'then',
-  'there',
-  'here',
-  'up',
-  'out',
   'my',
   'your',
   'their',
+  // Other common function words
+  'so',
+  'if',
+  'as',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -172,15 +164,18 @@ export class KnowledgeRetriever {
 
   /**
    * Parse a natural-language question into a cleaned FTS5 search query string.
-   * Splits on whitespace, removes stop words and very short tokens (<= 2 chars),
+   * Splits on whitespace, removes stop words and very short tokens (< 2 chars),
    * and returns the remaining terms joined by spaces for FTS5 MATCH.
+   * Domain-relevant 2-char terms (api, ui, db, cli, ai) are preserved.
+   * Fallback: if all tokens are filtered out, returns the original query so
+   * FTS5 always has something to search with.
    */
   private buildSearchQuery(question: string): string {
-    return question
+    const tokens = question
       .toLowerCase()
       .split(/\s+/)
-      .filter((term) => term.length > 2 && !STOP_WORDS.has(term))
-      .join(' ');
+      .filter((term) => term.length > 1 && !STOP_WORDS.has(term));
+    return tokens.length > 0 ? tokens.join(' ') : question.trim();
   }
 
   /**
