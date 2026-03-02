@@ -3990,6 +3990,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       let knowledgeContext: string | undefined;
       if (taskClass === 'quick-answer' && this.knowledgeRetriever) {
         const knowledgeResult = await this.knowledgeRetriever.query(message.content);
+        logger.info(
+          {
+            question: message.content.slice(0, 80),
+            confidence: knowledgeResult.confidence,
+            chunkCount: knowledgeResult.chunks.length,
+            sources: knowledgeResult.sources,
+          },
+          'RAG query completed',
+        );
+        if (knowledgeResult.confidence < 0.3) {
+          logger.debug(
+            { confidence: knowledgeResult.confidence },
+            'Low confidence, worker may be needed',
+          );
+        }
         if (knowledgeResult.confidence >= 0.3) {
           knowledgeContext = this.knowledgeRetriever.formatKnowledgeContext(knowledgeResult);
         }
