@@ -98,6 +98,7 @@ import {
   type AuditRecord,
   type AuditSearchOptions,
 } from './audit-store.js';
+import { QACacheStore } from './qa-cache-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -141,6 +142,7 @@ export type {
 export type { AccessControlEntry, AccessRole } from './access-store.js';
 export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
+export type { QACacheEntry } from './qa-cache-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -162,6 +164,10 @@ export interface ExplorationProgressRow {
 export class MemoryManager {
   private dbPath: string;
   private db: Database.Database | null = null;
+  private _qaCacheEvictionTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Q&A cache store — available after init(). */
+  qaCache!: QACacheStore;
 
   constructor(dbPath: string) {
     this.dbPath = dbPath;
@@ -173,10 +179,25 @@ export class MemoryManager {
 
   init(): Promise<void> {
     this.db = openDatabase(this.dbPath);
+    this.qaCache = new QACacheStore(this.db);
+
+    // Evict Q&A cache entries older than 7 days on init and then daily.
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    this.qaCache.evictStale(SEVEN_DAYS_MS);
+    this._qaCacheEvictionTimer = setInterval(() => {
+      if (this.db) this.qaCache.evictStale(SEVEN_DAYS_MS);
+    }, ONE_DAY_MS);
+    this._qaCacheEvictionTimer.unref();
+
     return Promise.resolve();
   }
 
   close(): Promise<void> {
+    if (this._qaCacheEvictionTimer) {
+      clearInterval(this._qaCacheEvictionTimer);
+      this._qaCacheEvictionTimer = null;
+    }
     if (this.db) {
       try {
         this.db.pragma('wal_checkpoint(TRUNCATE)');
