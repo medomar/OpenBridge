@@ -59,6 +59,8 @@
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
     "bench": "vitest bench",
+    "cleanup-db": "tsx scripts/cleanup-openbridge-db.ts",
+    "patch-task": "node scripts/patch-task-status.mjs",
     "changelog": "bash scripts/generate-changelog.sh",
     "clean": "rm -rf dist coverage",
     "prebuild": "cd node_modules/better-sqlite3 && prebuildify --napi --target 22.0.0",
