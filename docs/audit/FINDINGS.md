@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 33 | **Fixed:** 59 | **Last Audit:** 2026-03-02
+> **Open:** 32 | **Fixed:** 60 | **Last Audit:** 2026-03-02
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md)
 
@@ -14,17 +14,17 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 
 ### Tier 1 — Must-Fix for Marketplace Development
 
-| #      | Finding                                                  | Severity    | Marketplace Impact                                                                     | Status |
-| ------ | -------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------- | ------ |
-| OB-F57 | Workers cannot run tests or do deep code analysis        | 🟠 High     | Can't verify Marketplace code — no test/lint/typecheck in workers                      | Open   |
-| OB-F58 | `explore()` failure is unrecoverable                     | 🟠 High     | Exploration failure on any Marketplace project = Master stuck, must restart            | Open   |
-| OB-F59 | `parseAIResult()` has no runtime Zod validation          | 🟠 High     | Corrupt exploration data = Master misunderstands Marketplace codebase                  | Open   |
-| OB-F67 | Secondary workspace .openbridge is corrupted             | 🔴 Critical | Must clean before targeting Marketplace workspace paths                                | Open   |
-| OB-F66 | .openbridge data stale from early development            | 🟡 Medium   | Stale memory.md + workspace map misleads Master about project state                    | Open   |
-| OB-F70 | Environment variables leak sensitive secrets to workers  | 🔴 Critical | Marketplace backend has DB_URL, API keys, SMTP creds — all exposed to workers          | Open   |
-| OB-F76 | Keyword classifier misses execution/delegation keywords  | 🟠 High     | "start execution" classified as tool-use (15 turns) instead of complex-task (25 turns) | Open   |
-| OB-F77 | SPAWN marker stripping leaves empty/stub response        | 🟠 High     | Master output with SPAWN markers stripped to 29 chars — user gets no useful response   | Open   |
-| OB-F78 | No warning when response truncated after SPAWN stripping | 🟡 Medium   | Log shows `responseLength: 29` but no flag that original was 500+ chars pre-strip      | Open   |
+| #      | Finding                                                  | Severity    | Marketplace Impact                                                                     | Status   |
+| ------ | -------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------- | -------- |
+| OB-F57 | Workers cannot run tests or do deep code analysis        | 🟠 High     | Can't verify Marketplace code — no test/lint/typecheck in workers                      | Open     |
+| OB-F58 | `explore()` failure is unrecoverable                     | 🟠 High     | Exploration failure on any Marketplace project = Master stuck, must restart            | Open     |
+| OB-F59 | `parseAIResult()` has no runtime Zod validation          | 🟠 High     | Corrupt exploration data = Master misunderstands Marketplace codebase                  | Open     |
+| OB-F67 | Secondary workspace .openbridge is corrupted             | 🔴 Critical | Must clean before targeting Marketplace workspace paths                                | Open     |
+| OB-F66 | .openbridge data stale from early development            | 🟡 Medium   | Stale memory.md + workspace map misleads Master about project state                    | Open     |
+| OB-F70 | Environment variables leak sensitive secrets to workers  | 🔴 Critical | Marketplace backend has DB_URL, API keys, SMTP creds — all exposed to workers          | Open     |
+| OB-F76 | Keyword classifier misses execution/delegation keywords  | 🟠 High     | "start execution" classified as tool-use (15 turns) instead of complex-task (25 turns) | Open     |
+| OB-F77 | SPAWN marker stripping leaves empty/stub response        | 🟠 High     | Master output with SPAWN markers stripped to 29 chars — user gets no useful response   | ✅ Fixed |
+| OB-F78 | No warning when response truncated after SPAWN stripping | 🟡 Medium   | Log shows `responseLength: 29` but no flag that original was 500+ chars pre-strip      | Open     |
 
 ### Tier 2 — Important for Development Workflow (Sprints 1–3)
 
@@ -78,6 +78,7 @@ Improvements identified by analyzing [openclaw/openclaw](https://github.com/open
 | ------ | ---------------------------------------------------- | --------- | ---------------------------------------------------------------------------- | --------- |
 | OB-F54 | Complex tasks use same 180s timeout as quick answers | 🟠 High   | Complex tasks (25 turns) get 7.2s/turn, timeout every time, retry 4x → DLQ   | **Fixed** |
 | OB-F55 | Classification escalation over-triggers quick-answer | 🟡 Medium | Global success rate escalates every quick-answer to tool-use, wasting budget | **Fixed** |
+| OB-F77 | SPAWN marker stripping leaves empty/stub response    | 🟠 High   | Status message now generated when cleanedOutput < 80 and SPAWN markers found | **Fixed** |
 
 ---
 
