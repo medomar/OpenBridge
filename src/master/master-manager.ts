@@ -1151,6 +1151,9 @@ export class MasterManager {
 
         // OB-1569: Ensure FTS5 has indexed chunks even when exploration is skipped.
         // If the chunk store is empty, decompose the workspace map into searchable chunks.
+        // OB-1573: Also re-index if searchContext() returns 0 results — covers the case
+        // where the raw _workspace_map JSON chunk exists (countChunks > 0) but structured
+        // FTS5 chunks were never created, so typical user queries still return nothing.
         if (this.memory) {
           try {
             const chunkCount = await this.memory.countChunks();
@@ -1160,7 +1163,20 @@ export class MasterManager {
               );
               await this.indexWorkspaceMapAsChunks(map);
             } else {
-              logger.info({ chunkCount }, 'FTS5 chunk store has indexed content — RAG ready');
+              // OB-1573: Probe FTS5 with a workspace-derived query to confirm results are
+              // returned. If the probe returns 0 chunks, structured FTS5 chunks are missing
+              // and we re-index the workspace map to ensure RAG has something to search.
+              const probeQuery = map.projectName || map.projectType;
+              const probeResults = await this.memory.searchContext(probeQuery, 1);
+              if (probeResults.length === 0) {
+                logger.warn(
+                  { chunkCount, probeQuery },
+                  'FTS5 searchContext returns 0 results for workspace probe — indexing structured chunks (OB-1573)',
+                );
+                await this.indexWorkspaceMapAsChunks(map);
+              } else {
+                logger.info({ chunkCount }, 'FTS5 chunk store has indexed content — RAG ready');
+              }
             }
           } catch (err) {
             logger.warn(
