@@ -204,6 +204,11 @@ export class Bridge {
     // Wire auth service into router for SEND marker whitelist enforcement
     this.router.setAuth(this.auth);
 
+    // Wire security config into router for high-risk spawn confirmation
+    if (this.securityConfig) {
+      this.router.setSecurityConfig(this.securityConfig);
+    }
+
     // Attach the SQLite DB to the auth service for access_control enforcement
     if (this.memory) {
       const db = this.memory.getDb();
