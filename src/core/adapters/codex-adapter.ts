@@ -73,6 +73,71 @@ export function parseCodexJsonlOutput(stdout: string): string {
   return lastContent ?? stdout;
 }
 
+/**
+ * Extract human-readable text from a single Codex `--json` streaming JSONL chunk.
+ *
+ * Codex with `--json` emits one JSON event per line during streaming. This function
+ * parses a single line and extracts visible text content, returning null for events
+ * that are not user-visible (thread.started, item.started without output, etc.).
+ *
+ * Handled event types:
+ *   - `type: "message"` with `content` string → returns content
+ *   - `type: "item.completed"` + `item.type: "command_execution"` → formatted output
+ *   - `type: "item.completed"` + `item.type: "reasoning"` → reasoning text (if not hidden)
+ *   - All other event types → null (not user-visible)
+ *
+ * @param chunk A single line from Codex `--json` streaming output
+ * @returns Human-readable text, or null if the event has no user-visible content
+ */
+export function parseCodexStreamChunk(chunk: string): string | null {
+  const line = chunk.trim();
+  if (!line) return null;
+
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    // Not valid JSON — could be a partial line or mixed terminal output
+    return null;
+  }
+
+  const type = event['type'];
+
+  // type: "message" — final or intermediate message with string content
+  if (type === 'message' && typeof event['content'] === 'string') {
+    return event['content'];
+  }
+
+  // type: "item.completed" — completed reasoning step or command execution
+  if (type === 'item.completed') {
+    const item = event['item'];
+    if (!item || typeof item !== 'object') return null;
+    const itemObj = item as Record<string, unknown>;
+    const itemType = itemObj['type'];
+
+    // Reasoning step — extract text (skip if hidden or empty)
+    if (itemType === 'reasoning') {
+      const text = itemObj['text'];
+      if (typeof text === 'string' && text.trim()) {
+        return `[thinking] ${text.trim()}`;
+      }
+      return null;
+    }
+
+    // Command execution output
+    if (itemType === 'command_execution') {
+      const output = itemObj['output'];
+      if (typeof output === 'string' && output.trim()) {
+        return `[cmd] ${output.trim()}`;
+      }
+      return null;
+    }
+  }
+
+  // All other event types (thread.started, item.started, etc.) — not user-visible
+  return null;
+}
+
 /** Map capability levels to codex sandbox modes */
 const CAPABILITY_TO_SANDBOX: Record<CapabilityLevel, string> = {
   'read-only': 'read-only',
