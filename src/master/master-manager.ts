@@ -2751,8 +2751,8 @@ export class MasterManager {
 
   /**
    * Keyword-based task classifier — instant fallback when the AI classifier
-   * is unavailable or times out. Returns 'tool-use' as the default so that
-   * borderline messages get enough turns instead of timing out.
+   * is unavailable or times out. Returns 'quick-answer' as the default so that
+   * unrecognized conversational messages don't waste turns on tools (OB-1581).
    */
   private classifyTaskByKeywords(content: string): ClassificationResult {
     const lower = content.toLowerCase();
@@ -2916,13 +2916,15 @@ export class MasterManager {
       };
     }
 
-    // Default: tool-use for unclassified messages — safer than quick-answer since
-    // most non-question messages require file operations (e.g. "Haifa 2 personne")
+    // Default: quick-answer for unrecognized conversational messages — most messages
+    // that don't match any keyword are simple conversational requests that don't need
+    // file tools. If the AI classifier is available it will override this for tool-heavy
+    // requests (OB-1581).
     return {
-      class: 'tool-use',
-      maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-      reason: 'keyword fallback: tool-use',
+      class: 'quick-answer',
+      maxTurns: MESSAGE_MAX_TURNS_QUICK,
+      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+      reason: 'keyword fallback: quick-answer',
     };
   }
 
