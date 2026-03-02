@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import type { AIProvider, ProviderResult } from '../types/provider.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../types/message.js';
 import type { Connector } from '../types/connector.js';
-import type { RouterConfig } from '../types/config.js';
+import type { RouterConfig, SecurityConfig } from '../types/config.js';
 import type { AuditLogger } from './audit-logger.js';
 import type { MetricsCollector } from './metrics.js';
 import type { AgentOrchestrator } from './agent-orchestrator.js';
@@ -18,6 +18,10 @@ import type {
   SessionSummary,
 } from '../memory/index.js';
 import type { MessageQueue } from './queue.js';
+import type { RiskLevel } from '../types/agent.js';
+import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
+import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
+import { extractTaskSummaries } from '../master/spawn-parser.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
@@ -94,6 +98,22 @@ function getMimeType(filename: string): {
 interface PendingConfirmation {
   action: 'kill-all';
   expiresAt: number;
+}
+
+/** A pending spawn confirmation entry — queued when a high-risk SPAWN is intercepted. */
+export interface PendingSpawnEntry {
+  /** The SPAWN markers that need user confirmation before dispatch */
+  markers: ParsedSpawnMarker[];
+  /** The original inbound message that triggered the SPAWN */
+  message: InboundMessage;
+  /** Connector used to send the confirmation prompt */
+  connector: Connector;
+  /** One-line summaries of each high-risk task */
+  taskSummaries: string[];
+  /** Profile of the highest-risk SPAWN marker */
+  profile: string;
+  /** Risk level of the highest-risk marker */
+  riskLevel: RiskLevel;
 }
 
 /**
@@ -196,6 +216,10 @@ export class Router {
   private queue?: MessageQueue;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
+  /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
+  private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
+  /** Security config — controls confirmation requirements for high-risk spawns. */
+  private securityConfig?: SecurityConfig;
   /**
    * IDs of priority-1 messages that should trigger a checkpoint-handle-resume cycle.
    * Populated by the `onUrgentEnqueued` queue callback; consumed in `route()`.
@@ -263,6 +287,107 @@ export class Router {
         );
       }
     });
+  }
+
+  /** Set the security config — controls confirmation requirements for high-risk spawns */
+  setSecurityConfig(config: SecurityConfig): void {
+    this.securityConfig = config;
+    logger.info(
+      { confirmHighRisk: config.confirmHighRisk },
+      'Router configured with SecurityConfig',
+    );
+  }
+
+  /**
+   * Check whether a given tool-profile name maps to a high or critical risk level.
+   * Unknown/custom profiles default to 'high' (conservative).
+   */
+  private getProfileRisk(profileName: string): RiskLevel {
+    const parsed = BuiltInProfileNameSchema.safeParse(profileName);
+    if (parsed.success) {
+      return PROFILE_RISK_MAP[parsed.data];
+    }
+    return 'high';
+  }
+
+  /**
+   * Intercept high-risk SPAWN markers before dispatch and request user confirmation.
+   *
+   * Called by MasterManager (via the router reference) before spawning workers.
+   * When `security.confirmHighRisk` is enabled and any marker has a high or critical
+   * risk profile, this method:
+   *   1. Sends a confirmation prompt to the user listing the tasks and risk level.
+   *   2. Stores the pending spawn entry keyed by sender.
+   *   3. Returns `true` to signal the caller should defer dispatch.
+   *
+   * When confirmation is not required (low/medium risk, or confirmHighRisk disabled),
+   * returns `false` so the caller proceeds immediately.
+   */
+  public async requestSpawnConfirmation(
+    sender: string,
+    connector: Connector,
+    markers: ParsedSpawnMarker[],
+    message: InboundMessage,
+  ): Promise<boolean> {
+    if (!this.securityConfig?.confirmHighRisk) return false;
+
+    const highRiskMarkers = markers.filter((m) => {
+      const risk = this.getProfileRisk(m.profile);
+      return risk === 'high' || risk === 'critical';
+    });
+
+    if (highRiskMarkers.length === 0) return false;
+
+    const hasCritical = highRiskMarkers.some((m) => this.getProfileRisk(m.profile) === 'critical');
+    const riskLevel: RiskLevel = hasCritical ? 'critical' : 'high';
+    const firstHighRiskMarker = highRiskMarkers[0]!;
+    const summaries = extractTaskSummaries(highRiskMarkers);
+
+    this.pendingSpawnConfirmations.set(sender, {
+      markers,
+      message,
+      connector,
+      taskSummaries: summaries,
+      profile: firstHighRiskMarker.profile,
+      riskLevel,
+    });
+
+    const profileDisplay = firstHighRiskMarker.profile;
+    const riskDisplay = riskLevel.toUpperCase();
+    const taskList = summaries.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    const confirmText =
+      `⚠️ Confirmation required — ${highRiskMarkers.length} worker(s) with ${riskDisplay} risk` +
+      ` profile (${profileDisplay}):\n\n${taskList}\n\nReply "go" to proceed or "skip" to cancel.`;
+
+    const confirmMsg: OutboundMessage = {
+      target: message.source,
+      recipient: sender,
+      content: confirmText,
+    };
+    await connector.sendMessage(confirmMsg);
+
+    logger.info(
+      { sender, profile: profileDisplay, riskLevel, markerCount: highRiskMarkers.length },
+      'High-risk SPAWN intercepted — confirmation prompt sent to user',
+    );
+
+    return true;
+  }
+
+  /**
+   * Retrieve and remove the pending spawn confirmation entry for a sender.
+   * Returns `undefined` if no confirmation is pending for that sender.
+   * Used by the /confirm and /skip command handlers (OB-1388).
+   */
+  public takePendingSpawnConfirmation(sender: string): PendingSpawnEntry | undefined {
+    const entry = this.pendingSpawnConfirmations.get(sender);
+    this.pendingSpawnConfirmations.delete(sender);
+    return entry;
+  }
+
+  /** Check whether a pending spawn confirmation exists for a sender. */
+  public hasPendingSpawnConfirmation(sender: string): boolean {
+    return this.pendingSpawnConfirmations.has(sender);
   }
 
   /** Register an active connector */
