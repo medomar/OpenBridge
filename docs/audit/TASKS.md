@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 246 | **In Progress:** 0 | **Done:** 15
+> **Pending:** 245 | **In Progress:** 0 | **Done:** 16
 > **Last Updated:** 2026-03-02
 
 <details>
@@ -111,7 +111,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 4   | OB-1312 | Add `code-audit` guideline and SPAWN example to the Master system prompt in `src/master/master-system-prompt.ts` — in the "Worker Profiles" section, add a description of when to use `code-audit`: "Use `code-audit` when the user asks to test, analyze, audit, or verify code. Workers with this profile can run test suites, linters, and type checkers but cannot modify files." Add a SPAWN example: `[SPAWN:code-audit] Run the test suite and report failures [/SPAWN]` | ✅ Done   |
 | 5   | OB-1313 | Add "Deep Analysis Tasks" section to the Master system prompt in `src/master/master-system-prompt.ts` — add guidance for when users ask for deep code analysis: "For deep analysis requests (code audit, security review, refactoring assessment), spawn `code-audit` workers that can run tests and linters. Multiple workers can analyze different modules in parallel. Always include test results in your response."                                                        | ✅ Done   |
 | 6   | OB-1314 | Add `TASK_CODE_AUDIT` seed prompt template to `src/master/seed-prompts.ts` — create a template for code audit tasks that includes: (1) instructions to run `npm test`, `npm run lint`, `npm run typecheck` first, (2) guidance to read failing test files and source files to understand bugs, (3) format for reporting findings (severity, file, line, description, fix suggestion), (4) instruction to report test pass/fail counts                                           | ✅ Done   |
-| 7   | OB-1315 | Add tests for `code-audit` profile resolution in `tests/core/agent-runner.test.ts` — test: (1) `resolveTools('code-audit')` returns the correct `TOOLS_CODE_AUDIT` array, (2) the tool list includes `Bash(npm:test)` but NOT `Bash(*)` or `Write` or `Edit`, (3) `code-audit` profile is recognized in `BUILT_IN_PROFILES`. At least 3 test cases                                                                                                                              | ◻ Pending |
+| 7   | OB-1315 | Add tests for `code-audit` profile resolution in `tests/core/agent-runner.test.ts` — test: (1) `resolveTools('code-audit')` returns the correct `TOOLS_CODE_AUDIT` array, (2) the tool list includes `Bash(npm:test)` but NOT `Bash(*)` or `Write` or `Edit`, (3) `code-audit` profile is recognized in `BUILT_IN_PROFILES`. At least 3 test cases                                                                                                                              | ✅ Done   |
 | 8   | OB-1316 | Add test for `code-audit` SPAWN marker parsing in `tests/master/spawn-parser.test.ts` — test that a SPAWN marker with `profile: 'code-audit'` is correctly parsed and the profile name is preserved in the output. Test that unknown profiles still produce a warning. At least 2 test cases                                                                                                                                                                                    | ◻ Pending |
 
 ---
