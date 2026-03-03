@@ -344,6 +344,22 @@ export class WebChatConnector implements Connector {
 
     this.httpServer = server;
 
+    // ── WebSocket upgrade auth guard ──────────────────────────────────────────
+    // Validate the auth token before the ws library accepts the upgrade.
+    // Registered before WebSocketServer so this listener runs first.
+    server.on('upgrade', (req, socket) => {
+      const url = req.url ?? '/';
+      const auth = this.isAuthenticated(url, req);
+      if (!auth.ok) {
+        socket.write(
+          'HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nUnauthorized',
+        );
+        socket.destroy();
+        logger.warn({ url }, 'WebSocket upgrade rejected — invalid or missing auth token');
+      }
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     const wss = new WsServer({ server });
     this.wss = wss;
 

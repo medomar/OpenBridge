@@ -25,6 +25,7 @@ vi.mock('node:http', () => ({
       return {
         listen: vi.fn((_port: number, _host: string, cb: () => void) => cb()),
         close: vi.fn((cb?: (err?: Error) => void) => cb?.()),
+        on: vi.fn(),
       };
     }),
 }));

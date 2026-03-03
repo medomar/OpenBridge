@@ -25,6 +25,7 @@ let capturedHandler: ((req: IncomingMessage, res: ServerResponse) => void) | nul
 interface MockHttpServer {
   listen: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
 }
 
 const mockHttpServers: MockHttpServer[] = [];
@@ -37,6 +38,7 @@ vi.mock('node:http', () => ({
       const server: MockHttpServer = {
         listen: vi.fn((_port: number, _host: string, cb: () => void) => cb()),
         close: vi.fn((cb?: (err?: Error) => void) => cb?.()),
+        on: vi.fn(),
       };
       mockHttpServers.push(server);
       return server;
