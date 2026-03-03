@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 102 | **In Progress:** 0 | **Done:** 112 (112 archived)
+> **Pending:** 101 | **In Progress:** 0 | **Done:** 113 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -45,7 +45,7 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻               |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻ (1/15 done)   |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
@@ -302,7 +302,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1503 | Change default host from localhost to 0.0.0.0 in webchat config — binds to all interfaces for LAN access. Keep localhost as config fallback                                                                                                                  | ◻ Pending |
+| 1   | OB-1503 | Change default host from localhost to 0.0.0.0 in webchat config — binds to all interfaces for LAN access. Keep localhost as config fallback                                                                                                                  | ✅ Done   |
 | 2   | OB-1504 | Auto-detect local IP addresses on startup — use os.networkInterfaces() for non-internal IPv4. Display LAN URL in console. Handle multiple interfaces                                                                                                         | ◻ Pending |
 | 3   | OB-1505 | Display QR code with authenticated LAN URL — for phone scanning. Prefer tunnel URL for QR if tunnel active                                                                                                                                                   | ◻ Pending |
 | 4   | OB-1506 | Display public URL in console and WebChat header when tunnel active — add copy button next to URL in header. Show both LAN and public URLs in console                                                                                                        | ◻ Pending |
