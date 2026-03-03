@@ -1047,6 +1047,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/allow" command — grant pending tool escalation (OB-1586)
+    if (/^\/allow(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleAllowCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -1958,6 +1964,70 @@ export class Router {
       content: 'Spawn cancelled.',
       replyTo: message.id,
     });
+  }
+
+  /**
+   * Handle the built-in "/allow" command — grant a pending tool escalation (OB-1586).
+   *
+   * Syntax:
+   *   /allow <tool>               → grant single tool, scope: once (default)
+   *   /allow <profile>            → upgrade to named profile, scope: once
+   *   /allow <tool> --session     → grant for the entire session
+   *   /allow <tool> --permanent   → grant permanently (stored in DB)
+   *
+   * Clears the pending escalation for the sender and sends a confirmation.
+   * Grant scope wiring (session Map / permanent DB) is implemented in OB-1588.
+   */
+  private async handleAllowCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const entry = this.takePendingEscalation(message.sender);
+    if (!entry) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending tool escalation.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Allow: no pending escalation');
+      return;
+    }
+
+    // Parse: /allow <token> [--session | --permanent]
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice('/allow'.length).trim();
+
+    // Extract scope suffix
+    let scope: 'once' | 'session' | 'permanent' = 'once';
+    let grantArg = rest;
+    if (/--permanent$/i.test(rest)) {
+      scope = 'permanent';
+      grantArg = rest.replace(/\s*--permanent$/i, '').trim();
+    } else if (/--session$/i.test(rest)) {
+      scope = 'session';
+      grantArg = rest.replace(/\s*--session$/i, '').trim();
+    }
+
+    // Determine whether grantArg is a built-in profile name or a single tool
+    const isProfile = BuiltInProfileNameSchema.safeParse(grantArg).success;
+
+    const scopeLabel =
+      scope === 'once' ? 'this request' : scope === 'session' ? 'this session' : 'permanently';
+    const grantDescription = isProfile ? `profile upgrade to *${grantArg}*` : `tool *${grantArg}*`;
+
+    const confirmText =
+      `✅ Granted ${grantDescription} to worker ${entry.workerId} for ${scopeLabel}.\n` +
+      `Worker will be notified to retry with the granted access.`;
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: confirmText,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, workerId: entry.workerId, grantArg, scope, isProfile },
+      'Tool escalation granted via /allow',
+    );
   }
 
   /**
@@ -3345,6 +3415,11 @@ export class Router {
       '• /audit — list recent worker spawns',
       '• /apps — list running app instances with URLs',
       '• /scope — show workspace visibility rules and detected sensitive files',
+      '',
+      '*Tool Escalation*',
+      '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
+      '• /allow <tool|profile> --session — grant for the entire session',
+      '• /allow <tool|profile> --permanent — grant permanently',
       '',
       '*Deep Mode*',
       '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',
