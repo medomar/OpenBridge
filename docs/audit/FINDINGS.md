@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 18 | **Fixed:** 86 | **Last Audit:** 2026-03-02
+> **Open:** 20 | **Fixed:** 86 | **Last Audit:** 2026-03-03
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
@@ -518,6 +518,115 @@ Three layers of the problem:
 **Dependencies chain:** OB-F74 (extract UI) → OB-F73 (add auth) → OB-F75 (expose + mobile)
 
 **See also:** OB-F69 Phase 82 (tunnel integration), [FUTURE.md — WebChat Modernization](FUTURE.md)
+
+### Tier 2d — Autonomy & Continuity Improvements (v0.0.14)
+
+Improvements identified from real-world testing — the Master AI lacks runtime flexibility and batch execution capability.
+
+| #      | Finding                                                | Severity | Improvement Impact                                                                         | Status |
+| ------ | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------ | ------ |
+| OB-F93 | Workers cannot request elevated tool access at runtime | 🟠 High  | Workers fail silently when they need tools beyond their profile — no way to ask the user   | Open   |
+| OB-F94 | Master cannot loop through batch tasks autonomously    | 🟠 High  | "Implement all tasks one by one" spawns 1-2 workers then stops — no continuation mechanism | Open   |
+
+### OB-F93 — Workers cannot request elevated tool access at runtime (High)
+
+**Problem:** Workers are spawned with a fixed tool profile (e.g., `read-only`, `code-edit`). If a worker encounters a situation where it needs a tool outside its assigned profile — for example, a `read-only` worker discovering it needs to run `npm test` to verify a finding — it simply fails. There is no mechanism for the worker to request elevated access, for the Master to detect this need, or for the user to grant additional permissions mid-execution.
+
+The existing `requestSpawnConfirmation()` flow in the Router only applies **before** worker dispatch (pre-spawn), not during execution. The `consentMode` in `access_control` controls whether to ask before spawning high-risk workers, but doesn't handle runtime escalation.
+
+**Impact:** Workers waste turns trying to work around tool restrictions (especially Codex workers doing shell gymnastics per OB-F91). Users must manually re-request with a different instruction to get the Master to spawn a worker with a higher-privilege profile. This breaks the "zero config, AI does the work" principle.
+
+**Observed in logs:**
+
+```
+Worker spawned with read-only profile → discovers it needs Bash(npm:test)
+→ fails or wastes turns on workarounds → user gets incomplete result
+→ user must re-ask → Master spawns new worker with code-audit profile
+```
+
+**Proposed solution — Escalation Queue + Persistent Tool Grants:**
+
+1. **Escalation Queue** — new `pendingEscalations` map in the Router (mirrors `pendingSpawnConfirmations`):
+   - Worker fails with "tool not allowed" → Master detects failure reason
+   - Master creates an escalation request → Router sends to user via connector
+   - User replies `/allow Bash(npm:test)` or `/allow code-edit` (upgrade whole profile)
+   - Escalation has 60s TTL, auto-deny if no response
+   - Grant scope: `once` (this worker), `session` (all workers this session), `permanent` (stored in DB)
+
+2. **Persistent Tool Grants** — extend `access_control` table:
+   - New column `approved_tool_escalations` (JSON array of granted tools/profiles)
+   - When a user permanently grants a tool, it's added to their access entry
+   - Future workers auto-receive these grants without re-asking
+
+3. **Tiered Auto-Approval** — extend existing `consentMode`:
+   - `auto-approve-read` → also auto-approve `code-audit` escalations (low risk)
+   - New mode: `auto-approve-up-to-edit` → auto-approve up to `code-edit`, ask for `full-access`
+   - Follows existing risk hierarchy: `low → medium → high → critical`
+
+4. **Pre-flight Tool Analysis** — before spawning, Master predicts needed tools from task prompt:
+   - If predicted tools exceed assigned profile, ask upfront instead of failing mid-execution
+   - Reduces the "fail, ask, retry" cycle
+
+**Key files:** `src/core/router.ts`, `src/core/auth.ts`, `src/memory/access-store.ts`, `src/master/master-manager.ts`, `src/types/agent.ts`, `src/core/agent-runner.ts`
+
+**Scope:** ~18–22 tasks across Phase 97.
+
+---
+
+### OB-F94 — Master cannot loop through batch tasks autonomously (High)
+
+**Problem:** When a user sends a batch instruction like "implement all pending tasks one by one and commit after each," the Master AI treats it as a single message → single response cycle. It spawns 1-2 workers for the first task(s), sends a response, and stops. There is no mechanism for the Master to automatically continue to the next task after the current batch completes.
+
+The Master's `processMessage()` in `master-manager.ts` is purely request-response: receive message → classify → spawn workers → collect results → respond → done. There's no loop, no continuation trigger, no batch state tracking.
+
+**Impact:** Users who want automated multi-task execution must manually send "continue" or "next task" after every response. This defeats the purpose of autonomous task execution. The logs show exactly this pattern:
+
+```
+User: "implement pending tasks one by one, commit after each"
+Master: spawns 2 workers → completes → sends response → STOPS
+User must manually say: "continue with the next task"
+```
+
+**Proposed solution — Self-Messaging Loop + Batch State:**
+
+1. **Batch Mode Detection** — Master classifies batch requests:
+   - Keywords: "one by one", "all tasks", "each one", "implement all", "go through all"
+   - Sets `batchMode: true` with task source (TASKS.md, finding list, etc.)
+   - Stores batch plan: total items, current index, completed list
+
+2. **Self-Messaging Continuation** — after workers complete and response is sent:
+   - Master checks: is this a batch request? Are there remaining items?
+   - If yes, injects a synthetic `[CONTINUE:batch-{id}]` message into the Router
+   - Router recognizes `[CONTINUE:*]` as an internal continuation, re-invokes Master
+   - Master picks up next task from batch state, spawns workers, continues
+
+3. **Batch State Persistence** — stored in `.openbridge/batch-state.json`:
+   - `batchId`, `totalItems`, `currentIndex`, `completedItems[]`, `failedItems[]`
+   - Survives crashes and restarts — Master can resume interrupted batches
+   - User sees progress: "Task 3/15 done. Starting task 4..."
+
+4. **Progress Messages** — after each task:
+   - Send progress update: "Task OB-1412 done. Starting OB-1413... (3/149)"
+   - Include brief summary of what was done and what's next
+
+5. **Safety Rails:**
+   - `maxBatchIterations` config (default: 20) — prevents infinite loops
+   - `batchBudgetUsd` cap (default: $5.00) — stops when cumulative cost exceeds budget
+   - User can `/stop` or `/pause` at any time
+   - Auto-pause on worker failure (ask user whether to skip or retry)
+   - Batch timeout: max 2 hours total
+
+6. **Batch Commands:**
+   - `/pause` — pause batch execution (resume with `/continue`)
+   - `/continue` — resume paused batch
+   - `/batch` — show batch status (current task, progress, cost so far)
+   - `/batch abort` — cancel remaining tasks
+
+**Key files:** `src/master/master-manager.ts`, `src/core/router.ts`, `src/master/dotfolder-manager.ts`, `src/types/config.ts`, `src/types/agent.ts`
+
+**Scope:** ~20–24 tasks across Phase 98.
+
+---
 
 ### OB-F79 — Memory has no vector search — FTS5 only (High)
 

@@ -1,7 +1,7 @@
 # OpenBridge — Task List
 
-> **Pending:** 122 | **In Progress:** 0 | **Done:** 50 (112 archived)
-> **Last Updated:** 2026-03-02
+> **Pending:** 164 | **In Progress:** 0 | **Done:** 50 (112 archived)
+> **Last Updated:** 2026-03-03
 
 <details>
 <summary>Archive (764 tasks completed across Phases 1–86 + Deep-1)</summary>
@@ -37,6 +37,8 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
+| 97     | Runtime Permission Escalation        | 20    | ◻               |
+| 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻               |
 | 83     | Ephemeral App Server                 | 12    | ◻               |
 | 84     | Interaction Relay                    | 8     | ◻               |
@@ -49,13 +51,13 @@
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
-**Sprint 4 Remaining:** 168 tasks (v0.0.12)
+**Sprint 4 Remaining:** 210 tasks (v0.0.12) — includes Phases 97–98 (autonomy) before platform completion
 
-See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md) for version milestones.
+See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROADMAP.md](../ROADMAP.md) for version milestones.
 
 ---
 
-# Sprint 4: Platform Completion (v0.0.12) — 172 tasks
+# Sprint 4: Platform Completion (v0.0.12) — 210 tasks
 
 ## Phase RWT — Real-World Testing Fixes (OB-F89–F92) — 23 tasks
 
@@ -182,7 +184,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 5   | OB-1436 | Wire TunnelManager into Bridge startup in `src/core/bridge.ts` — if tunnel tool detected and tunnel.enabled is true, start tunnel during initialization. Store and log public URL                                                                                                           | ✅ Done   |
 | 6   | OB-1437 | Update file-server to return public URL in `src/core/file-server.ts` — add setPublicUrl() method. getFileUrl() returns tunnel URL when active, localhost otherwise                                                                                                                          | ✅ Done   |
 | 7   | OB-1438 | Update Master system prompt with tunnel capability — when tunnel active, add public URL info. When not active, note files only accessible on localhost                                                                                                                                      | ✅ Done   |
-| 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ◻ Pending |
+| 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ✅ Done   |
 | 9   | OB-1440 | Add tunnel config to `src/types/config.ts` — tunnel section: enabled (default: false), provider (auto/cloudflared/ngrok, default: auto), subdomain (optional). Add to schema and config.example.json                                                                                        | ◻ Pending |
 | 10  | OB-1441 | Add tests in `tests/core/tunnel-manager.test.ts` — test: (1) start() spawns with correct args, (2) stop() kills process, (3) getUrl() null when not started, (4) getUrl() returns URL after start, (5) isActive() correct state, (6) exit handler registered. At least 6 tests (mock spawn) | ◻ Pending |
 
@@ -360,6 +362,90 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13) and [ROADMAP.md](../ROADMAP.md
 | 10  | OB-1542 | Wire phase events from WebSocket — listen for deep-mode progress messages. Update stepper, show/hide buttons, render phase cards. Handle reconnection mid-Deep-Mode                                                                                     | ◻ Pending |
 | 11  | OB-1543 | Restore MCP management UI — re-implement REST routes (GET/POST/DELETE/PUT toggle for /api/mcp/servers) or restore from git. Wire to mcp-registry.ts backend. Simple server list panel from settings                                                     | ◻ Pending |
 | 12  | OB-1544 | Add tests in `tests/connectors/webchat/webchat-settings.test.ts` — test: (1) settings GET returns defaults, (2) PUT saves values, (3) Deep Mode events update stepper, (4) MCP endpoints respond, (5) settings persist across reloads. At least 5 tests | ◻ Pending |
+
+---
+
+## Phase 97 — Runtime Permission Escalation (OB-F93) — 20 tasks
+
+> **Goal:** Allow workers to request elevated tool access at runtime. Users grant/deny via chat. Grants can be one-time, session-scoped, or permanent. Extends existing consent flow. **Priority: High — enables OpenBridge to self-improve by requesting the tools it needs instead of failing silently.**
+
+### 97-1 — Escalation Queue & Router Commands (~8 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                             | Status    |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1584 | Add `PendingEscalation` interface in `src/core/router.ts` — fields: workerId, requestedTools (string[]), currentProfile, reason (string from worker failure), message (original InboundMessage), connector, timeoutHandle. Add `pendingEscalations` Map keyed by sender | ◻ Pending |
+| 2   | OB-1585 | Add `requestToolEscalation()` method to Router — sends escalation prompt to user: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or '/allow {profile}' to grant, '/deny' to reject." Sets 60s auto-deny timeout                                 | ◻ Pending |
+| 3   | OB-1586 | Add `/allow` command handler in Router — parse `/allow Bash(npm:test)` (single tool) or `/allow code-edit` (profile upgrade). Support scope suffix: `/allow code-edit --permanent`, `/allow Bash(npm:test) --session`. Default scope: `once`                            | ◻ Pending |
+| 4   | OB-1587 | Add `/deny` command handler in Router — reject pending escalation, notify Master to continue without the tool or abort the worker. Remove from pendingEscalations map                                                                                                   | ◻ Pending |
+| 5   | OB-1588 | Add escalation grant scopes — `once` (applies to current worker only), `session` (all workers this session, stored in-memory Map), `permanent` (stored in access_control DB). Wire each scope into the grant logic                                                      | ◻ Pending |
+| 6   | OB-1589 | Add `/permissions` command to Router — show current user's permanent tool grants, session grants, and consent mode. Lists all approved escalations with grant date                                                                                                      | ◻ Pending |
+| 7   | OB-1590 | Add escalation timeout handling — auto-deny after 60s with message "Escalation timed out — worker continuing with current profile." Log the timeout                                                                                                                     | ◻ Pending |
+| 8   | OB-1591 | Add escalation commands to `/help` output — include /allow, /deny, /permissions with brief descriptions                                                                                                                                                                 | ◻ Pending |
+
+### 97-2 — Master Failure Detection & Re-Spawn (~6 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                                           | Status    |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 9   | OB-1592 | Add tool-access failure detection in `src/master/master-manager.ts` — after worker completes, check if result contains "tool not allowed", "permission denied", or "not in allowedTools". Extract the tool name from the error message                | ◻ Pending |
+| 10  | OB-1593 | Wire failure detection to Router escalation — when tool-access failure detected, call `router.requestToolEscalation()` with worker context. If user grants, respawn the worker with upgraded profile/tools                                            | ◻ Pending |
+| 11  | OB-1594 | Add worker re-spawn after grant — when user approves escalation, spawn a new worker with the same prompt but upgraded allowedTools. Merge granted tools with original profile tools. Log the upgrade                                                  | ◻ Pending |
+| 12  | OB-1595 | Add pre-flight tool prediction in MasterManager — before spawning, analyze task prompt for tool-related keywords (test, lint, build, deploy, install). If predicted tools exceed profile, request upfront escalation instead of failing mid-execution | ◻ Pending |
+| 13  | OB-1596 | Add session tool grants cache — in-memory Map of `sender → Set<grantedTools>` cleared on Bridge restart. Workers auto-receive session-granted tools without re-asking                                                                                 | ◻ Pending |
+| 14  | OB-1597 | Add system prompt guidance for escalation — update Master system prompt: "If a worker fails due to tool restrictions, request escalation from the user. Explain what tool is needed and why."                                                         | ◻ Pending |
+
+### 97-3 — Persistent Grants & Config (~6 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                               | Status    |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 15  | OB-1598 | Add `approved_tool_escalations` column to `access_control` table in `src/memory/access-store.ts` — JSON array of permanently granted tool names. Migration adds column with default `[]`                                                                                                                                                                  | ◻ Pending |
+| 16  | OB-1599 | Add `getApprovedEscalations()` and `addApprovedEscalation()` to access-store — CRUD for permanent grants. `addApprovedEscalation(userId, channel, tool)` appends to JSON array                                                                                                                                                                            | ◻ Pending |
+| 17  | OB-1600 | Wire permanent grants into worker spawning — in MasterManager.spawnWorker(), merge user's `approved_tool_escalations` with profile tools before building allowedTools list                                                                                                                                                                                | ◻ Pending |
+| 18  | OB-1601 | Add `auto-approve-up-to-edit` consent mode — new mode that auto-approves escalations to `code-edit` or lower, asks for `full-access`. Add to ConsentMode type and wire into escalation logic                                                                                                                                                              | ◻ Pending |
+| 19  | OB-1602 | Add `openbridge access grants <user>` CLI command — list permanent tool grants for a user. `openbridge access revoke-grant <user> <tool>` removes a specific grant                                                                                                                                                                                        | ◻ Pending |
+| 20  | OB-1603 | Add tests in `tests/core/permission-escalation.test.ts` — test: (1) escalation prompt sent on tool failure, (2) /allow grants tool and respawns, (3) /deny rejects, (4) timeout auto-denies, (5) permanent grant persists in DB, (6) session grant clears on restart, (7) pre-flight prediction works, (8) auto-approve-up-to-edit mode. At least 8 tests | ◻ Pending |
+
+---
+
+## Phase 98 — Batch Task Continuation (OB-F94) — 22 tasks
+
+> **Goal:** Enable Master to autonomously loop through multi-task batch requests. Self-messaging continuation, persistent batch state, progress reporting, safety rails. **Priority: High — enables "implement all tasks" workflow, making OpenBridge useful for its own development.**
+
+### 98-1 — Batch Detection & State Machine (~8 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                     | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1604 | Add `BatchState` interface in `src/types/agent.ts` — fields: batchId, sourceType (tasks-md, findings, custom-list), totalItems, currentIndex, completedItems (array of {id, summary, status}), failedItems, startedAt, totalCostUsd, paused                                     | ◻ Pending |
+| 2   | OB-1605 | Add batch detection keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: "one by one", "all tasks", "each one", "implement all", "go through all", "for each", "iterate through", "all pending". Set `batchMode: true` in classification result | ◻ Pending |
+| 3   | OB-1606 | Create `src/master/batch-manager.ts` — BatchManager class with methods: createBatch(), advanceBatch(), pauseBatch(), resumeBatch(), abortBatch(), getStatus(), isActive(). Manages batch lifecycle                                                                              | ◻ Pending |
+| 4   | OB-1607 | Add batch plan generation — when batch detected, Master reads task source (TASKS.md, findings list), extracts individual items, creates ordered batch plan. Store in BatchState                                                                                                 | ◻ Pending |
+| 5   | OB-1608 | Add batch state persistence — save to `.openbridge/batch-state.json` after each item. Load on startup to resume interrupted batches. Delete on batch completion or abort                                                                                                        | ◻ Pending |
+| 6   | OB-1609 | Wire BatchManager into MasterManager — instantiate during init. In processMessage(), check if batch is active: if yes, process next item instead of re-parsing message                                                                                                          | ◻ Pending |
+| 7   | OB-1610 | Add `maxBatchIterations` and `batchBudgetUsd` to config in `src/types/config.ts` — defaults: maxBatchIterations=20, batchBudgetUsd=5.00, batchTimeoutMinutes=120. Zod validation                                                                                                | ◻ Pending |
+| 8   | OB-1611 | Add safety rail checks in BatchManager — before each iteration: check iteration count < max, cumulative cost < budget, elapsed time < timeout. If any exceeded, pause batch and notify user                                                                                     | ◻ Pending |
+
+### 98-2 — Self-Messaging Loop & Continuation (~7 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                               | Status    |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 9   | OB-1612 | Add `[CONTINUE:batch-{id}]` marker recognition in Router — detect internal continuation messages. Route to Master without auth checks or rate limiting. Log as internal continuation                                                      | ◻ Pending |
+| 10  | OB-1613 | Add continuation trigger in MasterManager — after workers complete and response sent, check BatchManager.isActive(). If yes, inject `[CONTINUE:batch-{id}]` synthetic message into Router after 2s delay                                  | ◻ Pending |
+| 11  | OB-1614 | Add progress messages between iterations — after each item completes, send to user: "Task {id} done. Starting {nextId}... ({current}/{total})" with brief summary of completed work                                                       | ◻ Pending |
+| 12  | OB-1615 | Add per-item commit support — when user requests "commit after each", BatchManager sets `commitAfterEach: true`. After each worker completes, spawn a `code-edit` worker with "git add and commit changes for: {task description}" prompt | ◻ Pending |
+| 13  | OB-1616 | Add failure handling in batch loop — when a worker fails, pause batch. Send to user: "Task {id} failed: {reason}. Reply '/batch skip' to skip and continue, '/batch retry' to retry, '/batch abort' to stop."                             | ◻ Pending |
+| 14  | OB-1617 | Add Master context injection for batches — inject batch context into Master system prompt: current item, completed items summary, remaining count. Prevents Master from losing track of batch progress                                    | ◻ Pending |
+| 15  | OB-1618 | Add batch completion summary — when all items done, send final summary: total completed, total failed, total skipped, cumulative cost, total duration, list of completed items with one-line summaries                                    | ◻ Pending |
+
+### 98-3 — Batch Commands & UX (~7 tasks)
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                | Status    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 16  | OB-1619 | Add `/pause` command to Router — pause active batch. Workers in progress finish, no new items started. Send "Batch paused at item {current}/{total}. Reply '/continue' to resume."                                                                                                                                                                                                                         | ◻ Pending |
+| 17  | OB-1620 | Add `/continue` command to Router — resume paused batch. Re-inject continuation message. Send "Resuming batch from item {current}..."                                                                                                                                                                                                                                                                      | ◻ Pending |
+| 18  | OB-1621 | Add `/batch` command to Router — show batch status: current item, progress (N/total), cost so far, elapsed time, failed items. Shows "No active batch" if none                                                                                                                                                                                                                                             | ◻ Pending |
+| 19  | OB-1622 | Add `/batch abort` command to Router — cancel remaining items. Send summary of what was completed. Clean up batch state file                                                                                                                                                                                                                                                                               | ◻ Pending |
+| 20  | OB-1623 | Add `/batch skip` command to Router — skip current failed item, mark as skipped, continue with next item                                                                                                                                                                                                                                                                                                   | ◻ Pending |
+| 21  | OB-1624 | Add batch commands to `/help` output — include /pause, /continue, /batch, /batch abort, /batch skip with descriptions                                                                                                                                                                                                                                                                                      | ◻ Pending |
+| 22  | OB-1625 | Add tests in `tests/master/batch-manager.test.ts` — test: (1) batch detection from keywords, (2) plan extraction from TASKS.md, (3) continuation message injected, (4) progress messages sent, (5) safety rails pause at limit, (6) pause/resume works, (7) failure pauses batch, (8) commit-after-each spawns commit worker, (9) abort cleans state, (10) batch state survives restart. At least 10 tests | ◻ Pending |
 
 ---
 

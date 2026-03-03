@@ -1,8 +1,8 @@
 # OpenBridge — Future Work
 
 > **Purpose:** Planned features, deferred findings, finalization items, and backlog for future versions.
-> **Last Updated:** 2026-03-02 | **Current Release:** v0.0.8 (Phases 1–73, 652 tasks shipped)
-> **33 open findings** — see [FINDINGS.md](FINDINGS.md) for full details
+> **Last Updated:** 2026-03-03 | **Current Release:** v0.0.8 (Phases 1–73, 652 tasks shipped)
+> **20 open findings** — see [FINDINGS.md](FINDINGS.md) for full details
 > **Current focus:** Marketplace Development Track — make OpenBridge effective for finishing 3 Marketplace projects (frontend, dashboard, backend services).
 
 ---
@@ -501,22 +501,91 @@ In-app settings and Deep Mode phase navigation for non-developer users.
 
 ---
 
+### Phase 97 — Runtime Permission Escalation (~20 tasks)
+
+**Finding:** OB-F93 — Workers cannot request elevated tool access at runtime.
+
+**Problem:** Workers are spawned with a fixed tool profile. If a `read-only` worker needs `Bash(npm:test)` to verify a finding, it fails silently or wastes turns on workarounds (OB-F91). There's no mechanism to request elevated access mid-execution, and no way for users to grant additional permissions without re-sending the entire task.
+
+**Why this must come before Docker/WebChat:** Permission escalation directly improves OpenBridge's ability to develop itself. When you tell OpenBridge to "implement task X", the worker often discovers it needs tools beyond its initial profile. Without escalation, it fails and you have to retry manually. With escalation, it asks you once and learns for next time.
+
+| Task | Finding | What                                                                                                                          | Key File                                   |
+| ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 1    | OB-F93  | Add `PendingEscalation` interface — workerId, requestedTools, currentProfile, reason, message, connector, timeoutHandle       | `src/core/router.ts`                       |
+| 2    | OB-F93  | Add `pendingEscalations` Map and `requestToolEscalation()` method to Router                                                   | `src/core/router.ts`                       |
+| 3    | OB-F93  | Add `/allow` command — parse tool name or profile name, support `--permanent` / `--session` scope suffix                      | `src/core/router.ts`                       |
+| 4    | OB-F93  | Add `/deny` command — reject escalation, notify Master                                                                        | `src/core/router.ts`                       |
+| 5    | OB-F93  | Implement grant scopes — `once`, `session` (in-memory Map), `permanent` (access_control DB)                                   | `src/core/router.ts`                       |
+| 6    | OB-F93  | Add `/permissions` command — show user's permanent and session grants                                                         | `src/core/router.ts`                       |
+| 7    | OB-F93  | Add 60s auto-deny timeout for escalation requests                                                                             | `src/core/router.ts`                       |
+| 8    | OB-F93  | Add escalation commands to `/help` output                                                                                     | `src/core/router.ts`                       |
+| 9    | OB-F93  | Add tool-access failure detection in MasterManager — detect "tool not allowed" in worker results                              | `src/master/master-manager.ts`             |
+| 10   | OB-F93  | Wire failure detection → Router escalation → user prompt                                                                      | `src/master/master-manager.ts`             |
+| 11   | OB-F93  | Add worker re-spawn after grant — same prompt, upgraded allowedTools                                                          | `src/master/master-manager.ts`             |
+| 12   | OB-F93  | Add pre-flight tool prediction — analyze task prompt for tool keywords before spawning                                        | `src/master/master-manager.ts`             |
+| 13   | OB-F93  | Add session tool grants cache — `sender → Set<tools>`, cleared on restart                                                     | `src/master/master-manager.ts`             |
+| 14   | OB-F93  | Update Master system prompt with escalation guidance                                                                          | `src/master/master-system-prompt.ts`       |
+| 15   | OB-F93  | Add `approved_tool_escalations` column to `access_control` table                                                              | `src/memory/access-store.ts`               |
+| 16   | OB-F93  | Add `getApprovedEscalations()` and `addApprovedEscalation()` CRUD functions                                                   | `src/memory/access-store.ts`               |
+| 17   | OB-F93  | Wire permanent grants into worker spawning — merge with profile tools                                                         | `src/master/master-manager.ts`             |
+| 18   | OB-F93  | Add `auto-approve-up-to-edit` consent mode                                                                                    | `src/memory/access-store.ts`               |
+| 19   | OB-F93  | Add `openbridge access grants` and `openbridge access revoke-grant` CLI commands                                              | `src/cli/access.ts`                        |
+| 20   | OB-F93  | Tests: escalation prompt, /allow, /deny, timeout, persistent grants, session grants, pre-flight, auto-approve mode (8+ tests) | `tests/core/permission-escalation.test.ts` |
+
+---
+
+### Phase 98 — Batch Task Continuation (~22 tasks)
+
+**Finding:** OB-F94 — Master cannot loop through batch tasks autonomously.
+
+**Problem:** "Implement all pending tasks one by one" spawns 1-2 workers and stops. The Master's `processMessage()` is request-response only — no loop, no continuation. Users must manually send "continue" after every task.
+
+**Why this must come before Docker/WebChat:** Batch continuation is the single most impactful feature for using OpenBridge to develop OpenBridge. The 164 pending tasks in TASKS.md can't be processed autonomously without this. Every other project using OpenBridge also needs this — it's the core "autonomous agent" capability.
+
+| Task | Finding | What                                                                                                                                               | Key File                             |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1    | OB-F94  | Add `BatchState` interface — batchId, sourceType, totalItems, currentIndex, completedItems, failedItems, startedAt, totalCostUsd                   | `src/types/agent.ts`                 |
+| 2    | OB-F94  | Add batch detection keywords in classifier — "one by one", "all tasks", "implement all", "go through all", etc.                                    | `src/master/master-manager.ts`       |
+| 3    | OB-F94  | Create `batch-manager.ts` — createBatch, advanceBatch, pauseBatch, resumeBatch, abortBatch, getStatus, isActive                                    | `src/master/batch-manager.ts`        |
+| 4    | OB-F94  | Batch plan generation — read task source, extract items, create ordered plan                                                                       | `src/master/batch-manager.ts`        |
+| 5    | OB-F94  | Batch state persistence — `.openbridge/batch-state.json`, load on startup for resume                                                               | `src/master/batch-manager.ts`        |
+| 6    | OB-F94  | Wire BatchManager into MasterManager — check batch state in processMessage()                                                                       | `src/master/master-manager.ts`       |
+| 7    | OB-F94  | Add `maxBatchIterations`, `batchBudgetUsd`, `batchTimeoutMinutes` config options                                                                   | `src/types/config.ts`                |
+| 8    | OB-F94  | Safety rail checks — iteration count, cumulative cost, elapsed time                                                                                | `src/master/batch-manager.ts`        |
+| 9    | OB-F94  | Add `[CONTINUE:batch-{id}]` marker recognition in Router — internal continuation, no auth/rate-limit                                               | `src/core/router.ts`                 |
+| 10   | OB-F94  | Add continuation trigger — after workers complete, inject synthetic continue message with 2s delay                                                 | `src/master/master-manager.ts`       |
+| 11   | OB-F94  | Progress messages — "Task {id} done. Starting {nextId}... ({n}/{total})"                                                                           | `src/master/master-manager.ts`       |
+| 12   | OB-F94  | Per-item commit support — `commitAfterEach: true` spawns commit worker after each task                                                             | `src/master/batch-manager.ts`        |
+| 13   | OB-F94  | Failure handling — pause batch on failure, ask user to skip/retry/abort                                                                            | `src/master/batch-manager.ts`        |
+| 14   | OB-F94  | Master context injection — batch progress summary in system prompt                                                                                 | `src/master/master-system-prompt.ts` |
+| 15   | OB-F94  | Batch completion summary — total completed, failed, skipped, cost, duration                                                                        | `src/master/batch-manager.ts`        |
+| 16   | OB-F94  | Add `/pause` command — pause active batch                                                                                                          | `src/core/router.ts`                 |
+| 17   | OB-F94  | Add `/continue` command — resume paused batch                                                                                                      | `src/core/router.ts`                 |
+| 18   | OB-F94  | Add `/batch` command — show batch status                                                                                                           | `src/core/router.ts`                 |
+| 19   | OB-F94  | Add `/batch abort` command — cancel remaining items                                                                                                | `src/core/router.ts`                 |
+| 20   | OB-F94  | Add `/batch skip` command — skip failed item, continue                                                                                             | `src/core/router.ts`                 |
+| 21   | OB-F94  | Add batch commands to `/help` output                                                                                                               | `src/core/router.ts`                 |
+| 22   | OB-F94  | Tests: batch detection, plan extraction, continuation, progress, safety rails, pause/resume, failure, commit, abort, state persistence (10+ tests) | `tests/master/batch-manager.test.ts` |
+
+---
+
 ### Security Boundary Summary (Current vs Target)
 
-| Boundary             | Current                   | After Sprints 1–3                                | After Sprint 4                               |
-| -------------------- | ------------------------- | ------------------------------------------------ | -------------------------------------------- |
-| Workspace boundary   | `cwd` in spawn            | Same (sufficient for Marketplace)                | Same                                         |
-| Tool restriction     | `--allowedTools`          | + `code-audit` profile for test runners          | Same                                         |
-| Phone whitelist      | Exact match               | Same                                             | Same                                         |
-| Daily budget         | Checked at message start  | + per-worker cost estimation (Sprint 3)          | Same                                         |
-| Env var sanitization | Strips CLAUDECODE only    | Default deny-list (AWS/GH/TOKEN/SECRET/DB/...)   | + sandbox isolation                          |
-| File visibility      | None — AI sees everything | Same                                             | Include/exclude rules + auto-detect secrets  |
-| Content redaction    | None                      | Same                                             | Optional pattern-based redaction             |
-| User consent         | None — auto-proceed       | Risk classification + confirmation for high-risk | Same                                         |
-| Audit visibility     | Internal Pino logs only   | `/audit` command + `.openbridge/audit/` files    | Same                                         |
-| OS-level sandbox     | None                      | Same                                             | Docker containers for workers                |
-| WebChat auth         | None                      | Same                                             | Token + password auth, rate limiting         |
-| Deep analysis        | Single-pass only          | Same                                             | Multi-phase Deep Mode (investigate → verify) |
+| Boundary             | Current                   | After Sprints 1–3                                | After Sprint 4                                            |
+| -------------------- | ------------------------- | ------------------------------------------------ | --------------------------------------------------------- |
+| Workspace boundary   | `cwd` in spawn            | Same (sufficient for Marketplace)                | Same                                                      |
+| Tool restriction     | `--allowedTools`          | + `code-audit` profile for test runners          | + runtime escalation with user approval (Phase 97)        |
+| Phone whitelist      | Exact match               | Same                                             | Same                                                      |
+| Daily budget         | Checked at message start  | + per-worker cost estimation (Sprint 3)          | + batch budget cap (Phase 98)                             |
+| Env var sanitization | Strips CLAUDECODE only    | Default deny-list (AWS/GH/TOKEN/SECRET/DB/...)   | + sandbox isolation                                       |
+| File visibility      | None — AI sees everything | Same                                             | Include/exclude rules + auto-detect secrets               |
+| Content redaction    | None                      | Same                                             | Optional pattern-based redaction                          |
+| User consent         | None — auto-proceed       | Risk classification + confirmation for high-risk | + runtime escalation consent + batch pause (Phases 97–98) |
+| Audit visibility     | Internal Pino logs only   | `/audit` command + `.openbridge/audit/` files    | Same                                                      |
+| OS-level sandbox     | None                      | Same                                             | Docker containers for workers                             |
+| WebChat auth         | None                      | Same                                             | Token + password auth, rate limiting                      |
+| Deep analysis        | Single-pass only          | Same                                             | Multi-phase Deep Mode (investigate → verify)              |
+| Batch execution      | Single-pass only          | Same                                             | Self-messaging loop with safety rails (Phase 98)          |
 
 ---
 
