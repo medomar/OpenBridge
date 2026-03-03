@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 72 | **In Progress:** 0 | **Done:** 142 (112 archived)
+> **Pending:** 71 | **In Progress:** 0 | **Done:** 143 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -47,7 +47,7 @@
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
 | 91     | Conversation History + Rich Input    | 15    | ✅ (15/15 done) |
-| 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
+| 92     | Settings Panel + Deep Mode UI        | 12    | ◻ (1/12 done)   |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
@@ -350,7 +350,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                             | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1533 | Add settings panel in ui/js/settings.js — gear icon in header opens slide-out panel (right). Contains: AI tool selector, execution profile, notifications, theme. Close on outside click or Escape                                                      | ◻ Pending |
+| 1   | OB-1533 | Add settings panel in ui/js/settings.js — gear icon in header opens slide-out panel (right). Contains: AI tool selector, execution profile, notifications, theme. Close on outside click or Escape                                                      | ✅ Done   |
 | 2   | OB-1534 | Settings: AI tool selector — dropdown of discovered tools (Claude, Codex, etc.) with versions from GET /api/discovery. Changes preferred tool for session                                                                                               | ◻ Pending |
 | 3   | OB-1535 | Settings: execution profile selector — radio buttons for fast, thorough, manual with descriptions. Persist in localStorage and sync via PUT /api/webchat/settings                                                                                       | ◻ Pending |
 | 4   | OB-1536 | Settings: notification preferences — checkboxes for sound and browser notifications. Persist in localStorage. Apply immediately                                                                                                                         | ◻ Pending |
