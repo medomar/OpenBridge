@@ -513,3 +513,120 @@ body {
 [data-theme='dark'] .bubble.ai pre {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* ------------------------------------------------------------------ */
+/* Syntax highlighting — highlight.js theme (light + dark compatible)  */
+/* ------------------------------------------------------------------ */
+
+/* Light theme tokens */
+:root {
+  --hljs-bg: #f6f8fa;
+  --hljs-fg: #24292f;
+  --hljs-keyword: #cf222e;
+  --hljs-string: #0a3069;
+  --hljs-comment: #6e7781;
+  --hljs-number: #0550ae;
+  --hljs-title: #953800;
+  --hljs-attr: #116329;
+  --hljs-type: #953800;
+  --hljs-built-in: #0550ae;
+  --hljs-meta: #6e7781;
+  --hljs-literal: #0550ae;
+  --hljs-deletion: #82071e;
+  --hljs-addition: #116329;
+}
+
+/* Dark theme token overrides */
+[data-theme='dark'] {
+  --hljs-bg: #161b22;
+  --hljs-fg: #e6edf3;
+  --hljs-keyword: #ff7b72;
+  --hljs-string: #a5d6ff;
+  --hljs-comment: #8b949e;
+  --hljs-number: #79c0ff;
+  --hljs-title: #d2a8ff;
+  --hljs-attr: #7ee787;
+  --hljs-type: #ffa657;
+  --hljs-built-in: #79c0ff;
+  --hljs-meta: #8b949e;
+  --hljs-literal: #79c0ff;
+  --hljs-deletion: #ffdcd7;
+  --hljs-addition: #aff5b4;
+}
+
+.bubble.ai pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--hljs-fg);
+}
+
+.bubble.ai .hljs-keyword,
+.bubble.ai .hljs-selector-tag,
+.bubble.ai .hljs-tag {
+  color: var(--hljs-keyword);
+  font-weight: 600;
+}
+
+.bubble.ai .hljs-string,
+.bubble.ai .hljs-selector-attr,
+.bubble.ai .hljs-selector-pseudo {
+  color: var(--hljs-string);
+}
+
+.bubble.ai .hljs-comment,
+.bubble.ai .hljs-quote {
+  color: var(--hljs-comment);
+  font-style: italic;
+}
+
+.bubble.ai .hljs-number,
+.bubble.ai .hljs-regexp,
+.bubble.ai .hljs-variable,
+.bubble.ai .hljs-template-variable {
+  color: var(--hljs-number);
+}
+
+.bubble.ai .hljs-title,
+.bubble.ai .hljs-section,
+.bubble.ai .hljs-name {
+  color: var(--hljs-title);
+  font-weight: 600;
+}
+
+.bubble.ai .hljs-attr,
+.bubble.ai .hljs-attribute {
+  color: var(--hljs-attr);
+}
+
+.bubble.ai .hljs-type,
+.bubble.ai .hljs-class .hljs-title {
+  color: var(--hljs-type);
+}
+
+.bubble.ai .hljs-built_in,
+.bubble.ai .hljs-builtin-name {
+  color: var(--hljs-built-in);
+}
+
+.bubble.ai .hljs-meta,
+.bubble.ai .hljs-meta .hljs-keyword {
+  color: var(--hljs-meta);
+}
+
+.bubble.ai .hljs-literal,
+.bubble.ai .hljs-symbol,
+.bubble.ai .hljs-bullet {
+  color: var(--hljs-literal);
+}
+
+.bubble.ai .hljs-deletion {
+  color: var(--hljs-deletion);
+  background: rgba(255, 0, 0, 0.08);
+}
+
+.bubble.ai .hljs-addition {
+  color: var(--hljs-addition);
+  background: rgba(0, 200, 0, 0.08);
+}
