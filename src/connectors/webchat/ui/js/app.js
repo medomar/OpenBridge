@@ -20,6 +20,49 @@ const statusTimer = document.getElementById('status-timer');
 let timerInterval = null;
 let timerStart = null;
 
+// --- Public URL bar (shown when tunnel is active) ---
+
+(function initPublicUrlBar() {
+  const url = window.__OB_PUBLIC_URL__;
+  if (!url) return;
+  const bar = document.getElementById('public-url-bar');
+  const text = document.getElementById('public-url-text');
+  const btn = document.getElementById('url-copy-btn');
+  if (!bar || !text || !btn) return;
+  text.textContent = url;
+  bar.classList.remove('hidden');
+  bar.classList.add('visible');
+  btn.addEventListener('click', function () {
+    navigator.clipboard.writeText(url).then(
+      function () {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function () {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      },
+      function () {
+        // Fallback for browsers without clipboard API
+        const el = document.createElement('textarea');
+        el.value = url;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function () {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      },
+    );
+  });
+})();
+
 // --- Timestamps ---
 
 let tsVisible = localStorage.getItem('ob-ts') !== 'false';

@@ -11,11 +11,16 @@
       if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     })();
   </script>
+  <script>window.__OB_PUBLIC_URL__ = null;</script>
 </head>
 <body>
   <div class="chat-wrap">
     <header class="header">
       <h1>OpenBridge WebChat</h1>
+      <div id="public-url-bar" class="hidden" role="note" aria-label="Public URL">
+        <span id="public-url-text"></span>
+        <button class="url-copy-btn" id="url-copy-btn" aria-label="Copy public URL">Copy</button>
+      </div>
       <div style="display:flex;align-items:center;gap:12px">
         <button class="theme-toggle" id="ts-toggle" aria-label="Toggle message timestamps">Hide times</button>
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>

@@ -138,6 +138,17 @@ export class WebChatConnector implements Connector {
   }
 
   /**
+   * Returns the tunnel (public) URL with auth token appended when a tunnel is active,
+   * or null if no tunnel URL has been set via setTunnelUrl().
+   */
+  getPublicUrl(): string | null {
+    if (!this.tunnelUrl) return null;
+    const token = this.authToken;
+    const sep = this.tunnelUrl.includes('?') ? '&' : '?';
+    return token ? `${this.tunnelUrl}${sep}token=${token}` : this.tunnelUrl;
+  }
+
+  /**
    * Set a tunnel public URL so that initialize() uses it as the QR code target
    * instead of the LAN IP. Must be called before initialize() to take effect.
    * The token is automatically appended when the QR is generated.
@@ -567,7 +578,7 @@ export class WebChatConnector implements Connector {
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(WEBCHAT_HTML);
+      res.end(this.buildHtmlPage());
     });
 
     this.httpServer = server;
@@ -682,6 +693,13 @@ export class WebChatConnector implements Connector {
           } else {
             logger.warn('WebChat: no LAN interfaces detected');
           }
+        }
+
+        // Display public (tunnel) URL when a tunnel is active
+        const publicUrl = this.getPublicUrl();
+        if (publicUrl) {
+          console.log(`  WebChat Public URL: ${publicUrl}`);
+          logger.info({ url: publicUrl }, 'WebChat Public URL (tunnel active)');
         }
 
         // Display QR code for phone scanning — prefer tunnel URL if set, else first LAN URL
@@ -817,6 +835,21 @@ export class WebChatConnector implements Connector {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /**
+   * Build the main HTML page, injecting the public tunnel URL when active.
+   * Replaces the `window.__OB_PUBLIC_URL__ = null;` placeholder in the bundle
+   * with the actual tunnel URL (including auth token) so the frontend can
+   * display it in the header copy button.
+   */
+  private buildHtmlPage(): string {
+    const publicUrl = this.getPublicUrl();
+    if (!publicUrl) return WEBCHAT_HTML;
+    return WEBCHAT_HTML.replace(
+      'window.__OB_PUBLIC_URL__ = null;',
+      `window.__OB_PUBLIC_URL__ = ${JSON.stringify(publicUrl)};`,
+    );
   }
 
   /** Returns a list of non-internal IPv4 addresses for LAN URL display. */
