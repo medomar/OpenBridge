@@ -828,6 +828,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/apps" command — shows running app instances with URLs (OB-1450)
+    if (/^\/apps$/i.test(message.content.trim())) {
+      await this.handleAppsCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -2951,6 +2957,54 @@ export class Router {
   }
 
   /**
+   * Handle the built-in "/apps" command — list running app instances with URLs.
+   *
+   * Shows each running app's URL and public URL (if tunnel is active).
+   * Responds with "No apps running" when there are no active instances.
+   */
+  private async handleAppsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.appServer) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'App server is not enabled.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const apps = this.appServer.listApps();
+
+    if (apps.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No apps running.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const lines: string[] = ['*Running Apps*', ''];
+    for (const app of apps) {
+      const displayUrl = app.publicUrl ?? app.url;
+      lines.push(`• ${app.id.slice(0, 8)} — ${displayUrl}`);
+      if (app.publicUrl) {
+        lines.push(`  Local: ${app.url}`);
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, appCount: apps.length }, 'Apps listed via /apps');
+  }
+
+  /**
    * Handle the built-in "/help" command — list all available commands.
    *
    * Displays all built-in commands with brief descriptions, grouped by category:
@@ -2967,6 +3021,7 @@ export class Router {
       '• explore — re-explore the workspace',
       '• history — show recent conversation history',
       '• /audit — list recent worker spawns',
+      '• /apps — list running app instances with URLs',
       '',
       '*Deep Mode*',
       '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',

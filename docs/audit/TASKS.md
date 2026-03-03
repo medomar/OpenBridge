@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 155 | **In Progress:** 0 | **Done:** 59 (112 archived)
+> **Pending:** 154 | **In Progress:** 0 | **Done:** 60 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -40,7 +40,7 @@
 | 97     | Runtime Permission Escalation        | 20    | ◻               |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
-| 83     | Ephemeral App Server                 | 12    | ◻ (8/12 done)   |
+| 83     | Ephemeral App Server                 | 12    | ◻ (9/12 done)   |
 | 84     | Interaction Relay                    | 8     | ◻               |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
@@ -204,7 +204,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 6   | OB-1447 | Add APP:start and APP:stop marker parsing to Router in `src/core/router.ts` — parse from Master output. APP:start triggers appServer.startApp(), APP:stop triggers stopApp(). Include app URL in response                                                         | ✅ Done   |
 | 7   | OB-1448 | Add app scaffolding instructions to Master system prompt — guidance for creating apps in .openbridge/generated/apps/{name}/, using APP:start marker to launch                                                                                                     | ✅ Done   |
 | 8   | OB-1449 | Add `TASK_BUILD_APP` seed prompt template to `src/master/seed-prompts.ts` — instructions for creating self-contained web apps with index.html, styles.css, JavaScript                                                                                             | ✅ Done   |
-| 9   | OB-1450 | Add `/apps` command to Router — shows running apps with URLs and public URLs. Shows "No apps running" if none active                                                                                                                                              | ◻ Pending |
+| 9   | OB-1450 | Add `/apps` command to Router — shows running apps with URLs and public URLs. Shows "No apps running" if none active                                                                                                                                              | ✅ Done   |
 | 10  | OB-1451 | Add graceful app cleanup to Bridge shutdown — stop all running apps via appServer.stopAll(). Add stopAll() method to AppServer                                                                                                                                    | ◻ Pending |
 | 11  | OB-1452 | Add resource limits to config — apps.maxConcurrent (default: 5), apps.maxMemoryMB (default: 256), apps.idleTimeoutMinutes (default: 30). Wire into AppServer                                                                                                      | ◻ Pending |
 | 12  | OB-1453 | Add tests in `tests/core/app-server.test.ts` — test: (1) startApp with static HTML, (2) unique port allocation, (3) stopApp releases port, (4) idle timeout stops app, (5) listApps correct, (6) max concurrent enforced, (7) stopAll stops all. At least 7 tests | ◻ Pending |
