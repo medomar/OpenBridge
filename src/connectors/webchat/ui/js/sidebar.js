@@ -168,6 +168,139 @@ export async function loadSessions(activeSessionId) {
 }
 
 // ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/**
+ * Escape a string for safe insertion as HTML text content.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Extract a short snippet from `content` centred around the first query term.
+ * @param {string} content
+ * @param {string} query
+ * @param {number} [maxLen=120]
+ * @returns {string}
+ */
+function truncateSnippet(content, query, maxLen) {
+  if (!content) return '';
+  maxLen = maxLen || 120;
+  const terms = query.trim().split(/\s+/).filter(Boolean);
+  let pos = -1;
+  for (let i = 0; i < terms.length; i++) {
+    const idx = content.toLowerCase().indexOf(terms[i].toLowerCase());
+    if (idx !== -1) { pos = idx; break; }
+  }
+  if (pos === -1) {
+    return content.slice(0, maxLen) + (content.length > maxLen ? '\u2026' : '');
+  }
+  const start = Math.max(0, pos - 30);
+  const end = Math.min(content.length, start + maxLen);
+  const snippet = content.slice(start, end);
+  return (start > 0 ? '\u2026' : '') + snippet + (end < content.length ? '\u2026' : '');
+}
+
+/**
+ * HTML-escape `text` then wrap each query term occurrence in a `<mark>`.
+ * @param {string} text
+ * @param {string} query
+ * @returns {string} HTML string safe for innerHTML
+ */
+function highlightTerms(text, query) {
+  if (!text) return '';
+  const escaped = escapeHtml(text);
+  const terms = query.trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return escaped;
+  const pattern = terms
+    .map(function (t) { return escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); })
+    .join('|');
+  const re = new RegExp('(' + pattern + ')', 'gi');
+  return escaped.replace(re, '<mark class="sidebar-match">$1</mark>');
+}
+
+/**
+ * Build a search result card element.
+ * @param {{ session_id: string, role: string, content: string, created_at: string }} result
+ * @param {string} query
+ * @returns {HTMLElement}
+ */
+function buildSearchResultCard(result, query) {
+  const item = document.createElement('div');
+  item.className = 'sidebar-session-item sidebar-search-result';
+  item.setAttribute('role', 'listitem');
+  item.setAttribute('tabindex', '0');
+  item.dataset.sessionId = result.session_id;
+
+  const snippet = truncateSnippet(result.content, query);
+  const highlighted = highlightTerms(snippet, query);
+
+  const snippetEl = document.createElement('div');
+  snippetEl.className = 'sidebar-search-snippet';
+  snippetEl.innerHTML = highlighted;
+
+  const metaEl = document.createElement('div');
+  metaEl.className = 'sidebar-session-meta';
+
+  const roleSpan = document.createElement('span');
+  roleSpan.textContent = result.role === 'user' ? 'You' : 'AI';
+
+  const dateSpan = document.createElement('span');
+  dateSpan.textContent = formatSessionDate(result.created_at);
+
+  metaEl.appendChild(roleSpan);
+  metaEl.appendChild(dateSpan);
+
+  item.appendChild(snippetEl);
+  item.appendChild(metaEl);
+
+  return item;
+}
+
+/**
+ * Fetch /api/sessions/search?q={query} and render matching messages.
+ * @param {string} query
+ */
+async function runSearch(query) {
+  const container = document.getElementById('sidebar-sessions');
+  if (!container) return;
+
+  container.innerHTML = '<div class="sidebar-empty">Searching\u2026</div>';
+
+  let results;
+  try {
+    const res = await fetch('/api/sessions/search?q=' + encodeURIComponent(query) + '&limit=20');
+    if (!res.ok) {
+      container.innerHTML = '<div class="sidebar-empty">Search failed.</div>';
+      return;
+    }
+    results = await res.json();
+  } catch (_) {
+    container.innerHTML = '<div class="sidebar-empty">Search failed.</div>';
+    return;
+  }
+
+  if (!Array.isArray(results) || results.length === 0) {
+    container.innerHTML = '<div class="sidebar-empty">No results for \u201c' + escapeHtml(query) + '\u201d.</div>';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const result of results) {
+    frag.appendChild(buildSearchResultCard(result, query));
+  }
+  container.replaceChildren(frag);
+}
+
+// ---------------------------------------------------------------------------
 
 export function initSidebar() {
   _sidebar = document.getElementById('sidebar');
@@ -244,6 +377,23 @@ export function initSidebar() {
       if (!item) return;
       e.preventDefault();
       item.click();
+    });
+  }
+
+  // Search input — debounced 300ms
+  const searchInput = document.getElementById('sidebar-search-input');
+  let _searchTimer = null;
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      clearTimeout(_searchTimer);
+      const query = searchInput.value.trim();
+      if (!query) {
+        void loadSessions(_currentSessionId);
+        return;
+      }
+      _searchTimer = setTimeout(function () {
+        void runSearch(query);
+      }, 300);
     });
   }
 
