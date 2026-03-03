@@ -154,11 +154,11 @@ describe('WebChatConnector', () => {
     expect(server.listen).toHaveBeenCalledWith(4000, '0.0.0.0', expect.any(Function));
   });
 
-  it('should default to port 3000 and host localhost', async () => {
+  it('should default to port 3000 and host 0.0.0.0', async () => {
     await connector.initialize();
 
     const server = latestHttpServer();
-    expect(server.listen).toHaveBeenCalledWith(3000, 'localhost', expect.any(Function));
+    expect(server.listen).toHaveBeenCalledWith(3000, '0.0.0.0', expect.any(Function));
   });
 
   it('should create WebSocketServer attached to http server', async () => {

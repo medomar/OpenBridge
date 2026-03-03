@@ -28,7 +28,7 @@
       "enabled": false,
       "options": {
         "port": 3000,
-        "host": "localhost",
+        "host": "0.0.0.0",
         "_password_note": "Optional: set 'password' to enable login-screen auth instead of the default token. Remove this field to use token auth (default).",
         "password": "your-secure-webchat-password"
       }

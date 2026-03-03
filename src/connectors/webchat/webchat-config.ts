@@ -3,8 +3,8 @@ import { z } from 'zod';
 export const WebChatConfigSchema = z.object({
   /** TCP port the HTTP + WebSocket server listens on */
   port: z.number().int().positive().default(3000),
-  /** Hostname the server binds to */
-  host: z.string().default('localhost'),
+  /** Hostname the server binds to — defaults to 0.0.0.0 for LAN access. Use localhost to restrict to local machine only */
+  host: z.string().default('0.0.0.0'),
   /**
    * Optional password for WebChat access.
    * When set, token-based auth is replaced by a password login screen.
