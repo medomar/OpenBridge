@@ -5,6 +5,12 @@ export const WebChatConfigSchema = z.object({
   port: z.number().int().positive().default(3000),
   /** Hostname the server binds to */
   host: z.string().default('localhost'),
+  /**
+   * Optional password for WebChat access.
+   * When set, token-based auth is replaced by a password login screen.
+   * The value is hashed with bcrypt before being stored or compared.
+   */
+  password: z.string().min(1).optional(),
 });
 
 export type WebChatConfig = z.infer<typeof WebChatConfigSchema>;
