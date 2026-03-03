@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenBridge WebChat</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="chat-wrap">
+    <header class="header">
+      <h1>OpenBridge WebChat</h1>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="stop-all-btn" id="stop-all-btn" disabled>Stop All</button>
+        <div class="conn-status">
+          <div class="conn-dot" id="dot" aria-hidden="true"></div>
+          <span id="connLabel">Connecting...</span>
+        </div>
+      </div>
+    </header>
+    <section id="dash" class="hidden" aria-label="Agent Status">
+      <div
+        class="dash-hdr"
+        id="dash-hdr"
+        role="button"
+        tabindex="0"
+        aria-expanded="true"
+        aria-controls="dash-body"
+      >
+        <span id="dash-lbl">Agent Status</span>
+        <span id="dash-icon" aria-hidden="true">&#9650;</span>
+      </div>
+      <div id="dash-body">
+        <div id="dash-master"></div>
+        <div id="dash-workers"></div>
+        <div id="dash-cost"></div>
+      </div>
+    </section>
+    <main id="msgs" role="log" aria-live="polite" aria-label="Chat messages"></main>
+    <div id="status-bar" class="hidden" role="status" aria-live="polite">
+      <span id="status-text"></span>
+      <span id="status-timer"></span>
+    </div>
+    <footer class="input-row">
+      <form id="form">
+        <input
+          id="inp"
+          type="text"
+          placeholder="Type a message..."
+          autocomplete="off"
+          disabled
+          aria-label="Message input"
+        />
+        <button type="submit" id="send" disabled>Send</button>
+      </form>
+    </footer>
+  </div>
+  <script src="js/app.js" type="module"></script>
+</body>
+</html>
