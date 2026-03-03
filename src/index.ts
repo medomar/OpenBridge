@@ -371,6 +371,16 @@ async function startV2Flow(
     if (webChatInfo) {
       process.stdout.write(`WebChat URL:   ${webChatInfo.url}\n`);
       process.stdout.write(`WebChat token: ${webChatInfo.token}\n`);
+      // Render ASCII QR code so users can scan from their phone
+      import('qrcode-terminal')
+        .then((qrcodeTerminal) => {
+          const mod = qrcodeTerminal.default ?? qrcodeTerminal;
+          process.stdout.write('Scan to open WebChat on your phone:\n');
+          mod.generate(webChatInfo.url, { small: true });
+        })
+        .catch(() => {
+          // qrcode-terminal unavailable — URL printed above is sufficient
+        });
     }
     logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
     logger.info('Press Ctrl+C to stop.');
