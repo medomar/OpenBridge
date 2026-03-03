@@ -356,6 +356,7 @@ function handleMessage(data) {
   if (data.type === 'response') {
     hideStatus();
     addBubble(data.content, 'ai', data.timestamp ? new Date(data.timestamp) : new Date());
+    showTaskNotification(data.content);
   } else if (data.type === 'download') {
     hideStatus();
     const tsDate = data.timestamp ? new Date(data.timestamp) : new Date();
@@ -443,6 +444,29 @@ form.addEventListener('submit', function (e) {
     '\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>',
   );
 });
+
+// --- Browser Notifications ---
+
+function showTaskNotification(content) {
+  if (document.visibilityState === 'visible') return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  var preview = content.length > 100 ? content.slice(0, 97) + '...' : content;
+  new Notification('OpenBridge', {
+    body: preview,
+    icon: '/icons/icon-192.png',
+  });
+}
+
+(function initNotifications() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    // Delay the permission request so it doesn't interrupt the initial page load
+    setTimeout(function () {
+      Notification.requestPermission();
+    }, 3000);
+  }
+})();
 
 // --- Service Worker Registration ---
 
