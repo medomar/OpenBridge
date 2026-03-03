@@ -32,6 +32,8 @@ import { Router, classifyMessagePriority } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
 import type { AppServer } from './app-server.js';
 import type { InteractionRelay } from './interaction-relay.js';
+import { SecretScanner } from './secret-scanner.js';
+import type { SecretMatch } from './secret-scanner.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -87,6 +89,8 @@ export class Bridge {
   private lastMessageAt: string | null = null;
   private tunnelExitHandler: (() => void) | null = null;
   private tunnelSigintHandler: (() => void) | null = null;
+  private readonly detectedSecrets: SecretMatch[] = [];
+  private readonly sessionExcludePatterns: string[] = [];
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -183,6 +187,23 @@ export class Bridge {
     return this.mcpRegistry;
   }
 
+  /**
+   * Returns glob patterns for files auto-excluded this session after startup secret scanning.
+   * Each entry is a relative path from the workspace root (e.g. "service-account-prod.json").
+   * Pass alongside `config.workspace.exclude` when calling isFileVisible().
+   */
+  getSessionExcludePatterns(): readonly string[] {
+    return this.sessionExcludePatterns;
+  }
+
+  /**
+   * Returns the list of sensitive files detected during startup scanning.
+   * Useful for the /scope command (OB-1472) to report secrets with severity.
+   */
+  getDetectedSecrets(): readonly SecretMatch[] {
+    return this.detectedSecrets;
+  }
+
   /** Set the Master AI — must be called before start() to enable Master routing */
   setMaster(master: MasterManager): void {
     this.master = master;
@@ -227,6 +248,11 @@ export class Bridge {
     // Scan process.env for secret patterns and warn operators about variables that will be stripped
     const denyPatterns = this.securityConfig?.envDenyPatterns ?? [...ENV_DENY_PATTERNS];
     warnAboutExposedSecrets(process.env, denyPatterns);
+
+    // Scan workspace root for sensitive files — non-fatal, logs warnings and builds session exclude list
+    if (this.workspacePath) {
+      await this.runSecretScan(this.workspacePath);
+    }
 
     // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
     if (this.memory) {
@@ -781,6 +807,40 @@ export class Bridge {
     void this.auditLogger.logInbound(cleaned);
     const priority = classifyMessagePriority(cleaned.content);
     void this.queue.enqueue(cleaned, priority);
+  }
+
+  /**
+   * Scan the workspace root for sensitive files (name-check only, 1 level deep).
+   * Logs a warning listing every detected file, then records each as a relative-path
+   * exclude pattern in sessionExcludePatterns so it is hidden from AI visibility.
+   * Errors are non-fatal — a scan failure must not prevent the bridge from starting.
+   */
+  private async runSecretScan(workspacePath: string): Promise<void> {
+    try {
+      const scanner = new SecretScanner();
+      const matches = await scanner.scanWorkspace(workspacePath);
+
+      if (matches.length === 0) return;
+
+      logger.warn(
+        {
+          count: matches.length,
+          paths: matches.map((m) => m.path),
+        },
+        'Sensitive files detected in workspace — auto-excluding from AI visibility for this session',
+      );
+
+      for (const match of matches) {
+        this.detectedSecrets.push(match);
+        // Convert absolute path to a workspace-relative pattern for isFileVisible()
+        const relative = path.relative(workspacePath, match.path);
+        if (relative && !this.sessionExcludePatterns.includes(relative)) {
+          this.sessionExcludePatterns.push(relative);
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Workspace secret scan failed — continuing without session excludes');
+    }
   }
 
   /**
