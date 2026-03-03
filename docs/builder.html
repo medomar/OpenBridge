@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>OpenBridge — Builder Dashboard</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--accent:#58a6ff;--green:#3fb950;--red:#ff7b72;--text:#c9d1d9;--muted:#8b949e;--dim:#6e7681;--sw:218px;--mono:'SFMono-Regular',Consolas,monospace;--font:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;display:flex;min-height:100vh}
+code{background:rgba(88,166,255,.1);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:var(--mono);font-size:.85em}
+#sb{width:var(--sw);height:100vh;position:fixed;top:0;left:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;transition:transform .25s}
+.sb-logo{padding:18px 16px 14px;border-bottom:1px solid var(--border)}
+.sb-mark{color:var(--accent);font-size:15px;font-weight:700;letter-spacing:-.5px}
+.sb-sub{color:var(--dim);font-size:11px;margin-top:2px}
+#sb nav{padding:6px 0;flex:1}
+#sb nav a{display:flex;align-items:center;gap:9px;padding:8px 16px;color:var(--muted);text-decoration:none;font-size:13px;transition:background .15s,color .15s;border-left:2px solid transparent}
+#sb nav a:hover{background:rgba(88,166,255,.06);color:var(--text)}
+#sb nav a.active{background:rgba(88,166,255,.1);color:var(--accent);border-left-color:var(--accent)}
+.sb-ft{padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--dim)}
+.sb-ft a{color:var(--muted);text-decoration:none}.sb-ft a:hover{color:var(--accent)}
+main{margin-left:var(--sw);flex:1;padding:0 44px 100px;max-width:calc(100% - var(--sw))}
+section{padding:60px 0 44px;border-bottom:1px solid var(--border)}
+section:last-child{border-bottom:none}
+h2{font-size:20px;font-weight:600;color:#e6edf3;margin-bottom:6px}
+h3{font-size:14px;font-weight:600;color:#e6edf3;margin-bottom:8px}
+.sd{color:var(--muted);font-size:13px;margin-bottom:24px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);color:var(--accent);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;margin-bottom:18px}
+.ht{font-size:36px;font-weight:700;line-height:1.15;letter-spacing:-1.5px;color:#e6edf3;margin-bottom:10px}
+.ht .br{color:var(--accent)}
+.tl{font-size:16px;color:var(--muted);max-width:500px;margin-bottom:32px}
+.steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;gap:10px;margin-bottom:36px;max-width:800px}
+.step{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px}
+.sn{width:26px;height:26px;background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.3);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);margin-bottom:10px}
+.step h4{font-size:14px;font-weight:600;color:#e6edf3;margin-bottom:4px}
+.step p{font-size:12px;color:var(--muted)}
+.step-cmd{background:#010409;border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-family:var(--mono);font-size:12px;color:var(--green);margin-top:8px}
+.arr{display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:20px}
+.al{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:border-color .2s;margin-bottom:4px}
+.al:hover{border-color:rgba(88,166,255,.35)}
+.al.open{border-color:var(--accent)}
+.ah{display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;user-select:none}
+.an{font-size:11px;color:var(--dim);font-family:var(--mono);width:22px;flex-shrink:0}
+.ai{font-size:19px;flex-shrink:0}
+.aname{font-weight:600;color:#e6edf3;font-size:14px;flex:1}
+.asum{font-size:12px;color:var(--muted)}
+.aarr{color:var(--dim);font-size:13px;transition:transform .2s;flex-shrink:0}
+.al.open .aarr{transform:rotate(90deg)}
+.ab{display:none;padding:4px 18px 16px;border-top:1px solid var(--border)}
+.al.open .ab{display:block}
+.ab p{font-size:12px;color:var(--muted);margin:10px 0 10px;line-height:1.6}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.tag{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);color:var(--accent);padding:2px 8px;border-radius:4px;font-size:11px;font-family:var(--mono)}
+.afl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+.afl+ul{list-style:none}
+.afl+ul li{font-size:12px;color:var(--muted);padding:2px 0;font-family:var(--mono)}
+.afl+ul li::before{content:"→ ";color:var(--dim)}
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+.wh{display:flex;gap:0;margin-bottom:24px}
+.ws{flex:1;display:flex;align-items:center;gap:7px;padding-bottom:10px;border-bottom:2px solid var(--border);cursor:pointer;transition:border-color .2s}
+.ws.active{border-bottom-color:var(--accent)}
+.ws.done{border-bottom-color:var(--green)}
+.wn{width:24px;height:24px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--muted);transition:background .2s;flex-shrink:0}
+.ws.active .wn{background:var(--accent);color:#0d1117}
+.ws.done .wn{background:var(--green);color:#0d1117}
+.wl{font-size:12px;color:var(--muted);font-weight:500}
+.ws.active .wl{color:var(--accent)}.ws.done .wl{color:var(--green)}
+.pane{display:none}.pane.active{display:block}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.fi{width:100%;background:#010409;border:1px solid var(--border);border-radius:6px;padding:7px 11px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;transition:border-color .15s}
+.fi:focus{border-color:var(--accent)}.fi.err{border-color:var(--red)}
+.fh{font-size:11px;color:var(--dim);margin-top:3px}
+.fe{font-size:11px;color:var(--red);margin-top:3px;display:none}
+.chg{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.cc{background:#010409;border:1px solid var(--border);border-radius:8px;padding:11px;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+.cc input{position:absolute;opacity:0;pointer-events:none}
+.cc:hover{border-color:rgba(88,166,255,.4)}
+.cc.sel{border-color:var(--accent);background:rgba(88,166,255,.05)}
+.ci{font-size:17px;margin-bottom:4px}
+.cn{font-size:13px;font-weight:600;color:#e6edf3;margin-bottom:2px}
+.cd{font-size:11px;color:var(--muted)}
+.ce{margin-top:10px;padding:10px;background:rgba(88,166,255,.04);border:1px solid rgba(88,166,255,.15);border-radius:6px;display:none}
+.ce.show{display:block}
+.pr{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.pr .fi{flex:1}
+.brm{background:none;border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:4px 7px;cursor:pointer;font-size:12px;transition:all .15s}
+.brm:hover{background:rgba(248,81,73,.1);color:var(--red);border-color:var(--red)}
+.badd{background:none;border:1px dashed var(--border);color:var(--muted);border-radius:5px;padding:6px 12px;cursor:pointer;font-size:12px;width:100%;margin-top:4px;transition:all .15s}
+.badd:hover{color:var(--accent);border-color:var(--accent)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:opacity .15s,background .15s;font-family:var(--font)}
+.bp{background:var(--accent);color:#0d1117;border-color:var(--accent)}.bp:hover{opacity:.85}
+.bs{background:none;color:var(--text);border-color:var(--border)}.bs:hover{background:rgba(255,255,255,.05)}
+.wn2{display:flex;gap:8px;margin-top:18px}
+.jb{background:#010409;border:1px solid var(--border);border-radius:8px;overflow:hidden;position:sticky;top:20px}
+.jt{display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid var(--border)}
+.jt span{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.ja{display:flex;gap:5px}
+.jbody{padding:13px;font-family:var(--mono);font-size:12px;line-height:1.8;min-height:200px;white-space:pre;overflow-x:auto}
+.rw{position:relative;padding-left:26px;max-width:700px}
+.rw::before{content:'';position:absolute;left:6px;top:8px;bottom:0;width:2px;background:linear-gradient(to bottom,var(--green) 0%,var(--green) 28%,var(--accent) 28%,var(--accent) 50%,var(--border) 50%)}
+.ri{position:relative;margin-bottom:24px}
+.ri::before{content:'';position:absolute;left:-23px;top:15px;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg);background:var(--border)}
+.ri.done::before{background:var(--green)}
+.ri.cur::before{background:var(--accent);box-shadow:0 0 0 4px rgba(88,166,255,.18)}
+.rc{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px}
+.ri.done .rc{border-color:rgba(63,185,80,.25)}
+.ri.cur .rc{border-color:rgba(88,166,255,.35)}
+.rh{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.rv{font-size:14px;font-weight:700;font-family:var(--mono);color:#e6edf3}
+.rb{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.bd{background:rgba(63,185,80,.1);color:var(--green);border:1px solid rgba(63,185,80,.25)}
+.bc{background:rgba(88,166,255,.1);color:var(--accent);border:1px solid rgba(88,166,255,.25)}
+.bp2{background:rgba(139,148,158,.08);color:var(--muted);border:1px solid var(--border)}
+.rfs{display:flex;flex-direction:column;gap:3px}
+.rf{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--muted)}
+.ck{flex-shrink:0;margin-top:2px;font-size:12px}
+.cd2{color:var(--green)}.cc2{color:var(--accent)}.cp{color:var(--dim)}
+.rg{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rc2{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.rc2.full{grid-column:1/-1}
+.rt{width:100%;border-collapse:collapse}
+.rt th{text-align:left;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);border-bottom:1px solid var(--border)}
+.rt td{padding:8px 10px;border-bottom:1px solid rgba(48,54,61,.4);font-size:13px;vertical-align:top}
+.rt tr:last-child td{border-bottom:none}
+.rt td:first-child{font-family:var(--mono);color:var(--accent);font-size:11px;white-space:nowrap}
+.rt td:last-child{color:var(--muted)}
+.cl{list-style:none;display:flex;flex-direction:column;gap:4px}
+.cl li{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--muted);padding:6px 9px;background:rgba(22,27,34,.7);border:1px solid var(--border);border-radius:6px}
+.cl li::before{content:"☐";color:var(--dim);flex-shrink:0;margin-top:1px}
+.toast{position:fixed;bottom:22px;right:22px;background:#1c2128;border:1px solid var(--green);color:var(--green);padding:9px 15px;border-radius:8px;font-size:13px;z-index:9999;transform:translateY(70px);opacity:0;transition:transform .28s,opacity .28s;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+#mob{display:none;position:fixed;top:13px;left:13px;z-index:200;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;color:var(--text);font-size:16px}
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:90}
+.ov.show{display:block}
+@media(max-width:800px){
+  :root{--sw:0px}
+  #sb{width:218px;transform:translateX(-100%)}
+  #sb.open{transform:translateX(0)}
+  main{margin-left:0;max-width:100%;padding:0 16px 80px}
+  .cg,.rg{grid-template-columns:1fr}
+  .rc2.full{grid-column:unset}
+  .steps{grid-template-columns:1fr}
+  .arr{display:none}
+  .ht{font-size:26px}
+  #mob{display:flex;align-items:center}
+}
+</style>
+</head>
+<body>
+<button id="mob" onclick="tsb()" aria-label="Menu">☰</button>
+<div class="ov" id="ov" onclick="tsb()"></div>
+
+<aside id="sb">
+  <div class="sb-logo">
+    <div class="sb-mark">[ OpenBridge ]</div>
+    <div class="sb-sub">Builder Dashboard</div>
+  </div>
+  <nav id="nav">
+    <a href="#hero" class="nl">⌂&nbsp; Overview</a>
+    <a href="#architecture" class="nl">⚡&nbsp; Architecture</a>
+    <a href="#config-builder" class="nl">⚙&nbsp; Config Builder</a>
+    <a href="#roadmap" class="nl">◉&nbsp; Roadmap</a>
+    <a href="#quick-reference" class="nl">⊞&nbsp; Reference</a>
+  </nav>
+  <div class="sb-ft">
+    <a href="https://github.com">GitHub</a> ·
+    <a href="ROADMAP.md">Roadmap</a> · Apache 2.0
+  </div>
+</aside>
+
+<main>
+
+<section id="hero">
+  <div class="badge">✦ v0.0.1 · Open Source · Apache 2.0</div>
+  <h1 class="ht"><span class="br">[</span> OpenBridge <span class="br">]</span></h1>
+  <p class="tl">Self-governing AI bridge — zero API keys, zero extra cost</p>
+  <div class="steps">
+    <div class="step">
+      <div class="sn">1</div>
+      <h4>Configure</h4>
+      <p>Set workspace path, pick channels, add whitelisted phones</p>
+      <div class="step-cmd">npx openbridge init</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="step">
+      <div class="sn">2</div>
+      <h4>Run</h4>
+      <p>OpenBridge auto-discovers AI tools and silently explores your project</p>
+      <div class="step-cmd">npm run dev</div>
+    </div>
+    <div class="arr">→</div>
+    <div class="step">
+      <div class="sn">3</div>
+      <h4>Message</h4>
+      <p>Send commands from WhatsApp or any configured channel</p>
+      <div class="step-cmd">/ai what's in this project?</div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>Architecture Visualizer</h2>
+  <p class="sd">5-layer stack — click any layer to expand modules and key files.</p>
+  <div id="aw"></div>
+</section>
+
+<section id="config-builder">
+  <h2>Config Builder</h2>
+  <p class="sd">Generate your <code>config.json</code> step by step. Preview updates live.</p>
+  <div class="cg">
+    <div>
+      <div class="wh">
+        <div class="ws active" data-s="0" onclick="gs(0)"><div class="wn">1</div><span class="wl">Workspace</span></div>
+        <div class="ws" data-s="1" onclick="gs(1)"><div class="wn">2</div><span class="wl">Channels</span></div>
+        <div class="ws" data-s="2" onclick="gs(2)"><div class="wn">3</div><span class="wl">Auth</span></div>
+      </div>
+      <div class="pane active" id="p0">
+        <div class="fg">
+          <label>Workspace Path</label>
+          <input class="fi" type="text" id="wsp" placeholder="/absolute/path/to/your/project"
+            oninput="S.ws=this.value;vw(this);rp()">
+          <p class="fh">Absolute path to the target project — not the OpenBridge folder</p>
+          <p class="fe" id="we">Path must be absolute (start with /)</p>
+        </div>
+      </div>
+      <div class="pane" id="p1">
+        <div class="chg" id="cg"></div>
+        <div id="cx"></div>
+      </div>
+      <div class="pane" id="p2">
+        <div class="fg">
+          <label>Command Prefix</label>
+          <input class="fi" type="text" id="pfx" value="/ai" style="max-width:130px"
+            oninput="S.auth.prefix=this.value;rp()">
+          <p class="fh">Messages must start with this prefix to be processed</p>
+        </div>
+        <div class="fg">
+          <label>Phone Whitelist</label>
+          <div id="pl"></div>
+          <button class="badd" onclick="ap()">+ Add phone number</button>
+          <p class="fh">E.164 format: +1234567890</p>
+        </div>
+      </div>
+      <div class="wn2">
+        <button class="btn bs" id="bb" onclick="ps()" style="display:none">← Back</button>
+        <button class="btn bp" id="bn" onclick="ns()">Next →</button>
+      </div>
+    </div>
+    <div class="jb">
+      <div class="jt">
+        <span>config.json</span>
+        <div class="ja">
+          <button class="btn bs" onclick="cj()" style="font-size:11px;padding:4px 9px">⎘ Copy</button>
+          <button class="btn bp" onclick="dj()" style="font-size:11px;padding:4px 9px">↓ Download</button>
+        </div>
+      </div>
+      <div class="jbody" id="jp"></div>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>Roadmap Tracker</h2>
+  <p class="sd">Development milestones from v0.0.1 to v1.0.0.</p>
+  <div class="rw" id="rw"></div>
+</section>
+
+<section id="quick-reference">
+  <h2>Quick Reference</h2>
+  <p class="sd">Common commands, patterns, and key files.</p>
+  <div class="rg">
+    <div class="rc2">
+      <h3>Common Commands</h3>
+      <table class="rt">
+        <thead><tr><th>Command</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>npm run dev</td><td>Start bridge (no watch)</td></tr>
+          <tr><td>npm run dev:watch</td><td>Hot reload</td></tr>
+          <tr><td>npm run build</td><td>Compile TypeScript → dist/</td></tr>
+          <tr><td>npm run test</td><td>Run all Vitest tests</td></tr>
+          <tr><td>npm run lint</td><td>ESLint flat config check</td></tr>
+          <tr><td>npm run typecheck</td><td>TypeScript strict check</td></tr>
+          <tr><td>npm run format:check</td><td>Prettier formatting check</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="rc2">
+      <h3>Adding a Connector</h3>
+      <ul class="cl">
+        <li>Create <code>src/connectors/your-connector/</code></li>
+        <li>Implement the <code>Connector</code> interface from <code>src/types/connector.ts</code></li>
+        <li>Export a factory from <code>index.ts</code></li>
+        <li>Register in <code>src/connectors/index.ts</code></li>
+        <li>Add <code>{"type":"your-connector"}</code> to <code>config.json</code></li>
+      </ul>
+    </div>
+    <div class="rc2 full">
+      <h3>Key Files</h3>
+      <table class="rt">
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>src/core/bridge.ts</td><td>Main orchestrator — wires connectors, auth, queue, Master AI</td></tr>
+          <tr><td>src/core/router.ts</td><td>Routes messages from channel → Master AI → channel</td></tr>
+          <tr><td>src/core/agent-runner.ts</td><td>Unified CLI executor: --allowedTools, --max-turns, retries, logging</td></tr>
+          <tr><td>src/master/master-manager.ts</td><td>Master AI lifecycle + self-governing session + worker spawning (2 464 LOC)</td></tr>
+          <tr><td>src/master/dotfolder-manager.ts</td><td>.openbridge/ folder CRUD + exploration state (958 LOC)</td></tr>
+          <tr><td>src/master/exploration-coordinator.ts</td><td>5-phase incremental workspace exploration with checkpointing</td></tr>
+          <tr><td>src/discovery/tool-scanner.ts</td><td>CLI tool detection — which claude, codex, aider…</td></tr>
+          <tr><td>src/types/config.ts</td><td>Zod-validated config schemas (V0 + V2)</td></tr>
+          <tr><td>src/types/connector.ts</td><td>Connector interface every channel adapter must implement</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const A=[
+  {n:'01',ic:'💬',nm:'Channels',sm:'Messaging platform adapters',
+   tags:['WhatsApp','Console','WebChat','Telegram','Discord'],
+   files:['src/connectors/whatsapp/ — whatsapp-web.js, auto-reconnect, QR sessions',
+          'src/connectors/console/ — Terminal reference implementation',
+          'src/connectors/webchat/ — HTTP server + WebSocket + browser UI',
+          'src/connectors/telegram/ — Telegram Bot API',
+          'src/connectors/discord/ — Discord.js gateway',
+          'src/types/connector.ts — Connector interface contract']},
+  {n:'02',ic:'⚡',nm:'Bridge Core',sm:'Routing, auth, queues, health, metrics',
+   tags:['Router','Auth','Queue','Config','Registry','Health','Metrics','Audit','Rate Limiter'],
+   files:['src/core/bridge.ts — Main orchestrator (setMaster + lifecycle)',
+          'src/core/router.ts — Message routing: channel → Master AI → channel',
+          'src/core/auth.ts — Phone whitelist + prefix + command allow/deny',
+          'src/core/queue.ts — Per-user queues + retry + DLQ',
+          'src/core/config.ts — Zod-validated config loader (V2 + V0 fallback)',
+          'src/core/config-watcher.ts — Config hot-reload via fs.watch',
+          'src/core/health.ts — HTTP health check endpoint']},
+  {n:'03',ic:'🔍',nm:'AI Discovery',sm:'Auto-detects AI tools on your machine',
+   tags:['Tool Scanner','VS Code Scanner','Auto-Selection','Capability Ranking'],
+   files:['src/discovery/index.ts — scanForAITools() entry point',
+          'src/discovery/tool-scanner.ts — CLI detection via which + version flags',
+          'src/discovery/vscode-scanner.ts — VS Code extension detection',
+          'src/types/discovery.ts — DiscoveredTool, ScanResult Zod schemas']},
+  {n:'04',ic:'🤖',nm:'Agent Runner',sm:'Unified CLI executor — replaces raw spawn()',
+   tags:['--allowedTools','--max-turns','--model','Retries','Tool Profiles','Disk Logging'],
+   files:['src/core/agent-runner.ts — Unified executor (primary file)',
+          'src/core/model-selector.ts — Model recommendation per task type',
+          'src/types/agent.ts — TaskAgent / ToolProfile / TaskManifest types']},
+  {n:'05',ic:'🧠',nm:'Master AI',sm:'Self-governing exploration + worker orchestration',
+   tags:['Master Manager','Worker Registry','Dotfolder Manager','Exploration Coordinator','Result Parser','Delegation'],
+   files:['src/master/master-manager.ts — Lifecycle + self-governing session (2 464 LOC)',
+          'src/master/exploration-coordinator.ts — 5-phase incremental exploration',
+          'src/master/dotfolder-manager.ts — .openbridge/ CRUD (958 LOC)',
+          'src/master/worker-registry.ts — Active worker tracking + concurrency',
+          'src/master/result-parser.ts — Robust JSON extraction with fallbacks',
+          'src/master/delegation.ts — Multi-AI task delegation coordinator']}
+];
+
+const CD=[
+  {id:'whatsapp',ic:'📱',nm:'WhatsApp',ds:'Mobile messaging'},
+  {id:'console',ic:'⌨️',nm:'Console',ds:'Terminal (reference)'},
+  {id:'webchat',ic:'🌐',nm:'WebChat',ds:'HTTP + WebSocket'},
+  {id:'telegram',ic:'✈️',nm:'Telegram',ds:'Bot API'},
+  {id:'discord',ic:'🎮',nm:'Discord',ds:'Discord server'}
+];
+
+const RM=[
+  {v:'v0.0.1',s:'done',b:'Shipped',bc:'bd',f:[
+    {d:1,t:'5 channels: WhatsApp, Console, WebChat, Telegram, Discord'},
+    {d:1,t:'Claude Code CLI provider with streaming + session continuity'},
+    {d:1,t:'AI tool auto-discovery (which claude, codex, aider…)'},
+    {d:1,t:'Self-governing Master AI with persistent session (--resume)'},
+    {d:1,t:'5-phase incremental workspace exploration with checkpointing'},
+    {d:1,t:'Worker spawning: tool profiles + depth limiting'},
+    {d:1,t:'Agent Runner: retries, model fallback, disk logging'},
+    {d:1,t:'.openbridge/ folder: workspace map, exploration state, task history'}]},
+  {v:'v0.1.0',s:'cur',b:'In Progress',bc:'bc',f:[
+    {d:0,t:'SQLite + FTS5 memory (replace flat JSON files)'},
+    {d:0,t:'Media message support (images, documents, voice)'},
+    {d:0,t:'Conversation memory across sessions'},
+    {d:0,t:'AI task classification improvements'},
+    {d:0,t:'Live progress indicators in chat'},
+    {d:0,t:'Streaming responses to WhatsApp'}]},
+  {v:'v0.2.0',s:'future',b:'Planned',bc:'bp2',f:[
+    {d:0,t:'Web dashboard — monitor tasks, workers, logs'},
+    {d:0,t:'Granular per-user access control'},
+    {d:0,t:'Server deployment mode (systemd, Docker)'},
+    {d:0,t:'REST API for programmatic access'},
+    {d:0,t:'Multi-workspace support'}]},
+  {v:'v1.0.0',s:'future',b:'Planned',bc:'bp2',f:[
+    {d:0,t:'Multi-tenant mode'},
+    {d:0,t:'Connector marketplace'},
+    {d:0,t:'Enterprise access control + SSO'},
+    {d:0,t:'Cloud-hosted option'},
+    {d:0,t:'Plugin SDK + documentation site'}]}
+];
+
+const S={ws:'',ch:{whatsapp:{on:0},console:{on:0},webchat:{on:0,port:'3000'},telegram:{on:0,token:''},discord:{on:0,token:''}},auth:{whitelist:[''],prefix:'/ai'}};
+let cur=0;
+
+function bArch(){
+  document.getElementById('aw').innerHTML=A.map((l,i)=>`
+    <div class="al" id="al${i}">
+      <div class="ah" onclick="ta(${i})">
+        <span class="an">${l.n}</span><span class="ai">${l.ic}</span>
+        <span class="aname">${l.nm}</span><span class="asum">${l.sm}</span>
+        <span class="aarr">›</span>
+      </div>
+      <div class="ab">
+        <div class="tags">${l.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+        <div class="afl">Key Files</div>
+        <ul>${l.files.map(f=>`<li>${f}</li>`).join('')}</ul>
+      </div>
+    </div>`).join('');}
+
+function ta(i){document.getElementById('al'+i).classList.toggle('open');}
+
+function bCh(){
+  document.getElementById('cg').innerHTML=CD.map(c=>`
+    <div class="cc" id="cc-${c.id}" onclick="tc('${c.id}')">
+      <input type="checkbox" id="cb-${c.id}">
+      <div class="ci">${c.ic}</div><div class="cn">${c.nm}</div><div class="cd">${c.ds}</div>
+    </div>`).join('');
+  document.getElementById('cx').innerHTML=`
+    <div class="ce" id="ce-webchat"><div class="fg" style="margin-bottom:0"><label>Port</label>
+      <input class="fi" type="text" value="3000" style="max-width:100px" oninput="S.ch.webchat.port=this.value;rp()"></div></div>
+    <div class="ce" id="ce-telegram"><div class="fg" style="margin-bottom:0"><label>Bot Token</label>
+      <input class="fi" type="text" placeholder="123456:ABC-DEF..." oninput="S.ch.telegram.token=this.value;rp()"></div></div>
+    <div class="ce" id="ce-discord"><div class="fg" style="margin-bottom:0"><label>Bot Token</label>
+      <input class="fi" type="text" placeholder="MTI..." oninput="S.ch.discord.token=this.value;rp()"></div></div>`;}
+
+function tc(id){
+  S.ch[id].on^=1;
+  document.getElementById('cc-'+id).classList.toggle('sel',!!S.ch[id].on);
+  document.getElementById('cb-'+id).checked=!!S.ch[id].on;
+  const x=document.getElementById('ce-'+id);
+  if(x)x.classList.toggle('show',!!S.ch[id].on);
+  rp();}
+
+function bPh(){
+  document.getElementById('pl').innerHTML=S.auth.whitelist.map((p,i)=>`
+    <div class="pr">
+      <input class="fi" type="tel" value="${esc(p)}" placeholder="+1234567890"
+        oninput="S.auth.whitelist[${i}]=this.value;rp()">
+      ${S.auth.whitelist.length>1?`<button class="brm" onclick="rp2(${i})">×</button>`:''}
+    </div>`).join('');}
+
+function ap(){S.auth.whitelist.push('');bPh();rp();}
+function rp2(i){S.auth.whitelist.splice(i,1);bPh();rp();}
+
+function mkC(){
+  const c={};
+  if(S.ws)c.workspacePath=S.ws;
+  const chs=CD.filter(x=>S.ch[x.id].on).map(x=>{
+    const o={type:x.id,enabled:true};
+    if(x.id==='webchat')o.port=parseInt(S.ch.webchat.port)||3000;
+    if(x.id==='telegram'&&S.ch.telegram.token)o.token=S.ch.telegram.token;
+    if(x.id==='discord'&&S.ch.discord.token)o.token=S.ch.discord.token;
+    return o;});
+  c.channels=chs.length?chs:[{type:'console',enabled:true}];
+  c.auth={whitelist:S.auth.whitelist.filter(Boolean),prefix:S.auth.prefix||'/ai'};
+  return c;}
+
+function hl(j){
+  const s=j.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return s.replace(/("(?:\\.|[^"\\])*"(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,m=>{
+    if(/^"/.test(m))return/:$/.test(m)?`<span style="color:#79c0ff">${m}</span>`:`<span style="color:#a5d6ff">${m}</span>`;
+    if(/true|false|null/.test(m))return`<span style="color:#ff7b72">${m}</span>`;
+    return`<span style="color:#ffa657">${m}</span>`;});}
+
+function rp(){document.getElementById('jp').innerHTML=hl(JSON.stringify(mkC(),null,2));}
+
+function gs(n){
+  if(n>cur&&!vs(cur))return;
+  const ss=document.querySelectorAll('.ws'),ps=document.querySelectorAll('.pane');
+  ps[cur].classList.remove('active');ss[cur].classList.remove('active');
+  if(n>cur)ss[cur].classList.add('done');else ss[cur].classList.remove('done');
+  cur=n;ps[cur].classList.add('active');ss[cur].classList.add('active');un();}
+
+function ns(){if(cur<2)gs(cur+1);else toast('Config ready — copy or download →');}
+function ps(){if(cur>0)gs(cur-1);}
+
+function un(){
+  document.getElementById('bb').style.display=cur>0?'flex':'none';
+  document.getElementById('bn').textContent=cur===2?'✓ Done':'Next →';}
+
+function vs(s){
+  if(s===0){
+    const v=S.ws,i=document.getElementById('wsp'),e=document.getElementById('we');
+    if(v&&!v.startsWith('/')){i.classList.add('err');e.style.display='block';return 0;}
+    i.classList.remove('err');e.style.display='none';}
+  return 1;}
+
+function vw(i){
+  const e=document.getElementById('we');
+  if(i.value&&!i.value.startsWith('/')){i.classList.add('err');e.style.display='block';}
+  else{i.classList.remove('err');e.style.display='none';}}
+
+async function cj(){
+  try{await navigator.clipboard.writeText(JSON.stringify(mkC(),null,2));toast('Copied to clipboard!');}
+  catch{toast('Select text and copy manually');}}
+
+function dj(){
+  const b=new Blob([JSON.stringify(mkC(),null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='config.json';
+  a.click();URL.revokeObjectURL(a.href);toast('config.json downloaded!');}
+
+function bRM(){
+  const ck=(f,s)=>f.d?`<span class="ck cd2">✓</span>`:s==='cur'?`<span class="ck cc2">◌</span>`:`<span class="ck cp">○</span>`;
+  document.getElementById('rw').innerHTML=RM.map(r=>`
+    <div class="ri ${r.s}"><div class="rc">
+      <div class="rh"><span class="rv">${r.v}</span><span class="rb ${r.bc}">${r.b}</span></div>
+      <div class="rfs">${r.f.map(f=>`<div class="rf">${ck(f,r.s)}<span>${f.t}</span></div>`).join('')}</div>
+    </div></div>`).join('');}
+
+function sNav(){
+  const ls=document.querySelectorAll('.nl'),sc=document.querySelectorAll('section');
+  const ob=new IntersectionObserver(e=>{e.forEach(x=>{
+    if(x.isIntersecting)ls.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+x.target.id));
+  });},{rootMargin:'-15% 0px -75% 0px'});
+  sc.forEach(s=>ob.observe(s));
+  ls.forEach(l=>l.addEventListener('click',e=>{
+    e.preventDefault();
+    document.querySelector(l.getAttribute('href')).scrollIntoView({behavior:'smooth'});
+    if(window.innerWidth<800)tsb();}));}
+
+function tsb(){document.getElementById('sb').classList.toggle('open');document.getElementById('ov').classList.toggle('show');}
+
+let _tt;
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2600);}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+
+document.addEventListener('DOMContentLoaded',()=>{bArch();bCh();bPh();bRM();sNav();rp();un();});
+</script>
+</body>
+</html>
