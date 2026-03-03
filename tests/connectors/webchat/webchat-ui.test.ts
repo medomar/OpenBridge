@@ -11,6 +11,7 @@ const bundleFilePath = path.resolve(__dirname, '../../../src/connectors/webchat/
 
 interface MockResponse {
   writeHead: ReturnType<typeof vi.fn>;
+  setHeader: ReturnType<typeof vi.fn>;
   end: ReturnType<typeof vi.fn>;
 }
 
@@ -54,6 +55,12 @@ vi.mock('../../../src/core/qr-store.js', () => ({
   getQrCode: vi.fn().mockReturnValue(null),
 }));
 
+// ---- Mock: webchat-auth (hoisted — use literal token) ----
+
+vi.mock('../../../src/connectors/webchat/webchat-auth.js', () => ({
+  getOrCreateAuthToken: vi.fn().mockReturnValue('ui-test-token'),
+}));
+
 // ---- Tests ----
 
 describe('WebChat UI Bundle', () => {
@@ -72,10 +79,11 @@ describe('WebChat UI Bundle', () => {
     const handler = capturedHandlers[capturedHandlers.length - 1]!;
     const mockRes: MockResponse = {
       writeHead: vi.fn(),
+      setHeader: vi.fn(),
       end: vi.fn(),
     };
 
-    handler({ url: '/' }, mockRes);
+    handler({ url: '/', headers: { authorization: 'Bearer ui-test-token' } }, mockRes);
 
     expect(mockRes.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/html; charset=utf-8',

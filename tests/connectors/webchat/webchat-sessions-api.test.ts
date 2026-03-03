@@ -49,16 +49,28 @@ vi.mock('../../../src/core/logger.js', () => ({
   }),
 }));
 
+// Note: vi.mock is hoisted — use a literal token value here
+vi.mock('../../../src/connectors/webchat/webchat-auth.js', () => ({
+  getOrCreateAuthToken: vi.fn().mockReturnValue('sessions-test-token'),
+}));
+
 // ---------------------------------------------------------------------------
 // Mock request / response helpers
 // ---------------------------------------------------------------------------
 
+/** Bearer token returned by the mocked webchat-auth module */
+const SESSIONS_TEST_TOKEN = 'sessions-test-token';
+
 function makeReq(url: string): IncomingMessage {
-  return { url } as unknown as IncomingMessage;
+  return {
+    url,
+    headers: { authorization: `Bearer ${SESSIONS_TEST_TOKEN}` },
+  } as unknown as IncomingMessage;
 }
 
 interface MockRes {
   writeHead: ReturnType<typeof vi.fn>;
+  setHeader: ReturnType<typeof vi.fn>;
   end: ReturnType<typeof vi.fn>;
   statusCode: number;
   headers: Record<string, string>;
@@ -74,6 +86,7 @@ function makeRes(): MockRes {
       res.statusCode = code;
       res.headers = headers;
     }),
+    setHeader: vi.fn(),
     end: vi.fn((data: string) => {
       res.body = data;
     }),
