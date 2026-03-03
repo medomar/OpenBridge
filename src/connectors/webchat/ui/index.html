@@ -205,6 +205,25 @@
           <option value="dark">Dark</option>
         </select>
       </section>
+
+      <!-- MCP Servers -->
+      <section class="settings-section" aria-labelledby="settings-mcp-label">
+        <div class="settings-mcp-header">
+          <span id="settings-mcp-label" class="settings-label">MCP Servers</span>
+          <button id="mcp-add-btn" class="mcp-add-btn" aria-label="Add MCP server">+ Add</button>
+        </div>
+        <div id="mcp-add-form" style="display:none;" class="mcp-add-form">
+          <input id="mcp-new-name" class="settings-input" type="text" placeholder="Server name (e.g. gmail)" aria-label="MCP server name" />
+          <input id="mcp-new-command" class="settings-input" type="text" placeholder="Command (e.g. mcp-server-gmail)" aria-label="MCP server command" />
+          <div class="mcp-form-actions">
+            <button id="mcp-add-submit" class="mcp-btn-primary">Add</button>
+            <button id="mcp-add-cancel" class="mcp-btn-secondary">Cancel</button>
+          </div>
+        </div>
+        <div id="mcp-server-list" class="mcp-server-list">
+          <p class="settings-hint">Loading...</p>
+        </div>
+      </section>
     </div>
   </aside>
 

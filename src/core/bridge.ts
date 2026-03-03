@@ -483,6 +483,16 @@ export class Bridge {
       }
     }
 
+    // Wire MCP registry into connectors that support the /api/mcp/servers endpoints (e.g. WebChat)
+    if (this.mcpRegistry) {
+      for (const connector of this.connectors) {
+        const c = connector as { setMcpRegistry?: (r: McpRegistry) => void };
+        if (typeof c.setMcpRegistry === 'function') {
+          c.setMcpRegistry(this.mcpRegistry);
+        }
+      }
+    }
+
     // Wire MediaManager into connectors that support incoming media download (e.g. WhatsApp)
     if (this.workspacePath) {
       const mediaManager = createMediaManager(this.workspacePath);
