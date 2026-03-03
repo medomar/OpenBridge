@@ -488,6 +488,72 @@ body {
   cursor: not-allowed;
 }
 
+/* Voice input button */
+.mic-btn {
+  padding: 10px 12px;
+  background: none;
+  border: 1px solid var(--border-input);
+  border-radius: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 42px;
+  min-width: 42px;
+  position: relative;
+}
+
+.mic-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mic-btn.recording {
+  background: #ff5252;
+  border-color: #ff5252;
+  color: #ffffff;
+}
+
+.mic-btn.recording:hover:not(:disabled) {
+  background: #d32f2f;
+  border-color: #d32f2f;
+}
+
+/* Pulsing recording dot shown in the input area */
+.recording-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #ff5252;
+  font-weight: 500;
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  background: #ff5252;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: rec-pulse 1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
 /* File preview chips */
 .file-preview {
   display: flex;

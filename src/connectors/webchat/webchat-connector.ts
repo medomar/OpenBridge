@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
@@ -14,6 +14,7 @@ import type { AccessControlEntry } from '../../memory/access-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML, WEBCHAT_SW_JS } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
+import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
 
 /** Name of the HTTP-only session cookie set after successful token validation */
 const SESSION_COOKIE_NAME = 'ob_session';
@@ -685,6 +686,81 @@ export class WebChatConnector implements Connector {
               path: filePath,
             }),
           );
+        })();
+        return;
+      }
+
+      // /api/transcribe — audio file → transcribed text (POST)
+      if (url === '/api/transcribe' && req.method === 'POST') {
+        void (async (): Promise<void> => {
+          const contentType = req.headers['content-type'] ?? '';
+          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+          if (!boundaryMatch) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing multipart boundary' }));
+            return;
+          }
+
+          const declaredLength = parseInt(req.headers['content-length'] ?? '0', 10);
+          if (Number.isFinite(declaredLength) && declaredLength > UPLOAD_MAX_BYTES) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Audio file too large (max 10MB)' }));
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          let totalSize = 0;
+          let tooLarge = false;
+          await new Promise<void>((resolve, reject) => {
+            req.on('data', (chunk: Buffer) => {
+              totalSize += chunk.length;
+              if (totalSize > UPLOAD_MAX_BYTES) {
+                tooLarge = true;
+                req.destroy();
+                resolve();
+                return;
+              }
+              chunks.push(chunk);
+            });
+            req.on('end', resolve);
+            req.on('error', reject);
+          });
+
+          if (tooLarge) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Audio file too large (max 10MB)' }));
+            return;
+          }
+
+          const body = Buffer.concat(chunks);
+          const file = parseMultipartFile(body, boundaryMatch[1]!);
+          if (!file) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'No audio file found in upload' }));
+            return;
+          }
+
+          const audioId = randomUUID();
+          const ext = extname(file.filename) || '.webm';
+          const audioPath = join(tmpdir(), `ob-voice-${audioId}${ext}`);
+          await writeFile(audioPath, file.data);
+
+          try {
+            const result = await transcribeAudio(audioPath);
+            if (!result) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ text: TRANSCRIPTION_FALLBACK_MESSAGE, backend: 'none' }));
+              return;
+            }
+            logger.info(
+              { backend: result.backend, durationMs: result.durationMs },
+              'WebChat: voice transcription complete',
+            );
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ text: result.text, backend: result.backend }));
+          } finally {
+            await unlink(audioPath).catch(() => {});
+          }
         })();
         return;
       }
