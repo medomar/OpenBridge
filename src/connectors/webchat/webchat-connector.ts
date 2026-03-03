@@ -10,7 +10,7 @@ import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { AccessControlEntry } from '../../memory/access-store.js';
 import type { MemoryManager } from '../../memory/index.js';
-import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML } from './ui-bundle.js';
+import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML, WEBCHAT_SW_JS } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 
 /** Name of the HTTP-only session cookie set after successful token validation */
@@ -465,6 +465,18 @@ export class WebChatConnector implements Connector {
         };
         res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
         res.end(JSON.stringify(manifest));
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
+      // ── Service Worker (public — no auth required, must be at root scope) ───
+      if (url === '/sw.js') {
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Service-Worker-Allowed': '/',
+          'Cache-Control': 'no-cache',
+        });
+        res.end(WEBCHAT_SW_JS);
         return;
       }
       // ─────────────────────────────────────────────────────────────────────────

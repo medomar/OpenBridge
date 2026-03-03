@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 96 | **In Progress:** 0 | **Done:** 118 (112 archived)
+> **Pending:** 95 | **In Progress:** 0 | **Done:** 119 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -45,7 +45,7 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻ (5/15 done)   |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻ (6/15 done)   |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
@@ -308,7 +308,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 4   | OB-1506 | Display public URL in console and WebChat header when tunnel active — add copy button next to URL in header. Show both LAN and public URLs in console                                                                                                        | ✅ Done   |
 | 5   | OB-1507 | Add "Share this link" button in WebChat header — copies current URL to clipboard. Toast notification "Link copied!" Uses navigator.clipboard with fallback                                                                                                   | ✅ Done   |
 | 6   | OB-1508 | Add manifest.json for PWA — app name, short name, start URL, standalone display, theme color, icon placeholders. Serve via webchat connector                                                                                                                 | ✅ Done   |
-| 7   | OB-1509 | Add service worker — cache HTML/CSS/JS shell for offline. Show "Reconnecting..." on WebSocket disconnect. Handle push notifications. Register in app.js                                                                                                      | ◻ Pending |
+| 7   | OB-1509 | Add service worker — cache HTML/CSS/JS shell for offline. Show "Reconnecting..." on WebSocket disconnect. Handle push notifications. Register in app.js                                                                                                      | ✅ Done   |
 | 8   | OB-1510 | Add responsive CSS — mobile (< 768px): full-width, no padding, large targets. Desktop: centered card with max-width. Handle landscape                                                                                                                        | ◻ Pending |
 | 9   | OB-1511 | Add touch-friendly sizing — 44px minimum tap targets. Larger send button on mobile. 8px gap between tappable elements. Prevent text selection on buttons                                                                                                     | ◻ Pending |
 | 10  | OB-1512 | Add iOS safe area insets — env(safe-area-inset-\*) for notch and home indicator. Apply to input area, header, container. viewport-fit=cover on meta tag                                                                                                      | ◻ Pending |

@@ -34,40 +34,57 @@ async function main() {
 
   const bundledJs = jsResult.outputFiles[0].text;
 
-  // 2. Read CSS
+  // 2. Minify service worker (no bundling — SW runs in its own context)
+  const swResult = await build({
+    entryPoints: [path.join(UI_DIR, 'js/sw.js')],
+    bundle: false,
+    format: 'iife',
+    platform: 'browser',
+    minify: true,
+    write: false,
+  });
+
+  const bundledSw = swResult.outputFiles[0].text;
+
+  // 3. Read CSS
   const css = readFileSync(path.join(UI_DIR, 'css/styles.css'), 'utf8');
 
-  // 3. Read HTML template
+  // 4. Read HTML template
   let html = readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
 
-  // 4. Replace <link rel="stylesheet" ...> with inline <style>
+  // 5. Replace <link rel="stylesheet" ...> with inline <style>
   html = html.replace(
     /<link\s+rel="stylesheet"\s+href="css\/styles\.css"\s*\/>/,
     `<style>\n${css}\n</style>`,
   );
 
-  // 5. Replace <script src="js/app.js" type="module"> with inline bundled JS
+  // 6. Replace <script src="js/app.js" type="module"> with inline bundled JS
   html = html.replace(
     /<script\s+src="js\/app\.js"\s+type="module"><\/script>/,
     `<script>\n${bundledJs}\n</script>`,
   );
 
-  // 6. Escape backticks and template literal markers for embedding in TS template literal
+  // 7. Escape backticks and template literal markers for embedding in TS template literal
   const escaped = html.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 
-  // 7. Bundle login.html (self-contained — no external JS/CSS deps)
+  // 8. Bundle login.html (self-contained — no external JS/CSS deps)
   const loginHtml = readFileSync(path.join(UI_DIR, 'login.html'), 'utf8');
   const escapedLogin = loginHtml
     .replace(/\\/g, '\\\\')
     .replace(/`/g, '\\`')
     .replace(/\$\{/g, '\\${');
 
-  // 8. Write TypeScript constants
+  // 9. Escape service worker JS for embedding
+  const escapedSw = bundledSw.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+
+  // 10. Write TypeScript constants
   const ts = `// AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
 // Generated: ${new Date().toISOString()}
 export const WEBCHAT_HTML = \`${escaped}\`;
 
 export const WEBCHAT_LOGIN_HTML = \`${escapedLogin}\`;
+
+export const WEBCHAT_SW_JS = \`${escapedSw}\`;
 `;
 
   writeFileSync(OUT_FILE, ts, 'utf8');

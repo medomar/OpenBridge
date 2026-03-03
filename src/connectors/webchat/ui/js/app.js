@@ -337,9 +337,15 @@ function progressLabel(event) {
 
 // --- Connection state ---
 
-function setOnline(online) {
+function setOnline(online, reconnecting) {
   dot.className = 'conn-dot' + (online ? ' online' : '');
-  connLabel.textContent = online ? 'Connected' : 'Disconnected';
+  if (online) {
+    connLabel.textContent = 'Connected';
+  } else if (reconnecting) {
+    connLabel.textContent = 'Reconnecting...';
+  } else {
+    connLabel.textContent = 'Disconnected';
+  }
   inp.disabled = !online;
   send.disabled = !online;
 }
@@ -438,6 +444,16 @@ form.addEventListener('submit', function (e) {
   );
 });
 
+// --- Service Worker Registration ---
+
+(function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').catch(function (err) {
+    // Registration failed — non-critical, app functions without it
+    if (typeof console !== 'undefined') console.warn('SW registration failed:', err);
+  });
+})();
+
 // --- Boot ---
 
 initDashboard();
@@ -447,7 +463,7 @@ initWebSocket({
     addBubble('Connected to OpenBridge', 'sys');
   },
   onClose: function () {
-    setOnline(false);
+    setOnline(false, true);
     hideStatus();
     addBubble('Disconnected \u2014 reconnecting...', 'sys');
   },
