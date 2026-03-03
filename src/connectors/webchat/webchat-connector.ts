@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
+import { extname, join } from 'node:path';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WebChatConfigSchema } from './webchat-config.js';
@@ -56,6 +58,56 @@ interface WssServer {
 
 /** WebSocket OPEN state constant */
 const WS_OPEN = 1;
+
+/** Maximum upload size: 10 MB */
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Parse the first file part from a multipart/form-data body.
+ * Returns null if no file part is found.
+ */
+function parseMultipartFile(
+  body: Buffer,
+  boundary: string,
+): { filename: string; mimeType: string; data: Buffer } | null {
+  const delimiter = Buffer.from(`--${boundary}`);
+  const crlfcrlf = Buffer.from('\r\n\r\n');
+
+  // Find the first boundary
+  let pos = body.indexOf(delimiter);
+  if (pos === -1) return null;
+  pos += delimiter.length;
+
+  // Skip CRLF after opening boundary
+  if (body[pos] === 0x0d && body[pos + 1] === 0x0a) pos += 2;
+
+  // Find end of headers
+  const headersEnd = body.indexOf(crlfcrlf, pos);
+  if (headersEnd === -1) return null;
+
+  const headersStr = body.subarray(pos, headersEnd).toString('utf8');
+  pos = headersEnd + 4; // skip \r\n\r\n
+
+  // Parse headers
+  let filename = 'upload';
+  let mimeType = 'application/octet-stream';
+  for (const line of headersStr.split('\r\n')) {
+    const lower = line.toLowerCase();
+    if (lower.startsWith('content-disposition:')) {
+      const m = line.match(/filename="([^"]+)"/i);
+      if (m) filename = m[1]!;
+    } else if (lower.startsWith('content-type:')) {
+      const ct = line.slice('content-type:'.length).trim();
+      if (ct) mimeType = ct;
+    }
+  }
+
+  // Find end boundary (CRLF + -- + boundary)
+  const endDelimiter = Buffer.from(`\r\n--${boundary}`);
+  const dataEnd = body.indexOf(endDelimiter, pos);
+  const data = dataEnd !== -1 ? body.subarray(pos, dataEnd) : body.subarray(pos);
+  return { filename, mimeType, data };
+}
 
 /**
  * WebChat connector — serves a minimal HTML chat UI on localhost:3000
@@ -553,6 +605,87 @@ export class WebChatConnector implements Connector {
           'Content-Length': entry.data.length,
         });
         res.end(entry.data);
+        return;
+      }
+
+      // /api/upload — multipart file upload (POST)
+      if (url === '/api/upload' && req.method === 'POST') {
+        void (async (): Promise<void> => {
+          const contentType = req.headers['content-type'] ?? '';
+          const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+          if (!boundaryMatch) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing multipart boundary' }));
+            return;
+          }
+
+          // Reject by Content-Length before reading the body
+          const declaredLength = parseInt(req.headers['content-length'] ?? '0', 10);
+          if (Number.isFinite(declaredLength) && declaredLength > UPLOAD_MAX_BYTES) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'File too large (max 10MB)' }));
+            return;
+          }
+
+          // Collect body, enforcing the size limit
+          const chunks: Buffer[] = [];
+          let totalSize = 0;
+          let tooLarge = false;
+          await new Promise<void>((resolve, reject) => {
+            req.on('data', (chunk: Buffer) => {
+              totalSize += chunk.length;
+              if (totalSize > UPLOAD_MAX_BYTES) {
+                tooLarge = true;
+                req.destroy();
+                resolve();
+                return;
+              }
+              chunks.push(chunk);
+            });
+            req.on('end', resolve);
+            req.on('error', reject);
+          });
+
+          if (tooLarge) {
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'File too large (max 10MB)' }));
+            return;
+          }
+
+          const body = Buffer.concat(chunks);
+          const file = parseMultipartFile(body, boundaryMatch[1]!);
+          if (!file) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'No file found in upload' }));
+            return;
+          }
+
+          // Store file in <storeDir>/.openbridge/uploads/<uuid><ext>
+          const uploadsDir = join(this.storeDir, '.openbridge', 'uploads');
+          await mkdir(uploadsDir, { recursive: true });
+
+          const fileId = randomUUID();
+          const ext = extname(file.filename);
+          const storedName = `${fileId}${ext}`;
+          const filePath = join(uploadsDir, storedName);
+          await writeFile(filePath, file.data);
+
+          logger.info(
+            { fileId, filename: file.filename, size: file.data.length },
+            'WebChat: file uploaded',
+          );
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              fileId,
+              filename: file.filename,
+              size: file.data.length,
+              mimeType: file.mimeType,
+              path: filePath,
+            }),
+          );
+        })();
         return;
       }
 

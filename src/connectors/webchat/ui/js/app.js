@@ -524,15 +524,58 @@ inp.addEventListener('keydown', function (e) {
 form.addEventListener('submit', function (e) {
   e.preventDefault();
   const text = inp.value.trim();
-  if (!text || !isConnected()) return;
-  addBubble(text, 'user', new Date());
-  sendMessage({ type: 'message', content: text });
+  const hasFiles = _selectedFiles.length > 0;
+  if ((!text && !hasFiles) || !isConnected()) return;
+
+  // Snapshot and clear selected files immediately
+  const filesToUpload = _selectedFiles.slice();
+  _selectedFiles = [];
+  renderFilePreviews();
+
+  const displayText = text || '(\uD83D\uDCCE file upload)';
+  addBubble(displayText, 'user', new Date());
   inp.value = '';
   autoResize();
   updateCharCount();
   showStatus(
     '\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>',
   );
+
+  if (filesToUpload.length === 0) {
+    sendMessage({ type: 'message', content: text });
+    return;
+  }
+
+  // Upload files first, then send message with file paths appended
+  Promise.all(
+    filesToUpload.map(function (file) {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      return fetch('/api/upload', { method: 'POST', body: fd })
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .catch(function () {
+          return null;
+        });
+    }),
+  ).then(function (results) {
+    const fileLines = results
+      .filter(function (r) {
+        return r && r.fileId;
+      })
+      .map(function (r) {
+        return '- ' + r.filename + ' (path: ' + r.path + ')';
+      });
+
+    let content = text;
+    if (fileLines.length > 0) {
+      if (content) content += '\n\n';
+      content += '[Attached files]\n' + fileLines.join('\n');
+    }
+    if (!content) content = '[File upload failed — no files were saved]';
+    sendMessage({ type: 'message', content: content });
+  });
 });
 
 // --- File Upload ---
