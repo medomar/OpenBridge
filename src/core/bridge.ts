@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
 import { V2ConfigSchema, ENV_DENY_PATTERNS } from '../types/config.js';
+import type { DiscoveredTool } from '../types/discovery.js';
 import { warnAboutExposedSecrets } from './env-sanitizer.js';
 import { TunnelManager } from './tunnel-manager.js';
 // Side-effect imports: each adapter auto-registers with TunnelManager on load
@@ -57,6 +58,8 @@ export interface BridgeOptions {
   workspaceInclude?: readonly string[];
   /** Glob patterns for files to exclude — hidden from the AI (workspace.exclude from V2 config) */
   workspaceExclude?: readonly string[];
+  /** Discovered AI tools — when provided, exposed via GET /api/discovery in WebChat */
+  discoveredTools?: DiscoveredTool[];
 }
 
 export class Bridge {
@@ -97,6 +100,7 @@ export class Bridge {
   private readonly sessionExcludePatterns: string[] = [];
   private readonly workspaceInclude: readonly string[];
   private readonly workspaceExclude: readonly string[];
+  private readonly discoveredTools: DiscoveredTool[];
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -104,6 +108,7 @@ export class Bridge {
     this.drainTimeoutMs = options?.drainTimeoutMs ?? 30_000;
     this.workspaceInclude = options?.workspaceInclude ?? [];
     this.workspaceExclude = options?.workspaceExclude ?? [];
+    this.discoveredTools = options?.discoveredTools ?? [];
     this.auth = new AuthService(config.auth);
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
@@ -464,6 +469,16 @@ export class Bridge {
         const c = connector as { setMemory?: (m: MemoryManager) => void };
         if (typeof c.setMemory === 'function') {
           c.setMemory(this.memory);
+        }
+      }
+    }
+
+    // Wire discovered AI tools into connectors that support the /api/discovery endpoint (e.g. WebChat)
+    if (this.discoveredTools.length > 0) {
+      for (const connector of this.connectors) {
+        const c = connector as { setDiscoveryResult?: (t: DiscoveredTool[]) => void };
+        if (typeof c.setDiscoveryResult === 'function') {
+          c.setDiscoveryResult(this.discoveredTools);
         }
       }
     }

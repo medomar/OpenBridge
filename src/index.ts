@@ -230,6 +230,7 @@ async function startV2Flow(
     securityConfig: v2Config.security,
     workspaceInclude: v2Config.workspace?.include,
     workspaceExclude: v2Config.workspace?.exclude,
+    discoveredTools: scanResult.cliTools,
   });
 
   // Register built-in plugins

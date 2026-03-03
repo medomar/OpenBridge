@@ -12,6 +12,7 @@ import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { AccessControlEntry } from '../../memory/access-store.js';
 import type { MemoryManager } from '../../memory/index.js';
+import type { DiscoveredTool } from '../../types/discovery.js';
 import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML, WEBCHAT_SW_JS } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
@@ -144,6 +145,7 @@ export class WebChatConnector implements Connector {
     disconnected: [],
   };
   private memory: MemoryManager | null = null;
+  private discoveredTools: DiscoveredTool[] = [];
   private authToken: string | null = null;
   private storeDir: string = process.cwd();
   /** bcrypt hash of the configured password, or null when token auth is active */
@@ -162,6 +164,11 @@ export class WebChatConnector implements Connector {
   /** Wire the SQLite memory manager — enables the /api/sessions REST endpoint. */
   setMemory(memory: MemoryManager): void {
     this.memory = memory;
+  }
+
+  /** Wire discovered AI tools — enables the /api/discovery REST endpoint. */
+  setDiscoveryResult(tools: DiscoveredTool[]): void {
+    this.discoveredTools = tools;
   }
 
   /**
@@ -884,6 +891,19 @@ export class WebChatConnector implements Connector {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         });
+        return;
+      }
+
+      // /api/discovery — list discovered AI tools for settings panel (GET)
+      if (url === '/api/discovery' && req.method === 'GET') {
+        const tools = this.discoveredTools
+          .filter((t) => t.available)
+          .map((t) => ({ name: t.name, version: t.version }));
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300',
+        });
+        res.end(JSON.stringify({ tools }));
         return;
       }
 
