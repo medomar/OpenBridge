@@ -53,6 +53,10 @@ export interface BridgeOptions {
   securityConfig?: SecurityConfig;
   /** Tunnel tool name (e.g. 'cloudflared', 'ngrok') — when set, starts a tunnel on the file server port during start() */
   tunnelTool?: string;
+  /** Glob patterns for files to include — only these visible to the AI (workspace.include from V2 config) */
+  workspaceInclude?: readonly string[];
+  /** Glob patterns for files to exclude — hidden from the AI (workspace.exclude from V2 config) */
+  workspaceExclude?: readonly string[];
 }
 
 export class Bridge {
@@ -91,11 +95,15 @@ export class Bridge {
   private tunnelSigintHandler: (() => void) | null = null;
   private readonly detectedSecrets: SecretMatch[] = [];
   private readonly sessionExcludePatterns: string[] = [];
+  private readonly workspaceInclude: readonly string[];
+  private readonly workspaceExclude: readonly string[];
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
     this.configPath = options?.configPath;
     this.drainTimeoutMs = options?.drainTimeoutMs ?? 30_000;
+    this.workspaceInclude = options?.workspaceInclude ?? [];
+    this.workspaceExclude = options?.workspaceExclude ?? [];
     this.auth = new AuthService(config.auth);
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
@@ -314,6 +322,14 @@ export class Bridge {
 
     // Wire message queue into router for queue-depth display in "status" command
     this.router.setQueue(this.queue);
+
+    // Wire workspace visibility state into router for /scope command (OB-1472)
+    this.router.setVisibilityState(
+      this.detectedSecrets,
+      this.sessionExcludePatterns,
+      this.workspaceInclude,
+      this.workspaceExclude,
+    );
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization

@@ -12,6 +12,7 @@ import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
 import type { AppServer } from './app-server.js';
 import type { InteractionRelay, RelayMessage } from './interaction-relay.js';
+import type { SecretMatch } from './secret-scanner.js';
 import type {
   MemoryManager,
   ActivityRecord,
@@ -267,6 +268,14 @@ export class Router {
   private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
   /** Security config — controls confirmation requirements for high-risk spawns. */
   private securityConfig?: SecurityConfig;
+  /** Sensitive files detected by the startup secret scanner. Populated via setVisibilityState(). */
+  private detectedSecrets: readonly SecretMatch[] = [];
+  /** Workspace-relative patterns auto-excluded this session after secret scanning. */
+  private sessionExcludePatterns: readonly string[] = [];
+  /** User-configured include patterns (workspace.include). */
+  private workspaceInclude: readonly string[] = [];
+  /** User-configured exclude patterns (workspace.exclude). */
+  private workspaceExclude: readonly string[] = [];
   /**
    * IDs of priority-1 messages that should trigger a checkpoint-handle-resume cycle.
    * Populated by the `onUrgentEnqueued` queue callback; consumed in `route()`.
@@ -404,6 +413,26 @@ export class Router {
     logger.info(
       { confirmHighRisk: config.confirmHighRisk },
       'Router configured with SecurityConfig',
+    );
+  }
+
+  /**
+   * Set workspace visibility state — populates data shown by the /scope command.
+   * Called by Bridge after startup secret scanning and config wiring are complete.
+   */
+  setVisibilityState(
+    detectedSecrets: readonly SecretMatch[],
+    sessionExcludePatterns: readonly string[],
+    workspaceInclude: readonly string[],
+    workspaceExclude: readonly string[],
+  ): void {
+    this.detectedSecrets = detectedSecrets;
+    this.sessionExcludePatterns = sessionExcludePatterns;
+    this.workspaceInclude = workspaceInclude;
+    this.workspaceExclude = workspaceExclude;
+    logger.info(
+      { secretCount: detectedSecrets.length, sessionExcludeCount: sessionExcludePatterns.length },
+      'Router visibility state updated',
     );
   }
 
@@ -892,6 +921,12 @@ export class Router {
     // Handle built-in "/apps" command — shows running app instances with URLs (OB-1450)
     if (/^\/apps$/i.test(message.content.trim())) {
       await this.handleAppsCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/scope" command — shows visibility rules and detected secrets (OB-1472)
+    if (/^\/scope$/i.test(message.content.trim())) {
+      await this.handleScopeCommand(message, connector);
       return;
     }
 
@@ -3107,6 +3142,74 @@ export class Router {
   }
 
   /**
+   * Handle the built-in "/scope" command — show workspace visibility rules and detected secrets.
+   *
+   * Output sections:
+   *   Visibility Rules — include (if set) and exclude patterns
+   *   Sensitive Files  — detected files with severity, or "No sensitive files detected"
+   */
+  private async handleScopeCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const lines: string[] = ['*Workspace Scope*', ''];
+
+    // --- Visibility Rules ---
+    lines.push('*Visibility Rules*');
+
+    if (this.workspaceInclude.length > 0) {
+      lines.push('Include (only these visible):');
+      for (const pattern of this.workspaceInclude) {
+        lines.push(`  • ${pattern}`);
+      }
+    } else {
+      lines.push('Include: all files (no include filter set)');
+    }
+
+    lines.push('');
+
+    // Combine session-detected excludes with user-configured excludes for display
+    const allUserExcludes = [...this.sessionExcludePatterns, ...this.workspaceExclude];
+    if (allUserExcludes.length > 0) {
+      lines.push('Exclude (hidden from AI):');
+      for (const pattern of allUserExcludes) {
+        lines.push(`  • ${pattern}`);
+      }
+    } else {
+      lines.push('Exclude: default patterns only');
+    }
+
+    lines.push('');
+
+    // --- Sensitive Files ---
+    lines.push('*Sensitive Files*');
+
+    if (this.detectedSecrets.length === 0) {
+      lines.push('No sensitive files detected.');
+    } else {
+      for (const secret of this.detectedSecrets) {
+        const basename = secret.path.split('/').pop() ?? secret.path;
+        const severityLabel =
+          secret.severity === 'critical'
+            ? '🔴 critical'
+            : secret.severity === 'high'
+              ? '🟠 high'
+              : '🟡 medium';
+        lines.push(`  • ${basename} — ${severityLabel} (pattern: ${secret.pattern})`);
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, secretCount: this.detectedSecrets.length },
+      'Scope info shown via /scope',
+    );
+  }
+
+  /**
    * Handle the built-in "/help" command — list all available commands.
    *
    * Displays all built-in commands with brief descriptions, grouped by category:
@@ -3124,6 +3227,7 @@ export class Router {
       '• history — show recent conversation history',
       '• /audit — list recent worker spawns',
       '• /apps — list running app instances with URLs',
+      '• /scope — show workspace visibility rules and detected sensitive files',
       '',
       '*Deep Mode*',
       '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',
