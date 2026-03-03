@@ -849,6 +849,44 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/feedback — record user thumbs-up/down on an AI response (POST)
+      if (url === '/api/feedback' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 4096) req.destroy();
+        });
+        req.on('end', () => {
+          let parsed: { session?: unknown; message?: unknown; rating?: unknown };
+          try {
+            parsed = JSON.parse(body) as { session?: unknown; message?: unknown; rating?: unknown };
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            return;
+          }
+          const rating = typeof parsed.rating === 'string' ? parsed.rating : null;
+          if (rating !== 'up' && rating !== 'down') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'rating must be "up" or "down"' }));
+            return;
+          }
+          const success = rating === 'up';
+          logger.info(
+            { session: parsed.session, message: parsed.message, rating },
+            'WebChat: user feedback received',
+          );
+          if (this.memory) {
+            void this.memory
+              .recordPromptOutcome('webchat-response-quality', success)
+              .catch(() => {});
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        });
+        return;
+      }
+
       // /api/commands — list available slash commands for autocomplete (GET)
       if (url === '/api/commands' && req.method === 'GET') {
         const commands = [
