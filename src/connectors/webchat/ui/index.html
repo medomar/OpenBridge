@@ -58,6 +58,7 @@
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>
         <button class="theme-toggle" id="share-btn" aria-label="Share this link">Share</button>
         <button class="stop-all-btn" id="stop-all-btn" disabled aria-label="Stop all workers">Stop All</button>
+        <button class="settings-gear-btn" id="settings-btn" aria-label="Open settings" aria-controls="settings-panel" aria-expanded="false" title="Settings">&#x2699;&#xFE0F;</button>
         <div class="conn-status" role="status" aria-live="polite" aria-label="Connection status">
           <div class="conn-dot" id="dot" aria-hidden="true"></div>
           <span id="connLabel">Connecting...</span>
@@ -120,6 +121,90 @@
       <button id="pwa-dismiss-btn" class="pwa-dismiss-btn" aria-label="Dismiss install prompt">&#x2715;</button>
     </div>
   </div>
+  <!-- Settings overlay (backdrop) -->
+  <div id="settings-overlay" class="settings-overlay" aria-hidden="true"></div>
+
+  <!-- Settings panel (slide-out, right) -->
+  <aside
+    id="settings-panel"
+    class="settings-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Settings"
+    aria-hidden="true"
+  >
+    <div class="settings-header">
+      <span class="settings-title">Settings</span>
+      <button class="settings-close-btn" aria-label="Close settings">&#x2715;</button>
+    </div>
+    <div class="settings-body">
+      <!-- AI Tool Selector -->
+      <section class="settings-section" aria-labelledby="settings-tool-label">
+        <label id="settings-tool-label" class="settings-label" for="settings-tool-select">AI Tool</label>
+        <select id="settings-tool-select" class="settings-select" aria-label="Preferred AI tool">
+          <option value="">Auto (discovered)</option>
+        </select>
+        <p class="settings-hint">Preferred AI tool for this session. Auto uses the best available.</p>
+      </section>
+
+      <!-- Execution Profile -->
+      <section class="settings-section" aria-labelledby="settings-profile-label">
+        <span id="settings-profile-label" class="settings-label">Execution Profile</span>
+        <div class="settings-radio-group" role="radiogroup" aria-labelledby="settings-profile-label">
+          <label class="settings-radio-item">
+            <input type="radio" name="settings-profile" value="fast" />
+            <span class="settings-radio-content">
+              <span class="settings-radio-title">Fast</span>
+              <span class="settings-radio-desc">Quick responses, fewer subtasks</span>
+            </span>
+          </label>
+          <label class="settings-radio-item">
+            <input type="radio" name="settings-profile" value="thorough" />
+            <span class="settings-radio-content">
+              <span class="settings-radio-title">Thorough</span>
+              <span class="settings-radio-desc">More analysis, multiple subtasks</span>
+            </span>
+          </label>
+          <label class="settings-radio-item">
+            <input type="radio" name="settings-profile" value="manual" />
+            <span class="settings-radio-content">
+              <span class="settings-radio-title">Manual</span>
+              <span class="settings-radio-desc">Confirm before each worker runs</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Notifications -->
+      <section class="settings-section" aria-labelledby="settings-notif-label">
+        <span id="settings-notif-label" class="settings-label">Notifications</span>
+        <label class="settings-checkbox-item">
+          <input type="checkbox" id="settings-sound-check" />
+          <span class="settings-checkbox-content">
+            <span class="settings-checkbox-title">Sound</span>
+            <span class="settings-checkbox-desc">Play a tone when AI responds</span>
+          </span>
+        </label>
+        <label class="settings-checkbox-item">
+          <input type="checkbox" id="settings-browser-notify-check" />
+          <span class="settings-checkbox-content">
+            <span class="settings-checkbox-title">Browser notifications</span>
+            <span class="settings-checkbox-desc">Show a notification when the tab is in background</span>
+          </span>
+        </label>
+      </section>
+
+      <!-- Theme -->
+      <section class="settings-section" aria-labelledby="settings-theme-label">
+        <label id="settings-theme-label" class="settings-label" for="settings-theme-select">Theme</label>
+        <select id="settings-theme-select" class="settings-select" aria-label="Color theme">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </section>
+    </div>
+  </aside>
+
   <script src="js/app.js" type="module"></script>
 </body>
 </html>
