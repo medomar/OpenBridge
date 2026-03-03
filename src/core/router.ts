@@ -130,6 +130,24 @@ export interface PendingSpawnEntry {
   timeoutHandle: ReturnType<typeof setTimeout>;
 }
 
+/** A pending tool escalation request — queued when a worker needs additional tool access. */
+export interface PendingEscalation {
+  /** ID of the worker requesting additional tools */
+  workerId: string;
+  /** Tool names the worker is requesting access to */
+  requestedTools: string[];
+  /** Current tool profile the worker is running under */
+  currentProfile: string;
+  /** Reason from the worker failure explaining why additional tools are needed */
+  reason: string;
+  /** The original inbound message that triggered this worker */
+  message: InboundMessage;
+  /** Connector used to send the escalation prompt and receive the reply */
+  connector: Connector;
+  /** Auto-deny timeout handle — cleared when user replies with /allow or /deny */
+  timeoutHandle: ReturnType<typeof setTimeout>;
+}
+
 /**
  * Message priority levels used for queue ordering.
  * Lower number = higher priority (processed first).
@@ -266,6 +284,8 @@ export class Router {
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
   private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
+  /** Pending tool escalation requests — keyed by sender, awaiting user "/allow" or "/deny". */
+  private readonly pendingEscalations = new Map<string, PendingEscalation>();
   /** Security config — controls confirmation requirements for high-risk spawns. */
   private securityConfig?: SecurityConfig;
   /** Sensitive files detected by the startup secret scanner. Populated via setVisibilityState(). */

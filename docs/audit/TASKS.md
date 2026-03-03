@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 60 | **In Progress:** 0 | **Done:** 154 (112 archived)
+> **Pending:** 59 | **In Progress:** 0 | **Done:** 155 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -373,7 +373,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                             | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1584 | Add `PendingEscalation` interface in `src/core/router.ts` — fields: workerId, requestedTools (string[]), currentProfile, reason (string from worker failure), message (original InboundMessage), connector, timeoutHandle. Add `pendingEscalations` Map keyed by sender | ◻ Pending |
+| 1   | OB-1584 | Add `PendingEscalation` interface in `src/core/router.ts` — fields: workerId, requestedTools (string[]), currentProfile, reason (string from worker failure), message (original InboundMessage), connector, timeoutHandle. Add `pendingEscalations` Map keyed by sender | ✅ Done   |
 | 2   | OB-1585 | Add `requestToolEscalation()` method to Router — sends escalation prompt to user: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or '/allow {profile}' to grant, '/deny' to reject." Sets 60s auto-deny timeout                                 | ◻ Pending |
 | 3   | OB-1586 | Add `/allow` command handler in Router — parse `/allow Bash(npm:test)` (single tool) or `/allow code-edit` (profile upgrade). Support scope suffix: `/allow code-edit --permanent`, `/allow Bash(npm:test) --session`. Default scope: `once`                            | ◻ Pending |
 | 4   | OB-1587 | Add `/deny` command handler in Router — reject pending escalation, notify Master to continue without the tool or abort the worker. Remove from pendingEscalations map                                                                                                   | ◻ Pending |
