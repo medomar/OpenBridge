@@ -1,11 +1,12 @@
 // AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: 2026-03-03T17:48:56.093Z
+// Generated: 2026-03-03T17:53:38.977Z
 export const WEBCHAT_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenBridge WebChat</title>
+  <link rel="manifest" href="/manifest.json" />
   <style>
 /* OpenBridge WebChat — Light theme (default) */
 :root {

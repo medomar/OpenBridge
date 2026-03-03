@@ -448,6 +448,27 @@ export class WebChatConnector implements Connector {
       }
       // ──────────────────────────────────────────────────────────────────────
 
+      // ── PWA manifest (public — no auth required) ────────────────────────────
+      if (url === '/manifest.json') {
+        const manifest = {
+          name: 'OpenBridge WebChat',
+          short_name: 'OpenBridge',
+          description: 'AI Bridge WebChat — connect to your AI assistant',
+          start_url: '/',
+          display: 'standalone',
+          theme_color: '#1a73e8',
+          background_color: '#f0f2f5',
+          icons: [
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          ],
+        };
+        res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
+        res.end(JSON.stringify(manifest));
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       // ── Auth guard ─────────────────────────────────────────────────────────
       const auth = this.isAuthenticated(url, req);
       if (!auth.ok) {
