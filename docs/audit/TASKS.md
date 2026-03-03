@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 116 | **In Progress:** 0 | **Done:** 98 (112 archived)
+> **Pending:** 115 | **In Progress:** 0 | **Done:** 99 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -43,7 +43,7 @@
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
-| 88     | WebChat Frontend Extraction          | 15    | ◻ (13/15 done)  |
+| 88     | WebChat Frontend Extraction          | 15    | ◻ (14/15 done)  |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
@@ -270,7 +270,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 11  | OB-1486 | Update webchat-connector.ts to load bundled HTML — import WEBCHAT_HTML from ui-bundle.ts instead of inline string. Build step must run before main TS compilation                                                                              | ✅ Done   |
 | 12  | OB-1487 | Add ARIA labels and keyboard navigation — aria-label on all interactive elements. Tab cycles, Enter sends, Escape clears. role="log" on messages, role="status" on indicators                                                                  | ✅ Done   |
 | 13  | OB-1488 | Add message timestamps — relative time on each message ("2m ago"). Hover for absolute time. Option to always show. Update every minute                                                                                                         | ✅ Done   |
-| 14  | OB-1489 | Add user/AI avatars — CSS-only icons for visual distinction. Different background colors per sender. Subtle entrance animation on new messages                                                                                                 | ◻ Pending |
+| 14  | OB-1489 | Add user/AI avatars — CSS-only icons for visual distinction. Different background colors per sender. Subtle entrance animation on new messages                                                                                                 | ✅ Done   |
 | 15  | OB-1490 | Add tests in `tests/connectors/webchat/webchat-ui.test.ts` — test: (1) bundled HTML serves with 200, (2) contains required elements, (3) dark mode toggle, (4) markdown code blocks, (5) build script generates valid bundle. At least 5 tests | ◻ Pending |
 
 ---
