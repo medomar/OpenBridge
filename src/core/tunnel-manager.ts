@@ -61,6 +61,8 @@ export class TunnelManager {
   private state: TunnelState = 'idle';
   private publicUrl: string | null = null;
   private adapter: TunnelAdapter | null;
+  private exitHandler: (() => void) | null = null;
+  private sigintHandler: (() => void) | null = null;
 
   private static readonly registry = new Map<string, TunnelAdapter>();
 
@@ -109,6 +111,16 @@ export class TunnelManager {
 
     this.state = 'starting';
     this.publicUrl = null;
+
+    // Register exit handlers so the tunnel process is killed even on abnormal exit
+    this.exitHandler = (): void => {
+      this.stop();
+    };
+    this.sigintHandler = (): void => {
+      this.stop();
+    };
+    process.on('exit', this.exitHandler);
+    process.on('SIGINT', this.sigintHandler);
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(this.toolName, args, {
@@ -237,6 +249,16 @@ export class TunnelManager {
    * Safe to call even if the tunnel is not running.
    */
   stop(): void {
+    // Always clean up process exit handlers when stop() is called
+    if (this.exitHandler !== null) {
+      process.removeListener('exit', this.exitHandler);
+      this.exitHandler = null;
+    }
+    if (this.sigintHandler !== null) {
+      process.removeListener('SIGINT', this.sigintHandler);
+      this.sigintHandler = null;
+    }
+
     if (this.child === null || this.state === 'idle' || this.state === 'stopped') {
       return;
     }
