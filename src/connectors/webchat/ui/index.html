@@ -15,8 +15,37 @@
   <script>window.__OB_PUBLIC_URL__ = null;</script>
 </head>
 <body>
+  <!-- Sidebar overlay (mobile backdrop) -->
+  <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
+  <!-- Sidebar panel -->
+  <nav id="sidebar" class="sidebar" aria-label="Conversations" aria-hidden="true">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Conversations</span>
+    </div>
+    <div class="sidebar-search-wrap">
+      <input
+        id="sidebar-search-input"
+        type="search"
+        class="sidebar-search-input"
+        placeholder="Search..."
+        aria-label="Search conversations"
+      />
+    </div>
+    <div id="sidebar-sessions" class="sidebar-sessions" role="list" aria-label="Conversation list">
+      <!-- Populated by OB-1520 -->
+    </div>
+  </nav>
+
   <div class="chat-wrap">
     <header class="header">
+      <button
+        id="sidebar-toggle"
+        class="sidebar-toggle-btn"
+        aria-label="Open sidebar"
+        aria-expanded="false"
+        aria-controls="sidebar"
+      >&#9776;</button>
       <h1>OpenBridge WebChat</h1>
       <div id="public-url-bar" class="hidden" role="note" aria-label="Public URL">
         <span id="public-url-text"></span>

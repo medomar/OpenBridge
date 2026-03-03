@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 87 | **In Progress:** 0 | **Done:** 127 (112 archived)
+> **Pending:** 86 | **In Progress:** 0 | **Done:** 128 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -46,7 +46,7 @@
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
-| 91     | Conversation History + Rich Input    | 15    | ◻               |
+| 91     | Conversation History + Rich Input    | 15    | ◻ (1/15 done)   |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
@@ -326,7 +326,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                   | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1518 | Add sidebar component in ui/js/sidebar.js — slide-out panel (left). Hidden on mobile, toggleable via hamburger. Desktop: optionally always visible (300px). Contains conversation list and search                                                                                                             | ◻ Pending |
+| 1   | OB-1518 | Add sidebar component in ui/js/sidebar.js — slide-out panel (left). Hidden on mobile, toggleable via hamburger. Desktop: optionally always visible (300px). Contains conversation list and search                                                                                                             | ✅ Done   |
 | 2   | OB-1519 | Fetch past conversations — add GET /api/sessions endpoint to webchat-connector.ts returning session list from conversation-store: id, title, date, messageCount                                                                                                                                               | ◻ Pending |
 | 3   | OB-1520 | Display session list in sidebar — each session as card with title, relative date, message count. Most recent first. Highlight current session                                                                                                                                                                 | ◻ Pending |
 | 4   | OB-1521 | Click session to load transcript — add GET /api/sessions/{id} endpoint returning full conversation messages. Clear and render loaded transcript on click                                                                                                                                                      | ◻ Pending |
