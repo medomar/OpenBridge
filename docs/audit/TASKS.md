@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 70 | **In Progress:** 0 | **Done:** 144 (112 archived)
+> **Pending:** 69 | **In Progress:** 0 | **Done:** 145 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -47,7 +47,7 @@
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
 | 91     | Conversation History + Rich Input    | 15    | ✅ (15/15 done) |
-| 92     | Settings Panel + Deep Mode UI        | 12    | ◻ (2/12 done)   |
+| 92     | Settings Panel + Deep Mode UI        | 12    | ◻ (3/12 done)   |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
@@ -352,7 +352,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1533 | Add settings panel in ui/js/settings.js — gear icon in header opens slide-out panel (right). Contains: AI tool selector, execution profile, notifications, theme. Close on outside click or Escape                                                      | ✅ Done   |
 | 2   | OB-1534 | Settings: AI tool selector — dropdown of discovered tools (Claude, Codex, etc.) with versions from GET /api/discovery. Changes preferred tool for session                                                                                               | ✅ Done   |
-| 3   | OB-1535 | Settings: execution profile selector — radio buttons for fast, thorough, manual with descriptions. Persist in localStorage and sync via PUT /api/webchat/settings                                                                                       | ◻ Pending |
+| 3   | OB-1535 | Settings: execution profile selector — radio buttons for fast, thorough, manual with descriptions. Persist in localStorage and sync via PUT /api/webchat/settings                                                                                       | ✅ Done   |
 | 4   | OB-1536 | Settings: notification preferences — checkboxes for sound and browser notifications. Persist in localStorage. Apply immediately                                                                                                                         | ◻ Pending |
 | 5   | OB-1537 | Settings: theme toggle — light/dark switch. Same as header toggle but grouped with other settings. Persist in localStorage                                                                                                                              | ◻ Pending |
 | 6   | OB-1538 | Add settings REST API — GET/PUT /api/webchat/settings. Store in localStorage client-side, optionally persist server-side in access-store. Validate with schema                                                                                          | ◻ Pending |
