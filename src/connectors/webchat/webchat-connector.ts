@@ -9,6 +9,7 @@ import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import { WEBCHAT_HTML } from './ui-bundle.js';
+import { getOrCreateAuthToken } from './webchat-auth.js';
 
 const logger = createLogger('webchat');
 
@@ -70,6 +71,8 @@ export class WebChatConnector implements Connector {
     disconnected: [],
   };
   private memory: MemoryManager | null = null;
+  private authToken: string | null = null;
+  private storeDir: string = process.cwd();
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -80,7 +83,24 @@ export class WebChatConnector implements Connector {
     this.memory = memory;
   }
 
+  /**
+   * Set the workspace path used for token persistence.
+   * Must be called before initialize() to take effect.
+   * Defaults to process.cwd() if not set.
+   */
+  setWorkspacePath(workspacePath: string): void {
+    this.storeDir = workspacePath;
+  }
+
+  /** Returns the auth token, or null if initialize() has not been called yet. */
+  getAuthToken(): string | null {
+    return this.authToken;
+  }
+
   async initialize(): Promise<void> {
+    // Generate or load persisted auth token before starting the server
+    this.authToken = getOrCreateAuthToken(this.storeDir);
+
     const http = await import('node:http');
 
     const WsServer = (await import('ws')).WebSocketServer as unknown as new (opts: {
