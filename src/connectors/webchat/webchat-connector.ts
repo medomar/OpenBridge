@@ -17,6 +17,19 @@ const SESSION_COOKIE_NAME = 'ob_session';
 /** Session lifetime: 24 hours in milliseconds */
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Per-IP login rate limiting — max failures before a 30-min block */
+const LOGIN_MAX_FAILURES = 5;
+/** Sliding window for counting failures: 15 minutes */
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+/** Block duration after exceeding failure threshold: 30 minutes */
+const LOGIN_BLOCK_MS = 30 * 60 * 1000;
+
+interface IpRateEntry {
+  failures: number;
+  windowStart: number;
+  blockedUntil?: number;
+}
+
 const logger = createLogger('webchat');
 
 type EventListeners = {
@@ -83,6 +96,8 @@ export class WebChatConnector implements Connector {
   private passwordHash: string | null = null;
   /** In-memory session store: sessionId → expiry timestamp (ms since epoch) */
   private readonly sessions: Map<string, number> = new Map();
+  /** Per-IP login failure tracker for rate limiting */
+  private readonly loginRateLimiter: Map<string, IpRateEntry> = new Map();
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -172,6 +187,61 @@ export class WebChatConnector implements Connector {
     for (const [id, expiry] of this.sessions) {
       if (now > expiry) this.sessions.delete(id);
     }
+  }
+
+  /** Extract the best-effort client IP from an incoming HTTP request. */
+  private extractClientIp(req: IncomingMessage): string {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0]!.trim();
+    }
+    return req.socket?.remoteAddress ?? 'unknown';
+  }
+
+  /**
+   * Check whether the given IP is currently rate-limited.
+   * Returns true if the IP should be blocked (429).
+   */
+  private isLoginBlocked(ip: string): boolean {
+    const entry = this.loginRateLimiter.get(ip);
+    if (!entry) return false;
+    const now = Date.now();
+    if (entry.blockedUntil !== undefined && now < entry.blockedUntil) {
+      return true;
+    }
+    // Reset if outside the sliding window
+    if (now - entry.windowStart > LOGIN_WINDOW_MS) {
+      this.loginRateLimiter.delete(ip);
+      return false;
+    }
+    return false;
+  }
+
+  /**
+   * Record a login failure for the given IP.
+   * Blocks the IP for LOGIN_BLOCK_MS after LOGIN_MAX_FAILURES within LOGIN_WINDOW_MS.
+   */
+  private recordLoginFailure(ip: string): void {
+    const now = Date.now();
+    const entry = this.loginRateLimiter.get(ip);
+    if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+      // Start a fresh window
+      this.loginRateLimiter.set(ip, { failures: 1, windowStart: now });
+      return;
+    }
+    entry.failures += 1;
+    if (entry.failures >= LOGIN_MAX_FAILURES) {
+      entry.blockedUntil = now + LOGIN_BLOCK_MS;
+      logger.warn(
+        { ip, failures: entry.failures },
+        'WebChat login rate limit exceeded — IP blocked',
+      );
+    }
+  }
+
+  /** Reset the login failure counter for an IP on successful authentication. */
+  private resetLoginFailures(ip: string): void {
+    this.loginRateLimiter.delete(ip);
   }
 
   /**
@@ -280,6 +350,17 @@ export class WebChatConnector implements Connector {
           res.end(JSON.stringify({ error: 'Password auth is not enabled' }));
           return;
         }
+
+        const clientIp = this.extractClientIp(req);
+
+        // Per-IP rate limit check
+        if (this.isLoginBlocked(clientIp)) {
+          res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '1800' });
+          res.end(JSON.stringify({ error: 'Too many failed login attempts. Try again later.' }));
+          logger.warn({ ip: clientIp }, 'WebChat login blocked — rate limit active');
+          return;
+        }
+
         let body = '';
         req.on('data', (chunk: Buffer) => {
           body += chunk.toString();
@@ -304,11 +385,13 @@ export class WebChatConnector implements Connector {
             }
             const valid = await verifyPassword(parsed.password, this.passwordHash!);
             if (!valid) {
+              this.recordLoginFailure(clientIp);
               res.writeHead(401, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Invalid password' }));
-              logger.warn('WebChat login failed — invalid password');
+              logger.warn({ ip: clientIp }, 'WebChat login failed — invalid password');
               return;
             }
+            this.resetLoginFailures(clientIp);
             this.startSession(res);
             this.ensureWebchatAccessEntry();
             res.writeHead(200, { 'Content-Type': 'application/json' });
