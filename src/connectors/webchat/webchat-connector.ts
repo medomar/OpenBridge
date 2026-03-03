@@ -582,6 +582,36 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/sessions/search — FTS5 full-text search across conversations
+      if (url === '/api/sessions/search' || url.startsWith('/api/sessions/search?')) {
+        void (async (): Promise<void> => {
+          if (!this.memory) {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Memory not available' }));
+            return;
+          }
+          try {
+            const parsed = new URL(url, 'http://localhost');
+            const query = parsed.searchParams.get('q') ?? '';
+            const limitParam = parseInt(parsed.searchParams.get('limit') ?? '20', 10);
+            const limit = Number.isFinite(limitParam) ? Math.min(50, Math.max(1, limitParam)) : 20;
+            if (!query.trim()) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify([]));
+              return;
+            }
+            const results = await this.memory.searchConversations(query, limit);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(results));
+          } catch (err) {
+            logger.error({ err }, 'GET /api/sessions/search failed');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+        })();
+        return;
+      }
+
       // /api/sessions/:id — full conversation JSON for one session
       const sessionMatch = url.match(/^\/api\/sessions\/([^/?#]+)(?:\?.*)?$/);
       if (sessionMatch) {

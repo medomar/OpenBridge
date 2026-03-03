@@ -1280,6 +1280,28 @@ body {
   text-align: center;
 }
 
+.sidebar-search-snippet {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+
+.sidebar-match {
+  background: rgba(26, 115, 232, 0.2);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}
+
+[data-theme='dark'] .sidebar-match {
+  background: rgba(138, 180, 248, 0.25);
+}
+
 /* Hamburger toggle button in header */
 .sidebar-toggle-btn {
   background: transparent;
