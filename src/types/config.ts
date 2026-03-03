@@ -207,6 +207,18 @@ export const EmailConfigSchema = z.object({
   allowlist: z.array(z.string().email()).default([]),
 });
 
+/** Schema for app server resource limits */
+export const AppsConfigSchema = z.object({
+  /** Maximum number of apps that can run concurrently (default: 5) */
+  maxConcurrent: z.number().int().positive().default(5),
+  /** Memory limit per app process in megabytes (default: 256) */
+  maxMemoryMB: z.number().int().positive().default(256),
+  /** Minutes of inactivity before an app is automatically stopped (default: 30) */
+  idleTimeoutMinutes: z.number().int().positive().default(30),
+});
+
+export type AppsConfig = z.infer<typeof AppsConfigSchema>;
+
 /** Schema for Deep Mode configuration */
 export const DeepConfigSchema = z.object({
   /**
@@ -243,6 +255,7 @@ export const V2ConfigSchema = z
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
     mcp: MCPConfigSchema.optional(),
+    apps: AppsConfigSchema.optional(),
     deep: DeepConfigSchema.optional(),
     security: SecurityConfigSchema.optional(),
     email: EmailConfigSchema.optional(),

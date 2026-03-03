@@ -187,10 +187,11 @@ export class Bridge {
     logger.info('Master AI set on Bridge');
   }
 
-  /** Set the AppServer — enables graceful app cleanup on shutdown */
+  /** Set the AppServer — enables graceful app cleanup on shutdown and APP marker handling in Router */
   setAppServer(appServer: AppServer): void {
     this.appServer = appServer;
-    logger.info('AppServer set on Bridge');
+    this.router.setAppServer(appServer);
+    logger.info('AppServer set on Bridge and Router');
   }
 
   /** Set the email config — enables [SHARE:email] marker support in the router */
