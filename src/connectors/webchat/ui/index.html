@@ -88,6 +88,7 @@
       <span id="status-timer"></span>
     </div>
     <footer class="input-row">
+      <div id="file-preview" class="file-preview hidden" role="status" aria-live="polite" aria-label="Selected files"></div>
       <form id="form">
         <div class="inp-wrap">
           <textarea
@@ -100,6 +101,8 @@
           ></textarea>
           <div id="char-count" class="char-count hidden" aria-live="polite"></div>
         </div>
+        <input type="file" id="file-input" class="file-input-hidden" aria-label="Attach file" multiple />
+        <button type="button" id="upload-btn" class="upload-btn" aria-label="Attach file" title="Attach file" disabled>&#128206;</button>
         <button type="submit" id="send" disabled aria-label="Send message">Send</button>
       </form>
     </footer>
