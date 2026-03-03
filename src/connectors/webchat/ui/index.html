@@ -89,14 +89,17 @@
     </div>
     <footer class="input-row">
       <form id="form">
-        <input
-          id="inp"
-          type="text"
-          placeholder="Type a message..."
-          autocomplete="off"
-          disabled
-          aria-label="Message input"
-        />
+        <div class="inp-wrap">
+          <textarea
+            id="inp"
+            placeholder="Type a message..."
+            autocomplete="off"
+            disabled
+            rows="1"
+            aria-label="Message input"
+          ></textarea>
+          <div id="char-count" class="char-count hidden" aria-live="polite"></div>
+        </div>
         <button type="submit" id="send" disabled aria-label="Send message">Send</button>
       </form>
     </footer>
