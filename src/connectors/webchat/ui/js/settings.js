@@ -9,6 +9,7 @@ let _panel = null;
 let _overlay = null;
 let _open = false;
 let _onThemeChange = null;
+let _onSoundChange = null;
 
 /**
  * Register a callback invoked when the theme changes via settings.
@@ -16,6 +17,14 @@ let _onThemeChange = null;
  */
 export function setOnThemeChange(fn) {
   _onThemeChange = fn;
+}
+
+/**
+ * Register a callback invoked when the sound preference changes via settings.
+ * @param {function(boolean): void} fn - called with true if sound is enabled, false if muted
+ */
+export function setOnSoundChange(fn) {
+  _onSoundChange = fn;
 }
 
 function isOpen() {
@@ -133,6 +142,8 @@ function initNotifications() {
         soundBtn.setAttribute('aria-label', muted ? 'Unmute notifications' : 'Mute notifications');
         soundBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
       }
+      // Notify app so soundMuted module variable is updated immediately
+      if (_onSoundChange) _onSoundChange(!muted);
     });
   }
   if (browserCheck) {
