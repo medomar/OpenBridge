@@ -106,6 +106,12 @@ body {
   color: #f28b82;
 }
 #error-msg.visible { display: block; }
+/* Mobile: full-width card, no border-radius */
+@media (max-width: 767px) {
+  body { align-items: flex-start; padding: 0; }
+  .login-wrap { max-width: 100%; border-radius: 0; box-shadow: none; }
+  #pwd, #login-btn { font-size: 16px; padding: 12px 16px; }
+}
   </style>
   <script>
     (function () {
