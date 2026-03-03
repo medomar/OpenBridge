@@ -1,8 +1,8 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-02 | **Current Version:** v0.0.8
+> **Last Updated:** 2026-03-03 | **Current Version:** v0.0.8
 > **Current Focus:** Marketplace Development Track (v0.0.9–v0.0.12) + Community-Inspired Improvements (v0.0.13).
-> **33 open findings** — 23 original + 10 community-inspired (from [openclaw](https://github.com/openclaw/openclaw) + [claude-mem](https://github.com/thedotmack/claude-mem) analysis).
+> **20 open findings** — 12 original + 10 community-inspired (from [openclaw](https://github.com/openclaw/openclaw) + [claude-mem](https://github.com/thedotmack/claude-mem) analysis) + 2 autonomy findings (OB-F93, OB-F94).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -73,13 +73,13 @@ Everything that shipped — 652 tasks across 73 phases.
 - **Marketplace-dashboard** — Next.js 15 admin/supplier dashboard (mid dev, needs stabilization)
 - **Marketplace-backend-services** — NestJS monorepo, 24 modules, 438 tests (needs integration testing + fixes)
 
-| Version     | Phases                       | Key Features                                                                                   | Est. Tasks |
-| ----------- | ---------------------------- | ---------------------------------------------------------------------------------------------- | ---------- |
-| **v0.0.9**  | 78a–80                       | Classification + SPAWN response fixes, code audit profile, exploration bug fixes, data cleanup | ~34        |
-| **v0.0.10** | 74–77, 85                    | RAG knowledge retrieval (FTS5 queries before spawning workers), env var secret protection      | ~42        |
-| **v0.0.11** | 81, 86                       | Master output sharing ([SHARE:*] markers), user consent for risky operations                   | ~20        |
-| **v0.0.12** | 82–84, 87–92, OB-F56, OB-193 | Deep Mode, WebChat modernization, tunnel + ephemeral apps, Docker sandbox                      | ~160       |
-| **v0.0.13** | 93–96                        | Structured observations, vector search, session compaction, doctor/pairing/skills              | ~95–110    |
+| Version     | Phases                              | Key Features                                                                                   | Est. Tasks |
+| ----------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ---------- |
+| **v0.0.9**  | 78a–80                              | Classification + SPAWN response fixes, code audit profile, exploration bug fixes, data cleanup | ~34        |
+| **v0.0.10** | 74–77, 85                           | RAG knowledge retrieval (FTS5 queries before spawning workers), env var secret protection      | ~42        |
+| **v0.0.11** | 81, 86                              | Master output sharing ([SHARE:*] markers), user consent for risky operations                   | ~20        |
+| **v0.0.12** | 97–98, 82–84, 87–92, OB-F56, OB-193 | **Runtime escalation, batch continuation**, Deep Mode, WebChat, tunnel, Docker sandbox         | ~202       |
+| **v0.0.13** | 93–96                               | Structured observations, vector search, session compaction, doctor/pairing/skills              | ~95–110    |
 
 **Sprint 1 (v0.0.9)** — Foundation Fixes:
 
@@ -99,8 +99,10 @@ Everything that shipped — 652 tasks across 73 phases.
 - Master knows how to share generated test reports and analysis via [SHARE:*] markers (OB-F68)
 - User consent before risky operations — confirmation for code-edit and full-access workers (OB-F71)
 
-**Sprint 4 (v0.0.12)** — Platform Completion:
+**Sprint 4 (v0.0.12)** — Autonomy + Platform Completion:
 
+- **Runtime permission escalation** — workers request elevated tool access, users grant/deny via `/allow`/`/deny`, grants persist (OB-F93, Phase 97)
+- **Batch task continuation** — "implement all tasks one by one" loops autonomously with progress updates, commit-after-each, safety rails (OB-F94, Phase 98)
 - Deep Mode — multi-phase execution: investigate → report → plan → execute → verify (OB-F56)
 - WebChat modernization — extract UI, auth, phone/LAN/PWA, history, rich input, Deep Mode UI (OB-F73+F74+F75, Phases 88–92)
 - Output delivery pipeline — tunnel integration, ephemeral app server, interaction relay (OB-F69, Phases 82–84)
@@ -194,7 +196,9 @@ All future features beyond the community-inspired track are tracked in [docs/aud
                         │    ├── Phase 81: Master Output Awareness
                         │    └── Phase 86: User Consent
                         │
-                        ├──► ⬜ Sprint 4 (v0.0.12): Phases 82–84, 87–92, OB-F56, OB-193
+                        ├──► ⬜ Sprint 4 (v0.0.12): Phases 97–98, 82–84, 87–92, OB-F56, OB-193
+                        │    ├── Phase 97: Runtime Permission Escalation (OB-F93) ← HIGH PRIORITY
+                        │    ├── Phase 98: Batch Task Continuation (OB-F94) ← HIGH PRIORITY
                         │    ├── Deep Mode (OB-F56): Multi-phase execution
                         │    ├── Phases 88–92: WebChat Modernization (UI, auth, PWA, history, Deep Mode UI)
                         │    ├── Phases 82–84: Tunnel + Ephemeral Apps + Interaction Relay
@@ -239,10 +243,10 @@ All future features beyond the community-inspired track are tracked in [docs/aud
 | **v0.0.9**  | Planned | Classification fixes, code-audit profile, exploration bugs, data cleanup              | ~34     |
 | **v0.0.10** | Planned | RAG knowledge retrieval, env var protection                                           | ~42     |
 | **v0.0.11** | Planned | Master output sharing, user consent                                                   | ~20     |
-| **v0.0.12** | Planned | Deep Mode, WebChat modernization, tunnel + ephemeral apps, Docker sandbox             | ~160    |
+| **v0.0.12** | Planned | Runtime escalation, batch continuation, Deep Mode, WebChat, tunnel, Docker sandbox    | ~202    |
 | **v0.0.13** | Planned | Structured observations, vector search, session compaction, doctor/pairing/skills     | ~95–110 |
 
-**Total shipped: 652 tasks across 73 phases. Planned: ~351–366 tasks across Phases 74–96.**
+**Total shipped: 652 tasks across 73 phases. Planned: ~393–408 tasks across Phases 74–98.**
 
 ---
 
