@@ -31,6 +31,7 @@ import { RateLimiter } from './rate-limiter.js';
 import { Router, classifyMessagePriority } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
 import type { AppServer } from './app-server.js';
+import type { InteractionRelay } from './interaction-relay.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -71,6 +72,7 @@ export class Bridge {
   private readonly securityConfig: SecurityConfig | undefined;
   private fileServer: FileServer | null = null;
   private appServer: AppServer | null = null;
+  private interactionRelay: InteractionRelay | null = null;
   private tunnelManager: TunnelManager | null = null;
   private tunnelPublicUrl: string | null = null;
   private readonly workspacePath: string | undefined;
@@ -192,6 +194,13 @@ export class Bridge {
     this.appServer = appServer;
     this.router.setAppServer(appServer);
     logger.info('AppServer set on Bridge and Router');
+  }
+
+  /** Set the InteractionRelay — routes app messages to Master via Router */
+  setInteractionRelay(relay: InteractionRelay): void {
+    this.interactionRelay = relay;
+    this.router.setInteractionRelay(relay);
+    logger.info('InteractionRelay set on Bridge and Router');
   }
 
   /** Set the email config — enables [SHARE:email] marker support in the router */
