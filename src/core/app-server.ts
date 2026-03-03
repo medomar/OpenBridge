@@ -31,6 +31,10 @@ interface AppServerOptions {
   portStart?: number;
   portEnd?: number;
   idleTimeoutMs?: number;
+  /** Maximum number of apps that can run concurrently. Default: 5 */
+  maxConcurrent?: number;
+  /** Memory limit per app process in megabytes. Applied as --max-old-space-size for Node apps. Default: 256 */
+  maxMemoryMB?: number;
   /**
    * Factory that creates a fresh TunnelManager for each app that starts.
    * If provided, a tunnel is created for each app port and the public URL
@@ -43,6 +47,8 @@ const DEFAULT_BASE_URL = 'http://localhost';
 const DEFAULT_PORT_START = 3100;
 const DEFAULT_PORT_END = 3199;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_MAX_CONCURRENT = 5;
+const DEFAULT_MAX_MEMORY_MB = 256;
 const HEALTH_CHECK_TIMEOUT_MS = 20_000;
 const HEALTH_CHECK_INTERVAL_MS = 500;
 const HEALTH_REQUEST_TIMEOUT_MS = 2_000;
@@ -65,12 +71,16 @@ export class AppServer {
   private readonly portEnd: number;
   private readonly usedPorts = new Set<number>();
   private readonly tunnelFactory: (() => TunnelManager) | null;
+  readonly maxConcurrent: number;
+  readonly maxMemoryMB: number;
 
   constructor(options: AppServerOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.portStart = options.portStart ?? DEFAULT_PORT_START;
     this.portEnd = options.portEnd ?? DEFAULT_PORT_END;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
+    this.maxMemoryMB = options.maxMemoryMB ?? DEFAULT_MAX_MEMORY_MB;
     this.tunnelFactory = options.tunnelFactory ?? null;
   }
 
@@ -124,6 +134,12 @@ export class AppServer {
   }
 
   async startApp(appPath: string): Promise<AppInstance> {
+    if (this.apps.size >= this.maxConcurrent) {
+      throw new Error(
+        `Maximum concurrent apps reached (${this.maxConcurrent}). Stop an existing app before starting a new one.`,
+      );
+    }
+
     const scaffold = await this.detectAppScaffold(appPath);
     if (!scaffold) {
       throw new Error(`No app scaffold detected at path: ${appPath}`);
@@ -261,7 +277,7 @@ export class AppServer {
   }
 
   private spawnAppProcess(scaffold: AppScaffold, appPath: string, port: number): ChildProcess {
-    const env = { ...process.env, PORT: String(port), HOST: '0.0.0.0' };
+    const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), HOST: '0.0.0.0' };
     const args = [...scaffold.args];
 
     if (scaffold.type === 'static') {
@@ -270,7 +286,15 @@ export class AppServer {
       }
     }
 
-    logger.info({ appPath, port, command: scaffold.command, args }, 'Spawning app process');
+    // Apply memory limit to Node.js processes via --max-old-space-size
+    if (scaffold.type === 'node' || scaffold.type === 'npm') {
+      env['NODE_OPTIONS'] = `--max-old-space-size=${String(this.maxMemoryMB)}`;
+    }
+
+    logger.info(
+      { appPath, port, command: scaffold.command, args, maxMemoryMB: this.maxMemoryMB },
+      'Spawning app process',
+    );
 
     return spawn(scaffold.command, args, {
       cwd: appPath,

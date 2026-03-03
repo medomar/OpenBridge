@@ -274,6 +274,30 @@ async function startV2Flow(
     logger.info('Email config wired into bridge');
   }
 
+  // Wire AppServer with resource limits from config
+  {
+    const { AppServer } = await import('./core/app-server.js');
+    const appsConfig = v2Config.apps;
+    const appServer = new AppServer({
+      maxConcurrent: appsConfig?.maxConcurrent,
+      maxMemoryMB: appsConfig?.maxMemoryMB,
+      idleTimeoutMs:
+        appsConfig?.idleTimeoutMinutes !== undefined
+          ? appsConfig.idleTimeoutMinutes * 60 * 1000
+          : undefined,
+    });
+    await appServer.scanUsedPorts();
+    bridge.setAppServer(appServer);
+    logger.info(
+      {
+        maxConcurrent: appServer.maxConcurrent,
+        maxMemoryMB: appServer.maxMemoryMB,
+        idleTimeoutMinutes: appsConfig?.idleTimeoutMinutes ?? 30,
+      },
+      'AppServer wired into bridge',
+    );
+  }
+
   // Step 4: Start bridge first — this initializes MemoryManager (SQLite) via memory.init().
   // MasterManager holds a reference to the MemoryManager but must not use it until init() completes.
   // Running bridge.start() first eliminates the race condition where MasterManager reads from
