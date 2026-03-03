@@ -8,6 +8,9 @@
  * Usage:
  *   openbridge.submit({ action: 'search', query: 'hello' });
  *   openbridge.onUpdate(function(data) { console.log('update:', data); });
+ *   openbridge.request({ action: 'lookup', id: 42 }).then(function(result) {
+ *     console.log('response:', result);
+ *   });
  *
  * URL detection order:
  *   1. window.OPENBRIDGE_RELAY_URL  — explicit override
@@ -22,6 +25,18 @@
   var RECONNECT_BASE_MS = 1000;
   var RECONNECT_MAX_MS = 30000;
   var RECONNECT_FACTOR = 2;
+  var REQUEST_TIMEOUT_MS = 30000;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /** Generate a UUID v4 without Node.js crypto (browser-compatible). */
+  function generateId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      var v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
 
   // ── URL detection ──────────────────────────────────────────────────────────
 
@@ -55,6 +70,7 @@
     this._relayUrl = detectRelayUrl();
     this._handlers = [];
     this._pendingMessages = [];
+    this._pendingRequests = {}; // { [requestId]: { resolve, reject, timer } }
     this._ws = null;
     this._reconnectDelay = RECONNECT_BASE_MS;
     this._stopped = false;
@@ -85,6 +101,16 @@
         } catch (_e) {
           return;
         }
+
+        // Resolve pending request() calls that match by requestId
+        if (message && message.requestId && self._pendingRequests[message.requestId]) {
+          var pending = self._pendingRequests[message.requestId];
+          delete self._pendingRequests[message.requestId];
+          clearTimeout(pending.timer);
+          pending.resolve(message.data !== undefined ? message.data : message);
+          // Fall through — also dispatch to onUpdate handlers
+        }
+
         var payload = message && message.data !== undefined ? message.data : message;
         for (var i = 0; i < self._handlers.length; i++) {
           try {
@@ -161,7 +187,45 @@
   };
 
   /**
+   * Send a request to Master AI and wait for a matching response.
+   * The relay matches responses by requestId. Rejects if no response arrives
+   * within the timeout window.
+   *
+   * @param {*} data - Any JSON-serialisable value.
+   * @param {number} [timeout] - Timeout in ms (default: 30000).
+   * @returns {Promise<*>} Resolves with the response data from Master AI.
+   */
+  OpenBridgeClient.prototype.request = function (data, timeout) {
+    var self = this;
+    var requestId = generateId();
+    var timeoutMs = typeof timeout === 'number' ? timeout : REQUEST_TIMEOUT_MS;
+
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () {
+        if (self._pendingRequests[requestId]) {
+          delete self._pendingRequests[requestId];
+          reject(new Error('[openbridge] request timed out after ' + timeoutMs + 'ms'));
+        }
+      }, timeoutMs);
+
+      self._pendingRequests[requestId] = { resolve: resolve, reject: reject, timer: timer };
+
+      var payload = {
+        type: 'request',
+        requestId: requestId,
+        data: data,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (!self._sendRaw(payload)) {
+        self._pendingMessages.push(payload);
+      }
+    });
+  };
+
+  /**
    * Disconnect from the relay and stop all reconnect attempts.
+   * Outstanding request() promises are rejected.
    */
   OpenBridgeClient.prototype.stop = function () {
     this._stopped = true;
@@ -171,6 +235,15 @@
     }
     this._handlers = [];
     this._pendingMessages = [];
+
+    // Reject any in-flight request() calls
+    var ids = Object.keys(this._pendingRequests);
+    for (var i = 0; i < ids.length; i++) {
+      var pending = this._pendingRequests[ids[i]];
+      clearTimeout(pending.timer);
+      pending.reject(new Error('[openbridge] connection stopped'));
+    }
+    this._pendingRequests = {};
   };
 
   // ── Expose global ──────────────────────────────────────────────────────────
