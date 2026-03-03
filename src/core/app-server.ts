@@ -216,6 +216,14 @@ export class AppServer {
     logger.info({ id: appId, port: runtime.instance.port }, 'App stopped');
   }
 
+  stopAll(): void {
+    const ids = Array.from(this.apps.keys());
+    for (const id of ids) {
+      this.stopApp(id);
+    }
+    logger.info({ count: ids.length }, 'All apps stopped');
+  }
+
   listApps(): AppInstance[] {
     return Array.from(this.apps.values(), (runtime) => runtime.instance);
   }
