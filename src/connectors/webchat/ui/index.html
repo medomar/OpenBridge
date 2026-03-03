@@ -72,6 +72,17 @@
     </footer>
   </div>
   <div id="share-toast" class="share-toast" role="status" aria-live="polite" aria-atomic="true">Link copied!</div>
+  <div id="pwa-banner" class="pwa-banner hidden" role="complementary" aria-label="Install app">
+    <div class="pwa-banner-content">
+      <span class="pwa-banner-icon" aria-hidden="true">&#x1F4F2;</span>
+      <div class="pwa-banner-text">
+        <strong>Add to Home Screen</strong>
+        <span id="pwa-banner-hint">Tap "Add" to install OpenBridge as an app</span>
+      </div>
+      <button id="pwa-install-btn" class="pwa-install-btn">Add</button>
+      <button id="pwa-dismiss-btn" class="pwa-dismiss-btn" aria-label="Dismiss install prompt">&#x2715;</button>
+    </div>
+  </div>
   <script src="js/app.js" type="module"></script>
 </body>
 </html>

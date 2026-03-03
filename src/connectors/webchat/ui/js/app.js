@@ -550,6 +550,81 @@ function applySoundToggle() {
   });
 })();
 
+// --- Add to Home Screen Banner ---
+
+(function initPwaBanner() {
+  // Only show on mobile devices
+  const isMobile =
+    window.matchMedia('(max-width: 767px)').matches ||
+    (('ontouchstart' in window || navigator.maxTouchPoints > 0) && screen.width <= 1024);
+  if (!isMobile) return;
+
+  // Already running as installed PWA (standalone mode)
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  // User already dismissed permanently
+  if (localStorage.getItem('ob-pwa-dismissed') === '1') return;
+
+  const banner = document.getElementById('pwa-banner');
+  const installBtn = document.getElementById('pwa-install-btn');
+  const dismissBtn = document.getElementById('pwa-dismiss-btn');
+  const hint = document.getElementById('pwa-banner-hint');
+  if (!banner || !installBtn || !dismissBtn) return;
+
+  let deferredPrompt = null;
+
+  // Detect iOS Safari (no beforeinstallprompt — must use manual instructions)
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isSafari = /safari/i.test(navigator.userAgent) && !/chrome|crios|fxios/i.test(navigator.userAgent);
+
+  function showBanner() {
+    banner.classList.remove('hidden');
+  }
+
+  function hideBanner() {
+    banner.classList.add('hidden');
+    localStorage.setItem('ob-pwa-dismissed', '1');
+  }
+
+  dismissBtn.addEventListener('click', hideBanner);
+
+  if (isIos && isSafari) {
+    // iOS Safari: show manual share-sheet instructions
+    if (hint) hint.textContent = 'Tap Share \u238e then \u201cAdd to Home Screen\u201d';
+    installBtn.style.display = 'none';
+    setTimeout(showBanner, 2000);
+  } else {
+    // Chrome / Android: use the native beforeinstallprompt event
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      setTimeout(showBanner, 2000);
+    });
+
+    installBtn.addEventListener('click', function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function (choiceResult) {
+        if (choiceResult.outcome === 'accepted') {
+          localStorage.setItem('ob-pwa-dismissed', '1');
+        }
+        deferredPrompt = null;
+        banner.classList.add('hidden');
+      });
+    });
+
+    // If app is installed later (appinstalled event), hide and dismiss
+    window.addEventListener('appinstalled', function () {
+      banner.classList.add('hidden');
+      localStorage.setItem('ob-pwa-dismissed', '1');
+      deferredPrompt = null;
+    });
+  }
+})();
+
 // --- Service Worker Registration ---
 
 (function registerServiceWorker() {
