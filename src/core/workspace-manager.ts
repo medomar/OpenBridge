@@ -292,26 +292,54 @@ function matchesGlob(relativePath: string, pattern: string): boolean {
  * Check whether a file should be visible to the AI based on workspace visibility rules.
  *
  * Algorithm:
- *   1. Resolve `filePath` relative to `config.workspacePath`.
- *   2. Combine DEFAULT_EXCLUDE_PATTERNS with `config.workspace?.exclude`.
- *   3. If the resolved path matches any exclude pattern → NOT visible (exclude takes priority).
- *   4. If `config.workspace?.include` is set and non-empty:
+ *   1. Resolve `filePath` to an absolute path.
+ *   2. Resolve symlinks via `fs.realpath()` so that symlinks pointing outside the
+ *      workspace are treated as out-of-scope (prevents symlink escape attacks).
+ *   3. Compute the relative path from the real workspace root to the real file.
+ *      If the relative path escapes the workspace (starts with "..") → NOT visible.
+ *   4. Combine DEFAULT_EXCLUDE_PATTERNS with `config.workspace?.exclude`.
+ *   5. If the resolved relative path matches any exclude pattern → NOT visible (exclude takes priority).
+ *   6. If `config.workspace?.include` is set and non-empty:
  *        - File must match at least one include pattern to be visible.
- *   5. Otherwise → visible.
+ *   7. Otherwise → visible.
  *
  * @param filePath       Absolute or workspace-relative file path.
  * @param config         Object with `workspacePath` and optional `workspace` include/exclude arrays.
  */
-export function isFileVisible(
+export async function isFileVisible(
   filePath: string,
   config: {
     workspacePath: string;
     workspace?: { include?: string[]; exclude?: string[] };
   },
-): boolean {
-  // Resolve to absolute path, then compute relative path from workspace root
+): Promise<boolean> {
+  // Resolve to absolute path
   const absFile = path.resolve(config.workspacePath, filePath);
-  const relative = path.relative(config.workspacePath, absFile);
+
+  // Resolve symlinks — prevents symlink escape to files outside the workspace.
+  // Fall back to the unresolved path if the file does not exist yet.
+  let realFile: string;
+  try {
+    realFile = await fs.realpath(absFile);
+  } catch {
+    realFile = absFile;
+  }
+
+  // Resolve the workspace root symlinks for an accurate containment check.
+  let realWorkspace: string;
+  try {
+    realWorkspace = await fs.realpath(config.workspacePath);
+  } catch {
+    realWorkspace = path.resolve(config.workspacePath);
+  }
+
+  // Compute relative path from the resolved workspace root to the resolved file.
+  const relative = path.relative(realWorkspace, realFile);
+
+  // Symlink escape guard — if the real path is outside the workspace, reject.
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return false;
+  }
 
   // Build combined exclude list: defaults first, then user overrides
   const excludePatterns: readonly string[] = [
