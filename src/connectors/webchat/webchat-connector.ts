@@ -8,7 +8,7 @@ import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
-import { WEBCHAT_HTML } from './ui-bundle.js';
+import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 
 /** Name of the HTTP-only session cookie set after successful token validation */
@@ -298,8 +298,19 @@ export class WebChatConnector implements Connector {
       // ── Auth guard ─────────────────────────────────────────────────────────
       const auth = this.isAuthenticated(url, req);
       if (!auth.ok) {
-        res.writeHead(401, { 'Content-Type': 'text/plain' });
-        res.end('Unauthorized');
+        // In password mode, serve the login screen for page requests instead
+        // of returning a bare 401 — only API and non-GET requests get 401.
+        const isPageRequest =
+          req.method === 'GET' &&
+          this.passwordHash !== null &&
+          (url === '/' || url === '' || url.startsWith('/?'));
+        if (isPageRequest) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(WEBCHAT_LOGIN_HTML);
+        } else {
+          res.writeHead(401, { 'Content-Type': 'text/plain' });
+          res.end('Unauthorized');
+        }
         return;
       }
       // When the client authenticates with the bearer token, issue a session

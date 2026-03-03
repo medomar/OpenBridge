@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenBridge WebChat &mdash; Sign in</title>
+  <style>
+:root {
+  --bg-primary: #f0f2f5;
+  --bg-surface: #ffffff;
+  --text-primary: #202124;
+  --text-secondary: #5f6368;
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --border-input: #dadce0;
+  --header-bg: #1a73e8;
+  --header-text: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.12);
+}
+[data-theme='dark'] {
+  --bg-primary: #0d0d0d;
+  --bg-surface: #1e1e1e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #9e9e9e;
+  --accent: #4da3f7;
+  --accent-hover: #2196f3;
+  --border-input: #424242;
+  --header-bg: #1a1a2e;
+  --header-text: #e0e0e0;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-wrap {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-surface);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px var(--shadow);
+  overflow: hidden;
+}
+.login-header {
+  padding: 14px 20px;
+  background: var(--header-bg);
+  color: var(--header-text);
+}
+.login-header h1 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.login-body {
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.login-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+#pwd {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1.5px solid var(--border-input);
+  border-radius: 24px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+#pwd:focus { border-color: var(--accent); }
+#login-btn {
+  width: 100%;
+  padding: 10px 22px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#login-btn:hover:not(:disabled) { background: var(--accent-hover); }
+#login-btn:disabled { background: #bdc1c6; cursor: not-allowed; }
+#error-msg {
+  font-size: 13px;
+  color: #c5221f;
+  background: #fce8e6;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: none;
+}
+[data-theme='dark'] #error-msg {
+  background: #3b1212;
+  color: #f28b82;
+}
+#error-msg.visible { display: block; }
+  </style>
+  <script>
+    (function () {
+      var t = localStorage.getItem('ob-theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
+</head>
+<body>
+  <div class="login-wrap">
+    <header class="login-header">
+      <h1>OpenBridge WebChat</h1>
+    </header>
+    <div class="login-body">
+      <p class="login-subtitle">Enter your password to continue.</p>
+      <form id="login-form">
+        <input
+          type="password"
+          id="pwd"
+          placeholder="Password"
+          autocomplete="current-password"
+          aria-label="Password"
+          required
+        />
+        <div id="error-msg" role="alert" aria-live="polite"></div>
+        <button type="submit" id="login-btn">Sign in</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var form = document.getElementById('login-form');
+      var btn = document.getElementById('login-btn');
+      var errMsg = document.getElementById('error-msg');
+      function showError(msg) {
+        errMsg.textContent = msg;
+        errMsg.classList.add('visible');
+      }
+      function clearError() {
+        errMsg.textContent = '';
+        errMsg.classList.remove('visible');
+      }
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        clearError();
+        var pwd = document.getElementById('pwd').value;
+        if (!pwd) { showError('Please enter your password.'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Signing in\u2026';
+        fetch('/api/webchat/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd }),
+        })
+          .then(function (res) {
+            if (res.ok) {
+              window.location.replace('/');
+            } else {
+              return res.json().then(function (data) {
+                showError((data && data.error) || 'Invalid password. Please try again.');
+              });
+            }
+          })
+          .catch(function () {
+            showError('Connection error. Please try again.');
+          })
+          .finally(function () {
+            btn.disabled = false;
+            btn.textContent = 'Sign in';
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -55,10 +55,19 @@ async function main() {
   // 6. Escape backticks and template literal markers for embedding in TS template literal
   const escaped = html.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 
-  // 7. Write TypeScript constant
+  // 7. Bundle login.html (self-contained — no external JS/CSS deps)
+  const loginHtml = readFileSync(path.join(UI_DIR, 'login.html'), 'utf8');
+  const escapedLogin = loginHtml
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${');
+
+  // 8. Write TypeScript constants
   const ts = `// AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
 // Generated: ${new Date().toISOString()}
 export const WEBCHAT_HTML = \`${escaped}\`;
+
+export const WEBCHAT_LOGIN_HTML = \`${escapedLogin}\`;
 `;
 
   writeFileSync(OUT_FILE, ts, 'utf8');
