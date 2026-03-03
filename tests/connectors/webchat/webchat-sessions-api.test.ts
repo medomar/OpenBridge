@@ -136,6 +136,8 @@ function createMockMemory(
   return {
     listSessions: vi.fn().mockResolvedValue(sessions),
     getSessionHistory: vi.fn().mockResolvedValue(entries),
+    getAccess: vi.fn().mockResolvedValue(null),
+    setAccess: vi.fn().mockResolvedValue(undefined),
   };
 }
 

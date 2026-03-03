@@ -7,6 +7,7 @@ import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
+import type { AccessControlEntry } from '../../memory/access-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
@@ -174,6 +175,29 @@ export class WebChatConnector implements Connector {
   }
 
   /**
+   * Ensure the 'webchat-user' entry exists in the access-control store.
+   * Called after a successful authentication event (token or password).
+   * Creates the entry with a default 'viewer' role if none exists.
+   * Preserves any existing entry (admin-customised roles are not overwritten).
+   */
+  private ensureWebchatAccessEntry(): void {
+    if (!this.memory) return;
+    void this.memory.getAccess('webchat-user', 'webchat').then((existing) => {
+      if (!existing) {
+        const entry: AccessControlEntry = {
+          user_id: 'webchat-user',
+          channel: 'webchat',
+          role: 'viewer',
+          active: true,
+        };
+        void this.memory!.setAccess(entry).then(() => {
+          logger.debug('WebChat: created access-store entry for webchat-user');
+        });
+      }
+    });
+  }
+
+  /**
    * Create a new session and set the `ob_session` HTTP-only cookie on the response.
    * Called when a valid bearer token is presented on an HTTP request.
    */
@@ -286,6 +310,7 @@ export class WebChatConnector implements Connector {
               return;
             }
             this.startSession(res);
+            this.ensureWebchatAccessEntry();
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true }));
             logger.info('WebChat login successful — session created');
@@ -318,6 +343,7 @@ export class WebChatConnector implements Connector {
       // allowed through.
       if (auth.tokenProvided) {
         this.startSession(res);
+        this.ensureWebchatAccessEntry();
       }
       // ──────────────────────────────────────────────────────────────────────
 
