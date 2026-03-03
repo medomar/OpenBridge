@@ -402,6 +402,8 @@ function setOnline(online, reconnecting) {
   }
   inp.disabled = !online;
   send.disabled = !online;
+  const uploadBtn = document.getElementById('upload-btn');
+  if (uploadBtn) uploadBtn.disabled = !online;
 }
 
 // --- WebSocket message handler ---
@@ -532,6 +534,111 @@ form.addEventListener('submit', function (e) {
     '\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>',
   );
 });
+
+// --- File Upload ---
+
+let _selectedFiles = [];
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function renderFilePreviews() {
+  const preview = document.getElementById('file-preview');
+  if (!preview) return;
+  if (_selectedFiles.length === 0) {
+    preview.classList.add('hidden');
+    preview.replaceChildren();
+    return;
+  }
+  preview.classList.remove('hidden');
+  preview.replaceChildren();
+  for (let i = 0; i < _selectedFiles.length; i++) {
+    const file = _selectedFiles[i];
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-chip-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '\uD83D\uDCC4';
+
+    const info = document.createElement('span');
+    info.className = 'file-chip-info';
+
+    const name = document.createElement('span');
+    name.className = 'file-chip-name';
+    name.textContent = file.name;
+
+    const meta = document.createElement('span');
+    meta.className = 'file-chip-meta';
+    meta.textContent = formatFileSize(file.size) + (file.type ? ' \u00b7 ' + file.type : '');
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'file-chip-remove';
+    removeBtn.setAttribute('aria-label', 'Remove ' + file.name);
+    removeBtn.textContent = '\u00d7';
+    const idx = i;
+    removeBtn.addEventListener('click', function () {
+      _selectedFiles.splice(idx, 1);
+      renderFilePreviews();
+    });
+
+    chip.appendChild(icon);
+    chip.appendChild(info);
+    chip.appendChild(removeBtn);
+    preview.appendChild(chip);
+  }
+}
+
+(function initFileUpload() {
+  const uploadBtn = document.getElementById('upload-btn');
+  const fileInput = document.getElementById('file-input');
+  const chatWrap = document.querySelector('.chat-wrap');
+  if (!uploadBtn || !fileInput) return;
+
+  uploadBtn.addEventListener('click', function () {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', function () {
+    const files = Array.from(fileInput.files || []);
+    for (const f of files) {
+      _selectedFiles.push(f);
+    }
+    fileInput.value = '';
+    renderFilePreviews();
+  });
+
+  if (chatWrap) {
+    chatWrap.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      chatWrap.classList.add('drag-over');
+    });
+
+    chatWrap.addEventListener('dragleave', function (e) {
+      if (!chatWrap.contains(/** @type {Node} */ (e.relatedTarget))) {
+        chatWrap.classList.remove('drag-over');
+      }
+    });
+
+    chatWrap.addEventListener('drop', function (e) {
+      e.preventDefault();
+      chatWrap.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer ? e.dataTransfer.files : []);
+      for (const f of files) {
+        _selectedFiles.push(f);
+      }
+      renderFilePreviews();
+    });
+  }
+})();
 
 // --- Tab Title Unread Count ---
 
