@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 113 | **In Progress:** 0 | **Done:** 101 (112 archived)
+> **Pending:** 112 | **In Progress:** 0 | **Done:** 102 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -44,7 +44,7 @@
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
-| 89     | WebChat Authentication               | 12    | ◻               |
+| 89     | WebChat Authentication               | 12    | ◻ (2/12 done)   |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
@@ -282,7 +282,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                                                    | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 1   | OB-1491 | Generate random auth token on first startup — crypto.randomBytes(32).toString("hex"). Persist in .openbridge/webchat-token. Read existing on subsequent starts                                                                                                                 | ✅ Done   |
-| 2   | OB-1492 | Display auth token and URL in console on startup — log WebChat URL with token for easy copy-paste. Include in Bridge startup summary                                                                                                                                           | ◻ Pending |
+| 2   | OB-1492 | Display auth token and URL in console on startup — log WebChat URL with token for easy copy-paste. Include in Bridge startup summary                                                                                                                                           | ✅ Done   |
 | 3   | OB-1493 | Show QR code in console with authenticated URL — ASCII QR code for phone scanning. Use qrcode-terminal or similar library                                                                                                                                                      | ◻ Pending |
 | 4   | OB-1494 | Validate token on HTTP requests — check query param or Authorization header. Reject with 401 if invalid. Allow session cookie after initial validation                                                                                                                         | ◻ Pending |
 | 5   | OB-1495 | Validate token on WebSocket upgrade — check token in WebSocket URL query string. Reject upgrade with 401 if invalid                                                                                                                                                            | ◻ Pending |

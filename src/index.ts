@@ -350,20 +350,28 @@ async function startV2Flow(
   workspaceManager.startPolling();
 
   const connectorNames = bridge.getActiveConnectorNames();
+  const webChatInfo = bridge.getWebChatInfo();
   if (process.env['OPENBRIDGE_HEADLESS'] === 'true') {
-    process.stdout.write(
-      JSON.stringify({
-        event: 'ready',
-        version: OPENBRIDGE_VERSION,
-        mode: 'v2',
-        master: selectedMaster.name,
-        connectors: connectorNames,
-      }) + '\n',
-    );
+    const payload: Record<string, unknown> = {
+      event: 'ready',
+      version: OPENBRIDGE_VERSION,
+      mode: 'v2',
+      master: selectedMaster.name,
+      connectors: connectorNames,
+    };
+    if (webChatInfo) {
+      payload['webChatUrl'] = webChatInfo.url;
+      payload['webChatToken'] = webChatInfo.token;
+    }
+    process.stdout.write(JSON.stringify(payload) + '\n');
   } else {
     process.stdout.write(
       `OpenBridge v${OPENBRIDGE_VERSION} | Master: ${selectedMaster.name} | Connectors: ${connectorNames.join(', ') || 'none'}\n`,
     );
+    if (webChatInfo) {
+      process.stdout.write(`WebChat URL:   ${webChatInfo.url}\n`);
+      process.stdout.write(`WebChat token: ${webChatInfo.token}\n`);
+    }
     logger.info('OpenBridge (V2) is running. Master AI is exploring workspace...');
     logger.info('Press Ctrl+C to stop.');
   }
