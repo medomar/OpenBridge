@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 157 | **In Progress:** 0 | **Done:** 57 (112 archived)
+> **Pending:** 156 | **In Progress:** 0 | **Done:** 58 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -40,7 +40,7 @@
 | 97     | Runtime Permission Escalation        | 20    | ◻               |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
-| 83     | Ephemeral App Server                 | 12    | ◻ (6/12 done)   |
+| 83     | Ephemeral App Server                 | 12    | ◻ (7/12 done)   |
 | 84     | Interaction Relay                    | 8     | ◻               |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
@@ -202,7 +202,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 4   | OB-1445 | Add port allocation — assign unique ports in range 3100-3199. Track in Set. Release on stopApp. Scan for in-use ports on startup                                                                                                                                  | ✅ Done   |
 | 5   | OB-1446 | Add tunnel integration for apps — when TunnelManager active, create tunnel for each app port. Store publicUrl in AppInstance. Stop tunnel when app stops                                                                                                          | ✅ Done   |
 | 6   | OB-1447 | Add APP:start and APP:stop marker parsing to Router in `src/core/router.ts` — parse from Master output. APP:start triggers appServer.startApp(), APP:stop triggers stopApp(). Include app URL in response                                                         | ✅ Done   |
-| 7   | OB-1448 | Add app scaffolding instructions to Master system prompt — guidance for creating apps in .openbridge/generated/apps/{name}/, using APP:start marker to launch                                                                                                     | ◻ Pending |
+| 7   | OB-1448 | Add app scaffolding instructions to Master system prompt — guidance for creating apps in .openbridge/generated/apps/{name}/, using APP:start marker to launch                                                                                                     | ✅ Done   |
 | 8   | OB-1449 | Add `TASK_BUILD_APP` seed prompt template to `src/master/seed-prompts.ts` — instructions for creating self-contained web apps with index.html, styles.css, JavaScript                                                                                             | ◻ Pending |
 | 9   | OB-1450 | Add `/apps` command to Router — shows running apps with URLs and public URLs. Shows "No apps running" if none active                                                                                                                                              | ◻ Pending |
 | 10  | OB-1451 | Add graceful app cleanup to Bridge shutdown — stop all running apps via appServer.stopAll(). Add stopAll() method to AppServer                                                                                                                                    | ◻ Pending |

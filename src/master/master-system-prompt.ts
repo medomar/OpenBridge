@@ -118,6 +118,8 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const balancedModel = context.modelRegistry?.resolve('balanced')?.id ?? 'sonnet';
   const powerfulModel = context.modelRegistry?.resolve('powerful')?.id ?? 'opus';
 
+  const appServerSection = formatAppServerSection(context.workspacePath, fastModel, balancedModel);
+
   // Only document mcpServers SPAWN field when servers are actually configured
   const mcpSpawnField =
     context.mcpServers && context.mcpServers.length > 0
@@ -533,6 +535,7 @@ Instruct workers to write generated files to \`.openbridge/generated/\` (created
 - Kept separate from workspace source files
 - Cleaned up by the system based on TTL rules
 ${fileServerSection}
+${appServerSection}
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
@@ -739,6 +742,71 @@ function formatFileServerSection(port?: number, tunnelUrl?: string): string {
     `**Note:** These URLs are only accessible on localhost. Files are not reachable from the internet or other devices unless a tunnel is configured.`,
     '',
     `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${localhostUrl}/shared/<filename>\` in your response.`,
+    '',
+  ].join('\n');
+}
+
+function formatAppServerSection(
+  workspacePath: string,
+  fastModel: string,
+  balancedModel: string,
+): string {
+  return [
+    '## Ephemeral App Server',
+    '',
+    'You can create and launch interactive web apps directly from the workspace.',
+    'Workers scaffold app files in `.openbridge/generated/apps/{name}/`, then you use an',
+    '**APP marker** to start the app and get a URL to share with the user.',
+    '',
+    '### Supported App Types',
+    '',
+    '| Type | Detected by | Run command |',
+    '| --- | --- | --- |',
+    '| Static HTML | `index.html` present | `npx serve .` |',
+    '| Node.js server | `server.js` present | `node server.js` |',
+    '| npm project | `package.json` with `"start"` script | `npm start` |',
+    '',
+    '### APP Marker Format',
+    '',
+    '```',
+    '[APP:start]/absolute/path/to/app[/APP]',
+    '[APP:stop]{app-id}[/APP]',
+    '```',
+    '',
+    '- **APP:start** — starts the app at the given path. The marker is replaced in your response with the app URL (public URL when a tunnel is active, localhost URL otherwise).',
+    '- **APP:stop** — stops a running app by its ID. Use `/apps` to list running apps and their IDs.',
+    '',
+    '### How to Create an App',
+    '',
+    '1. **Spawn a worker** to create the app files in `.openbridge/generated/apps/{name}/`',
+    '2. **Include an APP:start marker** at the end of your response to start the app',
+    '3. The marker is replaced with the live URL — share it with the user',
+    '',
+    '### Example — Static Data Visualisation',
+    '',
+    '```',
+    `[SPAWN:code-edit]{"prompt":"Create a self-contained data visualisation app in ${workspacePath}/.openbridge/generated/apps/chart/. Files needed:\\n- index.html: chart page using Chart.js from CDN. Display sample sales data as a bar chart.\\n- styles.css: clean, responsive layout.\\nNo build step — pure HTML/CSS/JS only.","model":"${fastModel}","maxTurns":10}[/SPAWN]`,
+    '',
+    `[APP:start]${workspacePath}/.openbridge/generated/apps/chart[/APP]`,
+    '```',
+    '',
+    '### Example — Node.js Server App',
+    '',
+    '```',
+    `[SPAWN:code-edit]{"prompt":"Create an interactive feedback form app in ${workspacePath}/.openbridge/generated/apps/feedback/. Files needed:\\n- server.js: Express server on process.env.PORT (default 3000). Serve an HTML form on GET /. Log submissions to console on POST /submit.\\n- package.json: {\\"scripts\\":{\\"start\\":\\"node server.js\\"},\\"dependencies\\":{\\"express\\":\\"^4.18.0\\"}}\\nRun npm install before finishing.","model":"${balancedModel}","maxTurns":15}[/SPAWN]`,
+    '',
+    `[APP:start]${workspacePath}/.openbridge/generated/apps/feedback[/APP]`,
+    '```',
+    '',
+    '### Guidelines',
+    '',
+    '- **Prefer static HTML** for simple visualisations — no install step, fastest startup',
+    '- **Use `server.js`** for apps needing a backend (form handling, dynamic data)',
+    '- **Use npm project** only when dependencies are required; instruct the worker to run `npm install` before finishing',
+    '- Apps are automatically allocated ports in the range 3100–3199',
+    '- Apps auto-stop after 30 minutes of inactivity',
+    '- Place the APP:start marker where you want the URL to appear in your response',
+    '- Check `/apps` before starting a new app — maximum 5 concurrent apps',
     '',
   ].join('\n');
 }
