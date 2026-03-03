@@ -132,10 +132,22 @@ export const V2MasterSchema = z.object({
   sessionTtlMs: z.number().int().positive().optional(),
 });
 
-/** V2 workspace options — remote git clone + auto-pull configuration */
+/** V2 workspace options — remote git clone + auto-pull configuration + visibility controls */
 export const V2WorkspaceSchema = z.object({
   /** Polling interval in seconds for remote workspace auto-pull (default: 300) */
   pullInterval: z.number().int().positive().optional(),
+  /**
+   * Glob patterns for files to include — only these files are visible to the AI.
+   * If omitted, all non-excluded files are visible.
+   * Example: ["src/**", "docs/**"]
+   */
+  include: z.array(z.string()).optional(),
+  /**
+   * Glob patterns for files to exclude — these files are hidden from the AI.
+   * Always combined with DEFAULT_EXCLUDE_PATTERNS.
+   * Example: ["tests/**", "*.log"]
+   */
+  exclude: z.array(z.string()).optional(),
 });
 
 /** Schema for a single MCP server definition */
