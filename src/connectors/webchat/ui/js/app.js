@@ -356,6 +356,7 @@ function handleMessage(data) {
   if (data.type === 'response') {
     hideStatus();
     addBubble(data.content, 'ai', data.timestamp ? new Date(data.timestamp) : new Date());
+    incrementUnread();
     showTaskNotification(data.content);
   } else if (data.type === 'download') {
     hideStatus();
@@ -443,6 +444,32 @@ form.addEventListener('submit', function (e) {
   showStatus(
     '\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>',
   );
+});
+
+// --- Tab Title Unread Count ---
+
+let unreadCount = 0;
+const baseTitle = 'OpenBridge';
+
+function updateTabTitle() {
+  document.title = unreadCount > 0 ? '(' + unreadCount + ') ' + baseTitle : baseTitle;
+}
+
+function incrementUnread() {
+  if (document.visibilityState === 'visible') return;
+  unreadCount++;
+  updateTabTitle();
+}
+
+function resetUnread() {
+  unreadCount = 0;
+  updateTabTitle();
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') {
+    resetUnread();
+  }
 });
 
 // --- Browser Notifications ---
