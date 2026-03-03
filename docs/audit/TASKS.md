@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 143 | **In Progress:** 0 | **Done:** 71 (112 archived)
+> **Pending:** 142 | **In Progress:** 0 | **Done:** 72 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -234,7 +234,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                        | Status    |
 | --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1462 | Add workspace.include and workspace.exclude to config schema in `src/types/config.ts` — include: optional glob array (only these visible), exclude: optional glob array (hidden from AI). Both support standard glob syntax                                                                                                                        | ◻ Pending |
+| 1   | OB-1462 | Add workspace.include and workspace.exclude to config schema in `src/types/config.ts` — include: optional glob array (only these visible), exclude: optional glob array (hidden from AI). Both support standard glob syntax                                                                                                                        | ✅ Done   |
 | 2   | OB-1463 | Add DEFAULT*EXCLUDE_PATTERNS to `src/types/config.ts` — .env, .env.*, _.pem, _.key, _.p12, _.pfx, credentials.\_, secrets/, id_rsa*, id_ed25519*, \*.sqlite, .git/objects/, node_modules/, .DS_Store. Always excluded unless user overrides                                                                                                        | ◻ Pending |
 | 3   | OB-1464 | Add isFileVisible(filePath, config) to `src/core/workspace-manager.ts` — check against include/exclude rules. File must match at least one include (if set) and must not match any exclude. Exclude takes priority                                                                                                                                 | ◻ Pending |
 | 4   | OB-1465 | Add symlink resolution in isFileVisible() — resolve real path with fs.realpath() before checking. Prevents symlink escape to files outside workspace                                                                                                                                                                                               | ◻ Pending |
