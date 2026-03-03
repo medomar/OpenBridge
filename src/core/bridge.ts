@@ -81,6 +81,8 @@ export class Bridge {
   private agentStatusInterval: ReturnType<typeof setInterval> | null = null;
   private evictionInterval: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt: string | null = null;
+  private tunnelExitHandler: (() => void) | null = null;
+  private tunnelSigintHandler: (() => void) | null = null;
 
   constructor(config: AppConfig, options?: BridgeOptions) {
     this.config = config;
@@ -137,6 +139,34 @@ export class Bridge {
   /** Returns the tunnel public URL if a tunnel is active, or null if not running */
   getTunnelUrl(): string | null {
     return this.tunnelPublicUrl;
+  }
+
+  private registerTunnelShutdownHandlers(): void {
+    if (!this.tunnelManager || this.tunnelExitHandler || this.tunnelSigintHandler) {
+      return;
+    }
+
+    this.tunnelExitHandler = (): void => {
+      this.tunnelManager?.stop();
+      this.tunnelPublicUrl = null;
+    };
+    this.tunnelSigintHandler = (): void => {
+      this.tunnelManager?.stop();
+      this.tunnelPublicUrl = null;
+    };
+    process.on('exit', this.tunnelExitHandler);
+    process.on('SIGINT', this.tunnelSigintHandler);
+  }
+
+  private clearTunnelShutdownHandlers(): void {
+    if (this.tunnelExitHandler) {
+      process.removeListener('exit', this.tunnelExitHandler);
+      this.tunnelExitHandler = null;
+    }
+    if (this.tunnelSigintHandler) {
+      process.removeListener('SIGINT', this.tunnelSigintHandler);
+      this.tunnelSigintHandler = null;
+    }
   }
 
   /** Returns the MemoryManager instance (null if no workspacePath was provided or init failed) */
@@ -409,6 +439,7 @@ export class Bridge {
 
     // Start tunnel if configured — expose file server to the internet (non-fatal)
     if (this.tunnelManager && this.fileServer) {
+      this.registerTunnelShutdownHandlers();
       const fileServerPort = this.getFileServerPort();
       if (fileServerPort !== null) {
         try {
@@ -520,6 +551,7 @@ export class Bridge {
     if (this.tunnelManager) {
       this.tunnelManager.stop();
       this.tunnelPublicUrl = null;
+      this.clearTunnelShutdownHandlers();
       logger.info('Tunnel stopped');
     }
 

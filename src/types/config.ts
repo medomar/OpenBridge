@@ -126,6 +126,8 @@ export const V2AuthSchema = z.object({
 /** V2 master AI override schema */
 export const V2MasterSchema = z.object({
   tool: z.string().optional(),
+  /** Tools to exclude from discovery — e.g. ["claude"] to force Codex-only operation */
+  excludeTools: z.array(z.string()).optional(),
   explorationPrompt: z.string().optional(),
   sessionTtlMs: z.number().int().positive().optional(),
 });

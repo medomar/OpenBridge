@@ -125,7 +125,32 @@ async function startV2Flow(
   logger.info('Discovering AI tools...');
   const scanResult = await scanForAITools();
 
-  // Step 1a: Apply master tool override if configured
+  // Step 1a: Exclude tools if configured — removes them from discovery results entirely
+  const excludeTools = v2Config.master?.excludeTools;
+  if (excludeTools && excludeTools.length > 0) {
+    const excludeSet = new Set(excludeTools.map((t) => t.toLowerCase()));
+    const before = scanResult.cliTools.length;
+    scanResult.cliTools = scanResult.cliTools.filter(
+      (tool) => !excludeSet.has(tool.name.toLowerCase()),
+    );
+    logger.info(
+      { excludeTools, removed: before - scanResult.cliTools.length },
+      'Excluded tools from discovery',
+    );
+
+    // Re-select master if the current master was excluded
+    if (scanResult.master && excludeSet.has(scanResult.master.name.toLowerCase())) {
+      scanResult.master = scanResult.cliTools[0] ?? null;
+      if (scanResult.master) {
+        logger.info(
+          { newMaster: scanResult.master.name },
+          'Previous master was excluded — auto-selected next available tool',
+        );
+      }
+    }
+  }
+
+  // Step 1b: Apply master tool override if configured
   let selectedMaster = scanResult.master;
 
   if (v2Config.master?.tool) {
@@ -182,7 +207,7 @@ async function startV2Flow(
     {
       master: selectedMaster.name,
       provider: masterProviderName,
-      totalTools: scanResult.totalDiscovered,
+      totalTools: scanResult.cliTools.length + scanResult.vscodeExtensions.length,
       cliTools: scanResult.cliTools.length,
       vscodeExtensions: scanResult.vscodeExtensions.length,
     },

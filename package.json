@@ -64,7 +64,7 @@
     "patch-task": "node scripts/patch-task-status.mjs",
     "changelog": "bash scripts/generate-changelog.sh",
     "clean": "rm -rf dist coverage",
-    "prebuild": "cd node_modules/better-sqlite3 && prebuildify --napi --target 22.0.0",
+    "prepackage": "cd node_modules/better-sqlite3 && prebuildify --napi --target 22.0.0",
     "package": "bash scripts/package.sh",
     "package:mac": "bash scripts/package.sh --platform macos-arm64",
     "package:mac-x64": "bash scripts/package.sh --platform macos-x64",

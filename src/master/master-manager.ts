@@ -349,7 +349,20 @@ export class MasterManager {
   private readonly delegationCoordinator: DelegationCoordinator;
   private readonly agentRunner: AgentRunner;
   private readonly workerRegistry: WorkerRegistry;
-  memory: MemoryManager | null;
+  private _memory: MemoryManager | null = null;
+
+  /** Getter for MemoryManager — null when SQLite init failed */
+  get memory(): MemoryManager | null {
+    return this._memory;
+  }
+
+  /** Setter for MemoryManager — nulls out SubMasterManager when memory becomes unavailable */
+  set memory(value: MemoryManager | null) {
+    this._memory = value;
+    if (!value) {
+      this.subMasterManager = null;
+    }
+  }
   /** Sub-master manager — null when no root DB is available (OB-755) */
   private subMasterManager: SubMasterManager | null = null;
   private readonly workerRetryDelayMs: number;
