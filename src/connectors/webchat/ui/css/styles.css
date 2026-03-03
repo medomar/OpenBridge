@@ -1909,3 +1909,84 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* Deep Mode stepper bar */
+
+.deep-mode-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.deep-mode-bar.hidden {
+  display: none;
+}
+
+.dm-track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 480px;
+}
+
+.dm-phase-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.dm-connector {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--border);
+  margin-bottom: 18px;
+  min-width: 8px;
+}
+
+.dm-phase-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  cursor: default;
+  user-select: none;
+}
+
+.dm-phase-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.dm-phase-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.dm-phase-pending {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border: 2px solid var(--border);
+}
+
+.dm-phase-current {
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid var(--accent);
+}
+
+.dm-phase-done {
+  background: #34a853;
+  color: #fff;
+  border: 2px solid #34a853;
+}

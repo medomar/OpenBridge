@@ -9,6 +9,7 @@ import { initDashboard, updateDashboard } from './dashboard.js';
 import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
 import { initAutocomplete } from './autocomplete.js';
 import { initSettings, setOnThemeChange, setOnSoundChange } from './settings.js';
+import { initDeepMode, handleDeepPhaseEvent } from './deep-mode.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -554,6 +555,8 @@ function handleMessage(data) {
           '.',
         'sys',
       );
+    } else if (data.event && data.event.type === 'deep-phase') {
+      handleDeepPhaseEvent(data.event);
     } else if (data.event) {
       const label = progressLabel(data.event);
       if (label) showStatus(label);
@@ -1141,6 +1144,7 @@ setOnSessionSelect(loadSessionTranscript);
 setOnNewConversation(startNewConversation);
 void loadSessions();
 initDashboard();
+initDeepMode();
 initSettings();
 setOnThemeChange(function (theme) {
   // Keep header theme-toggle button label in sync when theme changes via settings
