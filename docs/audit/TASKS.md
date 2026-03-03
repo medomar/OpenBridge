@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 131 | **In Progress:** 0 | **Done:** 83 (112 archived)
+> **Pending:** 130 | **In Progress:** 0 | **Done:** 84 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -42,7 +42,7 @@
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
-| 87     | Document Visibility Controls         | 14    | ◻ (12/14 done)  |
+| 87     | Document Visibility Controls         | 14    | ◻ (13/14 done)  |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
@@ -246,7 +246,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 10  | OB-1471 | Add redaction patterns — OpenAI keys (sk-...), AWS keys (AKIA...), GitHub PATs (ghp*..., ghs*...), PEM private keys, connection strings (mongodb://, postgres://, mysql://). Replace matches with REDACTED:{pattern_name}                                                                                                                          | ✅ Done   |
 | 11  | OB-1472 | Add `/scope` command to Router — shows current visibility rules and detected secrets with severity. Shows "No sensitive files detected" if clean                                                                                                                                                                                                   | ✅ Done   |
 | 12  | OB-1473 | Add visibility preferences to setup wizard in `src/cli/init.ts` — ask "Would you like to auto-detect and hide sensitive files? (recommended)" during init. Save to config                                                                                                                                                                          | ✅ Done   |
-| 13  | OB-1474 | Update Master system prompt with visibility info — list hidden file patterns. Instruct Master to ask user for content from hidden files if needed                                                                                                                                                                                                  | ◻ Pending |
+| 13  | OB-1474 | Update Master system prompt with visibility info — list hidden file patterns. Instruct Master to ask user for content from hidden files if needed                                                                                                                                                                                                  | ✅ Done   |
 | 14  | OB-1475 | Add tests in workspace-manager, secret-scanner, content-redactor test files — test: (1) .env excluded by default, (2) include limits visible files, (3) exclude takes priority, (4) symlinks outside workspace rejected, (5) path traversal blocked, (6) scanner detects .env and \*.pem, (7) redactor replaces API key patterns. At least 7 tests | ◻ Pending |
 
 ---

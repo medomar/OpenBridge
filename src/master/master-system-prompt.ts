@@ -18,6 +18,7 @@ import type { ToolProfile } from '../types/agent.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MCPServer } from '../types/config.js';
+import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
 
 export interface MasterSystemPromptContext {
   /** Absolute path to the target workspace */
@@ -38,6 +39,10 @@ export interface MasterSystemPromptContext {
   fileServerPort?: number;
   /** Public tunnel URL when a tunnel is active (e.g. 'https://abc123.trycloudflare.com'). Undefined when no tunnel is running. */
   tunnelUrl?: string;
+  /** User-configured glob patterns for files to exclude (workspace.exclude). Combined with DEFAULT_EXCLUDE_PATTERNS. */
+  workspaceExclude?: readonly string[];
+  /** User-configured glob patterns for files to include — limits AI visibility to only these files. */
+  workspaceInclude?: readonly string[];
 }
 
 /**
@@ -112,6 +117,10 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const mcpSection = formatMcpServersSection(context.mcpServers);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
   const fileServerSection = formatFileServerSection(context.fileServerPort, context.tunnelUrl);
+  const visibilitySection = formatVisibilitySection(
+    context.workspaceExclude,
+    context.workspaceInclude,
+  );
 
   // Resolve model names from registry (defaults to Claude aliases if no registry)
   const fastModel = context.modelRegistry?.resolve('fast')?.id ?? 'haiku';
@@ -213,7 +222,7 @@ Write \`workspace-map.json\` with this structure:
 - **Only read and analyze** during exploration — do NOT modify workspace files outside \`.openbridge/\`
 - **Do NOT install dependencies or run code** during exploration
 - If you can't read a file (binary, permissions, too large), skip it and note in the log
-
+${visibilitySection}
 ## How to Spawn Workers (Task Decomposition)
 
 When you need workers to execute tasks, use SPAWN markers. Each marker specifies a tool profile and a JSON manifest describing the worker:
@@ -638,6 +647,75 @@ export function formatPreFetchedKnowledgeSection(knowledgeContext: string): stri
  */
 export function formatTargetedReaderSection(readerResult: string): string {
   return `## Pre-fetched File Context (targeted reader)\n\n${readerResult.trim()}`;
+}
+
+/**
+ * Format the "## Workspace Visibility" section for the Master system prompt.
+ *
+ * Lists the file patterns that are hidden from the Master AI (always-excluded defaults
+ * plus any user-configured patterns) and any include restrictions. Instructs the Master
+ * to ask the user to provide content from hidden files when needed.
+ *
+ * Returns an empty string when no custom patterns are set and the section would add no
+ * information beyond the always-excluded defaults (so the prompt stays minimal by default).
+ */
+function formatVisibilitySection(
+  workspaceExclude?: readonly string[],
+  workspaceInclude?: readonly string[],
+): string {
+  const lines: string[] = [
+    '',
+    '## Workspace Visibility',
+    '',
+    'Certain files are **hidden from your view** by design. You cannot read, search, or reference their contents.',
+    '',
+    '### Always Hidden (security defaults)',
+    '',
+  ];
+
+  for (const pattern of DEFAULT_EXCLUDE_PATTERNS) {
+    lines.push(`- \`${pattern}\``);
+  }
+
+  if (workspaceExclude && workspaceExclude.length > 0) {
+    lines.push('');
+    lines.push('### Additionally Hidden (user configuration)');
+    lines.push('');
+    for (const pattern of workspaceExclude) {
+      lines.push(`- \`${pattern}\``);
+    }
+  }
+
+  if (workspaceInclude && workspaceInclude.length > 0) {
+    lines.push('');
+    lines.push('### Visible Only (include filter active)');
+    lines.push('');
+    lines.push(
+      'Only files matching these patterns are visible to you. All other files are hidden:',
+    );
+    lines.push('');
+    for (const pattern of workspaceInclude) {
+      lines.push(`- \`${pattern}\``);
+    }
+  }
+
+  lines.push('');
+  lines.push('### When You Need Content From a Hidden File');
+  lines.push('');
+  lines.push(
+    'If a task requires content from a hidden file (e.g. reading an `.env` for troubleshooting), **ask the user to paste the relevant portion** rather than attempting to read it directly:',
+  );
+  lines.push('');
+  lines.push(
+    '> "I can\'t access `.env` directly — it\'s hidden for security. Could you paste the environment variables I need?"',
+  );
+  lines.push('');
+  lines.push(
+    'Never attempt to bypass visibility rules or use shell commands to read excluded files.',
+  );
+  lines.push('');
+
+  return lines.join('\n');
 }
 
 function formatBuiltInProfiles(): string {

@@ -257,6 +257,8 @@ async function startV2Flow(
     adapterRegistry,
     mcpServers: v2Config.mcp?.enabled !== false ? (v2Config.mcp?.servers ?? []) : [],
     deepConfig: v2Config.deep,
+    workspaceExclude: v2Config.workspace?.exclude,
+    workspaceInclude: v2Config.workspace?.include,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
