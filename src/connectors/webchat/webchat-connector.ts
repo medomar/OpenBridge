@@ -11,6 +11,11 @@ import type { MemoryManager } from '../../memory/index.js';
 import { WEBCHAT_HTML } from './ui-bundle.js';
 import { getOrCreateAuthToken } from './webchat-auth.js';
 
+/** Name of the HTTP-only session cookie set after successful token validation */
+const SESSION_COOKIE_NAME = 'ob_session';
+/** Session lifetime: 24 hours in milliseconds */
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
 const logger = createLogger('webchat');
 
 type EventListeners = {
@@ -73,6 +78,8 @@ export class WebChatConnector implements Connector {
   private memory: MemoryManager | null = null;
   private authToken: string | null = null;
   private storeDir: string = process.cwd();
+  /** In-memory session store: sessionId → expiry timestamp (ms since epoch) */
+  private readonly sessions: Map<string, number> = new Map();
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -104,6 +111,103 @@ export class WebChatConnector implements Connector {
     return `http://${host}:${this.config.port}/?token=${this.authToken}`;
   }
 
+  /**
+   * Extract a bearer token from the request — checks (in order):
+   *   1. `?token=<value>` query parameter
+   *   2. `Authorization: Bearer <value>` header
+   */
+  private extractToken(url: string, req: IncomingMessage): string | null {
+    try {
+      const parsed = new URL(url, 'http://localhost');
+      const tokenFromQuery = parsed.searchParams.get('token');
+      if (tokenFromQuery) return tokenFromQuery;
+    } catch {
+      // malformed URL — fall through
+    }
+    const authHeader = req.headers?.['authorization'];
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.slice(7);
+    }
+    return null;
+  }
+
+  /** Extract the session ID from the `ob_session` cookie, or null if absent. */
+  private extractSessionId(req: IncomingMessage): string | null {
+    const cookieHeader = req.headers?.['cookie'];
+    if (!cookieHeader) return null;
+    for (const part of cookieHeader.split(';')) {
+      const trimmed = part.trim();
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const name = trimmed.slice(0, eqIdx).trim();
+      if (name === SESSION_COOKIE_NAME) {
+        return trimmed.slice(eqIdx + 1).trim();
+      }
+    }
+    return null;
+  }
+
+  /** Return true if the session exists and has not expired. Evicts on expiry. */
+  private isValidSession(sessionId: string): boolean {
+    const expiry = this.sessions.get(sessionId);
+    if (expiry === undefined) return false;
+    if (Date.now() > expiry) {
+      this.sessions.delete(sessionId);
+      return false;
+    }
+    return true;
+  }
+
+  /** Remove all expired sessions from the in-memory store. */
+  private evictExpiredSessions(): void {
+    const now = Date.now();
+    for (const [id, expiry] of this.sessions) {
+      if (now > expiry) this.sessions.delete(id);
+    }
+  }
+
+  /**
+   * Create a new session and set the `ob_session` HTTP-only cookie on the response.
+   * Called when a valid bearer token is presented on an HTTP request.
+   */
+  private startSession(res: ServerResponse): void {
+    this.evictExpiredSessions();
+    const sessionId = randomUUID();
+    const expiry = Date.now() + SESSION_TTL_MS;
+    this.sessions.set(sessionId, expiry);
+    const maxAge = Math.floor(SESSION_TTL_MS / 1000);
+    res.setHeader(
+      'Set-Cookie',
+      `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; SameSite=Strict; Max-Age=${maxAge}; Path=/`,
+    );
+  }
+
+  /**
+   * Check whether the incoming HTTP request carries a valid token or an active
+   * session cookie.  Returns `{ ok, tokenProvided }`:
+   *  - `ok` — whether the request is authorised
+   *  - `tokenProvided` — true when the token itself (not a cookie) was used,
+   *    so the caller can issue a new session cookie
+   */
+  private isAuthenticated(
+    url: string,
+    req: IncomingMessage,
+  ): { ok: boolean; tokenProvided: boolean } {
+    if (this.authToken === null) {
+      // Token not yet initialised — deny access
+      return { ok: false, tokenProvided: false };
+    }
+    const token = this.extractToken(url, req);
+    if (token !== null && token === this.authToken) {
+      return { ok: true, tokenProvided: true };
+    }
+    const sessionId = this.extractSessionId(req);
+    if (sessionId !== null && this.isValidSession(sessionId)) {
+      return { ok: true, tokenProvided: false };
+    }
+    return { ok: false, tokenProvided: false };
+  }
+
   async initialize(): Promise<void> {
     // Generate or load persisted auth token before starting the server
     this.authToken = getOrCreateAuthToken(this.storeDir);
@@ -116,6 +220,21 @@ export class WebChatConnector implements Connector {
 
     const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = req.url ?? '/';
+
+      // ── Auth guard ─────────────────────────────────────────────────────────
+      const auth = this.isAuthenticated(url, req);
+      if (!auth.ok) {
+        res.writeHead(401, { 'Content-Type': 'text/plain' });
+        res.end('Unauthorized');
+        return;
+      }
+      // When the client authenticates with the bearer token, issue a session
+      // cookie so subsequent requests (without the token in the URL) are also
+      // allowed through.
+      if (auth.tokenProvided) {
+        this.startSession(res);
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       // QR code endpoint — serves a scannable QR page in headless mode
       if (url === '/qr') {
