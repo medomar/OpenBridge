@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 103 | **In Progress:** 0 | **Done:** 111 (112 archived)
+> **Pending:** 102 | **In Progress:** 0 | **Done:** 112 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -44,7 +44,7 @@
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
-| 89     | WebChat Authentication               | 12    | ◻ (11/12 done)  |
+| 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
@@ -279,20 +279,20 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 > **Goal:** Add authentication to WebChat for safe exposure beyond localhost. Token auth, password auth, session management, rate limiting.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                    | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1491 | Generate random auth token on first startup — crypto.randomBytes(32).toString("hex"). Persist in .openbridge/webchat-token. Read existing on subsequent starts                                                                                                                 | ✅ Done   |
-| 2   | OB-1492 | Display auth token and URL in console on startup — log WebChat URL with token for easy copy-paste. Include in Bridge startup summary                                                                                                                                           | ✅ Done   |
-| 3   | OB-1493 | Show QR code in console with authenticated URL — ASCII QR code for phone scanning. Use qrcode-terminal or similar library                                                                                                                                                      | ✅ Done   |
-| 4   | OB-1494 | Validate token on HTTP requests — check query param or Authorization header. Reject with 401 if invalid. Allow session cookie after initial validation                                                                                                                         | ✅ Done   |
-| 5   | OB-1495 | Validate token on WebSocket upgrade — check token in WebSocket URL query string. Reject upgrade with 401 if invalid                                                                                                                                                            | ✅ Done   |
-| 6   | OB-1496 | Add optional password auth — webchat.password config field. If set, show login screen instead of token. Hash with bcrypt before comparison                                                                                                                                     | ✅ Done   |
-| 7   | OB-1497 | Create login screen UI — password input, submit, error message area. Match WebChat theme. POST to /api/webchat/login                                                                                                                                                           | ✅ Done   |
-| 8   | OB-1498 | Add session management — HTTP-only cookie with session ID on successful auth. Sessions expire after 24 hours. crypto.randomUUID() for IDs                                                                                                                                      | ✅ Done   |
-| 9   | OB-1499 | Map WebChat users to access-store — create/update entry with channel: webchat, default role, budget on authentication                                                                                                                                                          | ✅ Done   |
-| 10  | OB-1500 | Add per-IP rate limiting on login — track failures per IP. After 5 in 15 min, block for 30 min. Return 429. In-memory Map with TTL                                                                                                                                             | ✅ Done   |
-| 11  | OB-1501 | Add webchat.auth section to config.example.json — examples for token auth, password auth, disabled auth                                                                                                                                                                        | ✅ Done   |
-| 12  | OB-1502 | Add tests in `tests/connectors/webchat/webchat-auth.test.ts` — test: (1) valid token allows, (2) invalid returns 401, (3) password login flow, (4) session cookie set, (5) WebSocket rejects invalid, (6) rate limit after 5 failures, (7) rate limit resets. At least 7 tests | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                    | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 1   | OB-1491 | Generate random auth token on first startup — crypto.randomBytes(32).toString("hex"). Persist in .openbridge/webchat-token. Read existing on subsequent starts                                                                                                                 | ✅ Done |
+| 2   | OB-1492 | Display auth token and URL in console on startup — log WebChat URL with token for easy copy-paste. Include in Bridge startup summary                                                                                                                                           | ✅ Done |
+| 3   | OB-1493 | Show QR code in console with authenticated URL — ASCII QR code for phone scanning. Use qrcode-terminal or similar library                                                                                                                                                      | ✅ Done |
+| 4   | OB-1494 | Validate token on HTTP requests — check query param or Authorization header. Reject with 401 if invalid. Allow session cookie after initial validation                                                                                                                         | ✅ Done |
+| 5   | OB-1495 | Validate token on WebSocket upgrade — check token in WebSocket URL query string. Reject upgrade with 401 if invalid                                                                                                                                                            | ✅ Done |
+| 6   | OB-1496 | Add optional password auth — webchat.password config field. If set, show login screen instead of token. Hash with bcrypt before comparison                                                                                                                                     | ✅ Done |
+| 7   | OB-1497 | Create login screen UI — password input, submit, error message area. Match WebChat theme. POST to /api/webchat/login                                                                                                                                                           | ✅ Done |
+| 8   | OB-1498 | Add session management — HTTP-only cookie with session ID on successful auth. Sessions expire after 24 hours. crypto.randomUUID() for IDs                                                                                                                                      | ✅ Done |
+| 9   | OB-1499 | Map WebChat users to access-store — create/update entry with channel: webchat, default role, budget on authentication                                                                                                                                                          | ✅ Done |
+| 10  | OB-1500 | Add per-IP rate limiting on login — track failures per IP. After 5 in 15 min, block for 30 min. Return 429. In-memory Map with TTL                                                                                                                                             | ✅ Done |
+| 11  | OB-1501 | Add webchat.auth section to config.example.json — examples for token auth, password auth, disabled auth                                                                                                                                                                        | ✅ Done |
+| 12  | OB-1502 | Add tests in `tests/connectors/webchat/webchat-auth.test.ts` — test: (1) valid token allows, (2) invalid returns 401, (3) password login flow, (4) session cookie set, (5) WebSocket rejects invalid, (6) rate limit after 5 failures, (7) rate limit resets. At least 7 tests | ✅ Done |
 
 ---
 
