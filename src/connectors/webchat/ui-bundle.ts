@@ -1,5 +1,5 @@
 // AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: 2026-03-03T18:06:40.123Z
+// Generated: 2026-03-03T18:12:10.650Z
 export const WEBCHAT_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -108,6 +108,11 @@ export const WEBCHAT_HTML = `<!DOCTYPE html>
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* Prevent text selection on all interactive buttons */
+button {
+  user-select: none;
 }
 
 /* Layout */
@@ -925,16 +930,53 @@ body {
 
   .input-row {
     padding: 10px 10px;
+    gap: 8px;
   }
 
   /* font-size 16px prevents iOS Safari from auto-zooming on focus */
   #inp {
     font-size: 16px;
     padding: 11px 14px;
+    min-height: 44px;
   }
 
+  /* Larger send button with 44px tap target */
   #send {
-    padding: 11px 18px;
+    padding: 11px 24px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 44px minimum tap targets for all interactive buttons */
+  .stop-all-btn,
+  .theme-toggle,
+  .url-copy-btn,
+  .show-more-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Stop button: square 44px tap target */
+  .stop-btn {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Dashboard header toggle: 44px tap target */
+  .dash-hdr {
+    min-height: 44px;
+  }
+
+  /* 8px minimum gap between tappable elements in agent rows */
+  .agent-row {
+    gap: 8px;
   }
 }
 
