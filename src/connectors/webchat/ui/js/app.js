@@ -8,7 +8,7 @@ import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
 import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
 import { initAutocomplete } from './autocomplete.js';
-import { initSettings, setOnThemeChange } from './settings.js';
+import { initSettings, setOnThemeChange, setOnSoundChange } from './settings.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -1142,6 +1142,13 @@ setOnThemeChange(function (theme) {
   // Keep header theme-toggle button label in sync when theme changes via settings
   const btn = document.getElementById('theme-toggle');
   if (btn) btn.textContent = theme === 'dark' ? 'Light' : 'Dark';
+});
+setOnSoundChange(function (enabled) {
+  // Apply immediately: update soundMuted and sync header button
+  soundMuted = !enabled;
+  applySoundToggle();
+  // Play preview tone when unmuting so the user knows it works
+  if (!soundMuted) playNotificationSound();
 });
 initWebSocket({
   onOpen: function () {
