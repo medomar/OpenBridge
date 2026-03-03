@@ -156,6 +156,8 @@ export class WebChatConnector implements Connector {
   private readonly sessions: Map<string, number> = new Map();
   /** Per-IP login failure tracker for rate limiting */
   private readonly loginRateLimiter: Map<string, IpRateEntry> = new Map();
+  /** Server-side execution profile preference — synced from client settings panel */
+  private webchatSettings: { profile: 'fast' | 'thorough' | 'manual' } = { profile: 'thorough' };
 
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
@@ -904,6 +906,47 @@ export class WebChatConnector implements Connector {
           'Cache-Control': 'public, max-age=300',
         });
         res.end(JSON.stringify({ tools }));
+        return;
+      }
+
+      // /api/webchat/settings — GET current session settings
+      if (url === '/api/webchat/settings' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(this.webchatSettings));
+        return;
+      }
+
+      // /api/webchat/settings — PUT update session settings
+      if (url === '/api/webchat/settings' && req.method === 'PUT') {
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 1024) req.destroy();
+        });
+        req.on('end', () => {
+          let parsed: { profile?: unknown };
+          try {
+            parsed = JSON.parse(body) as { profile?: unknown };
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            return;
+          }
+          const validProfiles = ['fast', 'thorough', 'manual'] as const;
+          const profile = parsed.profile;
+          if (
+            typeof profile !== 'string' ||
+            !(validProfiles as readonly string[]).includes(profile)
+          ) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'profile must be "fast", "thorough", or "manual"' }));
+            return;
+          }
+          this.webchatSettings.profile = profile as 'fast' | 'thorough' | 'manual';
+          logger.debug({ profile }, 'WebChat: execution profile updated');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, profile: this.webchatSettings.profile }));
+        });
         return;
       }
 

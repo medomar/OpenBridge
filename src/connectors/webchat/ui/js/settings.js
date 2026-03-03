@@ -88,6 +88,16 @@ function initToolSelector() {
   });
 }
 
+function syncProfileToServer(profile) {
+  fetch('/api/webchat/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile }),
+  }).catch(function () {
+    // Server sync failed — localStorage is the source of truth, ignore error
+  });
+}
+
 function initExecutionProfile() {
   const radios = document.querySelectorAll('input[name="settings-profile"]');
   if (!radios.length) return;
@@ -102,6 +112,7 @@ function initExecutionProfile() {
     radio.addEventListener('change', function () {
       if (radio.checked) {
         localStorage.setItem('ob-exec-profile', radio.value);
+        syncProfileToServer(radio.value);
       }
     });
   }
