@@ -236,9 +236,15 @@ describe('WebChatConnector', () => {
 
     await connector.sendMessage({ target: 'webchat', recipient: 'all', content: 'AI response' });
 
-    const expected = JSON.stringify({ type: 'response', content: 'AI response' });
-    expect(client1.send).toHaveBeenCalledWith(expected);
-    expect(client2.send).toHaveBeenCalledWith(expected);
+    const parse = (s: string) => JSON.parse(s) as Record<string, unknown>;
+    expect(parse(client1.send.mock.calls[0]?.[0] as string)).toMatchObject({
+      type: 'response',
+      content: 'AI response',
+    });
+    expect(parse(client2.send.mock.calls[0]?.[0] as string)).toMatchObject({
+      type: 'response',
+      content: 'AI response',
+    });
   });
 
   it('should not send to non-OPEN clients', async () => {

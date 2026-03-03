@@ -105,6 +105,26 @@ function latestWss(): MockWss {
   return wss;
 }
 
+/** Check if a mock spy was ever called with a JSON payload containing specific fields. */
+function hadJsonCall(spy: ReturnType<typeof vi.fn>, partial: Record<string, unknown>): boolean {
+  return spy.mock.calls.flat().some((call) => {
+    if (typeof call !== 'string') return false;
+    try {
+      const p = JSON.parse(call) as Record<string, unknown>;
+      return Object.entries(partial).every(([k, v]) => p[k] === v);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Get the nth (1-indexed) call's parsed JSON payload. */
+function nthJsonCall(spy: ReturnType<typeof vi.fn>, n: number): Record<string, unknown> {
+  const call = spy.mock.calls[n - 1];
+  if (!call) throw new Error(`No ${n}th call`);
+  return JSON.parse(call[0] as string) as Record<string, unknown>;
+}
+
 function baseConfig(): AppConfig {
   return {
     defaultProvider: 'mock',
@@ -161,12 +181,8 @@ describe('WebChat connector integration (OB-323)', () => {
     expect(provider.processedMessages[0]?.content).toBe('hello world');
 
     // Client received ack and AI response
-    expect(client.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'response', content: 'Working on it...' }),
-    );
-    expect(client.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'response', content: 'Hello from AI' }),
-    );
+    expect(hadJsonCall(client.send, { type: 'response', content: 'Working on it...' })).toBe(true);
+    expect(hadJsonCall(client.send, { type: 'response', content: 'Hello from AI' })).toBe(true);
   });
 
   it('sends acknowledgment before the AI response', async () => {
@@ -182,15 +198,12 @@ describe('WebChat connector integration (OB-323)', () => {
 
     // 3 sends: ack, typing indicator, AI response
     expect(client.send).toHaveBeenCalledTimes(3);
-    expect(client.send).toHaveBeenNthCalledWith(
-      1,
-      JSON.stringify({ type: 'response', content: 'Working on it...' }),
-    );
-    expect(client.send).toHaveBeenNthCalledWith(2, JSON.stringify({ type: 'typing' }));
-    expect(client.send).toHaveBeenNthCalledWith(
-      3,
-      JSON.stringify({ type: 'response', content: 'AI reply' }),
-    );
+    expect(nthJsonCall(client.send, 1)).toMatchObject({
+      type: 'response',
+      content: 'Working on it...',
+    });
+    expect(nthJsonCall(client.send, 2)).toEqual({ type: 'typing' });
+    expect(nthJsonCall(client.send, 3)).toMatchObject({ type: 'response', content: 'AI reply' });
   });
 
   it('strips the /ai prefix before forwarding to the provider', async () => {
@@ -239,11 +252,11 @@ describe('WebChat connector integration (OB-323)', () => {
 
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(client1.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'response', content: 'broadcast response' }),
+    expect(hadJsonCall(client1.send, { type: 'response', content: 'broadcast response' })).toBe(
+      true,
     );
-    expect(client2.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'response', content: 'broadcast response' }),
+    expect(hadJsonCall(client2.send, { type: 'response', content: 'broadcast response' })).toBe(
+      true,
     );
   });
 

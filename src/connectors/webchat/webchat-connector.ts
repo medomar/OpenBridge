@@ -307,9 +307,14 @@ export class WebChatConnector implements Connector {
         filename: filename ?? 'download',
         url: `/download/${fileId}`,
         mimeType,
+        timestamp: new Date().toISOString(),
       });
     } else {
-      payload = JSON.stringify({ type: 'response', content: message.content });
+      payload = JSON.stringify({
+        type: 'response',
+        content: message.content,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     for (const client of this.clients) {
