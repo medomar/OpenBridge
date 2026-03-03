@@ -6,6 +6,7 @@
 import { initWebSocket, sendMessage, isConnected } from './websocket.js';
 import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
+import { initSidebar } from './sidebar.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -637,6 +638,7 @@ function applySoundToggle() {
 
 // --- Boot ---
 
+initSidebar();
 initDashboard();
 initWebSocket({
   onOpen: function () {
