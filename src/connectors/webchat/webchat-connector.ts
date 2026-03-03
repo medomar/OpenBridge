@@ -649,6 +649,10 @@ export class WebChatConnector implements Connector {
     wss.on('connection', (socket: WsClient) => {
       this.clients.add(socket);
 
+      // Per-socket sender ID — rotated on each "new-session" message so that
+      // the router and Master AI treat subsequent messages as a fresh conversation.
+      let socketSender = 'webchat-user';
+
       socket.on('message', (raw: Buffer | string) => {
         let payload: { type: string; content?: string; workerId?: string };
         try {
@@ -666,7 +670,7 @@ export class WebChatConnector implements Connector {
           const message: InboundMessage = {
             id: `webchat-${this.messageCounter.toString()}`,
             source: 'webchat',
-            sender: 'webchat-user',
+            sender: socketSender,
             rawContent: payload.content,
             content: payload.content,
             timestamp: new Date(),
@@ -678,7 +682,7 @@ export class WebChatConnector implements Connector {
           const message: InboundMessage = {
             id: `webchat-${this.messageCounter.toString()}`,
             source: 'webchat',
-            sender: 'webchat-user',
+            sender: socketSender,
             rawContent: content,
             content,
             timestamp: new Date(),
@@ -689,12 +693,16 @@ export class WebChatConnector implements Connector {
           const message: InboundMessage = {
             id: `webchat-${this.messageCounter.toString()}`,
             source: 'webchat',
-            sender: 'webchat-user',
+            sender: socketSender,
             rawContent: 'stop all',
             content: 'stop all',
             timestamp: new Date(),
           };
           this.emit('message', message);
+        } else if (payload.type === 'new-session') {
+          // Rotate the per-socket sender so the Master AI starts a fresh conversation.
+          socketSender = `webchat-user-${randomUUID()}`;
+          logger.debug({ sender: socketSender }, 'WebChat new session started');
         }
       });
 
