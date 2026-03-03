@@ -40,16 +40,27 @@ Implement the task. Follow these rules:
 
 ## Step 4: Verify
 
-Run ALL of these commands and ensure they pass:
+Run these commands in order:
 
 ```bash
 npm run lint
 npm run typecheck
-npm run test
 npm run build
 ```
 
-If any command fails, fix the issue before proceeding. Do not skip verification.
+All three MUST pass. If any fails, fix the issue before proceeding.
+
+Then run tests:
+
+```bash
+npm run test 2>&1 | tail -80
+```
+
+**IMPORTANT: This project has pre-existing test failures** (SQLite native bindings, EPERM on port binding, etc.) that are NOT caused by your changes. When evaluating test results:
+- Your new/modified tests MUST pass.
+- If the ONLY failures are in files you did NOT touch, that is acceptable — proceed to the next step.
+- If tests you wrote or modified are failing, fix them before proceeding.
+- Do NOT spend time investigating or fixing pre-existing test failures in unrelated files.
 
 ## Step 5: Update Audit Documents
 
