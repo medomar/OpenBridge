@@ -1,30 +1,37 @@
 # Automated Task Runner Scripts
 
-Generic automation scripts for executing audit tasks with Claude Code CLI.
-Designed to be reusable across any project — just point to your task list.
+Generic automation scripts for executing audit tasks with AI coding agents.
+Supports both **Claude Code** and **Codex** CLIs — just point to your task list.
 
 ---
 
 ## Scripts
 
-| Script                    | Purpose                                          |
-| ------------------------- | ------------------------------------------------ |
-| `run-tasks.sh`            | Execute pending tasks (loop or single-task mode) |
-| `status.sh`               | Live dashboard — agents, progress, failures      |
-| `logs.sh`                 | View, tail, search, and manage agent logs        |
-| `stop.sh`                 | Gracefully stop running agents                   |
-| `prompts/execute-task.md` | Worker prompt template (what each agent does)    |
+| Script                    | Purpose                                         |
+| ------------------------- | ----------------------------------------------- |
+| `run-tasks.sh`            | Execute pending tasks using **Claude Code** CLI |
+| `run-tasks-codex.sh`      | Execute pending tasks using **Codex** CLI       |
+| `status.sh`               | Live dashboard — agents, progress, failures     |
+| `logs.sh`                 | View, tail, search, and manage agent logs       |
+| `stop.sh`                 | Gracefully stop running agents                  |
+| `prompts/execute-task.md` | Worker prompt template (shared by both runners) |
 
 ---
 
 ## Prerequisites
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- A task list file following the audit format (see `docs/audit/TASKS.md`)
+You need **at least one** of the following AI CLIs installed:
+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) — for `run-tasks.sh`
+- [Codex CLI](https://github.com/openai/codex) — for `run-tasks-codex.sh`
+
+Plus a task list file following the audit format (see `docs/audit/TASKS.md`).
 
 ---
 
 ## Quick Start
+
+### With Claude Code
 
 ```bash
 # Run all pending tasks sequentially
@@ -38,7 +45,27 @@ Designed to be reusable across any project — just point to your task list.
 
 # Overnight run, prevent macOS sleep
 ./scripts/run-tasks.sh --caffeinate
+```
 
+### With Codex
+
+```bash
+# Run all pending tasks sequentially
+./scripts/run-tasks-codex.sh
+
+# Run a single specific task
+./scripts/run-tasks-codex.sh OB-302
+
+# Run Phase 97 tasks with o3 model
+./scripts/run-tasks-codex.sh --phase 97 --model o3
+
+# Overnight run, prevent macOS sleep
+./scripts/run-tasks-codex.sh --caffeinate
+```
+
+### Monitoring (works with both runners)
+
+```bash
 # Monitor progress (in another terminal)
 ./scripts/status.sh --watch
 
@@ -121,7 +148,7 @@ This prevents the runner from looping forever on a task that keeps failing.
 
 ## Configuration Reference
 
-### `run-tasks.sh`
+### `run-tasks.sh` (Claude Code)
 
 #### Path options
 
@@ -154,6 +181,45 @@ This prevents the runner from looping forever on a task that keeps failing.
 | `--reset-failures` | Clear failure tracking and skip list    |
 | `--help`           | Show all options                        |
 
+### `run-tasks-codex.sh` (Codex)
+
+#### Path options
+
+Same as `run-tasks.sh` (except `--health` is not used).
+
+#### Execution options
+
+| Option                  | Default           | Description                                                                                                           |
+| ----------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `TASK_ID` (positional)  | —                 | Run a specific task (e.g., `OB-302`)                                                                                  |
+| `--phase N`             | all               | Limit to Phase N                                                                                                      |
+| `--model MODEL`         | `gpt-5.2-codex`   | Codex default. ChatGPT accounts only support the default model. API accounts can also use `o4-mini`, `o3`, `gpt-4.1`. |
+| `--sandbox MODE`        | `workspace-write` | Sandbox policy (`read-only`, `workspace-write`, `danger-full-access`)                                                 |
+| `--max-task-failures N` | `3`               | Skip a task after N total failures                                                                                    |
+| `--retries N`           | `3`               | Max consecutive failures before stopping                                                                              |
+
+> **Note:** Codex has no `--budget` flag. Monitor usage via your OpenAI dashboard.
+
+#### Other options
+
+| Option             | Description                             |
+| ------------------ | --------------------------------------- |
+| `--caffeinate`     | Prevent macOS sleep (must be first arg) |
+| `--reset-failures` | Clear failure tracking and skip list    |
+| `--help`           | Show all options                        |
+
+### Claude vs Codex — comparison
+
+| Aspect           | `run-tasks.sh` (Claude)       | `run-tasks-codex.sh` (Codex)                                              |
+| ---------------- | ----------------------------- | ------------------------------------------------------------------------- |
+| CLI command      | `claude --print -p "$prompt"` | `codex exec --full-auto "$prompt"`                                        |
+| Default model    | `sonnet`                      | `gpt-5.2-codex`                                                           |
+| Safety mechanism | `--allowedTools` whitelist    | `--sandbox workspace-write`                                               |
+| Budget control   | `--max-budget-usd 5`          | None (monitor via OpenAI dashboard)                                       |
+| Git commits      | Agent commits directly        | Script commits after agent (post-agent)                                   |
+| Best for         | Complex reasoning, long tasks | Fast implementation, code edits                                           |
+| Model options    | `opus`, `sonnet`, `haiku`     | `gpt-5.2-codex` (default), `o4-mini`, `o3`, `gpt-4.1` (API accounts only) |
+
 ### `status.sh`
 
 | Option        | Description                               |
@@ -185,14 +251,22 @@ This prevents the runner from looping forever on a task that keeps failing.
 
 ## How It Works
 
+Both runners follow the same flow (only the CLI invocation differs):
+
 1. Script reads the prompt template from `prompts/execute-task.md`
 2. Injects configuration (file paths, phase filter, task ID) into template variables
-3. Launches `claude --print` with `--max-budget-usd` and restricted tool access
+3. Launches the AI agent:
+   - **Claude:** `claude --print` with `--max-budget-usd` and `--allowedTools`
+   - **Codex:** `codex exec --full-auto` with `--sandbox` policy (Steps 6–7 stripped from prompt)
 4. The agent reads the task list, finds the next pending task
 5. Implements the fix, runs verification (`lint`, `typecheck`, `test`, `build`)
-6. Updates audit docs (tasks, findings, health score)
-7. Creates a conventional commit
-8. Writes the next task ID to the pointer file
+6. Updates audit docs (tasks, findings)
+7. Creates a conventional commit:
+   - **Claude:** Agent commits directly (has git access via `--allowedTools`)
+   - **Codex:** Script commits after agent finishes (post-agent commit — sandbox blocks `.git/` writes)
+8. Writes the next task ID to the pointer file:
+   - **Claude:** Agent updates pointer
+   - **Codex:** Script updates pointer after commit
 9. Validates output (checks for empty logs, crashes, tiny output)
 10. Loop continues until all tasks are done or failures exceed retry limit
 
@@ -210,14 +284,25 @@ This state file is used by `status.sh` and `stop.sh`.
 
 ## Safety Guards
 
-- **Tool restrictions**: Agent can only Read, Edit, Write, Glob, Grep, and run git/npm/npx via Bash
-- **Budget cap**: `$5/agent` default — prevents runaway sessions
+### Shared (both runners)
+
 - **Retry limit**: 3 consecutive failures stops the loop (configurable)
 - **Per-task failure limit**: Tasks auto-skip after 3 failures (configurable)
 - **Output validation**: Catches empty logs, crashes, and tiny output
 - **Verification required**: Lint, typecheck, test, and build must pass before a task is marked done
 - **Scoped access**: Agent works only within the project directory
 - **State tracking**: Run state persisted to JSON for monitoring and clean shutdown
+
+### Claude-specific
+
+- **Tool restrictions**: Agent can only Read, Edit, Write, Glob, Grep, and run git/npm/npx via Bash
+- **Budget cap**: `$5/agent` default — prevents runaway sessions
+
+### Codex-specific
+
+- **Sandbox**: `workspace-write` by default — agent can read anything but only write within the workspace
+- **Full-auto**: Auto-approves commands within sandbox boundaries (no interactive prompts)
+- **Post-agent commit**: Since `workspace-write` sandbox blocks `.git/` writes, the script handles git commits after the agent finishes. Steps 6 (Commit) and 7 (Update Pointer) are automatically stripped from the prompt and replaced with a "skip" instruction. The script then stages changed files, builds a conventional commit message from the task description, commits, and updates the pointer file.
 
 ---
 
@@ -237,8 +322,9 @@ logs/task-runs/
 ### Clearing state
 
 ```bash
-# Clear failure tracking and skipped tasks
+# Clear failure tracking and skipped tasks (works with either runner)
 ./scripts/run-tasks.sh --reset-failures
+./scripts/run-tasks-codex.sh --reset-failures
 
 # Clear everything (logs + state)
 ./scripts/logs.sh --clean
@@ -268,14 +354,18 @@ Edit to change what each agent does per task. The prompt is extracted between ``
 These scripts are project-agnostic. To use in a different project:
 
 1. Copy the `scripts/` directory to your project
-2. Create your audit docs (`docs/audit/TASKS.md`, `FINDINGS.md`, `HEALTH.md`)
+2. Create your audit docs (`docs/audit/TASKS.md`, `FINDINGS.md`)
 3. Add a `CLAUDE.md` with your project's conventions
-4. Run:
+4. Run with whichever CLI you have:
 
 ```bash
+# With Claude Code
 ./scripts/run-tasks.sh --tasks your/path/TASKS.md \
-                       --findings your/path/FINDINGS.md \
-                       --health your/path/HEALTH.md
+                       --findings your/path/FINDINGS.md
+
+# With Codex
+./scripts/run-tasks-codex.sh --tasks your/path/TASKS.md \
+                             --findings your/path/FINDINGS.md
 ```
 
 Or simply use the default paths and put your task files in `docs/audit/`.
