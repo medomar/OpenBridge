@@ -343,6 +343,61 @@ body {
   cursor: not-allowed;
 }
 
+/* Code block copy button */
+.bubble.ai .code-block {
+  position: relative;
+  margin: 6px 0;
+}
+
+.bubble.ai .code-block pre {
+  margin: 0;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+  z-index: 1;
+  line-height: 1.5;
+}
+
+.code-block:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.copy-btn.copied {
+  color: #2e7d32;
+}
+
+[data-theme='dark'] .copy-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme='dark'] .copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme='dark'] .copy-btn.copied {
+  color: #69f0ae;
+}
+
 /* Download link */
 .download-link {
   display: inline-block;
