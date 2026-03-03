@@ -1604,3 +1604,75 @@ body {
     min-width: 44px;
   }
 }
+
+/* --- Feedback buttons --- */
+
+.feedback-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.feedback-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  color: var(--text-muted);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+  line-height: 1.4;
+}
+
+.feedback-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-input);
+  color: var(--text-secondary);
+}
+
+.feedback-btn.active-up {
+  border-color: #34a853;
+  color: #34a853;
+  background: #e8f5e9;
+}
+
+.feedback-btn.active-down {
+  border-color: #ea4335;
+  color: #ea4335;
+  background: #fce8e6;
+}
+
+.feedback-btn[disabled] {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* --- Feedback toast --- */
+
+.feedback-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: #202124;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+  z-index: 1000;
+}
+
+.feedback-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

@@ -22,6 +22,12 @@ const statusTimer = document.getElementById('status-timer');
 let timerInterval = null;
 let timerStart = null;
 
+const _pageSessionId =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+let _feedbackMsgCounter = 0;
+
 // --- Public URL bar (shown when tunnel is active) ---
 
 (function initPublicUrlBar() {
@@ -273,6 +279,28 @@ function addBubble(content, cls, timestamp) {
     ts.title = tsDate.toLocaleString();
     ts.textContent = formatRelativeTime(tsDate);
     div.appendChild(ts);
+    if (cls === 'ai') {
+      _feedbackMsgCounter++;
+      const feedbackRow = document.createElement('div');
+      feedbackRow.className = 'feedback-row';
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'feedback-btn';
+      upBtn.setAttribute('aria-label', 'Good response');
+      upBtn.dataset.rating = 'up';
+      upBtn.dataset.msgIdx = String(_feedbackMsgCounter);
+      upBtn.textContent = '\uD83D\uDC4D';
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'feedback-btn';
+      downBtn.setAttribute('aria-label', 'Poor response');
+      downBtn.dataset.rating = 'down';
+      downBtn.dataset.msgIdx = String(_feedbackMsgCounter);
+      downBtn.textContent = '\uD83D\uDC4E';
+      feedbackRow.appendChild(upBtn);
+      feedbackRow.appendChild(downBtn);
+      div.appendChild(feedbackRow);
+    }
     const row = document.createElement('div');
     row.className = 'msg-row ' + cls;
     row.appendChild(makeAvatar(cls));
@@ -302,6 +330,51 @@ msgs.addEventListener('click', function (e) {
       btn.textContent = 'Copy';
       btn.classList.remove('copied');
     }, 2000);
+  });
+});
+
+// --- Feedback buttons ---
+
+const _feedbackToastEl = (function () {
+  const el = document.createElement('div');
+  el.className = 'feedback-toast';
+  el.textContent = 'Thanks!';
+  document.body.appendChild(el);
+  return el;
+})();
+
+let _feedbackToastTimer = null;
+
+function showFeedbackToast() {
+  if (_feedbackToastTimer) clearTimeout(_feedbackToastTimer);
+  _feedbackToastEl.classList.add('visible');
+  _feedbackToastTimer = setTimeout(function () {
+    _feedbackToastEl.classList.remove('visible');
+    _feedbackToastTimer = null;
+  }, 2000);
+}
+
+msgs.addEventListener('click', function (e) {
+  const btn = e.target.closest('.feedback-btn');
+  if (!btn || btn.disabled) return;
+  const rating = btn.dataset.rating;
+  const msgIdx = btn.dataset.msgIdx;
+  const feedbackRow = btn.closest('.feedback-row');
+  if (feedbackRow) {
+    feedbackRow.querySelectorAll('.feedback-btn').forEach(function (b) {
+      b.disabled = true;
+      if (b.dataset.rating === rating) {
+        b.classList.add(rating === 'up' ? 'active-up' : 'active-down');
+      }
+    });
+  }
+  showFeedbackToast();
+  fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: _pageSessionId, message: msgIdx, rating: rating }),
+  }).catch(function () {
+    // Feedback failed — non-critical
   });
 });
 
