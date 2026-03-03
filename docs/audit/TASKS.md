@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 101 | **In Progress:** 0 | **Done:** 113 (112 archived)
+> **Pending:** 100 | **In Progress:** 0 | **Done:** 114 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -303,7 +303,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 1   | OB-1503 | Change default host from localhost to 0.0.0.0 in webchat config — binds to all interfaces for LAN access. Keep localhost as config fallback                                                                                                                  | ✅ Done   |
-| 2   | OB-1504 | Auto-detect local IP addresses on startup — use os.networkInterfaces() for non-internal IPv4. Display LAN URL in console. Handle multiple interfaces                                                                                                         | ◻ Pending |
+| 2   | OB-1504 | Auto-detect local IP addresses on startup — use os.networkInterfaces() for non-internal IPv4. Display LAN URL in console. Handle multiple interfaces                                                                                                         | ✅ Done   |
 | 3   | OB-1505 | Display QR code with authenticated LAN URL — for phone scanning. Prefer tunnel URL for QR if tunnel active                                                                                                                                                   | ◻ Pending |
 | 4   | OB-1506 | Display public URL in console and WebChat header when tunnel active — add copy button next to URL in header. Show both LAN and public URLs in console                                                                                                        | ◻ Pending |
 | 5   | OB-1507 | Add "Share this link" button in WebChat header — copies current URL to clipboard. Toast notification "Link copied!" Uses navigator.clipboard with fallback                                                                                                   | ◻ Pending |

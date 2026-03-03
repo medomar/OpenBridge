@@ -1,5 +1,5 @@
 // AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: 2026-03-03T16:40:00.686Z
+// Generated: 2026-03-03T17:22:46.792Z
 export const WEBCHAT_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
