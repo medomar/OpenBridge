@@ -196,6 +196,24 @@ body {
   padding: 2px 0;
 }
 
+/* Message timestamps */
+.bubble-ts {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  cursor: default;
+  font-style: normal;
+}
+
+.bubble.user .bubble-ts {
+  text-align: right;
+}
+
+[data-ts='hide'] .bubble-ts {
+  display: none;
+}
+
 /* Typing dots animation */
 .dot-anim span {
   display: inline-block;

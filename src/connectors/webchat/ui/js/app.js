@@ -20,6 +20,41 @@ const statusTimer = document.getElementById('status-timer');
 let timerInterval = null;
 let timerStart = null;
 
+// --- Timestamps ---
+
+let tsVisible = localStorage.getItem('ob-ts') !== 'false';
+
+function formatRelativeTime(date) {
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  return Math.floor(diff / 86400) + 'd ago';
+}
+
+function applyTsVisibility() {
+  const btn = document.getElementById('ts-toggle');
+  if (btn) btn.textContent = tsVisible ? 'Hide times' : 'Show times';
+  document.documentElement.setAttribute('data-ts', tsVisible ? 'show' : 'hide');
+}
+
+(function initTs() {
+  applyTsVisibility();
+  const btn = document.getElementById('ts-toggle');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      tsVisible = !tsVisible;
+      localStorage.setItem('ob-ts', tsVisible ? 'true' : 'false');
+      applyTsVisibility();
+    });
+  }
+  setInterval(function () {
+    msgs.querySelectorAll('time.bubble-ts').forEach(function (el) {
+      el.textContent = formatRelativeTime(new Date(el.dateTime));
+    });
+  }, 60000);
+})();
+
 // --- Theme toggle ---
 
 (function initTheme() {
@@ -41,7 +76,7 @@ let timerStart = null;
 
 // --- Messages ---
 
-function addBubble(content, cls) {
+function addBubble(content, cls, timestamp) {
   const div = document.createElement('div');
   div.className = 'bubble ' + cls;
   if (cls === 'ai') {
@@ -86,6 +121,15 @@ function addBubble(content, cls) {
     }
   } else {
     div.textContent = content;
+  }
+  if (cls !== 'sys') {
+    const tsDate = timestamp instanceof Date ? timestamp : new Date();
+    const ts = document.createElement('time');
+    ts.className = 'bubble-ts';
+    ts.dateTime = tsDate.toISOString();
+    ts.title = tsDate.toLocaleString();
+    ts.textContent = formatRelativeTime(tsDate);
+    div.appendChild(ts);
   }
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
@@ -208,9 +252,10 @@ function setOnline(online) {
 function handleMessage(data) {
   if (data.type === 'response') {
     hideStatus();
-    addBubble(data.content, 'ai');
+    addBubble(data.content, 'ai', data.timestamp ? new Date(data.timestamp) : new Date());
   } else if (data.type === 'download') {
     hideStatus();
+    const tsDate = data.timestamp ? new Date(data.timestamp) : new Date();
     const div = document.createElement('div');
     div.className = 'bubble ai';
     if (data.content) {
@@ -223,6 +268,12 @@ function handleMessage(data) {
     link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
     link.setAttribute('aria-label', 'Download ' + (data.filename || 'file'));
     div.appendChild(link);
+    const ts = document.createElement('time');
+    ts.className = 'bubble-ts';
+    ts.dateTime = tsDate.toISOString();
+    ts.title = tsDate.toLocaleString();
+    ts.textContent = formatRelativeTime(tsDate);
+    div.appendChild(ts);
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
   } else if (data.type === 'typing') {
@@ -245,7 +296,7 @@ function handleMessage(data) {
         data.event.profile +
         toolLabel +
         '):\n\n';
-      addBubble(header + data.event.content, 'ai');
+      addBubble(header + data.event.content, 'ai', new Date());
     } else if (data.event && data.event.type === 'worker-cancelled') {
       addBubble(
         '\uD83D\uDED1 Worker ' +
@@ -278,7 +329,7 @@ form.addEventListener('submit', function (e) {
   e.preventDefault();
   const text = inp.value.trim();
   if (!text || !isConnected()) return;
-  addBubble(text, 'user');
+  addBubble(text, 'user', new Date());
   sendMessage({ type: 'message', content: text });
   inp.value = '';
   showStatus(
