@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 136 | **In Progress:** 0 | **Done:** 78 (112 archived)
+> **Pending:** 135 | **In Progress:** 0 | **Done:** 79 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -42,7 +42,7 @@
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
-| 87     | Document Visibility Controls         | 14    | ◻ (7/14 done)   |
+| 87     | Document Visibility Controls         | 14    | ◻ (8/14 done)   |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
@@ -241,7 +241,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 5   | OB-1466 | Normalize paths with path.resolve() before scope checks — ensure both file path and workspace root are absolute. Prevents path traversal like ../../etc/passwd                                                                                                                                                                                     | ✅ Done   |
 | 6   | OB-1467 | Create `src/core/secret-scanner.ts` — SecretScanner class with scanWorkspace(workspacePath) method. Scans root (1 level deep) for files matching sensitive patterns. Returns array of { path, pattern, severity }. Name check only, no content reading                                                                                             | ✅ Done   |
 | 7   | OB-1468 | Add sensitive file patterns to SecretScanner — .env (any), _.pem, _.key, _.p12, _.pfx, service-account*.json, credentials*.json, id*rsa*, id_ed25519*, *.jks, \_.kdbx. Severity: critical (keys/certs), high (credentials), medium (config)                                                                                                        | ✅ Done   |
-| 8   | OB-1469 | Add startup secret scanning to Bridge in `src/core/bridge.ts` — run scanner during init, log warning with detected count and paths. Auto-add detected paths to exclude list for current session                                                                                                                                                    | ◻ Pending |
+| 8   | OB-1469 | Add startup secret scanning to Bridge in `src/core/bridge.ts` — run scanner during init, log warning with detected count and paths. Auto-add detected paths to exclude list for current session                                                                                                                                                    | ✅ Done   |
 | 9   | OB-1470 | Create `src/core/content-redactor.ts` — ContentRedactor class with redact(content) method returning { redacted, redactionCount }. Optional feature, disabled by default                                                                                                                                                                            | ◻ Pending |
 | 10  | OB-1471 | Add redaction patterns — OpenAI keys (sk-...), AWS keys (AKIA...), GitHub PATs (ghp*..., ghs*...), PEM private keys, connection strings (mongodb://, postgres://, mysql://). Replace matches with REDACTED:{pattern_name}                                                                                                                          | ◻ Pending |
 | 11  | OB-1472 | Add `/scope` command to Router — shows current visibility rules and detected secrets with severity. Shows "No sensitive files detected" if clean                                                                                                                                                                                                   | ◻ Pending |
