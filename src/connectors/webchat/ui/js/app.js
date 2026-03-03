@@ -404,6 +404,8 @@ function setOnline(online, reconnecting) {
   send.disabled = !online;
   const uploadBtn = document.getElementById('upload-btn');
   if (uploadBtn) uploadBtn.disabled = !online;
+  const micBtn = document.getElementById('mic-btn');
+  if (micBtn) micBtn.disabled = !online;
 }
 
 // --- WebSocket message handler ---
@@ -681,6 +683,133 @@ function renderFilePreviews() {
       renderFilePreviews();
     });
   }
+})();
+
+// --- Voice Input ---
+
+(function initVoiceInput() {
+  const micBtn = document.getElementById('mic-btn');
+  if (!micBtn) return;
+
+  // Check for MediaRecorder support
+  if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices) {
+    micBtn.style.display = 'none';
+    return;
+  }
+
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordingIndicator = null;
+
+  function showRecordingIndicator() {
+    if (recordingIndicator) return;
+    const filePreview = document.getElementById('file-preview');
+    if (!filePreview) return;
+    recordingIndicator = document.createElement('div');
+    recordingIndicator.className = 'recording-indicator';
+    recordingIndicator.innerHTML = '<span class="recording-dot"></span>Recording\u2026';
+    filePreview.classList.remove('hidden');
+    filePreview.appendChild(recordingIndicator);
+  }
+
+  function hideRecordingIndicator() {
+    if (!recordingIndicator) return;
+    const filePreview = document.getElementById('file-preview');
+    recordingIndicator.remove();
+    recordingIndicator = null;
+    // Hide preview row if no file chips remain
+    if (filePreview && filePreview.children.length === 0) {
+      filePreview.classList.add('hidden');
+    }
+  }
+
+  function startRecording() {
+    audioChunks = [];
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then(function (stream) {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+        mediaRecorder.addEventListener('dataavailable', function (e) {
+          if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        });
+
+        mediaRecorder.addEventListener('stop', function () {
+          // Stop all mic tracks to release the mic
+          stream.getTracks().forEach(function (t) { t.stop(); });
+
+          const blob = new Blob(audioChunks, { type: mimeType });
+          audioChunks = [];
+
+          hideRecordingIndicator();
+          micBtn.classList.remove('recording');
+          micBtn.title = 'Record voice message';
+          micBtn.setAttribute('aria-label', 'Record voice message');
+
+          // Upload blob to /api/transcribe
+          const ext = mimeType === 'audio/webm' ? '.webm' : '.ogg';
+          const fd = new FormData();
+          fd.append('file', blob, 'voice' + ext);
+
+          addBubble(
+            '\uD83C\uDFA4 Transcribing voice\u2026',
+            'sys',
+          );
+
+          fetch('/api/transcribe', { method: 'POST', body: fd })
+            .then(function (r) {
+              return r.ok ? r.json() : Promise.reject(r.status);
+            })
+            .then(function (data) {
+              if (data && data.text) {
+                inp.value = data.text;
+                inp.dispatchEvent(new Event('input'));
+                inp.focus();
+                // Remove the "Transcribing…" sys bubble
+                const lastSys = msgs.querySelector('.bubble.sys:last-of-type');
+                if (lastSys && lastSys.textContent.includes('Transcribing')) {
+                  lastSys.closest('.bubble.sys') && lastSys.remove();
+                  // also handle when it's the bubble itself
+                  const sysBubbles = msgs.querySelectorAll('.bubble.sys');
+                  sysBubbles.forEach(function (el) {
+                    if (el.textContent.includes('Transcribing')) el.remove();
+                  });
+                }
+              }
+            })
+            .catch(function () {
+              addBubble('\u26A0\uFE0F Voice transcription failed.', 'sys');
+            });
+        });
+
+        mediaRecorder.start();
+        micBtn.classList.add('recording');
+        micBtn.title = 'Stop recording';
+        micBtn.setAttribute('aria-label', 'Stop recording');
+        showRecordingIndicator();
+      })
+      .catch(function () {
+        addBubble(
+          '\u26A0\uFE0F Microphone access denied. Please allow microphone permissions.',
+          'sys',
+        );
+      });
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+  }
+
+  micBtn.addEventListener('click', function () {
+    if (micBtn.classList.contains('recording')) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  });
 })();
 
 // --- Tab Title Unread Count ---
