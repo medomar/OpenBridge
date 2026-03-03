@@ -2629,4 +2629,172 @@ describe('Router', () => {
       expect(connector.sentMessages[0]?.content).toContain('deactivated');
     });
   });
+
+  describe('/allow command — tool escalation grant (OB-1586)', () => {
+    function createAllowMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'allow-1',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    it('/allow with no pending escalation responds with "No pending tool escalation."', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createAllowMsg('/allow Bash(npm:test)'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toBe('No pending tool escalation.');
+    });
+
+    it('/allow <tool> grants single tool with default scope "once"', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createAllowMsg('do something', '+1234567890');
+      await router.requestToolEscalation(
+        'worker-abc',
+        ['Bash(npm:test)'],
+        'read-only',
+        'Need to run tests',
+        originalMessage,
+        connector,
+      );
+      expect(connector.sentMessages).toHaveLength(1); // escalation prompt
+
+      await router.route(createAllowMsg('/allow Bash(npm:test)'));
+
+      expect(connector.sentMessages).toHaveLength(2);
+      const reply = connector.sentMessages[1]?.content ?? '';
+      expect(reply).toContain('Granted');
+      expect(reply).toContain('Bash(npm:test)');
+      expect(reply).toContain('worker-abc');
+      expect(reply).toContain('this request');
+      expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+    });
+
+    it('/allow <profile> recognises a built-in profile name', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createAllowMsg('do something', '+1234567890');
+      await router.requestToolEscalation(
+        'worker-xyz',
+        ['Bash'],
+        'read-only',
+        'Need to edit files',
+        originalMessage,
+        connector,
+      );
+
+      await router.route(createAllowMsg('/allow code-edit'));
+
+      const reply = connector.sentMessages[1]?.content ?? '';
+      expect(reply).toContain('profile upgrade to');
+      expect(reply).toContain('code-edit');
+      expect(reply).toContain('this request');
+    });
+
+    it('/allow <tool> --session grants with session scope', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createAllowMsg('do something', '+1234567890');
+      await router.requestToolEscalation(
+        'worker-1',
+        ['Write'],
+        'read-only',
+        'Need write access',
+        originalMessage,
+        connector,
+      );
+
+      await router.route(createAllowMsg('/allow Write --session'));
+
+      const reply = connector.sentMessages[1]?.content ?? '';
+      expect(reply).toContain('Granted');
+      expect(reply).toContain('this session');
+    });
+
+    it('/allow <profile> --permanent grants with permanent scope', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createAllowMsg('do something', '+1234567890');
+      await router.requestToolEscalation(
+        'worker-2',
+        ['Bash'],
+        'read-only',
+        'Need full access',
+        originalMessage,
+        connector,
+      );
+
+      await router.route(createAllowMsg('/allow full-access --permanent'));
+
+      const reply = connector.sentMessages[1]?.content ?? '';
+      expect(reply).toContain('profile upgrade to');
+      expect(reply).toContain('full-access');
+      expect(reply).toContain('permanently');
+    });
+
+    it('/allow clears the pending escalation so no duplicate grant is possible', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createAllowMsg('do something', '+1234567890');
+      await router.requestToolEscalation(
+        'worker-3',
+        ['Bash(npm:test)'],
+        'read-only',
+        'Need to run tests',
+        originalMessage,
+        connector,
+      );
+
+      // First /allow consumes the pending escalation
+      await router.route(createAllowMsg('/allow Bash(npm:test)'));
+      expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+
+      // Second /allow with nothing pending — should get the "no pending" message
+      await router.route(createAllowMsg('/allow Bash(npm:test)'));
+      const lastMsg = connector.sentMessages[connector.sentMessages.length - 1];
+      expect(lastMsg?.content).toBe('No pending tool escalation.');
+    });
+  });
 });
