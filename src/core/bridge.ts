@@ -30,6 +30,7 @@ import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router, classifyMessagePriority } from './router.js';
 import { AgentOrchestrator } from './agent-orchestrator.js';
+import type { AppServer } from './app-server.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -69,6 +70,7 @@ export class Bridge {
   private mcpRegistry: McpRegistry | null = null;
   private readonly securityConfig: SecurityConfig | undefined;
   private fileServer: FileServer | null = null;
+  private appServer: AppServer | null = null;
   private tunnelManager: TunnelManager | null = null;
   private tunnelPublicUrl: string | null = null;
   private readonly workspacePath: string | undefined;
@@ -183,6 +185,12 @@ export class Bridge {
   setMaster(master: MasterManager): void {
     this.master = master;
     logger.info('Master AI set on Bridge');
+  }
+
+  /** Set the AppServer — enables graceful app cleanup on shutdown */
+  setAppServer(appServer: AppServer): void {
+    this.appServer = appServer;
+    logger.info('AppServer set on Bridge');
   }
 
   /** Set the email config — enables [SHARE:email] marker support in the router */
@@ -497,6 +505,12 @@ export class Bridge {
     if (this.master) {
       await this.master.shutdown();
       logger.info('Master AI shut down');
+    }
+
+    // Stop all running apps before tearing down connectors
+    if (this.appServer) {
+      this.appServer.stopAll();
+      logger.info('AppServer shut down');
     }
 
     // Shut down orchestrator — cancels active agents before providers are torn down
