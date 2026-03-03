@@ -37,6 +37,11 @@ function openSettings() {
   _panel.classList.add('open');
   _overlay.classList.add('visible');
   _panel.setAttribute('aria-hidden', 'false');
+  // Sync theme select with current theme (may have changed via header toggle)
+  const settingsThemeSelect = document.getElementById('settings-theme-select');
+  if (settingsThemeSelect) {
+    settingsThemeSelect.value = document.documentElement.getAttribute('data-theme') || 'light';
+  }
   const closeBtn = _panel.querySelector('.settings-close-btn');
   if (closeBtn) closeBtn.focus();
 }
