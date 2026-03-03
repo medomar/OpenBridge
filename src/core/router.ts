@@ -612,6 +612,103 @@ export class Router {
     return this.pendingSpawnConfirmations.has(sender);
   }
 
+  /**
+   * Send a tool escalation prompt to the user and register a pending escalation.
+   * Called when a worker needs additional tool access beyond its current profile.
+   *
+   * Sends: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or
+   * '/allow {profile}' to grant, '/deny' to reject."
+   *
+   * Registers a 60-second auto-deny timeout — cleared when the user replies with
+   * /allow or /deny via the respective command handlers (OB-1586, OB-1587).
+   */
+  public async requestToolEscalation(
+    workerId: string,
+    requestedTools: string[],
+    currentProfile: string,
+    reason: string,
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const sender = message.sender;
+    const toolsList = requestedTools.join(', ');
+
+    // Build the example allow invocation — use first requested tool as hint
+    const allowExample =
+      requestedTools.length === 1
+        ? `/allow ${requestedTools[0]}`
+        : `/allow ${requestedTools[0]} (or /allow code-edit)`;
+
+    const escalationText =
+      `⚠️ Worker ${workerId} needs *${toolsList}* access for:\n${reason}\n\n` +
+      `Current profile: ${currentProfile}\n\n` +
+      `Reply '${allowExample}' to grant, or '/deny' to reject.\n` +
+      `Auto-deny in 60 seconds if no reply.`;
+
+    // Set 60-second auto-deny timeout
+    const timeoutHandle = setTimeout(() => {
+      const stillPending = this.pendingEscalations.get(sender);
+      if (!stillPending) return;
+      this.pendingEscalations.delete(sender);
+
+      const timeoutMsg: OutboundMessage = {
+        target: message.source,
+        recipient: sender,
+        content: `⏱ Escalation timed out — worker ${workerId} continuing with current profile (${currentProfile}).`,
+      };
+      connector.sendMessage(timeoutMsg).catch((err: unknown) => {
+        logger.warn({ err, sender, workerId }, 'Failed to send escalation timeout notification');
+      });
+
+      logger.warn(
+        { sender, workerId, requestedTools, currentProfile },
+        'Tool escalation timed out — auto-denied',
+      );
+    }, 60_000);
+
+    this.pendingEscalations.set(sender, {
+      workerId,
+      requestedTools,
+      currentProfile,
+      reason,
+      message,
+      connector,
+      timeoutHandle,
+    });
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: sender,
+      content: escalationText,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender, workerId, requestedTools, currentProfile },
+      'Tool escalation prompt sent to user',
+    );
+  }
+
+  /**
+   * Retrieve and remove the pending escalation entry for a sender.
+   * Clears the auto-deny timeout so it does not fire after the user has replied.
+   * Returns `undefined` if no escalation is pending for that sender.
+   * Used by the /allow and /deny command handlers (OB-1586, OB-1587).
+   */
+  public takePendingEscalation(sender: string): PendingEscalation | undefined {
+    const entry = this.pendingEscalations.get(sender);
+    if (entry) {
+      clearTimeout(entry.timeoutHandle);
+      this.pendingEscalations.delete(sender);
+    }
+    return entry;
+  }
+
+  /** Check whether a pending tool escalation exists for a sender. */
+  public hasPendingEscalation(sender: string): boolean {
+    return this.pendingEscalations.has(sender);
+  }
+
   /** Register an active connector */
   addConnector(connector: Connector): void {
     this.connectors.set(connector.name, connector);

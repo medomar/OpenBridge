@@ -1,7 +1,7 @@
 # OpenBridge — Task List
 
-> **Pending:** 59 | **In Progress:** 0 | **Done:** 155 (112 archived)
-> **Last Updated:** 2026-03-03
+> **Pending:** 58 | **In Progress:** 0 | **Done:** 156 (112 archived)
+> **Last Updated:** 2026-03-04
 
 <details>
 <summary>Archive (764 tasks completed across Phases 1–86 + Deep-1)</summary>
@@ -37,7 +37,7 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
-| 97     | Runtime Permission Escalation        | 20    | ◻               |
+| 97     | Runtime Permission Escalation        | 20    | ◻ (2/20 done)   |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
@@ -374,7 +374,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                                             | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1584 | Add `PendingEscalation` interface in `src/core/router.ts` — fields: workerId, requestedTools (string[]), currentProfile, reason (string from worker failure), message (original InboundMessage), connector, timeoutHandle. Add `pendingEscalations` Map keyed by sender | ✅ Done   |
-| 2   | OB-1585 | Add `requestToolEscalation()` method to Router — sends escalation prompt to user: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or '/allow {profile}' to grant, '/deny' to reject." Sets 60s auto-deny timeout                                 | ◻ Pending |
+| 2   | OB-1585 | Add `requestToolEscalation()` method to Router — sends escalation prompt to user: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or '/allow {profile}' to grant, '/deny' to reject." Sets 60s auto-deny timeout                                 | ✅ Done   |
 | 3   | OB-1586 | Add `/allow` command handler in Router — parse `/allow Bash(npm:test)` (single tool) or `/allow code-edit` (profile upgrade). Support scope suffix: `/allow code-edit --permanent`, `/allow Bash(npm:test) --session`. Default scope: `once`                            | ◻ Pending |
 | 4   | OB-1587 | Add `/deny` command handler in Router — reject pending escalation, notify Master to continue without the tool or abort the worker. Remove from pendingEscalations map                                                                                                   | ◻ Pending |
 | 5   | OB-1588 | Add escalation grant scopes — `once` (applies to current worker only), `session` (all workers this session, stored in-memory Map), `permanent` (stored in access_control DB). Wire each scope into the grant logic                                                      | ◻ Pending |
