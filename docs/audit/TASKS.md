@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 150 | **In Progress:** 0 | **Done:** 64 (112 archived)
+> **Pending:** 149 | **In Progress:** 0 | **Done:** 65 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -41,7 +41,7 @@
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
-| 84     | Interaction Relay                    | 8     | ◻ (1/8 done)    |
+| 84     | Interaction Relay                    | 8     | ◻ (2/8 done)    |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
 | 89     | WebChat Authentication               | 12    | ◻               |
@@ -218,7 +218,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                                                          | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 1   | OB-1454 | Create `src/core/interaction-relay.ts` — InteractionRelay class. WebSocket server on port 3099. Accept connections from served apps. Route messages between apps and Master. Methods: start(), stop(), sendToApp(), onAppMessage()                                                   | ✅ Done   |
-| 2   | OB-1455 | Create openbridge-client.js SDK — small JS library auto-injected into served apps. Provides openbridge.submit(data) and openbridge.onUpdate(callback). Connects via WebSocket to relay. Auto-detects relay URL                                                                       | ◻ Pending |
+| 2   | OB-1455 | Create openbridge-client.js SDK — small JS library auto-injected into served apps. Provides openbridge.submit(data) and openbridge.onUpdate(callback). Connects via WebSocket to relay. Auto-detects relay URL                                                                       | ✅ Done   |
 | 3   | OB-1456 | Wire app interactions into Router — relay messages from apps route to Master as special messages with type app-interaction, appId, and data                                                                                                                                          | ◻ Pending |
 | 4   | OB-1457 | Add Master response routing for apps in MasterManager — parse APP:update markers from Master response, send data to app via relay sendToApp()                                                                                                                                        | ◻ Pending |
 | 5   | OB-1458 | Add client SDK methods — submit() sends JSON, onUpdate() registers handler, request() for request-response patterns (sends and waits for matching response)                                                                                                                          | ◻ Pending |
