@@ -97,6 +97,13 @@ export class WebChatConnector implements Connector {
     return this.authToken;
   }
 
+  /** Returns the full URL to access WebChat with the auth token appended, or null before initialize(). */
+  getWebChatAccessUrl(): string | null {
+    if (!this.authToken) return null;
+    const host = this.config.host === '0.0.0.0' ? 'localhost' : this.config.host;
+    return `http://${host}:${this.config.port}/?token=${this.authToken}`;
+  }
+
   async initialize(): Promise<void> {
     // Generate or load persisted auth token before starting the server
     this.authToken = getOrCreateAuthToken(this.storeDir);

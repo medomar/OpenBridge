@@ -157,6 +157,21 @@ export class Bridge {
     return this.tunnelPublicUrl;
   }
 
+  /** Returns WebChat access URL (with token) and the raw token if a webchat connector is active */
+  getWebChatInfo(): { url: string; token: string } | null {
+    for (const connector of this.connectors) {
+      if (connector.name !== 'webchat') continue;
+      const c = connector as {
+        getAuthToken?: () => string | null;
+        getWebChatAccessUrl?: () => string | null;
+      };
+      const token = typeof c.getAuthToken === 'function' ? c.getAuthToken() : null;
+      const url = typeof c.getWebChatAccessUrl === 'function' ? c.getWebChatAccessUrl() : null;
+      if (token && url) return { url, token };
+    }
+    return null;
+  }
+
   private registerTunnelShutdownHandlers(): void {
     if (!this.tunnelManager || this.tunnelExitHandler || this.tunnelSigintHandler) {
       return;
