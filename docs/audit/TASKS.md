@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 164 | **In Progress:** 0 | **Done:** 50 (112 archived)
+> **Pending:** 161 | **In Progress:** 0 | **Done:** 53 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -39,8 +39,8 @@
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ◻               |
 | 98     | Batch Task Continuation              | 22    | ◻               |
-| 82     | Tunnel Integration                   | 10    | ◻               |
-| 83     | Ephemeral App Server                 | 12    | ◻               |
+| 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
+| 83     | Ephemeral App Server                 | 12    | ◻ (2/12 done)   |
 | 84     | Interaction Relay                    | 8     | ◻               |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
@@ -186,7 +186,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 7   | OB-1438 | Update Master system prompt with tunnel capability — when tunnel active, add public URL info. When not active, note files only accessible on localhost                                                                                                                                      | ✅ Done   |
 | 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ✅ Done   |
 | 9   | OB-1440 | Add tunnel config to `src/types/config.ts` — tunnel section: enabled (default: false), provider (auto/cloudflared/ngrok, default: auto), subdomain (optional). Add to schema and config.example.json                                                                                        | ◻ Pending |
-| 10  | OB-1441 | Add tests in `tests/core/tunnel-manager.test.ts` — test: (1) start() spawns with correct args, (2) stop() kills process, (3) getUrl() null when not started, (4) getUrl() returns URL after start, (5) isActive() correct state, (6) exit handler registered. At least 6 tests (mock spawn) | ◻ Pending |
+| 10  | OB-1441 | Add tests in `tests/core/tunnel-manager.test.ts` — test: (1) start() spawns with correct args, (2) stop() kills process, (3) getUrl() null when not started, (4) getUrl() returns URL after start, (5) isActive() correct state, (6) exit handler registered. At least 6 tests (mock spawn) | ✅ Done   |
 
 ---
 
@@ -196,8 +196,8 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                       | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1442 | Create `src/core/app-server.ts` — AppServer class with methods: startApp(appPath) returns AppInstance, stopApp(appId), listApps(), getApp(appId). AppInstance type: id, port, url, publicUrl, status, startedAt                                                   | ◻ Pending |
-| 2   | OB-1443 | Add app scaffold detection — detect app type from directory: package.json with start script uses npm start, index.html uses static serve, server.js uses node. Return detected run command                                                                        | ◻ Pending |
+| 1   | OB-1442 | Create `src/core/app-server.ts` — AppServer class with methods: startApp(appPath) returns AppInstance, stopApp(appId), listApps(), getApp(appId). AppInstance type: id, port, url, publicUrl, status, startedAt                                                   | ✅ Done   |
+| 2   | OB-1443 | Add app scaffold detection — detect app type from directory: package.json with start script uses npm start, index.html uses static serve, server.js uses node. Return detected run command                                                                        | ✅ Done   |
 | 3   | OB-1444 | Add app lifecycle — startApp: spawn process, health check (HTTP GET), set running. Add idle timeout: no requests in 30 min triggers auto-stop. stopApp: kill process, cleanup port                                                                                | ◻ Pending |
 | 4   | OB-1445 | Add port allocation — assign unique ports in range 3100-3199. Track in Set. Release on stopApp. Scan for in-use ports on startup                                                                                                                                  | ◻ Pending |
 | 5   | OB-1446 | Add tunnel integration for apps — when TunnelManager active, create tunnel for each app port. Store publicUrl in AppInstance. Stop tunnel when app stops                                                                                                          | ◻ Pending |
