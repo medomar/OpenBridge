@@ -72,6 +72,50 @@ let _phaseRunning = false;
 /** The last phase that completed — used to determine which action buttons to enable */
 let _lastCompletedPhase = null;
 
+// ── Reconnection state persistence ───────────────────────────────────────────
+
+/** sessionStorage key for persisting received deep-phase events across reconnects */
+const SESSION_KEY = 'ob-deep-mode-events';
+
+/**
+ * Flat log of all deep-phase events received (deduplicated per sessionId+phase,
+ * keeping the latest status). Persisted to sessionStorage for reconnect recovery.
+ * @type {Array<{sessionId: string, phase: string, status: string, result?: string}>}
+ */
+let _eventLog = [];
+
+/**
+ * True while replaying a stored event log — suppresses card rendering and
+ * prevents recursive sessionStorage writes.
+ */
+let _restoringState = false;
+
+function _persistEventLog() {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(_eventLog));
+  } catch (_) {
+    // sessionStorage unavailable or full — non-critical
+  }
+}
+
+function _loadEventLog() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function _resetInMemoryState() {
+  _completedPhases.clear();
+  _currentPhases.clear();
+  _phaseCards.clear();
+  _activeSession = null;
+  _phaseRunning = false;
+  _lastCompletedPhase = null;
+}
+
 // Action button DOM references
 let _proceedBtn = null;
 let _focusSelect = null;
@@ -403,12 +447,15 @@ export function initDeepMode(msgsContainer) {
 /**
  * Handle a deep-phase progress event from the WebSocket.
  * @param {{ sessionId: string, phase: string, status: 'started'|'completed'|'skipped'|'aborted', result?: string }} event
+ * @param {boolean} [skipCardRender=false] - When true, only updates state machine (used during restore)
  */
-export function handleDeepPhaseEvent(event) {
+export function handleDeepPhaseEvent(event, skipCardRender) {
   const { sessionId, phase, status, result } = event;
 
-  // Render phase card in conversation flow
-  renderPhaseCard(sessionId, phase, status, result);
+  // Render phase card in conversation flow (skipped during state restore)
+  if (!skipCardRender) {
+    renderPhaseCard(sessionId, phase, status, result);
+  }
 
   if (status === 'started') {
     _activeSession = sessionId;
@@ -447,4 +494,77 @@ export function handleDeepPhaseEvent(event) {
     render();
     updateActionButtons();
   }
+
+  // Persist event log to sessionStorage for reconnect recovery (not during restore)
+  if (!_restoringState) {
+    const idx = _eventLog.findIndex(function (e) {
+      return e.sessionId === sessionId && e.phase === phase;
+    });
+    if (idx >= 0) {
+      _eventLog[idx] = event;
+    } else {
+      _eventLog.push(event);
+    }
+    // Remove session from log once it has fully ended
+    if (status === 'aborted') {
+      _eventLog = _eventLog.filter(function (e) {
+        return e.sessionId !== sessionId;
+      });
+    } else if (phase === 'verify' && (status === 'completed' || status === 'skipped')) {
+      // Delay removal so a just-reconnected client can still receive the completed state
+      setTimeout(function () {
+        _eventLog = _eventLog.filter(function (e) {
+          return e.sessionId !== sessionId;
+        });
+        _persistEventLog();
+      }, 5000);
+    }
+    _persistEventLog();
+  }
+}
+
+/**
+ * Restore Deep Mode stepper state from sessionStorage.
+ * Call this on page load (after initDeepMode) and on every WebSocket reconnect.
+ * Only restores the stepper and action buttons — phase cards are NOT re-rendered
+ * (they are part of the conversation transcript, not the stepper).
+ */
+export function restoreDeepModeState() {
+  const events = _loadEventLog();
+  if (events.length === 0) return;
+  _resetInMemoryState();
+  _restoringState = true;
+  for (var i = 0; i < events.length; i++) {
+    handleDeepPhaseEvent(events[i], true);
+  }
+  _restoringState = false;
+  render();
+  updateActionButtons();
+}
+
+/**
+ * Apply a canonical list of deep-phase events sent by the server on reconnect.
+ * Replaces the local event log with the server's authoritative snapshot and
+ * re-renders the stepper.
+ * @param {Array<{sessionId: string, phase: string, status: string, result?: string}>} events
+ */
+export function handleDeepModeStateSnapshot(events) {
+  if (!Array.isArray(events)) return;
+  // Replace local log with server's authoritative snapshot
+  _eventLog = events;
+  _persistEventLog();
+  _resetInMemoryState();
+  if (events.length === 0) {
+    // No active session — just clear and hide stepper
+    render();
+    updateActionButtons();
+    return;
+  }
+  _restoringState = true;
+  for (var i = 0; i < events.length; i++) {
+    handleDeepPhaseEvent(events[i], true);
+  }
+  _restoringState = false;
+  render();
+  updateActionButtons();
 }
