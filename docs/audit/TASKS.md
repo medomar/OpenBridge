@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 120 | **In Progress:** 0 | **Done:** 94 (112 archived)
+> **Pending:** 119 | **In Progress:** 0 | **Done:** 95 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -43,7 +43,7 @@
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
-| 88     | WebChat Frontend Extraction          | 15    | ◻ (9/15 done)   |
+| 88     | WebChat Frontend Extraction          | 15    | ◻ (10/15 done)  |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
@@ -266,7 +266,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 7   | OB-1482 | Add syntax highlighting with highlight.js core — bundle with common languages (js, ts, python, bash, json, html, css, sql). Register as marked extension. Dark-compatible theme                                                                | ✅ Done   |
 | 8   | OB-1483 | Add copy button on code blocks — inject Copy button top-right of code blocks. navigator.clipboard.writeText() on click. Show "Copied!" for 2s                                                                                                  | ✅ Done   |
 | 9   | OB-1484 | Add collapsible sections for long responses — wrap responses over 500 chars in collapsible container. Show first 200 chars with "Show more" button. Smooth height transition                                                                   | ✅ Done   |
-| 10  | OB-1485 | Create build script `scripts/build-webchat-ui.js` — esbuild bundles ui/ into single HTML string. Bundle JS, inline CSS and JS into HTML, write as TypeScript constant in ui-bundle.ts. Add npm run build:webchat script                        | ◻ Pending |
+| 10  | OB-1485 | Create build script `scripts/build-webchat-ui.js` — esbuild bundles ui/ into single HTML string. Bundle JS, inline CSS and JS into HTML, write as TypeScript constant in ui-bundle.ts. Add npm run build:webchat script                        | ✅ Done   |
 | 11  | OB-1486 | Update webchat-connector.ts to load bundled HTML — import WEBCHAT_HTML from ui-bundle.ts instead of inline string. Build step must run before main TS compilation                                                                              | ◻ Pending |
 | 12  | OB-1487 | Add ARIA labels and keyboard navigation — aria-label on all interactive elements. Tab cycles, Enter sends, Escape clears. role="log" on messages, role="status" on indicators                                                                  | ◻ Pending |
 | 13  | OB-1488 | Add message timestamps — relative time on each message ("2m ago"). Hover for absolute time. Option to always show. Update every minute                                                                                                         | ◻ Pending |
