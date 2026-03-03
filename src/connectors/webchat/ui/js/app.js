@@ -158,6 +158,56 @@ function applyTsVisibility() {
   });
 })();
 
+// --- Conversation Persistence ---
+
+const CONV_STORAGE_KEY = 'ob-conversation';
+const CONV_MAX_MESSAGES = 100;
+let _convLog = [];
+let _convPersistEnabled = true;
+
+function _saveConv() {
+  try {
+    localStorage.setItem(CONV_STORAGE_KEY, JSON.stringify(_convLog));
+  } catch (_) {
+    // localStorage full or unavailable — non-critical
+  }
+}
+
+function _trackMsg(content, cls, timestamp) {
+  if (!_convPersistEnabled) return;
+  _convLog.push({ content, cls, ts: (timestamp instanceof Date ? timestamp : new Date()).toISOString() });
+  if (_convLog.length > CONV_MAX_MESSAGES) {
+    _convLog = _convLog.slice(-CONV_MAX_MESSAGES);
+  }
+  _saveConv();
+}
+
+function clearConversation() {
+  _convLog = [];
+  try {
+    localStorage.removeItem(CONV_STORAGE_KEY);
+  } catch (_) {}
+}
+
+function restoreConversation() {
+  try {
+    const raw = localStorage.getItem(CONV_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved) || saved.length === 0) return;
+    _convPersistEnabled = false;
+    _convLog = saved.slice(-CONV_MAX_MESSAGES);
+    for (const msg of _convLog) {
+      if (msg.cls === 'user' || msg.cls === 'ai') {
+        addBubble(msg.content, msg.cls, msg.ts ? new Date(msg.ts) : new Date());
+      }
+    }
+    _convPersistEnabled = true;
+  } catch (_) {
+    _convPersistEnabled = true;
+  }
+}
+
 // --- Messages ---
 
 function makeAvatar(cls) {
@@ -231,6 +281,9 @@ function addBubble(content, cls, timestamp) {
     msgs.appendChild(div);
   }
   msgs.scrollTop = msgs.scrollHeight;
+  if (cls === 'user' || cls === 'ai') {
+    _trackMsg(content, cls, timestamp instanceof Date ? timestamp : new Date());
+  }
   return div;
 }
 
@@ -645,6 +698,8 @@ function applySoundToggle() {
  * @param {string} sessionId
  */
 async function loadSessionTranscript(sessionId) {
+  clearConversation();
+  _convPersistEnabled = false;
   msgs.replaceChildren();
   addBubble('Loading conversation\u2026', 'sys');
   try {
@@ -669,6 +724,8 @@ async function loadSessionTranscript(sessionId) {
   } catch (_) {
     msgs.replaceChildren();
     addBubble('Failed to load conversation.', 'sys');
+  } finally {
+    _convPersistEnabled = true;
   }
 }
 
@@ -679,6 +736,7 @@ async function loadSessionTranscript(sessionId) {
  * and reload the session list so the new session appears in the sidebar.
  */
 function startNewConversation() {
+  clearConversation();
   msgs.replaceChildren();
   addBubble('New conversation started.', 'sys');
   sendMessage({ type: 'new-session' });
@@ -687,6 +745,7 @@ function startNewConversation() {
 
 // --- Boot ---
 
+restoreConversation();
 initSidebar();
 setOnSessionSelect(loadSessionTranscript);
 setOnNewConversation(startNewConversation);
