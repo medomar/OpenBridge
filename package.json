@@ -46,7 +46,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:webchat && tsc",
     "build:webchat": "node scripts/build-webchat-ui.js",
     "dev": "tsx watch src/index.ts",
     "start": "NODE_ENV=production node dist/index.js",
