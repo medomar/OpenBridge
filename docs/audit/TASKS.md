@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 122 | **In Progress:** 0 | **Done:** 92 (112 archived)
+> **Pending:** 121 | **In Progress:** 0 | **Done:** 93 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -43,7 +43,7 @@
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
-| 88     | WebChat Frontend Extraction          | 15    | ◻ (7/15 done)   |
+| 88     | WebChat Frontend Extraction          | 15    | ◻ (8/15 done)   |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
@@ -264,7 +264,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 5   | OB-1480 | Extract JS into modular files — ui/js/app.js (main logic), websocket.js (connection), markdown.js (rendering), dashboard.js (status). Use ES modules                                                                                           | ✅ Done   |
 | 6   | OB-1481 | Replace markdown splitter with marked library in markdown.js — bundle marked (no CDN). Configure gfm, breaks. Handle code blocks, links, lists, tables, blockquotes                                                                            | ✅ Done   |
 | 7   | OB-1482 | Add syntax highlighting with highlight.js core — bundle with common languages (js, ts, python, bash, json, html, css, sql). Register as marked extension. Dark-compatible theme                                                                | ✅ Done   |
-| 8   | OB-1483 | Add copy button on code blocks — inject Copy button top-right of code blocks. navigator.clipboard.writeText() on click. Show "Copied!" for 2s                                                                                                  | ◻ Pending |
+| 8   | OB-1483 | Add copy button on code blocks — inject Copy button top-right of code blocks. navigator.clipboard.writeText() on click. Show "Copied!" for 2s                                                                                                  | ✅ Done   |
 | 9   | OB-1484 | Add collapsible sections for long responses — wrap responses over 500 chars in collapsible container. Show first 200 chars with "Show more" button. Smooth height transition                                                                   | ◻ Pending |
 | 10  | OB-1485 | Create build script `scripts/build-webchat-ui.js` — esbuild bundles ui/ into single HTML string. Bundle JS, inline CSS and JS into HTML, write as TypeScript constant in ui-bundle.ts. Add npm run build:webchat script                        | ◻ Pending |
 | 11  | OB-1486 | Update webchat-connector.ts to load bundled HTML — import WEBCHAT_HTML from ui-bundle.ts instead of inline string. Build step must run before main TS compilation                                                                              | ◻ Pending |

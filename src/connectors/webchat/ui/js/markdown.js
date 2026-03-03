@@ -36,6 +36,15 @@ hljs.registerLanguage('xml', xml);
 hljs.registerLanguage('css', css);
 hljs.registerLanguage('sql', sql);
 
+// Escape a string for use as an HTML attribute value
+function escapeHtmlAttr(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // Custom renderer: syntax-highlighted code blocks + links open in new tab
 const renderer = {
   link({ href, title, text }) {
@@ -49,7 +58,8 @@ const renderer = {
       ? hljs.highlight(text, { language }).value
       : hljs.highlightAuto(text).value;
     const langClass = language ? ` language-${language}` : '';
-    return `<pre><code class="hljs${langClass}">${highlighted}</code></pre>`;
+    const escapedCode = escapeHtmlAttr(text);
+    return `<div class="code-block"><button class="copy-btn" data-code="${escapedCode}">Copy</button><pre><code class="hljs${langClass}">${highlighted}</code></pre></div>`;
   },
 };
 

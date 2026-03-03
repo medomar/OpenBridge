@@ -54,6 +54,23 @@ function addBubble(content, cls) {
   return div;
 }
 
+// --- Copy button for code blocks ---
+
+msgs.addEventListener('click', function (e) {
+  const btn = e.target.closest('.copy-btn');
+  if (!btn) return;
+  const code = btn.dataset.code;
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(function () {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function () {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+});
+
 // --- Status bar ---
 
 function startTimer() {
