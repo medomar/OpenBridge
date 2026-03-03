@@ -1144,7 +1144,7 @@ setOnSessionSelect(loadSessionTranscript);
 setOnNewConversation(startNewConversation);
 void loadSessions();
 initDashboard();
-initDeepMode();
+initDeepMode(msgs);
 initSettings();
 setOnThemeChange(function (theme) {
   // Keep header theme-toggle button label in sync when theme changes via settings

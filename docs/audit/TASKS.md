@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 64 | **In Progress:** 0 | **Done:** 150 (112 archived)
+> **Pending:** 63 | **In Progress:** 0 | **Done:** 151 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -47,7 +47,7 @@
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
 | 91     | Conversation History + Rich Input    | 15    | ✅ (15/15 done) |
-| 92     | Settings Panel + Deep Mode UI        | 12    | ◻ (8/12 done)   |
+| 92     | Settings Panel + Deep Mode UI        | 12    | ◻ (9/12 done)   |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
@@ -358,7 +358,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 6   | OB-1538 | Add settings REST API — GET/PUT /api/webchat/settings. Store in localStorage client-side, optionally persist server-side in access-store. Validate with schema                                                                                          | ✅ Done   |
 | 7   | OB-1539 | Add Deep Mode stepper UI in ui/js/deep-mode.js — horizontal progress bar with 5 phase dots: Investigate, Report, Plan, Execute, Verify. Current phase highlighted. Completed phases show checkmark. Appears when Deep Mode active                       | ✅ Done   |
 | 8   | OB-1540 | Add phase action buttons — Proceed (green), Focus on # dropdown, Skip # dropdown. Send commands via WebSocket. Disable when not applicable                                                                                                              | ✅ Done   |
-| 9   | OB-1541 | Render phase transitions as special cards — styled card with phase icon, name, status, collapsible result summary. Different colors per phase. Animate transitions                                                                                      | ◻ Pending |
+| 9   | OB-1541 | Render phase transitions as special cards — styled card with phase icon, name, status, collapsible result summary. Different colors per phase. Animate transitions                                                                                      | ✅ Done   |
 | 10  | OB-1542 | Wire phase events from WebSocket — listen for deep-mode progress messages. Update stepper, show/hide buttons, render phase cards. Handle reconnection mid-Deep-Mode                                                                                     | ◻ Pending |
 | 11  | OB-1543 | Restore MCP management UI — re-implement REST routes (GET/POST/DELETE/PUT toggle for /api/mcp/servers) or restore from git. Wire to mcp-registry.ts backend. Simple server list panel from settings                                                     | ◻ Pending |
 | 12  | OB-1544 | Add tests in `tests/connectors/webchat/webchat-settings.test.ts` — test: (1) settings GET returns defaults, (2) PUT saves values, (3) Deep Mode events update stepper, (4) MCP endpoints respond, (5) settings persist across reloads. At least 5 tests | ◻ Pending |

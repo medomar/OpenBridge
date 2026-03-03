@@ -10,6 +10,9 @@
  *   - Focus on # dropdown — sends /focus N via WebSocket (enabled after investigate/report)
  *   - Skip # dropdown    — sends /skip N  via WebSocket (enabled after plan)
  * All buttons are disabled while a phase is running or no session is active.
+ *
+ * Phase transition cards are rendered into the msgs container to show
+ * phase progress inline in the conversation flow.
  */
 
 import { sendMessage } from './websocket.js';
@@ -24,6 +27,22 @@ const PHASE_LABELS = {
   verify: 'Verify',
 };
 
+const PHASE_ICONS = {
+  investigate: '🔍',
+  report: '📋',
+  plan: '📝',
+  execute: '⚙️',
+  verify: '✅',
+};
+
+const PHASE_COLORS = {
+  investigate: 'blue',
+  report: 'purple',
+  plan: 'orange',
+  execute: 'green',
+  verify: 'teal',
+};
+
 /** Phases where /focus N is applicable */
 const FOCUS_PHASES = new Set(['investigate', 'report']);
 
@@ -31,6 +50,12 @@ const FOCUS_PHASES = new Set(['investigate', 'report']);
 const SKIP_PHASES = new Set(['plan']);
 
 let _bar = null;
+
+/** @type {HTMLElement|null} The msgs container for rendering phase cards */
+let _msgsContainer = null;
+
+/** @type {Map<string, HTMLElement>} "sessionId:phase" -> card DOM element */
+const _phaseCards = new Map();
 
 /** @type {Map<string, Set<string>>} sessionId -> Set of completed phase names */
 const _completedPhases = new Map();
@@ -122,9 +147,157 @@ function buildNumSelect(ariaLabel) {
 }
 
 /**
- * Initialize the Deep Mode stepper bar. Must be called after DOM is ready.
+ * Build a phase transition card element.
+ * @param {string} phase
+ * @param {'started'|'completed'|'skipped'|'aborted'} status
+ * @param {string} [result]
+ * @returns {HTMLElement}
  */
-export function initDeepMode() {
+function buildPhaseCard(phase, status, result) {
+  const color = PHASE_COLORS[phase] || 'blue';
+  const icon = PHASE_ICONS[phase] || '◉';
+  const label = PHASE_LABELS[phase] || phase;
+
+  const card = document.createElement('div');
+  card.className = 'dm-phase-card dm-phase-card--' + color + ' dm-phase-card--' + status;
+  card.dataset.phase = phase;
+  card.dataset.status = status;
+
+  const header = document.createElement('div');
+  header.className = 'dm-card-header';
+
+  const iconEl = document.createElement('span');
+  iconEl.className = 'dm-card-icon';
+  iconEl.setAttribute('aria-hidden', 'true');
+  iconEl.textContent = icon;
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'dm-card-name';
+  nameEl.textContent = label;
+
+  const statusEl = document.createElement('span');
+  statusEl.className = 'dm-card-status';
+  if (status === 'started') {
+    statusEl.textContent = 'In progress…';
+    const spinner = document.createElement('span');
+    spinner.className = 'dm-card-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    header.appendChild(iconEl);
+    header.appendChild(nameEl);
+    header.appendChild(statusEl);
+    header.appendChild(spinner);
+  } else if (status === 'completed') {
+    statusEl.textContent = 'Completed';
+    header.appendChild(iconEl);
+    header.appendChild(nameEl);
+    header.appendChild(statusEl);
+  } else if (status === 'skipped') {
+    statusEl.textContent = 'Skipped';
+    header.appendChild(iconEl);
+    header.appendChild(nameEl);
+    header.appendChild(statusEl);
+  } else {
+    statusEl.textContent = 'Aborted';
+    header.appendChild(iconEl);
+    header.appendChild(nameEl);
+    header.appendChild(statusEl);
+  }
+
+  card.appendChild(header);
+
+  if (result && (status === 'completed' || status === 'skipped')) {
+    const body = document.createElement('div');
+    body.className = 'dm-card-body';
+
+    const summary = document.createElement('div');
+    summary.className = 'dm-card-summary';
+    summary.textContent = result;
+    body.appendChild(summary);
+
+    // Collapsible toggle if result is long
+    if (result.length > 200) {
+      summary.classList.add('dm-card-summary--collapsed');
+      const toggle = document.createElement('button');
+      toggle.className = 'dm-card-toggle';
+      toggle.textContent = 'Show more';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.addEventListener('click', function () {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+          summary.classList.add('dm-card-summary--collapsed');
+          toggle.textContent = 'Show more';
+          toggle.setAttribute('aria-expanded', 'false');
+        } else {
+          summary.classList.remove('dm-card-summary--collapsed');
+          toggle.textContent = 'Show less';
+          toggle.setAttribute('aria-expanded', 'true');
+        }
+      });
+      body.appendChild(toggle);
+    }
+
+    card.appendChild(body);
+  }
+
+  return card;
+}
+
+/**
+ * Render or update a phase card in the msgs container.
+ * @param {string} sessionId
+ * @param {string} phase
+ * @param {'started'|'completed'|'skipped'|'aborted'} status
+ * @param {string} [result]
+ */
+function renderPhaseCard(sessionId, phase, status, result) {
+  if (!_msgsContainer) return;
+
+  const key = sessionId + ':' + phase;
+
+  if (status === 'started') {
+    // Create new card
+    const card = buildPhaseCard(phase, status, result);
+    // Trigger enter animation on next frame
+    requestAnimationFrame(function () {
+      card.classList.add('dm-phase-card--enter');
+    });
+    _phaseCards.set(key, card);
+    _msgsContainer.appendChild(card);
+    _msgsContainer.scrollTop = _msgsContainer.scrollHeight;
+  } else {
+    // Update existing card if present
+    const existing = _phaseCards.get(key);
+    if (existing) {
+      const updated = buildPhaseCard(phase, status, result);
+      existing.replaceWith(updated);
+      requestAnimationFrame(function () {
+        updated.classList.add('dm-phase-card--enter');
+      });
+      _phaseCards.set(key, updated);
+      _msgsContainer.scrollTop = _msgsContainer.scrollHeight;
+    } else {
+      // No existing card — create one directly with final status
+      const card = buildPhaseCard(phase, status, result);
+      requestAnimationFrame(function () {
+        card.classList.add('dm-phase-card--enter');
+      });
+      _phaseCards.set(key, card);
+      _msgsContainer.appendChild(card);
+      _msgsContainer.scrollTop = _msgsContainer.scrollHeight;
+    }
+    // Clean up card reference after aborted/completed to avoid memory leak on very long sessions
+    if (status === 'aborted') {
+      _phaseCards.delete(key);
+    }
+  }
+}
+
+/**
+ * Initialize the Deep Mode stepper bar. Must be called after DOM is ready.
+ * @param {HTMLElement} [msgsContainer] - The msgs container for phase card rendering
+ */
+export function initDeepMode(msgsContainer) {
+  if (msgsContainer) _msgsContainer = msgsContainer;
   const bar = document.getElementById('deep-mode-bar');
   if (!bar) return;
   _bar = bar;
@@ -229,10 +402,13 @@ export function initDeepMode() {
 
 /**
  * Handle a deep-phase progress event from the WebSocket.
- * @param {{ sessionId: string, phase: string, status: 'started'|'completed'|'skipped'|'aborted' }} event
+ * @param {{ sessionId: string, phase: string, status: 'started'|'completed'|'skipped'|'aborted', result?: string }} event
  */
 export function handleDeepPhaseEvent(event) {
-  const { sessionId, phase, status } = event;
+  const { sessionId, phase, status, result } = event;
+
+  // Render phase card in conversation flow
+  renderPhaseCard(sessionId, phase, status, result);
 
   if (status === 'started') {
     _activeSession = sessionId;
