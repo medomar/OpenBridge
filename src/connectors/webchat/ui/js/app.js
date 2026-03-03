@@ -6,7 +6,7 @@
 import { initWebSocket, sendMessage, isConnected } from './websocket.js';
 import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
-import { initSidebar, loadSessions } from './sidebar.js';
+import { initSidebar, loadSessions, setOnSessionSelect } from './sidebar.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -637,9 +637,45 @@ function applySoundToggle() {
   });
 })();
 
+// --- Session transcript loader ---
+
+/**
+ * Fetch a past session from /api/sessions/{id} and render it in the message area.
+ * Clears existing messages before rendering.
+ * @param {string} sessionId
+ */
+async function loadSessionTranscript(sessionId) {
+  msgs.replaceChildren();
+  addBubble('Loading conversation\u2026', 'sys');
+  try {
+    const res = await fetch('/api/sessions/' + encodeURIComponent(sessionId));
+    if (!res.ok) {
+      msgs.replaceChildren();
+      addBubble('Failed to load conversation.', 'sys');
+      return;
+    }
+    const data = await res.json();
+    const messages = data.messages;
+    msgs.replaceChildren();
+    if (!Array.isArray(messages) || messages.length === 0) {
+      addBubble('No messages in this conversation.', 'sys');
+      return;
+    }
+    for (const msg of messages) {
+      const cls = msg.role === 'user' ? 'user' : msg.role === 'system' ? 'sys' : 'ai';
+      const ts = msg.created_at ? new Date(msg.created_at) : new Date();
+      addBubble(msg.content, cls, ts);
+    }
+  } catch (_) {
+    msgs.replaceChildren();
+    addBubble('Failed to load conversation.', 'sys');
+  }
+}
+
 // --- Boot ---
 
 initSidebar();
+setOnSessionSelect(loadSessionTranscript);
 void loadSessions();
 initDashboard();
 initWebSocket({
