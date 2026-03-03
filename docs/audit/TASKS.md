@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 89 | **In Progress:** 0 | **Done:** 125 (112 archived)
+> **Pending:** 88 | **In Progress:** 0 | **Done:** 126 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -45,7 +45,7 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻ (12/15 done)  |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻ (13/15 done)  |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
@@ -315,7 +315,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 11  | OB-1513 | Add browser notifications on task completion — request Notification.requestPermission(). Show notification when task completes and tab unfocused                                                                                                             | ✅ Done   |
 | 12  | OB-1514 | Add tab title updates — show unread count "(3) OpenBridge" when unfocused. Reset on focus. Use document.visibilityState API                                                                                                                                  | ✅ Done   |
 | 13  | OB-1515 | Add sound notification on response — Web Audio API notification sound when AI responds. Mute toggle in header (speaker icon). Persist in localStorage                                                                                                        | ✅ Done   |
-| 14  | OB-1516 | Add "Add to Home Screen" prompt on first mobile visit — detect mobile, check not installed. Show banner to add PWA. Dismiss permanently on close                                                                                                             | ◻ Pending |
+| 14  | OB-1516 | Add "Add to Home Screen" prompt on first mobile visit — detect mobile, check not installed. Show banner to add PWA. Dismiss permanently on close                                                                                                             | ✅ Done   |
 | 15  | OB-1517 | Add tests in `tests/connectors/webchat/webchat-mobile.test.ts` — test: (1) LAN IP detection, (2) QR generation, (3) manifest serves, (4) service worker registration, (5) responsive media queries exist, (6) 0.0.0.0 binding configurable. At least 6 tests | ◻ Pending |
 
 ---
