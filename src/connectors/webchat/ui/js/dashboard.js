@@ -107,7 +107,9 @@ export function updateDashboard(agents) {
         '<span style="color:var(--text-muted);white-space:nowrap;flex-shrink:0;min-width:32px;text-align:right">' +
         elapsed +
         '</span>' +
-        '<button class="stop-btn" title="Stop this worker" data-worker-id="' +
+        '<button class="stop-btn" title="Stop this worker" aria-label="Stop worker ' +
+        wid.slice(0, 8) +
+        '" data-worker-id="' +
         wid +
         '">\u2715</button>' +
         '</div>';
