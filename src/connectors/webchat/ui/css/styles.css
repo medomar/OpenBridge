@@ -398,6 +398,44 @@ body {
   color: #69f0ae;
 }
 
+/* Collapsible response sections */
+.collapsible-wrap {
+  position: relative;
+}
+
+.collapsible-inner {
+  overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+
+.collapsible-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--bubble-ai-bg));
+  pointer-events: none;
+}
+
+.show-more-btn {
+  display: block;
+  margin: 6px auto 0;
+  background: transparent;
+  border: 1px solid var(--border-input);
+  border-radius: 12px;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 3px 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.show-more-btn:hover {
+  background: var(--bg-hover);
+}
+
 /* Download link */
 .download-link {
   display: inline-block;

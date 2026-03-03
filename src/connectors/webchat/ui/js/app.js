@@ -45,7 +45,42 @@ function addBubble(content, cls) {
   const div = document.createElement('div');
   div.className = 'bubble ' + cls;
   if (cls === 'ai') {
-    div.innerHTML = renderMarkdown(content);
+    const html = renderMarkdown(content);
+    if (content.length > 500) {
+      const wrap = document.createElement('div');
+      wrap.className = 'collapsible-wrap';
+
+      const inner = document.createElement('div');
+      inner.className = 'collapsible-inner';
+      inner.style.maxHeight = '120px';
+      inner.innerHTML = html;
+
+      const fade = document.createElement('div');
+      fade.className = 'collapsible-fade';
+
+      const btn = document.createElement('button');
+      btn.className = 'show-more-btn';
+      btn.textContent = 'Show more';
+      btn.addEventListener('click', function () {
+        const isCollapsed = btn.textContent === 'Show more';
+        if (isCollapsed) {
+          inner.style.maxHeight = inner.scrollHeight + 'px';
+          fade.style.display = 'none';
+          btn.textContent = 'Show less';
+        } else {
+          inner.style.maxHeight = '120px';
+          fade.style.display = '';
+          btn.textContent = 'Show more';
+        }
+      });
+
+      wrap.appendChild(inner);
+      wrap.appendChild(fade);
+      div.appendChild(wrap);
+      div.appendChild(btn);
+    } else {
+      div.innerHTML = html;
+    }
   } else {
     div.textContent = content;
   }
