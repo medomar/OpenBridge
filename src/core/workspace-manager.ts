@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { createLogger } from './logger.js';
+import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger('workspace-manager');
@@ -209,4 +210,128 @@ export class WorkspaceManager {
     // Keep only safe filesystem characters
     return name.replace(/[^a-zA-Z0-9\-_.]/g, '_') || 'workspace';
   }
+}
+
+// ── File visibility helpers ─────────────────────────────────────────────────
+
+/**
+ * Convert a glob pattern to a RegExp.
+ * Supports * (single-segment wildcard) and ** (multi-segment wildcard).
+ */
+function globToRegex(pattern: string): RegExp {
+  let regexStr = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i]!;
+    if (ch === '*') {
+      if (pattern[i + 1] === '*') {
+        // ** matches any sequence of characters including path separators
+        regexStr += '.*';
+        i += 2;
+        // Consume optional trailing '/' after **
+        if (pattern[i] === '/') i++;
+      } else {
+        // * matches any character except '/'
+        regexStr += '[^/]*';
+        i++;
+      }
+    } else if (ch === '?') {
+      regexStr += '[^/]';
+      i++;
+    } else if ('.+^${}()|[\\]'.includes(ch)) {
+      regexStr += '\\' + ch;
+      i++;
+    } else {
+      regexStr += ch;
+      i++;
+    }
+  }
+  return new RegExp('^' + regexStr + '$');
+}
+
+/**
+ * Check if a relative file path matches a single glob pattern.
+ *
+ * Semantics (gitignore-like):
+ * - Pattern ending with '/'  → directory pattern; matches any file inside that
+ *   directory at any depth (e.g. `node_modules/` hides all node_modules trees).
+ * - Pattern without '/'      → matches against the file's basename at any depth
+ *   (e.g. `*.pem` hides all .pem files regardless of location).
+ * - Pattern with '/'         → matched against the full relative path from the
+ *   workspace root (e.g. `src/**` matches everything under src/).
+ */
+function matchesGlob(relativePath: string, pattern: string): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+
+  // Directory pattern — match any file inside that directory at any depth
+  if (pattern.endsWith('/')) {
+    const dirName = pattern.slice(0, -1);
+    if (!dirName.includes('/')) {
+      // No path separator in dir name → match at any depth
+      const segments = normalizedPath.split('/');
+      const dirRegex = globToRegex(dirName);
+      return segments.some((seg, idx) => idx < segments.length - 1 && dirRegex.test(seg));
+    }
+    // Has separator → match from workspace root
+    return normalizedPath === dirName || normalizedPath.startsWith(dirName + '/');
+  }
+
+  // No '/' in pattern → match against basename only
+  if (!pattern.includes('/')) {
+    const basename = normalizedPath.includes('/')
+      ? normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1)
+      : normalizedPath;
+    return globToRegex(pattern).test(basename);
+  }
+
+  // Pattern with '/' → match against full relative path
+  return globToRegex(pattern).test(normalizedPath);
+}
+
+/**
+ * Check whether a file should be visible to the AI based on workspace visibility rules.
+ *
+ * Algorithm:
+ *   1. Resolve `filePath` relative to `config.workspacePath`.
+ *   2. Combine DEFAULT_EXCLUDE_PATTERNS with `config.workspace?.exclude`.
+ *   3. If the resolved path matches any exclude pattern → NOT visible (exclude takes priority).
+ *   4. If `config.workspace?.include` is set and non-empty:
+ *        - File must match at least one include pattern to be visible.
+ *   5. Otherwise → visible.
+ *
+ * @param filePath       Absolute or workspace-relative file path.
+ * @param config         Object with `workspacePath` and optional `workspace` include/exclude arrays.
+ */
+export function isFileVisible(
+  filePath: string,
+  config: {
+    workspacePath: string;
+    workspace?: { include?: string[]; exclude?: string[] };
+  },
+): boolean {
+  // Resolve to absolute path, then compute relative path from workspace root
+  const absFile = path.resolve(config.workspacePath, filePath);
+  const relative = path.relative(config.workspacePath, absFile);
+
+  // Build combined exclude list: defaults first, then user overrides
+  const excludePatterns: readonly string[] = [
+    ...DEFAULT_EXCLUDE_PATTERNS,
+    ...(config.workspace?.exclude ?? []),
+  ];
+
+  // Exclude takes priority — any match makes the file invisible
+  for (const pattern of excludePatterns) {
+    if (matchesGlob(relative, pattern)) {
+      return false;
+    }
+  }
+
+  // If an include list is specified, file must match at least one pattern
+  const includePatterns = config.workspace?.include;
+  if (includePatterns && includePatterns.length > 0) {
+    return includePatterns.some((pattern) => matchesGlob(relative, pattern));
+  }
+
+  // No include restriction — file is visible
+  return true;
 }
