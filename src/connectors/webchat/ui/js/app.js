@@ -63,6 +63,46 @@ let timerStart = null;
   });
 })();
 
+// --- Share this link button ---
+
+(function initShareBtn() {
+  const btn = document.getElementById('share-btn');
+  const toast = document.getElementById('share-toast');
+  if (!btn || !toast) return;
+
+  let toastTimeout = null;
+
+  function showToast() {
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toast.classList.add('visible');
+    toastTimeout = setTimeout(function () {
+      toast.classList.remove('visible');
+      toastTimeout = null;
+    }, 2000);
+  }
+
+  btn.addEventListener('click', function () {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(
+      function () {
+        showToast();
+      },
+      function () {
+        // Fallback for browsers without clipboard API
+        const el = document.createElement('textarea');
+        el.value = url;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        showToast();
+      },
+    );
+  });
+})();
+
 // --- Timestamps ---
 
 let tsVisible = localStorage.getItem('ob-ts') !== 'false';
