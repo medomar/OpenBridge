@@ -7,6 +7,7 @@ import { initWebSocket, sendMessage, isConnected } from './websocket.js';
 import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
 import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
+import { initAutocomplete } from './autocomplete.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -1055,6 +1056,7 @@ function startNewConversation() {
 
 // --- Boot ---
 
+initAutocomplete(inp);
 restoreConversation();
 initSidebar();
 setOnSessionSelect(loadSessionTranscript);
