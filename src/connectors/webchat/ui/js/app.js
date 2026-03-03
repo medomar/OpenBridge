@@ -61,16 +61,19 @@ function addBubble(content, cls) {
       const btn = document.createElement('button');
       btn.className = 'show-more-btn';
       btn.textContent = 'Show more';
+      btn.setAttribute('aria-expanded', 'false');
       btn.addEventListener('click', function () {
-        const isCollapsed = btn.textContent === 'Show more';
+        const isCollapsed = btn.getAttribute('aria-expanded') === 'false';
         if (isCollapsed) {
           inner.style.maxHeight = inner.scrollHeight + 'px';
           fade.style.display = 'none';
           btn.textContent = 'Show less';
+          btn.setAttribute('aria-expanded', 'true');
         } else {
           inner.style.maxHeight = '120px';
           fade.style.display = '';
           btn.textContent = 'Show more';
+          btn.setAttribute('aria-expanded', 'false');
         }
       });
 
@@ -218,6 +221,7 @@ function handleMessage(data) {
     link.download = data.filename || 'download';
     link.className = 'download-link';
     link.textContent = '\u2B07\uFE0F Download ' + (data.filename || 'file');
+    link.setAttribute('aria-label', 'Download ' + (data.filename || 'file'));
     div.appendChild(link);
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
@@ -259,6 +263,14 @@ function handleMessage(data) {
     updateDashboard(data.agents);
   }
 }
+
+// --- Keyboard navigation ---
+
+inp.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    inp.value = '';
+  }
+});
 
 // --- Form submit ---
 
