@@ -95,6 +95,8 @@ export class WebChatConnector implements Connector {
   private storeDir: string = process.cwd();
   /** bcrypt hash of the configured password, or null when token auth is active */
   private passwordHash: string | null = null;
+  /** Tunnel URL override for QR code — set before initialize() for tunnel-preferred QR */
+  private tunnelUrl: string | null = null;
   /** In-memory session store: sessionId → expiry timestamp (ms since epoch) */
   private readonly sessions: Map<string, number> = new Map();
   /** Per-IP login failure tracker for rate limiting */
@@ -133,6 +135,37 @@ export class WebChatConnector implements Connector {
     if (!this.authToken) return null;
     const host = this.config.host === '0.0.0.0' ? 'localhost' : this.config.host;
     return `http://${host}:${this.config.port}/?token=${this.authToken}`;
+  }
+
+  /**
+   * Set a tunnel public URL so that initialize() uses it as the QR code target
+   * instead of the LAN IP. Must be called before initialize() to take effect.
+   * The token is automatically appended when the QR is generated.
+   */
+  setTunnelUrl(url: string): void {
+    this.tunnelUrl = url;
+  }
+
+  /**
+   * Returns the best URL for QR code scanning (tunnel > first LAN IP > localhost).
+   * The URL includes the auth token query parameter when token auth is active.
+   * Returns null if initialize() has not been called yet (no auth token).
+   */
+  getLanAccessUrl(): string | null {
+    const token = this.authToken;
+    // Tunnel URL is preferred when set
+    if (this.tunnelUrl) {
+      const sep = this.tunnelUrl.includes('?') ? '&' : '?';
+      return token ? `${this.tunnelUrl}${sep}token=${token}` : this.tunnelUrl;
+    }
+    // Otherwise use the first detected LAN IP
+    const lanIps = this.getLanIps();
+    if (lanIps.length > 0) {
+      const suffix = token ? `/?token=${token}` : '/';
+      return `http://${lanIps[0]!}:${this.config.port}${suffix}`;
+    }
+    // Fall back to localhost URL
+    return this.getWebChatAccessUrl();
   }
 
   /**
@@ -649,6 +682,20 @@ export class WebChatConnector implements Connector {
           } else {
             logger.warn('WebChat: no LAN interfaces detected');
           }
+        }
+
+        // Display QR code for phone scanning — prefer tunnel URL if set, else first LAN URL
+        const qrUrl = this.getLanAccessUrl();
+        if (qrUrl) {
+          console.log('  Scan to open WebChat on your phone:');
+          import('qrcode-terminal')
+            .then((qrcodeTerminal) => {
+              const mod = qrcodeTerminal.default ?? qrcodeTerminal;
+              mod.generate(qrUrl, { small: true });
+            })
+            .catch(() => {
+              // qrcode-terminal unavailable — URL printed above is sufficient
+            });
         }
 
         this.emit('ready');
