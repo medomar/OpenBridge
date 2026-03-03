@@ -1,16 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenBridge WebChat</title>
   <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    (function () {
+      var t = localStorage.getItem('ob-theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
 </head>
 <body>
   <div class="chat-wrap">
     <header class="header">
       <h1>OpenBridge WebChat</h1>
       <div style="display:flex;align-items:center;gap:12px">
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>
         <button class="stop-all-btn" id="stop-all-btn" disabled>Stop All</button>
         <div class="conn-status">
           <div class="conn-dot" id="dot" aria-hidden="true"></div>
@@ -56,5 +63,21 @@
     </footer>
   </div>
   <script src="js/app.js" type="module"></script>
+  <script>
+    (function () {
+      var btn = document.getElementById('theme-toggle');
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        btn.textContent = theme === 'dark' ? 'Light' : 'Dark';
+        localStorage.setItem('ob-theme', theme);
+      }
+      applyTheme(localStorage.getItem('ob-theme') || 'light');
+      btn.addEventListener('click', function () {
+        applyTheme(
+          document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'
+        );
+      });
+    })();
+  </script>
 </body>
 </html>

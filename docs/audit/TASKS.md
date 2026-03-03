@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 126 | **In Progress:** 0 | **Done:** 88 (112 archived)
+> **Pending:** 125 | **In Progress:** 0 | **Done:** 89 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -43,7 +43,7 @@
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
-| 88     | WebChat Frontend Extraction          | 15    | ◻ (3/15 done)   |
+| 88     | WebChat Frontend Extraction          | 15    | ◻ (4/15 done)   |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
@@ -260,7 +260,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 1   | OB-1476 | Create `src/connectors/webchat/ui/` directory structure — ui/, ui/js/, ui/css/. Holds extracted frontend files replacing inlined HTML string                                                                                                   | ✅ Done   |
 | 2   | OB-1477 | Extract HTML into `src/connectors/webchat/ui/index.html` — proper DOCTYPE, meta viewport, semantic HTML5, links to external CSS and JS                                                                                                         | ✅ Done   |
 | 3   | OB-1478 | Extract CSS into `ui/css/styles.css` — CSS custom properties for theming (--bg-primary, --text-primary, --accent, etc.). Light theme as default                                                                                                | ✅ Done   |
-| 4   | OB-1479 | Add dark theme CSS variables — data-theme="dark" selector with dark colors. Toggle button in header. Persist in localStorage. Apply before render to prevent flash                                                                             | ◻ Pending |
+| 4   | OB-1479 | Add dark theme CSS variables — data-theme="dark" selector with dark colors. Toggle button in header. Persist in localStorage. Apply before render to prevent flash                                                                             | ✅ Done   |
 | 5   | OB-1480 | Extract JS into modular files — ui/js/app.js (main logic), websocket.js (connection), markdown.js (rendering), dashboard.js (status). Use ES modules                                                                                           | ◻ Pending |
 | 6   | OB-1481 | Replace markdown splitter with marked library in markdown.js — bundle marked (no CDN). Configure gfm, breaks. Handle code blocks, links, lists, tables, blockquotes                                                                            | ◻ Pending |
 | 7   | OB-1482 | Add syntax highlighting with highlight.js core — bundle with common languages (js, ts, python, bash, json, html, css, sql). Register as marked extension. Dark-compatible theme                                                                | ◻ Pending |
