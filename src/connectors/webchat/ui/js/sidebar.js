@@ -10,6 +10,7 @@ let _open = false;
 let _sidebar = null;
 let _overlay = null;
 let _toggle = null;
+let _currentSessionId = null;
 
 function isDesktop() {
   return window.innerWidth >= BREAKPOINT_DESKTOP;
@@ -54,6 +55,101 @@ export function toggleSidebar() {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Session list
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a timestamp string as a short relative date for sidebar cards.
+ * @param {string} isoString
+ * @returns {string}
+ */
+function formatSessionDate(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 86400 * 7) return Math.floor(diff / 86400) + 'd ago';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Build a session card element.
+ * @param {{ session_id: string, title: string|null, last_message_at: string, message_count: number }} session
+ * @param {boolean} isActive
+ * @returns {HTMLElement}
+ */
+function buildSessionCard(session, isActive) {
+  const item = document.createElement('div');
+  item.className = 'sidebar-session-item' + (isActive ? ' active' : '');
+  item.setAttribute('role', 'listitem');
+  item.setAttribute('tabindex', '0');
+  item.dataset.sessionId = session.session_id;
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'sidebar-session-title';
+  titleEl.textContent = session.title || 'Conversation';
+
+  const metaEl = document.createElement('div');
+  metaEl.className = 'sidebar-session-meta';
+
+  const dateSpan = document.createElement('span');
+  dateSpan.textContent = formatSessionDate(session.last_message_at);
+
+  const countSpan = document.createElement('span');
+  const count = session.message_count || 0;
+  countSpan.textContent = count + (count === 1 ? ' msg' : ' msgs');
+
+  metaEl.appendChild(dateSpan);
+  metaEl.appendChild(countSpan);
+
+  item.appendChild(titleEl);
+  item.appendChild(metaEl);
+
+  return item;
+}
+
+/**
+ * Fetch /api/sessions and render the list into #sidebar-sessions.
+ * The most recent session (first in list) is highlighted as the current session.
+ * Pass an explicit sessionId to override which item is highlighted.
+ *
+ * @param {string|null} [activeSessionId]
+ */
+export async function loadSessions(activeSessionId) {
+  const container = document.getElementById('sidebar-sessions');
+  if (!container) return;
+
+  let sessions;
+  try {
+    const res = await fetch('/api/sessions?limit=50');
+    if (!res.ok) return;
+    sessions = await res.json();
+  } catch (_) {
+    return;
+  }
+
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    container.innerHTML = '<div class="sidebar-empty">No conversations yet.</div>';
+    return;
+  }
+
+  // Default: highlight the most recent session (first in list)
+  const effectiveId = activeSessionId != null ? activeSessionId : sessions[0].session_id;
+  _currentSessionId = effectiveId;
+
+  const frag = document.createDocumentFragment();
+  for (const session of sessions) {
+    const card = buildSessionCard(session, session.session_id === effectiveId);
+    frag.appendChild(card);
+  }
+  container.replaceChildren(frag);
+}
+
+// ---------------------------------------------------------------------------
 
 export function initSidebar() {
   _sidebar = document.getElementById('sidebar');
