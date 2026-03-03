@@ -1,5 +1,5 @@
 // AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: 2026-03-03T18:00:41.586Z
+// Generated: 2026-03-03T18:06:40.123Z
 export const WEBCHAT_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -883,6 +883,90 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* ------------------------------------------------------------------ */
+/* Responsive layout                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Desktop: add padding so the card floats above the background */
+@media (min-width: 768px) {
+  body {
+    padding: 16px;
+  }
+}
+
+/* Mobile: full-width, edge-to-edge, no rounded corners */
+@media (max-width: 767px) {
+  body {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .chat-wrap {
+    max-width: 100%;
+    height: 100vh;
+    /* Dynamic viewport height: accounts for browser chrome (address bar) */
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .header {
+    padding: 10px 14px;
+  }
+
+  #msgs {
+    padding: 12px 10px;
+  }
+
+  /* Wider bubbles on narrow screens */
+  .msg-row {
+    max-width: 92%;
+  }
+
+  .input-row {
+    padding: 10px 10px;
+  }
+
+  /* font-size 16px prevents iOS Safari from auto-zooming on focus */
+  #inp {
+    font-size: 16px;
+    padding: 11px 14px;
+  }
+
+  #send {
+    padding: 11px 18px;
+  }
+}
+
+/* Landscape mobile: reduce vertical padding to preserve message area */
+@media (max-width: 767px) and (orientation: landscape) {
+  .chat-wrap {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .header {
+    padding: 7px 14px;
+  }
+
+  .header h1 {
+    font-size: 15px;
+  }
+
+  #msgs {
+    padding: 7px 10px;
+    gap: 6px;
+  }
+
+  .input-row {
+    padding: 6px 10px;
+  }
+
+  #dash {
+    max-height: 120px;
+  }
+}
+
 </style>
   <script>
     (function () {
@@ -1130,6 +1214,12 @@ body {
   color: #f28b82;
 }
 #error-msg.visible { display: block; }
+/* Mobile: full-width card, no border-radius */
+@media (max-width: 767px) {
+  body { align-items: flex-start; padding: 0; }
+  .login-wrap { max-width: 100%; border-radius: 0; box-shadow: none; }
+  #pwd, #login-btn { font-size: 16px; padding: 12px 16px; }
+}
   </style>
   <script>
     (function () {

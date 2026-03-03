@@ -872,3 +872,87 @@ body {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ------------------------------------------------------------------ */
+/* Responsive layout                                                    */
+/* ------------------------------------------------------------------ */
+
+/* Desktop: add padding so the card floats above the background */
+@media (min-width: 768px) {
+  body {
+    padding: 16px;
+  }
+}
+
+/* Mobile: full-width, edge-to-edge, no rounded corners */
+@media (max-width: 767px) {
+  body {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .chat-wrap {
+    max-width: 100%;
+    height: 100vh;
+    /* Dynamic viewport height: accounts for browser chrome (address bar) */
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .header {
+    padding: 10px 14px;
+  }
+
+  #msgs {
+    padding: 12px 10px;
+  }
+
+  /* Wider bubbles on narrow screens */
+  .msg-row {
+    max-width: 92%;
+  }
+
+  .input-row {
+    padding: 10px 10px;
+  }
+
+  /* font-size 16px prevents iOS Safari from auto-zooming on focus */
+  #inp {
+    font-size: 16px;
+    padding: 11px 14px;
+  }
+
+  #send {
+    padding: 11px 18px;
+  }
+}
+
+/* Landscape mobile: reduce vertical padding to preserve message area */
+@media (max-width: 767px) and (orientation: landscape) {
+  .chat-wrap {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .header {
+    padding: 7px 14px;
+  }
+
+  .header h1 {
+    font-size: 15px;
+  }
+
+  #msgs {
+    padding: 7px 10px;
+    gap: 6px;
+  }
+
+  .input-row {
+    padding: 6px 10px;
+  }
+
+  #dash {
+    max-height: 120px;
+  }
+}
