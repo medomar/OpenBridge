@@ -150,6 +150,28 @@ export const V2WorkspaceSchema = z.object({
   exclude: z.array(z.string()).optional(),
 });
 
+/**
+ * Default glob patterns for files and directories that are always excluded from
+ * AI visibility. Applied before user-configured workspace.exclude patterns.
+ * Users can override by setting workspace.exclude explicitly.
+ */
+export const DEFAULT_EXCLUDE_PATTERNS: readonly string[] = [
+  '.env',
+  '.env.*',
+  '*.pem',
+  '*.key',
+  '*.p12',
+  '*.pfx',
+  'credentials.*',
+  'secrets/',
+  'id_rsa*',
+  'id_ed25519*',
+  '*.sqlite',
+  '.git/objects/',
+  'node_modules/',
+  '.DS_Store',
+];
+
 /** Schema for a single MCP server definition */
 export const MCPServerSchema = z.object({
   name: z.string().min(1),
