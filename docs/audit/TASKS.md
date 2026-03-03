@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 81 | **In Progress:** 0 | **Done:** 133 (112 archived)
+> **Pending:** 80 | **In Progress:** 0 | **Done:** 134 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -46,7 +46,7 @@
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
-| 91     | Conversation History + Rich Input    | 15    | ◻ (6/15 done)   |
+| 91     | Conversation History + Rich Input    | 15    | ◻ (7/15 done)   |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
@@ -332,7 +332,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 4   | OB-1521 | Click session to load transcript — add GET /api/sessions/{id} endpoint returning full conversation messages. Clear and render loaded transcript on click                                                                                                                                                      | ✅ Done   |
 | 5   | OB-1522 | Add "New conversation" button — starts fresh session with new ID. Clears message area. Sends WebSocket message to create new backend session                                                                                                                                                                  | ✅ Done   |
 | 6   | OB-1523 | Add search across conversations — search input at top of sidebar. GET /api/sessions/search?q={query} uses FTS5. Display matching messages with context and highlighted terms                                                                                                                                  | ✅ Done   |
-| 7   | OB-1524 | Persist current conversation in localStorage — save on each new message. Restore on refresh. Clear on new session. Limit to last 100 messages                                                                                                                                                                 | ◻ Pending |
+| 7   | OB-1524 | Persist current conversation in localStorage — save on each new message. Restore on refresh. Clear on new session. Limit to last 100 messages                                                                                                                                                                 | ✅ Done   |
 | 8   | OB-1525 | Switch input to textarea — Shift+Enter for newline, Enter to send. Auto-resize height (max 6 lines). Show character count over 500 chars                                                                                                                                                                      | ◻ Pending |
 | 9   | OB-1526 | Add file upload button — paperclip icon next to send. Click opens file picker. Support drag-and-drop. Show preview (name, size, type) before sending                                                                                                                                                          | ◻ Pending |
 | 10  | OB-1527 | Add file upload backend — POST /api/upload accepts multipart, stores in .openbridge/uploads/. Send path to Master. Limit 10MB. Return file ID                                                                                                                                                                 | ◻ Pending |
