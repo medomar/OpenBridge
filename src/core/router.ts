@@ -10,6 +10,7 @@ import type { AgentOrchestrator } from './agent-orchestrator.js';
 import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
+import type { AppServer } from './app-server.js';
 import type {
   MemoryManager,
   ActivityRecord,
@@ -39,6 +40,12 @@ const VOICE_MARKER_RE = /\[VOICE\]([\s\S]*?)\[\/VOICE\]/g;
 
 /** Pattern matching [SHARE:channel]/path/to/file[/SHARE] markers in AI output */
 const SHARE_MARKER_RE = /\[SHARE:([^\]]+)\]([^[]*)\[\/SHARE\]/g;
+
+/** Pattern matching [APP:start]appPath[/APP] markers in AI output */
+const APP_START_MARKER_RE = /\[APP:start\]([^[]*)\[\/APP\]/g;
+
+/** Pattern matching [APP:stop]appId[/APP] markers in AI output */
+const APP_STOP_MARKER_RE = /\[APP:stop\]([^[]*)\[\/APP\]/g;
 
 /** Format a millisecond duration as a human-readable string (e.g. "2h 14m", "45s"). */
 function formatDuration(ms: number): string {
@@ -248,6 +255,7 @@ export class Router {
   private emailConfig?: EmailConfig;
   private memory?: MemoryManager;
   private queue?: MessageQueue;
+  private appServer?: AppServer;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -321,6 +329,12 @@ export class Router {
         );
       }
     });
+  }
+
+  /** Set the AppServer — enables [APP:start] and [APP:stop] marker support */
+  setAppServer(appServer: AppServer): void {
+    this.appServer = appServer;
+    logger.info('Router configured with AppServer (APP markers enabled)');
   }
 
   /** Set the security config — controls confirmation requirements for high-risk spawns */
@@ -1001,8 +1015,11 @@ export class Router {
       message.id,
     );
 
+    // Parse and dispatch [APP:start]/[APP:stop] app lifecycle markers
+    const afterApp = await this.processAppMarkers(afterShare);
+
     // Parse and dispatch [SEND:channel] proactive markers before sending main reply
-    const afterSend = await this.processSendMarkers(afterShare);
+    const afterSend = await this.processSendMarkers(afterApp);
 
     // Parse and dispatch [VOICE] TTS markers before sending main reply
     const cleanedContent = await this.processVoiceMarkers(afterSend, connector, message.sender);
@@ -1303,6 +1320,67 @@ export class Router {
     } catch (err) {
       logger.warn({ filePath, err }, 'SHARE:github-pages: publish failed');
     }
+  }
+
+  /**
+   * Parse [APP:start]appPath[/APP] and [APP:stop]appId[/APP] markers from AI output.
+   *
+   * - [APP:start]appPath[/APP]: starts an app via AppServer.startApp(). The marker is
+   *   replaced with the app URL (public URL if tunnel is active, otherwise local URL).
+   * - [APP:stop]appId[/APP]: stops an app via AppServer.stopApp(). The marker is stripped.
+   *
+   * If no AppServer is configured, markers are stripped silently.
+   */
+  private async processAppMarkers(content: string): Promise<string> {
+    if (!this.appServer) return content;
+
+    let cleaned = content;
+
+    // Handle APP:start markers — replace each marker with the app URL
+    const startRegex = new RegExp(APP_START_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+    while ((match = startRegex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const appPath = (match[1] ?? '').trim();
+
+      if (!appPath) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      try {
+        const instance = await this.appServer.startApp(appPath);
+        const url = instance.publicUrl ?? instance.url;
+        cleaned = cleaned.replace(fullMatch, `App started at ${url}`);
+        logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+      } catch (err) {
+        logger.warn({ appPath, err }, 'APP:start marker: failed to start app');
+        cleaned = cleaned.replace(fullMatch, `Failed to start app at ${appPath}`);
+      }
+    }
+
+    // Handle APP:stop markers — strip each marker after stopping the app
+    const stopRegex = new RegExp(APP_STOP_MARKER_RE.source, 'g');
+    let stopMatch: RegExpExecArray | null;
+    while ((stopMatch = stopRegex.exec(cleaned)) !== null) {
+      const fullMatch = stopMatch[0];
+      const appId = (stopMatch[1] ?? '').trim();
+
+      if (appId) {
+        try {
+          this.appServer.stopApp(appId);
+          logger.info({ appId }, 'APP:stop marker processed');
+        } catch (err) {
+          logger.warn({ appId, err }, 'APP:stop marker: failed to stop app');
+        }
+      }
+
+      cleaned = cleaned.replace(fullMatch, '');
+      // Reset regex index after replacement to avoid skipping matches
+      stopRegex.lastIndex = 0;
+    }
+
+    return cleaned.trim();
   }
 
   /**
