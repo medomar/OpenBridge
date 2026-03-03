@@ -656,6 +656,50 @@ body {
   cursor: not-allowed;
 }
 
+/* Public URL bar in header */
+#public-url-bar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.9;
+  max-width: 260px;
+  overflow: hidden;
+}
+
+#public-url-bar.visible {
+  display: flex;
+}
+
+#public-url-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--header-text);
+}
+
+.url-copy-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: var(--header-text);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.url-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.url-copy-btn.copied {
+  color: #69f0ae;
+}
+
 /* Theme toggle button */
 .theme-toggle {
   background: transparent;
