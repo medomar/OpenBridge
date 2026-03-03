@@ -12,6 +12,7 @@ let _overlay = null;
 let _toggle = null;
 let _currentSessionId = null;
 let _onSessionSelect = null;
+let _onNewConversation = null;
 
 /**
  * Register a callback invoked when the user clicks a session card.
@@ -19,6 +20,14 @@ let _onSessionSelect = null;
  */
 export function setOnSessionSelect(fn) {
   _onSessionSelect = fn;
+}
+
+/**
+ * Register a callback invoked when the user clicks "New conversation".
+ * @param {function(): void} fn
+ */
+export function setOnNewConversation(fn) {
+  _onNewConversation = fn;
 }
 
 function isDesktop() {
@@ -167,6 +176,19 @@ export function initSidebar() {
   if (!_sidebar || !_overlay || !_toggle) return;
 
   _toggle.addEventListener('click', toggleSidebar);
+
+  // New conversation button
+  const newConvBtn = document.getElementById('new-conversation-btn');
+  if (newConvBtn) {
+    newConvBtn.addEventListener('click', function () {
+      if (_onNewConversation) {
+        _onNewConversation();
+      }
+      if (!isDesktop()) {
+        closeSidebar();
+      }
+    });
+  }
 
   // Overlay click closes sidebar on mobile
   _overlay.addEventListener('click', function () {

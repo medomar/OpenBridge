@@ -6,7 +6,7 @@
 import { initWebSocket, sendMessage, isConnected } from './websocket.js';
 import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
-import { initSidebar, loadSessions, setOnSessionSelect } from './sidebar.js';
+import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -672,10 +672,24 @@ async function loadSessionTranscript(sessionId) {
   }
 }
 
+// --- New conversation ---
+
+/**
+ * Start a fresh conversation: clear the message area, notify the backend,
+ * and reload the session list so the new session appears in the sidebar.
+ */
+function startNewConversation() {
+  msgs.replaceChildren();
+  addBubble('New conversation started.', 'sys');
+  sendMessage({ type: 'new-session' });
+  void loadSessions();
+}
+
 // --- Boot ---
 
 initSidebar();
 setOnSessionSelect(loadSessionTranscript);
+setOnNewConversation(startNewConversation);
 void loadSessions();
 initDashboard();
 initWebSocket({
