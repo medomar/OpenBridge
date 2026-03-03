@@ -11,6 +11,15 @@ let _sidebar = null;
 let _overlay = null;
 let _toggle = null;
 let _currentSessionId = null;
+let _onSessionSelect = null;
+
+/**
+ * Register a callback invoked when the user clicks a session card.
+ * @param {function(string): void} fn
+ */
+export function setOnSessionSelect(fn) {
+  _onSessionSelect = fn;
+}
 
 function isDesktop() {
   return window.innerWidth >= BREAKPOINT_DESKTOP;
@@ -183,6 +192,38 @@ export function initSidebar() {
       }
     }
   });
+
+  // Event delegation for session card clicks
+  const sessionsContainer = document.getElementById('sidebar-sessions');
+  if (sessionsContainer) {
+    sessionsContainer.addEventListener('click', function (e) {
+      const item = e.target.closest('.sidebar-session-item');
+      if (!item) return;
+      const sessionId = item.dataset.sessionId;
+      if (!sessionId) return;
+      // Update active highlight
+      sessionsContainer.querySelectorAll('.sidebar-session-item').forEach(function (el) {
+        el.classList.toggle('active', el === item);
+      });
+      _currentSessionId = sessionId;
+      // Close sidebar on mobile after selection
+      if (!isDesktop()) {
+        closeSidebar();
+      }
+      if (_onSessionSelect) {
+        _onSessionSelect(sessionId);
+      }
+    });
+
+    // Keyboard: Enter or Space activates a focused card
+    sessionsContainer.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const item = e.target.closest('.sidebar-session-item');
+      if (!item) return;
+      e.preventDefault();
+      item.click();
+    });
+  }
 
   // Initial state: open on desktop unless user explicitly closed it
   if (isDesktop()) {
