@@ -9,7 +9,7 @@ import { getQrCode } from '../../core/qr-store.js';
 import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import { WEBCHAT_HTML } from './ui-bundle.js';
-import { getOrCreateAuthToken } from './webchat-auth.js';
+import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 
 /** Name of the HTTP-only session cookie set after successful token validation */
 const SESSION_COOKIE_NAME = 'ob_session';
@@ -78,6 +78,8 @@ export class WebChatConnector implements Connector {
   private memory: MemoryManager | null = null;
   private authToken: string | null = null;
   private storeDir: string = process.cwd();
+  /** bcrypt hash of the configured password, or null when token auth is active */
+  private passwordHash: string | null = null;
   /** In-memory session store: sessionId → expiry timestamp (ms since epoch) */
   private readonly sessions: Map<string, number> = new Map();
 
@@ -99,9 +101,14 @@ export class WebChatConnector implements Connector {
     this.storeDir = workspacePath;
   }
 
-  /** Returns the auth token, or null if initialize() has not been called yet. */
+  /** Returns the auth token, or null if initialize() has not been called yet or password mode is active. */
   getAuthToken(): string | null {
     return this.authToken;
+  }
+
+  /** Returns true when password-based auth is active (webchat.password was configured). */
+  isPasswordMode(): boolean {
+    return this.passwordHash !== null;
   }
 
   /** Returns the full URL to access WebChat with the auth token appended, or null before initialize(). */
@@ -188,11 +195,25 @@ export class WebChatConnector implements Connector {
    *  - `ok` — whether the request is authorised
    *  - `tokenProvided` — true when the token itself (not a cookie) was used,
    *    so the caller can issue a new session cookie
+   *
+   * In password mode (`passwordHash !== null`), only valid session cookies are
+   * accepted — token auth is disabled so that the login screen is the sole
+   * entry point.
    */
   private isAuthenticated(
     url: string,
     req: IncomingMessage,
   ): { ok: boolean; tokenProvided: boolean } {
+    // Password mode: only session cookies grant access
+    if (this.passwordHash !== null) {
+      const sessionId = this.extractSessionId(req);
+      if (sessionId !== null && this.isValidSession(sessionId)) {
+        return { ok: true, tokenProvided: false };
+      }
+      return { ok: false, tokenProvided: false };
+    }
+
+    // Token mode (default)
     if (this.authToken === null) {
       // Token not yet initialised — deny access
       return { ok: false, tokenProvided: false };
@@ -209,8 +230,14 @@ export class WebChatConnector implements Connector {
   }
 
   async initialize(): Promise<void> {
-    // Generate or load persisted auth token before starting the server
-    this.authToken = getOrCreateAuthToken(this.storeDir);
+    // Password mode: hash the configured password; skip token generation
+    if (this.config.password) {
+      this.passwordHash = await hashPassword(this.config.password);
+      logger.info('WebChat running in password-auth mode');
+    } else {
+      // Token mode: generate or load persisted auth token
+      this.authToken = getOrCreateAuthToken(this.storeDir);
+    }
 
     const http = await import('node:http');
 
@@ -220,6 +247,53 @@ export class WebChatConnector implements Connector {
 
     const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = req.url ?? '/';
+
+      // ── Password login endpoint (public — no auth guard) ───────────────────
+      if (url === '/api/webchat/login' && req.method === 'POST') {
+        if (this.passwordHash === null) {
+          // Not in password mode — endpoint not available
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Password auth is not enabled' }));
+          return;
+        }
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 1024) {
+            req.destroy();
+          }
+        });
+        req.on('end', () => {
+          void (async (): Promise<void> => {
+            let parsed: { password?: string };
+            try {
+              parsed = JSON.parse(body) as { password?: string };
+            } catch {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+              return;
+            }
+            if (typeof parsed.password !== 'string' || parsed.password.length === 0) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing password field' }));
+              return;
+            }
+            const valid = await verifyPassword(parsed.password, this.passwordHash!);
+            if (!valid) {
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid password' }));
+              logger.warn('WebChat login failed — invalid password');
+              return;
+            }
+            this.startSession(res);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+            logger.info('WebChat login successful — session created');
+          })();
+        });
+        return;
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       // ── Auth guard ─────────────────────────────────────────────────────────
       const auth = this.isAuthenticated(url, req);

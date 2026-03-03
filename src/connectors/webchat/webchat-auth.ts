@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import bcrypt from 'bcryptjs';
 import { createLogger } from '../../core/logger.js';
 
 const logger = createLogger('webchat-auth');
@@ -31,4 +32,28 @@ export function getOrCreateAuthToken(baseDir: string = process.cwd()): string {
   writeFileSync(tokenPath, token, { mode: 0o600, encoding: 'utf8' });
   logger.info({ tokenPath }, 'Generated new WebChat auth token');
   return token;
+}
+
+/** bcrypt cost factor for password hashing */
+const BCRYPT_ROUNDS = 10;
+
+/**
+ * Hash a plain-text password with bcrypt.
+ *
+ * @param password - The plain-text password to hash.
+ * @returns A bcrypt hash string.
+ */
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+/**
+ * Verify a submitted plain-text password against a stored bcrypt hash.
+ *
+ * @param submitted - The password submitted by the user.
+ * @param hash      - The bcrypt hash stored on disk.
+ * @returns `true` if the password matches, `false` otherwise.
+ */
+export async function verifyPassword(submitted: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(submitted, hash);
 }
