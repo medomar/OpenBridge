@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 105 | **In Progress:** 0 | **Done:** 109 (112 archived)
+> **Pending:** 104 | **In Progress:** 0 | **Done:** 110 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -44,7 +44,7 @@
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
-| 89     | WebChat Authentication               | 12    | ◻ (9/12 done)   |
+| 89     | WebChat Authentication               | 12    | ◻ (10/12 done)  |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
@@ -290,7 +290,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 7   | OB-1497 | Create login screen UI — password input, submit, error message area. Match WebChat theme. POST to /api/webchat/login                                                                                                                                                           | ✅ Done   |
 | 8   | OB-1498 | Add session management — HTTP-only cookie with session ID on successful auth. Sessions expire after 24 hours. crypto.randomUUID() for IDs                                                                                                                                      | ✅ Done   |
 | 9   | OB-1499 | Map WebChat users to access-store — create/update entry with channel: webchat, default role, budget on authentication                                                                                                                                                          | ✅ Done   |
-| 10  | OB-1500 | Add per-IP rate limiting on login — track failures per IP. After 5 in 15 min, block for 30 min. Return 429. In-memory Map with TTL                                                                                                                                             | ◻ Pending |
+| 10  | OB-1500 | Add per-IP rate limiting on login — track failures per IP. After 5 in 15 min, block for 30 min. Return 429. In-memory Map with TTL                                                                                                                                             | ✅ Done   |
 | 11  | OB-1501 | Add webchat.auth section to config.example.json — examples for token auth, password auth, disabled auth                                                                                                                                                                        | ◻ Pending |
 | 12  | OB-1502 | Add tests in `tests/connectors/webchat/webchat-auth.test.ts` — test: (1) valid token allows, (2) invalid returns 401, (3) password login flow, (4) session cookie set, (5) WebSocket rejects invalid, (6) rate limit after 5 failures, (7) rate limit resets. At least 7 tests | ◻ Pending |
 
