@@ -24,6 +24,7 @@
       <div style="display:flex;align-items:center;gap:12px">
         <button class="theme-toggle" id="ts-toggle" aria-label="Toggle message timestamps">Hide times</button>
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>
+        <button class="theme-toggle" id="share-btn" aria-label="Share this link">Share</button>
         <button class="stop-all-btn" id="stop-all-btn" disabled aria-label="Stop all workers">Stop All</button>
         <div class="conn-status" role="status" aria-live="polite" aria-label="Connection status">
           <div class="conn-dot" id="dot" aria-hidden="true"></div>
@@ -68,6 +69,7 @@
       </form>
     </footer>
   </div>
+  <div id="share-toast" class="share-toast" role="status" aria-live="polite" aria-atomic="true">Link copied!</div>
   <script src="js/app.js" type="module"></script>
 </body>
 </html>
