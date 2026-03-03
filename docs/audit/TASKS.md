@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 88 | **In Progress:** 0 | **Done:** 126 (112 archived)
+> **Pending:** 87 | **In Progress:** 0 | **Done:** 127 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -45,7 +45,7 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻ (13/15 done)  |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
@@ -300,23 +300,23 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 > **Goal:** Make WebChat accessible from phone (LAN + internet). PWA support, push notifications, responsive design.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1503 | Change default host from localhost to 0.0.0.0 in webchat config — binds to all interfaces for LAN access. Keep localhost as config fallback                                                                                                                  | ✅ Done   |
-| 2   | OB-1504 | Auto-detect local IP addresses on startup — use os.networkInterfaces() for non-internal IPv4. Display LAN URL in console. Handle multiple interfaces                                                                                                         | ✅ Done   |
-| 3   | OB-1505 | Display QR code with authenticated LAN URL — for phone scanning. Prefer tunnel URL for QR if tunnel active                                                                                                                                                   | ✅ Done   |
-| 4   | OB-1506 | Display public URL in console and WebChat header when tunnel active — add copy button next to URL in header. Show both LAN and public URLs in console                                                                                                        | ✅ Done   |
-| 5   | OB-1507 | Add "Share this link" button in WebChat header — copies current URL to clipboard. Toast notification "Link copied!" Uses navigator.clipboard with fallback                                                                                                   | ✅ Done   |
-| 6   | OB-1508 | Add manifest.json for PWA — app name, short name, start URL, standalone display, theme color, icon placeholders. Serve via webchat connector                                                                                                                 | ✅ Done   |
-| 7   | OB-1509 | Add service worker — cache HTML/CSS/JS shell for offline. Show "Reconnecting..." on WebSocket disconnect. Handle push notifications. Register in app.js                                                                                                      | ✅ Done   |
-| 8   | OB-1510 | Add responsive CSS — mobile (< 768px): full-width, no padding, large targets. Desktop: centered card with max-width. Handle landscape                                                                                                                        | ✅ Done   |
-| 9   | OB-1511 | Add touch-friendly sizing — 44px minimum tap targets. Larger send button on mobile. 8px gap between tappable elements. Prevent text selection on buttons                                                                                                     | ✅ Done   |
-| 10  | OB-1512 | Add iOS safe area insets — env(safe-area-inset-\*) for notch and home indicator. Apply to input area, header, container. viewport-fit=cover on meta tag                                                                                                      | ✅ Done   |
-| 11  | OB-1513 | Add browser notifications on task completion — request Notification.requestPermission(). Show notification when task completes and tab unfocused                                                                                                             | ✅ Done   |
-| 12  | OB-1514 | Add tab title updates — show unread count "(3) OpenBridge" when unfocused. Reset on focus. Use document.visibilityState API                                                                                                                                  | ✅ Done   |
-| 13  | OB-1515 | Add sound notification on response — Web Audio API notification sound when AI responds. Mute toggle in header (speaker icon). Persist in localStorage                                                                                                        | ✅ Done   |
-| 14  | OB-1516 | Add "Add to Home Screen" prompt on first mobile visit — detect mobile, check not installed. Show banner to add PWA. Dismiss permanently on close                                                                                                             | ✅ Done   |
-| 15  | OB-1517 | Add tests in `tests/connectors/webchat/webchat-mobile.test.ts` — test: (1) LAN IP detection, (2) QR generation, (3) manifest serves, (4) service worker registration, (5) responsive media queries exist, (6) 0.0.0.0 binding configurable. At least 6 tests | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 1   | OB-1503 | Change default host from localhost to 0.0.0.0 in webchat config — binds to all interfaces for LAN access. Keep localhost as config fallback                                                                                                                  | ✅ Done |
+| 2   | OB-1504 | Auto-detect local IP addresses on startup — use os.networkInterfaces() for non-internal IPv4. Display LAN URL in console. Handle multiple interfaces                                                                                                         | ✅ Done |
+| 3   | OB-1505 | Display QR code with authenticated LAN URL — for phone scanning. Prefer tunnel URL for QR if tunnel active                                                                                                                                                   | ✅ Done |
+| 4   | OB-1506 | Display public URL in console and WebChat header when tunnel active — add copy button next to URL in header. Show both LAN and public URLs in console                                                                                                        | ✅ Done |
+| 5   | OB-1507 | Add "Share this link" button in WebChat header — copies current URL to clipboard. Toast notification "Link copied!" Uses navigator.clipboard with fallback                                                                                                   | ✅ Done |
+| 6   | OB-1508 | Add manifest.json for PWA — app name, short name, start URL, standalone display, theme color, icon placeholders. Serve via webchat connector                                                                                                                 | ✅ Done |
+| 7   | OB-1509 | Add service worker — cache HTML/CSS/JS shell for offline. Show "Reconnecting..." on WebSocket disconnect. Handle push notifications. Register in app.js                                                                                                      | ✅ Done |
+| 8   | OB-1510 | Add responsive CSS — mobile (< 768px): full-width, no padding, large targets. Desktop: centered card with max-width. Handle landscape                                                                                                                        | ✅ Done |
+| 9   | OB-1511 | Add touch-friendly sizing — 44px minimum tap targets. Larger send button on mobile. 8px gap between tappable elements. Prevent text selection on buttons                                                                                                     | ✅ Done |
+| 10  | OB-1512 | Add iOS safe area insets — env(safe-area-inset-\*) for notch and home indicator. Apply to input area, header, container. viewport-fit=cover on meta tag                                                                                                      | ✅ Done |
+| 11  | OB-1513 | Add browser notifications on task completion — request Notification.requestPermission(). Show notification when task completes and tab unfocused                                                                                                             | ✅ Done |
+| 12  | OB-1514 | Add tab title updates — show unread count "(3) OpenBridge" when unfocused. Reset on focus. Use document.visibilityState API                                                                                                                                  | ✅ Done |
+| 13  | OB-1515 | Add sound notification on response — Web Audio API notification sound when AI responds. Mute toggle in header (speaker icon). Persist in localStorage                                                                                                        | ✅ Done |
+| 14  | OB-1516 | Add "Add to Home Screen" prompt on first mobile visit — detect mobile, check not installed. Show banner to add PWA. Dismiss permanently on close                                                                                                             | ✅ Done |
+| 15  | OB-1517 | Add tests in `tests/connectors/webchat/webchat-mobile.test.ts` — test: (1) LAN IP detection, (2) QR generation, (3) manifest serves, (4) service worker registration, (5) responsive media queries exist, (6) 0.0.0.0 binding configurable. At least 6 tests | ✅ Done |
 
 ---
 
