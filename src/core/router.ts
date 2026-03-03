@@ -11,6 +11,7 @@ import type { MasterManager } from '../master/master-manager.js';
 import type { AuthService } from './auth.js';
 import type { EmailConfig } from '../types/config.js';
 import type { AppServer } from './app-server.js';
+import type { InteractionRelay, RelayMessage } from './interaction-relay.js';
 import type {
   MemoryManager,
   ActivityRecord,
@@ -256,6 +257,7 @@ export class Router {
   private memory?: MemoryManager;
   private queue?: MessageQueue;
   private appServer?: AppServer;
+  private relay?: InteractionRelay;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -335,6 +337,62 @@ export class Router {
   setAppServer(appServer: AppServer): void {
     this.appServer = appServer;
     logger.info('Router configured with AppServer (APP markers enabled)');
+  }
+
+  /** Set the InteractionRelay — routes app messages to Master as app-interaction InboundMessages */
+  setInteractionRelay(relay: InteractionRelay): void {
+    this.relay = relay;
+    relay.onAppMessage((relayMsg) => this.handleAppInteraction(relayMsg));
+    logger.info('Router configured with InteractionRelay (app interactions enabled)');
+  }
+
+  /**
+   * Handle a message received from a served app via InteractionRelay.
+   * Converts the relay message into an InboundMessage and passes it to Master AI.
+   * No-op when Master is not configured.
+   */
+  private async handleAppInteraction(relayMsg: RelayMessage): Promise<void> {
+    if (!this.master) {
+      logger.warn(
+        { appId: relayMsg.appId },
+        'App interaction received but no Master is set — ignoring',
+      );
+      return;
+    }
+
+    const msgId = relayMsg.id ?? `relay-${relayMsg.appId}-${Date.now()}`;
+    const dataStr =
+      relayMsg.data !== null && relayMsg.data !== undefined
+        ? JSON.stringify(relayMsg.data, null, 2)
+        : '(no data)';
+
+    const inboundMessage: InboundMessage = {
+      id: msgId,
+      source: 'interaction-relay',
+      sender: `app:${relayMsg.appId}`,
+      rawContent: dataStr,
+      content: `[App: ${relayMsg.appId}] ${relayMsg.type}\n${dataStr}`,
+      timestamp: relayMsg.timestamp ? new Date(relayMsg.timestamp) : new Date(),
+      metadata: {
+        type: 'app-interaction',
+        appId: relayMsg.appId,
+        data: relayMsg.data,
+      },
+    };
+
+    logger.info(
+      { appId: relayMsg.appId, type: relayMsg.type, msgId },
+      'Routing app interaction to Master',
+    );
+
+    try {
+      await this.master.processMessage(inboundMessage);
+    } catch (err) {
+      logger.error(
+        { appId: relayMsg.appId, type: relayMsg.type, err },
+        'Error processing app interaction',
+      );
+    }
   }
 
   /** Set the security config — controls confirmation requirements for high-risk spawns */
