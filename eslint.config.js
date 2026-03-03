@@ -16,6 +16,7 @@ export default tseslint.config(
       '**/_archived/**',
       'src/orchestrator/**',
       'src/core/static/**',
+      'src/connectors/webchat/ui/**',
       'tests/types/**',
       'test-workspace-*/',
       'ob-smoke-test/',
