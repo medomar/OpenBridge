@@ -849,6 +849,29 @@ export class WebChatConnector implements Connector {
         return;
       }
 
+      // /api/commands — list available slash commands for autocomplete (GET)
+      if (url === '/api/commands' && req.method === 'GET') {
+        const commands = [
+          { name: '/history', description: 'Show conversation history' },
+          { name: '/stop', description: 'Stop the current worker' },
+          { name: '/status', description: 'Show agent status' },
+          { name: '/deep', description: 'Enable deep mode for complex tasks' },
+          { name: '/audit', description: 'Run a workspace audit' },
+          { name: '/scope', description: 'Show or change task scope' },
+          { name: '/apps', description: 'List connected apps' },
+          { name: '/help', description: 'Show available commands' },
+          { name: '/doctor', description: 'Run system health diagnostics' },
+          { name: '/confirm', description: 'Confirm a pending action' },
+          { name: '/skip', description: 'Skip a pending confirmation' },
+        ];
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=300',
+        });
+        res.end(JSON.stringify(commands));
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(this.buildHtmlPage());
     });

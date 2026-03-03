@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 75 | **In Progress:** 0 | **Done:** 139 (112 archived)
+> **Pending:** 74 | **In Progress:** 0 | **Done:** 140 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -46,7 +46,7 @@
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
-| 91     | Conversation History + Rich Input    | 15    | ◻ (12/15 done)  |
+| 91     | Conversation History + Rich Input    | 15    | ◻ (13/15 done)  |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
 
@@ -338,7 +338,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 10  | OB-1527 | Add file upload backend — POST /api/upload accepts multipart, stores in .openbridge/uploads/. Send path to Master. Limit 10MB. Return file ID                                                                                                                                                                 | ✅ Done   |
 | 11  | OB-1528 | Add voice input button — microphone icon. MediaRecorder API for recording. Pulsing dot indicator. Send audio to existing voice transcription endpoint. Show transcribed text in input for review                                                                                                              | ✅ Done   |
 | 12  | OB-1529 | Add slash command autocomplete in ui/js/autocomplete.js — show dropdown on "/". Commands: /history, /stop, /status, /deep, /audit, /scope, /apps, /help, /doctor, /confirm, /skip. Filter as typed. Arrow keys and Enter to select                                                                            | ✅ Done   |
-| 13  | OB-1530 | Populate autocomplete from Router — GET /api/commands returns available commands with descriptions. Autocomplete fetches on load. Cache command list                                                                                                                                                          | ◻ Pending |
+| 13  | OB-1530 | Populate autocomplete from Router — GET /api/commands returns available commands with descriptions. Autocomplete fetches on load. Cache command list                                                                                                                                                          | ✅ Done   |
 | 14  | OB-1531 | Add feedback buttons on AI responses — thumbs up/down below each AI message. POST /api/feedback with session, message, rating. Feed into prompt evolution. Show "Thanks!" toast                                                                                                                               | ◻ Pending |
 | 15  | OB-1532 | Add tests in `tests/connectors/webchat/webchat-history.test.ts` — test: (1) /api/sessions returns list, (2) /api/sessions/{id} returns messages, (3) search uses FTS5, (4) upload accepts multipart, (5) size limit enforced, (6) autocomplete returns commands, (7) feedback stores rating. At least 7 tests | ◻ Pending |
 

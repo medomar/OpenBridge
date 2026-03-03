@@ -2,9 +2,12 @@
  * OpenBridge WebChat — Slash command autocomplete.
  * Shows a filtered dropdown when "/" is typed at the start of the input.
  * Arrow keys and Enter/Tab to navigate and select. Escape to close.
+ *
+ * Commands are fetched from GET /api/commands on first use and cached in
+ * module-level state so all autocomplete instances share the same list.
  */
 
-const COMMANDS = [
+const FALLBACK_COMMANDS = [
   { name: '/history', description: 'Show conversation history' },
   { name: '/stop', description: 'Stop the current worker' },
   { name: '/status', description: 'Show agent status' },
@@ -18,8 +21,48 @@ const COMMANDS = [
   { name: '/skip', description: 'Skip a pending confirmation' },
 ];
 
+/** Module-level command cache — populated by fetchCommands() */
+let cachedCommands = null;
+/** In-flight fetch promise — prevents duplicate requests */
+let fetchPromise = null;
+
+/**
+ * Fetch the command list from /api/commands.
+ * Returns the cached list on subsequent calls.
+ * Falls back to FALLBACK_COMMANDS on network/parse errors.
+ * @returns {Promise<Array<{name: string, description: string}>>}
+ */
+export async function fetchCommands() {
+  if (cachedCommands !== null) return cachedCommands;
+  if (fetchPromise !== null) return fetchPromise;
+
+  fetchPromise = fetch('/api/commands')
+    .then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function (data) {
+      if (Array.isArray(data) && data.length > 0) {
+        cachedCommands = data;
+      } else {
+        cachedCommands = FALLBACK_COMMANDS;
+      }
+      fetchPromise = null;
+      return cachedCommands;
+    })
+    .catch(function () {
+      cachedCommands = FALLBACK_COMMANDS;
+      fetchPromise = null;
+      return cachedCommands;
+    });
+
+  return fetchPromise;
+}
+
 /**
  * Initialize slash command autocomplete for a textarea element.
+ * Kicks off a background fetch of /api/commands immediately so the list
+ * is ready before the user types.
  * @param {HTMLTextAreaElement} input
  */
 export function initAutocomplete(input) {
@@ -27,6 +70,9 @@ export function initAutocomplete(input) {
 
   const inpWrap = input.closest('.inp-wrap');
   if (!inpWrap) return;
+
+  // Pre-fetch commands in the background so the list is warm before first use
+  void fetchCommands();
 
   // Create dropdown element
   const dropdown = document.createElement('ul');
@@ -132,7 +178,9 @@ export function initAutocomplete(input) {
       return;
     }
     const lower = query.toLowerCase();
-    const matches = COMMANDS.filter(function (cmd) {
+    // Use cached commands if available, fall back to FALLBACK_COMMANDS synchronously
+    const commands = cachedCommands !== null ? cachedCommands : FALLBACK_COMMANDS;
+    const matches = commands.filter(function (cmd) {
       return cmd.name.startsWith(lower);
     });
     if (matches.length === 0) {
