@@ -998,3 +998,46 @@ body {
     max-height: 120px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* iOS safe area insets — notch / Dynamic Island + home indicator       */
+/* Requires viewport-fit=cover on the meta viewport tag                 */
+/* ------------------------------------------------------------------ */
+
+/* Container: left/right safe area (primarily for landscape notch) */
+.chat-wrap {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Header: top safe area for notch / Dynamic Island (desktop base) */
+.header {
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+}
+
+/* Input area: bottom safe area for home indicator (desktop base) */
+.input-row {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile overrides: correct base padding + safe area */
+@media (max-width: 767px) {
+  .header {
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+
+  .input-row {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Landscape mobile overrides */
+@media (max-width: 767px) and (orientation: landscape) {
+  .header {
+    padding-top: calc(7px + env(safe-area-inset-top, 0px));
+  }
+
+  .input-row {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+}

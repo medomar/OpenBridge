@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 93 | **In Progress:** 0 | **Done:** 121 (112 archived)
+> **Pending:** 92 | **In Progress:** 0 | **Done:** 122 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -45,7 +45,7 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻ (8/15 done)   |
+| 90     | Phone Access + Mobile PWA            | 15    | ◻ (9/15 done)   |
 | 91     | Conversation History + Rich Input    | 15    | ◻               |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ◻               |
 | Docker | Docker Sandbox                       | 16    | ◻               |
@@ -311,7 +311,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 7   | OB-1509 | Add service worker — cache HTML/CSS/JS shell for offline. Show "Reconnecting..." on WebSocket disconnect. Handle push notifications. Register in app.js                                                                                                      | ✅ Done   |
 | 8   | OB-1510 | Add responsive CSS — mobile (< 768px): full-width, no padding, large targets. Desktop: centered card with max-width. Handle landscape                                                                                                                        | ✅ Done   |
 | 9   | OB-1511 | Add touch-friendly sizing — 44px minimum tap targets. Larger send button on mobile. 8px gap between tappable elements. Prevent text selection on buttons                                                                                                     | ✅ Done   |
-| 10  | OB-1512 | Add iOS safe area insets — env(safe-area-inset-\*) for notch and home indicator. Apply to input area, header, container. viewport-fit=cover on meta tag                                                                                                      | ◻ Pending |
+| 10  | OB-1512 | Add iOS safe area insets — env(safe-area-inset-\*) for notch and home indicator. Apply to input area, header, container. viewport-fit=cover on meta tag                                                                                                      | ✅ Done   |
 | 11  | OB-1513 | Add browser notifications on task completion — request Notification.requestPermission(). Show notification when task completes and tab unfocused                                                                                                             | ◻ Pending |
 | 12  | OB-1514 | Add tab title updates — show unread count "(3) OpenBridge" when unfocused. Reset on focus. Use document.visibilityState API                                                                                                                                  | ◻ Pending |
 | 13  | OB-1515 | Add sound notification on response — Web Audio API notification sound when AI responds. Mute toggle in header (speaker icon). Persist in localStorage                                                                                                        | ◻ Pending |

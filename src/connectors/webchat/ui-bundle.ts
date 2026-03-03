@@ -1,10 +1,10 @@
 // AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: 2026-03-03T18:12:10.650Z
+// Generated: 2026-03-03T18:17:48.729Z
 export const WEBCHAT_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>OpenBridge WebChat</title>
   <link rel="manifest" href="/manifest.json" />
   <style>
@@ -1009,6 +1009,49 @@ body {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* iOS safe area insets — notch / Dynamic Island + home indicator       */
+/* Requires viewport-fit=cover on the meta viewport tag                 */
+/* ------------------------------------------------------------------ */
+
+/* Container: left/right safe area (primarily for landscape notch) */
+.chat-wrap {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Header: top safe area for notch / Dynamic Island (desktop base) */
+.header {
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+}
+
+/* Input area: bottom safe area for home indicator (desktop base) */
+.input-row {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile overrides: correct base padding + safe area */
+@media (max-width: 767px) {
+  .header {
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+
+  .input-row {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Landscape mobile overrides */
+@media (max-width: 767px) and (orientation: landscape) {
+  .header {
+    padding-top: calc(7px + env(safe-area-inset-top, 0px));
+  }
+
+  .input-row {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 </style>
   <script>
     (function () {
@@ -1152,7 +1195,7 @@ export const WEBCHAT_LOGIN_HTML = `<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>OpenBridge WebChat &mdash; Sign in</title>
   <style>
 :root {
@@ -1261,6 +1304,19 @@ body {
   body { align-items: flex-start; padding: 0; }
   .login-wrap { max-width: 100%; border-radius: 0; box-shadow: none; }
   #pwd, #login-btn { font-size: 16px; padding: 12px 16px; }
+}
+/* iOS safe area insets */
+.login-wrap {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.login-header {
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+}
+@media (max-width: 767px) {
+  .login-header {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
 }
   </style>
   <script>
