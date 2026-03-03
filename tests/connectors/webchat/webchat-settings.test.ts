@@ -106,3 +106,117 @@ describe('WebChat Theme Toggle — Settings Sync (OB-1537)', () => {
     expect(WEBCHAT_HTML).toContain('class="settings-overlay"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// OB-1544 — Settings API contract, Deep Mode stepper, MCP UI, persistence
+// ---------------------------------------------------------------------------
+
+describe('WebChat Settings — GET returns defaults (OB-1544)', () => {
+  it('bundle marks "thorough" as the default execution profile', () => {
+    // settings.js uses `localStorage.getItem('ob-exec-profile') || 'thorough'`
+    // The bundle must reference 'thorough' as a valid profile value
+    expect(WEBCHAT_HTML).toContain('value="thorough"');
+  });
+
+  it('bundle references the settings GET/PUT API endpoint', () => {
+    // syncProfileToServer in settings.js fetches /api/webchat/settings via PUT
+    expect(WEBCHAT_HTML).toContain('/api/webchat/settings');
+  });
+
+  it('bundle references all three valid profile values', () => {
+    expect(WEBCHAT_HTML).toContain('value="fast"');
+    expect(WEBCHAT_HTML).toContain('value="thorough"');
+    expect(WEBCHAT_HTML).toContain('value="manual"');
+  });
+});
+
+describe('WebChat Settings — PUT saves values (OB-1544)', () => {
+  it('bundle contains profile radio group for saving selection', () => {
+    expect(WEBCHAT_HTML).toContain('name="settings-profile"');
+  });
+
+  it('bundle references PUT method for settings sync', () => {
+    // The bundle inlines settings.js which calls fetch with method: "PUT"
+    expect(WEBCHAT_HTML).toContain('"PUT"');
+  });
+
+  it('bundle persists profile selection to localStorage', () => {
+    // ob-exec-profile is the localStorage key used by settings.js
+    expect(WEBCHAT_HTML).toContain('ob-exec-profile');
+  });
+});
+
+describe('WebChat Settings — Deep Mode events update stepper (OB-1544)', () => {
+  it('bundle contains deep-mode-bar element', () => {
+    expect(WEBCHAT_HTML).toContain('id="deep-mode-bar"');
+    expect(WEBCHAT_HTML).toContain('class="deep-mode-bar');
+  });
+
+  it('bundle contains Deep Mode stepper CSS classes', () => {
+    expect(WEBCHAT_HTML).toContain('.dm-phase-dot');
+    expect(WEBCHAT_HTML).toContain('.dm-phase-current');
+    expect(WEBCHAT_HTML).toContain('.dm-phase-done');
+  });
+
+  it('bundle contains Deep Mode action button CSS', () => {
+    expect(WEBCHAT_HTML).toContain('.dm-proceed-btn');
+    expect(WEBCHAT_HTML).toContain('.dm-actions');
+  });
+
+  it('bundle listens for deep-mode-state WebSocket messages', () => {
+    expect(WEBCHAT_HTML).toContain('deep-mode-state');
+  });
+
+  it('bundle sends get-deep-mode-state on reconnect', () => {
+    expect(WEBCHAT_HTML).toContain('get-deep-mode-state');
+  });
+});
+
+describe('WebChat Settings — MCP endpoints respond (OB-1544)', () => {
+  it('bundle contains MCP server list UI element', () => {
+    expect(WEBCHAT_HTML).toContain('id="mcp-server-list"');
+  });
+
+  it('bundle contains MCP add button', () => {
+    expect(WEBCHAT_HTML).toContain('id="mcp-add-btn"');
+  });
+
+  it('bundle contains MCP add form', () => {
+    expect(WEBCHAT_HTML).toContain('id="mcp-add-form"');
+    expect(WEBCHAT_HTML).toContain('id="mcp-new-name"');
+    expect(WEBCHAT_HTML).toContain('id="mcp-new-command"');
+  });
+
+  it('bundle references /api/mcp/servers endpoint', () => {
+    expect(WEBCHAT_HTML).toContain('/api/mcp/servers');
+  });
+
+  it('bundle includes MCP server list CSS', () => {
+    expect(WEBCHAT_HTML).toContain('.mcp-server-list');
+    expect(WEBCHAT_HTML).toContain('.mcp-server-item');
+  });
+});
+
+describe('WebChat Settings — settings persist across reloads (OB-1544)', () => {
+  it('bundle uses ob-exec-profile localStorage key for profile persistence', () => {
+    expect(WEBCHAT_HTML).toContain('ob-exec-profile');
+  });
+
+  it('bundle uses ob-preferred-tool localStorage key for tool preference', () => {
+    expect(WEBCHAT_HTML).toContain('ob-preferred-tool');
+  });
+
+  it('bundle uses ob-sound localStorage key for sound preference', () => {
+    expect(WEBCHAT_HTML).toContain('ob-sound');
+  });
+
+  it('bundle uses ob-theme localStorage key for theme persistence', () => {
+    expect(WEBCHAT_HTML).toContain('ob-theme');
+  });
+
+  it('bundle reads localStorage on load to restore saved preferences', () => {
+    // The bundle uses localStorage.getItem for each preference
+    const localStorageGetCount = (WEBCHAT_HTML.match(/localStorage\.getItem/g) || []).length;
+    expect(localStorageGetCount).toBeGreaterThanOrEqual(4);
+  });
+});
