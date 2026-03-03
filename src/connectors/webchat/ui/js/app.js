@@ -9,7 +9,7 @@ import { initDashboard, updateDashboard } from './dashboard.js';
 import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
 import { initAutocomplete } from './autocomplete.js';
 import { initSettings, setOnThemeChange, setOnSoundChange } from './settings.js';
-import { initDeepMode, handleDeepPhaseEvent } from './deep-mode.js';
+import { initDeepMode, handleDeepPhaseEvent, restoreDeepModeState, handleDeepModeStateSnapshot } from './deep-mode.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -561,6 +561,9 @@ function handleMessage(data) {
       const label = progressLabel(data.event);
       if (label) showStatus(label);
     }
+  } else if (data.type === 'deep-mode-state') {
+    // Server-sent canonical snapshot of active deep-phase events (sent on connection or by request)
+    handleDeepModeStateSnapshot(data.events);
   } else if (data.type === 'agent-status') {
     updateDashboard(data.agents);
   }
@@ -1145,6 +1148,8 @@ setOnNewConversation(startNewConversation);
 void loadSessions();
 initDashboard();
 initDeepMode(msgs);
+// Immediately restore Deep Mode stepper from sessionStorage (before WS connects)
+restoreDeepModeState();
 initSettings();
 setOnThemeChange(function (theme) {
   // Keep header theme-toggle button label in sync when theme changes via settings
@@ -1158,10 +1163,20 @@ setOnSoundChange(function (enabled) {
   // Play preview tone when unmuting so the user knows it works
   if (!soundMuted) playNotificationSound();
 });
+let _wsConnectCount = 0;
 initWebSocket({
   onOpen: function () {
+    _wsConnectCount++;
     setOnline(true);
     addBubble('Connected to OpenBridge', 'sys');
+    // On reconnect (not first connect), restore local stepper state and request
+    // the server's authoritative snapshot to update any phase that changed while offline.
+    if (_wsConnectCount > 1) {
+      restoreDeepModeState();
+    }
+    // Always request the server's canonical Deep Mode state so the stepper is
+    // accurate after any connection (first load or reconnect).
+    sendMessage({ type: 'get-deep-mode-state' });
   },
   onClose: function () {
     setOnline(false, true);

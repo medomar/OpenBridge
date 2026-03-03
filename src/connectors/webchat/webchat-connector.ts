@@ -159,6 +159,16 @@ export class WebChatConnector implements Connector {
   /** Server-side execution profile preference — synced from client settings panel */
   private webchatSettings: { profile: 'fast' | 'thorough' | 'manual' } = { profile: 'thorough' };
 
+  /**
+   * Per-session deep-phase event cache for reconnect state replay.
+   * Keyed by sessionId; values are the latest event per phase (deduplicated).
+   * Cleared when a session aborts or finishes (with a short delay).
+   */
+  private readonly _deepPhaseCache = new Map<
+    string,
+    Array<Extract<ProgressEvent, { type: 'deep-phase' }>>
+  >();
+
   constructor(options: Record<string, unknown>) {
     this.config = WebChatConfigSchema.parse(options);
   }
@@ -1030,6 +1040,16 @@ export class WebChatConnector implements Connector {
       // the router and Master AI treat subsequent messages as a fresh conversation.
       let socketSender = 'webchat-user';
 
+      // Send any active Deep Mode session state to the newly connected client so
+      // the stepper is immediately correct even after a page refresh or reconnect.
+      const cachedEvents: Array<Extract<ProgressEvent, { type: 'deep-phase' }>> = [];
+      for (const sessionEvents of this._deepPhaseCache.values()) {
+        cachedEvents.push(...sessionEvents);
+      }
+      if (cachedEvents.length > 0 && socket.readyState === WS_OPEN) {
+        socket.send(JSON.stringify({ type: 'deep-mode-state', events: cachedEvents }));
+      }
+
       socket.on('message', (raw: Buffer | string) => {
         let payload: { type: string; content?: string; workerId?: string };
         try {
@@ -1080,6 +1100,15 @@ export class WebChatConnector implements Connector {
           // Rotate the per-socket sender so the Master AI starts a fresh conversation.
           socketSender = `webchat-user-${randomUUID()}`;
           logger.debug({ sender: socketSender }, 'WebChat new session started');
+        } else if (payload.type === 'get-deep-mode-state') {
+          // Client requests current Deep Mode snapshot (e.g. after reconnect)
+          const events: Array<Extract<ProgressEvent, { type: 'deep-phase' }>> = [];
+          for (const sessionEvents of this._deepPhaseCache.values()) {
+            events.push(...sessionEvents);
+          }
+          if (socket.readyState === WS_OPEN) {
+            socket.send(JSON.stringify({ type: 'deep-mode-state', events }));
+          }
         }
       });
 
@@ -1194,6 +1223,30 @@ export class WebChatConnector implements Connector {
 
   sendProgress(event: ProgressEvent, _chatId: string): Promise<void> {
     if (!this.connected) return Promise.resolve();
+
+    // Cache deep-phase events so newly connected clients can restore stepper state
+    if (event.type === 'deep-phase') {
+      const sessionEvents = this._deepPhaseCache.get(event.sessionId) ?? [];
+      const existingIdx = sessionEvents.findIndex((e) => e.phase === event.phase);
+      if (existingIdx >= 0) {
+        sessionEvents[existingIdx] = event;
+      } else {
+        sessionEvents.push(event);
+      }
+      this._deepPhaseCache.set(event.sessionId, sessionEvents);
+
+      // Remove session from cache when it is fully done
+      if (
+        event.status === 'aborted' ||
+        (event.phase === 'verify' && (event.status === 'completed' || event.status === 'skipped'))
+      ) {
+        // Delay removal so a client that reconnects moments after completion still gets the state
+        setTimeout(() => {
+          this._deepPhaseCache.delete(event.sessionId);
+        }, 30_000);
+      }
+    }
+
     const payload = JSON.stringify({ type: 'progress', event });
     for (const client of this.clients) {
       if (client.readyState === WS_OPEN) {
