@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createLogger } from './logger.js';
+import { type TunnelManager } from './tunnel-manager.js';
 
 const logger = createLogger('app-server');
 
@@ -30,6 +31,12 @@ interface AppServerOptions {
   portStart?: number;
   portEnd?: number;
   idleTimeoutMs?: number;
+  /**
+   * Factory that creates a fresh TunnelManager for each app that starts.
+   * If provided, a tunnel is created for each app port and the public URL
+   * is stored in AppInstance.publicUrl. The tunnel is stopped when the app stops.
+   */
+  tunnelFactory?: () => TunnelManager;
 }
 
 const DEFAULT_BASE_URL = 'http://localhost';
@@ -47,6 +54,7 @@ interface AppRuntime {
   scaffold: AppScaffold;
   lastRequestAt: number;
   idleTimer: ReturnType<typeof setTimeout> | null;
+  tunnelManager: TunnelManager | null;
 }
 
 export class AppServer {
@@ -56,12 +64,14 @@ export class AppServer {
   private readonly portStart: number;
   private readonly portEnd: number;
   private readonly usedPorts = new Set<number>();
+  private readonly tunnelFactory: (() => TunnelManager) | null;
 
   constructor(options: AppServerOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.portStart = options.portStart ?? DEFAULT_PORT_START;
     this.portEnd = options.portEnd ?? DEFAULT_PORT_END;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.tunnelFactory = options.tunnelFactory ?? null;
   }
 
   /**
@@ -139,6 +149,7 @@ export class AppServer {
       scaffold,
       lastRequestAt: Date.now(),
       idleTimer: null,
+      tunnelManager: null,
     };
 
     this.apps.set(id, runtime);
@@ -160,8 +171,23 @@ export class AppServer {
       throw error;
     }
 
+    if (this.tunnelFactory) {
+      const tm = this.tunnelFactory();
+      try {
+        const publicUrl = await tm.start(port);
+        instance.publicUrl = publicUrl;
+        runtime.tunnelManager = tm;
+        logger.info({ id, port, publicUrl }, 'App tunnel created');
+      } catch (err) {
+        logger.warn(
+          { id, port, err },
+          'Failed to create tunnel for app — continuing without tunnel',
+        );
+      }
+    }
+
     this.scheduleIdleTimeout(id);
-    logger.info({ id, port, appPath }, 'App started');
+    logger.info({ id, port, appPath, publicUrl: instance.publicUrl }, 'App started');
     return instance;
   }
 
@@ -177,6 +203,12 @@ export class AppServer {
 
     if (!runtime.process.killed) {
       runtime.process.kill('SIGTERM');
+    }
+
+    if (runtime.tunnelManager) {
+      runtime.tunnelManager.stop();
+      runtime.tunnelManager = null;
+      logger.info({ id: appId, port: runtime.instance.port }, 'App tunnel stopped');
     }
 
     this.usedPorts.delete(runtime.instance.port);
