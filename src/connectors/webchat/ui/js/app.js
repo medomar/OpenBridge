@@ -358,6 +358,7 @@ function handleMessage(data) {
     addBubble(data.content, 'ai', data.timestamp ? new Date(data.timestamp) : new Date());
     incrementUnread();
     showTaskNotification(data.content);
+    playNotificationSound();
   } else if (data.type === 'download') {
     hideStatus();
     const tsDate = data.timestamp ? new Date(data.timestamp) : new Date();
@@ -493,6 +494,60 @@ function showTaskNotification(content) {
       Notification.requestPermission();
     }, 3000);
   }
+})();
+
+// --- Sound Notifications ---
+
+let soundMuted = localStorage.getItem('ob-sound') === 'false';
+let audioCtx = null;
+
+function getAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+function playNotificationSound() {
+  if (soundMuted) return;
+  if (!window.AudioContext && !window.webkitAudioContext) return;
+  try {
+    const ctx = getAudioContext();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.25);
+  } catch (_) {
+    // Web Audio API unavailable or blocked — non-critical
+  }
+}
+
+function applySoundToggle() {
+  const btn = document.getElementById('sound-toggle');
+  if (!btn) return;
+  btn.textContent = soundMuted ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+  btn.setAttribute('aria-label', soundMuted ? 'Unmute notifications' : 'Mute notifications');
+  btn.setAttribute('aria-pressed', soundMuted ? 'true' : 'false');
+}
+
+(function initSoundToggle() {
+  applySoundToggle();
+  const btn = document.getElementById('sound-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    soundMuted = !soundMuted;
+    localStorage.setItem('ob-sound', soundMuted ? 'false' : 'true');
+    applySoundToggle();
+    // Play a preview tone when unmuting so the user knows it works
+    if (!soundMuted) playNotificationSound();
+  });
 })();
 
 // --- Service Worker Registration ---
