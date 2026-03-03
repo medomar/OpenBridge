@@ -119,6 +119,11 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const powerfulModel = context.modelRegistry?.resolve('powerful')?.id ?? 'opus';
 
   const appServerSection = formatAppServerSection(context.workspacePath, fastModel, balancedModel);
+  const smartOutputRouterSection = formatSmartOutputRouterSection(
+    context.workspacePath,
+    fastModel,
+    balancedModel,
+  );
 
   // Only document mcpServers SPAWN field when servers are actually configured
   const mcpSpawnField =
@@ -536,6 +541,7 @@ Instruct workers to write generated files to \`.openbridge/generated/\` (created
 - Cleaned up by the system based on TTL rules
 ${fileServerSection}
 ${appServerSection}
+${smartOutputRouterSection}
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
@@ -868,6 +874,78 @@ function formatMcpServersSection(servers?: MCPServer[]): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+function formatSmartOutputRouterSection(
+  workspacePath: string,
+  fastModel: string,
+  balancedModel: string,
+): string {
+  return [
+    '## Smart Output Router',
+    '',
+    'Before generating any output, classify the request to pick the right format and delivery path.',
+    'This prevents creating static files when an interactive app is needed, and avoids spawning an',
+    'app when a simple inline response would do.',
+    '',
+    '### Output Classification',
+    '',
+    '| Request type | Output format | Delivery |',
+    '| --- | --- | --- |',
+    '| Raw data, records, structured export | `.json` file | SHARE:whatsapp or SHARE:telegram |',
+    '| Chart, graph, or data visualisation | HTML + Chart.js / D3 | APP:start (interactive) or SHARE:github-pages |',
+    '| Document, report, or printable output | HTML + print CSS | SHARE:github-pages or SHARE:whatsapp |',
+    '| Interactive form, wizard, live dashboard | HTML + `openbridge-client.js` | APP:start (relay required) |',
+    '| Short summary (< 1 KB text) | Inline in response | None — embed directly |',
+    '',
+    '### When to Use `openbridge-client.js`',
+    '',
+    'Use the Interaction Relay SDK (`openbridge-client.js`) **only when the app needs to send data back**',
+    'to the Master AI or receive live updates from it. Examples:',
+    '',
+    '- A form that submits user input for AI processing',
+    '- A dashboard that fetches a fresh analysis on user request',
+    '- An interactive wizard that sends step-by-step answers to the Master',
+    '- Any app displaying AI-generated content that changes over time',
+    '',
+    'Static outputs (charts with fixed data, printable reports, file downloads) do **not** need',
+    '`openbridge-client.js`. Prefer static HTML unless two-way communication is required.',
+    '',
+    '### Example — Data Export (JSON)',
+    '',
+    '```',
+    `[SPAWN:read-only]{"prompt":"Export all orders from the last 30 days to ${workspacePath}/.openbridge/generated/orders.json as a JSON array.","model":"${fastModel}","maxTurns":10}[/SPAWN]`,
+    '',
+    `[SHARE:whatsapp]{"path":"${workspacePath}/.openbridge/generated/orders.json"}[/SHARE]`,
+    '```',
+    '',
+    '### Example — Data Visualisation (static chart)',
+    '',
+    '```',
+    `[SPAWN:code-edit]{"prompt":"Create a static chart app in ${workspacePath}/.openbridge/generated/apps/sales-chart/. index.html: render a bar chart of monthly sales using Chart.js from CDN. Pure HTML/JS — no relay needed.","model":"${fastModel}","maxTurns":10}[/SPAWN]`,
+    '',
+    `[APP:start]${workspacePath}/.openbridge/generated/apps/sales-chart[/APP]`,
+    '```',
+    '',
+    '### Example — Printable Report (HTML with print CSS)',
+    '',
+    '```',
+    `[SPAWN:code-edit]{"prompt":"Create an HTML report in ${workspacePath}/.openbridge/generated/report.html. Include executive summary, findings table, and recommendations. Add @media print CSS so it prints cleanly. No JavaScript required.","model":"${balancedModel}","maxTurns":10}[/SPAWN]`,
+    '',
+    `[SHARE:github-pages]{"path":"${workspacePath}/.openbridge/generated/report.html"}[/SHARE]`,
+    '```',
+    '',
+    '### Example — Interactive Tool (with relay)',
+    '',
+    '```',
+    `[SPAWN:code-edit]{"prompt":"Create a feedback form app in ${workspacePath}/.openbridge/generated/apps/feedback/. index.html: HTML form with name, message, type fields. Include <script src=\\"/openbridge-client.js\\"></script>. On submit, call openbridge.submit({name, message, type}) and show \\"Sent to AI!\\". No backend needed — relay handles delivery.","model":"${fastModel}","maxTurns":10}[/SPAWN]`,
+    '',
+    `[APP:start]${workspacePath}/.openbridge/generated/apps/feedback[/APP]`,
+    '```',
+    '',
+    '> **Rule:** `openbridge-client.js` + `APP:start` for two-way apps. `SHARE:github-pages` for static reports. `SHARE:whatsapp` / `SHARE:telegram` for file downloads. Inline text for short answers.',
+    '',
+  ].join('\n');
 }
 
 function formatDiscoveredTools(tools: DiscoveredTool[]): string {
