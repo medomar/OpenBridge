@@ -79,40 +79,46 @@ export class SecretScanner {
 }
 
 /**
- * Match a filename against a simple glob-style pattern.
- * Supports leading '*' (prefix wildcard) and trailing '*' (suffix wildcard).
+ * Match a filename against a glob-style pattern.
+ * Supports '*' wildcards anywhere in the pattern (any number of them).
  * A plain string pattern is an exact match against the basename.
+ * Matching is case-insensitive.
  */
 function matchesPattern(basename: string, pattern: string): boolean {
   const lower = basename.toLowerCase();
   const pat = pattern.toLowerCase();
 
-  const startsWild = pat.startsWith('*');
-  const endsWild = pat.endsWith('*');
+  // Convert glob pattern to a regex: escape regex specials, then replace '*' with '.*'
+  const regexStr = pat
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape regex special chars (preserves *)
+    .replace(/\*/g, '.*'); // glob '*' → regex '.*'
 
-  if (startsWild && endsWild) {
-    // *foo* — basename must contain the middle segment
-    const middle = pat.slice(1, -1);
-    return lower.includes(middle);
-  }
-  if (startsWild) {
-    // *foo — basename must end with suffix
-    return lower.endsWith(pat.slice(1));
-  }
-  if (endsWild) {
-    // foo* — basename must start with prefix
-    return lower.startsWith(pat.slice(0, -1));
-  }
-  // Exact match (case-insensitive)
-  return lower === pat;
+  return new RegExp(`^${regexStr}$`).test(lower);
 }
 
 /**
  * Default sensitive file patterns.
- * Extended in OB-1468 with the full set of credentials, certificates, and key files.
+ * Severity tiers:
+ *   critical — private keys, certificates, keystores (exposure = immediate compromise)
+ *   high     — credential files, password databases, environment secrets
+ *   medium   — config files that may contain secrets
  */
 export const SENSITIVE_PATTERNS: SensitivePattern[] = [
-  // Environment files
+  // --- Environment files (high) ---
   { pattern: '.env', severity: 'high' },
   { pattern: '.env.*', severity: 'high' },
+
+  // --- Private keys and certificates (critical) ---
+  { pattern: '*.pem', severity: 'critical' },
+  { pattern: '*.key', severity: 'critical' },
+  { pattern: '*.p12', severity: 'critical' },
+  { pattern: '*.pfx', severity: 'critical' },
+  { pattern: 'id*rsa*', severity: 'critical' }, // SSH RSA keys (id_rsa, id_rsa.pub, etc.)
+  { pattern: 'id_ed25519*', severity: 'critical' }, // SSH Ed25519 keys
+  { pattern: '*.jks', severity: 'critical' }, // Java KeyStore
+
+  // --- Credential and secret files (high) ---
+  { pattern: 'service-account*.json', severity: 'high' }, // GCP service accounts
+  { pattern: 'credentials*.json', severity: 'high' }, // OAuth / API credentials
+  { pattern: '*.kdbx', severity: 'high' }, // KeePass password database
 ];
