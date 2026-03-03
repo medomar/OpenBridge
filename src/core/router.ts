@@ -48,6 +48,9 @@ const APP_START_MARKER_RE = /\[APP:start\]([^[]*)\[\/APP\]/g;
 /** Pattern matching [APP:stop]appId[/APP] markers in AI output */
 const APP_STOP_MARKER_RE = /\[APP:stop\]([^[]*)\[\/APP\]/g;
 
+/** Pattern matching [APP:update:appId]jsonData[/APP] markers in AI output */
+const APP_UPDATE_MARKER_RE = /\[APP:update:([^\]]+)\]([^[]*)\[\/APP\]/g;
+
 /** Format a millisecond duration as a human-readable string (e.g. "2h 14m", "45s"). */
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -1387,61 +1390,102 @@ export class Router {
   }
 
   /**
-   * Parse [APP:start]appPath[/APP] and [APP:stop]appId[/APP] markers from AI output.
+   * Parse [APP:start]appPath[/APP], [APP:stop]appId[/APP], and
+   * [APP:update:appId]jsonData[/APP] markers from AI output.
    *
    * - [APP:start]appPath[/APP]: starts an app via AppServer.startApp(). The marker is
    *   replaced with the app URL (public URL if tunnel is active, otherwise local URL).
    * - [APP:stop]appId[/APP]: stops an app via AppServer.stopApp(). The marker is stripped.
+   * - [APP:update:appId]jsonData[/APP]: sends data to a connected app via InteractionRelay.
+   *   The jsonData body is parsed as JSON (falls back to raw string). The marker is stripped.
    *
-   * If no AppServer is configured, markers are stripped silently.
+   * APP:start and APP:stop require an AppServer. APP:update requires an InteractionRelay.
+   * Markers for unconfigured components are stripped silently.
    */
   private async processAppMarkers(content: string): Promise<string> {
-    if (!this.appServer) return content;
+    if (!this.appServer && !this.relay) return content;
 
     let cleaned = content;
 
     // Handle APP:start markers — replace each marker with the app URL
-    const startRegex = new RegExp(APP_START_MARKER_RE.source, 'g');
-    let match: RegExpExecArray | null;
-    while ((match = startRegex.exec(content)) !== null) {
-      const fullMatch = match[0];
-      const appPath = (match[1] ?? '').trim();
+    if (this.appServer) {
+      const startRegex = new RegExp(APP_START_MARKER_RE.source, 'g');
+      let match: RegExpExecArray | null;
+      while ((match = startRegex.exec(content)) !== null) {
+        const fullMatch = match[0];
+        const appPath = (match[1] ?? '').trim();
 
-      if (!appPath) {
-        cleaned = cleaned.replace(fullMatch, '');
-        continue;
-      }
+        if (!appPath) {
+          cleaned = cleaned.replace(fullMatch, '');
+          continue;
+        }
 
-      try {
-        const instance = await this.appServer.startApp(appPath);
-        const url = instance.publicUrl ?? instance.url;
-        cleaned = cleaned.replace(fullMatch, `App started at ${url}`);
-        logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
-      } catch (err) {
-        logger.warn({ appPath, err }, 'APP:start marker: failed to start app');
-        cleaned = cleaned.replace(fullMatch, `Failed to start app at ${appPath}`);
+        try {
+          const instance = await this.appServer.startApp(appPath);
+          const url = instance.publicUrl ?? instance.url;
+          cleaned = cleaned.replace(fullMatch, `App started at ${url}`);
+          logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+        } catch (err) {
+          logger.warn({ appPath, err }, 'APP:start marker: failed to start app');
+          cleaned = cleaned.replace(fullMatch, `Failed to start app at ${appPath}`);
+        }
       }
     }
 
     // Handle APP:stop markers — strip each marker after stopping the app
-    const stopRegex = new RegExp(APP_STOP_MARKER_RE.source, 'g');
-    let stopMatch: RegExpExecArray | null;
-    while ((stopMatch = stopRegex.exec(cleaned)) !== null) {
-      const fullMatch = stopMatch[0];
-      const appId = (stopMatch[1] ?? '').trim();
+    if (this.appServer) {
+      const stopRegex = new RegExp(APP_STOP_MARKER_RE.source, 'g');
+      let stopMatch: RegExpExecArray | null;
+      while ((stopMatch = stopRegex.exec(cleaned)) !== null) {
+        const fullMatch = stopMatch[0];
+        const appId = (stopMatch[1] ?? '').trim();
+
+        if (appId) {
+          try {
+            this.appServer.stopApp(appId);
+            logger.info({ appId }, 'APP:stop marker processed');
+          } catch (err) {
+            logger.warn({ appId, err }, 'APP:stop marker: failed to stop app');
+          }
+        }
+
+        cleaned = cleaned.replace(fullMatch, '');
+        // Reset regex index after replacement to avoid skipping matches
+        stopRegex.lastIndex = 0;
+      }
+    }
+
+    // Handle APP:update markers — send JSON data to a connected app via InteractionRelay
+    const updateRegex = new RegExp(APP_UPDATE_MARKER_RE.source, 'g');
+    let updateMatch: RegExpExecArray | null;
+    while ((updateMatch = updateRegex.exec(cleaned)) !== null) {
+      const fullMatch = updateMatch[0];
+      const appId = (updateMatch[1] ?? '').trim();
+      const rawData = (updateMatch[2] ?? '').trim();
 
       if (appId) {
+        let parsedData: unknown;
         try {
-          this.appServer.stopApp(appId);
-          logger.info({ appId }, 'APP:stop marker processed');
-        } catch (err) {
-          logger.warn({ appId, err }, 'APP:stop marker: failed to stop app');
+          parsedData = JSON.parse(rawData);
+        } catch {
+          parsedData = rawData;
+        }
+
+        if (this.relay) {
+          const sent = this.relay.sendToApp(appId, 'update', parsedData);
+          if (sent) {
+            logger.info({ appId }, 'APP:update marker processed — data sent to app');
+          } else {
+            logger.warn({ appId }, 'APP:update marker: app not connected, data not delivered');
+          }
+        } else {
+          logger.warn({ appId }, 'APP:update marker: no InteractionRelay configured');
         }
       }
 
       cleaned = cleaned.replace(fullMatch, '');
       // Reset regex index after replacement to avoid skipping matches
-      stopRegex.lastIndex = 0;
+      updateRegex.lastIndex = 0;
     }
 
     return cleaned.trim();
