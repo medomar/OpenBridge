@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+/**
+ * Schema for validating the PUT /api/webchat/settings request body.
+ */
+export const WebchatSettingsPutSchema = z.object({
+  profile: z.enum(['fast', 'thorough', 'manual']),
+});
+
+export type WebchatSettingsPut = z.infer<typeof WebchatSettingsPutSchema>;
+
 export const WebChatConfigSchema = z.object({
   /** TCP port the HTTP + WebSocket server listens on */
   port: z.number().int().positive().default(3000),

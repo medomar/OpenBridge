@@ -5,7 +5,7 @@ import { networkInterfaces, tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
-import { WebChatConfigSchema } from './webchat-config.js';
+import { WebChatConfigSchema, WebchatSettingsPutSchema } from './webchat-config.js';
 import type { WebChatConfig } from './webchat-config.js';
 import { createLogger } from '../../core/logger.js';
 import { getQrCode } from '../../core/qr-store.js';
@@ -924,26 +924,40 @@ export class WebChatConnector implements Connector {
           if (body.length > 1024) req.destroy();
         });
         req.on('end', () => {
-          let parsed: { profile?: unknown };
+          let parsed: unknown;
           try {
-            parsed = JSON.parse(body) as { profile?: unknown };
+            parsed = JSON.parse(body);
           } catch {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Invalid JSON body' }));
             return;
           }
-          const validProfiles = ['fast', 'thorough', 'manual'] as const;
-          const profile = parsed.profile;
-          if (
-            typeof profile !== 'string' ||
-            !(validProfiles as readonly string[]).includes(profile)
-          ) {
+          const validated = WebchatSettingsPutSchema.safeParse(parsed);
+          if (!validated.success) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'profile must be "fast", "thorough", or "manual"' }));
+            const msg = validated.error.errors[0]?.message ?? 'Invalid request body';
+            res.end(JSON.stringify({ error: msg }));
             return;
           }
-          this.webchatSettings.profile = profile as 'fast' | 'thorough' | 'manual';
+          const { profile } = validated.data;
+          this.webchatSettings.profile = profile;
           logger.debug({ profile }, 'WebChat: execution profile updated');
+          // Optional: persist to access-store (fire-and-forget, non-fatal on failure)
+          if (this.memory) {
+            void (async (): Promise<void> => {
+              try {
+                const existing = await this.memory!.getAccess('webchat-user', 'webchat');
+                await this.memory!.setAccess({
+                  user_id: 'webchat-user',
+                  channel: 'webchat',
+                  role: existing?.role ?? 'viewer',
+                  executionProfile: profile,
+                });
+              } catch (err) {
+                logger.debug({ err }, 'WebChat: settings access-store persist failed (non-fatal)');
+              }
+            })();
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, profile: this.webchatSettings.profile }));
         });
