@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
 import { WebChatConfigSchema } from './webchat-config.js';
@@ -634,6 +635,22 @@ export class WebChatConnector implements Connector {
       server.listen(this.config.port, this.config.host, () => {
         this.connected = true;
         logger.info({ port: this.config.port, host: this.config.host }, 'WebChat connector ready');
+
+        // Display LAN access URLs when binding to all interfaces
+        if (this.config.host === '0.0.0.0') {
+          const lanIps = this.getLanIps();
+          if (lanIps.length > 0) {
+            for (const ip of lanIps) {
+              const suffix = this.authToken ? `/?token=${this.authToken}` : '/';
+              const lanUrl = `http://${ip}:${this.config.port}${suffix}`;
+              console.log(`  WebChat LAN URL: ${lanUrl}`);
+              logger.info({ url: lanUrl }, 'WebChat LAN URL');
+            }
+          } else {
+            logger.warn('WebChat: no LAN interfaces detected');
+          }
+        }
+
         this.emit('ready');
         resolve();
       });
@@ -753,6 +770,21 @@ export class WebChatConnector implements Connector {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /** Returns a list of non-internal IPv4 addresses for LAN URL display. */
+  private getLanIps(): string[] {
+    const nets = networkInterfaces();
+    const results: string[] = [];
+    for (const ifaces of Object.values(nets)) {
+      if (!ifaces) continue;
+      for (const net of ifaces) {
+        if (net.family === 'IPv4' && !net.internal) {
+          results.push(net.address);
+        }
+      }
+    }
+    return results;
   }
 
   private emit<E extends keyof ConnectorEvents>(
