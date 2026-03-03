@@ -2179,3 +2179,198 @@ body {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* MCP Server panel */
+.settings-mcp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-mcp-header .settings-label {
+  margin-bottom: 0;
+}
+
+.mcp-add-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+
+.mcp-add-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mcp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.settings-input:focus {
+  border-color: var(--accent);
+}
+
+.mcp-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mcp-btn-primary {
+  padding: 5px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mcp-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.mcp-btn-secondary {
+  padding: 5px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.mcp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.mcp-server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-muted);
+}
+
+.mcp-server-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mcp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mcp-status-healthy { background: #34a853; }
+.mcp-status-error   { background: #ea4335; }
+.mcp-status-unknown { background: #9aa0a6; }
+
+.mcp-server-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-server-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mcp-toggle {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.mcp-toggle-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.mcp-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-input);
+  border-radius: 9px;
+  transition: background 0.2s;
+}
+
+.mcp-toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.mcp-toggle-input:checked + .mcp-toggle-slider {
+  background: var(--accent);
+}
+
+.mcp-toggle-input:checked + .mcp-toggle-slider::before {
+  transform: translateX(14px);
+}
+
+.mcp-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.mcp-remove-btn:hover {
+  color: #ea4335;
+  background: rgba(234, 67, 53, 0.08);
+}

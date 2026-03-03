@@ -173,6 +173,113 @@ function initThemeSelector() {
   });
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Load and render the MCP server list from /api/mcp/servers.
+ */
+function loadMcpServers() {
+  const list = document.getElementById('mcp-server-list');
+  if (!list) return;
+  fetch('/api/mcp/servers')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !Array.isArray(data.servers)) return;
+      list.innerHTML = '';
+      if (data.servers.length === 0) {
+        list.innerHTML = '<p class="settings-hint">No MCP servers configured.</p>';
+        return;
+      }
+      for (const server of data.servers) {
+        const item = document.createElement('div');
+        item.className = 'mcp-server-item';
+        const statusClass = server.status === 'healthy' ? 'mcp-status-healthy'
+          : server.status === 'error' ? 'mcp-status-error' : 'mcp-status-unknown';
+        const toggleChecked = server.enabled ? 'checked' : '';
+        item.innerHTML =
+          '<div class="mcp-server-info">'
+          + '<span class="mcp-status-dot ' + statusClass + '" aria-hidden="true"></span>'
+          + '<span class="mcp-server-name">' + escapeHtml(server.name) + '</span>'
+          + '</div>'
+          + '<div class="mcp-server-actions">'
+          + '<label class="mcp-toggle" aria-label="Enable ' + escapeHtml(server.name) + '">'
+          + '<input type="checkbox" class="mcp-toggle-input" ' + toggleChecked + ' data-name="' + escapeHtml(server.name) + '" />'
+          + '<span class="mcp-toggle-slider"></span>'
+          + '</label>'
+          + '<button class="mcp-remove-btn" data-name="' + escapeHtml(server.name) + '" aria-label="Remove ' + escapeHtml(server.name) + '">\u2715</button>'
+          + '</div>';
+        list.appendChild(item);
+      }
+      list.querySelectorAll('.mcp-toggle-input').forEach(function (input) {
+        input.addEventListener('change', function () {
+          const name = input.getAttribute('data-name');
+          fetch('/api/mcp/servers/' + encodeURIComponent(name) + '/toggle', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: input.checked }),
+          }).catch(function () {});
+        });
+      });
+      list.querySelectorAll('.mcp-remove-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const name = btn.getAttribute('data-name');
+          if (!confirm('Remove MCP server "' + name + '"?')) return;
+          fetch('/api/mcp/servers/' + encodeURIComponent(name), { method: 'DELETE' })
+            .then(function (r) { if (r.ok) loadMcpServers(); })
+            .catch(function () {});
+        });
+      });
+    })
+    .catch(function () {});
+}
+
+function initMcpPanel() {
+  const addBtn = document.getElementById('mcp-add-btn');
+  const form = document.getElementById('mcp-add-form');
+  const submitBtn = document.getElementById('mcp-add-submit');
+  const cancelBtn = document.getElementById('mcp-add-cancel');
+  if (!addBtn || !form) return;
+
+  addBtn.addEventListener('click', function () {
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  });
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function () {
+      form.style.display = 'none';
+    });
+  }
+  if (submitBtn) {
+    submitBtn.addEventListener('click', function () {
+      const nameInput = document.getElementById('mcp-new-name');
+      const cmdInput = document.getElementById('mcp-new-command');
+      if (!nameInput || !cmdInput) return;
+      const name = nameInput.value.trim();
+      const command = cmdInput.value.trim();
+      if (!name || !command) return;
+      fetch('/api/mcp/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, command }),
+      })
+        .then(function (r) {
+          if (r.ok) {
+            form.style.display = 'none';
+            nameInput.value = '';
+            cmdInput.value = '';
+            loadMcpServers();
+          }
+        })
+        .catch(function () {});
+    });
+  }
+}
+
 /**
  * Initialize the settings panel. Must be called after DOM is ready.
  */
@@ -190,6 +297,7 @@ export function initSettings() {
       closeSettings();
     } else {
       loadDiscoveredTools();
+      loadMcpServers();
       openSettings();
     }
   });
@@ -214,6 +322,7 @@ export function initSettings() {
   initExecutionProfile();
   initNotifications();
   initThemeSelector();
+  initMcpPanel();
 }
 
 /**

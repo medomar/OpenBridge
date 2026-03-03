@@ -13,6 +13,8 @@ import type { ActivityRecord } from '../../memory/activity-store.js';
 import type { AccessControlEntry } from '../../memory/access-store.js';
 import type { MemoryManager } from '../../memory/index.js';
 import type { DiscoveredTool } from '../../types/discovery.js';
+import type { McpRegistry } from '../../core/mcp-registry.js';
+import type { MCPServer } from '../../types/config.js';
 import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML, WEBCHAT_SW_JS } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
@@ -146,6 +148,7 @@ export class WebChatConnector implements Connector {
   };
   private memory: MemoryManager | null = null;
   private discoveredTools: DiscoveredTool[] = [];
+  private mcpRegistry: McpRegistry | null = null;
   private authToken: string | null = null;
   private storeDir: string = process.cwd();
   /** bcrypt hash of the configured password, or null when token auth is active */
@@ -181,6 +184,11 @@ export class WebChatConnector implements Connector {
   /** Wire discovered AI tools — enables the /api/discovery REST endpoint. */
   setDiscoveryResult(tools: DiscoveredTool[]): void {
     this.discoveredTools = tools;
+  }
+
+  /** Wire the MCP registry — enables the /api/mcp/servers REST endpoints. */
+  setMcpRegistry(registry: McpRegistry): void {
+    this.mcpRegistry = registry;
   }
 
   /**
@@ -916,6 +924,118 @@ export class WebChatConnector implements Connector {
           'Cache-Control': 'public, max-age=300',
         });
         res.end(JSON.stringify({ tools }));
+        return;
+      }
+
+      // /api/mcp/servers — GET list of MCP servers
+      if (url === '/api/mcp/servers' && req.method === 'GET') {
+        if (!this.mcpRegistry) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ servers: this.mcpRegistry.listServers() }));
+        return;
+      }
+
+      // /api/mcp/servers — POST add a new MCP server
+      if (url === '/api/mcp/servers' && req.method === 'POST') {
+        if (!this.mcpRegistry) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 4096) req.destroy();
+        });
+        req.on('end', () => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            return;
+          }
+          const server = parsed as MCPServer;
+          if (typeof server.name !== 'string' || typeof server.command !== 'string') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'name and command are required' }));
+            return;
+          }
+          try {
+            this.mcpRegistry!.addServer(server);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+          } catch (err) {
+            res.writeHead(409, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: (err as Error).message }));
+          }
+        });
+        return;
+      }
+
+      // /api/mcp/servers/:name — DELETE remove an MCP server
+      const mcpDeleteMatch = url.match(/^\/api\/mcp\/servers\/([^/?#]+)$/);
+      if (mcpDeleteMatch && req.method === 'DELETE') {
+        if (!this.mcpRegistry) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        const name = decodeURIComponent(mcpDeleteMatch[1]!);
+        try {
+          this.mcpRegistry.removeServer(name);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
+        return;
+      }
+
+      // /api/mcp/servers/:name/toggle — PUT enable/disable an MCP server
+      const mcpToggleMatch = url.match(/^\/api\/mcp\/servers\/([^/?#]+)\/toggle$/);
+      if (mcpToggleMatch && req.method === 'PUT') {
+        if (!this.mcpRegistry) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'MCP registry not available' }));
+          return;
+        }
+        const name = decodeURIComponent(mcpToggleMatch[1]!);
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 256) req.destroy();
+        });
+        req.on('end', () => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            return;
+          }
+          const { enabled } = parsed as { enabled?: boolean };
+          if (typeof enabled !== 'boolean') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'enabled (boolean) is required' }));
+            return;
+          }
+          try {
+            this.mcpRegistry!.toggleServer(name, enabled);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+          } catch (err) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: (err as Error).message }));
+          }
+        });
         return;
       }
 
