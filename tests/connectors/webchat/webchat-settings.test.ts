@@ -60,6 +60,40 @@ describe('WebChat Settings Panel (OB-1533)', () => {
     expect(WEBCHAT_HTML).toContain('value="light"');
     expect(WEBCHAT_HTML).toContain('value="dark"');
   });
+});
+
+describe('WebChat Theme Toggle — Settings Sync (OB-1537)', () => {
+  it('contains header theme-toggle button', () => {
+    expect(WEBCHAT_HTML).toContain('id="theme-toggle"');
+    expect(WEBCHAT_HTML).toContain('Toggle dark mode');
+  });
+
+  it('contains settings theme select with light and dark options', () => {
+    expect(WEBCHAT_HTML).toContain('id="settings-theme-select"');
+    expect(WEBCHAT_HTML).toContain('value="light"');
+    expect(WEBCHAT_HTML).toContain('value="dark"');
+  });
+
+  it('persists theme to localStorage via ob-theme key', () => {
+    // Bundle must reference the localStorage key used for theme persistence
+    expect(WEBCHAT_HTML).toContain('ob-theme');
+  });
+
+  it('header toggle and settings select reference the same data-theme attribute', () => {
+    expect(WEBCHAT_HTML).toContain('data-theme');
+    // Both header toggle and settings should use the shared data-theme attribute
+    const dataThemeCount = (WEBCHAT_HTML.match(/data-theme/g) || []).length;
+    expect(dataThemeCount).toBeGreaterThan(1);
+  });
+
+  it('settings-theme-select is grouped inside the settings panel', () => {
+    const panelStart = WEBCHAT_HTML.indexOf('id="settings-panel"');
+    const panelEnd = WEBCHAT_HTML.indexOf('</aside>', panelStart);
+    expect(panelStart).toBeGreaterThan(-1);
+    expect(panelEnd).toBeGreaterThan(panelStart);
+    const panelContent = WEBCHAT_HTML.slice(panelStart, panelEnd);
+    expect(panelContent).toContain('id="settings-theme-select"');
+  });
 
   it('contains settings panel CSS', () => {
     expect(WEBCHAT_HTML).toContain('.settings-panel');

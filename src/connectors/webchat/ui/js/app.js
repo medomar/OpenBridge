@@ -162,7 +162,11 @@ function applyTsVisibility() {
 
   btn.addEventListener('click', function () {
     const current = document.documentElement.getAttribute('data-theme');
-    applyTheme(current === 'dark' ? 'light' : 'dark');
+    const next = current === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    // Keep settings panel theme select in sync
+    const settingsSelect = document.getElementById('settings-theme-select');
+    if (settingsSelect) settingsSelect.value = next;
   });
 })();
 
