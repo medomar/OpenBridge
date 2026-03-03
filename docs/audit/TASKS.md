@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 139 | **In Progress:** 0 | **Done:** 75 (112 archived)
+> **Pending:** 138 | **In Progress:** 0 | **Done:** 76 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -42,7 +42,7 @@
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
-| 87     | Document Visibility Controls         | 14    | ◻ (4/14 done)   |
+| 87     | Document Visibility Controls         | 14    | ◻ (5/14 done)   |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
 | 89     | WebChat Authentication               | 12    | ◻               |
 | 90     | Phone Access + Mobile PWA            | 15    | ◻               |
@@ -238,7 +238,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 2   | OB-1463 | Add DEFAULT*EXCLUDE_PATTERNS to `src/types/config.ts` — .env, .env.*, _.pem, _.key, _.p12, _.pfx, credentials.\_, secrets/, id_rsa*, id_ed25519*, \*.sqlite, .git/objects/, node_modules/, .DS_Store. Always excluded unless user overrides                                                                                                        | ✅ Done   |
 | 3   | OB-1464 | Add isFileVisible(filePath, config) to `src/core/workspace-manager.ts` — check against include/exclude rules. File must match at least one include (if set) and must not match any exclude. Exclude takes priority                                                                                                                                 | ✅ Done   |
 | 4   | OB-1465 | Add symlink resolution in isFileVisible() — resolve real path with fs.realpath() before checking. Prevents symlink escape to files outside workspace                                                                                                                                                                                               | ✅ Done   |
-| 5   | OB-1466 | Normalize paths with path.resolve() before scope checks — ensure both file path and workspace root are absolute. Prevents path traversal like ../../etc/passwd                                                                                                                                                                                     | ◻ Pending |
+| 5   | OB-1466 | Normalize paths with path.resolve() before scope checks — ensure both file path and workspace root are absolute. Prevents path traversal like ../../etc/passwd                                                                                                                                                                                     | ✅ Done   |
 | 6   | OB-1467 | Create `src/core/secret-scanner.ts` — SecretScanner class with scanWorkspace(workspacePath) method. Scans root (1 level deep) for files matching sensitive patterns. Returns array of { path, pattern, severity }. Name check only, no content reading                                                                                             | ◻ Pending |
 | 7   | OB-1468 | Add sensitive file patterns to SecretScanner — .env (any), _.pem, _.key, _.p12, _.pfx, service-account*.json, credentials*.json, id*rsa*, id_ed25519*, *.jks, \_.kdbx. Severity: critical (keys/certs), high (credentials), medium (config)                                                                                                        | ◻ Pending |
 | 8   | OB-1469 | Add startup secret scanning to Bridge in `src/core/bridge.ts` — run scanner during init, log warning with detected count and paths. Auto-add detected paths to exclude list for current session                                                                                                                                                    | ◻ Pending |
