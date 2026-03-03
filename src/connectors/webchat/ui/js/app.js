@@ -480,11 +480,40 @@ function handleMessage(data) {
   }
 }
 
+// --- Textarea auto-resize and character count ---
+
+const charCount = document.getElementById('char-count');
+
+function autoResize() {
+  inp.style.height = 'auto';
+  inp.style.height = inp.scrollHeight + 'px';
+}
+
+function updateCharCount() {
+  const len = inp.value.length;
+  if (len > 500) {
+    charCount.textContent = len.toLocaleString() + ' chars';
+    charCount.classList.remove('hidden');
+  } else {
+    charCount.classList.add('hidden');
+  }
+}
+
+inp.addEventListener('input', function () {
+  autoResize();
+  updateCharCount();
+});
+
 // --- Keyboard navigation ---
 
 inp.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape') {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    form.requestSubmit();
+  } else if (e.key === 'Escape') {
     inp.value = '';
+    autoResize();
+    updateCharCount();
   }
 });
 
@@ -497,6 +526,8 @@ form.addEventListener('submit', function (e) {
   addBubble(text, 'user', new Date());
   sendMessage({ type: 'message', content: text });
   inp.value = '';
+  autoResize();
+  updateCharCount();
   showStatus(
     '\uD83E\uDD14 Thinking<span class="status-dot-anim"><span>.</span><span>.</span><span>.</span></span>',
   );
