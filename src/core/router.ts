@@ -1053,6 +1053,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/deny" command — reject pending tool escalation (OB-1587)
+    if (/^\/deny$/i.test(message.content.trim())) {
+      await this.handleDenyCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -2027,6 +2033,43 @@ export class Router {
     logger.info(
       { sender: message.sender, workerId: entry.workerId, grantArg, scope, isProfile },
       'Tool escalation granted via /allow',
+    );
+  }
+
+  /**
+   * Handle the built-in "/deny" command — reject a pending tool escalation (OB-1587).
+   *
+   * Removes the pending escalation for the sender and notifies the user.
+   * The Master AI is notified to continue the worker without the requested tools
+   * or abort the worker if the task cannot proceed without them.
+   */
+  private async handleDenyCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const entry = this.takePendingEscalation(message.sender);
+    if (!entry) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending tool escalation.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Deny: no pending escalation');
+      return;
+    }
+
+    const denyText =
+      `❌ Tool escalation denied for worker ${entry.workerId}.\n` +
+      `The worker will continue with its current profile (*${entry.currentProfile}*) or abort if unable to proceed.`;
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: denyText,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, workerId: entry.workerId, requestedTools: entry.requestedTools },
+      'Tool escalation denied via /deny',
     );
   }
 
@@ -3420,6 +3463,7 @@ export class Router {
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
       '• /allow <tool|profile> --session — grant for the entire session',
       '• /allow <tool|profile> --permanent — grant permanently',
+      '• /deny — reject a pending tool escalation',
       '',
       '*Deep Mode*',
       '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',
