@@ -1990,3 +1990,79 @@ body {
   color: #fff;
   border: 2px solid #34a853;
 }
+
+/* Deep Mode action buttons */
+
+.dm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.dm-proceed-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #34a853;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.dm-proceed-btn:hover:not(:disabled) {
+  background: #2e8e47;
+}
+
+.dm-proceed-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dm-action-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dm-num-select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  width: 52px;
+}
+
+.dm-num-select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dm-action-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.dm-action-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.dm-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
