@@ -15,6 +15,7 @@ export default tseslint.config(
       '*.config.ts',
       '**/_archived/**',
       'src/orchestrator/**',
+      'src/core/static/**',
       'tests/types/**',
       'test-workspace-*/',
       'ob-smoke-test/',
