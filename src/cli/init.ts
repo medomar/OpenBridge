@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { Interface as ReadlineInterface } from 'node:readline';
 import { createInterface } from 'node:readline';
 import { runHealthCheck } from '../core/health.js';
+import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
 import {
   detectOS,
   getNodeVersion,
@@ -16,7 +17,7 @@ import {
   runCommand,
 } from './utils.js';
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 12;
 
 export interface InitOptions {
   input?: NodeJS.ReadableStream;
@@ -37,6 +38,7 @@ interface Answers {
   mcpServers?: McpServerEntry[];
   mcpConfigPath?: string;
   connectorOptions?: Record<string, unknown>;
+  autoHideSensitiveFiles?: boolean;
 }
 
 type ConnectorType = 'console' | 'whatsapp' | 'webchat' | 'telegram' | 'discord';
@@ -248,6 +250,12 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
       mcp['configPath'] = answers.mcpConfigPath;
     }
     config['mcp'] = mcp;
+  }
+
+  if (answers.autoHideSensitiveFiles) {
+    config['workspace'] = {
+      exclude: [...DEFAULT_EXCLUDE_PATTERNS],
+    };
   }
 
   return config;
@@ -545,8 +553,24 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Step 9: Config generation
-    printStep(9, TOTAL_STEPS, 'Config Generation');
+    // Step 9: Visibility preferences
+    printStep(9, TOTAL_STEPS, 'Visibility Preferences');
+    write('\n');
+    write('  Sensitive files (.env, *.pem, *.key, credentials.*, etc.) can be\n');
+    write('  automatically hidden from AI workers to prevent accidental exposure.\n\n');
+    const hideAnswer = await ask(
+      rl,
+      '  Auto-detect and hide sensitive files? (recommended) (Y/n): ',
+    );
+    const autoHideSensitiveFiles = hideAnswer.toLowerCase() !== 'n';
+    if (autoHideSensitiveFiles) {
+      printSuccess('Sensitive files will be hidden from AI workers');
+    } else {
+      printWarning('Sensitive file hiding disabled — all files visible to AI');
+    }
+
+    // Step 10: Config generation
+    printStep(10, TOTAL_STEPS, 'Config Generation');
     write('\n');
     const config = buildConfig({
       connector,
@@ -556,13 +580,14 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       mcpServers,
       mcpConfigPath,
       connectorOptions,
+      autoHideSensitiveFiles,
     });
 
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
     write(`  Config written to ${outputPath}\n`);
 
-    // Step 10: Health check
-    printStep(10, TOTAL_STEPS, 'Health Check');
+    // Step 11: Health check
+    printStep(11, TOTAL_STEPS, 'Health Check');
     write('\n');
     const healthResult = runHealthCheck(outputPath);
     for (const check of healthResult.checks) {
@@ -581,8 +606,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
     write('\n');
 
-    // Step 11: Summary
-    printStep(11, TOTAL_STEPS, 'Quick Start Summary');
+    // Step 12: Summary
+    printStep(12, TOTAL_STEPS, 'Quick Start Summary');
     printQuickStartSummary(write, outputPath, toolStatus, connector, workspacePath);
   } finally {
     rl.close();
