@@ -76,6 +76,14 @@ function applyTsVisibility() {
 
 // --- Messages ---
 
+function makeAvatar(cls) {
+  const av = document.createElement('div');
+  av.className = 'avatar avatar-' + cls;
+  av.setAttribute('aria-hidden', 'true');
+  av.textContent = cls === 'user' ? 'You' : 'AI';
+  return av;
+}
+
 function addBubble(content, cls, timestamp) {
   const div = document.createElement('div');
   div.className = 'bubble ' + cls;
@@ -130,8 +138,14 @@ function addBubble(content, cls, timestamp) {
     ts.title = tsDate.toLocaleString();
     ts.textContent = formatRelativeTime(tsDate);
     div.appendChild(ts);
+    const row = document.createElement('div');
+    row.className = 'msg-row ' + cls;
+    row.appendChild(makeAvatar(cls));
+    row.appendChild(div);
+    msgs.appendChild(row);
+  } else {
+    msgs.appendChild(div);
   }
-  msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
   return div;
 }
@@ -274,7 +288,11 @@ function handleMessage(data) {
     ts.title = tsDate.toLocaleString();
     ts.textContent = formatRelativeTime(tsDate);
     div.appendChild(ts);
-    msgs.appendChild(div);
+    const dlRow = document.createElement('div');
+    dlRow.className = 'msg-row ai';
+    dlRow.appendChild(makeAvatar('ai'));
+    dlRow.appendChild(div);
+    msgs.appendChild(dlRow);
     msgs.scrollTop = msgs.scrollHeight;
   } else if (data.type === 'typing') {
     showStatus(

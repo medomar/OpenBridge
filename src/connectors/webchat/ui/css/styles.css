@@ -20,6 +20,11 @@
 
   --shadow: rgba(0, 0, 0, 0.12);
 
+  --avatar-user-bg: var(--accent);
+  --avatar-user-text: #ffffff;
+  --avatar-ai-bg: #34a853;
+  --avatar-ai-text: #ffffff;
+
   --bubble-user-bg: var(--accent);
   --bubble-user-text: #ffffff;
   --bubble-ai-bg: var(--bg-hover);
@@ -62,6 +67,8 @@
   --header-text: #e0e0e0;
 
   --shadow: rgba(0, 0, 0, 0.5);
+
+  --avatar-ai-bg: #1a6b36;
 
   --bubble-user-bg: var(--accent);
   --bubble-user-text: #ffffff;
@@ -165,23 +172,21 @@ body {
 }
 
 .bubble {
-  max-width: 78%;
   padding: 10px 14px;
   border-radius: 16px;
   font-size: 14px;
   line-height: 1.55;
   word-wrap: break-word;
+  min-width: 0;
 }
 
 .bubble.user {
-  align-self: flex-end;
   background: var(--bubble-user-bg);
   color: var(--bubble-user-text);
   border-bottom-right-radius: 4px;
 }
 
 .bubble.ai {
-  align-self: flex-start;
   background: var(--bubble-ai-bg);
   color: var(--bubble-ai-text);
   border-bottom-left-radius: 4px;
@@ -194,6 +199,62 @@ body {
   font-size: 12px;
   font-style: italic;
   padding: 2px 0;
+  animation: msgEnter 0.22s ease;
+}
+
+/* Message entrance animation */
+@keyframes msgEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Message rows with avatars */
+.msg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 84%;
+  animation: msgEnter 0.22s ease;
+}
+
+.msg-row.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+
+.msg-row.ai {
+  align-self: flex-start;
+}
+
+/* Avatar icons (CSS-only, no images) */
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+  letter-spacing: 0.3px;
+}
+
+.avatar-user {
+  background: var(--avatar-user-bg);
+  color: var(--avatar-user-text);
+}
+
+.avatar-ai {
+  background: var(--avatar-ai-bg);
+  color: var(--avatar-ai-text);
 }
 
 /* Message timestamps */
