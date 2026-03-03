@@ -6,7 +6,7 @@
 import { initWebSocket, sendMessage, isConnected } from './websocket.js';
 import { renderMarkdown } from './markdown.js';
 import { initDashboard, updateDashboard } from './dashboard.js';
-import { initSidebar } from './sidebar.js';
+import { initSidebar, loadSessions } from './sidebar.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -360,6 +360,7 @@ function handleMessage(data) {
     incrementUnread();
     showTaskNotification(data.content);
     playNotificationSound();
+    void loadSessions();
   } else if (data.type === 'download') {
     hideStatus();
     const tsDate = data.timestamp ? new Date(data.timestamp) : new Date();
@@ -639,6 +640,7 @@ function applySoundToggle() {
 // --- Boot ---
 
 initSidebar();
+void loadSessions();
 initDashboard();
 initWebSocket({
   onOpen: function () {
