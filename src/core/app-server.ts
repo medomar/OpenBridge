@@ -1,10 +1,11 @@
 import { createServer } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createLogger } from './logger.js';
 import { type TunnelManager } from './tunnel-manager.js';
+import { type InteractionRelay } from './interaction-relay.js';
 
 const logger = createLogger('app-server');
 
@@ -24,6 +25,8 @@ export interface AppInstance {
   publicUrl: string | null;
   status: AppStatus;
   startedAt: string;
+  /** Authentication token for the InteractionRelay WebSocket connection. Set when an InteractionRelay is configured. */
+  relayToken?: string;
 }
 
 interface AppServerOptions {
@@ -41,6 +44,13 @@ interface AppServerOptions {
    * is stored in AppInstance.publicUrl. The tunnel is stopped when the app stops.
    */
   tunnelFactory?: () => TunnelManager;
+  /**
+   * InteractionRelay to register per-app tokens with.
+   * When provided, startApp() generates a unique auth token per app, registers it
+   * with the relay, and returns it as AppInstance.relayToken. The token is
+   * unregistered when the app stops.
+   */
+  relay?: InteractionRelay;
 }
 
 const DEFAULT_BASE_URL = 'http://localhost';
@@ -71,6 +81,7 @@ export class AppServer {
   private readonly portEnd: number;
   private readonly usedPorts = new Set<number>();
   private readonly tunnelFactory: (() => TunnelManager) | null;
+  private readonly relay: InteractionRelay | null;
   readonly maxConcurrent: number;
   readonly maxMemoryMB: number;
 
@@ -82,6 +93,7 @@ export class AppServer {
     this.maxConcurrent = options.maxConcurrent ?? DEFAULT_MAX_CONCURRENT;
     this.maxMemoryMB = options.maxMemoryMB ?? DEFAULT_MAX_MEMORY_MB;
     this.tunnelFactory = options.tunnelFactory ?? null;
+    this.relay = options.relay ?? null;
   }
 
   /**
@@ -148,6 +160,7 @@ export class AppServer {
     const id = randomUUID();
     const port = this.allocatePort();
     const url = `${this.baseUrl}:${port}`;
+    const relayToken = this.relay ? randomBytes(32).toString('hex') : undefined;
     const instance: AppInstance = {
       id,
       port,
@@ -155,7 +168,12 @@ export class AppServer {
       publicUrl: null,
       status: 'running',
       startedAt: new Date().toISOString(),
+      relayToken,
     };
+
+    if (this.relay && relayToken) {
+      this.relay.registerApp(id, relayToken);
+    }
 
     const child = this.spawnAppProcess(scaffold, appPath, port);
     const runtime: AppRuntime = {
@@ -225,6 +243,10 @@ export class AppServer {
       runtime.tunnelManager.stop();
       runtime.tunnelManager = null;
       logger.info({ id: appId, port: runtime.instance.port }, 'App tunnel stopped');
+    }
+
+    if (this.relay) {
+      this.relay.unregisterApp(appId);
     }
 
     this.usedPorts.delete(runtime.instance.port);

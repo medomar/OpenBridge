@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 146 | **In Progress:** 0 | **Done:** 68 (112 archived)
+> **Pending:** 145 | **In Progress:** 0 | **Done:** 69 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -41,7 +41,7 @@
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
-| 84     | Interaction Relay                    | 8     | ◻ (5/8 done)    |
+| 84     | Interaction Relay                    | 8     | ◻ (6/8 done)    |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
 | 89     | WebChat Authentication               | 12    | ◻               |
@@ -222,7 +222,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 3   | OB-1456 | Wire app interactions into Router — relay messages from apps route to Master as special messages with type app-interaction, appId, and data                                                                                                                                          | ✅ Done   |
 | 4   | OB-1457 | Add Master response routing for apps in MasterManager — parse APP:update markers from Master response, send data to app via relay sendToApp()                                                                                                                                        | ✅ Done   |
 | 5   | OB-1458 | Add client SDK methods — submit() sends JSON, onUpdate() registers handler, request() for request-response patterns (sends and waits for matching response)                                                                                                                          | ✅ Done   |
-| 6   | OB-1459 | Add security to relay — only accept connections from known app origins. Reject unknown origins. Per-app authentication token generated during startApp()                                                                                                                             | ◻ Pending |
+| 6   | OB-1459 | Add security to relay — only accept connections from known app origins. Reject unknown origins. Per-app authentication token generated during startApp()                                                                                                                             | ✅ Done   |
 | 7   | OB-1460 | Add Smart Output Router to Master system prompt — guidance for auto-classifying output: data returns JSON, visualizations create HTML with charts, reports create HTML with print CSS, interactive tools use openbridge-client.js                                                    | ◻ Pending |
 | 8   | OB-1461 | Add tests in `tests/core/interaction-relay.test.ts` — test: (1) relay starts WebSocket server, (2) app connects and sends message, (3) relay routes to Master, (4) sendToApp delivers data, (5) unknown origins rejected, (6) relay stops cleanly. At least 6 tests (mock WebSocket) | ◻ Pending |
 

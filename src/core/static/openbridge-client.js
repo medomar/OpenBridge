@@ -17,6 +17,10 @@
  *   2. <meta name="openbridge-relay" content="ws://...">  — meta tag
  *   3. ws://<current-host>:3099  — same host, relay port
  *   4. ws://localhost:3099  — local fallback
+ *
+ * Token detection order (appended as ?token=<value>):
+ *   1. window.OPENBRIDGE_AUTH_TOKEN  — explicit override
+ *   2. <meta name="openbridge-auth-token" content="...">  — meta tag
  */
 (function (global) {
   'use strict';
@@ -64,6 +68,33 @@
     return 'ws://localhost:' + RELAY_PORT;
   }
 
+  /** Detect the per-app auth token to authenticate with the relay. */
+  function detectAuthToken() {
+    // 1. Explicit window variable override
+    if (global.OPENBRIDGE_AUTH_TOKEN) {
+      return String(global.OPENBRIDGE_AUTH_TOKEN);
+    }
+
+    // 2. Meta tag: <meta name="openbridge-auth-token" content="...">
+    if (typeof document !== 'undefined') {
+      var meta = document.querySelector('meta[name="openbridge-auth-token"]');
+      if (meta) {
+        var content = meta.getAttribute('content');
+        if (content) return content;
+      }
+    }
+
+    return null;
+  }
+
+  /** Append ?token=<value> to a WebSocket URL when a token is available. */
+  function buildRelayUrl(baseUrl) {
+    var token = detectAuthToken();
+    if (!token) return baseUrl;
+    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    return baseUrl + sep + 'token=' + encodeURIComponent(token);
+  }
+
   // ── Client class ───────────────────────────────────────────────────────────
 
   function OpenBridgeClient() {
@@ -82,7 +113,7 @@
     var self = this;
 
     try {
-      var ws = new WebSocket(self._relayUrl);
+      var ws = new WebSocket(buildRelayUrl(self._relayUrl));
       self._ws = ws;
 
       ws.onopen = function () {
