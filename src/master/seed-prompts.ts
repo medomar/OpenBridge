@@ -1220,6 +1220,137 @@ If there are no failures introduced by executed tasks, write: "No fixes required
 };
 
 /**
+ * Task: Build App
+ *
+ * Creates a self-contained web app in .openbridge/generated/apps/{name}/.
+ * Supports both static HTML/CSS/JS apps and simple Node.js server apps.
+ * Ends with an APP:start marker so the Master can launch the app.
+ */
+export const TASK_BUILD_APP: SeedPrompt = {
+  id: 'task-build-app',
+  filename: 'task-build-app.md',
+  category: 'task',
+  version: '1.0.0',
+  description:
+    'Creates a self-contained web app (HTML/CSS/JS or Node.js) in .openbridge/generated/apps/{name}/ and appends an APP:start marker so the Master can launch it',
+  content: `# Task: Build Web App
+
+Create a self-contained web app based on the user request and write it to the output directory.
+
+## User Request
+
+{{userMessage}}
+
+## Workspace Context
+
+**Project:** {{projectName}}
+**Type:** {{projectType}}
+**Workspace path:** {{workspacePath}}
+
+## App Name
+
+{{appName}}
+
+## Output Directory
+
+Write all app files to:
+\`{{workspacePath}}/.openbridge/generated/apps/{{appName}}/\`
+
+Create the directory if it does not exist.
+
+## App Type Selection
+
+Choose the simplest app type that satisfies the request:
+
+| Request type | App type | Files needed |
+| --- | --- | --- |
+| Data visualisation, dashboard, form, or static content | **Static HTML** | \`index.html\`, \`styles.css\`, \`app.js\` (optional) |
+| Needs a backend (form handling, dynamic data, API calls) | **Node.js server** | \`server.js\`, \`package.json\`, optional \`public/\` |
+
+**Default to static HTML** unless the request explicitly requires a backend.
+
+## Instructions — Static HTML App
+
+Create the following files:
+
+### \`index.html\`
+
+- Self-contained HTML5 document
+- Load any libraries (Chart.js, D3, Alpine.js, etc.) from CDN — no npm installs for static apps
+- Link to \`styles.css\` and \`app.js\` using relative paths
+- Must work when served from a local HTTP server (no file:// protocol assumptions)
+- Include a \`<title>\` matching the app name
+- Use semantic HTML elements
+
+### \`styles.css\`
+
+- Clean, responsive layout using CSS Grid or Flexbox
+- Mobile-friendly (viewport meta tag in index.html, responsive breakpoints)
+- Use CSS custom properties (variables) for colors and spacing
+- No external CSS frameworks required — write styles from scratch
+
+### \`app.js\` (optional — only if interactivity is needed)
+
+- Vanilla JavaScript — no build step, no bundler
+- Use \`DOMContentLoaded\` to wait for the page to load
+- Keep it simple and self-contained
+
+## Instructions — Node.js Server App
+
+Create the following files:
+
+### \`server.js\`
+
+- Use Express (or built-in \`http\` module for trivial cases)
+- Listen on \`process.env.PORT\` with fallback to \`3000\`
+- Serve static files from \`public/\` if needed
+- Keep routes simple and focused on the request
+
+### \`package.json\`
+
+\`\`\`json
+{
+  "name": "{{appName}}",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}
+\`\`\`
+
+After writing the files, run \`npm install\` in the app directory to install dependencies.
+
+### \`public/\` (optional)
+
+- Static assets (HTML, CSS, JS) served by the Express server
+- Follow the same HTML/CSS/JS guidelines as the static app type above
+
+## Rules
+
+- Write only to \`{{workspacePath}}/.openbridge/generated/apps/{{appName}}/\` — do NOT modify workspace source files.
+- Keep the app focused — build exactly what the user requested, nothing more.
+- All HTML must be valid and render without errors in a modern browser.
+- For static apps, do NOT create a \`package.json\` or run \`npm install\`.
+- For Node.js apps, always run \`npm install\` before finishing so the app starts immediately.
+- Do NOT use TypeScript, React, Vue, or any compile step — keep the app runnable without a build.
+- Ensure the app starts on \`PORT\` (Node.js) or serves \`index.html\` at the root (static).
+
+## After Creating the Files
+
+Confirm the files were written successfully, then end your response with:
+
+\`\`\`
+APP:start {{workspacePath}}/.openbridge/generated/apps/{{appName}}
+\`\`\`
+
+This marker tells the Master AI to start the app server and return the live URL to the user.
+`,
+};
+
+/**
  * Codex-specific worker system prompt prefix.
  *
  * Prepended to all Codex worker prompts to guide file access behavior.
@@ -1254,6 +1385,7 @@ export const SEED_PROMPTS: SeedPrompt[] = [
   TASK_CODE_AUDIT,
   TASK_GENERATE_OUTPUT,
   TASK_TARGETED_READ,
+  TASK_BUILD_APP,
   DEEP_INVESTIGATE,
   DEEP_REPORT,
   DEEP_PLAN,
