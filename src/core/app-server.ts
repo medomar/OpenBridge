@@ -1,3 +1,4 @@
+import { createServer } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
@@ -27,11 +28,13 @@ export interface AppInstance {
 interface AppServerOptions {
   baseUrl?: string;
   portStart?: number;
+  portEnd?: number;
   idleTimeoutMs?: number;
 }
 
 const DEFAULT_BASE_URL = 'http://localhost';
 const DEFAULT_PORT_START = 3100;
+const DEFAULT_PORT_END = 3199;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const HEALTH_CHECK_TIMEOUT_MS = 20_000;
 const HEALTH_CHECK_INTERVAL_MS = 500;
@@ -50,12 +53,37 @@ export class AppServer {
   private readonly apps = new Map<string, AppRuntime>();
   private readonly baseUrl: string;
   private readonly idleTimeoutMs: number;
-  private nextPort: number;
+  private readonly portStart: number;
+  private readonly portEnd: number;
+  private readonly usedPorts = new Set<number>();
 
   constructor(options: AppServerOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    this.nextPort = options.portStart ?? DEFAULT_PORT_START;
+    this.portStart = options.portStart ?? DEFAULT_PORT_START;
+    this.portEnd = options.portEnd ?? DEFAULT_PORT_END;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+  }
+
+  /**
+   * Scan the port range and mark any already-bound ports as in use.
+   * Call this once on startup before the first startApp().
+   */
+  async scanUsedPorts(): Promise<void> {
+    const checks: Promise<void>[] = [];
+    for (let port = this.portStart; port <= this.portEnd; port++) {
+      checks.push(
+        isPortInUse(port).then((inUse) => {
+          if (inUse) {
+            this.usedPorts.add(port);
+          }
+        }),
+      );
+    }
+    await Promise.all(checks);
+    logger.info(
+      { portStart: this.portStart, portEnd: this.portEnd, inUse: this.usedPorts.size },
+      'Port scan complete',
+    );
   }
 
   async detectAppScaffold(appPath: string): Promise<AppScaffold | null> {
@@ -92,7 +120,7 @@ export class AppServer {
     }
 
     const id = randomUUID();
-    const port = this.nextPort++;
+    const port = this.allocatePort();
     const url = `${this.baseUrl}:${port}`;
     const instance: AppInstance = {
       id,
@@ -151,6 +179,7 @@ export class AppServer {
       runtime.process.kill('SIGTERM');
     }
 
+    this.usedPorts.delete(runtime.instance.port);
     this.apps.delete(appId);
     logger.info({ id: appId, port: runtime.instance.port }, 'App stopped');
   }
@@ -168,6 +197,18 @@ export class AppServer {
     if (!runtime) return;
     runtime.lastRequestAt = Date.now();
     this.scheduleIdleTimeout(appId);
+  }
+
+  private allocatePort(): number {
+    for (let port = this.portStart; port <= this.portEnd; port++) {
+      if (!this.usedPorts.has(port)) {
+        this.usedPorts.add(port);
+        return port;
+      }
+    }
+    throw new Error(
+      `No available ports in range ${this.portStart}–${this.portEnd}. All ${this.portEnd - this.portStart + 1} ports in use.`,
+    );
   }
 
   private async pathExists(filePath: string): Promise<boolean> {
@@ -241,4 +282,21 @@ export class AppServer {
       }
     }, this.idleTimeoutMs);
   }
+}
+
+/**
+ * Check whether a TCP port is already in use by attempting to bind to it.
+ * Returns true if the port is in use (bind fails with EADDRINUSE).
+ */
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      resolve(err.code === 'EADDRINUSE');
+    });
+    server.once('listening', () => {
+      server.close(() => resolve(false));
+    });
+    server.listen(port, '127.0.0.1');
+  });
 }

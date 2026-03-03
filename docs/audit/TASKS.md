@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 160 | **In Progress:** 0 | **Done:** 54 (112 archived)
+> **Pending:** 159 | **In Progress:** 0 | **Done:** 55 (112 archived)
 > **Last Updated:** 2026-03-03
 
 <details>
@@ -40,7 +40,7 @@
 | 97     | Runtime Permission Escalation        | 20    | ◻               |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
-| 83     | Ephemeral App Server                 | 12    | ◻ (3/12 done)   |
+| 83     | Ephemeral App Server                 | 12    | ◻ (4/12 done)   |
 | 84     | Interaction Relay                    | 8     | ◻               |
 | 87     | Document Visibility Controls         | 14    | ◻               |
 | 88     | WebChat Frontend Extraction          | 15    | ◻               |
@@ -199,7 +199,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 1   | OB-1442 | Create `src/core/app-server.ts` — AppServer class with methods: startApp(appPath) returns AppInstance, stopApp(appId), listApps(), getApp(appId). AppInstance type: id, port, url, publicUrl, status, startedAt                                                   | ✅ Done   |
 | 2   | OB-1443 | Add app scaffold detection — detect app type from directory: package.json with start script uses npm start, index.html uses static serve, server.js uses node. Return detected run command                                                                        | ✅ Done   |
 | 3   | OB-1444 | Add app lifecycle — startApp: spawn process, health check (HTTP GET), set running. Add idle timeout: no requests in 30 min triggers auto-stop. stopApp: kill process, cleanup port                                                                                | ✅ Done   |
-| 4   | OB-1445 | Add port allocation — assign unique ports in range 3100-3199. Track in Set. Release on stopApp. Scan for in-use ports on startup                                                                                                                                  | ◻ Pending |
+| 4   | OB-1445 | Add port allocation — assign unique ports in range 3100-3199. Track in Set. Release on stopApp. Scan for in-use ports on startup                                                                                                                                  | ✅ Done   |
 | 5   | OB-1446 | Add tunnel integration for apps — when TunnelManager active, create tunnel for each app port. Store publicUrl in AppInstance. Stop tunnel when app stops                                                                                                          | ◻ Pending |
 | 6   | OB-1447 | Add APP:start and APP:stop marker parsing to Router in `src/core/router.ts` — parse from Master output. APP:start triggers appServer.startApp(), APP:stop triggers stopApp(). Include app URL in response                                                         | ◻ Pending |
 | 7   | OB-1448 | Add app scaffolding instructions to Master system prompt — guidance for creating apps in .openbridge/generated/apps/{name}/, using APP:start marker to launch                                                                                                     | ◻ Pending |
