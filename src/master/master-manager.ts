@@ -318,6 +318,10 @@ export interface MasterManagerOptions {
   mcpServers?: MCPServer[];
   /** Deep Mode configuration — controls default execution profile and per-phase model overrides */
   deepConfig?: DeepConfig;
+  /** Glob patterns for files to exclude — hidden from the AI (workspace.exclude from V2 config) */
+  workspaceExclude?: readonly string[];
+  /** Glob patterns for files to include — limits AI visibility to only these files (workspace.include from V2 config) */
+  workspaceInclude?: readonly string[];
 }
 
 /**
@@ -370,6 +374,8 @@ export class MasterManager {
   private readonly adapter?: CLIAdapter;
   private readonly adapterRegistry: AdapterRegistry;
   private mcpServers: MCPServer[];
+  private readonly workspaceExclude: readonly string[];
+  private readonly workspaceInclude: readonly string[];
   private activeConnectorNames: string[] = [];
   private fileServerPort: number | undefined;
   private tunnelUrl: string | null = null;
@@ -441,6 +447,8 @@ export class MasterManager {
     this.modelRegistry = createModelRegistry(options.masterTool.name);
     this.mcpServers = options.mcpServers ?? [];
     this.deepConfig = options.deepConfig;
+    this.workspaceExclude = options.workspaceExclude ?? [];
+    this.workspaceInclude = options.workspaceInclude ?? [];
 
     // Instantiate DeepModeManager — multi-phase session state machine (OB-1403)
     this.deepMode = new DeepModeManager({ workspacePath: this.workspacePath });
@@ -1539,6 +1547,8 @@ export class MasterManager {
         this.activeConnectorNames.length > 0 ? this.activeConnectorNames : undefined,
       fileServerPort: this.fileServerPort,
       tunnelUrl: this.tunnelUrl ?? undefined,
+      workspaceExclude: this.workspaceExclude.length > 0 ? this.workspaceExclude : undefined,
+      workspaceInclude: this.workspaceInclude.length > 0 ? this.workspaceInclude : undefined,
     });
 
     try {
