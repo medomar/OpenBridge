@@ -47,6 +47,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:webchat": "node scripts/build-webchat-ui.js",
     "dev": "tsx watch src/index.ts",
     "start": "NODE_ENV=production node dist/index.js",
     "lint": "eslint .",
