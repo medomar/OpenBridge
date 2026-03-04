@@ -143,6 +143,78 @@ function formatTimeAgo(isoTimestamp: string): string {
   return 'just now';
 }
 
+/** Result of a tool-access failure scan on a worker result. */
+export interface ToolAccessFailure {
+  /** The tool name extracted from the error message, if identifiable. */
+  tool: string | undefined;
+  /** The raw error snippet that matched a tool-access pattern. */
+  reason: string;
+}
+
+/**
+ * Detect tool-access failures in a worker result (OB-1592).
+ *
+ * Scans both stdout and stderr for the error patterns the Claude CLI emits
+ * when a tool call is blocked by `--allowedTools` restrictions:
+ *   - "tool not allowed"
+ *   - "permission denied"
+ *   - "not in allowedTools"
+ *
+ * Returns a `ToolAccessFailure` describing the blocked tool when a match is
+ * found, or `undefined` when no tool-access error is present.
+ */
+export function detectToolAccessFailure(result: {
+  stdout: string;
+  stderr: string;
+}): ToolAccessFailure | undefined {
+  const combined = `${result.stderr}\n${result.stdout}`.toLowerCase();
+
+  const PATTERNS = [
+    'tool not allowed',
+    'permission denied',
+    'not in allowedtools',
+    'not allowed to use',
+    'tool is not allowed',
+  ] as const;
+
+  const matched = PATTERNS.find((p) => combined.includes(p));
+  if (!matched) return undefined;
+
+  // Extract the tool name from the error line.
+  // Common Claude CLI formats:
+  //   "Tool 'Bash' is not allowed"
+  //   "Bash is not in allowedTools"
+  //   "not allowed to use tool: Bash"
+  const searchText = `${result.stderr}\n${result.stdout}`;
+  let tool: string | undefined;
+
+  const patterns = [
+    // "Tool 'Bash' is not allowed"  /  "tool 'Bash(npm:test)' is not allowed"
+    /[Tt]ool\s+'([^']+)'/,
+    // "Bash is not in allowedTools"
+    /(\w[\w():*]*)\s+is\s+not\s+in\s+allowedTools/i,
+    // "not allowed to use tool: Bash"
+    /not\s+allowed\s+to\s+use\s+(?:tool:\s*)?([^\s,.:]+)/i,
+    // "not in allowedTools: Bash"
+    /not\s+in\s+allowedTools[:\s]+([^\s,.:]+)/i,
+  ];
+
+  for (const re of patterns) {
+    const m = re.exec(searchText);
+    if (m?.[1]) {
+      tool = m[1];
+      break;
+    }
+  }
+
+  // Provide a short reason snippet (first matching line, truncated)
+  const lines = searchText.split('\n');
+  const matchedLine = lines.find((l) => PATTERNS.some((p) => l.toLowerCase().includes(p)));
+  const reason = (matchedLine ?? matched).trim().slice(0, 200);
+
+  return { tool, reason };
+}
+
 /**
  * Tools available to the Master AI session.
  * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
@@ -6562,6 +6634,27 @@ ${currentContent}
 
       // Persist registry after worker completion or failure
       await this.persistWorkerRegistry();
+
+      // Detect tool-access failures in the worker result (OB-1592).
+      // Even a zero-exit worker may report a tool-denial in its output.
+      const toolFailure = detectToolAccessFailure(result);
+      if (toolFailure) {
+        logger.warn(
+          {
+            workerId,
+            tool: toolFailure.tool,
+            profile,
+            reason: toolFailure.reason,
+            exitCode: result.exitCode,
+          },
+          'Worker tool-access failure detected — tool was blocked by allowedTools restrictions',
+        );
+        // Store on the result metadata so callers can react (OB-1593 will wire this to Router).
+        taskRecord.metadata = {
+          ...taskRecord.metadata,
+          toolAccessFailure: { tool: toolFailure.tool, reason: toolFailure.reason },
+        };
+      }
 
       // Update task record with result (OB-165)
       taskRecord.status = result.exitCode === 0 ? 'completed' : 'failed';
