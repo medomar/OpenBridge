@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 40 | **In Progress:** 0 | **Done:** 174 (112 archived)
+> **Pending:** 39 | **In Progress:** 0 | **Done:** 175 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -414,7 +414,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                     | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1604 | Add `BatchState` interface in `src/types/agent.ts` — fields: batchId, sourceType (tasks-md, findings, custom-list), totalItems, currentIndex, completedItems (array of {id, summary, status}), failedItems, startedAt, totalCostUsd, paused                                     | ◻ Pending |
+| 1   | OB-1604 | Add `BatchState` interface in `src/types/agent.ts` — fields: batchId, sourceType (tasks-md, findings, custom-list), totalItems, currentIndex, completedItems (array of {id, summary, status}), failedItems, startedAt, totalCostUsd, paused                                     | ✅ Done   |
 | 2   | OB-1605 | Add batch detection keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: "one by one", "all tasks", "each one", "implement all", "go through all", "for each", "iterate through", "all pending". Set `batchMode: true` in classification result | ◻ Pending |
 | 3   | OB-1606 | Create `src/master/batch-manager.ts` — BatchManager class with methods: createBatch(), advanceBatch(), pauseBatch(), resumeBatch(), abortBatch(), getStatus(), isActive(). Manages batch lifecycle                                                                              | ◻ Pending |
 | 4   | OB-1607 | Add batch plan generation — when batch detected, Master reads task source (TASKS.md, findings list), extracts individual items, creates ordered batch plan. Store in BatchState                                                                                                 | ◻ Pending |
