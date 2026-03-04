@@ -1124,6 +1124,17 @@ export class Router {
       return;
     }
 
+    // Handle /batch (no args) — show batch status (OB-1621).
+    if (/^\/batch$/i.test(message.content.trim())) {
+      const response = this.master ? this.master.getBatchStatus() : 'No active batch.';
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: response,
+      });
+      return;
+    }
+
     // Handle batch control commands: /batch skip | /batch retry | /batch abort (OB-1616).
     // These are intercepted before routing to Master so they take effect immediately.
     const batchCmdMatch = /^\/batch\s+(skip|retry|abort)$/i.exec(message.content.trim());

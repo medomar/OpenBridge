@@ -2556,6 +2556,64 @@ export class MasterManager {
   }
 
   /**
+   * Return a formatted batch status message for the `/batch` command (OB-1621).
+   *
+   * Shows the current item, progress (N/total), elapsed time, accumulated cost,
+   * and a list of failed items. Returns "No active batch." when no batch is running.
+   */
+  public getBatchStatus(): string {
+    if (!this.batchManager) return 'No active batch.';
+
+    const batchId = this.batchManager.getActiveBatchId();
+    if (!batchId) return 'No active batch.';
+
+    const state = this.batchManager.getStatus(batchId);
+    if (!state) return 'No active batch.';
+
+    const current = state.currentIndex + 1;
+    const total = state.totalItems;
+    const currentItem = state.plan[state.currentIndex];
+
+    // Elapsed time
+    const elapsedMs = Date.now() - new Date(state.startedAt).getTime();
+    const totalSeconds = Math.round(elapsedMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    let elapsedStr: string;
+    if (hours > 0) {
+      elapsedStr = `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+      elapsedStr = `${minutes}m ${seconds}s`;
+    } else {
+      elapsedStr = `${seconds}s`;
+    }
+
+    const costStr = state.totalCostUsd > 0 ? `$${state.totalCostUsd.toFixed(4)}` : 'not tracked';
+    const statusIcon = state.paused ? '⏸ Paused' : '▶ Running';
+
+    const lines: string[] = [
+      `📋 Batch Status: ${statusIcon}`,
+      `**Progress:** ${current}/${total} items`,
+    ];
+
+    if (currentItem) {
+      const desc = currentItem.description ? ` — ${currentItem.description}` : '';
+      lines.push(`**Current item:** ${currentItem.id}${desc}`);
+    }
+
+    lines.push(`**Elapsed:** ${elapsedStr}`);
+    lines.push(`**Cost:** ${costStr}`);
+
+    if (state.failedItems.length > 0) {
+      lines.push(`**Failed:** ${state.failedItems.join(', ')}`);
+    }
+
+    logger.info({ batchId, current, total }, 'Batch status queried by user (OB-1621)');
+    return lines.join('\n');
+  }
+
+  /**
    * Set the KnowledgeRetriever for RAG-based context injection (OB-1344).
    * Bridge calls this after MemoryManager is initialized and DotFolderManager is ready.
    */
