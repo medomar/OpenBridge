@@ -368,6 +368,30 @@ export function addApprovedEscalation(
 }
 
 /**
+ * Remove a specific tool name from the permanent escalation grants for a user+channel.
+ * No-op if the tool is not in the grants list or no entry exists.
+ */
+export function removeApprovedEscalation(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+  tool: string,
+): void {
+  const existing = getAccess(db, userId, channel);
+  if (!existing) return;
+  const current = existing.approvedToolEscalations ?? [];
+  if (!current.includes(tool)) return;
+  const updated = current.filter((t) => t !== tool);
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE access_control
+     SET approved_tool_escalations = ?,
+         updated_at                = ?
+     WHERE user_id = ? AND channel = ?`,
+  ).run(JSON.stringify(updated), now, userId, channel);
+}
+
+/**
  * Reset daily_cost_used to 0 for all entries whose cost_reset_at is in the past
  * (or null). Updates cost_reset_at to the start of the next UTC day.
  */
