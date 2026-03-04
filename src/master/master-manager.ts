@@ -1805,6 +1805,17 @@ export class MasterManager {
         offers.join('\n\n');
     }
 
+    // Inject active batch context so Master never loses track of batch progress (OB-1617).
+    if (this.batchManager) {
+      const activeBatchId = this.batchManager.getActiveBatchId();
+      if (activeBatchId) {
+        const batchContext = this.batchManager.buildBatchContextSection(activeBatchId);
+        if (batchContext) {
+          opts.systemPrompt = (opts.systemPrompt ?? '') + '\n\n' + batchContext;
+        }
+      }
+    }
+
     return opts;
   }
 
