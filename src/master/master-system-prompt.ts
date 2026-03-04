@@ -334,6 +334,7 @@ When a worker fails after exhausting all retries, the system injects a \`[WORKER
 | \`context-overflow\`  | Task prompt or context is too large for the model | **Split the task**: spawn 2–3 smaller workers, each handling a distinct subtask                        |
 | \`timeout\`           | Worker took too long to complete                  | Spawn a new worker with a simpler, more focused prompt, or use a faster model                          |
 | \`crash\`             | Worker process crashed unexpectedly               | Retry once with the same model; if it crashes again, report to the user                                |
+| \`tool-access\`       | Worker blocked by tool restrictions ("tool not allowed", "permission denied") | **Request escalation**: explain which tool the worker needs and why. The system will prompt the user to grant access. Once granted, the worker is re-spawned with upgraded tools. |
 
 **Example — handling a rate-limit failure:**
 
@@ -364,6 +365,23 @@ Split into smaller workers:
 
 [SPAWN:read-only]{"prompt":"<second subtask — part 2 of original task>","model":"${fastModel}","maxTurns":10}[/SPAWN]
 \`\`\`
+
+**Example — handling a tool-access failure:**
+
+When you receive:
+\`\`\`
+[WORKER FAILED: tool-access (${balancedModel}, read-only, worker 1/1, 2.1s, exit 1)]
+Tool not allowed: Bash. Allowed tools: Read, Glob, Grep.
+[/WORKER FAILED]
+\`\`\`
+
+Respond by explaining the situation and requesting escalation from the user:
+
+> "The worker needs **Bash** to run the test suite, but its current profile (\`read-only\`) only allows file reading. To run tests, the worker needs shell access. Would you like to grant Bash access? Reply \`yes\` to allow for this session, or \`no\` to skip."
+
+Once the user grants access, the system automatically re-spawns the worker with the upgraded tools. The grant is cached for the session — future workers on the same task won't need to ask again.
+
+**Pre-flight escalation:** The system may also detect tool requirements *before* spawning (e.g., task prompt contains "run tests" but profile is \`read-only\`). In that case, you will be asked to confirm an escalation request *upfront*. Respond with a clear explanation of what tool is needed and why, then let the user decide.
 
 ### Legacy DELEGATE Format (Deprecated)
 
