@@ -16,6 +16,7 @@ import {
   TOOLS_CODE_EDIT,
   DEFAULT_MAX_TURNS_TASK,
   classifyError,
+  resolveProfile,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
@@ -31,7 +32,7 @@ import type {
   TaskRecord as MemoryTaskRecord,
   ActivityRecord,
 } from '../memory/index.js';
-import { BUILT_IN_PROFILES } from '../types/agent.js';
+import { BUILT_IN_PROFILES, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
 import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
@@ -6230,6 +6231,63 @@ ${currentContent}
   }
 
   /**
+   * Re-spawn a worker with upgraded tool access after a user grant (OB-1594).
+   *
+   * Called by the respawn callback registered in requestToolEscalation(). Receives the
+   * granted tool/profile name(s) from the /allow command handler and re-submits the
+   * original SPAWN marker with an upgraded profile or merged tool list.
+   *
+   * - If grantedTools contains a built-in profile name (e.g. "code-edit"), the marker
+   *   is re-submitted with that profile, overriding the original.
+   * - If grantedTools contains individual tool names (e.g. "Bash(npm:test)"), they are
+   *   merged with the original profile's tools and passed via a transient custom profile.
+   */
+  private async respawnWorkerAfterGrant(
+    originalWorkerId: string,
+    marker: ParsedSpawnMarker,
+    index: number,
+    originalProfile: string,
+    grantedTools: string[],
+    attachments?: InboundMessage['attachments'],
+  ): Promise<void> {
+    const newWorkerId = `${originalWorkerId}-escalated`;
+
+    // Determine whether the grant is a profile upgrade or individual tool names.
+    const profileGrant = grantedTools.find((g) => BuiltInProfileNameSchema.safeParse(g).success);
+
+    let upgradedMarker: ParsedSpawnMarker;
+    let customProfiles: Record<string, ToolProfile> | undefined;
+
+    if (profileGrant) {
+      // Profile upgrade — re-submit the marker under the higher profile.
+      upgradedMarker = { ...marker, profile: profileGrant };
+      logger.info(
+        { originalWorkerId, newWorkerId, originalProfile, upgradedProfile: profileGrant },
+        'Worker re-spawned with profile upgrade after grant',
+      );
+    } else {
+      // Individual tool grant — merge with the original profile's tool list.
+      const baseTools = resolveProfile(originalProfile) ?? [];
+      const mergedTools = [...new Set([...baseTools, ...grantedTools])];
+      const upgradedProfileName = `${originalProfile}-escalated`;
+      customProfiles = {
+        [upgradedProfileName]: {
+          name: upgradedProfileName,
+          description: `${originalProfile} + escalated access (${grantedTools.join(', ')})`,
+          tools: mergedTools,
+        },
+      };
+      upgradedMarker = { ...marker, profile: upgradedProfileName };
+      logger.info(
+        { originalWorkerId, newWorkerId, originalProfile, mergedTools },
+        'Worker re-spawned with merged tool access after grant',
+      );
+    }
+
+    await this.spawnWorker(newWorkerId, upgradedMarker, index, customProfiles, attachments);
+  }
+
+  /**
    * Spawn a single worker from a parsed SPAWN marker.
    * Resolves the profile to tools via AgentRunner's manifest resolution.
    * Tracks the worker lifecycle in the registry: pending → running → completed/failed.
@@ -6671,6 +6729,18 @@ ${currentContent}
           const connector = this.router.getConnector(origMessage.source);
           if (connector) {
             const requestedTools = toolFailure.tool ? [toolFailure.tool] : [];
+            // OB-1594: Provide a respawn callback so /allow can re-spawn the worker
+            // with the granted tools merged into its profile.
+            const respawnCallback = async (grantedTools: string[]): Promise<void> => {
+              await this.respawnWorkerAfterGrant(
+                workerId,
+                marker,
+                index,
+                profile,
+                grantedTools,
+                attachments,
+              );
+            };
             await this.router.requestToolEscalation(
               workerId,
               requestedTools,
@@ -6678,6 +6748,7 @@ ${currentContent}
               toolFailure.reason,
               origMessage,
               connector,
+              respawnCallback,
             );
           } else {
             logger.warn(

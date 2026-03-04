@@ -146,6 +146,12 @@ export interface PendingEscalation {
   connector: Connector;
   /** Auto-deny timeout handle — cleared when user replies with /allow or /deny */
   timeoutHandle: ReturnType<typeof setTimeout>;
+  /**
+   * Optional callback to re-spawn the worker with upgraded tools after the grant is
+   * approved (OB-1594). Provided by MasterManager when calling requestToolEscalation().
+   * Called with the granted tool/profile name(s) so the worker can retry.
+   */
+  respawn?: (grantedTools: string[]) => Promise<void>;
 }
 
 /**
@@ -631,6 +637,7 @@ export class Router {
     reason: string,
     message: InboundMessage,
     connector: Connector,
+    respawn?: (grantedTools: string[]) => Promise<void>,
   ): Promise<void> {
     const sender = message.sender;
     const toolsList = requestedTools.join(', ');
@@ -676,6 +683,7 @@ export class Router {
       message,
       connector,
       timeoutHandle,
+      respawn,
     });
 
     await connector.sendMessage({
@@ -2083,6 +2091,22 @@ export class Router {
           'Failed to persist permanent tool grant',
         );
       }
+    }
+
+    // OB-1594: Re-spawn the worker with the granted tools/profile.
+    // The respawn callback was registered by MasterManager when requestToolEscalation()
+    // was called. Errors are non-fatal — the grant is already recorded.
+    if (entry.respawn) {
+      logger.info(
+        { workerId: entry.workerId, grantArg },
+        'Triggering worker re-spawn after tool grant',
+      );
+      entry.respawn([grantArg]).catch((err: unknown) => {
+        logger.warn(
+          { err, workerId: entry.workerId, grantArg },
+          'Worker re-spawn after tool grant failed',
+        );
+      });
     }
   }
 
