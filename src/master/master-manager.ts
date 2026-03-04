@@ -2539,7 +2539,10 @@ export class MasterManager {
           void router.routeBatchContinuation(batchId, sender);
         }, 1000);
       }
-      logger.info({ batchId, nextIndex: result.nextIndex }, 'Batch item skipped, continuing');
+      logger.info(
+        { batchId, nextIndex: result.nextIndex },
+        'Batch item skipped, continuing (OB-1623)',
+      );
       return '⏭ Item skipped. Continuing with next item...';
     }
 
