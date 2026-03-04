@@ -1078,6 +1078,29 @@ export class Router {
       return;
     }
 
+    // Handle /pause command — pause active batch (OB-1619).
+    if (/^\/pause$/i.test(message.content.trim())) {
+      if (this.master) {
+        const response = await this.master.handleBatchCommand(
+          'pause',
+          message.sender,
+          message.source,
+        );
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: response,
+        });
+      } else {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'No active batch.',
+        });
+      }
+      return;
+    }
+
     // Handle batch control commands: /batch skip | /batch retry | /batch abort (OB-1616).
     // These are intercepted before routing to Master so they take effect immediately.
     const batchCmdMatch = /^\/batch\s+(skip|retry|abort)$/i.exec(message.content.trim());

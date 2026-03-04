@@ -2479,7 +2479,7 @@ export class MasterManager {
    * @returns       Response message to send back to the user.
    */
   public async handleBatchCommand(
-    action: 'skip' | 'retry' | 'abort',
+    action: 'pause' | 'skip' | 'retry' | 'abort',
     sender: string,
     source: string,
   ): Promise<string> {
@@ -2490,6 +2490,15 @@ export class MasterManager {
 
     // Update stored sender info in case it changed (e.g. source connector switch)
     this.batchSenderInfo.set(batchId, { sender, source });
+
+    if (action === 'pause') {
+      await this.batchManager.pauseBatch(batchId);
+      const state = this.batchManager.getStatus(batchId);
+      const current = state ? state.currentIndex + 1 : '?';
+      const total = state ? state.totalItems : '?';
+      logger.info({ batchId, current, total }, 'Batch paused by user command (OB-1619)');
+      return `⏸ Batch paused at item ${current}/${total}. Reply '/continue' to resume.`;
+    }
 
     if (action === 'abort') {
       await this.batchManager.abortBatch(batchId);
