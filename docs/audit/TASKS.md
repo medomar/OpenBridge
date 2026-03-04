@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 21 | **In Progress:** 0 | **Done:** 193 (112 archived)
+> **Pending:** 20 | **In Progress:** 0 | **Done:** 194 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -38,7 +38,7 @@
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
-| 98     | Batch Task Continuation              | 22    | ◻ (18/22 done)  |
+| 98     | Batch Task Continuation              | 22    | ◻ (19/22 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
@@ -444,7 +444,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 18  | OB-1621 | Add `/batch` command to Router — show batch status: current item, progress (N/total), cost so far, elapsed time, failed items. Shows "No active batch" if none                                                                                                                                                                                                                                             | ✅ Done   |
 | 19  | OB-1622 | Add `/batch abort` command to Router — cancel remaining items. Send summary of what was completed. Clean up batch state file                                                                                                                                                                                                                                                                               | ✅ Done   |
 | 20  | OB-1623 | Add `/batch skip` command to Router — skip current failed item, mark as skipped, continue with next item                                                                                                                                                                                                                                                                                                   | ✅ Done   |
-| 21  | OB-1624 | Add batch commands to `/help` output — include /pause, /continue, /batch, /batch abort, /batch skip with descriptions                                                                                                                                                                                                                                                                                      | ◻ Pending |
+| 21  | OB-1624 | Add batch commands to `/help` output — include /pause, /continue, /batch, /batch abort, /batch skip with descriptions                                                                                                                                                                                                                                                                                      | ✅ Done   |
 | 22  | OB-1625 | Add tests in `tests/master/batch-manager.test.ts` — test: (1) batch detection from keywords, (2) plan extraction from TASKS.md, (3) continuation message injected, (4) progress messages sent, (5) safety rails pause at limit, (6) pause/resume works, (7) failure pauses batch, (8) commit-after-each spawns commit worker, (9) abort cleans state, (10) batch state survives restart. At least 10 tests | ◻ Pending |
 
 ---
