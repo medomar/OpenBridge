@@ -459,6 +459,8 @@ export class MasterManager {
   private pendingMessages: InboundMessage[] = [];
   /** Router reference for sending pending message responses after exploration completes */
   private router: Router | null = null;
+  /** The InboundMessage currently being processed — set for the duration of processMessage/streamMessage so spawnWorker can escalate tool failures (OB-1593). */
+  private activeMessage: InboundMessage | null = null;
 
   /** Persistent Master session — shared across all user messages */
   private masterSession: MasterSession | null = null;
@@ -4388,6 +4390,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     }
 
     this.state = 'processing';
+    this.activeMessage = message;
 
     const taskId = randomUUID();
     const startedAt = new Date().toISOString();
@@ -4880,6 +4883,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       this.onTaskCompleted();
 
       this.state = 'ready';
+      this.activeMessage = null;
 
       logger.info(
         { taskId, durationMs: task.durationMs, responseLength: response.length },
@@ -4915,6 +4919,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       );
 
       this.state = 'ready';
+      this.activeMessage = null;
 
       logger.error({ err: error, taskId, sender: message.sender }, 'Message processing failed');
 
@@ -4943,6 +4948,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     }
 
     this.state = 'processing';
+    this.activeMessage = message;
 
     const taskId = randomUUID();
     const startedAt = new Date().toISOString();
@@ -5301,6 +5307,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       this.onTaskCompleted();
 
       this.state = 'ready';
+      this.activeMessage = null;
 
       logger.info(
         { taskId, durationMs: task.durationMs, responseLength: fullResponse.length },
@@ -5321,6 +5328,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       await this.recordTaskToStore(task);
 
       this.state = 'ready';
+      this.activeMessage = null;
 
       logger.error({ err: error, taskId, sender: message.sender }, 'Message streaming failed');
 
@@ -6649,11 +6657,35 @@ ${currentContent}
           },
           'Worker tool-access failure detected — tool was blocked by allowedTools restrictions',
         );
-        // Store on the result metadata so callers can react (OB-1593 will wire this to Router).
+        // Store on the result metadata for audit trail.
         taskRecord.metadata = {
           ...taskRecord.metadata,
           toolAccessFailure: { tool: toolFailure.tool, reason: toolFailure.reason },
         };
+
+        // Wire to Router escalation (OB-1593): ask the user to approve the needed tool.
+        // Only fires when a router and an active user message are available (i.e. during
+        // processMessage / streamMessage — not during background exploration workers).
+        if (this.router && this.activeMessage) {
+          const origMessage = this.activeMessage;
+          const connector = this.router.getConnector(origMessage.source);
+          if (connector) {
+            const requestedTools = toolFailure.tool ? [toolFailure.tool] : [];
+            await this.router.requestToolEscalation(
+              workerId,
+              requestedTools,
+              profile,
+              toolFailure.reason,
+              origMessage,
+              connector,
+            );
+          } else {
+            logger.warn(
+              { workerId, source: origMessage.source },
+              'Tool escalation skipped — connector not found for source',
+            );
+          }
+        }
       }
 
       // Update task record with result (OB-165)
