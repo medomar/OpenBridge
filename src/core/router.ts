@@ -52,6 +52,9 @@ const APP_STOP_MARKER_RE = /\[APP:stop\]([^[]*)\[\/APP\]/g;
 /** Pattern matching [APP:update:appId]jsonData[/APP] markers in AI output */
 const APP_UPDATE_MARKER_RE = /\[APP:update:([^\]]+)\]([^[]*)\[\/APP\]/g;
 
+/** Pattern matching [CONTINUE:batch-{id}] internal batch continuation messages */
+const CONTINUE_MARKER_RE = /^\[CONTINUE:batch-([^\]]+)\]$/;
+
 /** Format a millisecond duration as a human-readable string (e.g. "2h 14m", "45s"). */
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -432,6 +435,45 @@ export class Router {
         { appId: relayMsg.appId, type: relayMsg.type, err },
         'Error processing app interaction',
       );
+    }
+  }
+
+  /**
+   * Inject a synthetic batch continuation message directly to Master AI.
+   *
+   * Bypasses all auth checks, rate limiting, and the message queue. Called by
+   * MasterManager (OB-1613) after each batch item completes to trigger processing
+   * of the next batch item. The `[CONTINUE:batch-{batchId}]` content is the internal
+   * marker that route() recognises and forwards to Master without user-facing output.
+   *
+   * @param batchId  The active batch identifier.
+   * @param sender   The original sender who initiated the batch (for message context).
+   */
+  async routeBatchContinuation(batchId: string, sender: string): Promise<void> {
+    if (!this.master) {
+      logger.warn({ batchId }, 'routeBatchContinuation: no Master configured — skipping');
+      return;
+    }
+
+    const syntheticMsg: InboundMessage = {
+      id: `batch-continue-${batchId}-${Date.now()}`,
+      source: 'internal-batch',
+      sender,
+      rawContent: `[CONTINUE:batch-${batchId}]`,
+      content: `[CONTINUE:batch-${batchId}]`,
+      timestamp: new Date(),
+      metadata: { internal: true, batchId, type: 'batch-continuation' },
+    };
+
+    logger.info(
+      { batchId, sender, messageId: syntheticMsg.id },
+      'Injecting batch continuation — routing to Master without auth/rate limiting',
+    );
+
+    try {
+      await this.master.processMessage(syntheticMsg);
+    } catch (err) {
+      logger.error({ batchId, err }, 'Error processing batch continuation');
     }
   }
 
@@ -994,6 +1036,28 @@ export class Router {
         logger.error({ provider: this.defaultProviderName }, 'Default provider not found');
         return;
       }
+    }
+
+    // Detect internal batch continuation messages — [CONTINUE:batch-{id}] — before connector
+    // lookup so that synthetic messages (source='internal-batch') work without a registered
+    // connector. These messages bypass all auth checks, rate limiting, and user-facing acks.
+    const continueMatch = CONTINUE_MARKER_RE.exec(message.content.trim());
+    if (continueMatch !== null) {
+      const batchId = continueMatch[1]!;
+      logger.info(
+        { batchId, sender: message.sender, messageId: message.id },
+        'Internal batch continuation detected — routing to Master directly',
+      );
+      if (this.master) {
+        try {
+          await this.master.processMessage(message);
+        } catch (err) {
+          logger.error({ batchId, err }, 'Error processing batch continuation');
+        }
+      } else {
+        logger.warn({ batchId }, 'Batch continuation received but no Master is set — ignoring');
+      }
+      return;
     }
 
     const connector = this.connectors.get(message.source);

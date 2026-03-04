@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 33 | **In Progress:** 0 | **Done:** 181 (112 archived)
+> **Pending:** 32 | **In Progress:** 0 | **Done:** 182 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -38,7 +38,7 @@
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
-| 98     | Batch Task Continuation              | 22    | ◻ (6/22 done)   |
+| 98     | Batch Task Continuation              | 22    | ◻ (7/22 done)   |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
@@ -427,7 +427,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                               | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 9   | OB-1612 | Add `[CONTINUE:batch-{id}]` marker recognition in Router — detect internal continuation messages. Route to Master without auth checks or rate limiting. Log as internal continuation                                                      | ◻ Pending |
+| 9   | OB-1612 | Add `[CONTINUE:batch-{id}]` marker recognition in Router — detect internal continuation messages. Route to Master without auth checks or rate limiting. Log as internal continuation                                                      | ✅ Done   |
 | 10  | OB-1613 | Add continuation trigger in MasterManager — after workers complete and response sent, check BatchManager.isActive(). If yes, inject `[CONTINUE:batch-{id}]` synthetic message into Router after 2s delay                                  | ◻ Pending |
 | 11  | OB-1614 | Add progress messages between iterations — after each item completes, send to user: "Task {id} done. Starting {nextId}... ({current}/{total})" with brief summary of completed work                                                       | ◻ Pending |
 | 12  | OB-1615 | Add per-item commit support — when user requests "commit after each", BatchManager sets `commitAfterEach: true`. After each worker completes, spawn a `code-edit` worker with "git add and commit changes for: {task description}" prompt | ◻ Pending |
