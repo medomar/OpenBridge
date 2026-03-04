@@ -725,6 +725,11 @@ export class Router {
     this.connectors.set(connector.name, connector);
   }
 
+  /** Look up a registered connector by source name. Returns undefined when not found. */
+  getConnector(source: string): Connector | undefined {
+    return this.connectors.get(source);
+  }
+
   /** Register an active provider */
   addProvider(provider: AIProvider): void {
     this.providers.set(provider.name, provider);
