@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 52 | **In Progress:** 0 | **Done:** 162 (112 archived)
+> **Pending:** 51 | **In Progress:** 0 | **Done:** 163 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -37,7 +37,7 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
-| 97     | Runtime Permission Escalation        | 20    | ◻ (8/20 done)   |
+| 97     | Runtime Permission Escalation        | 20    | ◻ (9/20 done)   |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
@@ -386,7 +386,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                           | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 9   | OB-1592 | Add tool-access failure detection in `src/master/master-manager.ts` — after worker completes, check if result contains "tool not allowed", "permission denied", or "not in allowedTools". Extract the tool name from the error message                | ◻ Pending |
+| 9   | OB-1592 | Add tool-access failure detection in `src/master/master-manager.ts` — after worker completes, check if result contains "tool not allowed", "permission denied", or "not in allowedTools". Extract the tool name from the error message                | ✅ Done   |
 | 10  | OB-1593 | Wire failure detection to Router escalation — when tool-access failure detected, call `router.requestToolEscalation()` with worker context. If user grants, respawn the worker with upgraded profile/tools                                            | ◻ Pending |
 | 11  | OB-1594 | Add worker re-spawn after grant — when user approves escalation, spawn a new worker with the same prompt but upgraded allowedTools. Merge granted tools with original profile tools. Log the upgrade                                                  | ◻ Pending |
 | 12  | OB-1595 | Add pre-flight tool prediction in MasterManager — before spawning, analyze task prompt for tool-related keywords (test, lint, build, deploy, install). If predicted tools exceed profile, request upfront escalation instead of failing mid-execution | ◻ Pending |
