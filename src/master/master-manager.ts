@@ -440,6 +440,9 @@ export interface ClassificationResult {
   /** When true, the task matches deep-mode keywords (audit, thorough review, etc.)
    *  and the Master should offer or activate Deep Mode analysis (OB-1404). */
   suggestDeepMode?: boolean;
+  /** When true, the message matches batch-mode keywords (implement all, for each, etc.)
+   *  and the Master should activate Batch Task Continuation (OB-1605). */
+  batchMode?: boolean;
 }
 
 /**
@@ -2959,6 +2962,28 @@ export class MasterManager {
     recentUserMessages?: string[],
   ): ClassificationResult {
     const lower = content.toLowerCase();
+
+    // Batch Mode keywords — multi-task iteration requests that trigger Batch Task Continuation (OB-1605)
+    // e.g. "implement all tasks", "go through each one", "for each pending item"
+    const batchKeywords = [
+      'one by one',
+      'all tasks',
+      'each one',
+      'implement all',
+      'go through all',
+      'for each',
+      'iterate through',
+      'all pending',
+    ];
+    if (batchKeywords.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'complex-task',
+        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
+        reason: 'keyword match: batch-mode',
+        batchMode: true,
+      };
+    }
 
     // Deep Mode keywords — thorough analysis tasks that benefit from multi-phase investigation
     // These are a specialised subset of complex tasks (OB-1404)
