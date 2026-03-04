@@ -33,8 +33,8 @@ import {
   PromptManifestSchema,
   PromptTemplateSchema,
 } from '../types/master.js';
-import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
-import { ToolProfileSchema, ProfilesRegistrySchema } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry, BatchState } from '../types/agent.js';
+import { ToolProfileSchema, ProfilesRegistrySchema, BatchStateSchema } from '../types/agent.js';
 import type { WorkersRegistry } from './worker-registry.js';
 import { WorkersRegistrySchema } from './worker-registry.js';
 
@@ -931,6 +931,49 @@ export class DotFolderManager {
         }));
     } catch {
       return [];
+    }
+  }
+
+  // ── Batch State ────────────────────────────────────────────────
+
+  /**
+   * Get the path to the batch-state.json file.
+   */
+  public getBatchStatePath(): string {
+    return path.join(this.dotFolderPath, 'batch-state.json');
+  }
+
+  /**
+   * Read the active batch state from `.openbridge/batch-state.json`.
+   * Returns null if the file does not exist or cannot be parsed.
+   */
+  public async readBatchState(): Promise<BatchState | null> {
+    try {
+      const content = await fs.readFile(this.getBatchStatePath(), 'utf-8');
+      const data = JSON.parse(content) as unknown;
+      return BatchStateSchema.parse(data);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persist the current batch state to `.openbridge/batch-state.json`.
+   */
+  public async writeBatchState(state: BatchState): Promise<void> {
+    const validated = BatchStateSchema.parse(state);
+    await fs.writeFile(this.getBatchStatePath(), JSON.stringify(validated, null, 2), 'utf-8');
+  }
+
+  /**
+   * Delete `.openbridge/batch-state.json`.
+   * No-op if the file does not exist.
+   */
+  public async deleteBatchState(): Promise<void> {
+    try {
+      await fs.unlink(this.getBatchStatePath());
+    } catch {
+      // File may not exist — ignore
     }
   }
 }
