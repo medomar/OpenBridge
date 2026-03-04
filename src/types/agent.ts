@@ -369,6 +369,43 @@ export const DeepModeStateSchema = z.object({
   taskModelOverrides: z.record(z.string(), z.enum(['fast', 'balanced', 'powerful'])).default({}),
 });
 
+// ── Batch Mode ───────────────────────────────────────────────────
+
+/** Source of the batch item list */
+export const BatchSourceTypeSchema = z.enum(['tasks-md', 'findings', 'custom-list']);
+
+/** A single completed item within a batch run */
+export const BatchCompletedItemSchema = z.object({
+  /** Item identifier (e.g. task ID or finding ID) */
+  id: z.string().min(1),
+  /** One-line summary of what was done */
+  summary: z.string(),
+  /** Outcome of this item */
+  status: z.enum(['completed', 'failed', 'skipped']),
+});
+
+/** Live state for an active Batch Mode session */
+export const BatchStateSchema = z.object({
+  /** Unique batch run identifier */
+  batchId: z.string().min(1),
+  /** Where the item list came from */
+  sourceType: BatchSourceTypeSchema,
+  /** Total number of items in the batch */
+  totalItems: z.number().int().nonnegative(),
+  /** Zero-based index of the item currently being processed */
+  currentIndex: z.number().int().nonnegative(),
+  /** Items that have finished (successfully or not) */
+  completedItems: z.array(BatchCompletedItemSchema).default([]),
+  /** IDs of items that failed */
+  failedItems: z.array(z.string().min(1)).default([]),
+  /** When the batch run started (ISO 8601) */
+  startedAt: z.string().datetime(),
+  /** Accumulated cost in USD across all items so far */
+  totalCostUsd: z.number().nonnegative().default(0),
+  /** Whether the batch is currently paused (waiting for user confirmation) */
+  paused: z.boolean().default(false),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -395,3 +432,6 @@ export type ExecutionProfile = z.infer<typeof ExecutionProfileSchema>;
 export type DeepPhase = z.infer<typeof DeepPhaseSchema>;
 export type DeepPhaseResult = z.infer<typeof DeepPhaseResultSchema>;
 export type DeepModeState = z.infer<typeof DeepModeStateSchema>;
+export type BatchSourceType = z.infer<typeof BatchSourceTypeSchema>;
+export type BatchCompletedItem = z.infer<typeof BatchCompletedItemSchema>;
+export type BatchState = z.infer<typeof BatchStateSchema>;
