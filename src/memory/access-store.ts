@@ -10,12 +10,20 @@ export type AccessRole = 'owner' | 'admin' | 'developer' | 'viewer' | 'custom';
 /**
  * Per-user consent preference for high-risk spawn confirmation prompts.
  *
- * - `always-ask`        (default) — always prompt before high/critical-risk workers.
- * - `auto-approve-read` — skip confirmation for low-risk (read-only, code-audit) profiles;
- *                         still prompt for medium/high/critical-risk profiles.
- * - `auto-approve-all`  — never prompt; all workers proceed without confirmation.
+ * - `always-ask`             (default) — always prompt before high/critical-risk workers.
+ * - `auto-approve-read`      — skip confirmation for low-risk (read-only, code-audit) profiles;
+ *                              still prompt for medium/high/critical-risk profiles.
+ * - `auto-approve-up-to-edit` — skip confirmation for low/medium-risk profiles (read-only,
+ *                              code-audit, code-edit); still prompt for high/critical-risk
+ *                              (full-access, master). Also auto-approves tool escalations to
+ *                              code-edit level without requiring user input.
+ * - `auto-approve-all`       — never prompt; all workers proceed without confirmation.
  */
-export type ConsentMode = 'always-ask' | 'auto-approve-read' | 'auto-approve-all';
+export type ConsentMode =
+  | 'always-ask'
+  | 'auto-approve-read'
+  | 'auto-approve-up-to-edit'
+  | 'auto-approve-all';
 
 export interface AccessControlEntry {
   id?: number;
@@ -64,6 +72,7 @@ interface AccessControlRow {
 const VALID_CONSENT_MODES = new Set<ConsentMode>([
   'always-ask',
   'auto-approve-read',
+  'auto-approve-up-to-edit',
   'auto-approve-all',
 ]);
 
