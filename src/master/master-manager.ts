@@ -1,3 +1,4 @@
+import type { BatchManager } from './batch-manager.js';
 import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
@@ -591,6 +592,8 @@ export class MasterManager {
   private readonly deepMode: DeepModeManager;
   /** Deep Mode configuration — controls default profile and per-phase model overrides (OB-1403). */
   private readonly deepConfig: DeepConfig | undefined;
+  /** BatchManager for Batch Task Continuation — set via setBatchManager() (OB-1613). */
+  private batchManager: BatchManager | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -2407,6 +2410,15 @@ export class MasterManager {
    */
   public setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /**
+   * Set the BatchManager for Batch Task Continuation (OB-1613).
+   * Called by Bridge after construction so the MasterManager can schedule
+   * continuation triggers after each processed message.
+   */
+  public setBatchManager(bm: BatchManager): void {
+    this.batchManager = bm;
   }
 
   /**
@@ -5003,6 +5015,24 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // (6) Emit complete event — processing finished, status bar can be hidden
       await progress?.({ type: 'complete' });
+
+      // (7) Schedule batch continuation if a batch is active (OB-1613).
+      // The 2s delay ensures the current response is fully delivered to the user
+      // before the next batch item begins processing.
+      if (this.batchManager !== null && this.router !== null && this.batchManager.isActive()) {
+        const activeBatchId = this.batchManager.getActiveBatchId();
+        if (activeBatchId !== undefined) {
+          const batchSender = message.sender;
+          const router = this.router;
+          logger.info(
+            { batchId: activeBatchId, sender: batchSender },
+            'Batch active after message processing — scheduling continuation trigger in 2s',
+          );
+          setTimeout(() => {
+            void router.routeBatchContinuation(activeBatchId, batchSender);
+          }, 2000);
+        }
+      }
 
       return response;
     } catch (error) {
