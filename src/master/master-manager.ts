@@ -153,6 +153,91 @@ export interface ToolAccessFailure {
 }
 
 /**
+ * Pre-flight tool prediction result (OB-1595).
+ * Returned by `predictToolRequirements()` when the task prompt suggests the
+ * worker will need more tools than its current profile allows.
+ */
+export interface ToolPrediction {
+  /** The minimum profile needed to execute this task. */
+  suggestedProfile: string;
+  /** Human-readable reason for the predicted upgrade. */
+  reason: string;
+  /** Keywords in the prompt that triggered the prediction. */
+  triggerKeywords: string[];
+}
+
+/**
+ * Rules mapping prompt keyword patterns to minimum required tool profiles.
+ * Ordered from most-restrictive (full-access) to least, so the first match wins.
+ */
+const PREFLIGHT_RULES: Array<{
+  pattern: RegExp;
+  requiredProfile: 'code-edit' | 'full-access';
+  label: string;
+}> = [
+  {
+    // Unrestricted shell: deploy, docker, kubectl, system daemons, curl/wget scripts
+    pattern:
+      /\b(deploy(?:ment)?|docker\s+\w|kubectl\s+\w|apt(?:-get)?\s+\w|brew\s+install|curl\s+https?|wget\s+https?|systemctl\s+\w|pm2\s+\w|sh\s+\S|bash\s+\S)\b/i,
+    requiredProfile: 'full-access',
+    label: 'deploy/docker/system commands',
+  },
+  {
+    // npm/npx/pip/cargo/make + common task verbs (test, lint, build, install)
+    pattern:
+      /\b(npm\s+(test|install|run\s+\w+|build|ci)|npx\s+\w|pip\s+install|cargo\s+(build|test|run)|make\s+\w|run\s+tests?|run\s+(?:the\s+)?(?:lint|build|test)|lint\s+(?:the\s+)?code|build\s+(?:the\s+)?(?:project|app|package)|compile\s+\w|typecheck|type-check|install\s+(?:packages?|dep(?:endencies)?s?))\b/i,
+    requiredProfile: 'code-edit',
+    label: 'build/test/install commands',
+  },
+];
+
+/**
+ * Predict the minimum tool profile needed to execute a task prompt (OB-1595).
+ *
+ * Scans the task prompt for keywords that suggest the worker will need
+ * bash/shell access (test, lint, build, deploy, install, etc.).  Returns a
+ * `ToolPrediction` when the predicted minimum profile exceeds the current
+ * profile, so the caller can request upfront escalation before spawning.
+ *
+ * Returns `undefined` when:
+ *  - The profile is already `full-access` or `master` (no escalation needed)
+ *  - No prediction-triggering keywords are found
+ *  - The predicted profile is ≤ the current profile
+ */
+export function predictToolRequirements(
+  prompt: string,
+  profile: string,
+): ToolPrediction | undefined {
+  if (profile === 'full-access' || profile === 'master') return undefined;
+
+  // Profile capability order (ascending access level)
+  const PROFILE_ORDER = ['read-only', 'code-audit', 'code-edit', 'full-access'];
+  const currentIndex = PROFILE_ORDER.indexOf(profile);
+
+  for (const rule of PREFLIGHT_RULES) {
+    const match = rule.pattern.exec(prompt);
+    if (!match) continue;
+
+    const suggestedIndex = PROFILE_ORDER.indexOf(rule.requiredProfile);
+    // Only escalate if the prediction exceeds the current profile
+    if (suggestedIndex <= currentIndex) continue;
+
+    const triggerKeywords = match[0]
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .map((k) => k.replace(/[^a-zA-Z0-9:*-]/g, ''));
+    return {
+      suggestedProfile: rule.requiredProfile,
+      reason: rule.label,
+      triggerKeywords,
+    };
+  }
+
+  return undefined;
+}
+
+/**
  * Detect tool-access failures in a worker result (OB-1592).
  *
  * Scans both stdout and stderr for the error patterns the Claude CLI emits
@@ -6411,6 +6496,64 @@ ${currentContent}
       },
       'Spawning worker from SPAWN marker',
     );
+
+    // Pre-flight tool prediction (OB-1595): before spending any turns, analyze the
+    // task prompt for keywords that suggest the worker will need tools beyond what
+    // its current profile allows (e.g. "npm test" with a read-only profile).
+    // When a mismatch is predicted, request escalation upfront — the user is asked
+    // before the worker is spawned, and the actual spawn is deferred to the respawn
+    // callback so no turns are wasted on a predictably blocked worker.
+    const toolPrediction = predictToolRequirements(body.prompt, profile);
+    if (toolPrediction && this.router && this.activeMessage) {
+      logger.info(
+        {
+          workerId,
+          currentProfile: profile,
+          suggestedProfile: toolPrediction.suggestedProfile,
+          triggerKeywords: toolPrediction.triggerKeywords,
+          reason: toolPrediction.reason,
+        },
+        'Pre-flight tool prediction: requesting upfront escalation before spawn',
+      );
+      const origMessage = this.activeMessage;
+      const connector = this.router.getConnector(origMessage.source);
+      if (connector) {
+        const suggestedTools = resolveProfile(toolPrediction.suggestedProfile) ?? [];
+        const currentTools = resolveProfile(profile) ?? [];
+        const additionalTools = suggestedTools.filter((t) => !currentTools.includes(t));
+
+        const respawnCallback = async (grantedTools: string[]): Promise<void> => {
+          await this.respawnWorkerAfterGrant(
+            workerId,
+            marker,
+            index,
+            profile,
+            grantedTools,
+            attachments,
+          );
+        };
+
+        await this.router.requestToolEscalation(
+          workerId,
+          additionalTools.length > 0 ? additionalTools : [toolPrediction.suggestedProfile],
+          profile,
+          `Pre-flight prediction: ${toolPrediction.reason} (keywords: ${toolPrediction.triggerKeywords.join(', ')})`,
+          origMessage,
+          connector,
+          respawnCallback,
+        );
+
+        // Return a deferred result — the actual spawn happens asynchronously
+        // via respawnCallback when the user grants tool access.
+        return {
+          stdout: `[Pre-flight] Tool grant requested for worker ${workerId}: ${toolPrediction.reason}. Spawn deferred pending user confirmation.`,
+          stderr: '',
+          exitCode: 0,
+          durationMs: 0,
+          retryCount: 0,
+        };
+      }
+    }
 
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     // manifestToSpawnOptions is async: when manifest.mcpServers is set, it writes a
