@@ -517,6 +517,19 @@ export class Router {
           return false;
         }
       }
+      if (consentMode === 'auto-approve-up-to-edit') {
+        const allMediumOrLower = markers.every((m) => {
+          const risk = this.getProfileRisk(m.profile);
+          return risk === 'low' || risk === 'medium';
+        });
+        if (allMediumOrLower) {
+          logger.debug(
+            { sender, consentMode },
+            'Skipping spawn confirmation — auto-approve-up-to-edit with all medium-or-lower-risk profiles',
+          );
+          return false;
+        }
+      }
     }
 
     const highRiskMarkers = markers.filter((m) => {
@@ -641,6 +654,39 @@ export class Router {
   ): Promise<void> {
     const sender = message.sender;
     const toolsList = requestedTools.join(', ');
+
+    // Check consent mode for auto-approve-up-to-edit — auto-approve escalations to code-edit
+    // or lower risk without prompting the user (OB-1601).
+    if (this.memory) {
+      const consentMode = await this.memory.getConsentMode(sender, message.source);
+      if (consentMode === 'auto-approve-up-to-edit') {
+        const allWithinEditLevel = requestedTools.every((tool) => {
+          const parsed = BuiltInProfileNameSchema.safeParse(tool);
+          if (parsed.success) {
+            const risk = PROFILE_RISK_MAP[parsed.data];
+            // Auto-approve low and medium risk profiles (read-only, code-audit, code-edit)
+            return risk === 'low' || risk === 'medium';
+          }
+          // Specific tool names (not profile names) are single-tool grants — treat as within edit level
+          return true;
+        });
+        if (allWithinEditLevel) {
+          logger.info(
+            { sender, workerId, requestedTools },
+            'Auto-approving tool escalation — auto-approve-up-to-edit mode',
+          );
+          await connector.sendMessage({
+            target: message.source,
+            recipient: sender,
+            content: `✅ Auto-approved tool escalation for worker ${workerId}: *${toolsList}* (auto-approve-up-to-edit mode)`,
+          });
+          if (respawn) {
+            await respawn(requestedTools);
+          }
+          return;
+        }
+      }
+    }
 
     // Build the example allow invocation — use first requested tool as hint
     const allowExample =
