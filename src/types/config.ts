@@ -280,6 +280,18 @@ export const DeepConfigSchema = z.object({
 
 export type DeepConfig = z.infer<typeof DeepConfigSchema>;
 
+/** Schema for batch task continuation configuration */
+export const BatchConfigSchema = z.object({
+  /** Maximum number of batch iterations before pausing (default: 20) */
+  maxBatchIterations: z.number().int().positive().default(20),
+  /** Maximum cumulative cost in USD before pausing the batch (default: 5.00) */
+  batchBudgetUsd: z.number().positive().default(5.0),
+  /** Maximum elapsed time in minutes before pausing the batch (default: 120) */
+  batchTimeoutMinutes: z.number().int().positive().default(120),
+});
+
+export type BatchConfig = z.infer<typeof BatchConfigSchema>;
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
@@ -291,6 +303,7 @@ export const V2ConfigSchema = z
     mcp: MCPConfigSchema.optional(),
     apps: AppsConfigSchema.optional(),
     deep: DeepConfigSchema.optional(),
+    batch: BatchConfigSchema.optional(),
     security: SecurityConfigSchema.optional(),
     email: EmailConfigSchema.optional(),
     queue: QueueConfigSchema.optional(),
