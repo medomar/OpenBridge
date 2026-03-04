@@ -414,6 +414,8 @@ export const BatchStateSchema = z.object({
   totalCostUsd: z.number().nonnegative().default(0),
   /** Whether the batch is currently paused (waiting for user confirmation) */
   paused: z.boolean().default(false),
+  /** When true, a git-commit worker is spawned after each batch item completes (OB-1615) */
+  commitAfterEach: z.boolean().default(false),
 });
 
 // ── Inferred Types ───────────────────────────────────────────────

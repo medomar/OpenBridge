@@ -444,6 +444,8 @@ export interface ClassificationResult {
   /** When true, the message matches batch-mode keywords (implement all, for each, etc.)
    *  and the Master should activate Batch Task Continuation (OB-1605). */
   batchMode?: boolean;
+  /** When true, the message includes "commit after each" — BatchManager sets commitAfterEach (OB-1615). */
+  commitAfterEach?: boolean;
 }
 
 /**
@@ -2988,12 +2990,16 @@ export class MasterManager {
       'all pending',
     ];
     if (batchKeywords.some((kw) => lower.includes(kw))) {
+      // Detect "commit after each" modifier — when present, BatchManager should set commitAfterEach (OB-1615)
+      const commitAfterEachKeywords = ['commit after each', 'commit each', 'commit after every'];
+      const commitAfterEach = commitAfterEachKeywords.some((kw) => lower.includes(kw));
       return {
         class: 'complex-task',
         maxTurns: MESSAGE_MAX_TURNS_PLANNING,
         timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
         reason: 'keyword match: batch-mode',
         batchMode: true,
+        commitAfterEach: commitAfterEach || undefined,
       };
     }
 
@@ -5040,9 +5046,44 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             );
           }
 
-          setTimeout(() => {
-            void router.routeBatchContinuation(activeBatchId, batchSender);
-          }, 2000);
+          // (OB-1615) Spawn a git-commit worker when commitAfterEach is set.
+          // The commit worker runs before scheduling the next batch item so changes
+          // from the current item are committed before the next item begins.
+          const scheduleNext = (): void => {
+            setTimeout(() => {
+              void router.routeBatchContinuation(activeBatchId, batchSender);
+            }, 2000);
+          };
+
+          if (this.batchManager.shouldCommitAfterEach(activeBatchId)) {
+            const commitPrompt = this.batchManager.buildCommitPrompt(activeBatchId);
+            if (commitPrompt !== null) {
+              void (async (): Promise<void> => {
+                logger.info({ batchId: activeBatchId }, 'Spawning commit worker after batch item');
+                try {
+                  await this.agentRunner.spawn({
+                    prompt: commitPrompt,
+                    workspacePath: this.workspacePath,
+                    allowedTools: resolveProfile('code-edit'),
+                    maxTurns: 3,
+                    model: 'fast',
+                    retries: 1,
+                  });
+                  logger.info({ batchId: activeBatchId }, 'Commit worker completed');
+                } catch (commitErr) {
+                  logger.warn(
+                    { batchId: activeBatchId, err: commitErr },
+                    'Commit worker failed — continuing batch',
+                  );
+                }
+                scheduleNext();
+              })();
+            } else {
+              scheduleNext();
+            }
+          } else {
+            scheduleNext();
+          }
         }
       }
 
