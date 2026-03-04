@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 27 | **In Progress:** 0 | **Done:** 187 (112 archived)
+> **Pending:** 26 | **In Progress:** 0 | **Done:** 188 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -38,7 +38,7 @@
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
-| 98     | Batch Task Continuation              | 22    | ◻ (12/22 done)  |
+| 98     | Batch Task Continuation              | 22    | ◻ (13/22 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
@@ -425,15 +425,15 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 98-2 — Self-Messaging Loop & Continuation (~7 tasks)
 
-| #   | Task ID | Description                                                                                                                                                                                                                               | Status    |
-| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 9   | OB-1612 | Add `[CONTINUE:batch-{id}]` marker recognition in Router — detect internal continuation messages. Route to Master without auth checks or rate limiting. Log as internal continuation                                                      | ✅ Done   |
-| 10  | OB-1613 | Add continuation trigger in MasterManager — after workers complete and response sent, check BatchManager.isActive(). If yes, inject `[CONTINUE:batch-{id}]` synthetic message into Router after 2s delay                                  | ✅ Done   |
-| 11  | OB-1614 | Add progress messages between iterations — after each item completes, send to user: "Task {id} done. Starting {nextId}... ({current}/{total})" with brief summary of completed work                                                       | ✅ Done   |
-| 12  | OB-1615 | Add per-item commit support — when user requests "commit after each", BatchManager sets `commitAfterEach: true`. After each worker completes, spawn a `code-edit` worker with "git add and commit changes for: {task description}" prompt | ✅ Done   |
-| 13  | OB-1616 | Add failure handling in batch loop — when a worker fails, pause batch. Send to user: "Task {id} failed: {reason}. Reply '/batch skip' to skip and continue, '/batch retry' to retry, '/batch abort' to stop."                             | ✅ Done   |
-| 14  | OB-1617 | Add Master context injection for batches — inject batch context into Master system prompt: current item, completed items summary, remaining count. Prevents Master from losing track of batch progress                                    | ✅ Done   |
-| 15  | OB-1618 | Add batch completion summary — when all items done, send final summary: total completed, total failed, total skipped, cumulative cost, total duration, list of completed items with one-line summaries                                    | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                               | Status  |
+| --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 9   | OB-1612 | Add `[CONTINUE:batch-{id}]` marker recognition in Router — detect internal continuation messages. Route to Master without auth checks or rate limiting. Log as internal continuation                                                      | ✅ Done |
+| 10  | OB-1613 | Add continuation trigger in MasterManager — after workers complete and response sent, check BatchManager.isActive(). If yes, inject `[CONTINUE:batch-{id}]` synthetic message into Router after 2s delay                                  | ✅ Done |
+| 11  | OB-1614 | Add progress messages between iterations — after each item completes, send to user: "Task {id} done. Starting {nextId}... ({current}/{total})" with brief summary of completed work                                                       | ✅ Done |
+| 12  | OB-1615 | Add per-item commit support — when user requests "commit after each", BatchManager sets `commitAfterEach: true`. After each worker completes, spawn a `code-edit` worker with "git add and commit changes for: {task description}" prompt | ✅ Done |
+| 13  | OB-1616 | Add failure handling in batch loop — when a worker fails, pause batch. Send to user: "Task {id} failed: {reason}. Reply '/batch skip' to skip and continue, '/batch retry' to retry, '/batch abort' to stop."                             | ✅ Done |
+| 14  | OB-1617 | Add Master context injection for batches — inject batch context into Master system prompt: current item, completed items summary, remaining count. Prevents Master from losing track of batch progress                                    | ✅ Done |
+| 15  | OB-1618 | Add batch completion summary — when all items done, send final summary: total completed, total failed, total skipped, cumulative cost, total duration, list of completed items with one-line summaries                                    | ✅ Done |
 
 ### 98-3 — Batch Commands & UX (~7 tasks)
 

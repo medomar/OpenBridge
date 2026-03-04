@@ -5132,6 +5132,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       // (7) Schedule batch continuation if a batch is active (OB-1613).
       // The 2s delay ensures the current response is fully delivered to the user
       // before the next batch item begins processing.
+
+      // Capture the active batch ID before the isActive() check so we can detect
+      // completion transitions (batch was active → is now done) for OB-1618.
+      const preBatchId = this.batchManager?.getActiveBatchId();
+
       if (this.batchManager !== null && this.router !== null && this.batchManager.isActive()) {
         const activeBatchId = this.batchManager.getActiveBatchId();
         if (activeBatchId !== undefined) {
@@ -5198,6 +5203,33 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           } else {
             scheduleNext();
           }
+        }
+      } else if (
+        // (OB-1618) Batch just completed — the batch was active before processing but is now done.
+        // Send the completion summary to the original sender.
+        this.batchManager !== null &&
+        this.router !== null &&
+        preBatchId !== undefined &&
+        !this.batchManager.isActive(preBatchId)
+      ) {
+        const completionSummary = this.batchManager.popCompletionSummary();
+        if (completionSummary !== null) {
+          const senderInfo = this.batchSenderInfo.get(preBatchId);
+          if (senderInfo) {
+            void this.router.sendDirect(senderInfo.source, senderInfo.sender, completionSummary);
+            logger.info(
+              { batchId: preBatchId, sender: senderInfo.sender },
+              'Batch completion summary sent to user',
+            );
+          } else {
+            // Fallback: send to the current message sender
+            void this.router.sendDirect(message.source, message.sender, completionSummary);
+            logger.info(
+              { batchId: preBatchId, sender: message.sender },
+              'Batch completion summary sent to current sender (no stored senderInfo)',
+            );
+          }
+          this.batchSenderInfo.delete(preBatchId);
         }
       }
 

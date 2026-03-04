@@ -42,6 +42,11 @@ export interface BatchAdvanceResult {
   nextIndex: number | null;
   /** Whether the batch has finished all items. */
   finished: boolean;
+  /**
+   * Populated when finished === true — the formatted completion summary to send to the user (OB-1618).
+   * Includes total completed/failed/skipped, cost, duration, and per-item summaries.
+   */
+  completionSummary: string | null;
 }
 
 /** Describes a single safety rail limit that was exceeded. */
@@ -74,6 +79,9 @@ export class BatchManager {
 
   /** Optional persistence layer — when set, batch state is saved after every mutation. */
   private dotFolder: DotFolderManager | undefined;
+
+  /** Stores the completion summary for the most-recently-finished batch (OB-1618). */
+  private lastCompletionSummary: string | null = null;
 
   constructor(dotFolder?: DotFolderManager) {
     this.dotFolder = dotFolder;
@@ -223,7 +231,11 @@ export class BatchManager {
       'Batch item completed',
     );
 
+    let completionSummary: string | null = null;
     if (finished) {
+      // Build the completion summary BEFORE removing state from memory (OB-1618).
+      completionSummary = this.buildCompletionSummaryText(state);
+      this.lastCompletionSummary = completionSummary;
       // Batch is complete — remove in-progress state from disk
       this.batches.delete(batchId);
       await this.deletePersisted();
@@ -236,6 +248,7 @@ export class BatchManager {
       completedIndex,
       nextIndex: finished ? null : nextIndex,
       finished,
+      completionSummary,
     };
   }
 
@@ -309,6 +322,70 @@ export class BatchManager {
     this.batches.delete(batchId);
     await this.deletePersisted();
     return true;
+  }
+
+  // ── Completion summary ─────────────────────────────────────────
+
+  /**
+   * Build a formatted completion summary string from the final batch state (OB-1618).
+   *
+   * Includes: total completed/failed/skipped counts, cumulative cost, wall-clock duration,
+   * and a per-item list with status icons and one-line summaries.
+   *
+   * Called internally by advanceBatch() just before the completed batch state is deleted.
+   */
+  private buildCompletionSummaryText(state: BatchState): string {
+    const completed = state.completedItems.filter((i) => i.status === 'completed').length;
+    const failed = state.completedItems.filter((i) => i.status === 'failed').length;
+    const skipped = state.completedItems.filter((i) => i.status === 'skipped').length;
+
+    const durationMs = Date.now() - new Date(state.startedAt).getTime();
+    const totalSeconds = Math.round(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    let durationStr: string;
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+      durationStr = `${minutes}m ${seconds}s`;
+    } else {
+      durationStr = `${seconds}s`;
+    }
+
+    const costStr = state.totalCostUsd > 0 ? `$${state.totalCostUsd.toFixed(4)}` : 'not tracked';
+
+    const lines: string[] = [
+      '🎉 Batch complete!',
+      '',
+      `**Results:** ${completed} completed, ${failed} failed, ${skipped} skipped`,
+      `**Total cost:** ${costStr}`,
+      `**Duration:** ${durationStr}`,
+    ];
+
+    if (state.completedItems.length > 0) {
+      lines.push('', '**Items:**');
+      for (const item of state.completedItems) {
+        const icon = item.status === 'failed' ? '❌' : item.status === 'skipped' ? '⏭' : '✅';
+        const summary = item.summary ? ` — ${item.summary}` : '';
+        lines.push(`- ${icon} ${item.id}${summary}`);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Return the completion summary for the most recently finished batch and clear it (OB-1618).
+   *
+   * Should be called by MasterManager immediately after detecting that a batch has finished
+   * (i.e. advanceBatch() returned finished === true). Returns null if no summary is available
+   * (e.g. the batch was aborted rather than completed naturally).
+   */
+  popCompletionSummary(): string | null {
+    const summary = this.lastCompletionSummary;
+    this.lastCompletionSummary = null;
+    return summary;
   }
 
   // ── Query methods ──────────────────────────────────────────────
