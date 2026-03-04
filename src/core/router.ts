@@ -1070,6 +1070,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/permissions" command — show current user's grants and consent mode (OB-1589)
+    if (/^\/permissions$/i.test(message.content.trim())) {
+      await this.handlePermissionsCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -2110,6 +2116,75 @@ export class Router {
       { sender: message.sender, workerId: entry.workerId, requestedTools: entry.requestedTools },
       'Tool escalation denied via /deny',
     );
+  }
+
+  /**
+   * Handle the built-in "/permissions" command — show the current user's tool grants and consent
+   * mode (OB-1589).
+   *
+   * Output:
+   *   - Consent mode (always-ask / auto-approve-read / auto-approve-all)
+   *   - Session grants (from in-memory sessionGrantedTools Map)
+   *   - Permanent grants (from access_control DB via allowed_actions)
+   */
+  private async handlePermissionsCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const lines: string[] = ['*Your Permissions*', ''];
+
+    // Consent mode
+    let consentMode: string = 'always-ask';
+    if (this.memory) {
+      try {
+        consentMode = await this.memory.getConsentMode(message.sender, message.source);
+      } catch {
+        consentMode = 'always-ask';
+      }
+    }
+    lines.push(`*Consent mode:* ${consentMode}`);
+    lines.push('');
+
+    // Session grants (in-memory, cleared on restart)
+    const sessionGrants = this.sessionGrantedTools.get(message.sender);
+    if (sessionGrants && sessionGrants.size > 0) {
+      lines.push('*Session grants* (active until restart):');
+      for (const grant of sessionGrants) {
+        lines.push(`  • ${grant}`);
+      }
+    } else {
+      lines.push('*Session grants:* none');
+    }
+    lines.push('');
+
+    // Permanent grants (stored in DB)
+    if (this.memory) {
+      try {
+        const entry = await this.memory.getAccess(message.sender, message.source);
+        const permanentGrants = entry?.allowed_actions ?? [];
+        if (permanentGrants.length > 0) {
+          lines.push('*Permanent grants* (stored in DB):');
+          for (const grant of permanentGrants) {
+            lines.push(`  • ${grant}`);
+          }
+        } else {
+          lines.push('*Permanent grants:* none');
+        }
+      } catch {
+        lines.push('*Permanent grants:* (unavailable — DB error)');
+      }
+    } else {
+      lines.push('*Permanent grants:* (unavailable — memory not initialised)');
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender }, 'Permissions displayed via /permissions');
   }
 
   /**
@@ -3503,6 +3578,7 @@ export class Router {
       '• /allow <tool|profile> --session — grant for the entire session',
       '• /allow <tool|profile> --permanent — grant permanently',
       '• /deny — reject a pending tool escalation',
+      '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
       '*Deep Mode*',
       '• /deep — start a deep analysis session (investigate → report → plan → execute → verify)',
