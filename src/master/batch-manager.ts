@@ -636,4 +636,63 @@ export class BatchManager {
 
     return { passed: true, violation: undefined };
   }
+
+  // ── Master context injection ────────────────────────────────────
+
+  /**
+   * Build a system prompt section describing the current batch state (OB-1617).
+   *
+   * Injected into the Master AI's system prompt on every turn during a batch run
+   * so the Master never loses track of which item is current, what has been
+   * completed, and how many items remain.
+   *
+   * @param batchId  The active batch identifier.
+   * @returns        Formatted Markdown section, or null when the batch is unknown.
+   */
+  buildBatchContextSection(batchId: string): string | null {
+    const state = this.batches.get(batchId);
+    if (!state) return null;
+
+    const completed = state.completedItems.length;
+    const remaining = state.totalItems - state.currentIndex;
+    const currentPosition = state.currentIndex + 1; // 1-based for human display
+    const currentItem = state.plan[state.currentIndex];
+
+    const lines: string[] = [
+      '## Active Batch Run',
+      '',
+      `**Batch ID:** ${batchId}`,
+      `**Progress:** ${completed} completed, ${remaining} remaining (${currentPosition}/${state.totalItems} total)`,
+    ];
+
+    if (currentItem) {
+      lines.push(
+        '',
+        `**Current item (${currentPosition}/${state.totalItems}):** ${currentItem.id}`,
+      );
+      if (currentItem.description) {
+        lines.push(`**Task:** ${currentItem.description}`);
+      }
+    }
+
+    if (state.completedItems.length > 0) {
+      lines.push('', '**Completed items:**');
+      for (const item of state.completedItems) {
+        const icon = item.status === 'failed' ? '❌' : item.status === 'skipped' ? '⏭' : '✅';
+        const summary = item.summary ? ` — ${item.summary}` : '';
+        lines.push(`- ${icon} ${item.id}${summary}`);
+      }
+    }
+
+    if (state.failedItems.length > 0) {
+      lines.push('', `**Failed items:** ${state.failedItems.join(', ')}`);
+    }
+
+    lines.push(
+      '',
+      'Process the current item above. When done, the batch will automatically continue to the next item.',
+    );
+
+    return lines.join('\n');
+  }
 }
