@@ -6391,6 +6391,25 @@ ${currentContent}
   ): Promise<AgentResult> {
     const { profile, body } = marker;
 
+    // OB-1596: Compute session-level tool grants for this sender.
+    // If the user approved tools earlier this session via /allow, auto-apply them
+    // to every subsequent worker spawn so we don't re-ask for the same permissions.
+    const senderSessionGrants: ReadonlySet<string> =
+      this.router && this.activeMessage
+        ? this.router.getSessionGrants(this.activeMessage.sender)
+        : new Set<string>();
+    // Expand profile-name grants (e.g. "code-edit") to their individual tool lists
+    // so we can check coverage and merge them into allowedTools uniformly.
+    const expandedSessionGrants = new Set<string>();
+    for (const grant of senderSessionGrants) {
+      if (BuiltInProfileNameSchema.safeParse(grant).success) {
+        const profileTools = resolveProfile(grant) ?? [];
+        profileTools.forEach((t) => expandedSessionGrants.add(t));
+      } else {
+        expandedSessionGrants.add(grant);
+      }
+    }
+
     // If the originating message had attachments, prepend a ## Referenced Files section
     // so the worker knows which files to read and analyze (OB-1148).
     let workerPrompt = body.prompt;
@@ -6522,36 +6541,48 @@ ${currentContent}
         const currentTools = resolveProfile(profile) ?? [];
         const additionalTools = suggestedTools.filter((t) => !currentTools.includes(t));
 
-        const respawnCallback = async (grantedTools: string[]): Promise<void> => {
-          await this.respawnWorkerAfterGrant(
+        // OB-1596: If session grants already cover all additional tools, skip
+        // escalation — they will be auto-merged into allowedTools below.
+        const sessionCoversTools =
+          additionalTools.length > 0 && additionalTools.every((t) => expandedSessionGrants.has(t));
+
+        if (!sessionCoversTools) {
+          const respawnCallback = async (grantedTools: string[]): Promise<void> => {
+            await this.respawnWorkerAfterGrant(
+              workerId,
+              marker,
+              index,
+              profile,
+              grantedTools,
+              attachments,
+            );
+          };
+
+          await this.router.requestToolEscalation(
             workerId,
-            marker,
-            index,
+            additionalTools.length > 0 ? additionalTools : [toolPrediction.suggestedProfile],
             profile,
-            grantedTools,
-            attachments,
+            `Pre-flight prediction: ${toolPrediction.reason} (keywords: ${toolPrediction.triggerKeywords.join(', ')})`,
+            origMessage,
+            connector,
+            respawnCallback,
           );
-        };
 
-        await this.router.requestToolEscalation(
-          workerId,
-          additionalTools.length > 0 ? additionalTools : [toolPrediction.suggestedProfile],
-          profile,
-          `Pre-flight prediction: ${toolPrediction.reason} (keywords: ${toolPrediction.triggerKeywords.join(', ')})`,
-          origMessage,
-          connector,
-          respawnCallback,
+          // Return a deferred result — the actual spawn happens asynchronously
+          // via respawnCallback when the user grants tool access.
+          return {
+            stdout: `[Pre-flight] Tool grant requested for worker ${workerId}: ${toolPrediction.reason}. Spawn deferred pending user confirmation.`,
+            stderr: '',
+            exitCode: 0,
+            durationMs: 0,
+            retryCount: 0,
+          };
+        }
+
+        logger.info(
+          { workerId, additionalTools, sessionGrants: [...senderSessionGrants] },
+          'Pre-flight: required tools already session-granted — skipping escalation',
         );
-
-        // Return a deferred result — the actual spawn happens asynchronously
-        // via respawnCallback when the user grants tool access.
-        return {
-          stdout: `[Pre-flight] Tool grant requested for worker ${workerId}: ${toolPrediction.reason}. Spawn deferred pending user confirmation.`,
-          stderr: '',
-          exitCode: 0,
-          durationMs: 0,
-          retryCount: 0,
-        };
       }
     }
 
@@ -6571,6 +6602,21 @@ ${currentContent}
       },
       customProfiles,
     );
+
+    // OB-1596: Auto-merge session-granted tools into this worker's allowedTools.
+    // Tools previously approved by the user this session (via /allow) are applied
+    // automatically so repeated worker spawns don't re-ask for the same permissions.
+    if (expandedSessionGrants.size > 0) {
+      const existing = spawnOpts.allowedTools ?? [];
+      const toolsToAdd = [...expandedSessionGrants].filter((t) => !existing.includes(t));
+      if (toolsToAdd.length > 0) {
+        spawnOpts.allowedTools = [...existing, ...toolsToAdd];
+        logger.debug(
+          { workerId, toolsAdded: toolsToAdd },
+          'Session grants auto-merged into worker allowedTools',
+        );
+      }
+    }
 
     // Create task record for this worker execution (OB-165: task history + audit trail)
     const taskRecord: TaskRecord = {
