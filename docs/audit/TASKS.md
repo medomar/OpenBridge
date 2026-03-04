@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 19 | **In Progress:** 0 | **Done:** 195 (112 archived)
+> **Pending:** 18 | **In Progress:** 0 | **Done:** 196 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -455,7 +455,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                 | Status    |
 | --- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1545 | Create `src/core/docker-sandbox.ts` — DockerSandbox class with methods: createContainer(), startContainer(), stopContainer(), removeContainer(), exec(), isAvailable(). Uses docker CLI via child_process, no SDK dependency                                                                                | ◻ Pending |
+| 1   | OB-1545 | Create `src/core/docker-sandbox.ts` — DockerSandbox class with methods: createContainer(), startContainer(), stopContainer(), removeContainer(), exec(), isAvailable(). Uses docker CLI via child_process, no SDK dependency                                                                                | ✅ Done   |
 | 2   | OB-1546 | Add Docker detection to `src/discovery/tool-scanner.ts` — check for docker in PATH, verify daemon running with docker info. Report version and status. Handle: not installed, installed but no daemon, available                                                                                            | ◻ Pending |
 | 3   | OB-1547 | Create `docker/Dockerfile.worker` — based on node:22-slim. Install claude CLI. Set /workspace working directory. Non-root user. Keep image < 500MB                                                                                                                                                          | ◻ Pending |
 | 4   | OB-1548 | Add buildImage() to DockerSandbox — build worker image from Dockerfile.worker. Tag as openbridge-worker:latest. Cache layers. Skip if image exists                                                                                                                                                          | ◻ Pending |
