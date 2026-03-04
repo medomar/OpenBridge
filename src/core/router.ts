@@ -286,6 +286,8 @@ export class Router {
   private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
   /** Pending tool escalation requests — keyed by sender, awaiting user "/allow" or "/deny". */
   private readonly pendingEscalations = new Map<string, PendingEscalation>();
+  /** Session-level tool grants — keyed by sender, value is the set of tool/profile names granted for this session. */
+  private readonly sessionGrantedTools = new Map<string, Set<string>>();
   /** Security config — controls confirmation requirements for high-risk spawns. */
   private securityConfig?: SecurityConfig;
   /** Sensitive files detected by the startup secret scanner. Populated via setVisibilityState(). */
@@ -707,6 +709,15 @@ export class Router {
   /** Check whether a pending tool escalation exists for a sender. */
   public hasPendingEscalation(sender: string): boolean {
     return this.pendingEscalations.has(sender);
+  }
+
+  /**
+   * Return the set of tool/profile names granted for this session for a sender.
+   * Returns an empty set when no session grants exist for the sender.
+   * Used by workers and Master to check session-level tool access without DB lookup.
+   */
+  public getSessionGrants(sender: string): ReadonlySet<string> {
+    return this.sessionGrantedTools.get(sender) ?? new Set<string>();
   }
 
   /** Register an active connector */
@@ -1981,8 +1992,8 @@ export class Router {
    *   /allow <tool> --session     → grant for the entire session
    *   /allow <tool> --permanent   → grant permanently (stored in DB)
    *
-   * Clears the pending escalation for the sender and sends a confirmation.
-   * Grant scope wiring (session Map / permanent DB) is implemented in OB-1588.
+   * Clears the pending escalation for the sender, sends a confirmation, and
+   * stores the grant in the appropriate backing store (session Map or DB) per scope (OB-1588).
    */
   private async handleAllowCommand(message: InboundMessage, connector: Connector): Promise<void> {
     const entry = this.takePendingEscalation(message.sender);
@@ -2034,6 +2045,34 @@ export class Router {
       { sender: message.sender, workerId: entry.workerId, grantArg, scope, isProfile },
       'Tool escalation granted via /allow',
     );
+
+    // Wire scope-specific grant storage (OB-1588)
+    if (scope === 'session') {
+      const existing = this.sessionGrantedTools.get(message.sender) ?? new Set<string>();
+      existing.add(grantArg);
+      this.sessionGrantedTools.set(message.sender, existing);
+      logger.debug({ sender: message.sender, grantArg }, 'Session tool grant stored');
+    } else if (scope === 'permanent' && this.memory) {
+      try {
+        const entry = await this.memory.getAccess(message.sender, message.source);
+        const existingActions = entry?.allowed_actions ?? [];
+        if (!existingActions.includes(grantArg)) {
+          await this.memory.setAccess({
+            ...(entry ?? {}),
+            user_id: message.sender,
+            channel: message.source,
+            role: entry?.role ?? 'custom',
+            allowed_actions: [...existingActions, grantArg],
+          });
+          logger.debug({ sender: message.sender, grantArg }, 'Permanent tool grant stored in DB');
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sender: message.sender, grantArg },
+          'Failed to persist permanent tool grant',
+        );
+      }
+    }
   }
 
   /**
