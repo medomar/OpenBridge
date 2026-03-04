@@ -8,6 +8,8 @@
  * Responsibilities:
  * - Create / advance / pause / resume / abort batch runs
  * - Track per-item completion status and cumulative cost
+ * - Persist batch state to `.openbridge/batch-state.json` after every mutation
+ * - Load persisted state on `initialize()` to resume interrupted batches
  * - Expose `isActive()` and `getStatus()` for integration into MasterManager
  *
  * This class does NOT read TASKS.md or FINDINGS.md — that is the responsibility
@@ -23,6 +25,7 @@ import type {
   BatchSourceType,
   BatchState,
 } from '../types/agent.js';
+import type { DotFolderManager } from './dotfolder-manager.js';
 
 const logger = createLogger('batch-manager');
 
@@ -52,6 +55,61 @@ export class BatchManager {
   /** All tracked batches keyed by batchId. */
   private readonly batches = new Map<string, BatchState>();
 
+  /** Optional persistence layer — when set, batch state is saved after every mutation. */
+  private dotFolder: DotFolderManager | undefined;
+
+  constructor(dotFolder?: DotFolderManager) {
+    this.dotFolder = dotFolder;
+  }
+
+  // ── Persistence helpers ────────────────────────────────────────
+
+  /**
+   * Load any persisted batch state from `.openbridge/batch-state.json` on startup.
+   * Resumes the batch as paused so the caller can decide whether to continue.
+   * No-op when no persistence layer is configured or no saved state exists.
+   */
+  async initialize(): Promise<void> {
+    if (!this.dotFolder) return;
+
+    const saved = await this.dotFolder.readBatchState();
+    if (!saved) return;
+
+    // Resume as paused — the caller (MasterManager) will unpause when ready.
+    saved.paused = true;
+    this.batches.set(saved.batchId, saved);
+
+    logger.info(
+      {
+        batchId: saved.batchId,
+        currentIndex: saved.currentIndex,
+        totalItems: saved.totalItems,
+        completedItems: saved.completedItems.length,
+      },
+      'Resumed batch from persisted state',
+    );
+  }
+
+  /** Persist the given batch state to disk (no-op when no dotFolder is set). */
+  private async persist(state: BatchState): Promise<void> {
+    if (!this.dotFolder) return;
+    try {
+      await this.dotFolder.writeBatchState(state);
+    } catch (err) {
+      logger.warn({ batchId: state.batchId, err }, 'Failed to persist batch state');
+    }
+  }
+
+  /** Delete the persisted batch state file (no-op when no dotFolder is set). */
+  private async deletePersisted(): Promise<void> {
+    if (!this.dotFolder) return;
+    try {
+      await this.dotFolder.deleteBatchState();
+    } catch (err) {
+      logger.warn({ err }, 'Failed to delete persisted batch state');
+    }
+  }
+
   // ── Lifecycle methods ──────────────────────────────────────────
 
   /**
@@ -64,7 +122,11 @@ export class BatchManager {
    * @param totalItems   Number of items — used only when plan is not provided.
    * @returns            The new batch ID.
    */
-  createBatch(sourceType: BatchSourceType, plan: BatchPlanItem[], totalItems?: number): string {
+  async createBatch(
+    sourceType: BatchSourceType,
+    plan: BatchPlanItem[],
+    totalItems?: number,
+  ): Promise<string> {
     const batchId = randomUUID();
     const resolvedTotal = plan.length > 0 ? plan.length : (totalItems ?? 0);
 
@@ -82,6 +144,7 @@ export class BatchManager {
     };
 
     this.batches.set(batchId, state);
+    await this.persist(state);
 
     logger.info(
       { batchId, sourceType, totalItems: resolvedTotal, planItems: plan.length },
@@ -100,7 +163,11 @@ export class BatchManager {
    * @returns             Advance result with the next index, or null when the batch is done.
    *                      Returns null if the batchId is unknown.
    */
-  advanceBatch(batchId: string, item: BatchCompletedItem, costUsd = 0): BatchAdvanceResult | null {
+  async advanceBatch(
+    batchId: string,
+    item: BatchCompletedItem,
+    costUsd = 0,
+  ): Promise<BatchAdvanceResult | null> {
     const state = this.batches.get(batchId);
     if (!state) {
       logger.warn({ batchId }, 'advanceBatch() called on unknown batch');
@@ -136,6 +203,14 @@ export class BatchManager {
       'Batch item completed',
     );
 
+    if (finished) {
+      // Batch is complete — remove in-progress state from disk
+      this.batches.delete(batchId);
+      await this.deletePersisted();
+    } else {
+      await this.persist(state);
+    }
+
     return {
       batchId,
       completedIndex,
@@ -150,7 +225,7 @@ export class BatchManager {
    * @param batchId  The batch to pause.
    * @returns        True if the batch was found and paused, false otherwise.
    */
-  pauseBatch(batchId: string): boolean {
+  async pauseBatch(batchId: string): Promise<boolean> {
     const state = this.batches.get(batchId);
     if (!state) {
       logger.warn({ batchId }, 'pauseBatch() called on unknown batch');
@@ -158,6 +233,8 @@ export class BatchManager {
     }
 
     state.paused = true;
+    await this.persist(state);
+
     logger.info({ batchId, currentIndex: state.currentIndex }, 'Batch paused');
     return true;
   }
@@ -168,7 +245,7 @@ export class BatchManager {
    * @param batchId  The batch to resume.
    * @returns        True if the batch was found and resumed, false otherwise.
    */
-  resumeBatch(batchId: string): boolean {
+  async resumeBatch(batchId: string): Promise<boolean> {
     const state = this.batches.get(batchId);
     if (!state) {
       logger.warn({ batchId }, 'resumeBatch() called on unknown batch');
@@ -180,17 +257,19 @@ export class BatchManager {
     }
 
     state.paused = false;
+    await this.persist(state);
+
     logger.info({ batchId, currentIndex: state.currentIndex }, 'Batch resumed');
     return true;
   }
 
   /**
-   * Abort a batch and remove it from memory.
+   * Abort a batch and remove it from memory and disk.
    *
    * @param batchId  The batch to abort.
    * @returns        True if the batch was found and aborted, false if it was unknown.
    */
-  abortBatch(batchId: string): boolean {
+  async abortBatch(batchId: string): Promise<boolean> {
     const state = this.batches.get(batchId);
     if (!state) {
       logger.warn({ batchId }, 'abortBatch() called on unknown batch');
@@ -208,6 +287,7 @@ export class BatchManager {
     );
 
     this.batches.delete(batchId);
+    await this.deletePersisted();
     return true;
   }
 
