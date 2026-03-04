@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 46 | **In Progress:** 0 | **Done:** 168 (112 archived)
+> **Pending:** 45 | **In Progress:** 0 | **Done:** 169 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -37,7 +37,7 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
-| 97     | Runtime Permission Escalation        | 20    | ◻ (14/20 done)  |
+| 97     | Runtime Permission Escalation        | 20    | ◻ (15/20 done)  |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
@@ -397,7 +397,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                               | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 15  | OB-1598 | Add `approved_tool_escalations` column to `access_control` table in `src/memory/access-store.ts` — JSON array of permanently granted tool names. Migration adds column with default `[]`                                                                                                                                                                  | ◻ Pending |
+| 15  | OB-1598 | Add `approved_tool_escalations` column to `access_control` table in `src/memory/access-store.ts` — JSON array of permanently granted tool names. Migration adds column with default `[]`                                                                                                                                                                  | ✅ Done   |
 | 16  | OB-1599 | Add `getApprovedEscalations()` and `addApprovedEscalation()` to access-store — CRUD for permanent grants. `addApprovedEscalation(userId, channel, tool)` appends to JSON array                                                                                                                                                                            | ◻ Pending |
 | 17  | OB-1600 | Wire permanent grants into worker spawning — in MasterManager.spawnWorker(), merge user's `approved_tool_escalations` with profile tools before building allowedTools list                                                                                                                                                                                | ◻ Pending |
 | 18  | OB-1601 | Add `auto-approve-up-to-edit` consent mode — new mode that auto-approves escalations to `code-edit` or lower, asks for `full-access`. Add to ConsentMode type and wire into escalation logic                                                                                                                                                              | ◻ Pending |

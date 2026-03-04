@@ -35,6 +35,8 @@ export interface AccessControlEntry {
   executionProfile?: ExecutionProfile;
   /** Per-phase model overrides for Deep Mode. Keys are DeepPhase names; values are model IDs. */
   modelPreferences?: Partial<Record<DeepPhase, string>>;
+  /** Permanently granted tool names via /allow escalation (persists across restarts). */
+  approvedToolEscalations?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -54,6 +56,7 @@ interface AccessControlRow {
   consent_mode: string | null;
   execution_profile: string | null;
   model_preferences: string | null;
+  approved_tool_escalations: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +92,15 @@ function parseModelPreferences(raw: string | null): Partial<Record<DeepPhase, st
   }
 }
 
+function parseApprovedToolEscalations(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as string[];
+  } catch {
+    return [];
+  }
+}
+
 function rowToEntry(row: AccessControlRow): AccessControlEntry {
   return {
     id: row.id,
@@ -105,6 +117,7 @@ function rowToEntry(row: AccessControlRow): AccessControlEntry {
     consentMode: parseConsentMode(row.consent_mode),
     executionProfile: parseExecutionProfile(row.execution_profile),
     modelPreferences: parseModelPreferences(row.model_preferences),
+    approvedToolEscalations: parseApprovedToolEscalations(row.approved_tool_escalations),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -142,22 +155,24 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
 
   const modelPrefsJson =
     entry.modelPreferences != null ? JSON.stringify(entry.modelPreferences) : null;
+  const approvedEscalationsJson = JSON.stringify(entry.approvedToolEscalations ?? []);
 
   if (existing) {
     db.prepare(
       `UPDATE access_control SET
-         role                 = ?,
-         scopes               = ?,
-         allowed_actions      = ?,
-         blocked_actions      = ?,
-         max_cost_per_day_usd = ?,
-         daily_cost_used      = ?,
-         cost_reset_at        = ?,
-         active               = ?,
-         consent_mode         = ?,
-         execution_profile    = ?,
-         model_preferences    = ?,
-         updated_at           = ?
+         role                      = ?,
+         scopes                    = ?,
+         allowed_actions           = ?,
+         blocked_actions           = ?,
+         max_cost_per_day_usd      = ?,
+         daily_cost_used           = ?,
+         cost_reset_at             = ?,
+         active                    = ?,
+         consent_mode              = ?,
+         execution_profile         = ?,
+         model_preferences         = ?,
+         approved_tool_escalations = ?,
+         updated_at                = ?
        WHERE user_id = ? AND channel = ?`,
     ).run(
       entry.role,
@@ -171,6 +186,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.consentMode ?? 'always-ask',
       entry.executionProfile ?? 'fast',
       modelPrefsJson,
+      approvedEscalationsJson,
       now,
       entry.user_id,
       entry.channel,
@@ -180,8 +196,9 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       `INSERT INTO access_control
          (user_id, channel, role, scopes, allowed_actions, blocked_actions,
           max_cost_per_day_usd, daily_cost_used, cost_reset_at, active,
-          consent_mode, execution_profile, model_preferences, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          consent_mode, execution_profile, model_preferences, approved_tool_escalations,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       entry.user_id,
       entry.channel,
@@ -196,6 +213,7 @@ export function setAccess(db: Database.Database, entry: AccessControlEntry): voi
       entry.consentMode ?? 'always-ask',
       entry.executionProfile ?? 'fast',
       modelPrefsJson,
+      approvedEscalationsJson,
       now,
       now,
     );
