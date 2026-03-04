@@ -596,6 +596,8 @@ export class MasterManager {
   private readonly deepConfig: DeepConfig | undefined;
   /** BatchManager for Batch Task Continuation — set via setBatchManager() (OB-1613). */
   private batchManager: BatchManager | null = null;
+  /** Maps batchId → original sender info for sending failure/status messages (OB-1616). */
+  private readonly batchSenderInfo = new Map<string, { sender: string; source: string }>();
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -2421,6 +2423,100 @@ export class MasterManager {
    */
   public setBatchManager(bm: BatchManager): void {
     this.batchManager = bm;
+  }
+
+  /**
+   * Handle a batch item failure — pauses the batch and sends a failure message to the user.
+   *
+   * Called by the Router when processMessage throws during a CONTINUE:batch message (OB-1616).
+   * Looks up the original sender info (stored when the batch was first scheduled) to route
+   * the failure notification to the correct connector.
+   *
+   * @param batchId  The batch that was being processed when the failure occurred.
+   * @param reason   Short human-readable failure reason (e.g. error message).
+   */
+  public async onBatchItemFailure(batchId: string, reason: string): Promise<void> {
+    if (!this.batchManager || !this.router) return;
+
+    await this.batchManager.pauseBatch(batchId);
+
+    const senderInfo = this.batchSenderInfo.get(batchId);
+    if (!senderInfo) {
+      logger.warn(
+        { batchId },
+        'onBatchItemFailure: no sender info — cannot deliver failure message',
+      );
+      return;
+    }
+
+    const failureMsg = this.batchManager.buildFailureMessage(batchId, reason);
+    if (failureMsg) {
+      void this.router.sendDirect(senderInfo.source, senderInfo.sender, failureMsg);
+      logger.info({ batchId, sender: senderInfo.sender }, 'Batch failure message sent to user');
+    }
+  }
+
+  /**
+   * Handle a user-issued batch control command: skip, retry, or abort (OB-1616).
+   *
+   * These commands are intercepted by the Router and forwarded here.
+   * Returns a human-readable response string to be sent back to the user.
+   *
+   * @param action  One of 'skip', 'retry', or 'abort'.
+   * @param sender  Original sender ID (for scheduling the next continuation).
+   * @param source  Original connector source (for response routing).
+   * @returns       Response message to send back to the user.
+   */
+  public async handleBatchCommand(
+    action: 'skip' | 'retry' | 'abort',
+    sender: string,
+    source: string,
+  ): Promise<string> {
+    if (!this.batchManager) return 'No active batch.';
+
+    const batchId = this.batchManager.getActiveBatchId();
+    if (!batchId) return 'No active batch found.';
+
+    // Update stored sender info in case it changed (e.g. source connector switch)
+    this.batchSenderInfo.set(batchId, { sender, source });
+
+    if (action === 'abort') {
+      await this.batchManager.abortBatch(batchId);
+      this.batchSenderInfo.delete(batchId);
+      logger.info({ batchId }, 'Batch aborted by user command');
+      return '🛑 Batch aborted.';
+    }
+
+    if (action === 'skip') {
+      const result = await this.batchManager.skipCurrentItem(batchId);
+      if (!result) return 'Failed to skip — batch not found.';
+      if (result.finished) {
+        this.batchSenderInfo.delete(batchId);
+        return '⏭ Item skipped. Batch complete — no more items.';
+      }
+      // Schedule next continuation
+      if (this.router) {
+        const router = this.router;
+        setTimeout(() => {
+          void router.routeBatchContinuation(batchId, sender);
+        }, 1000);
+      }
+      logger.info({ batchId, nextIndex: result.nextIndex }, 'Batch item skipped, continuing');
+      return '⏭ Item skipped. Continuing with next item...';
+    }
+
+    // action === 'retry'
+    const retried = await this.batchManager.retryCurrentItem(batchId);
+    if (!retried) return 'Failed to retry — batch not found.';
+    // Schedule continuation (same index, so same item runs again)
+    if (this.router) {
+      const router = this.router;
+      setTimeout(() => {
+        void router.routeBatchContinuation(batchId, sender);
+      }, 1000);
+    }
+    logger.info({ batchId }, 'Batch item retry scheduled by user command');
+    return '🔄 Retrying item...';
   }
 
   /**
@@ -5031,6 +5127,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           const batchSender = message.sender;
           const batchSource = message.source;
           const router = this.router;
+
+          // (OB-1616) Track the original sender's connector so failure messages can be
+          // delivered even when subsequent CONTINUE messages use source='internal-batch'.
+          if (batchSource !== 'internal-batch') {
+            this.batchSenderInfo.set(activeBatchId, { sender: batchSender, source: batchSource });
+          }
+
           logger.info(
             { batchId: activeBatchId, sender: batchSender },
             'Batch active after message processing — scheduling continuation trigger in 2s',
