@@ -292,6 +292,73 @@ export function getModelPreferences(
 }
 
 /**
+ * Return permanently granted tool names for a specific user+channel pair.
+ * Returns an empty array when no entry exists or no grants have been added.
+ */
+export function getApprovedEscalations(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+): string[] {
+  const entry = getAccess(db, userId, channel);
+  return entry?.approvedToolEscalations ?? [];
+}
+
+/**
+ * Append a tool name to the permanent escalation grants for a specific user+channel.
+ * Creates an access_control entry with default role 'viewer' if none exists.
+ * No-op if the tool is already in the grants list.
+ */
+export function addApprovedEscalation(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+  tool: string,
+): void {
+  const now = new Date().toISOString();
+  const existing = getAccess(db, userId, channel);
+
+  if (existing) {
+    const current = existing.approvedToolEscalations ?? [];
+    if (current.includes(tool)) return;
+    const updated = [...current, tool];
+    db.prepare(
+      `UPDATE access_control
+       SET approved_tool_escalations = ?,
+           updated_at                = ?
+       WHERE user_id = ? AND channel = ?`,
+    ).run(JSON.stringify(updated), now, userId, channel);
+  } else {
+    const initial = [tool];
+    db.prepare(
+      `INSERT INTO access_control
+         (user_id, channel, role, scopes, allowed_actions, blocked_actions,
+          max_cost_per_day_usd, daily_cost_used, cost_reset_at, active,
+          consent_mode, execution_profile, model_preferences, approved_tool_escalations,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      userId,
+      channel,
+      'viewer',
+      null,
+      null,
+      null,
+      null,
+      0,
+      null,
+      1,
+      'always-ask',
+      'fast',
+      null,
+      JSON.stringify(initial),
+      now,
+      now,
+    );
+  }
+}
+
+/**
  * Reset daily_cost_used to 0 for all entries whose cost_reset_at is in the past
  * (or null). Updates cost_reset_at to the start of the next UTC day.
  */
