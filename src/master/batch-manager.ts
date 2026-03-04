@@ -132,17 +132,19 @@ export class BatchManager {
   /**
    * Create a new batch run.
    *
-   * @param sourceType   Where the item list comes from (tasks-md, findings, custom-list).
-   * @param plan         Ordered list of items to process (from BatchPlanner).
-   *                     When provided, totalItems is derived from plan.length.
-   *                     When omitted, pass totalItems explicitly.
-   * @param totalItems   Number of items — used only when plan is not provided.
-   * @returns            The new batch ID.
+   * @param sourceType      Where the item list comes from (tasks-md, findings, custom-list).
+   * @param plan            Ordered list of items to process (from BatchPlanner).
+   *                        When provided, totalItems is derived from plan.length.
+   *                        When omitted, pass totalItems explicitly.
+   * @param totalItems      Number of items — used only when plan is not provided.
+   * @param commitAfterEach When true, a git-commit worker is spawned after each item (OB-1615).
+   * @returns               The new batch ID.
    */
   async createBatch(
     sourceType: BatchSourceType,
     plan: BatchPlanItem[],
     totalItems?: number,
+    commitAfterEach = false,
   ): Promise<string> {
     const batchId = randomUUID();
     const resolvedTotal = plan.length > 0 ? plan.length : (totalItems ?? 0);
@@ -158,6 +160,7 @@ export class BatchManager {
       startedAt: new Date().toISOString(),
       totalCostUsd: 0,
       paused: false,
+      commitAfterEach,
     };
 
     this.batches.set(batchId, state);
@@ -401,6 +404,67 @@ export class BatchManager {
       : `${statusIcon} Task ${lastCompleted.id} done.`;
 
     return `${summaryLine}\nStarting ${nextItem.id}... (${current}/${total})`;
+  }
+
+  // ── Commit-after-each support ─────────────────────────────────
+
+  /**
+   * Set or clear the commitAfterEach flag on an existing batch (OB-1615).
+   *
+   * @param batchId          The batch to update.
+   * @param commitAfterEach  Whether to spawn a git-commit worker after each item.
+   * @returns                True if the batch was found and updated, false otherwise.
+   */
+  async setCommitAfterEach(batchId: string, commitAfterEach: boolean): Promise<boolean> {
+    const state = this.batches.get(batchId);
+    if (!state) {
+      logger.warn({ batchId }, 'setCommitAfterEach() called on unknown batch');
+      return false;
+    }
+
+    state.commitAfterEach = commitAfterEach;
+    await this.persist(state);
+
+    logger.info({ batchId, commitAfterEach }, 'Batch commitAfterEach updated');
+    return true;
+  }
+
+  /**
+   * Return whether the given batch should spawn a commit worker after each item (OB-1615).
+   *
+   * @param batchId  The batch to check.
+   * @returns        True when commitAfterEach is set and the batch exists.
+   */
+  shouldCommitAfterEach(batchId: string): boolean {
+    return this.batches.get(batchId)?.commitAfterEach === true;
+  }
+
+  /**
+   * Build the prompt for a git-commit worker after a batch item completes (OB-1615).
+   *
+   * The prompt instructs the worker to stage all changes and create a conventional commit
+   * referencing the completed item's ID and description.
+   *
+   * @param batchId  The active batch identifier.
+   * @returns        Commit worker prompt string, or null when no last completed item exists.
+   */
+  buildCommitPrompt(batchId: string): string | null {
+    const state = this.batches.get(batchId);
+    if (!state) return null;
+
+    const lastCompleted = state.completedItems[state.completedItems.length - 1];
+    if (!lastCompleted) return null;
+
+    // Find the plan item to get its description
+    const planItem = state.plan.find((p) => p.id === lastCompleted.id);
+    const description = planItem?.description ?? lastCompleted.summary ?? lastCompleted.id;
+
+    return (
+      `git add and commit changes for: ${description}\n\n` +
+      `Use a conventional commit message. Reference the task ID "${lastCompleted.id}" in the commit body.\n` +
+      `Run: git add -A && git commit -m "feat: ${description.slice(0, 72)}" -m "Resolves ${lastCompleted.id}"\n` +
+      `If there is nothing to commit (working tree clean), skip the commit and exit cleanly.`
+    );
   }
 
   // ── Safety rails ───────────────────────────────────────────────
