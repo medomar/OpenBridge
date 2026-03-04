@@ -2479,7 +2479,7 @@ export class MasterManager {
    * @returns       Response message to send back to the user.
    */
   public async handleBatchCommand(
-    action: 'pause' | 'skip' | 'retry' | 'abort',
+    action: 'pause' | 'resume' | 'skip' | 'retry' | 'abort',
     sender: string,
     source: string,
   ): Promise<string> {
@@ -2498,6 +2498,22 @@ export class MasterManager {
       const total = state ? state.totalItems : '?';
       logger.info({ batchId, current, total }, 'Batch paused by user command (OB-1619)');
       return `⏸ Batch paused at item ${current}/${total}. Reply '/continue' to resume.`;
+    }
+
+    if (action === 'resume') {
+      const resumed = await this.batchManager.resumeBatch(batchId);
+      if (!resumed) return 'No paused batch found to resume.';
+      const state = this.batchManager.getStatus(batchId);
+      const current = state ? state.currentIndex + 1 : '?';
+      logger.info({ batchId, current }, 'Batch resumed by user command (OB-1620)');
+      // Re-inject continuation to trigger the next item
+      if (this.router) {
+        const router = this.router;
+        setTimeout(() => {
+          void router.routeBatchContinuation(batchId, sender);
+        }, 500);
+      }
+      return `▶ Resuming batch from item ${current}...`;
     }
 
     if (action === 'abort') {
