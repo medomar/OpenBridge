@@ -474,6 +474,9 @@ export class Router {
       await this.master.processMessage(syntheticMsg);
     } catch (err) {
       logger.error({ batchId, err }, 'Error processing batch continuation');
+      // (OB-1616) Notify master of batch item failure so it can pause and alert the user.
+      const reason = err instanceof Error ? err.message : String(err);
+      await this.master.onBatchItemFailure(batchId, reason);
     }
   }
 
@@ -1053,6 +1056,9 @@ export class Router {
           await this.master.processMessage(message);
         } catch (err) {
           logger.error({ batchId, err }, 'Error processing batch continuation');
+          // (OB-1616) Notify master of batch item failure so it can pause and alert the user.
+          const reason = err instanceof Error ? err.message : String(err);
+          await this.master.onBatchItemFailure(batchId, reason);
         }
       } else {
         logger.warn({ batchId }, 'Batch continuation received but no Master is set — ignoring');
@@ -1069,6 +1075,32 @@ export class Router {
     // Handle built-in "status" command — intercept before routing to Master AI
     if (message.content.trim().toLowerCase() === 'status') {
       await this.handleStatusCommand(message, connector);
+      return;
+    }
+
+    // Handle batch control commands: /batch skip | /batch retry | /batch abort (OB-1616).
+    // These are intercepted before routing to Master so they take effect immediately.
+    const batchCmdMatch = /^\/batch\s+(skip|retry|abort)$/i.exec(message.content.trim());
+    if (batchCmdMatch !== null) {
+      const action = batchCmdMatch[1]!.toLowerCase() as 'skip' | 'retry' | 'abort';
+      if (this.master) {
+        const response = await this.master.handleBatchCommand(
+          action,
+          message.sender,
+          message.source,
+        );
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: response,
+        });
+      } else {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'No active batch.',
+        });
+      }
       return;
     }
 

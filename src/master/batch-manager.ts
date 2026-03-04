@@ -406,6 +406,87 @@ export class BatchManager {
     return `${summaryLine}\nStarting ${nextItem.id}... (${current}/${total})`;
   }
 
+  // ── Failure handling ───────────────────────────────────────────
+
+  /**
+   * Build a user-facing failure message for a failed batch item (OB-1616).
+   *
+   * Returns the formatted string with instructions for how the user can respond:
+   *   ❌ Task {id} failed: {reason}
+   *   Reply '/batch skip' to skip and continue, '/batch retry' to retry, '/batch abort' to stop.
+   *
+   * @param batchId  The active batch identifier.
+   * @param reason   Short human-readable reason the item failed.
+   * @returns        Formatted failure message, or null if the batch is unknown.
+   */
+  buildFailureMessage(batchId: string, reason: string): string | null {
+    const state = this.batches.get(batchId);
+    if (!state) return null;
+
+    const currentItem = state.plan[state.currentIndex];
+    const itemId = currentItem?.id ?? `item-${state.currentIndex + 1}`;
+
+    return (
+      `❌ Task ${itemId} failed: ${reason}\n` +
+      `Reply '/batch skip' to skip and continue, '/batch retry' to retry, '/batch abort' to stop.`
+    );
+  }
+
+  /**
+   * Skip the current failed item and advance to the next one (OB-1616).
+   *
+   * Records the current item as 'skipped', resumes the batch (clears paused flag),
+   * and advances to the next index via advanceBatch().
+   *
+   * @param batchId  The batch whose current item should be skipped.
+   * @returns        BatchAdvanceResult (same as advanceBatch), or null on unknown batch.
+   */
+  async skipCurrentItem(batchId: string): Promise<BatchAdvanceResult | null> {
+    const state = this.batches.get(batchId);
+    if (!state) {
+      logger.warn({ batchId }, 'skipCurrentItem() called on unknown batch');
+      return null;
+    }
+
+    const currentItem = state.plan[state.currentIndex];
+    const item: BatchCompletedItem = {
+      id: currentItem?.id ?? `item-${state.currentIndex + 1}`,
+      summary: 'Skipped by user',
+      status: 'skipped',
+    };
+
+    // Clear paused so advanceBatch can record and advance
+    state.paused = false;
+
+    logger.info({ batchId, itemId: item.id }, 'Batch item skipped by user');
+    return this.advanceBatch(batchId, item);
+  }
+
+  /**
+   * Retry the current failed item by resuming the batch at the same index (OB-1616).
+   *
+   * This is equivalent to resumeBatch() — the currentIndex is NOT advanced,
+   * so the next continuation trigger will re-run the same item.
+   *
+   * @param batchId  The batch whose current item should be retried.
+   * @returns        True if the batch was found and resumed, false otherwise.
+   */
+  async retryCurrentItem(batchId: string): Promise<boolean> {
+    const state = this.batches.get(batchId);
+    if (!state) {
+      logger.warn({ batchId }, 'retryCurrentItem() called on unknown batch');
+      return false;
+    }
+
+    const currentItem = state.plan[state.currentIndex];
+    logger.info(
+      { batchId, itemId: currentItem?.id, currentIndex: state.currentIndex },
+      'Batch item retry requested — resuming at same index',
+    );
+
+    return this.resumeBatch(batchId);
+  }
+
   // ── Commit-after-each support ─────────────────────────────────
 
   /**
