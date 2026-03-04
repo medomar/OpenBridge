@@ -2797,4 +2797,99 @@ describe('Router', () => {
       expect(lastMsg?.content).toBe('No pending tool escalation.');
     });
   });
+
+  describe('escalation timeout — auto-deny after 60s (OB-1590)', () => {
+    function createEscalMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'escal-1',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    it('sends timeout message after 60 seconds and removes the pending escalation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createEscalMsg('do something');
+      await router.requestToolEscalation(
+        'worker-timeout',
+        ['Bash(npm:test)'],
+        'read-only',
+        'Need to run tests',
+        originalMessage,
+        connector,
+      );
+      expect(connector.sentMessages).toHaveLength(1); // escalation prompt only
+
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      expect(connector.sentMessages).toHaveLength(2);
+      expect(connector.sentMessages[1]?.content).toContain('timed out');
+      expect(connector.sentMessages[1]?.content).toContain('worker-timeout');
+      expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+    });
+
+    it('timeout is cancelled when /allow is received within 60 seconds', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createEscalMsg('do something');
+      await router.requestToolEscalation(
+        'worker-allow-cancel',
+        ['Write'],
+        'read-only',
+        'Need write access',
+        originalMessage,
+        connector,
+      );
+
+      await router.route(createEscalMsg('/allow Write'));
+      expect(connector.sentMessages).toHaveLength(2); // prompt + grant confirm
+
+      // Advance past 60s — timeout should have been cleared, no extra messages
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(connector.sentMessages).toHaveLength(2);
+    });
+
+    it('timeout is cancelled when /deny is received within 60 seconds', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      const originalMessage = createEscalMsg('do something');
+      await router.requestToolEscalation(
+        'worker-deny-cancel',
+        ['Bash'],
+        'read-only',
+        'Need shell access',
+        originalMessage,
+        connector,
+      );
+
+      await router.route(createEscalMsg('/deny'));
+      expect(connector.sentMessages).toHaveLength(2); // prompt + deny confirm
+
+      // Advance past 60s — timeout should have been cleared, no extra messages
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(connector.sentMessages).toHaveLength(2);
+    });
+  });
 });
