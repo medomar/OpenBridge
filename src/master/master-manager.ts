@@ -6410,6 +6410,16 @@ ${currentContent}
       }
     }
 
+    // OB-1600: Fetch permanent tool grants for this user from the DB.
+    // These survive session restarts — once granted via /allow-permanent they
+    // are always merged into worker allowedTools without re-asking the user.
+    const permanentGrants: string[] =
+      this.memory && this.activeMessage
+        ? await this.memory
+            .getApprovedEscalations(this.activeMessage.sender, this.activeMessage.source)
+            .catch(() => [])
+        : [];
+
     // If the originating message had attachments, prepend a ## Referenced Files section
     // so the worker knows which files to read and analyze (OB-1148).
     let workerPrompt = body.prompt;
@@ -6541,12 +6551,13 @@ ${currentContent}
         const currentTools = resolveProfile(profile) ?? [];
         const additionalTools = suggestedTools.filter((t) => !currentTools.includes(t));
 
-        // OB-1596: If session grants already cover all additional tools, skip
-        // escalation — they will be auto-merged into allowedTools below.
-        const sessionCoversTools =
-          additionalTools.length > 0 && additionalTools.every((t) => expandedSessionGrants.has(t));
+        // OB-1596/OB-1600: If session or permanent grants already cover all additional
+        // tools, skip escalation — they will be auto-merged into allowedTools below.
+        const grantsCoversTools =
+          additionalTools.length > 0 &&
+          additionalTools.every((t) => expandedSessionGrants.has(t) || permanentGrants.includes(t));
 
-        if (!sessionCoversTools) {
+        if (!grantsCoversTools) {
           const respawnCallback = async (grantedTools: string[]): Promise<void> => {
             await this.respawnWorkerAfterGrant(
               workerId,
@@ -6580,8 +6591,13 @@ ${currentContent}
         }
 
         logger.info(
-          { workerId, additionalTools, sessionGrants: [...senderSessionGrants] },
-          'Pre-flight: required tools already session-granted — skipping escalation',
+          {
+            workerId,
+            additionalTools,
+            sessionGrants: [...senderSessionGrants],
+            permanentGrants,
+          },
+          'Pre-flight: required tools already granted (session or permanent) — skipping escalation',
         );
       }
     }
@@ -6614,6 +6630,21 @@ ${currentContent}
         logger.debug(
           { workerId, toolsAdded: toolsToAdd },
           'Session grants auto-merged into worker allowedTools',
+        );
+      }
+    }
+
+    // OB-1600: Auto-merge permanent tool grants from the DB into this worker's allowedTools.
+    // These are tools the user permanently approved (via /allow-permanent or the access CLI).
+    // They persist across sessions and are applied without asking the user again.
+    if (permanentGrants.length > 0) {
+      const existing = spawnOpts.allowedTools ?? [];
+      const toolsToAdd = permanentGrants.filter((t) => !existing.includes(t));
+      if (toolsToAdd.length > 0) {
+        spawnOpts.allowedTools = [...existing, ...toolsToAdd];
+        logger.debug(
+          { workerId, toolsAdded: toolsToAdd },
+          'Permanent grants auto-merged into worker allowedTools',
         );
       }
     }

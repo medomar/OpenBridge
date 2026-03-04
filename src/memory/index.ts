@@ -82,6 +82,8 @@ import {
   resetDailyCosts as _resetDailyCosts,
   incrementDailyCost as _incrementDailyCost,
   getConsentMode as _getConsentMode,
+  getApprovedEscalations as _getApprovedEscalations,
+  addApprovedEscalation as _addApprovedEscalation,
   type AccessControlEntry,
   type ConsentMode,
 } from './access-store.js';
@@ -784,6 +786,17 @@ export class MemoryManager {
   incrementDailyCost(userId: string, channel: string, costUsd: number): void {
     if (!this.db) return;
     _incrementDailyCost(this.db, userId, channel, costUsd);
+  }
+
+  getApprovedEscalations(userId: string, channel: string): Promise<string[]> {
+    if (!this.db) return Promise.resolve([]);
+    return Promise.resolve(_getApprovedEscalations(this.db, userId, channel));
+  }
+
+  addApprovedEscalation(userId: string, channel: string, tool: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _addApprovedEscalation(this.db, userId, channel, tool);
+    return Promise.resolve();
   }
 
   // -------------------------------------------------------------------------
