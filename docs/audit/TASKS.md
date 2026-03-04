@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 42 | **In Progress:** 0 | **Done:** 172 (112 archived)
+> **Pending:** 41 | **In Progress:** 0 | **Done:** 173 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -37,7 +37,7 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
-| 97     | Runtime Permission Escalation        | 20    | ◻ (18/20 done)  |
+| 97     | Runtime Permission Escalation        | 20    | ◻ (19/20 done)  |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
@@ -401,7 +401,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 16  | OB-1599 | Add `getApprovedEscalations()` and `addApprovedEscalation()` to access-store — CRUD for permanent grants. `addApprovedEscalation(userId, channel, tool)` appends to JSON array                                                                                                                                                                            | ✅ Done   |
 | 17  | OB-1600 | Wire permanent grants into worker spawning — in MasterManager.spawnWorker(), merge user's `approved_tool_escalations` with profile tools before building allowedTools list                                                                                                                                                                                | ✅ Done   |
 | 18  | OB-1601 | Add `auto-approve-up-to-edit` consent mode — new mode that auto-approves escalations to `code-edit` or lower, asks for `full-access`. Add to ConsentMode type and wire into escalation logic                                                                                                                                                              | ✅ Done   |
-| 19  | OB-1602 | Add `openbridge access grants <user>` CLI command — list permanent tool grants for a user. `openbridge access revoke-grant <user> <tool>` removes a specific grant                                                                                                                                                                                        | ◻ Pending |
+| 19  | OB-1602 | Add `openbridge access grants <user>` CLI command — list permanent tool grants for a user. `openbridge access revoke-grant <user> <tool>` removes a specific grant                                                                                                                                                                                        | ✅ Done   |
 | 20  | OB-1603 | Add tests in `tests/core/permission-escalation.test.ts` — test: (1) escalation prompt sent on tool failure, (2) /allow grants tool and respawns, (3) /deny rejects, (4) timeout auto-denies, (5) permanent grant persists in DB, (6) session grant clears on restart, (7) pre-flight prediction works, (8) auto-approve-up-to-edit mode. At least 8 tests | ◻ Pending |
 
 ---

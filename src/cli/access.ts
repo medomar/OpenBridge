@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { closeDatabase, openDatabase } from '../memory/database.js';
-import { getAccess, listAccess, removeAccess, setAccess } from '../memory/access-store.js';
+import {
+  getAccess,
+  listAccess,
+  removeAccess,
+  removeApprovedEscalation,
+  setAccess,
+} from '../memory/access-store.js';
 import type { AccessControlEntry, AccessRole } from '../memory/access-store.js';
 
 const VALID_ROLES: AccessRole[] = ['owner', 'admin', 'developer', 'viewer', 'custom'];
@@ -72,6 +78,8 @@ function printHelp(): void {
   console.log('  add <user_id> --role <role> --channel <channel>  Add or update user access');
   console.log('  remove <user_id> --channel <channel>             Remove user access');
   console.log('  list                                              List all access entries');
+  console.log('  grants <user_id> [--channel <channel>]           List permanent tool grants');
+  console.log('  revoke-grant <user_id> <tool> --channel <ch>     Remove a permanent tool grant');
   console.log('');
   console.log('Roles: owner, admin, developer, viewer, custom');
   console.log('Channels: whatsapp, telegram, discord, webchat, console');
@@ -148,6 +156,64 @@ export function runAccess(subArgs: string[]): void {
 
       removeAccess(db, userId, channel);
       console.log(`  Removed access: ${userId} on ${channel}`);
+    } else if (subcommand === 'grants') {
+      const userId = subArgs[1];
+      if (!userId) {
+        throw new Error('Usage: openbridge access grants <user_id> [--channel <channel>]');
+      }
+
+      const flags = parseFlags(subArgs.slice(2));
+      const channel = flags['channel'];
+
+      const entries = listAccess(db).filter((e) => e.user_id === userId);
+      const filtered = channel ? entries.filter((e) => e.channel === channel) : entries;
+
+      if (filtered.length === 0) {
+        console.log(`  No access entries found for "${userId}"`);
+      } else {
+        let found = false;
+        for (const entry of filtered) {
+          const grants = entry.approvedToolEscalations ?? [];
+          if (grants.length > 0) {
+            found = true;
+            console.log(`  ${entry.channel}:`);
+            for (const tool of grants) {
+              console.log(`    - ${tool}`);
+            }
+          }
+        }
+        if (!found) {
+          console.log(`  No permanent tool grants for "${userId}"`);
+        }
+      }
+    } else if (subcommand === 'revoke-grant') {
+      const userId = subArgs[1];
+      const tool = subArgs[2];
+      if (!userId || !tool) {
+        throw new Error(
+          'Usage: openbridge access revoke-grant <user_id> <tool> --channel <channel>',
+        );
+      }
+
+      const flags = parseFlags(subArgs.slice(3));
+      const channel = flags['channel'];
+
+      if (!channel) {
+        throw new Error('--channel is required');
+      }
+
+      const existing = getAccess(db, userId, channel);
+      if (!existing) {
+        throw new Error(`No access entry found for "${userId}" on channel "${channel}"`);
+      }
+
+      const grants = existing.approvedToolEscalations ?? [];
+      if (!grants.includes(tool)) {
+        throw new Error(`Tool "${tool}" is not in the grants list for "${userId}" on "${channel}"`);
+      }
+
+      removeApprovedEscalation(db, userId, channel, tool);
+      console.log(`  Revoked grant: ${tool} for ${userId} on ${channel}`);
     } else {
       throw new Error(
         `Unknown subcommand "${subcommand}". Run "openbridge access --help" for usage.`,
