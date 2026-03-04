@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 26 | **In Progress:** 0 | **Done:** 188 (112 archived)
+> **Pending:** 25 | **In Progress:** 0 | **Done:** 189 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -38,7 +38,7 @@
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
-| 98     | Batch Task Continuation              | 22    | ◻ (13/22 done)  |
+| 98     | Batch Task Continuation              | 22    | ◻ (14/22 done)  |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
@@ -439,7 +439,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                                                                                                                                | Status    |
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 16  | OB-1619 | Add `/pause` command to Router — pause active batch. Workers in progress finish, no new items started. Send "Batch paused at item {current}/{total}. Reply '/continue' to resume."                                                                                                                                                                                                                         | ◻ Pending |
+| 16  | OB-1619 | Add `/pause` command to Router — pause active batch. Workers in progress finish, no new items started. Send "Batch paused at item {current}/{total}. Reply '/continue' to resume."                                                                                                                                                                                                                         | ✅ Done   |
 | 17  | OB-1620 | Add `/continue` command to Router — resume paused batch. Re-inject continuation message. Send "Resuming batch from item {current}..."                                                                                                                                                                                                                                                                      | ◻ Pending |
 | 18  | OB-1621 | Add `/batch` command to Router — show batch status: current item, progress (N/total), cost so far, elapsed time, failed items. Shows "No active batch" if none                                                                                                                                                                                                                                             | ◻ Pending |
 | 19  | OB-1622 | Add `/batch abort` command to Router — cancel remaining items. Send summary of what was completed. Clean up batch state file                                                                                                                                                                                                                                                                               | ◻ Pending |
