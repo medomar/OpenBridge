@@ -25,6 +25,7 @@ import type {
   BatchSourceType,
   BatchState,
 } from '../types/agent.js';
+import type { BatchConfig } from '../types/config.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
 
 const logger = createLogger('batch-manager');
@@ -41,6 +42,22 @@ export interface BatchAdvanceResult {
   nextIndex: number | null;
   /** Whether the batch has finished all items. */
   finished: boolean;
+}
+
+/** Describes a single safety rail limit that was exceeded. */
+export interface SafetyRailViolation {
+  /** Which limit was exceeded. */
+  rail: 'iterations' | 'budget' | 'timeout';
+  /** Human-readable explanation suitable for surfacing to the user. */
+  message: string;
+}
+
+/** Result of a safety rail check. */
+export interface SafetyRailCheckResult {
+  /** True when all rails pass and the batch may continue. */
+  passed: boolean;
+  /** Populated when passed is false — the first violation that triggered the pause. */
+  violation: SafetyRailViolation | undefined;
 }
 
 // ── BatchManager ───────────────────────────────────────────────────
@@ -348,5 +365,94 @@ export class BatchManager {
       }
     }
     return undefined;
+  }
+
+  // ── Safety rails ───────────────────────────────────────────────
+
+  /**
+   * Check all safety rails before processing the next batch iteration.
+   *
+   * Evaluates three limits from the provided config:
+   *  - `maxBatchIterations` — total completed items must be below this cap.
+   *  - `batchBudgetUsd`     — cumulative cost must remain below this value.
+   *  - `batchTimeoutMinutes`— wall-clock time from batch start must be below this.
+   *
+   * If any limit is exceeded the batch is automatically paused (so it can be resumed
+   * after user confirmation) and the violation is returned. The caller is responsible
+   * for forwarding the `violation.message` to the user.
+   *
+   * @param batchId  The batch to check.
+   * @param config   Safety limits from the config (BatchConfig fields).
+   * @returns        `{ passed: true }` when safe to continue, or `{ passed: false, violation }`.
+   *                 Returns `{ passed: true }` for unknown batch IDs (fail-open — let
+   *                 other guards handle missing state).
+   */
+  async checkSafetyRails(
+    batchId: string,
+    config: Pick<BatchConfig, 'maxBatchIterations' | 'batchBudgetUsd' | 'batchTimeoutMinutes'>,
+  ): Promise<SafetyRailCheckResult> {
+    const state = this.batches.get(batchId);
+    if (!state) {
+      logger.warn({ batchId }, 'checkSafetyRails() called on unknown batch — allowing');
+      return { passed: true, violation: undefined };
+    }
+
+    const { maxBatchIterations, batchBudgetUsd, batchTimeoutMinutes } = config;
+
+    // ── Rail 1: iteration cap ──────────────────────────────────
+    if (state.completedItems.length >= maxBatchIterations) {
+      const violation: SafetyRailViolation = {
+        rail: 'iterations',
+        message:
+          `Batch paused: completed ${state.completedItems.length} of ${state.totalItems} items, ` +
+          `which has reached the maximum iteration limit (${maxBatchIterations}). ` +
+          `Reply "continue batch" to process the next ${maxBatchIterations} items.`,
+      };
+      logger.warn(
+        { batchId, completedItems: state.completedItems.length, maxBatchIterations },
+        'Safety rail triggered: iteration limit reached',
+      );
+      await this.pauseBatch(batchId);
+      return { passed: false, violation };
+    }
+
+    // ── Rail 2: budget cap ─────────────────────────────────────
+    if (state.totalCostUsd >= batchBudgetUsd) {
+      const violation: SafetyRailViolation = {
+        rail: 'budget',
+        message:
+          `Batch paused: cumulative cost $${state.totalCostUsd.toFixed(4)} has reached ` +
+          `the budget limit ($${batchBudgetUsd.toFixed(2)}). ` +
+          `Reply "continue batch" to authorize additional spending.`,
+      };
+      logger.warn(
+        { batchId, totalCostUsd: state.totalCostUsd, batchBudgetUsd },
+        'Safety rail triggered: budget limit reached',
+      );
+      await this.pauseBatch(batchId);
+      return { passed: false, violation };
+    }
+
+    // ── Rail 3: timeout cap ────────────────────────────────────
+    const elapsedMs = Date.now() - new Date(state.startedAt).getTime();
+    const timeoutMs = batchTimeoutMinutes * 60 * 1000;
+    if (elapsedMs >= timeoutMs) {
+      const elapsedMin = Math.round(elapsedMs / 60_000);
+      const violation: SafetyRailViolation = {
+        rail: 'timeout',
+        message:
+          `Batch paused: elapsed time ${elapsedMin} min has reached the timeout limit ` +
+          `(${batchTimeoutMinutes} min). ` +
+          `Reply "continue batch" to extend the session.`,
+      };
+      logger.warn(
+        { batchId, elapsedMs, timeoutMs },
+        'Safety rail triggered: timeout limit reached',
+      );
+      await this.pauseBatch(batchId);
+      return { passed: false, violation };
+    }
+
+    return { passed: true, violation: undefined };
   }
 }
