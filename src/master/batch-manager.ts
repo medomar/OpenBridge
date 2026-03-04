@@ -319,9 +319,61 @@ export class BatchManager {
       'Batch aborted',
     );
 
+    // Build abort summary BEFORE removing state (OB-1622).
+    this.lastCompletionSummary = this.buildAbortSummaryText(state);
+
     this.batches.delete(batchId);
     await this.deletePersisted();
     return true;
+  }
+
+  /**
+   * Build a formatted summary for a user-aborted batch (OB-1622).
+   *
+   * Similar to buildCompletionSummaryText but uses an abort header and shows
+   * how many items remain uncompleted.
+   */
+  private buildAbortSummaryText(state: BatchState): string {
+    const completed = state.completedItems.filter((i) => i.status === 'completed').length;
+    const failed = state.completedItems.filter((i) => i.status === 'failed').length;
+    const skipped = state.completedItems.filter((i) => i.status === 'skipped').length;
+    const remaining = state.totalItems - state.currentIndex;
+
+    const durationMs = Date.now() - new Date(state.startedAt).getTime();
+    const totalSeconds = Math.round(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    let durationStr: string;
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+      durationStr = `${minutes}m ${seconds}s`;
+    } else {
+      durationStr = `${seconds}s`;
+    }
+
+    const costStr = state.totalCostUsd > 0 ? `$${state.totalCostUsd.toFixed(4)}` : 'not tracked';
+
+    const lines: string[] = [
+      '🛑 Batch aborted.',
+      '',
+      `**Completed:** ${completed} done, ${failed} failed, ${skipped} skipped`,
+      `**Remaining:** ${remaining} item${remaining !== 1 ? 's' : ''} cancelled`,
+      `**Cost so far:** ${costStr}`,
+      `**Duration:** ${durationStr}`,
+    ];
+
+    if (state.completedItems.length > 0) {
+      lines.push('', '**Completed items:**');
+      for (const item of state.completedItems) {
+        const icon = item.status === 'failed' ? '❌' : item.status === 'skipped' ? '⏭' : '✅';
+        const summary = item.summary ? ` — ${item.summary}` : '';
+        lines.push(`- ${icon} ${item.id}${summary}`);
+      }
+    }
+
+    return lines.join('\n');
   }
 
   // ── Completion summary ─────────────────────────────────────────

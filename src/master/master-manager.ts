@@ -2520,7 +2520,9 @@ export class MasterManager {
       await this.batchManager.abortBatch(batchId);
       this.batchSenderInfo.delete(batchId);
       logger.info({ batchId }, 'Batch aborted by user command');
-      return '🛑 Batch aborted.';
+      // Retrieve the abort summary built by abortBatch() before state was deleted (OB-1622).
+      const abortSummary = this.batchManager.popCompletionSummary();
+      return abortSummary ?? '🛑 Batch aborted.';
     }
 
     if (action === 'skip') {
