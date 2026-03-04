@@ -384,6 +384,14 @@ export const BatchCompletedItemSchema = z.object({
   status: z.enum(['completed', 'failed', 'skipped']),
 });
 
+/** A single planned item in a batch run (extracted from TASKS.md or FINDINGS.md) */
+export const BatchPlanItemSchema = z.object({
+  /** Item identifier (e.g. OB-1607 or OB-F89) */
+  id: z.string().min(1),
+  /** One-line description of the item */
+  description: z.string(),
+});
+
 /** Live state for an active Batch Mode session */
 export const BatchStateSchema = z.object({
   /** Unique batch run identifier */
@@ -394,6 +402,8 @@ export const BatchStateSchema = z.object({
   totalItems: z.number().int().nonnegative(),
   /** Zero-based index of the item currently being processed */
   currentIndex: z.number().int().nonnegative(),
+  /** Ordered plan of items to process */
+  plan: z.array(BatchPlanItemSchema).default([]),
   /** Items that have finished (successfully or not) */
   completedItems: z.array(BatchCompletedItemSchema).default([]),
   /** IDs of items that failed */
@@ -434,4 +444,5 @@ export type DeepPhaseResult = z.infer<typeof DeepPhaseResultSchema>;
 export type DeepModeState = z.infer<typeof DeepModeStateSchema>;
 export type BatchSourceType = z.infer<typeof BatchSourceTypeSchema>;
 export type BatchCompletedItem = z.infer<typeof BatchCompletedItemSchema>;
+export type BatchPlanItem = z.infer<typeof BatchPlanItemSchema>;
 export type BatchState = z.infer<typeof BatchStateSchema>;

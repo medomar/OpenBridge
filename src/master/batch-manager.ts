@@ -17,7 +17,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { createLogger } from '../core/logger.js';
-import type { BatchCompletedItem, BatchSourceType, BatchState } from '../types/agent.js';
+import type {
+  BatchCompletedItem,
+  BatchPlanItem,
+  BatchSourceType,
+  BatchState,
+} from '../types/agent.js';
 
 const logger = createLogger('batch-manager');
 
@@ -53,17 +58,22 @@ export class BatchManager {
    * Create a new batch run.
    *
    * @param sourceType   Where the item list comes from (tasks-md, findings, custom-list).
-   * @param totalItems   Number of items in the batch.
+   * @param plan         Ordered list of items to process (from BatchPlanner).
+   *                     When provided, totalItems is derived from plan.length.
+   *                     When omitted, pass totalItems explicitly.
+   * @param totalItems   Number of items — used only when plan is not provided.
    * @returns            The new batch ID.
    */
-  createBatch(sourceType: BatchSourceType, totalItems: number): string {
+  createBatch(sourceType: BatchSourceType, plan: BatchPlanItem[], totalItems?: number): string {
     const batchId = randomUUID();
+    const resolvedTotal = plan.length > 0 ? plan.length : (totalItems ?? 0);
 
     const state: BatchState = {
       batchId,
       sourceType,
-      totalItems,
+      totalItems: resolvedTotal,
       currentIndex: 0,
+      plan,
       completedItems: [],
       failedItems: [],
       startedAt: new Date().toISOString(),
@@ -73,7 +83,10 @@ export class BatchManager {
 
     this.batches.set(batchId, state);
 
-    logger.info({ batchId, sourceType, totalItems }, 'Batch created');
+    logger.info(
+      { batchId, sourceType, totalItems: resolvedTotal, planItems: plan.length },
+      'Batch created',
+    );
 
     return batchId;
   }
