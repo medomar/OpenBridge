@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 37 | **In Progress:** 0 | **Done:** 177 (112 archived)
+> **Pending:** 36 | **In Progress:** 0 | **Done:** 178 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -38,7 +38,7 @@
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
-| 98     | Batch Task Continuation              | 22    | ◻ (2/22 done)   |
+| 98     | Batch Task Continuation              | 22    | ◻ (3/22 done)   |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
@@ -417,7 +417,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 1   | OB-1604 | Add `BatchState` interface in `src/types/agent.ts` — fields: batchId, sourceType (tasks-md, findings, custom-list), totalItems, currentIndex, completedItems (array of {id, summary, status}), failedItems, startedAt, totalCostUsd, paused                                     | ✅ Done   |
 | 2   | OB-1605 | Add batch detection keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts` — keywords: "one by one", "all tasks", "each one", "implement all", "go through all", "for each", "iterate through", "all pending". Set `batchMode: true` in classification result | ✅ Done   |
 | 3   | OB-1606 | Create `src/master/batch-manager.ts` — BatchManager class with methods: createBatch(), advanceBatch(), pauseBatch(), resumeBatch(), abortBatch(), getStatus(), isActive(). Manages batch lifecycle                                                                              | ✅ Done   |
-| 4   | OB-1607 | Add batch plan generation — when batch detected, Master reads task source (TASKS.md, findings list), extracts individual items, creates ordered batch plan. Store in BatchState                                                                                                 | ◻ Pending |
+| 4   | OB-1607 | Add batch plan generation — when batch detected, Master reads task source (TASKS.md, findings list), extracts individual items, creates ordered batch plan. Store in BatchState                                                                                                 | ✅ Done   |
 | 5   | OB-1608 | Add batch state persistence — save to `.openbridge/batch-state.json` after each item. Load on startup to resume interrupted batches. Delete on batch completion or abort                                                                                                        | ◻ Pending |
 | 6   | OB-1609 | Wire BatchManager into MasterManager — instantiate during init. In processMessage(), check if batch is active: if yes, process next item instead of re-parsing message                                                                                                          | ◻ Pending |
 | 7   | OB-1610 | Add `maxBatchIterations` and `batchBudgetUsd` to config in `src/types/config.ts` — defaults: maxBatchIterations=20, batchBudgetUsd=5.00, batchTimeoutMinutes=120. Zod validation                                                                                                | ◻ Pending |
