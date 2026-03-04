@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 56 | **In Progress:** 0 | **Done:** 158 (112 archived)
+> **Pending:** 55 | **In Progress:** 0 | **Done:** 159 (112 archived)
 > **Last Updated:** 2026-03-04
 
 <details>
@@ -37,7 +37,7 @@
 | ------ | ------------------------------------ | ----- | --------------- |
 | RWT    | Real-World Testing Fixes (OB-F89–92) | 23    | ✅ (23/23 done) |
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
-| 97     | Runtime Permission Escalation        | 20    | ◻ (4/20 done)   |
+| 97     | Runtime Permission Escalation        | 20    | ◻ (5/20 done)   |
 | 98     | Batch Task Continuation              | 22    | ◻               |
 | 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
@@ -377,7 +377,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 2   | OB-1585 | Add `requestToolEscalation()` method to Router — sends escalation prompt to user: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or '/allow {profile}' to grant, '/deny' to reject." Sets 60s auto-deny timeout                                 | ✅ Done   |
 | 3   | OB-1586 | Add `/allow` command handler in Router — parse `/allow Bash(npm:test)` (single tool) or `/allow code-edit` (profile upgrade). Support scope suffix: `/allow code-edit --permanent`, `/allow Bash(npm:test) --session`. Default scope: `once`                            | ✅ Done   |
 | 4   | OB-1587 | Add `/deny` command handler in Router — reject pending escalation, notify Master to continue without the tool or abort the worker. Remove from pendingEscalations map                                                                                                   | ✅ Done   |
-| 5   | OB-1588 | Add escalation grant scopes — `once` (applies to current worker only), `session` (all workers this session, stored in-memory Map), `permanent` (stored in access_control DB). Wire each scope into the grant logic                                                      | ◻ Pending |
+| 5   | OB-1588 | Add escalation grant scopes — `once` (applies to current worker only), `session` (all workers this session, stored in-memory Map), `permanent` (stored in access_control DB). Wire each scope into the grant logic                                                      | ✅ Done   |
 | 6   | OB-1589 | Add `/permissions` command to Router — show current user's permanent tool grants, session grants, and consent mode. Lists all approved escalations with grant date                                                                                                      | ◻ Pending |
 | 7   | OB-1590 | Add escalation timeout handling — auto-deny after 60s with message "Escalation timed out — worker continuing with current profile." Log the timeout                                                                                                                     | ◻ Pending |
 | 8   | OB-1591 | Add escalation commands to `/help` output — include /allow, /deny, /permissions with brief descriptions                                                                                                                                                                 | ◻ Pending |
