@@ -367,6 +367,42 @@ export class BatchManager {
     return undefined;
   }
 
+  /**
+   * Build a user-facing progress message for the batch after an item completes (OB-1614).
+   *
+   * Returns a formatted string when there is at least one completed item and a next
+   * item remaining in the plan. Returns null when there is nothing useful to show
+   * (e.g. no completed items yet, batch done, or batch unknown).
+   *
+   * Format:
+   *   ✅ Task {id} done: {summary}
+   *   Starting {nextId}... ({current}/{total})
+   *
+   * @param batchId  The active batch identifier.
+   * @returns        Formatted progress message, or null.
+   */
+  buildProgressMessage(batchId: string): string | null {
+    const state = this.batches.get(batchId);
+    if (!state) return null;
+
+    const lastCompleted = state.completedItems[state.completedItems.length - 1];
+    if (!lastCompleted) return null;
+
+    // No next item — batch is done; completion summary is handled by OB-1618.
+    const nextItem = state.plan[state.currentIndex];
+    if (!nextItem) return null;
+
+    const current = state.completedItems.length;
+    const total = state.totalItems;
+
+    const statusIcon = lastCompleted.status === 'failed' ? '❌' : '✅';
+    const summaryLine = lastCompleted.summary
+      ? `${statusIcon} Task ${lastCompleted.id} done: ${lastCompleted.summary}`
+      : `${statusIcon} Task ${lastCompleted.id} done.`;
+
+    return `${summaryLine}\nStarting ${nextItem.id}... (${current}/${total})`;
+  }
+
   // ── Safety rails ───────────────────────────────────────────────
 
   /**

@@ -5023,11 +5023,23 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         const activeBatchId = this.batchManager.getActiveBatchId();
         if (activeBatchId !== undefined) {
           const batchSender = message.sender;
+          const batchSource = message.source;
           const router = this.router;
           logger.info(
             { batchId: activeBatchId, sender: batchSender },
             'Batch active after message processing — scheduling continuation trigger in 2s',
           );
+
+          // (OB-1614) Send progress message to user before the next item starts.
+          const progressMsg = this.batchManager.buildProgressMessage(activeBatchId);
+          if (progressMsg !== null) {
+            void router.sendDirect(batchSource, batchSender, progressMsg);
+            logger.info(
+              { batchId: activeBatchId, sender: batchSender },
+              'Batch progress message sent',
+            );
+          }
+
           setTimeout(() => {
             void router.routeBatchContinuation(activeBatchId, batchSender);
           }, 2000);
