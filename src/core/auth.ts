@@ -59,13 +59,45 @@ export class AuthService {
     return input.replace('@c.us', '').replace(/\D/g, '');
   }
 
+  /**
+   * Build whitelist with per-entry diagnostics.
+   * Returns the normalized Set and a list of dropped entries with reasons.
+   */
+  private static buildWhitelistDetailed(numbers: string[]): {
+    whitelist: Set<string>;
+    dropped: Array<{ entry: string; reason: string }>;
+  } {
+    const whitelist = new Set<string>();
+    const dropped: Array<{ entry: string; reason: string }> = [];
+
+    for (const n of numbers) {
+      // Allow @c.us suffix (WhatsApp format) and leading +; flag anything else non-numeric
+      const withoutSuffix = n.replace(/@c\.us$/, '');
+      const withoutPrefix = withoutSuffix.replace(/^\+/, '');
+      if (/\D/.test(withoutPrefix)) {
+        dropped.push({ entry: n, reason: 'non-numeric characters' });
+        continue;
+      }
+
+      const normalized = AuthService.normalizeNumber(n);
+      if (whitelist.has(normalized)) {
+        dropped.push({ entry: n, reason: 'duplicate' });
+        continue;
+      }
+
+      whitelist.add(normalized);
+    }
+
+    return { whitelist, dropped };
+  }
+
   private static buildWhitelist(numbers: string[]): Set<string> {
-    return new Set(numbers.map((n) => AuthService.normalizeNumber(n)));
+    return AuthService.buildWhitelistDetailed(numbers).whitelist;
   }
 
   constructor(config: AuthConfig) {
-    const rawCount = config.whitelist.length;
-    this.whitelist = AuthService.buildWhitelist(config.whitelist);
+    const detailed = AuthService.buildWhitelistDetailed(config.whitelist);
+    this.whitelist = detailed.whitelist;
     this.prefix = config.prefix;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
@@ -81,7 +113,8 @@ export class AuthService {
     logger.info(
       {
         whitelistedNumbers: this.whitelist.size,
-        rawEntries: rawCount,
+        rawEntries: config.whitelist.length,
+        droppedEntries: detailed.dropped.length,
         prefix: this.prefix,
         allowPatterns: filter.allowPatterns.length,
         denyPatterns: filter.denyPatterns.length,
@@ -89,11 +122,12 @@ export class AuthService {
       'Auth service initialized',
     );
 
-    if (rawCount !== this.whitelist.size) {
-      logger.warn(
-        { rawEntries: rawCount, normalizedEntries: this.whitelist.size },
-        'Whitelist count changed after normalization — some entries were non-numeric or duplicates',
-      );
+    for (const { entry, reason } of detailed.dropped) {
+      if (reason === 'duplicate') {
+        logger.warn({ entry }, `Duplicate whitelist entry ignored: ${entry}`);
+      } else {
+        logger.warn({ entry, reason }, `Dropped whitelist entry '${entry}': ${reason}`);
+      }
     }
 
     if (this.whitelist.size === 0) {
@@ -289,7 +323,8 @@ export class AuthService {
 
   /** Hot-reload auth config without restarting */
   updateConfig(config: AuthConfig): void {
-    this.whitelist = AuthService.buildWhitelist(config.whitelist);
+    const detailed = AuthService.buildWhitelistDetailed(config.whitelist);
+    this.whitelist = detailed.whitelist;
     this.prefix = config.prefix;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
@@ -305,12 +340,21 @@ export class AuthService {
     logger.info(
       {
         whitelistedNumbers: this.whitelist.size,
+        droppedEntries: detailed.dropped.length,
         prefix: this.prefix,
         allowPatterns: filter.allowPatterns.length,
         denyPatterns: filter.denyPatterns.length,
       },
       'Auth service config reloaded',
     );
+
+    for (const { entry, reason } of detailed.dropped) {
+      if (reason === 'duplicate') {
+        logger.warn({ entry }, `Duplicate whitelist entry ignored: ${entry}`);
+      } else {
+        logger.warn({ entry, reason }, `Dropped whitelist entry '${entry}': ${reason}`);
+      }
+    }
   }
 
   get commandPrefix(): string {

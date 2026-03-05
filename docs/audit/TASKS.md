@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 12 | **In Progress:** 0 | **Done:** 269 (112 archived)
+> **Pending:** 11 | **In Progress:** 0 | **Done:** 270 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -618,7 +618,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ✅ Done   |
 | 2   | OB-1680 | Log reason for each tool exclusion — e.g., "claude excluded: listed in config.excludeTools". Skip redundant override log when config override matches auto-selected fallback                                                             | ✅ Done   |
-| 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ◻ Pending |
+| 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ✅ Done   |
 | 4   | OB-1682 | In `npx openbridge init` (`src/cli/init.ts`), validate whitelist entries at config generation time — warn about non-numeric characters, duplicates. Offer to fix automatically                                                           | ◻ Pending |
 | 5   | OB-1683 | In `src/core/bridge.ts`, whitelist `.env.example`, `.env.sample`, `.env.template` from sensitive file detection — these are documentation, not secrets. Only flag `.env`, `.env.local`, `.env.production`, etc.                          | ◻ Pending |
 | 6   | OB-1684 | Add `sensitiveFileExceptions` config option in `src/types/config.ts` — array of glob patterns to exclude from sensitive file detection. Default includes `.env.example`, `.env.sample`, `.env.template`                                  | ◻ Pending |
