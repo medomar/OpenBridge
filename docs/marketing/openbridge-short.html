@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenBridge — Short Presentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #101418;
+        --coal: #1b2228;
+        --paper: #f6f3ed;
+        --sand: #efe7db;
+        --accent: #ff7a18;
+        --accent-deep: #c04a00;
+        --sky: #c6e6f2;
+        --mint: #c9f4d6;
+        --line: rgba(16, 20, 24, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top, #fff3e5 0%, var(--paper) 55%, var(--sand) 100%);
+        line-height: 1.6;
+        min-height: 100vh;
+      }
+
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 56px 24px 72px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 24px;
+        align-items: center;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-weight: 600;
+        color: rgba(16, 20, 24, 0.55);
+        font-size: 0.75rem;
+      }
+
+      h1 {
+        font-family: 'Libre Baskerville', serif;
+        font-size: clamp(2.5rem, 4vw, 3.6rem);
+        line-height: 1.1;
+      }
+
+      h1 span {
+        color: var(--accent-deep);
+      }
+
+      .hero p {
+        font-size: 1.05rem;
+        color: rgba(16, 20, 24, 0.75);
+        max-width: 560px;
+      }
+
+      .hero-card {
+        border: 1px solid var(--line);
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 24px 48px rgba(16, 20, 24, 0.08);
+      }
+
+      .hero-card h2 {
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+      }
+
+      .hero-card ul {
+        list-style: none;
+        display: grid;
+        gap: 10px;
+      }
+
+      .hero-card li {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-weight: 500;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        margin-top: 8px;
+        flex: none;
+      }
+
+      .grid {
+        margin-top: 48px;
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .panel {
+        padding: 20px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(6px);
+        min-height: 150px;
+      }
+
+      .panel h3 {
+        font-size: 1rem;
+        margin-bottom: 8px;
+      }
+
+      .panel p {
+        font-size: 0.95rem;
+        color: rgba(16, 20, 24, 0.75);
+      }
+
+      .use-cases {
+        margin-top: 40px;
+        padding: 24px;
+        border-radius: 20px;
+        background: linear-gradient(120deg, var(--mint), var(--sky));
+        border: 1px solid rgba(16, 20, 24, 0.08);
+      }
+
+      .use-cases h3 {
+        margin-bottom: 12px;
+      }
+
+      .use-cases ul {
+        list-style: none;
+        display: grid;
+        gap: 8px;
+        font-weight: 500;
+      }
+
+      .cta {
+        margin-top: 48px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 26px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .cta strong {
+        font-size: 1.1rem;
+      }
+
+      .cta code {
+        background: #1b2228;
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+      }
+
+      .tag {
+        display: inline-flex;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(255, 122, 24, 0.15);
+        color: var(--accent-deep);
+        font-weight: 600;
+        font-size: 0.85rem;
+      }
+
+      footer {
+        margin-top: 44px;
+        font-size: 0.85rem;
+        color: rgba(16, 20, 24, 0.55);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      @media (max-width: 720px) {
+        .cta {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Autonomous AI Bridge</div>
+          <h1>OpenBridge connects <span>real work</span> to AI.</h1>
+          <p>
+            A self-governing AI bridge that plugs into WhatsApp, Telegram, Discord, WebChat, and Console,
+            then orchestrates bounded worker agents to do real tasks safely.
+          </p>
+        </div>
+        <div class="hero-card">
+          <h2>What it unlocks</h2>
+          <ul>
+            <li><span class="dot"></span> One inbox for every channel your business already uses.</li>
+            <li><span class="dot"></span> AI workers that execute tasks with strict tool limits.</li>
+            <li><span class="dot"></span> Persistent memory and audit trails for every action.</li>
+          </ul>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="tag">Bridge</div>
+          <h3>Multi-channel by design</h3>
+          <p>Connect WhatsApp, Telegram, Discord, WebChat, and Console in minutes — no separate bots.</p>
+        </div>
+        <div class="panel">
+          <div class="tag">Autonomy</div>
+          <h3>Self-governing orchestration</h3>
+          <p>Master AI delegates to short-lived workers with bounded tools for safer execution.</p>
+        </div>
+        <div class="panel">
+          <div class="tag">Trust</div>
+          <h3>Memory with visibility</h3>
+          <p>Every action is recorded, auditable, and traceable back to a user request.</p>
+        </div>
+        <div class="panel">
+          <div class="tag">Extend</div>
+          <h3>Plugins & providers</h3>
+          <p>Build new connectors, skills, and tool profiles to fit your workflows.</p>
+        </div>
+      </section>
+
+      <section class="use-cases">
+        <h3>Fast use cases</h3>
+        <ul>
+          <li>Inventory + sales updates triggered by WhatsApp voice notes.</li>
+          <li>Customer support triage with a shared AI inbox.</li>
+          <li>Internal ops automation for logistics, reporting, and scheduling.</li>
+        </ul>
+      </section>
+
+      <section class="cta">
+        <strong>Ship a demo today</strong>
+        <span>Run <code>npm run dev</code> and open the WebChat UI to showcase the bridge live.</span>
+      </section>
+
+      <footer>
+        <span>OpenBridge — Autonomous AI Bridge</span>
+        <span>Built for real teams, not just developers.</span>
+      </footer>
+    </div>
+  </body>
+</html>
