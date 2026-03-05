@@ -295,6 +295,8 @@ export class Router {
   private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
   /** Pending tool escalation requests — keyed by sender, queue of pending entries (FIFO). Each /allow pops the first. */
   private readonly pendingEscalations = new Map<string, PendingEscalation[]>();
+  /** Tracks senders who have already received a 50% reminder for the current escalation batch (OB-1640). */
+  private readonly escalationReminderSent = new Set<string>();
   /** Session-level tool grants — keyed by sender, value is the set of tool/profile names granted for this session. */
   private readonly sessionGrantedTools = new Map<string, Set<string>>();
   /** Security config — controls confirmation requirements for high-risk spawns. */
@@ -742,6 +744,28 @@ export class Router {
     const scaledTimeoutMs = Math.min(baseTimeoutMs + (pendingCount - 1) * 60_000, 600_000);
     const scaledTimeoutSec = Math.round(scaledTimeoutMs / 1000);
 
+    // Schedule a 50% reminder once per batch — only for the first escalation in a new batch (OB-1640)
+    if (existingQueue.length === 0) {
+      const reminderDelayMs = Math.round(scaledTimeoutMs / 2);
+      setTimeout(() => {
+        // Skip if the reminder was already sent for this sender (defensive guard)
+        if (this.escalationReminderSent.has(sender)) return;
+        const currentQueue = this.pendingEscalations.get(sender);
+        if (!currentQueue || currentQueue.length === 0) return;
+        this.escalationReminderSent.add(sender);
+        const count = currentQueue.length;
+        const reminderMsg: OutboundMessage = {
+          target: message.source,
+          recipient: sender,
+          content: `⏰ Reminder: You have ${count} pending escalation request${count === 1 ? '' : 's'} — reply /allow, /allow all, or /deny.`,
+        };
+        connector.sendMessage(reminderMsg).catch((err: unknown) => {
+          logger.warn({ err, sender }, 'Failed to send escalation reminder');
+        });
+        logger.info({ sender, count }, 'Escalation reminder sent at 50% timeout');
+      }, reminderDelayMs);
+    }
+
     // Set auto-deny timeout — removes only this entry from the queue
     const timeoutHandle = setTimeout(() => {
       const queue = this.pendingEscalations.get(sender);
@@ -749,7 +773,10 @@ export class Router {
       const idx = queue.findIndex((e) => e.workerId === workerId);
       if (idx === -1) return;
       queue.splice(idx, 1);
-      if (queue.length === 0) this.pendingEscalations.delete(sender);
+      if (queue.length === 0) {
+        this.pendingEscalations.delete(sender);
+        this.escalationReminderSent.delete(sender);
+      }
 
       const timeoutMsg: OutboundMessage = {
         target: message.source,
@@ -826,7 +853,10 @@ export class Router {
     if (!queue || queue.length === 0) return undefined;
     const entry = queue.shift()!;
     clearTimeout(entry.timeoutHandle);
-    if (queue.length === 0) this.pendingEscalations.delete(sender);
+    if (queue.length === 0) {
+      this.pendingEscalations.delete(sender);
+      this.escalationReminderSent.delete(sender);
+    }
     return entry;
   }
 
@@ -844,6 +874,7 @@ export class Router {
     const queue = this.pendingEscalations.get(sender);
     if (!queue || queue.length === 0) return [];
     this.pendingEscalations.delete(sender);
+    this.escalationReminderSent.delete(sender);
     for (const entry of queue) clearTimeout(entry.timeoutHandle);
     return queue;
   }
