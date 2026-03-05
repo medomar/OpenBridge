@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 | **In Progress:** 0 | **Done:** 275 (112 archived)
+> **Pending:** 5 | **In Progress:** 0 | **Done:** 276 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -53,7 +53,7 @@
 | 100    | Classification & RAG Fixes           | 16    | ✅ (16/16 done) |
 | 101    | Batch & Shutdown Safety              | 7     | ✅ (7/7 done)   |
 | 102    | Worker & Cost Controls               | 8     | ✅ (8/8 done)   |
-| 103    | Docker & Startup Polish              | 9     | ◻               |
+| 103    | Docker & Startup Polish              | 9     | ✅ (9/9 done)   |
 | 104    | Test Suite Fixes (Stale Mocks)       | 5     | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
@@ -614,17 +614,17 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 > **Goal:** Fix startup logging confusion, whitelist diagnostics, false-positive sensitive file detection, and Docker sandbox bugs (wrong exit code, no crash cleanup).
 
-| #   | Task ID | Description                                                                                                                                                                                                                              | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ✅ Done   |
-| 2   | OB-1680 | Log reason for each tool exclusion — e.g., "claude excluded: listed in config.excludeTools". Skip redundant override log when config override matches auto-selected fallback                                                             | ✅ Done   |
-| 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ✅ Done   |
-| 4   | OB-1682 | In `npx openbridge init` (`src/cli/init.ts`), validate whitelist entries at config generation time — warn about non-numeric characters, duplicates. Offer to fix automatically                                                           | ✅ Done   |
-| 5   | OB-1683 | In `src/core/bridge.ts`, whitelist `.env.example`, `.env.sample`, `.env.template` from sensitive file detection — these are documentation, not secrets. Only flag `.env`, `.env.local`, `.env.production`, etc.                          | ✅ Done   |
-| 6   | OB-1684 | Add `sensitiveFileExceptions` config option in `src/types/config.ts` — array of glob patterns to exclude from sensitive file detection. Default includes `.env.example`, `.env.sample`, `.env.template`                                  | ✅ Done   |
-| 7   | OB-1685 | Fix Docker sandbox exit code in `src/core/docker-sandbox.ts` (~line 206) — read `.status` instead of `.code` for process exit code. Type error correctly: `code?: string; status?: number`. Fallback: `execErr.status ?? 1`              | ✅ Done   |
-| 8   | OB-1686 | Add Docker container cleanup on process crash — track container IDs in `Set<string>`, register `process.on('exit')` and `process.on('SIGINT')` handlers that call `removeContainer(id, true)`. Wire `cleanup()` into `Bridge.shutdown()` | ✅ Done   |
-| 9   | OB-1687 | Add tests: (1) tool selection summary log, (2) whitelist dropped entry logged, (3) .env.example not flagged, (4) Docker exit code reads .status, (5) Docker cleanup on exit. At least 5 tests across relevant test files                 | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                              | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ✅ Done |
+| 2   | OB-1680 | Log reason for each tool exclusion — e.g., "claude excluded: listed in config.excludeTools". Skip redundant override log when config override matches auto-selected fallback                                                             | ✅ Done |
+| 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ✅ Done |
+| 4   | OB-1682 | In `npx openbridge init` (`src/cli/init.ts`), validate whitelist entries at config generation time — warn about non-numeric characters, duplicates. Offer to fix automatically                                                           | ✅ Done |
+| 5   | OB-1683 | In `src/core/bridge.ts`, whitelist `.env.example`, `.env.sample`, `.env.template` from sensitive file detection — these are documentation, not secrets. Only flag `.env`, `.env.local`, `.env.production`, etc.                          | ✅ Done |
+| 6   | OB-1684 | Add `sensitiveFileExceptions` config option in `src/types/config.ts` — array of glob patterns to exclude from sensitive file detection. Default includes `.env.example`, `.env.sample`, `.env.template`                                  | ✅ Done |
+| 7   | OB-1685 | Fix Docker sandbox exit code in `src/core/docker-sandbox.ts` (~line 206) — read `.status` instead of `.code` for process exit code. Type error correctly: `code?: string; status?: number`. Fallback: `execErr.status ?? 1`              | ✅ Done |
+| 8   | OB-1686 | Add Docker container cleanup on process crash — track container IDs in `Set<string>`, register `process.on('exit')` and `process.on('SIGINT')` handlers that call `removeContainer(id, true)`. Wire `cleanup()` into `Bridge.shutdown()` | ✅ Done |
+| 9   | OB-1687 | Add tests: (1) tool selection summary log, (2) whitelist dropped entry logged, (3) .env.example not flagged, (4) Docker exit code reads .status, (5) Docker cleanup on exit. At least 5 tests across relevant test files                 | ✅ Done |
 
 ---
 
