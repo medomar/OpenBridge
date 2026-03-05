@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 41 | **In Progress:** 0 | **Done:** 240 (112 archived)
+> **Pending:** 40 | **In Progress:** 0 | **Done:** 241 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -534,13 +534,13 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 100-1 — Message Classification Improvements (OB-F98) — 5 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1648 | Add `complex-task` keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts`: "brainstorm", "strategy", "business model", "commercialise", "commercialize", "roadmap review", "strategic plan", "market analysis", "go-to-market"             | ✅ Done   |
-| 2   | OB-1649 | Increase `text-generation` maxTurns from 5 to 10 in task class definitions — long-form text generation (articles, strategies, plans) needs more turns than quick answers                                                                                     | ✅ Done   |
-| 3   | OB-1650 | Improve fallback logic in classifier — if message length > 100 chars AND contains question marks or multiple sentences, default to `tool-use` (15 turns) instead of `quick-answer` (5 turns)                                                                 | ✅ Done   |
-| 4   | OB-1651 | Add length-based heuristic for `complex-task` — messages > 200 chars with planning/strategy language patterns should be `complex-task` (25 turns) regardless of keyword matches                                                                              | ✅ Done   |
-| 5   | OB-1652 | Add tests for classification improvements: (1) "brainstorm with me" → complex-task, (2) "create a strategy to commercialise" → complex-task, (3) long multi-sentence message → not quick-answer, (4) "write a tweet" stays text-generation. At least 4 tests | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 1   | OB-1648 | Add `complex-task` keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts`: "brainstorm", "strategy", "business model", "commercialise", "commercialize", "roadmap review", "strategic plan", "market analysis", "go-to-market"             | ✅ Done |
+| 2   | OB-1649 | Increase `text-generation` maxTurns from 5 to 10 in task class definitions — long-form text generation (articles, strategies, plans) needs more turns than quick answers                                                                                     | ✅ Done |
+| 3   | OB-1650 | Improve fallback logic in classifier — if message length > 100 chars AND contains question marks or multiple sentences, default to `tool-use` (15 turns) instead of `quick-answer` (5 turns)                                                                 | ✅ Done |
+| 4   | OB-1651 | Add length-based heuristic for `complex-task` — messages > 200 chars with planning/strategy language patterns should be `complex-task` (25 turns) regardless of keyword matches                                                                              | ✅ Done |
+| 5   | OB-1652 | Add tests for classification improvements: (1) "brainstorm with me" → complex-task, (2) "create a strategy to commercialise" → complex-task, (3) long multi-sentence message → not quick-answer, (4) "write a tweet" stays text-generation. At least 4 tests | ✅ Done |
 
 ### 100-2 — RAG Zero-Results Fix (OB-F99) — 5 tasks
 
