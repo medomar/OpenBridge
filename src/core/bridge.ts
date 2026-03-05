@@ -686,6 +686,12 @@ export class Bridge {
 
     if (this.memory) {
       try {
+        await this.memory.closeActiveSessions();
+        logger.info('Active sessions closed');
+      } catch (error) {
+        logger.warn({ err: error }, 'Error closing active sessions — continuing with DB close');
+      }
+      try {
         await this.memory.close();
         logger.info('MemoryManager closed');
       } catch (error) {
