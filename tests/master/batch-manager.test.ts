@@ -248,7 +248,7 @@ describe('BatchManager — checkSafetyRails', () => {
     const state = manager.getStatus(batchId)!;
     // Directly mutate via a new batch with an old startedAt
     const oldBatchId = await manager.createBatch('custom-list', PLAN);
-    // Hack: access internal state via getActiveBatchId + getStatus, then use faketime
+    // Hack: access internal state via getCurrentBatchId + getStatus, then use faketime
     vi.useFakeTimers();
     const freshBatchId = await manager.createBatch('custom-list', PLAN);
     // Advance clock by 3 hours
@@ -411,7 +411,7 @@ describe('BatchManager — abortBatch', () => {
     expect(ok).toBe(true);
     expect(manager.getStatus(batchId)).toBeUndefined();
     expect(manager.isActive(batchId)).toBe(false);
-    expect(manager.getActiveBatchId()).toBeUndefined();
+    expect(manager.getCurrentBatchId()).toBeUndefined();
   });
 
   it('abortBatch returns false for unknown batchId', async () => {
@@ -476,7 +476,7 @@ describe('BatchManager — initialize() persistence', () => {
 
     await manager.initialize();
 
-    expect(manager.getActiveBatchId()).toBeUndefined();
+    expect(manager.getCurrentBatchId()).toBeUndefined();
   });
 
   it('persists state to dotFolder on createBatch', async () => {
@@ -504,9 +504,9 @@ describe('BatchManager — initialize() persistence', () => {
   });
 });
 
-// ── Bonus: getActiveBatchId + isActive global check ─────────────────
+// ── Bonus: getCurrentBatchId + isActive global check ─────────────────
 
-describe('BatchManager — getActiveBatchId / isActive (global)', () => {
+describe('BatchManager — getCurrentBatchId / isActive (global)', () => {
   it('isActive() with no batchId returns false when no batches exist', () => {
     const manager = new BatchManager();
     expect(manager.isActive()).toBe(false);
@@ -518,11 +518,11 @@ describe('BatchManager — getActiveBatchId / isActive (global)', () => {
     expect(manager.isActive()).toBe(true);
   });
 
-  it('getActiveBatchId returns undefined when all batches are complete', async () => {
+  it('getCurrentBatchId returns undefined when all batches are complete', async () => {
     const manager = new BatchManager();
     const batchId = await manager.createBatch('custom-list', [PLAN[0]!]);
     await manager.advanceBatch(batchId, completed('OB-1001'));
     // Batch is finished — removed from memory
-    expect(manager.getActiveBatchId()).toBeUndefined();
+    expect(manager.getCurrentBatchId()).toBeUndefined();
   });
 });

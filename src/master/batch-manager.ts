@@ -543,11 +543,16 @@ export class BatchManager {
   }
 
   /**
-   * Return the ID of the first active batch, or undefined if none exist.
+   * Return the ID of the first batch that has items remaining, or undefined if none exist.
+   *
+   * Unlike `isActive()`, this method returns the ID even when the batch is **paused** —
+   * it only requires that `currentIndex < totalItems`. Use this to locate the current batch
+   * for status queries, context injection, and restart recovery. Use `isActive()` when you
+   * need to know whether the batch is actually running (unpaused).
    *
    * Useful for MasterManager to locate the current batch without storing the ID separately.
    */
-  getActiveBatchId(): string | undefined {
+  getCurrentBatchId(): string | undefined {
     for (const [id, state] of this.batches.entries()) {
       if (state.currentIndex < state.totalItems) {
         return id;

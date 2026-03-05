@@ -1822,7 +1822,7 @@ export class MasterManager {
 
     // Inject active batch context so Master never loses track of batch progress (OB-1617).
     if (this.batchManager) {
-      const activeBatchId = this.batchManager.getActiveBatchId();
+      const activeBatchId = this.batchManager.getCurrentBatchId();
       if (activeBatchId) {
         const batchContext = this.batchManager.buildBatchContextSection(activeBatchId);
         if (batchContext) {
@@ -2500,7 +2500,7 @@ export class MasterManager {
   ): Promise<string> {
     if (!this.batchManager) return 'No active batch.';
 
-    const batchId = this.batchManager.getActiveBatchId();
+    const batchId = this.batchManager.getCurrentBatchId();
     if (!batchId) return 'No active batch found.';
 
     // Update stored sender info in case it changed (e.g. source connector switch) (OB-1667).
@@ -2614,7 +2614,7 @@ export class MasterManager {
   public getBatchStatus(): string {
     if (!this.batchManager) return 'No active batch.';
 
-    const batchId = this.batchManager.getActiveBatchId();
+    const batchId = this.batchManager.getCurrentBatchId();
     if (!batchId) return 'No active batch.';
 
     const state = this.batchManager.getStatus(batchId);
@@ -4876,7 +4876,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
     // If a batch is active, process the next batch item instead of re-parsing the incoming message.
     if (this.batchManager && this.batchManager.isActive()) {
-      const currentBatchId = this.batchManager.getActiveBatchId();
+      const currentBatchId = this.batchManager.getCurrentBatchId();
       if (currentBatchId) {
         const state = this.batchManager.getStatus(currentBatchId);
         const currentItem = state?.plan[state.currentIndex];
@@ -5449,10 +5449,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // Capture the active batch ID before the isActive() check so we can detect
       // completion transitions (batch was active → is now done) for OB-1618.
-      const preBatchId = this.batchManager?.getActiveBatchId();
+      const preBatchId = this.batchManager?.getCurrentBatchId();
 
       if (this.batchManager !== null && this.router !== null && this.batchManager.isActive()) {
-        const activeBatchId = this.batchManager.getActiveBatchId();
+        const activeBatchId = this.batchManager.getCurrentBatchId();
         if (activeBatchId !== undefined) {
           const batchSender = message.sender;
           const batchSource = message.source;
