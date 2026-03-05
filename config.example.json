@@ -64,6 +64,9 @@
     ],
     "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"]
   },
+  "audit": {
+    "enabled": true
+  },
   "_webchat_auth_note": "WebChat supports three auth modes: (1) Token auth [default] — when no password is set, a 64-char hex token is auto-generated and saved to .openbridge/webchat-token; share the URL with ?token=<VALUE> appended; (2) Password auth — set 'password' in the webchat options above; a login screen replaces the token and sessions last 24 hours; after 5 failed attempts in 15 min the IP is blocked for 30 min; (3) Disabled — set 'enabled: false' in the webchat channel entry to turn off WebChat entirely.",
   "_tunnel_note": "Tunnel exposes the local file server to the internet so the Master can send public URLs to mobile users. Auto-detects cloudflared (preferred), ngrok, or localtunnel. Requires the tool to be installed (e.g. `brew install cloudflared`).",
   "tunnel": {
