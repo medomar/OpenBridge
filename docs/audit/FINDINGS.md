@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 20 | **Fixed:** 86 | **Last Audit:** 2026-03-03
+> **Open:** 40 | **Fixed:** 86 | **Last Audit:** 2026-03-05
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
@@ -45,6 +45,31 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F62 | `reExplore()` doesn't write analysis marker or update cache | 🟡 Medium | Re-exploration loops waste time when switching between projects         | ✅ Fixed |
 | OB-F63 | Prompt rollback stores new content as previousVersion       | 🟡 Medium | Bad prompts for Marketplace tasks can't be reverted                     | ✅ Fixed |
 | OB-F61 | Progress calculation gives negative percentages             | 🟡 Medium | Confusing progress display during Marketplace exploration               | ✅ Fixed |
+
+### Tier 1c — Runtime Issues (discovered 2026-03-05 Telegram session)
+
+| #       | Finding                                                    | Severity    | Impact                                                                                     | Status |
+| ------- | ---------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------ | ------ |
+| OB-F95  | Worker re-spawn crash after escalation grant               | 🔴 Critical | Escalation grants silently fail — user approves but worker never runs                      | Open   |
+| OB-F96  | Escalation state cleared before all workers granted        | 🟠 High     | Multi-worker escalation queue handles only one — remaining workers stuck                   | Open   |
+| OB-F97  | Escalation timeout too short for multi-worker spawns       | 🟡 Medium   | 60s auto-deny before user can respond to multiple escalation prompts                       | Open   |
+| OB-F98  | Misclassification of strategic/brainstorming messages      | 🟠 High     | Strategic questions get 5 turns instead of 25 — shallow answers                            | Open   |
+| OB-F99  | RAG returns zero results for real user questions           | 🟡 Medium   | Real queries return 0 chunks, single-char queries return 10 — RAG is inverted              | Open   |
+| OB-F100 | Single-character messages trigger full agent invocations   | 🟢 Low      | "1", "3" go through full pipeline: classification → RAG → agent spawn — 60s and $0.02 each | Open   |
+| OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | Open   |
+| OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | Open   |
+| OB-F103 | Orphaned workers never reach terminal state                | 🔴 Critical | 7/61 workers unaccounted for — stuck processes, resource leaks, one ran 6.4 hours          | Open   |
+| OB-F104 | Workers exhaust max-turns without completing               | 🟡 Medium   | Workers counted as "completed" with partial results — Master gets incomplete data          | Open   |
+| OB-F105 | Master tool selection flow redundant and confusing         | 🟡 Medium   | 5 contradictory log lines during startup — debugging confusion                             | Open   |
+| OB-F106 | Whitelist normalization drops entries without details      | 🟡 Medium   | Dropped phone number silently locks out user with no diagnostic path                       | Open   |
+| OB-F107 | `.env.example` incorrectly flagged as sensitive file       | 🟢 Low      | Template documentation file auto-excluded — false positive erodes trust                    | Open   |
+| OB-F108 | Batch continuation timers not cancelled on shutdown        | 🟡 Medium   | Pending timers fire into destroyed system on shutdown — unhandled errors                   | Open   |
+| OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | Open   |
+| OB-F110 | Docker sandbox `exec()` reads wrong exit code property     | 🟡 Medium   | All non-zero exits default to 1 — can't distinguish OOM-kill from general error            | Open   |
+| OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | Open   |
+| OB-F112 | Batch sender info not persisted across process restarts    | 🟢 Low      | Resumed batches can't route messages to original user after restart                        | Open   |
+| OB-F113 | 37 test failures from stale mocks after Phase 98           | 🟠 High     | CI is red — test failures mask real regressions                                            | Open   |
+| OB-F114 | `getActiveBatchId()` inconsistent with `isActive()`        | 🟢 Low      | Returns paused batches — semantic trap for future callers                                  | Open   |
 
 ### Tier 2b — Platform Completion (Sprint 4 — v0.0.12)
 
@@ -625,6 +650,272 @@ User must manually say: "continue with the next task"
 **Key files:** `src/master/master-manager.ts`, `src/core/router.ts`, `src/master/dotfolder-manager.ts`, `src/types/config.ts`, `src/types/agent.ts`
 
 **Scope:** ~20–24 tasks across Phase 98.
+
+---
+
+### OB-F95 — Worker re-spawn crash after escalation grant (Critical)
+
+**Source:** Production Telegram session logs (2026-03-05, PID 11034)
+
+**Problem:** When a user grants `/allow` for a worker, `respawnWorkerAfterGrant()` creates an escalated worker ID (`-escalated` suffix) but does NOT register it in `WorkerRegistry` before spawning. When the spawn fails or completes, `markFailed()` throws because the worker doesn't exist.
+
+**Impact:** Tool escalation grants silently fail — the user approves elevated permissions, but the worker never actually runs.
+
+**Key files:** `src/master/master-manager.ts` (lines ~6782, ~6972, ~7490), `src/master/worker-registry.ts` (line ~205)
+
+**Scope:** ~3–5 tasks (Phase 99)
+
+---
+
+### OB-F96 — Escalation state cleared before all workers granted (High)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** When multiple workers request tool escalation simultaneously, the user's `/allow` response consumes the escalation for one worker, but subsequent `/allow` attempts get "no pending escalation". The escalation queue doesn't handle batched escalation requests properly.
+
+**Impact:** When Master spawns 3 workers needing escalation, the user can only grant one. The other 2 are stuck.
+
+**Key files:** `src/core/router.ts`, `src/master/master-manager.ts`
+
+**Scope:** ~6–8 tasks (Phase 99)
+
+---
+
+### OB-F97 — Escalation timeout too short for multi-worker spawns (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** Escalation requests auto-deny after 60 seconds. When 3 workers are spawned simultaneously, the user needs time to understand the prompts, decide, and respond. 60 seconds is insufficient — especially on mobile (Telegram).
+
+**Impact:** Workers are auto-denied before the user can respond, especially for multi-worker batches.
+
+**Key files:** `src/core/router.ts`, `src/types/config.ts`
+
+**Scope:** ~3–4 tasks (Phase 99)
+
+---
+
+### OB-F98 — Misclassification of strategic/brainstorming messages (High)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** The keyword-based classifier assigns wrong task classes: "Can you brainstorm with me?" → `quick-answer` (5 turns), "create a strategy to commercialise" → `text-generation` (5 turns). Both should be `complex-task` (25 turns). The keyword fallback to `quick-answer` is too aggressive.
+
+**Impact:** Strategic questions get only 5 turns, producing shallow answers. The Master can't do justice to complex planning requests.
+
+**Key files:** `src/master/master-manager.ts` (classification logic)
+
+**Scope:** ~4–6 tasks (Phase 100)
+
+---
+
+### OB-F99 — RAG returns zero results for real user questions (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** Substantive user questions return `confidence: 0, chunkCount: 0` from the RAG system, while trivial single-character queries like "1" return `confidence: 0.8, chunkCount: 10`. Likely a FTS5 tokenization or query construction issue in `buildSearchQuery`.
+
+**Impact:** RAG system fails to provide relevant workspace context for real questions, making Master responses less informed.
+
+**Key files:** `src/core/knowledge-retriever.ts`, `src/memory/chunk-store.ts`, `src/memory/retrieval.ts`
+
+**Scope:** ~4–5 tasks (Phase 100)
+
+---
+
+### OB-F100 — Single-character messages trigger full agent invocations (Low)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** Messages like "1", "3", "4" (likely menu/option selections) go through the full pipeline: classification → RAG query → agent spawn. The message "1" took 64 seconds and cost $0.022.
+
+**Impact:** Wasted compute and user wait time for what are likely simple follow-up selections.
+
+**Key files:** `src/master/master-manager.ts`, `src/core/knowledge-retriever.ts`
+
+**Scope:** ~3–4 tasks (Phase 100)
+
+---
+
+### OB-F101 — Codex worker cost spike ($1.14 for single read-only task) (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** One Codex worker (`gpt-5.2-codex`, read-only profile) cost $1.14 for a single invocation — roughly 100x the typical agent cost of ~$0.01. No per-worker cost caps exist.
+
+**Impact:** Unpredictable cost spikes. A read-only research task should not cost $1.14.
+
+**Key files:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`
+
+**Scope:** ~3–4 tasks (Phase 102)
+
+---
+
+### OB-F102 — Master response truncated to empty after SPAWN marker removal (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05, 3 occurrences)
+
+**Problem:** When the Master's entire response consists of SPAWN markers with no surrounding text, removing the markers leaves `cleanedLength: 0`. The user gets a generic status message instead of the Master's analysis.
+
+**Impact:** The user receives a vague "I'm working on it" message instead of the Master's actual plan.
+
+**Key files:** `src/master/master-manager.ts`, `src/master/master-system-prompt.ts`
+
+**Scope:** ~3–4 tasks (Phase 100)
+
+---
+
+### OB-F103 — Orphaned workers never reach terminal state (Critical)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** 7 of 61 workers in a session were unaccounted for — never reached completed/failed/cancelled. Root causes: escalation timeout doesn't mark as cancelled, re-spawn crash leaves both workers in limbo, escalation queue consumed by first grant. One worker ran for 23,174 seconds (6.4 hours).
+
+**Impact:** Orphaned workers consume system resources, hold API connections open, and count against concurrency limits.
+
+**Key files:** `src/master/worker-registry.ts`, `src/master/master-manager.ts`, `src/core/agent-runner.ts`
+
+**Scope:** ~6–8 tasks (Phase 99)
+
+---
+
+### OB-F104 — Workers exhaust max-turns without completing (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** Multiple workers exit with code 0 but `turnsExhausted: true` — they hit the max-turns limit before finishing. Results are marked "completed" but work is incomplete.
+
+**Impact:** Workers counted as "completed" in batch stats even though their output is partial. Master receives incomplete results.
+
+**Key files:** `src/core/agent-runner.ts`, `src/master/master-manager.ts`, `src/master/worker-result-formatter.ts`
+
+**Scope:** ~4–5 tasks (Phase 102)
+
+---
+
+### OB-F105 — Master tool selection flow redundant and confusing (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** During startup, three separate mechanisms determine the Master AI tool, producing 5 contradictory log lines. The reason for exclusion is never logged, making troubleshooting difficult.
+
+**Key files:** `src/index.ts`, `src/discovery/tool-scanner.ts`
+
+**Scope:** ~2–3 tasks (Phase 103)
+
+---
+
+### OB-F106 — Whitelist normalization drops entries without identifying which (Medium)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** Auth initialization normalizes 7 whitelist entries to 6, logging a warning but not identifying which entry was dropped or why.
+
+**Impact:** If the dropped entry is a real phone number, that user is silently locked out.
+
+**Key files:** `src/core/auth.ts`, `src/cli/init.ts`
+
+**Scope:** ~2–3 tasks (Phase 103)
+
+---
+
+### OB-F107 — `.env.example` incorrectly flagged as sensitive file (Low)
+
+**Source:** Production Telegram session logs (2026-03-05)
+
+**Problem:** The sensitive file detector auto-excludes `.env.example` from AI visibility, but it's a template with placeholder values, not real secrets.
+
+**Key files:** `src/core/bridge.ts`
+
+**Scope:** ~2 tasks (Phase 103)
+
+---
+
+### OB-F108 — Batch continuation timers not cancelled on shutdown (Medium)
+
+**Source:** Code review of Phase 98 batch continuation implementation
+
+**Problem:** Batch continuation uses `setTimeout()` at 4 locations in `master-manager.ts` to schedule the next batch item. These timer handles are never stored or cleared during `shutdown()`.
+
+**Impact:** If `shutdown()` is called while a batch timer is pending, it fires into a partially destroyed system.
+
+**Key files:** `src/master/master-manager.ts` (lines ~2518, ~2544, ~2561, ~5328, ~6426)
+
+**Scope:** ~2 tasks (Phase 101)
+
+---
+
+### OB-F109 — Unhandled rejections in batch continuation fire-and-forget (Medium)
+
+**Source:** Code review of Phase 98 batch continuation implementation
+
+**Problem:** All batch continuation timers use `void router.routeBatchContinuation(...)` — the `void` operator discards the Promise. Any rejection is an unhandled promise rejection that can crash the process.
+
+**Key files:** `src/master/master-manager.ts` (lines ~2519, ~2545, ~2562, ~5329)
+
+**Scope:** ~1 task (Phase 101)
+
+---
+
+### OB-F110 — Docker sandbox `exec()` reads wrong property for exit code (Medium)
+
+**Source:** Code review of Docker sandbox implementation (OB-1545)
+
+**Problem:** Error handler reads `execErr.code` (a string like `'ENOENT'`) instead of `.status` (the numeric exit code). All non-zero exits default to 1.
+
+**Key files:** `src/core/docker-sandbox.ts` (line ~201–206)
+
+**Scope:** ~1 task (Phase 103)
+
+---
+
+### OB-F111 — Docker sandbox has no container cleanup on process crash (Medium)
+
+**Source:** Code review of Docker sandbox implementation (OB-1545)
+
+**Problem:** `DockerSandbox` has no process exit handler to clean up running containers. If the bridge crashes, orphaned Docker containers continue running indefinitely.
+
+**Key files:** `src/core/docker-sandbox.ts`, `src/core/bridge.ts`
+
+**Scope:** ~2 tasks (Phase 103)
+
+---
+
+### OB-F112 — Batch sender info not persisted across process restarts (Low)
+
+**Source:** Code review of Phase 98 batch continuation implementation
+
+**Problem:** `batchSenderInfo` is an in-memory `Map`. Batch state is persisted to `.openbridge/batch-state.json` but sender routing info is lost on restart.
+
+**Key files:** `src/master/master-manager.ts` (line ~600), `src/master/batch-manager.ts`
+
+**Scope:** ~2 tasks (Phase 101)
+
+---
+
+### OB-F113 — 37 test failures from stale mocks after Phase 98 (High)
+
+**Source:** Test suite analysis after Phase 98 automated task runner session
+
+**Problem:** Phase 98 added new `DotFolderManager` methods (`readBatchState`, `writeBatchState`, `deleteBatchState`) and new `MasterManager.start()` behavior. 7 test files with incomplete mocks produce 37 failures.
+
+**Impact:** CI is red. Test failures mask real regressions.
+
+**Key files:** 7 test files (see RUNTIME-ISSUES-2026-03-05.md for full list)
+
+**Scope:** ~4–6 tasks (Phase 104)
+
+---
+
+### OB-F114 — `getActiveBatchId()` returns paused batches, inconsistent with `isActive()` (Low)
+
+**Source:** Code review of Phase 98 batch continuation implementation
+
+**Problem:** `isActive()` excludes paused batches, but `getActiveBatchId()` includes them. Undocumented asymmetry — semantic trap for future callers.
+
+**Key files:** `src/master/batch-manager.ts` (lines ~472, ~493)
+
+**Scope:** ~1 task (Phase 101)
 
 ---
 
