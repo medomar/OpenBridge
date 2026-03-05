@@ -109,6 +109,9 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     writeSystemPrompt: vi.fn().mockResolvedValue(undefined),
     readProfiles: vi.fn().mockResolvedValue(null),
     readWorkspaceMap: vi.fn().mockResolvedValue(null),
+    readBatchState: vi.fn().mockResolvedValue(null),
+    writeBatchState: vi.fn().mockResolvedValue(undefined),
+    deleteBatchState: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
