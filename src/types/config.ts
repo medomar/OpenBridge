@@ -124,6 +124,16 @@ export const V2AuthSchema = z.object({
   commandFilter: CommandFilterConfigSchema.optional(),
 });
 
+/** Schema for worker watchdog timeout configuration */
+export const WorkerWatchdogConfigSchema = z.object({
+  /** Timeout in minutes for read-only workers before force-kill (default: 10) */
+  readOnly: z.number().int().positive().default(10),
+  /** Timeout in minutes for code-edit and full-access workers before force-kill (default: 30) */
+  codeEdit: z.number().int().positive().default(30),
+});
+
+export type WorkerWatchdogConfig = z.infer<typeof WorkerWatchdogConfigSchema>;
+
 /** V2 master AI override schema */
 export const V2MasterSchema = z.object({
   tool: z.string().optional(),
@@ -131,6 +141,8 @@ export const V2MasterSchema = z.object({
   excludeTools: z.array(z.string()).optional(),
   explorationPrompt: z.string().optional(),
   sessionTtlMs: z.number().int().positive().optional(),
+  /** Worker watchdog timeout configuration — force-kills stuck workers */
+  workerWatchdogMinutes: WorkerWatchdogConfigSchema.optional(),
 });
 
 /** V2 workspace options — remote git clone + auto-pull configuration + visibility controls */

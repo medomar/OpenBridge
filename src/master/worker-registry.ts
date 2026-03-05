@@ -65,6 +65,8 @@ export const WorkerRecordSchema = z.object({
   error: z.string().optional(),
   /** Number of worker-level retries attempted (distinct from AgentRunner's internal retries) */
   workerRetries: z.number().int().nonnegative().optional(),
+  /** ISO timestamp of last reported progress — used by watchdog to detect stuck workers */
+  lastProgressAt: z.string().datetime().optional(),
 });
 
 export type WorkerRecord = z.infer<typeof WorkerRecordSchema>;
@@ -126,6 +128,12 @@ export class WorkerRegistry {
   private readonly maxConcurrentWorkers: number;
   /** FIFO queue of resolvers waiting for a worker slot to free up */
   private slotWaiters: Array<() => void> = [];
+  /** Watchdog interval timer — null when not running */
+  private watchdogTimer: NodeJS.Timeout | null = null;
+  /** Watchdog timeout for read-only workers in milliseconds (default: 10 minutes) */
+  private watchdogReadOnlyMs: number = 10 * 60 * 1000;
+  /** Watchdog timeout for code-edit and full-access workers in milliseconds (default: 30 minutes) */
+  private watchdogCodeEditMs: number = 30 * 60 * 1000;
 
   constructor(opts?: { maxConcurrentWorkers?: number }) {
     this.maxConcurrentWorkers = opts?.maxConcurrentWorkers ?? DEFAULT_MAX_CONCURRENT_WORKERS;
@@ -170,6 +178,7 @@ export class WorkerRegistry {
 
   /**
    * Mark a worker as running and record its PID.
+   * Initializes lastProgressAt to the current time for watchdog tracking.
    */
   public markRunning(workerId: string, pid: number): void {
     const worker = this.workers.get(workerId);
@@ -179,6 +188,7 @@ export class WorkerRegistry {
 
     worker.status = 'running';
     worker.pid = pid;
+    worker.lastProgressAt = new Date().toISOString();
     this.workers.set(workerId, worker);
   }
 
@@ -485,6 +495,136 @@ export class WorkerRegistry {
       byProfile,
       byModel,
     };
+  }
+
+  /**
+   * Update the last progress timestamp for a running worker.
+   * Called by the caller (e.g., MasterManager) when the worker reports new output,
+   * preventing the watchdog from treating it as stuck.
+   */
+  public updateProgress(workerId: string): void {
+    const worker = this.workers.get(workerId);
+    if (!worker) return;
+    worker.lastProgressAt = new Date().toISOString();
+    this.workers.set(workerId, worker);
+  }
+
+  /**
+   * Start the watchdog timer.
+   *
+   * Periodically checks all running workers. If a worker has not reported
+   * progress within the configured timeout for its profile, the worker is
+   * force-killed via SIGKILL and marked as failed with reason 'watchdog-timeout'.
+   *
+   * Timeouts:
+   *  - read-only workers:              default 10 minutes
+   *  - code-edit / full-access / other: default 30 minutes
+   *
+   * @param opts.readOnlyMs    Timeout in ms for read-only workers (overrides default)
+   * @param opts.codeEditMs    Timeout in ms for code-edit/full-access workers (overrides default)
+   * @param opts.intervalMs    How often the watchdog checks workers (default: 60 000 ms)
+   */
+  public startWatchdog(opts?: {
+    readOnlyMs?: number;
+    codeEditMs?: number;
+    intervalMs?: number;
+  }): void {
+    if (this.watchdogTimer !== null) return; // already running
+
+    if (opts?.readOnlyMs !== undefined) this.watchdogReadOnlyMs = opts.readOnlyMs;
+    if (opts?.codeEditMs !== undefined) this.watchdogCodeEditMs = opts.codeEditMs;
+
+    const intervalMs = opts?.intervalMs ?? 60_000;
+    this.watchdogTimer = setInterval(() => this.runWatchdogCheck(), intervalMs);
+
+    // Allow the Node.js process to exit even if the watchdog timer is still set
+    if (typeof this.watchdogTimer.unref === 'function') {
+      this.watchdogTimer.unref();
+    }
+
+    logger.info(
+      {
+        readOnlyMinutes: Math.round(this.watchdogReadOnlyMs / 60_000),
+        codeEditMinutes: Math.round(this.watchdogCodeEditMs / 60_000),
+        intervalMs,
+      },
+      'Worker watchdog started',
+    );
+  }
+
+  /**
+   * Stop the watchdog timer.
+   */
+  public stopWatchdog(): void {
+    if (this.watchdogTimer !== null) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+      logger.info('Worker watchdog stopped');
+    }
+  }
+
+  /**
+   * Returns true if the watchdog timer is currently running.
+   */
+  public isWatchdogRunning(): boolean {
+    return this.watchdogTimer !== null;
+  }
+
+  /**
+   * Internal watchdog check — runs on each interval tick.
+   * Finds running workers whose progress has stalled beyond their timeout,
+   * force-kills them, and marks them as failed.
+   */
+  private runWatchdogCheck(): void {
+    const now = Date.now();
+    const runningWorkers = this.getRunningWorkers();
+
+    for (const worker of runningWorkers) {
+      // Use lastProgressAt if set, otherwise fall back to startedAt
+      const lastProgress = worker.lastProgressAt ?? worker.startedAt;
+      const elapsed = now - new Date(lastProgress).getTime();
+
+      // Determine timeout by profile: read-only gets shorter timeout
+      const profile = worker.taskManifest.profile ?? 'full-access';
+      const timeoutMs = profile === 'read-only' ? this.watchdogReadOnlyMs : this.watchdogCodeEditMs;
+
+      if (elapsed <= timeoutMs) continue;
+
+      const elapsedMinutes = Math.round(elapsed / 60_000);
+      logger.warn(
+        { workerId: worker.id, profile, pid: worker.pid, elapsedMinutes },
+        `Watchdog: worker exceeded ${elapsedMinutes}m without progress — force-killing`,
+      );
+
+      // Force-kill via PID
+      if (worker.pid !== undefined) {
+        try {
+          process.kill(worker.pid, 'SIGKILL');
+        } catch (err) {
+          logger.warn(
+            { workerId: worker.id, pid: worker.pid, err },
+            'Watchdog: failed to send SIGKILL to worker process (may have already exited)',
+          );
+        }
+      }
+
+      // Mark as failed with watchdog-timeout reason
+      try {
+        this.markFailed(
+          worker.id,
+          {
+            stdout: '',
+            stderr: `Worker killed by watchdog after ${elapsedMinutes} minutes without progress`,
+            exitCode: 137, // SIGKILL exit code
+            durationMs: elapsed,
+            retryCount: 0,
+          },
+          'watchdog-timeout',
+        );
+      } catch (err) {
+        logger.warn({ workerId: worker.id, err }, 'Watchdog: failed to mark worker as failed');
+      }
+    }
   }
 
   /**
