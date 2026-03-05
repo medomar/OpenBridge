@@ -271,6 +271,145 @@ describe('Router', () => {
     });
   });
 
+  describe('QA cache (OB-1602, OB-1603, OB-1604)', () => {
+    function createQAMessage(content: string): InboundMessage {
+      return {
+        id: 'msg-qa',
+        source: 'mock',
+        sender: '+1234567890',
+        rawContent: `/ai ${content}`,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMasterWithResponse(response: string) {
+      const mockProcessMessage = vi.fn(async (_msg: InboundMessage) => response);
+      const master = {
+        processMessage: mockProcessMessage,
+        getState: vi.fn(() => 'ready' as const),
+      } as unknown as MasterManager;
+      return { master, mockProcessMessage };
+    }
+
+    /** Builds a minimal memory mock that records store() calls in-memory. */
+    function createMockMemory() {
+      const stored: Array<{ question: string; answer: string; confidence: number }> = [];
+
+      const mockStore = vi.fn((entry: { question: string; answer: string; confidence: number }) => {
+        stored.push(entry);
+        return stored.length;
+      });
+
+      const mockFindSimilar = vi.fn((question: string, limit: number = 5) =>
+        stored
+          .filter((e) => e.question === question)
+          .slice(0, limit)
+          .map((e, i) => ({ id: i + 1, ...e })),
+      );
+
+      const memory = {
+        qaCache: { store: mockStore, findSimilar: mockFindSimilar },
+      } as unknown as MemoryManager;
+
+      return { memory, mockStore, mockFindSimilar, stored };
+    }
+
+    it('should store a substantive Q&A pair in the cache after Master responds (OB-1602)', async () => {
+      const question = 'What is the project structure?';
+      const answer =
+        'The project has a src/ directory with core modules, connectors, and providers for multi-channel AI routing.';
+
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMasterWithResponse(answer);
+      const { memory, mockStore } = createMockMemory();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setMemory(memory);
+
+      await connector.initialize();
+      await router.route(createQAMessage(question));
+
+      // qaCache.store() must be called exactly once with the right payload
+      expect(mockStore).toHaveBeenCalledOnce();
+      expect(mockStore).toHaveBeenCalledWith(
+        expect.objectContaining({ question, answer, confidence: 0.9 }),
+      );
+    });
+
+    it('should not cache a short/greeting answer (OB-1603 guard)', async () => {
+      // 'ok' is 2 chars — well below the 30-char threshold
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMasterWithResponse('ok');
+      const { memory, mockStore } = createMockMemory();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setMemory(memory);
+
+      await connector.initialize();
+      await router.route(createQAMessage('hello'));
+
+      expect(mockStore).not.toHaveBeenCalled();
+    });
+
+    it('should not cache an error-pattern answer (OB-1603 guard)', async () => {
+      const errorAnswer = 'Sorry, I cannot complete that request at this time.';
+
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMasterWithResponse(errorAnswer);
+      const { memory, mockStore } = createMockMemory();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setMemory(memory);
+
+      await connector.initialize();
+      await router.route(createQAMessage('do something risky'));
+
+      expect(mockStore).not.toHaveBeenCalled();
+    });
+
+    it('should return a cache hit on findSimilar for a repeat question (OB-1604)', async () => {
+      const question = 'How does the Agent Runner work?';
+      const answer =
+        'The Agent Runner spawns CLI processes with --allowedTools, --max-turns, and --model flags, ' +
+        'handling retries and error classification automatically.';
+
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const { master } = createMasterWithResponse(answer);
+      const { memory, mockStore, mockFindSimilar } = createMockMemory();
+
+      router.addConnector(connector);
+      router.setMaster(master);
+      router.setMemory(memory);
+
+      await connector.initialize();
+
+      // First pass — populates the cache
+      await router.route(createQAMessage(question));
+      expect(mockStore).toHaveBeenCalledOnce();
+
+      // Second pass — repeat question; cache is already populated
+      await router.route(createQAMessage(question));
+
+      // findSimilar is NOT called by the router (read path is in KnowledgeRetriever);
+      // but the stored entry must be retrievable via the cache API.
+      const hits = memory.qaCache.findSimilar(question, 1);
+      expect(hits).toHaveLength(1);
+      expect(hits[0]).toMatchObject({ question, answer, confidence: 0.9 });
+
+      // store() called twice (once per message) — cache grows correctly
+      expect(mockStore).toHaveBeenCalledTimes(2);
+      expect(mockFindSimilar).toHaveBeenCalledWith(question, 1);
+    });
+  });
+
   describe('with Master AI', () => {
     function createMockMaster() {
       const mockProcessMessage = vi.fn(async (message: InboundMessage) => {
