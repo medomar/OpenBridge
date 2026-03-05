@@ -1,7 +1,7 @@
 # OpenBridge — Task List
 
-> **Pending:** 18 | **In Progress:** 0 | **Done:** 196 (112 archived)
-> **Last Updated:** 2026-03-04
+> **Pending:** 84 | **In Progress:** 0 | **Done:** 197 (112 archived)
+> **Last Updated:** 2026-03-05
 
 <details>
 <summary>Archive (764 tasks completed across Phases 1–86 + Deep-1)</summary>
@@ -45,13 +45,19 @@
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
 | 88     | WebChat Frontend Extraction          | 15    | ✅ (15/15 done) |
 | 89     | WebChat Authentication               | 12    | ✅ (12/12 done) |
-| 90     | Phone Access + Mobile PWA            | 15    | ◻ (14/15 done)  |
+| 90     | Phone Access + Mobile PWA            | 15    | ✅ (15/15 done) |
 | 91     | Conversation History + Rich Input    | 15    | ✅ (15/15 done) |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ✅ (12/12 done) |
 | Docker | Docker Sandbox                       | 16    | ◻               |
+| 99     | Escalation Queue & Orphan Fixes      | 22    | ◻               |
+| 100    | Classification & RAG Fixes           | 16    | ◻               |
+| 101    | Batch & Shutdown Safety              | 7     | ◻               |
+| 102    | Worker & Cost Controls               | 8     | ◻               |
+| 103    | Docker & Startup Polish              | 9     | ◻               |
+| 104    | Test Suite Fixes (Stale Mocks)       | 5     | ◻               |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
-**Sprint 4 Remaining:** 210 tasks (v0.0.12) — includes Phases 97–98 (autonomy) before platform completion
+**Sprint 4 Remaining:** 277 tasks (v0.0.12) — includes Phases 97–104 (runtime fixes from production testing)
 
 See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROADMAP.md](../ROADMAP.md) for version milestones.
 
@@ -471,5 +477,167 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 14  | OB-1558 | Add fallback in AgentRunner — if docker mode set but Docker unavailable, fall back to direct spawn with warning. Never silently fail                                                                                                                                                                        | ◻ Pending |
 | 15  | OB-1559 | Add tests in `tests/core/docker-sandbox.test.ts` — test: (1) isAvailable checks daemon, (2) createContainer builds correct command, (3) workspace read-only, (4) .openbridge read-write, (5) env vars sanitized, (6) resource limits applied, (7) cleanup after exit. At least 7 tests (mock child_process) | ◻ Pending |
 | 16  | OB-1560 | Build + lint + typecheck + test validation for Sprint 4 — all 172 tasks must pass before tagging v0.0.12. Fix any failures                                                                                                                                                                                  | ◻ Pending |
+
+---
+
+## Phase 99 — Escalation Queue & Orphan Fixes (OB-F95, F96, F97, F103) — 22 tasks
+
+> **Goal:** Fix critical worker lifecycle bugs discovered during production Telegram session (2026-03-05). Workers crash on re-spawn after escalation grant, escalation queue handles only one request, timeouts are too short, and orphaned workers never reach terminal state. **Priority: Critical — these bugs cause silent failures and resource leaks.**
+
+### 99-1 — Worker Re-Spawn Crash (OB-F95) — 5 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                  | Status    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1626 | Register escalated worker ID in `WorkerRegistry` BEFORE calling `spawnWorker()` in `respawnWorkerAfterGrant()` (`src/master/master-manager.ts` ~line 6782). Currently the `-escalated` suffix worker is never registered, causing `markFailed()` to throw "worker not found" | ◻ Pending |
+| 2   | OB-1627 | Add error handling around re-spawn in `respawnWorkerAfterGrant()` — if spawn fails, send user message "Worker re-spawn failed after grant, please retry" and mark both original and escalated worker as `failed` in WorkerRegistry                                           | ◻ Pending |
+| 3   | OB-1628 | When re-spawn fails, clean up the escalated worker entry from `WorkerRegistry` to prevent orphaned state. Call `markFailed()` with reason "respawn-failed" for the escalated worker ID                                                                                       | ◻ Pending |
+| 4   | OB-1629 | Add integration test: grant escalation → verify worker is registered in WorkerRegistry → verify worker executes successfully. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ◻ Pending |
+| 5   | OB-1630 | Add integration test: grant escalation → spawn fails → verify both workers marked as failed → verify user gets error message. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ◻ Pending |
+
+### 99-2 — Escalation Queue for Multiple Workers (OB-F96) — 7 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                             | Status    |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 6   | OB-1631 | Refactor `pendingEscalations` in Router from single-entry to queue — change from `Map<sender, PendingEscalation>` to `Map<sender, PendingEscalation[]>`. Each `/allow` pops the next pending escalation instead of clearing all state   | ◻ Pending |
+| 7   | OB-1632 | Add `/allow all` command to Router — grants all pending escalations for a sender at once. Iterates through the queue and processes each grant sequentially                                                                              | ◻ Pending |
+| 8   | OB-1633 | After each `/allow`, show remaining count: "Granted. X more pending escalation(s) — reply /allow for next or /allow all for all"                                                                                                        | ◻ Pending |
+| 9   | OB-1634 | Add `/deny all` command — denies all pending escalations for a sender at once. Marks all queued workers as denied                                                                                                                       | ◻ Pending |
+| 10  | OB-1635 | Update escalation prompt message to show queue count: "3 workers requesting elevated access: (1) worker-xxx needs Bash(npm:test), (2) worker-yyy needs code-edit, (3) worker-zzz needs full-access. Reply /allow, /allow all, or /deny" | ◻ Pending |
+| 11  | OB-1636 | Add test: 3 workers request escalation → user sends /allow → first is granted, 2 remain → user sends /allow all → remaining 2 granted. Test in `tests/core/permission-escalation.test.ts`                                               | ◻ Pending |
+| 12  | OB-1637 | Add test: escalation queue with /deny all — verify all queued workers are marked denied and user is notified. Test in `tests/core/permission-escalation.test.ts`                                                                        | ◻ Pending |
+
+### 99-3 — Escalation Timeout Scaling (OB-F97) — 4 tasks
+
+| #   | Task ID | Description                                                                                                                                                                | Status    |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 13  | OB-1638 | Increase default escalation timeout from 60s to 180s in Router. Add `escalationTimeoutMs` to config schema in `src/types/config.ts` with default 180000. Validate with Zod | ◻ Pending |
+| 14  | OB-1639 | Scale timeout with queue size — add 60s per additional pending escalation beyond the first. E.g., 3 pending = 180s + (2 × 60s) = 300s. Cap at 600s (10 minutes)            | ◻ Pending |
+| 15  | OB-1640 | Send reminder at 50% timeout elapsed: "You have X pending escalation requests — reply /allow, /allow all, or /deny". Only send once per batch                              | ◻ Pending |
+| 16  | OB-1641 | Add test: verify timeout scales with queue size, verify reminder sent at 50%, verify auto-deny after full timeout. Test in `tests/core/permission-escalation.test.ts`      | ◻ Pending |
+
+### 99-4 — Orphaned Worker Cleanup (OB-F103) — 6 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 17  | OB-1642 | Add worker state audit in `WorkerRegistry` — on batch stats collection, if `total != completed + failed + cancelled`, log WARNING with orphaned worker IDs and their last known state. Add `getOrphanedWorkers()` method                                     | ◻ Pending |
+| 18  | OB-1643 | Add worker watchdog timer — if a worker hasn't reported progress in 10 minutes (read-only) or 30 minutes (code-edit/full-access), force-kill via PID and mark as `failed` with reason "watchdog-timeout". Configurable via `workerWatchdogMinutes` in config | ◻ Pending |
+| 19  | OB-1644 | When escalation times out (auto-deny), explicitly mark the worker as `cancelled` in WorkerRegistry — currently the worker is left in "pending" state indefinitely                                                                                            | ◻ Pending |
+| 20  | OB-1645 | When re-spawn fails (OB-F95 fix), mark BOTH the original worker and the escalated worker as `failed` in WorkerRegistry — prevent either from being counted as "active"                                                                                       | ◻ Pending |
+| 21  | OB-1646 | Add `/workers` command to Router — list all active workers with: worker ID, status, profile, duration, PID. Include count of orphaned workers. User can reply `/kill <worker-id>` to force-stop a stuck worker                                               | ◻ Pending |
+| 22  | OB-1647 | Add tests: (1) watchdog kills worker after timeout, (2) escalation timeout marks worker cancelled, (3) `/workers` shows active and orphaned workers, (4) batch stats audit detects orphans. At least 4 tests in `tests/master/worker-registry.test.ts`       | ◻ Pending |
+
+---
+
+## Phase 100 — Classification & RAG Fixes (OB-F98, F99, F100, F102) — 16 tasks
+
+> **Goal:** Fix message misclassification and RAG retrieval failures discovered during production testing. Strategic/brainstorming messages get too few turns, RAG returns zero results for real queries, single-character messages waste compute, and Master responses are truncated to empty after SPAWN removal.
+
+### 100-1 — Message Classification Improvements (OB-F98) — 5 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 1   | OB-1648 | Add `complex-task` keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts`: "brainstorm", "strategy", "business model", "commercialise", "commercialize", "roadmap review", "strategic plan", "market analysis", "go-to-market"             | ◻ Pending |
+| 2   | OB-1649 | Increase `text-generation` maxTurns from 5 to 10 in task class definitions — long-form text generation (articles, strategies, plans) needs more turns than quick answers                                                                                     | ◻ Pending |
+| 3   | OB-1650 | Improve fallback logic in classifier — if message length > 100 chars AND contains question marks or multiple sentences, default to `tool-use` (15 turns) instead of `quick-answer` (5 turns)                                                                 | ◻ Pending |
+| 4   | OB-1651 | Add length-based heuristic for `complex-task` — messages > 200 chars with planning/strategy language patterns should be `complex-task` (25 turns) regardless of keyword matches                                                                              | ◻ Pending |
+| 5   | OB-1652 | Add tests for classification improvements: (1) "brainstorm with me" → complex-task, (2) "create a strategy to commercialise" → complex-task, (3) long multi-sentence message → not quick-answer, (4) "write a tweet" stays text-generation. At least 4 tests | ◻ Pending |
+
+### 100-2 — RAG Zero-Results Fix (OB-F99) — 5 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                      | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 6   | OB-1653 | Investigate `buildSearchQuery()` in `src/core/knowledge-retriever.ts` — log the actual FTS5 query string being generated for multi-word queries vs single-character queries. Add debug logging to identify tokenization issues                   | ◻ Pending |
+| 7   | OB-1654 | Fix FTS5 query construction — natural language questions ("Can you deploy and send the link?") likely fail because of stop-word filtering or over-quoting. Ensure individual content words are OR-joined, not AND-joined                         | ◻ Pending |
+| 8   | OB-1655 | Add fallback query strategy — if initial FTS5 query returns 0 results, retry with individual keywords extracted from the query (top 3 content words by length). Log "RAG fallback: retrying with individual keywords"                            | ◻ Pending |
+| 9   | OB-1656 | Skip RAG for messages shorter than 3 characters — single-character inputs ("1", "3") should bypass RAG entirely. Return empty results with `confidence: 0` immediately                                                                           | ◻ Pending |
+| 10  | OB-1657 | Add tests: (1) multi-word query returns results when chunks exist, (2) single-char query skipped, (3) fallback retry triggers on zero results, (4) FTS5 query logged for debugging. At least 4 tests in `tests/core/knowledge-retriever.test.ts` | ◻ Pending |
+
+### 100-3 — Single-Character Message Optimization (OB-F100) — 3 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                          | Status    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 11  | OB-1658 | Add `menu-selection` task class in `classifyTaskByKeywords()` — detect numeric-only messages (1–9 or single digits). Set maxTurns: 2, skip RAG. Check if previous response contained a numbered list and extract the selected option                 | ◻ Pending |
+| 12  | OB-1659 | In `processMessage()`, when `menu-selection` detected, inject the selected option text from the previous response into the Master prompt instead of the raw number. E.g., user sends "3" → Master sees "User selected option 3: 'Deploy to staging'" | ◻ Pending |
+| 13  | OB-1660 | Add tests: (1) "1" classified as menu-selection, (2) "hello" NOT classified as menu-selection, (3) RAG skipped for menu-selection, (4) option text injected from previous response. At least 3 tests                                                 | ◻ Pending |
+
+### 100-4 — SPAWN Marker Truncation Fix (OB-F102) — 3 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                       | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 14  | OB-1661 | When `cleanedLength === 0` after SPAWN marker removal in `src/master/master-manager.ts`, generate a structured status message from the parsed SPAWN markers: "I'm spawning N workers: 1) {summary1}, 2) {summary2}, ..." Extract worker task summaries from SPAWN marker prompts                  | ◻ Pending |
+| 15  | OB-1662 | Update Master system prompt in `src/master/master-system-prompt.ts` to instruct: "Always include a brief human-readable summary explaining your plan BEFORE any SPAWN markers. The user should understand what you're about to do even if SPAWN markers are removed from the displayed response." | ◻ Pending |
+| 16  | OB-1663 | Add tests: (1) response with only SPAWN markers generates summary, (2) response with text + SPAWN markers preserves text, (3) summary includes worker task descriptions. At least 3 tests                                                                                                         | ◻ Pending |
+
+---
+
+## Phase 101 — Batch & Shutdown Safety (OB-F108, F109, F112, F114) — 7 tasks
+
+> **Goal:** Fix batch continuation timer leaks and unhandled rejections that can crash the bridge or leak resources during shutdown. Fix sender info persistence and API inconsistency.
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 1   | OB-1664 | Add `batchTimers: Set<NodeJS.Timeout>` field to MasterManager. Store each `setTimeout` handle from batch continuation (lines ~2518, ~2544, ~2561, ~5328 in `src/master/master-manager.ts`). Remove handle from set when timer fires                          | ◻ Pending |
+| 2   | OB-1665 | In `MasterManager.shutdown()`, call `clearTimeout()` on all remaining handles in `batchTimers` set. Add guard in timer callback: `if (this.state === 'shutdown') return;` to prevent firing into destroyed system                                            | ◻ Pending |
+| 3   | OB-1666 | Replace all `void router.routeBatchContinuation(...)` calls with `.catch()` handlers — on catch, call `batchManager.pauseBatch()` and notify user "Batch paused due to error: {message}". Lines ~2519, ~2545, ~2562, ~5329 in `src/master/master-manager.ts` | ◻ Pending |
+| 4   | OB-1667 | Include `senderInfo: { sender, source }` in persisted batch state JSON (`src/master/batch-manager.ts`). On `initialize()` reload, restore `batchSenderInfo` map from persisted state so batch messages route correctly after restart                         | ◻ Pending |
+| 5   | OB-1668 | Rename `getActiveBatchId()` to `getCurrentBatchId()` in `src/master/batch-manager.ts` to signal it includes paused batches. Add JSDoc clarifying difference from `isActive()`. Update all callers                                                            | ◻ Pending |
+| 6   | OB-1669 | Add tests: (1) batch timers cleared on shutdown, (2) timer callback no-ops after shutdown, (3) routeBatchContinuation error pauses batch, (4) sender info persisted and restored. At least 4 tests in `tests/master/batch-manager.test.ts`                   | ◻ Pending |
+| 7   | OB-1670 | Add test: `getCurrentBatchId()` returns paused batch ID, `isActive()` returns false for same batch. Verify no caller assumes `getCurrentBatchId()` implies running. Test in `tests/master/batch-manager.test.ts`                                             | ◻ Pending |
+
+---
+
+## Phase 102 — Worker & Cost Controls (OB-F101, F104) — 8 tasks
+
+> **Goal:** Add per-worker cost caps and handle max-turns exhaustion properly. Prevent $1+ cost spikes for read-only tasks and distinguish incomplete workers from fully completed ones.
+
+### 102-1 — Per-Worker Cost Caps (OB-F101) — 4 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                                                                    | Status    |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| 1   | OB-1671 | Add per-profile cost caps in `src/core/agent-runner.ts` — `read-only`: $0.50, `code-edit`: $1.00, `code-audit`: $1.00, `full-access`: $2.00. If streaming cost exceeds cap, abort the agent and log WARNING "Worker cost cap exceeded: ${cost} > ${cap} for profile {profile}" | ◻ Pending |
+| 2   | OB-1672 | Add `workerCostCaps` config option in `src/types/config.ts` — per-profile overrides: `{ "read-only": 0.50, "code-edit": 1.00 }`. Merge with defaults. Zod validation                                                                                                           | ◻ Pending |
+| 3   | OB-1673 | Log WARNING when worker cost exceeds 10x the average for its profile tier — e.g., "Worker cost $1.14 is 114x average $0.01 for read-only profile". Track running average per profile in memory                                                                                 | ◻ Pending |
+| 4   | OB-1674 | Add tests: (1) cost cap aborts agent, (2) cost cap configurable, (3) 10x warning logged, (4) average tracking works. At least 3 tests in `tests/core/agent-runner.test.ts`                                                                                                     | ◻ Pending |
+
+### 102-2 — Turns Exhaustion Handling (OB-F104) — 4 tasks
+
+| #   | Task ID | Description                                                                                                                                                                                                                             | Status    |
+| --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 5   | OB-1675 | Add `partial` status to worker result metadata in `src/core/agent-runner.ts` — when `turnsExhausted: true`, set `result.status = 'partial'` instead of `'completed'`. Include `turnsUsed` and `maxTurns` in result metadata             | ◻ Pending |
+| 6   | OB-1676 | In `worker-result-formatter.ts`, append "[PARTIAL — worker used all {maxTurns} turns, result may be incomplete]" to worker results when `turnsExhausted: true`. Master receives this flag and can decide to spawn a continuation worker | ◻ Pending |
+| 7   | OB-1677 | Add adaptive maxTurns in `MasterManager.spawnWorker()` — if task prompt length > 200 chars, add 5 extra turns. If prompt contains "thorough", "comprehensive", "detailed", add 10 extra turns. Cap at profile maximum                   | ◻ Pending |
+| 8   | OB-1678 | Add tests: (1) turnsExhausted sets partial status, (2) result formatter appends warning, (3) adaptive maxTurns increases for long prompts, (4) cap respects profile maximum. At least 3 tests                                           | ◻ Pending |
+
+---
+
+## Phase 103 — Docker & Startup Polish (OB-F105, F106, F107, F110, F111) — 9 tasks
+
+> **Goal:** Fix startup logging confusion, whitelist diagnostics, false-positive sensitive file detection, and Docker sandbox bugs (wrong exit code, no crash cleanup).
+
+| #   | Task ID | Description                                                                                                                                                                                                                              | Status    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ◻ Pending |
+| 2   | OB-1680 | Log reason for each tool exclusion — e.g., "claude excluded: listed in config.excludeTools". Skip redundant override log when config override matches auto-selected fallback                                                             | ◻ Pending |
+| 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ◻ Pending |
+| 4   | OB-1682 | In `npx openbridge init` (`src/cli/init.ts`), validate whitelist entries at config generation time — warn about non-numeric characters, duplicates. Offer to fix automatically                                                           | ◻ Pending |
+| 5   | OB-1683 | In `src/core/bridge.ts`, whitelist `.env.example`, `.env.sample`, `.env.template` from sensitive file detection — these are documentation, not secrets. Only flag `.env`, `.env.local`, `.env.production`, etc.                          | ◻ Pending |
+| 6   | OB-1684 | Add `sensitiveFileExceptions` config option in `src/types/config.ts` — array of glob patterns to exclude from sensitive file detection. Default includes `.env.example`, `.env.sample`, `.env.template`                                  | ◻ Pending |
+| 7   | OB-1685 | Fix Docker sandbox exit code in `src/core/docker-sandbox.ts` (~line 206) — read `.status` instead of `.code` for process exit code. Type error correctly: `code?: string; status?: number`. Fallback: `execErr.status ?? 1`              | ◻ Pending |
+| 8   | OB-1686 | Add Docker container cleanup on process crash — track container IDs in `Set<string>`, register `process.on('exit')` and `process.on('SIGINT')` handlers that call `removeContainer(id, true)`. Wire `cleanup()` into `Bridge.shutdown()` | ◻ Pending |
+| 9   | OB-1687 | Add tests: (1) tool selection summary log, (2) whitelist dropped entry logged, (3) .env.example not flagged, (4) Docker exit code reads .status, (5) Docker cleanup on exit. At least 5 tests across relevant test files                 | ◻ Pending |
+
+---
+
+## Phase 104 — Test Suite Fixes / Stale Mocks (OB-F113) — 5 tasks
+
+> **Goal:** Fix 37 test failures caused by stale mocks after Phase 98 batch continuation changes. Add `readBatchState`/`writeBatchState`/`deleteBatchState` to all DotFolderManager mocks, fix Progress Events tests, address pre-existing CLI wizard timeouts.
+
+| #   | Task ID | Description                                                                                                                                                                                                                                    | Status    |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| 1   | OB-1688 | Fix DotFolderManager mocks in `tests/integration/memory-wiring.test.ts` (18 failures) — add `readBatchState: vi.fn().mockReturnValue(null)`, `writeBatchState: vi.fn()`, `deleteBatchState: vi.fn()` to all mock objects                       | ◻ Pending |
+| 2   | OB-1689 | Fix DotFolderManager mocks in `tests/e2e/graceful-unknown-handling.test.ts` (2 failures) and `tests/integration/master-prefix-stripping.test.ts` (3 failures) — same batch state mock additions                                                | ◻ Pending |
+| 3   | OB-1690 | Fix Progress Events tests in `tests/master/master-manager.test.ts` (3 failures) — update mock return values to match new `processMessage()` flow with batch continuation. Ensure progress event assertions match current emit patterns         | ◻ Pending |
+| 4   | OB-1691 | Fix `tests/connectors/webchat/webchat-mobile.test.ts` (1 failure) — add missing `homedir` to `node:os` mock. Pre-existing issue since Phase 62                                                                                                 | ◻ Pending |
+| 5   | OB-1692 | Run full test suite (`npm run test`) and verify all newly fixed tests pass. Document any remaining pre-existing failures (CLI wizard timeouts in `init-mcp.test.ts` and `init-wizard.test.ts`) as known issues with skip annotations if needed | ◻ Pending |
 
 ---

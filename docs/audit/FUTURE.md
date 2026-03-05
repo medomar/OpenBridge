@@ -1,8 +1,8 @@
 # OpenBridge — Future Work
 
 > **Purpose:** Planned features, deferred findings, finalization items, and backlog for future versions.
-> **Last Updated:** 2026-03-03 | **Current Release:** v0.0.8 (Phases 1–73, 652 tasks shipped)
-> **20 open findings** — see [FINDINGS.md](FINDINGS.md) for full details
+> **Last Updated:** 2026-03-05 | **Current Release:** v0.0.8 (Phases 1–73, 652 tasks shipped)
+> **40 open findings** — see [FINDINGS.md](FINDINGS.md) for full details
 > **Current focus:** Marketplace Development Track — make OpenBridge effective for finishing 3 Marketplace projects (frontend, dashboard, backend services).
 
 ---
@@ -233,9 +233,29 @@ Require user confirmation before risky operations, show execution summaries.
 
 ---
 
-## Sprint 4: Platform Completion (v0.0.12) — ~160 tasks
+## Sprint 4: Platform Completion (v0.0.12) — ~277 tasks
 
-**Goal:** Complete the platform — Deep Mode for thorough analysis, modernized WebChat, tunnel for remote access, document visibility controls, and Docker sandbox for security.
+**Goal:** Complete the platform — Deep Mode for thorough analysis, modernized WebChat, tunnel for remote access, document visibility controls, Docker sandbox for security, plus runtime fixes from production testing (Phases 99–104).
+
+### Runtime Fixes from Production Testing (Phases 99–104) — 67 tasks
+
+**Source:** Production Telegram session logs (2026-03-05) + code review of Phase 98 batch continuation.
+
+These 6 phases address 20 findings (OB-F95 through OB-F114) discovered during real-world testing. Sorted by priority:
+
+| Phase | Description                     | Finding(s)                      | Tasks | Priority    |
+| ----- | ------------------------------- | ------------------------------- | ----- | ----------- |
+| 99    | Escalation Queue & Orphan Fixes | OB-F95, F96, F97, F103          | 22    | 🔴 Critical |
+| 100   | Classification & RAG Fixes      | OB-F98, F99, F100, F102         | 16    | 🟠 High     |
+| 101   | Batch & Shutdown Safety         | OB-F108, F109, F112, F114       | 7     | 🟡 Medium   |
+| 102   | Worker & Cost Controls          | OB-F101, F104                   | 8     | 🟡 Medium   |
+| 103   | Docker & Startup Polish         | OB-F105, F106, F107, F110, F111 | 9     | 🟡 Medium   |
+| 104   | Test Suite Fixes (Stale Mocks)  | OB-F113                         | 5     | 🟠 High     |
+
+See [TASKS.md](TASKS.md) for full task breakdowns (OB-1626 through OB-1692).
+See [RUNTIME-ISSUES-2026-03-05.md](RUNTIME-ISSUES-2026-03-05.md) for original production log analysis.
+
+---
 
 ### Deep Mode (OB-F56) — ~30–40 tasks
 
@@ -586,6 +606,9 @@ In-app settings and Deep Mode phase navigation for non-developer users.
 | WebChat auth         | None                      | Same                                             | Token + password auth, rate limiting                      |
 | Deep analysis        | Single-pass only          | Same                                             | Multi-phase Deep Mode (investigate → verify)              |
 | Batch execution      | Single-pass only          | Same                                             | Self-messaging loop with safety rails (Phase 98)          |
+| Escalation queue     | Single pending only       | Same                                             | Multi-worker queue + /allow all + timeout scaling (P99)   |
+| Worker lifecycle     | No orphan detection       | Same                                             | Watchdog timer + state audit + /workers command (P99)     |
+| Cost control         | No per-worker caps        | Same                                             | Per-profile cost caps + 10x spike warning (P102)          |
 
 ---
 
