@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 15 | **In Progress:** 0 | **Done:** 3 (1045 archived)
+> **Pending:** 14 | **In Progress:** 0 | **Done:** 4 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -52,7 +52,7 @@
 | Task    | What                                                                                             | Key File                    | Status  |
 | ------- | ------------------------------------------------------------------------------------------------ | --------------------------- | ------- |
 | OB-1602 | Call `qaCache.store()` after successful Master response in Router (cache question + answer)      | `src/core/router.ts`        | ✅ Done |
-| OB-1603 | Add guard: only cache when response is substantive (skip greetings, short acks, errors)          | `src/core/router.ts`        | Pending |
+| OB-1603 | Add guard: only cache when response is substantive (skip greetings, short acks, errors)          | `src/core/router.ts`        | ✅ Done |
 | OB-1604 | Test: verify QA cache populates after real message flow and cache hit returns on repeat question | `tests/core/router.test.ts` | Pending |
 
 ### OB-F91 — Sessions never close

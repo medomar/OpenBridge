@@ -274,6 +274,32 @@ function parseWorkerStats(content: string): {
   return { filesRead, filesModified, commandsRun };
 }
 
+/**
+ * Returns true only when the Q&A pair is worth caching.
+ * Skips greetings, single-word acks, and error/refusal responses. (OB-1603)
+ */
+function isSubstantiveResponse(question: string, answer: string): boolean {
+  const trimmedAnswer = answer.trim();
+
+  // Too short to be useful
+  if (trimmedAnswer.length < 30) return false;
+
+  // Too-short question is likely a greeting or ack, not a cacheable Q
+  if (question.trim().length < 5) return false;
+
+  // Single-word / short acknowledgements
+  const shortAckRe =
+    /^(ok|okay|sure|got it|done|yes|no|hi|hello|hey|thanks|thank you|bye|goodbye|np|noted)[.!?\s]*$/i;
+  if (shortAckRe.test(trimmedAnswer)) return false;
+
+  // Error / refusal patterns
+  const errorRe =
+    /^(sorry|i (can'?t|cannot|am unable|don'?t know)|i'?m not able|there (was|is) an error|an error occurred)/i;
+  if (errorRe.test(trimmedAnswer)) return false;
+
+  return true;
+}
+
 export class Router {
   private readonly connectors = new Map<string, Connector>();
   private readonly providers = new Map<string, AIProvider>();
@@ -1610,7 +1636,12 @@ export class Router {
     void this.auditLogger?.logOutbound(response);
 
     // Cache Q&A pair after successful Master response (OB-1602)
-    if (useMaster && this.memory?.qaCache) {
+    // Only cache substantive responses — skip greetings, short acks, and errors (OB-1603)
+    if (
+      useMaster &&
+      this.memory?.qaCache &&
+      isSubstantiveResponse(message.content, cleanedContent)
+    ) {
       try {
         this.memory.qaCache.store({
           question: message.content,
