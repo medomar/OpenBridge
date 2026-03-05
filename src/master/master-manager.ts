@@ -605,8 +605,6 @@ export class MasterManager {
   private readonly deepConfig: DeepConfig | undefined;
   /** BatchManager for Batch Task Continuation — set via setBatchManager() (OB-1613). */
   private batchManager: BatchManager | null = null;
-  /** Maps batchId → original sender info for sending failure/status messages (OB-1616). */
-  private readonly batchSenderInfo = new Map<string, { sender: string; source: string }>();
   /** Tracks active batch continuation timer handles for cleanup on shutdown (OB-1664). */
   private readonly batchTimers = new Set<NodeJS.Timeout>();
 
@@ -2468,7 +2466,7 @@ export class MasterManager {
 
     await this.batchManager.pauseBatch(batchId);
 
-    const senderInfo = this.batchSenderInfo.get(batchId);
+    const senderInfo = this.batchManager.getSenderInfo(batchId);
     if (!senderInfo) {
       logger.warn(
         { batchId },
@@ -2505,8 +2503,8 @@ export class MasterManager {
     const batchId = this.batchManager.getActiveBatchId();
     if (!batchId) return 'No active batch found.';
 
-    // Update stored sender info in case it changed (e.g. source connector switch)
-    this.batchSenderInfo.set(batchId, { sender, source });
+    // Update stored sender info in case it changed (e.g. source connector switch) (OB-1667).
+    this.batchManager.setSenderInfo(batchId, { sender, source });
 
     if (action === 'pause') {
       await this.batchManager.pauseBatch(batchId);
@@ -2546,7 +2544,7 @@ export class MasterManager {
 
     if (action === 'abort') {
       await this.batchManager.abortBatch(batchId);
-      this.batchSenderInfo.delete(batchId);
+      this.batchManager.deleteSenderInfo(batchId);
       logger.info({ batchId }, 'Batch aborted by user command');
       // Retrieve the abort summary built by abortBatch() before state was deleted (OB-1622).
       const abortSummary = this.batchManager.popCompletionSummary();
@@ -2557,7 +2555,7 @@ export class MasterManager {
       const result = await this.batchManager.skipCurrentItem(batchId);
       if (!result) return 'Failed to skip — batch not found.';
       if (result.finished) {
-        this.batchSenderInfo.delete(batchId);
+        this.batchManager.deleteSenderInfo(batchId);
         return '⏭ Item skipped. Batch complete — no more items.';
       }
       // Schedule next continuation
@@ -5462,8 +5460,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
           // (OB-1616) Track the original sender's connector so failure messages can be
           // delivered even when subsequent CONTINUE messages use source='internal-batch'.
+          // Persisted to disk via BatchManager so routing survives process restarts (OB-1667).
           if (batchSource !== 'internal-batch') {
-            this.batchSenderInfo.set(activeBatchId, { sender: batchSender, source: batchSource });
+            this.batchManager.setSenderInfo(activeBatchId, {
+              sender: batchSender,
+              source: batchSource,
+            });
           }
 
           logger.info(
@@ -5545,7 +5547,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       ) {
         const completionSummary = this.batchManager.popCompletionSummary();
         if (completionSummary !== null) {
-          const senderInfo = this.batchSenderInfo.get(preBatchId);
+          const senderInfo = this.batchManager.getSenderInfo(preBatchId);
           if (senderInfo) {
             void this.router.sendDirect(senderInfo.source, senderInfo.sender, completionSummary);
             logger.info(
@@ -5560,7 +5562,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
               'Batch completion summary sent to current sender (no stored senderInfo)',
             );
           }
-          this.batchSenderInfo.delete(preBatchId);
+          this.batchManager.deleteSenderInfo(preBatchId);
         }
       }
 
