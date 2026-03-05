@@ -10,6 +10,8 @@ import {
   runInit,
   promptAIToolInstallation,
   setupClaudeAuth,
+  validateAndFixWhitelist,
+  promptWhitelist,
 } from '../../src/cli/init.js';
 import {
   runCommand,
@@ -1109,5 +1111,127 @@ describe('setupClaudeAuth', () => {
 
     expect(written.join('')).toContain('Skipping');
     expect(vi.mocked(runCommand)).toHaveBeenCalledTimes(1); // only auth status check
+  });
+});
+
+// ── validateAndFixWhitelist() ─────────────────────────────────────────────────
+
+describe('validateAndFixWhitelist', () => {
+  it('returns no issues and unchanged entries for valid numbers', () => {
+    const { issues, fixed } = validateAndFixWhitelist(['+1234567890', '+0987654321']);
+    expect(issues).toHaveLength(0);
+    expect(fixed).toEqual(['+1234567890', '+0987654321']);
+  });
+
+  it('detects non-numeric characters in an entry', () => {
+    const { issues } = validateAndFixWhitelist(['+1-234-567-890']);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.entry).toBe('+1-234-567-890');
+    expect(issues[0]?.reason).toBe('non-numeric characters');
+  });
+
+  it('detects duplicate entries', () => {
+    const { issues } = validateAndFixWhitelist(['+1234567890', '+1234567890']);
+    const dup = issues.find((i) => i.reason === 'duplicate');
+    expect(dup).toBeDefined();
+    expect(dup?.entry).toBe('+1234567890');
+  });
+
+  it('auto-fixes non-numeric chars by stripping them, preserving leading +', () => {
+    const { fixed } = validateAndFixWhitelist(['+1-234-567-890']);
+    expect(fixed).toEqual(['+1234567890']);
+  });
+
+  it('auto-fixes duplicates by keeping first occurrence only', () => {
+    const { fixed } = validateAndFixWhitelist(['+1234567890', '+1234567890']);
+    expect(fixed).toEqual(['+1234567890']);
+  });
+
+  it('detects both non-numeric chars and resulting duplicate', () => {
+    // '+1-234567890' normalizes to same digits as '+1234567890'
+    const { issues, fixed } = validateAndFixWhitelist(['+1-234567890', '+1234567890']);
+    expect(issues.some((i) => i.reason === 'non-numeric characters')).toBe(true);
+    expect(issues.some((i) => i.reason === 'duplicate')).toBe(true);
+    expect(fixed).toEqual(['+1234567890']);
+  });
+
+  it('handles mixed valid and invalid entries', () => {
+    const { issues, fixed } = validateAndFixWhitelist(['+1-234', '+555', '+666']);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.reason).toBe('non-numeric characters');
+    expect(fixed).toEqual(['+1234', '+555', '+666']);
+  });
+});
+
+// ── promptWhitelist() — validation + auto-fix ─────────────────────────────────
+
+describe('promptWhitelist — validation', () => {
+  it('warns about non-numeric characters and returns fixed list when auto-fix accepted', async () => {
+    const { input, output } = createLineFeeder([
+      '+1-234-567890', // entry with dashes → triggers warning
+      'y', // accept auto-fix
+      '', // confirm fixed list
+    ]);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptWhitelist(rl, (t) => written.push(t));
+    rl.close();
+
+    const text = written.join('');
+    // Warning text goes to write callback; "Fix automatically?" prompt goes to readline output
+    expect(text).toContain('non-numeric characters');
+    expect(text).toContain('(fixed)');
+    expect(result).toEqual(['+1234567890']);
+  });
+
+  it('warns about duplicates and returns deduplicated list when auto-fix accepted', async () => {
+    const { input, output } = createLineFeeder([
+      '+1234567890, +1234567890', // duplicate entries
+      'y', // accept auto-fix
+      '', // confirm
+    ]);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptWhitelist(rl, (t) => written.push(t));
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('duplicate');
+    expect(result).toEqual(['+1234567890']);
+  });
+
+  it('loops back when user declines auto-fix, accepts corrected entry on retry', async () => {
+    const { input, output } = createLineFeeder([
+      '+1-234', // entry with non-numeric
+      'n', // decline auto-fix → loop
+      '+1234', // correct entry on retry
+      '', // confirm
+    ]);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptWhitelist(rl, (t) => written.push(t));
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('Re-entering numbers');
+    expect(result).toEqual(['+1234']);
+  });
+
+  it('shows fixed label when auto-fix applied', async () => {
+    const { input, output } = createLineFeeder([
+      '+1 234 567890', // spaces in number
+      'y', // accept auto-fix
+      '', // confirm
+    ]);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    await promptWhitelist(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(written.join('')).toContain('(fixed)');
   });
 });

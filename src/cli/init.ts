@@ -261,6 +261,45 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
   return config;
 }
 
+/**
+ * Validate whitelist entries and compute an auto-fixed list.
+ * Issues:
+ *   - "non-numeric characters": entry has chars other than digits and a leading +
+ *   - "duplicate": entry normalizes to the same digits as an earlier entry
+ * Fixed list: non-numeric chars stripped, duplicates removed (first occurrence kept).
+ */
+export function validateAndFixWhitelist(numbers: string[]): {
+  issues: Array<{ entry: string; reason: string }>;
+  fixed: string[];
+} {
+  const issues: Array<{ entry: string; reason: string }> = [];
+  const fixed: string[] = [];
+  const seen = new Set<string>();
+
+  for (const n of numbers) {
+    const hasPlus = n.startsWith('+');
+    const digitsOnly = n.replace(/\D/g, '');
+    const isValid = /^\+?\d+$/.test(n);
+
+    if (!isValid) {
+      issues.push({ entry: n, reason: 'non-numeric characters' });
+    }
+
+    if (digitsOnly.length === 0) {
+      continue;
+    }
+
+    if (seen.has(digitsOnly)) {
+      issues.push({ entry: n, reason: 'duplicate' });
+    } else {
+      seen.add(digitsOnly);
+      fixed.push((hasPlus ? '+' : '') + digitsOnly);
+    }
+  }
+
+  return { issues, fixed };
+}
+
 export async function promptWhitelist(
   rl: ReadlineInterface,
   write: (text: string) => void,
@@ -287,11 +326,41 @@ export async function promptWhitelist(
       continue;
     }
 
-    const invalid = numbers.filter((n) => !/^\+?\d+$/.test(n));
-    if (invalid.length > 0) {
-      write(`  Error: invalid phone number format: ${invalid.join(', ')}\n`);
-      write('  Phone numbers should contain only digits with an optional + prefix.\n');
-      continue;
+    const { issues, fixed } = validateAndFixWhitelist(numbers);
+
+    if (issues.length > 0) {
+      for (const { entry, reason } of issues) {
+        if (reason === 'duplicate') {
+          write(`  Warning: '${entry}' is a duplicate — will be ignored\n`);
+        } else {
+          write(`  Warning: '${entry}' has ${reason} — only digits and a leading + are allowed\n`);
+        }
+      }
+
+      const fixAnswer = await ask(rl, '  Fix automatically? (Y/n): ');
+      if (fixAnswer.toLowerCase() === 'n') {
+        write('  Re-entering numbers...\n');
+        continue;
+      }
+
+      if (fixed.length === 0) {
+        write('  Error: no valid numbers remain after fixes. Please re-enter.\n');
+        continue;
+      }
+
+      write('\n  Phone numbers to whitelist (fixed):\n');
+      fixed.forEach((n, i) => {
+        write(`    ${i + 1}. ${n}\n`);
+      });
+      write('\n');
+
+      const confirm = await ask(rl, '  Confirm? (Y/n): ');
+      if (confirm.toLowerCase() === 'n') {
+        write('  Re-entering numbers...\n');
+        continue;
+      }
+
+      return fixed;
     }
 
     write('\n  Phone numbers to whitelist:\n');
