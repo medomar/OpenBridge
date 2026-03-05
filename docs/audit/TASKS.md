@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 70 | **In Progress:** 0 | **Done:** 211 (112 archived)
+> **Pending:** 69 | **In Progress:** 0 | **Done:** 212 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -474,7 +474,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 11  | OB-1555 | Pass sanitized env vars through sandbox — use --env-file or -e flags for allowed vars only. Integrate with env sanitizer from Phase 85                                                                                                                                                                      | ✅ Done   |
 | 12  | OB-1556 | Forward MCP config into container — mount temp MCP config as read-only. Pass --mcp-config inside container. Maintain per-worker isolation                                                                                                                                                                   | ✅ Done   |
 | 13  | OB-1557 | Add startup health check — verify Docker daemon running before enabling sandbox. If unavailable, warn and fall back to unsandboxed. Recheck every 5 min                                                                                                                                                     | ✅ Done   |
-| 14  | OB-1558 | Add fallback in AgentRunner — if docker mode set but Docker unavailable, fall back to direct spawn with warning. Never silently fail                                                                                                                                                                        | ◻ Pending |
+| 14  | OB-1558 | Add fallback in AgentRunner — if docker mode set but Docker unavailable, fall back to direct spawn with warning. Never silently fail                                                                                                                                                                        | ✅ Done   |
 | 15  | OB-1559 | Add tests in `tests/core/docker-sandbox.test.ts` — test: (1) isAvailable checks daemon, (2) createContainer builds correct command, (3) workspace read-only, (4) .openbridge read-write, (5) env vars sanitized, (6) resource limits applied, (7) cleanup after exit. At least 7 tests (mock child_process) | ◻ Pending |
 | 16  | OB-1560 | Build + lint + typecheck + test validation for Sprint 4 — all 172 tasks must pass before tagging v0.0.12. Fix any failures                                                                                                                                                                                  | ◻ Pending |
 

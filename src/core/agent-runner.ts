@@ -1209,15 +1209,33 @@ export class AgentRunner {
 
       try {
         if (opts.sandbox?.mode === 'docker') {
-          lastResult = await this._execOnceDocker(
-            currentConfig,
-            opts.workspacePath,
-            opts.sandbox,
-            opts.timeout,
-            opts.maxTurns,
-            opts.securityConfig,
-            opts.mcpConfigPath,
-          );
+          // OB-1558: Check Docker availability before attempting sandbox spawn.
+          // If the daemon is unavailable, fall back to direct spawn with a warning
+          // rather than failing silently or throwing an unrecoverable error.
+          const dockerSandboxCheck = new DockerSandbox();
+          const dockerAvailable = await dockerSandboxCheck.isAvailable();
+          if (!dockerAvailable) {
+            logger.warn(
+              { attempt, workspacePath: opts.workspacePath },
+              'Docker unavailable — falling back to direct (unsandboxed) spawn',
+            );
+            const { promise: execPromise } = execOnce(
+              currentConfig,
+              opts.workspacePath,
+              opts.timeout,
+            );
+            lastResult = await execPromise;
+          } else {
+            lastResult = await this._execOnceDocker(
+              currentConfig,
+              opts.workspacePath,
+              opts.sandbox,
+              opts.timeout,
+              opts.maxTurns,
+              opts.securityConfig,
+              opts.mcpConfigPath,
+            );
+          }
         } else {
           const { promise: execPromise } = execOnce(
             currentConfig,
