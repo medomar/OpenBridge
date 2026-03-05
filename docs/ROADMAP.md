@@ -1,8 +1,8 @@
 # OpenBridge — Roadmap
 
 > **Last Updated:** 2026-03-05 | **Current Version:** v0.0.12
-> **Current Focus:** Phase 97 data integrity fixes (18 tasks), then Sprint 5 community-inspired improvements (v0.0.13).
-> **17 open findings** — 7 data integrity (OB-F89–F95) + 10 community-inspired. See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
+> **Current Focus:** Phase 97 data integrity fixes (18 tasks), then Sprint 5 (v0.0.13) + Sprint 6 (v0.0.14).
+> **24 open findings** — 7 data integrity (OB-F89–F95) + 10 community-inspired (OB-F79–F88) + 7 skill/agent patterns (OB-F96–F102). See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -129,9 +129,30 @@ See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
 
 ---
 
-## Future Work (Post v0.0.13)
+## After v0.0.13: Skill System, Business Output & Agent Patterns (v0.0.14)
 
-All future features beyond the community-inspired track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
+**OpenBridge serves any user** — not just developers. Business owners, marketers, analysts, and designers need documents, presentations, visual assets, and reports from their AI assistant. v0.0.14 delivers this by adopting patterns from the broader AI ecosystem.
+
+**Inspired by:**
+
+- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Claude Skills ecosystem with document (docx/pdf/pptx/xlsx), design (algorithmic-art, canvas-design, D3.js), and security skills
+- **[x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools)** — 30+ AI tool architectures (Manus, Devin, Cursor) revealing production-grade agent patterns
+
+| Phase     | Focus                           | Findings                          | Est. Tasks  |
+| --------- | ------------------------------- | --------------------------------- | ----------- |
+| 98        | Skill Pack System               | OB-F96                            | ~18–22      |
+| 99        | Document Generation Skills      | OB-F98                            | ~16–20      |
+| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18      |
+| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22      |
+| **Total** |                                 | **7 findings**                    | **~85–105** |
+
+See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
+
+---
+
+## Future Work (Post v0.0.14)
+
+All future features beyond the skill/agent pattern track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 ### Deferred finalization:
 
@@ -196,29 +217,39 @@ All future features beyond the community-inspired track are tracked in [docs/aud
                                        ├── Phase 94: Vector Search + Hybrid Retrieval + Progressive Disclosure
                                        ├── Phase 95: Session Compaction + Token Economics
                                        └── Phase 96: Doctor + Pairing + Skills
+                                            │
+                                            │  ── Skill System & Business Output ──
+                                            │  (awesome-claude-skills + AI tool architectures)
+                                            │
+                                            └──► ⬜ Sprint 6 (v0.0.14): Phases 98–101
+                                                 ├── Phase 98: Skill Pack System (reusable domain knowledge)
+                                                 ├── Phase 99: Document Generation (DOCX, PDF, PPTX, XLSX)
+                                                 ├── Phase 100: Design & Creative Output (diagrams, charts, art, visuals)
+                                                 └── Phase 101: Agent Orchestration (planning gate, swarms, test protection, fix caps)
 ```
 
 ---
 
 ## Version Milestones
 
-| Version     | Status  | Key Features                                                                          | Tasks   |
-| ----------- | ------- | ------------------------------------------------------------------------------------- | ------- |
-| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310     |
-| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master            | 42      |
-| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50      |
-| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41      |
-| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21      |
-| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14      |
-| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                | 18      |
-| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95      |
-| **v0.0.9**  | Done    | Classification fixes, code-audit profile, exploration bugs, data cleanup              | 34      |
-| **v0.0.10** | Done    | RAG knowledge retrieval, env var protection                                           | 43      |
-| **v0.0.11** | Done    | Master output sharing, user consent                                                   | 20      |
-| **v0.0.12** | Done    | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                  | 281     |
-| **v0.0.13** | Planned | Structured observations, vector search, session compaction, doctor/pairing/skills     | ~95–110 |
+| Version     | Status  | Key Features                                                                           | Tasks   |
+| ----------- | ------- | -------------------------------------------------------------------------------------- | ------- |
+| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system          | 310     |
+| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master             | 42      |
+| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing        | 50      |
+| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)            | 41      |
+| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                      | 21      |
+| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                           | 14      |
+| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                 | 18      |
+| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app  | 95      |
+| **v0.0.9**  | Done    | Classification fixes, code-audit profile, exploration bugs, data cleanup               | 34      |
+| **v0.0.10** | Done    | RAG knowledge retrieval, env var protection                                            | 43      |
+| **v0.0.11** | Done    | Master output sharing, user consent                                                    | 20      |
+| **v0.0.12** | Done    | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                   | 281     |
+| **v0.0.13** | Planned | Structured observations, vector search, session compaction, doctor/pairing/skills      | ~95–110 |
+| **v0.0.14** | Planned | Skill packs, document generation, design/creative output, agent orchestration patterns | ~85–105 |
 
-**Total shipped: 1045 tasks across 104+ phases. Planned: 18 tasks (Phase 97) + ~95–110 tasks (Phases 93–96).**
+**Total shipped: 1045 tasks across 104+ phases. Planned: 18 tasks (Phase 97) + ~95–110 tasks (v0.0.13) + ~85–105 tasks (v0.0.14).**
 
 ---
 

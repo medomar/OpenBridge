@@ -6641,6 +6641,16 @@ ${currentContent}
       }
     }
 
+    // Close active sessions after memory is saved (OB-1605)
+    if (this.memory) {
+      try {
+        await this.memory.closeActiveSessions();
+        logger.info('Closed active sessions on shutdown');
+      } catch (error) {
+        logger.warn({ error }, 'Failed to close active sessions on shutdown — continuing');
+      }
+    }
+
     // Log shutdown
     try {
       if (this.memory) {
