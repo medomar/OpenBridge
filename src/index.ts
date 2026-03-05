@@ -132,6 +132,16 @@ async function startV2Flow(
   const excludeTools = v2Config.master?.excludeTools;
   if (excludeTools && excludeTools.length > 0) {
     const excludeSet = new Set(excludeTools.map((t) => t.toLowerCase()));
+
+    // Log reason for each tool that will be excluded
+    if (isVerbose) {
+      for (const tool of scanResult.cliTools) {
+        if (excludeSet.has(tool.name.toLowerCase())) {
+          logger.info(`${tool.name} excluded: listed in config.excludeTools`);
+        }
+      }
+    }
+
     const before = scanResult.cliTools.length;
     scanResult.cliTools = scanResult.cliTools.filter(
       (tool) => !excludeSet.has(tool.name.toLowerCase()),
@@ -157,6 +167,8 @@ async function startV2Flow(
 
   // Step 1b: Apply master tool override if configured
   let selectedMaster = scanResult.master;
+  // Capture the post-exclusion auto-selected master to detect redundant overrides
+  const autoSelectedMaster = scanResult.master;
 
   if (v2Config.master?.tool) {
     if (isVerbose) {
@@ -173,7 +185,8 @@ async function startV2Flow(
 
     if (overrideTool) {
       selectedMaster = overrideTool;
-      if (isVerbose) {
+      // Only log the override selection if it actually changed from the auto-selected master
+      if (isVerbose && autoSelectedMaster?.name !== overrideTool.name) {
         logger.info(
           { tool: overrideTool.name },
           'Using overridden Master tool from discovered tools',
@@ -218,7 +231,12 @@ async function startV2Flow(
     if (excludeTools?.length) {
       summaryParts.push(`${excludeTools.join(', ')} excluded per config.excludeTools`);
     }
-    if (v2Config.master?.tool && selectedMaster.name === v2Config.master.tool) {
+    // Only note the override if it actually changed the selection from auto-detected
+    if (
+      v2Config.master?.tool &&
+      selectedMaster.name === v2Config.master.tool &&
+      autoSelectedMaster?.name !== v2Config.master.tool
+    ) {
       summaryParts.push('override: config.master.tool');
     }
     const suffix = summaryParts.length ? ` (${summaryParts.join('; ')})` : '';
