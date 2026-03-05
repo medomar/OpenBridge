@@ -6802,7 +6802,7 @@ ${currentContent}
         'Worker re-spawn failed after grant',
       );
 
-      // Mark escalated worker as failed (OB-1627).
+      // Mark escalated worker as failed and clean up to prevent orphaned state (OB-1627, OB-1628).
       const failedResult: AgentResult = {
         exitCode: -1,
         stdout: '',
@@ -6814,6 +6814,9 @@ ${currentContent}
         this.workerRegistry.markFailed(newWorkerId, failedResult, 'respawn-failed');
       } catch (markErr) {
         logger.warn({ newWorkerId, err: markErr }, 'Failed to mark escalated worker as failed');
+        // OB-1628: If markFailed fails, remove the entry entirely to prevent the worker
+        // from remaining orphaned in 'pending' state in the registry.
+        this.workerRegistry.removeWorker(newWorkerId);
       }
 
       // Also attempt to mark original worker as failed (OB-1627).
