@@ -26,6 +26,7 @@ describe('DotFolderManager - Workers Registry Integration', () => {
     durationMs: 5000,
     retryCount: 0,
     model: 'haiku',
+    status: 'completed',
   };
 
   beforeEach(async () => {

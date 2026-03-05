@@ -6995,6 +6995,7 @@ ${currentContent}
         stderr: errorMessage,
         durationMs: 0,
         retryCount: 0,
+        status: 'completed',
       };
       try {
         this.workerRegistry.markFailed(newWorkerId, failedResult, 'respawn-failed');
@@ -7239,6 +7240,7 @@ ${currentContent}
             exitCode: 0,
             durationMs: 0,
             retryCount: 0,
+            status: 'completed' as const,
           };
         }
 
@@ -7727,6 +7729,7 @@ ${currentContent}
         stderr: errorMessage,
         durationMs: 0,
         retryCount: 0,
+        status: 'completed',
       };
 
       this.workerRegistry.markFailed(workerId, failedResult, errorMessage);

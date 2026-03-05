@@ -119,6 +119,7 @@ describe('MasterManager — Worker Kill Infrastructure (OB-876)', () => {
     durationMs: 1000,
     retryCount: 0,
     model: 'sonnet',
+    status: 'completed',
   };
 
   beforeEach(async () => {
