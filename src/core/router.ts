@@ -1390,6 +1390,18 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/workers" command — list active workers with ID, status, profile, duration, PID (OB-1646)
+    if (/^\/workers$/i.test(message.content.trim())) {
+      await this.handleWorkersCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/kill <worker-id>" command — force-stop a stuck worker (OB-1646)
+    if (/^\/kill\s+\S+/i.test(message.content.trim())) {
+      await this.handleKillWorkerCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -3983,6 +3995,131 @@ export class Router {
    *   General: status, stop, explore, history, /audit
    *   Deep Mode: /deep, /proceed, /focus N, /skip N, /phase
    */
+  /**
+   * Handle the built-in "/workers" command.
+   * Lists all active workers (pending + running) with ID, status, profile, duration, and PID.
+   * Also shows the count of orphaned workers.
+   * Users can follow up with /kill <worker-id> to force-stop a stuck worker.
+   */
+  private async handleWorkersCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Workers command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const registry = this.master.getWorkerRegistry();
+    const allWorkers = registry.getAllWorkers();
+    const activeWorkers = allWorkers.filter(
+      (w) => w.status === 'pending' || w.status === 'running',
+    );
+    const orphaned = registry.getOrphanedWorkers();
+
+    const lines: string[] = ['*Active Workers*'];
+
+    if (activeWorkers.length === 0) {
+      lines.push('No workers are currently active.');
+    } else {
+      lines.push(`${activeWorkers.length} active worker${activeWorkers.length !== 1 ? 's' : ''}:`);
+      lines.push('');
+      for (const w of activeWorkers) {
+        const elapsed = formatDuration(Date.now() - new Date(w.startedAt).getTime());
+        const profile = w.taskManifest.profile ?? 'unknown';
+        // Show last 8 chars of ID for readability
+        const shortId = w.id.length > 16 ? `…${w.id.slice(-12)}` : w.id;
+        const pidStr = w.pid !== undefined ? ` PID:${w.pid}` : '';
+        lines.push(` • ${shortId} | ${w.status} | ${profile} | ${elapsed}${pidStr}`);
+      }
+    }
+
+    if (orphaned.length > 0) {
+      lines.push('');
+      lines.push(
+        `⚠️ ${orphaned.length} orphaned worker${orphaned.length !== 1 ? 's' : ''} (pending/running with no recent progress)`,
+      );
+    }
+
+    if (activeWorkers.length > 0) {
+      lines.push('');
+      lines.push('Use /kill <worker-id> to force-stop a stuck worker.');
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, activeCount: activeWorkers.length },
+      '/workers command handled',
+    );
+  }
+
+  /**
+   * Handle the built-in "/kill <worker-id>" command.
+   * Force-stops a worker by partial or full ID match.
+   * Delegates to master.killWorker().
+   */
+  private async handleKillWorkerCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    if (!this.master) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Kill command not available — Master AI not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const trimmed = message.content.trim();
+    // Extract the worker ID argument after "/kill "
+    const partialId = trimmed.slice(5).trim();
+
+    if (!partialId) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /kill <worker-id>. Use /workers to list active workers.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const registry = this.master.getWorkerRegistry();
+    const allWorkers = registry.getAllWorkers();
+
+    // Match: exact ID, or ID ends with "-<partialId>", or ID contains <partialId>
+    const matched = allWorkers.find(
+      (w) => w.id === partialId || w.id.endsWith(`-${partialId}`) || w.id.includes(partialId),
+    );
+
+    let responseText: string;
+    if (!matched) {
+      responseText = `Worker '${partialId}' not found. Use /workers to list active workers.`;
+    } else {
+      const result = await this.master.killWorker(matched.id, message.sender);
+      responseText = result.message;
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: responseText,
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, partialId }, '/kill command handled');
+  }
+
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
     const lines: string[] = [
       '*OpenBridge Commands*',
@@ -3995,6 +4132,8 @@ export class Router {
       '• /audit — list recent worker spawns',
       '• /apps — list running app instances with URLs',
       '• /scope — show workspace visibility rules and detected sensitive files',
+      '• /workers — list active workers with ID, status, profile, duration, and PID',
+      '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
       '',
       '*Tool Escalation*',
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
