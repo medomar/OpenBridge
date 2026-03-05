@@ -342,6 +342,32 @@ export class WorkerRegistry {
   }
 
   /**
+   * Register a worker with a specific (caller-supplied) ID.
+   * Used when the worker ID is determined externally — e.g., the `-escalated` suffix
+   * workers created by `respawnWorkerAfterGrant()`.
+   * Enforces the same concurrency limit as `addWorker()`.
+   * Throws if max concurrent workers limit is reached.
+   */
+  public registerWorkerWithId(id: string, taskManifest: TaskManifest): void {
+    const runningCount = this.getRunningWorkers().length;
+    if (runningCount >= this.maxConcurrentWorkers) {
+      throw new Error(
+        `Max concurrent workers (${this.maxConcurrentWorkers}) reached. ` +
+          `Running workers: ${runningCount}`,
+      );
+    }
+
+    const worker: WorkerRecord = {
+      id,
+      taskManifest,
+      startedAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    this.workers.set(id, worker);
+  }
+
+  /**
    * Remove a worker from the registry.
    * Useful for cleanup after a worker is no longer needed.
    */
