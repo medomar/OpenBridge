@@ -791,6 +791,27 @@ export class Router {
         { sender, workerId, requestedTools, currentProfile },
         'Tool escalation timed out — auto-denied',
       );
+
+      // Mark the worker as cancelled in the registry (OB-1644)
+      if (this.master) {
+        const registry = this.master.getWorkerRegistry();
+        const workerRecord = registry.getWorker(workerId);
+        if (
+          workerRecord &&
+          workerRecord.status !== 'completed' &&
+          workerRecord.status !== 'failed'
+        ) {
+          try {
+            registry.markCancelled(workerId, 'escalation-timeout');
+            logger.info({ workerId }, 'Worker marked cancelled after escalation timeout');
+          } catch (err) {
+            logger.warn(
+              { workerId, err },
+              'Failed to mark worker cancelled after escalation timeout',
+            );
+          }
+        }
+      }
     }, scaledTimeoutMs);
 
     const queueEntry: PendingEscalation = {
