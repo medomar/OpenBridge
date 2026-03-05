@@ -729,6 +729,14 @@ export interface AgentResult {
   turnsExhausted?: boolean;
   /** Last agentic turn count reported during streaming (undefined if not tracked) */
   turnsUsed?: number;
+  /** Max turns limit that was configured for this run (undefined if not set) */
+  maxTurns?: number;
+  /**
+   * Completion status of the agent run.
+   * - 'completed': agent finished within its turn budget
+   * - 'partial': agent hit the max-turns limit before finishing (turnsExhausted: true)
+   */
+  status: 'completed' | 'partial';
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -1421,6 +1429,8 @@ export class AgentRunner {
       modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
       costUsd,
       turnsExhausted: turnsExhausted || undefined,
+      maxTurns: opts.maxTurns,
+      status: turnsExhausted ? 'partial' : 'completed',
     };
 
     if (turnsExhausted) {
@@ -1439,6 +1449,7 @@ export class AgentRunner {
         modelFallbacks: result.modelFallbacks,
         costUsd: result.costUsd,
         turnsExhausted: result.turnsExhausted,
+        status: result.status,
       },
       'Agent completed',
     );
@@ -1607,6 +1618,8 @@ export class AgentRunner {
         modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
         costUsd: costUsdHandle,
         turnsExhausted: turnsExhausted || undefined,
+        maxTurns: opts.maxTurns,
+        status: turnsExhausted ? 'partial' : 'completed',
       };
 
       if (turnsExhausted) {
@@ -1825,6 +1838,8 @@ export class AgentRunner {
             costUsd: streamCostUsd,
             turnsExhausted: turnsExhausted || undefined,
             turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
+            maxTurns: opts.maxTurns,
+            status: turnsExhausted ? 'partial' : 'completed',
           };
 
           if (turnsExhausted) {
@@ -2002,6 +2017,8 @@ export class AgentRunner {
           modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
           costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
           turnsExhausted: turnsExhausted || undefined,
+          maxTurns: opts.maxTurns,
+          status: turnsExhausted ? 'partial' : 'completed',
         };
 
         if (turnsExhausted) {

@@ -59,6 +59,11 @@ export const WorkerRecordSchema = z.object({
       retryCount: z.number(),
       model: z.string().optional(),
       modelFallbacks: z.array(z.string()).optional(),
+      turnsExhausted: z.boolean().optional(),
+      turnsUsed: z.number().optional(),
+      maxTurns: z.number().optional(),
+      status: z.enum(['completed', 'partial']).optional(),
+      costUsd: z.number().optional(),
     })
     .optional(),
   /** Error message (if failed or cancelled) */
@@ -618,6 +623,7 @@ export class WorkerRegistry {
             exitCode: 137, // SIGKILL exit code
             durationMs: elapsed,
             retryCount: 0,
+            status: 'completed',
           },
           'watchdog-timeout',
         );

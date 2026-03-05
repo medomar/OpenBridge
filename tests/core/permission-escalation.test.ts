@@ -563,6 +563,7 @@ describe('WorkerRegistry — escalated worker registration and execution', () =>
       stderr: '',
       durationMs: 1200,
       retryCount: 0,
+      status: 'completed',
     };
     registry.markCompleted(escalatedWorkerId, result);
 
@@ -625,6 +626,7 @@ describe('permission escalation — grant triggers worker registration and execu
         stderr: '',
         durationMs: 500,
         retryCount: 0,
+        status: 'completed',
       };
       registry.markCompleted(escalatedWorkerId, result);
       workerExecutedSuccessfully = registry.getWorker(escalatedWorkerId)!.status === 'completed';
@@ -713,6 +715,7 @@ describe('permission escalation — grant triggers spawn failure → workers mar
         stderr: spawnError.message,
         durationMs: 0,
         retryCount: 0,
+        status: 'completed',
       };
 
       // 3. Mark escalated worker as failed (OB-1628)

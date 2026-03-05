@@ -25,6 +25,7 @@ describe('WorkerRegistry', () => {
     durationMs: 5000,
     retryCount: 0,
     model: 'haiku',
+    status: 'completed',
   };
 
   beforeEach(() => {
@@ -146,6 +147,7 @@ describe('WorkerRegistry', () => {
       durationMs: 2000,
       retryCount: 3,
       model: 'haiku',
+      status: 'completed',
     };
 
     it('should mark a worker as failed with result and error', () => {
