@@ -1,4 +1,4 @@
-import { scanForCLITools, scanForTunnelTools, selectMaster } from './tool-scanner.js';
+import { scanForCLITools, scanForTunnelTools, selectMaster, detectDocker } from './tool-scanner.js';
 import { scanVSCodeExtensions } from './vscode-scanner.js';
 import type { ScanResult } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
@@ -29,6 +29,17 @@ export async function scanForAITools(): Promise<ScanResult> {
   const tunnelTools = scanForTunnelTools();
   logger.info({ count: tunnelTools.length }, 'Tunnel tool scan complete');
 
+  // Detect Docker availability (synchronous)
+  const dockerStatus = detectDocker();
+  logger.info(
+    {
+      installed: dockerStatus.installed,
+      daemonRunning: dockerStatus.daemonRunning,
+      version: dockerStatus.version,
+    },
+    'Docker detection complete',
+  );
+
   // Select master from CLI tools (VS Code extensions cannot be Master)
   const master = selectMaster(cliTools);
 
@@ -45,6 +56,7 @@ export async function scanForAITools(): Promise<ScanResult> {
     cliTools,
     vscodeExtensions,
     tunnelTools,
+    dockerStatus,
     master,
     timestamp,
     totalDiscovered,
@@ -65,5 +77,5 @@ export async function scanForAITools(): Promise<ScanResult> {
 }
 
 // Re-export individual scanners for advanced use cases
-export { scanForCLITools, scanForTunnelTools, selectMaster } from './tool-scanner.js';
+export { scanForCLITools, scanForTunnelTools, selectMaster, detectDocker } from './tool-scanner.js';
 export { scanVSCodeExtensions } from './vscode-scanner.js';

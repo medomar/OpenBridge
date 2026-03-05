@@ -13,7 +13,13 @@ let ws = null;
  */
 export function initWebSocket(handlers) {
   function connect() {
-    ws = new WebSocket('ws://' + location.host);
+    // Pass auth token from page URL to WebSocket upgrade request
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var wsUrl = proto + '//' + location.host;
+    var params = new URLSearchParams(location.search);
+    var token = params.get('token');
+    if (token) wsUrl += '?token=' + encodeURIComponent(token);
+    ws = new WebSocket(wsUrl);
 
     ws.onopen = function () {
       handlers.onOpen();

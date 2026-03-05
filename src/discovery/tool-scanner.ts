@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import { createLogger } from '../core/logger.js';
-import type { DiscoveredTool } from '../types/discovery.js';
+import type { DiscoveredTool, DockerStatus } from '../types/discovery.js';
 
 const logger = createLogger('tool-scanner');
 
@@ -225,6 +225,45 @@ export function scanForTunnelTools(): DiscoveredTool[] {
   }
 
   return discovered;
+}
+
+/**
+ * Detect Docker availability on this machine.
+ *
+ * Three possible states:
+ *   - Not installed: `docker` binary not in PATH
+ *   - Installed, no daemon: binary found but `docker info` fails
+ *   - Available: binary found AND daemon is running
+ */
+export function detectDocker(): DockerStatus {
+  // Step 1: check if docker binary is in PATH
+  const installed = isCommandAvailable('docker');
+
+  if (!installed) {
+    logger.debug('Docker not found in PATH');
+    return { installed: false, daemonRunning: false, available: false, version: null };
+  }
+
+  // Step 2: get Docker client version
+  const rawVersion = getToolVersion('docker', '--version', /Docker version (\d+\.\d+\.\d+)/);
+  const version = rawVersion === 'unknown' ? null : rawVersion;
+
+  // Step 3: verify daemon is running by calling `docker info`
+  let daemonRunning = false;
+  try {
+    execSync('docker info', { stdio: 'pipe', timeout: 10_000 });
+    daemonRunning = true;
+  } catch {
+    logger.warn('Docker is installed but the daemon is not running');
+  }
+
+  const available = daemonRunning;
+
+  if (available) {
+    logger.info({ version }, 'Docker is available');
+  }
+
+  return { installed, daemonRunning, available, version };
 }
 
 /**

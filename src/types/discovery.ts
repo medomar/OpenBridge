@@ -1,6 +1,22 @@
 import { z } from 'zod';
 
 /**
+ * Zod schema for Docker availability status
+ */
+export const DockerStatusSchema = z.object({
+  /** Whether the docker binary is in PATH */
+  installed: z.boolean(),
+  /** Whether the Docker daemon is running (docker info succeeded) */
+  daemonRunning: z.boolean(),
+  /** Whether Docker is fully usable (installed AND daemon running) */
+  available: z.boolean(),
+  /** Docker version string (e.g., '24.0.5') — null if not installed */
+  version: z.string().nullable(),
+});
+
+export type DockerStatus = z.infer<typeof DockerStatusSchema>;
+
+/**
  * Zod schema for a discovered AI tool
  */
 export const DiscoveredToolSchema = z.object({
@@ -37,6 +53,9 @@ export const ScanResultSchema = z.object({
 
   /** Tunnel tools discovered via which/where commands (cloudflared, ngrok, localtunnel) */
   tunnelTools: z.array(DiscoveredToolSchema),
+
+  /** Docker availability status */
+  dockerStatus: DockerStatusSchema,
 
   /** Selected master AI tool (highest priority available tool) */
   master: DiscoveredToolSchema.nullable(),
