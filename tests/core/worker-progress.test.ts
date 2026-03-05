@@ -33,6 +33,13 @@ function createMockChild(): MockChild {
 
 vi.mock('node:child_process', () => ({
   spawn: () => createMockChild(),
+  // DockerSandbox (imported transitively via agent-runner) uses execFile.
+  // Provide a no-op stub so tests that don't exercise docker mode still pass.
+  execFile: vi.fn(
+    (_cmd: string, _args: string[], _opts: unknown, cb?: (...a: unknown[]) => void) => {
+      if (cb) cb(null, '', '');
+    },
+  ),
 }));
 
 function lastChild(): MockChild {
