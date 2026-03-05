@@ -3996,6 +3996,7 @@ export class MasterManager {
       this.state = 'ready';
 
       // Detect sub-projects after successful exploration (OB-1613)
+      // Spawn a sub-master for each detected sub-project and store in sub_masters table (OB-1614)
       try {
         const subProjects = await detectSubProjects(this.workspacePath);
         if (subProjects.length > 0) {
@@ -4003,6 +4004,27 @@ export class MasterManager {
             { count: subProjects.length, paths: subProjects.map((p) => p.path) },
             'Sub-projects detected after exploration',
           );
+          if (this.subMasterManager) {
+            for (const subProject of subProjects) {
+              try {
+                const id = await this.subMasterManager.spawnSubMaster(subProject);
+                logger.info(
+                  { id, path: subProject.relativePath, name: subProject.name },
+                  'Sub-master spawned for detected sub-project',
+                );
+              } catch (spawnErr) {
+                logger.warn(
+                  { err: spawnErr, path: subProject.relativePath },
+                  'Failed to spawn sub-master for sub-project — skipping',
+                );
+              }
+            }
+          } else {
+            logger.warn(
+              { count: subProjects.length },
+              'Sub-projects detected but SubMasterManager not available — skipping spawn',
+            );
+          }
         }
       } catch (err) {
         logger.warn({ err }, 'Sub-project detection failed — skipping');
