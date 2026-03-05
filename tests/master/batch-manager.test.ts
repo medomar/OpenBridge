@@ -603,6 +603,50 @@ describe('BatchManager — error pauses batch (OB-1666)', () => {
   });
 });
 
+// ── 14. getCurrentBatchId vs isActive — paused batch distinction (OB-1670) ──
+
+describe('BatchManager — getCurrentBatchId vs isActive for paused batch (OB-1670)', () => {
+  it('getCurrentBatchId() returns paused batch ID while isActive() returns false', async () => {
+    const manager = new BatchManager();
+    const batchId = await manager.createBatch('custom-list', PLAN);
+
+    // Confirm active before pause
+    expect(manager.isActive(batchId)).toBe(true);
+    expect(manager.getCurrentBatchId()).toBe(batchId);
+
+    // Pause the batch
+    await manager.pauseBatch(batchId);
+
+    // getCurrentBatchId should still return the ID (paused batches are included)
+    expect(manager.getCurrentBatchId()).toBe(batchId);
+
+    // isActive() must return false — paused ≠ running
+    expect(manager.isActive(batchId)).toBe(false);
+  });
+
+  it('getCurrentBatchId() returns ID for paused batch; isActive() without args also returns false', async () => {
+    const manager = new BatchManager();
+    const batchId = await manager.createBatch('custom-list', PLAN);
+    await manager.pauseBatch(batchId);
+
+    // Global isActive() (no args) should be false since the only batch is paused
+    expect(manager.isActive()).toBe(false);
+    // getCurrentBatchId still finds it
+    expect(manager.getCurrentBatchId()).toBe(batchId);
+  });
+
+  it('after resume, both getCurrentBatchId() and isActive() agree the batch is running', async () => {
+    const manager = new BatchManager();
+    const batchId = await manager.createBatch('custom-list', PLAN);
+    await manager.pauseBatch(batchId);
+    await manager.resumeBatch(batchId);
+
+    expect(manager.getCurrentBatchId()).toBe(batchId);
+    expect(manager.isActive(batchId)).toBe(true);
+    expect(manager.isActive()).toBe(true);
+  });
+});
+
 // ── 13. Sender info persistence and restoration (OB-1667) ──────────────
 
 describe('BatchManager — sender info persistence and restoration (OB-1667)', () => {
