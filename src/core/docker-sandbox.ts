@@ -236,12 +236,20 @@ export class DockerSandbox {
         stderr?: string;
         code?: number;
       };
-      const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
+      const exitCode: number = typeof execErr.code === 'number' ? execErr.code : 1;
 
-      logger.debug(
-        { containerId: containerId.slice(0, 12), exitCode },
-        'Container exec returned non-zero exit code',
-      );
+      // Exit code 137 = SIGKILL, typically the Docker OOM killer.
+      if (exitCode === 137) {
+        logger.warn(
+          { containerId: containerId.slice(0, 12) },
+          'Container was OOM-killed (exit code 137) — memory limit exceeded; container force-stopped',
+        );
+      } else {
+        logger.debug(
+          { containerId: containerId.slice(0, 12), exitCode },
+          'Container exec returned non-zero exit code',
+        );
+      }
 
       return {
         stdout: execErr.stdout ?? '',
