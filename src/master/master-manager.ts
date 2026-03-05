@@ -1170,6 +1170,8 @@ export class MasterManager {
       await this.updateMasterSession();
       if (result.exitCode !== 0) {
         logger.warn({ exitCode: result.exitCode }, 'Memory update prompt returned non-zero exit');
+        // OB-1616: Master write failed — fall back to direct write from conversation history.
+        await this.applyMemoryFallback(recentMessages);
       } else {
         // Verify memory.md was actually written/modified (OB-1615).
         try {
@@ -1185,16 +1187,40 @@ export class MasterManager {
               { memoryPath, mtimeBefore, mtimeAfter: stat.mtimeMs },
               'Memory update completed but memory.md was NOT modified — Master may have skipped the write',
             );
+            // OB-1616: Master skipped the write — fall back to direct write.
+            await this.applyMemoryFallback(recentMessages);
           }
         } catch {
           logger.warn(
             { memoryPath },
             'Memory update completed but memory.md is missing — Master did not write the file',
           );
+          // OB-1616: memory.md missing after update — fall back to direct write.
+          await this.applyMemoryFallback(recentMessages);
         }
       }
     } catch (err) {
       logger.warn({ err }, 'Memory update prompt failed');
+      // OB-1616: Spawn itself failed — fall back to direct write from conversation history.
+      await this.applyMemoryFallback(recentMessages);
+    }
+  }
+
+  /**
+   * Fallback memory write (OB-1616): write memory.md directly from conversation history
+   * when the Master AI fails to produce or write an update.
+   */
+  private async applyMemoryFallback(
+    messages: ReadonlyArray<{ role: string; content: string; created_at?: string }>,
+  ): Promise<void> {
+    try {
+      await this.dotFolder.writeMemoryFallback(messages);
+      logger.info(
+        { messageCount: messages.length },
+        'Memory fallback written from conversation history',
+      );
+    } catch (err) {
+      logger.warn({ err }, 'Memory fallback write failed');
     }
   }
 

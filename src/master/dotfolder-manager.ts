@@ -911,6 +911,39 @@ export class DotFolderManager {
     await fs.writeFile(this.getMemoryFilePath(), content, 'utf-8');
   }
 
+  /**
+   * Fallback: directly write memory.md from conversation history when the
+   * Master AI's write attempt fails or produces no output (OB-1616).
+   * Generates a concise summary from `messages` and writes it to memory.md.
+   */
+  public async writeMemoryFallback(
+    messages: ReadonlyArray<{ role: string; content: string; created_at?: string }>,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const lines: string[] = [
+      '# Memory (auto-generated fallback)',
+      `> Generated: ${now.slice(0, 16).replace('T', ' ')}`,
+      '',
+      '## Recent Conversation Summary',
+      '',
+    ];
+
+    for (const msg of messages) {
+      const ts = msg.created_at ? msg.created_at.slice(0, 16).replace('T', ' ') : '';
+      const role = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
+      const snippet = msg.content.length > 200 ? msg.content.slice(0, 200) + '\u2026' : msg.content;
+      lines.push(`- [${ts}] **${role}:** ${snippet}`);
+      if (lines.length >= 198) break;
+    }
+
+    if (messages.length === 0) {
+      lines.push('_No recent messages._');
+    }
+
+    const content = lines.join('\n');
+    await this.writeMemoryFile(content);
+  }
+
   // ── Dir-Dive Enumeration ───────────────────────────────────────
 
   /**
