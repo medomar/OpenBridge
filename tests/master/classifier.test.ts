@@ -100,12 +100,17 @@ function classify(
   manager: MasterManager,
   content: string,
   recentUserMessages?: string[],
+  lastBotResponse?: string,
 ): ClassificationResult {
   return (
     manager as unknown as {
-      classifyTaskByKeywords(content: string, recentUserMessages?: string[]): ClassificationResult;
+      classifyTaskByKeywords(
+        content: string,
+        recentUserMessages?: string[],
+        lastBotResponse?: string,
+      ): ClassificationResult;
     }
-  ).classifyTaskByKeywords(content, recentUserMessages);
+  ).classifyTaskByKeywords(content, recentUserMessages, lastBotResponse);
 }
 
 // ── Suite ───────────────────────────────────────────────────────────
@@ -281,5 +286,82 @@ describe('classifyTaskByKeywords — OB-1648/1649/1650/1651 classification impro
     expect(result.class).toBe('complex-task');
     expect(result.maxTurns).toBe(25);
     expect(result.reason).toContain('length heuristic');
+  });
+});
+
+describe('classifyTaskByKeywords — menu-selection class (OB-1658, OB-1659, OB-1660)', () => {
+  let testWorkspace: string;
+  let manager: MasterManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    testWorkspace = path.join(os.tmpdir(), 'test-classifier-menu-' + Date.now());
+    await fs.mkdir(testWorkspace, { recursive: true });
+
+    manager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+  });
+
+  afterEach(async () => {
+    try {
+      await fs.rm(testWorkspace, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  it('classifies single digit "1" as menu-selection (OB-1658)', () => {
+    const result = classify(manager, '1');
+    expect(result.class).toBe('menu-selection');
+    expect(result.menuSelection).toBe(true);
+    expect(result.maxTurns).toBe(2);
+  });
+
+  it('classifies single digit "9" as menu-selection (OB-1658)', () => {
+    const result = classify(manager, '9');
+    expect(result.class).toBe('menu-selection');
+    expect(result.menuSelection).toBe(true);
+  });
+
+  it('does NOT classify "hello" as menu-selection (OB-1658)', () => {
+    const result = classify(manager, 'hello');
+    expect(result.class).not.toBe('menu-selection');
+    expect(result.menuSelection).toBeFalsy();
+  });
+
+  it('does NOT classify multi-digit number "12" as menu-selection (OB-1658)', () => {
+    const result = classify(manager, '12');
+    expect(result.class).not.toBe('menu-selection');
+  });
+
+  it('skips RAG for menu-selection (OB-1658)', () => {
+    const result = classify(manager, '3');
+    expect(result.class).toBe('menu-selection');
+    expect(result.skipRag).toBe(true);
+  });
+
+  it('extracts option text from previous bot response when numbered list present (OB-1659)', () => {
+    const lastBotResponse = [
+      'Here are your options:',
+      '1. Deploy to production',
+      '2. Deploy to staging',
+      '3. Run tests only',
+    ].join('\n');
+
+    const result = classify(manager, '2', undefined, lastBotResponse);
+    expect(result.class).toBe('menu-selection');
+    expect(result.selectedOptionText).toBe('Deploy to staging');
+    expect(result.reason).toContain('numbered list');
+  });
+
+  it('returns undefined selectedOptionText when previous response has no numbered list (OB-1659)', () => {
+    const result = classify(manager, '1', undefined, 'No list here, just a sentence.');
+    expect(result.class).toBe('menu-selection');
+    expect(result.selectedOptionText).toBeUndefined();
   });
 });
