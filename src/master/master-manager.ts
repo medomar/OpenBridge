@@ -48,7 +48,7 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
-import { applyToolPromptPrefix } from './seed-prompts.js';
+import { applyToolPromptPrefix, seedPromptLibrary } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { DeepModeManager } from './deep-mode.js';
 import type {
@@ -1580,6 +1580,17 @@ export class MasterManager {
 
     // Seed system prompt if it doesn't exist yet
     await this.seedSystemPrompt();
+
+    // Seed prompt library if not already seeded (first startup only)
+    const existingManifest = await this.dotFolder.readPromptManifest();
+    if (!existingManifest || Object.keys(existingManifest.prompts).length === 0) {
+      try {
+        await seedPromptLibrary(this.dotFolder);
+        logger.info('Seeded prompt library');
+      } catch (error) {
+        logger.warn({ error }, 'Failed to seed prompt library');
+      }
+    }
 
     // Load the system prompt — prefer DB, fall back to file
     if (this.memory) {
