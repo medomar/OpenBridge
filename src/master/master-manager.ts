@@ -3123,7 +3123,7 @@ export class MasterManager {
           taskType,
           learningEntry.modelUsed ?? 'unknown',
           learningEntry.success,
-          0, // turns not tracked in AgentResult
+          result.turnsUsed ?? 0,
           learningEntry.durationMs,
         );
       } else {
