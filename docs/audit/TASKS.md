@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 52 | **In Progress:** 0 | **Done:** 229 (112 archived)
+> **Pending:** 51 | **In Progress:** 0 | **Done:** 230 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -508,12 +508,12 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 99-3 — Escalation Timeout Scaling (OB-F97) — 4 tasks
 
-| #   | Task ID | Description                                                                                                                                                                | Status    |
-| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 13  | OB-1638 | Increase default escalation timeout from 60s to 180s in Router. Add `escalationTimeoutMs` to config schema in `src/types/config.ts` with default 180000. Validate with Zod | ✅ Done   |
-| 14  | OB-1639 | Scale timeout with queue size — add 60s per additional pending escalation beyond the first. E.g., 3 pending = 180s + (2 × 60s) = 300s. Cap at 600s (10 minutes)            | ✅ Done   |
-| 15  | OB-1640 | Send reminder at 50% timeout elapsed: "You have X pending escalation requests — reply /allow, /allow all, or /deny". Only send once per batch                              | ✅ Done   |
-| 16  | OB-1641 | Add test: verify timeout scales with queue size, verify reminder sent at 50%, verify auto-deny after full timeout. Test in `tests/core/permission-escalation.test.ts`      | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                | Status  |
+| --- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 13  | OB-1638 | Increase default escalation timeout from 60s to 180s in Router. Add `escalationTimeoutMs` to config schema in `src/types/config.ts` with default 180000. Validate with Zod | ✅ Done |
+| 14  | OB-1639 | Scale timeout with queue size — add 60s per additional pending escalation beyond the first. E.g., 3 pending = 180s + (2 × 60s) = 300s. Cap at 600s (10 minutes)            | ✅ Done |
+| 15  | OB-1640 | Send reminder at 50% timeout elapsed: "You have X pending escalation requests — reply /allow, /allow all, or /deny". Only send once per batch                              | ✅ Done |
+| 16  | OB-1641 | Add test: verify timeout scales with queue size, verify reminder sent at 50%, verify auto-deny after full timeout. Test in `tests/core/permission-escalation.test.ts`      | ✅ Done |
 
 ### 99-4 — Orphaned Worker Cleanup (OB-F103) — 6 tasks
 
