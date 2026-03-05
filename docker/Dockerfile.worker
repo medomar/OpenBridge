@@ -1,0 +1,46 @@
+# OpenBridge Worker Image
+#
+# Based on node:22-slim to keep image size under 500 MB.
+# Installs the Claude CLI via npm, sets /workspace as the working directory,
+# and runs as a non-root user for reduced attack surface.
+#
+# Build:
+#   docker build -f docker/Dockerfile.worker -t openbridge-worker:latest .
+#
+# @see OB-1547
+
+FROM node:22-slim
+
+# Install system deps needed by the claude CLI and common AI tools.
+# git is required so agents can inspect repos inside /workspace.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install the Claude CLI globally.
+# Using --prefer-offline avoids re-downloading registry metadata on each build
+# layer if the npm cache is warm.
+RUN npm install -g @anthropic-ai/claude-code && \
+    npm cache clean --force
+
+# Create a non-root user to run the agent.
+RUN useradd --create-home --shell /bin/bash --uid 1001 worker
+
+# Create the workspace directory and grant ownership to the worker user.
+# Containers mount the host workspace at /workspace at runtime; /workspace
+# itself must exist in the image so Docker can bind-mount into it.
+RUN mkdir -p /workspace && chown worker:worker /workspace
+
+# Switch to the non-root user for all subsequent instructions and at runtime.
+USER worker
+
+# Set /workspace as the default working directory so that commands executed
+# via `docker exec` or `docker run` start in the right place.
+WORKDIR /workspace
+
+# Default command — kept minimal; the caller (DockerSandbox) will invoke the
+# agent via `docker exec` rather than relying on CMD.
+CMD ["sleep", "infinity"]
