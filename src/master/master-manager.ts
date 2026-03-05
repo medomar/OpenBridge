@@ -1155,6 +1155,15 @@ export class MasterManager {
       `project state, decisions made, active threads, and known issues.\n` +
       `Write your updated notes to ${memoryPath}.`;
 
+    // Capture mtime before update to verify the file was actually written (OB-1615).
+    let mtimeBefore: number | null = null;
+    try {
+      const stat = await fs.stat(memoryPath);
+      mtimeBefore = stat.mtimeMs;
+    } catch {
+      // File doesn't exist yet — any write will count as a modification.
+    }
+
     try {
       const opts = this.buildMasterSpawnOptions(prompt, undefined, MEMORY_UPDATE_MAX_TURNS);
       const result = await this.agentRunner.spawn(opts);
@@ -1162,7 +1171,27 @@ export class MasterManager {
       if (result.exitCode !== 0) {
         logger.warn({ exitCode: result.exitCode }, 'Memory update prompt returned non-zero exit');
       } else {
-        logger.info('Memory update completed');
+        // Verify memory.md was actually written/modified (OB-1615).
+        try {
+          const stat = await fs.stat(memoryPath);
+          const wasModified = mtimeBefore === null || stat.mtimeMs > mtimeBefore;
+          if (wasModified) {
+            logger.info(
+              { mtimeBefore, mtimeAfter: stat.mtimeMs },
+              'Memory update completed — file verified',
+            );
+          } else {
+            logger.warn(
+              { memoryPath, mtimeBefore, mtimeAfter: stat.mtimeMs },
+              'Memory update completed but memory.md was NOT modified — Master may have skipped the write',
+            );
+          }
+        } catch {
+          logger.warn(
+            { memoryPath },
+            'Memory update completed but memory.md is missing — Master did not write the file',
+          );
+        }
       }
     } catch (err) {
       logger.warn({ err }, 'Memory update prompt failed');
