@@ -4,11 +4,13 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
+import { DockerSandbox } from './docker-sandbox.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { TaskManifest, ToolProfile } from '../types/agent.js';
 import type { ModelRegistry } from './model-registry.js';
 import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
+import type { SandboxConfig } from '../types/config.js';
 
 const logger = createLogger('agent-runner');
 
@@ -500,6 +502,14 @@ export interface SpawnOptions {
    * Only the servers listed in `mcpConfigPath` will be available to the worker.
    */
   strictMcpConfig?: boolean;
+  /**
+   * Sandbox configuration for this worker.
+   * When `sandbox.mode` is `'docker'`, the worker is spawned inside a Docker container
+   * using the `openbridge-worker:latest` image with workspace volume mounts,
+   * resource limits, and env var sanitization applied.
+   * Default: `{ mode: 'none' }` — run as a regular child process.
+   */
+  sandbox?: SandboxConfig;
 }
 
 /**
@@ -1030,6 +1040,81 @@ export class AgentRunner {
   }
 
   /**
+   * Execute a single agent attempt inside a Docker sandbox container.
+   *
+   * Creates, starts, execs, stops, and removes a container for each call.
+   * The container is always removed in the `finally` block — even on error.
+   *
+   * Returns the same shape as the `execOnce()` promise so it can be used as
+   * a drop-in replacement inside the `spawn()` retry loop.
+   */
+  private async _execOnceDocker(
+    config: CLISpawnConfig,
+    workspacePath: string,
+    sandboxConfig: SandboxConfig,
+    timeout?: number,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const dockerSandbox = new DockerSandbox();
+
+    // Filter undefined env values — Docker only accepts string values
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(config.env)) {
+      if (value !== undefined) {
+        env[key] = value;
+      }
+    }
+
+    const containerName = `ob-worker-${randomUUID().slice(0, 8)}`;
+    const mounts = DockerSandbox.buildWorkspaceMounts({ workspacePath });
+
+    logger.debug(
+      { containerName, binary: config.binary, argCount: config.args.length },
+      'Spawning agent inside Docker container',
+    );
+
+    let containerId: string | undefined;
+    try {
+      containerId = await dockerSandbox.createContainer({
+        image: 'openbridge-worker:latest',
+        name: containerName,
+        mounts,
+        env,
+        network: sandboxConfig.network,
+        memoryMB: sandboxConfig.memoryMB,
+        cpus: sandboxConfig.cpus,
+        workdir: '/workspace',
+      });
+
+      await dockerSandbox.startContainer(containerId);
+
+      const result = await dockerSandbox.exec(containerId, [config.binary, ...config.args], {
+        cwd: '/workspace',
+        timeout,
+      });
+
+      logger.info({ containerName, exitCode: result.exitCode }, 'Docker agent exec completed');
+
+      return result;
+    } finally {
+      if (containerId) {
+        try {
+          await dockerSandbox.stopContainer(containerId, 5);
+        } catch {
+          // Container may have already exited — ignore stop errors
+        }
+        try {
+          await dockerSandbox.removeContainer(containerId, true);
+        } catch (err) {
+          logger.warn(
+            { containerName, err },
+            'Failed to remove Docker container after worker exit',
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Spawn an AI CLI agent with the given options.
    *
    * Uses the CLIAdapter to build provider-specific CLI args, executes the
@@ -1071,8 +1156,21 @@ export class AgentRunner {
       }
 
       try {
-        const { promise: execPromise } = execOnce(currentConfig, opts.workspacePath, opts.timeout);
-        lastResult = await execPromise;
+        if (opts.sandbox?.mode === 'docker') {
+          lastResult = await this._execOnceDocker(
+            currentConfig,
+            opts.workspacePath,
+            opts.sandbox,
+            opts.timeout,
+          );
+        } else {
+          const { promise: execPromise } = execOnce(
+            currentConfig,
+            opts.workspacePath,
+            opts.timeout,
+          );
+          lastResult = await execPromise;
+        }
       } catch (error) {
         logger.error({ error, attempt }, 'Agent spawn error');
         attemptRecords.push({
