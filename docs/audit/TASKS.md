@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 16 | **In Progress:** 0 | **Done:** 265 (112 archived)
+> **Pending:** 15 | **In Progress:** 0 | **Done:** 266 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -605,7 +605,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 5   | OB-1675 | Add `partial` status to worker result metadata in `src/core/agent-runner.ts` — when `turnsExhausted: true`, set `result.status = 'partial'` instead of `'completed'`. Include `turnsUsed` and `maxTurns` in result metadata             | ✅ Done   |
 | 6   | OB-1676 | In `worker-result-formatter.ts`, append "[PARTIAL — worker used all {maxTurns} turns, result may be incomplete]" to worker results when `turnsExhausted: true`. Master receives this flag and can decide to spawn a continuation worker | ✅ Done   |
-| 7   | OB-1677 | Add adaptive maxTurns in `MasterManager.spawnWorker()` — if task prompt length > 200 chars, add 5 extra turns. If prompt contains "thorough", "comprehensive", "detailed", add 10 extra turns. Cap at profile maximum                   | ◻ Pending |
+| 7   | OB-1677 | Add adaptive maxTurns in `MasterManager.spawnWorker()` — if task prompt length > 200 chars, add 5 extra turns. If prompt contains "thorough", "comprehensive", "detailed", add 10 extra turns. Cap at profile maximum                   | ✅ Done   |
 | 8   | OB-1678 | Add tests: (1) turnsExhausted sets partial status, (2) result formatter appends warning, (3) adaptive maxTurns increases for long prompts, (4) cap respects profile maximum. At least 3 tests                                           | ◻ Pending |
 
 ---
