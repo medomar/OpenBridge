@@ -134,6 +134,16 @@ export const WorkerWatchdogConfigSchema = z.object({
 
 export type WorkerWatchdogConfig = z.infer<typeof WorkerWatchdogConfigSchema>;
 
+/**
+ * Schema for per-profile worker cost cap overrides in USD.
+ * Keys are tool profile names; values are cost caps in USD.
+ * Merged on top of the built-in PROFILE_COST_CAPS defaults — user-supplied values win.
+ * Example: `{ "read-only": 0.25, "code-edit": 0.75 }` to tighten defaults.
+ */
+export const WorkerCostCapsSchema = z.record(z.number().positive());
+
+export type WorkerCostCaps = z.infer<typeof WorkerCostCapsSchema>;
+
 /** V2 master AI override schema */
 export const V2MasterSchema = z.object({
   tool: z.string().optional(),
@@ -143,6 +153,12 @@ export const V2MasterSchema = z.object({
   sessionTtlMs: z.number().int().positive().optional(),
   /** Worker watchdog timeout configuration — force-kills stuck workers */
   workerWatchdogMinutes: WorkerWatchdogConfigSchema.optional(),
+  /**
+   * Per-profile worker cost cap overrides in USD.
+   * Merged with built-in defaults: read-only $0.50, code-edit $1.00, code-audit $1.00, full-access $2.00.
+   * Example: `{ "read-only": 0.25 }` to tighten the read-only cap.
+   */
+  workerCostCaps: WorkerCostCapsSchema.optional(),
 });
 
 /** V2 workspace options — remote git clone + auto-pull configuration + visibility controls */
