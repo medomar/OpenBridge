@@ -6781,6 +6781,9 @@ ${currentContent}
 
     // Register the escalated worker in the WorkerRegistry BEFORE spawning so that
     // markRunning / markCompleted / markFailed can find it by ID (OB-1626).
+    // Registration is inside the try block (OB-1645) so that if registration itself
+    // fails (e.g. capacity exceeded), the original worker is still marked as failed
+    // rather than left orphaned in 'pending' state.
     const escalatedManifest: TaskManifest = {
       prompt: upgradedMarker.body.prompt,
       workspacePath: this.workspacePath,
@@ -6791,9 +6794,9 @@ ${currentContent}
       retries: upgradedMarker.body.retries,
       maxBudgetUsd: upgradedMarker.body.maxBudgetUsd,
     };
-    this.workerRegistry.registerWorkerWithId(newWorkerId, escalatedManifest);
 
     try {
+      this.workerRegistry.registerWorkerWithId(newWorkerId, escalatedManifest);
       await this.spawnWorker(newWorkerId, upgradedMarker, index, customProfiles, attachments);
     } catch (spawnError) {
       const errorMessage = spawnError instanceof Error ? spawnError.message : String(spawnError);
