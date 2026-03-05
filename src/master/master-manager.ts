@@ -34,7 +34,7 @@ import type {
   ActivityRecord,
 } from '../memory/index.js';
 import { BUILT_IN_PROFILES, BuiltInProfileNameSchema } from '../types/agent.js';
-import type { ToolProfile, ProfilesRegistry } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry, TaskManifest } from '../types/agent.js';
 import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { SubMasterManager } from './sub-master-manager.js';
@@ -6778,6 +6778,20 @@ ${currentContent}
         'Worker re-spawned with merged tool access after grant',
       );
     }
+
+    // Register the escalated worker in the WorkerRegistry BEFORE spawning so that
+    // markRunning / markCompleted / markFailed can find it by ID (OB-1626).
+    const escalatedManifest: TaskManifest = {
+      prompt: upgradedMarker.body.prompt,
+      workspacePath: this.workspacePath,
+      profile: upgradedMarker.profile,
+      model: upgradedMarker.body.model,
+      maxTurns: upgradedMarker.body.maxTurns,
+      timeout: upgradedMarker.body.timeout,
+      retries: upgradedMarker.body.retries,
+      maxBudgetUsd: upgradedMarker.body.maxBudgetUsd,
+    };
+    this.workerRegistry.registerWorkerWithId(newWorkerId, escalatedManifest);
 
     await this.spawnWorker(newWorkerId, upgradedMarker, index, customProfiles, attachments);
   }
