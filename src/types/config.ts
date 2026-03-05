@@ -215,6 +215,30 @@ export const ENV_DENY_PATTERNS: readonly string[] = [
   'POSTGRES_*',
 ];
 
+/** Schema for sandbox configuration — controls how worker processes are isolated */
+export const SandboxConfigSchema = z.object({
+  /**
+   * Sandbox mode for worker processes.
+   * - none:       No sandboxing (default). Workers run as regular child processes.
+   * - docker:     Workers run inside Docker containers (requires Docker daemon).
+   * - bubblewrap: Workers run inside bubblewrap namespaces (Linux only).
+   */
+  mode: z.enum(['none', 'docker', 'bubblewrap']).default('none'),
+  /**
+   * Network mode for sandboxed workers.
+   * - none:   No network access (most secure, default).
+   * - host:   Full host network access.
+   * - bridge: Docker bridge network only (Docker mode only).
+   */
+  network: z.enum(['none', 'host', 'bridge']).default('none'),
+  /** Memory limit per worker in megabytes (default: 512) */
+  memoryMB: z.number().int().positive().default(512),
+  /** CPU limit per worker — fractional values allowed, e.g. 0.5 (default: 1) */
+  cpus: z.number().positive().default(1),
+});
+
+export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+
 /** Schema for security configuration — env var sanitization for workers */
 export const SecurityConfigSchema = z.object({
   /** Glob patterns for env vars to strip from worker environments (denylist mode) */
@@ -227,6 +251,8 @@ export const SecurityConfigSchema = z.object({
    * Default: true (require confirmation for high-risk operations).
    */
   confirmHighRisk: z.boolean().default(true),
+  /** Sandbox configuration for worker process isolation */
+  sandbox: SandboxConfigSchema.default({}),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
