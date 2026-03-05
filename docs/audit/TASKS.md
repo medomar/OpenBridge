@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 30 | **In Progress:** 0 | **Done:** 251 (112 archived)
+> **Pending:** 29 | **In Progress:** 0 | **Done:** 252 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -50,7 +50,7 @@
 | 92     | Settings Panel + Deep Mode UI        | 12    | ✅ (12/12 done) |
 | Docker | Docker Sandbox                       | 16    | ✅ (16/16 done) |
 | 99     | Escalation Queue & Orphan Fixes      | 22    | ✅ (22/22 done) |
-| 100    | Classification & RAG Fixes           | 16    | ◻               |
+| 100    | Classification & RAG Fixes           | 16    | ✅ (16/16 done) |
 | 101    | Batch & Shutdown Safety              | 7     | ◻               |
 | 102    | Worker & Cost Controls               | 8     | ◻               |
 | 103    | Docker & Startup Polish              | 9     | ◻               |
@@ -562,11 +562,11 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 100-4 — SPAWN Marker Truncation Fix (OB-F102) — 3 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                       | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 14  | OB-1661 | When `cleanedLength === 0` after SPAWN marker removal in `src/master/master-manager.ts`, generate a structured status message from the parsed SPAWN markers: "I'm spawning N workers: 1) {summary1}, 2) {summary2}, ..." Extract worker task summaries from SPAWN marker prompts                  | ✅ Done   |
-| 15  | OB-1662 | Update Master system prompt in `src/master/master-system-prompt.ts` to instruct: "Always include a brief human-readable summary explaining your plan BEFORE any SPAWN markers. The user should understand what you're about to do even if SPAWN markers are removed from the displayed response." | ✅ Done   |
-| 16  | OB-1663 | Add tests: (1) response with only SPAWN markers generates summary, (2) response with text + SPAWN markers preserves text, (3) summary includes worker task descriptions. At least 3 tests                                                                                                         | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                       | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 14  | OB-1661 | When `cleanedLength === 0` after SPAWN marker removal in `src/master/master-manager.ts`, generate a structured status message from the parsed SPAWN markers: "I'm spawning N workers: 1) {summary1}, 2) {summary2}, ..." Extract worker task summaries from SPAWN marker prompts                  | ✅ Done |
+| 15  | OB-1662 | Update Master system prompt in `src/master/master-system-prompt.ts` to instruct: "Always include a brief human-readable summary explaining your plan BEFORE any SPAWN markers. The user should understand what you're about to do even if SPAWN markers are removed from the displayed response." | ✅ Done |
+| 16  | OB-1663 | Add tests: (1) response with only SPAWN markers generates summary, (2) response with text + SPAWN markers preserves text, (3) summary includes worker task descriptions. At least 3 tests                                                                                                         | ✅ Done |
 
 ---
 

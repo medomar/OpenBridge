@@ -1147,6 +1147,155 @@ Working on both tasks.`;
     });
   });
 
+  describe('SPAWN Status Message Generation (OB-1663)', () => {
+    it('should generate numbered status message when response contains only SPAWN markers', async () => {
+      const onlySpawnMarkers = [
+        '[SPAWN:read-only]{"prompt":"List all test files in tests/","model":"haiku"}[/SPAWN]',
+        '[SPAWN:code-edit]{"prompt":"Check authentication flow in src/core/auth.ts","model":"sonnet"}[/SPAWN]',
+      ].join('\n');
+
+      // Call 1: Master returns only SPAWN markers (cleanedLength === 0)
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: onlySpawnMarkers,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      // Call 2: Worker 1 succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Found 15 test files',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 3: Worker 2 succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Auth checks whitelist entries',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 4: Synthesis returns empty → statusMessage used as fallback
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const response = await masterManager.processMessage(makeMessage('implement a complex task'));
+
+      // statusMessage format: "I'm spawning 2 workers: 1) ..., 2) ..."
+      expect(response).toMatch(/^I'm spawning 2 workers:/);
+      expect(response).toContain('1)');
+      expect(response).toContain('2)');
+    });
+
+    it('should preserve text alongside SPAWN markers and use synthesis as response', async () => {
+      const longText =
+        'I will analyze the project structure and check the configuration files for you. ' +
+        'Starting with the main directory scan to understand the codebase layout.';
+      const textWithSpawn =
+        longText +
+        '\n\n[SPAWN:read-only]{"prompt":"Scan the src directory for TypeScript files","model":"haiku"}[/SPAWN]';
+
+      // cleanedLength = longText.length (> 80) → no statusMessage generated
+      // Call 1: Master returns text + SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: textWithSpawn,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      // Call 2: Worker succeeds
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Found 42 TypeScript files in src/',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      const synthesisOutput =
+        'The project contains 42 TypeScript source files organized across 8 directories.';
+      // Call 3: Synthesis returns content
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: synthesisOutput,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const response = await masterManager.processMessage(makeMessage('implement a complex task'));
+
+      // Response is the synthesis output — NOT a generated status message
+      expect(response).toBe(synthesisOutput);
+      expect(response).not.toMatch(/^I'm spawning/);
+      expect(response).not.toMatch(/^Working on your request/);
+    });
+
+    it('should include worker task descriptions in the generated status message', async () => {
+      const taskPrompt1 = 'Analyze the database schema in src/memory/database.ts';
+      const taskPrompt2 = 'Read all API route handlers in src/core/router.ts';
+      const onlySpawnMarkers = [
+        `[SPAWN:read-only]{"prompt":"${taskPrompt1}","model":"haiku"}[/SPAWN]`,
+        `[SPAWN:read-only]{"prompt":"${taskPrompt2}","model":"haiku"}[/SPAWN]`,
+      ].join('\n');
+
+      // Call 1: Master returns only SPAWN markers
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: onlySpawnMarkers,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 300,
+      });
+
+      // Call 2: Worker 1
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'DB has 6 tables',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 3: Worker 2
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Router has 20 routes',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 4: Synthesis returns empty → statusMessage used
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const response = await masterManager.processMessage(makeMessage('implement a complex task'));
+
+      // Summary must contain the actual task descriptions from the SPAWN prompts
+      expect(response).toContain(taskPrompt1);
+      expect(response).toContain(taskPrompt2);
+    });
+  });
+
   describe('spawnTargetedReader — OB-1357', () => {
     it('spawns a read-only worker with 5 max turns for targeted file reading', async () => {
       mockSpawn.mockResolvedValueOnce({
