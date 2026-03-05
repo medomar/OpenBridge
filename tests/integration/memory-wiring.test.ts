@@ -107,6 +107,9 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     readWorkspaceMap: vi.fn().mockResolvedValue(null),
     listDirDiveResults: vi.fn().mockResolvedValue([]),
     readDirectoryDive: vi.fn().mockResolvedValue(null),
+    readBatchState: vi.fn().mockResolvedValue(null),
+    writeBatchState: vi.fn().mockResolvedValue(undefined),
+    deleteBatchState: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 
