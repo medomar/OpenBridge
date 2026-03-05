@@ -142,14 +142,14 @@ describe('classifyTaskByKeywords — text-generation class (OB-1580, OB-1581, OB
     // "generate" and "linkedin" are both text-gen keywords → quick-answer
     const result = classify(manager, 'generate a LinkedIn post about our new AI features');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(10); // OB-1649: text-generation maxTurns increased 5→10
   });
 
   it('classifies "shorter version" as quick-answer', () => {
     // "shorter" is a text-gen keyword → quick-answer
     const result = classify(manager, 'shorter version please');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(10); // OB-1649: text-generation maxTurns increased 5→10
   });
 
   it('classifies "tweet for non-developers" as quick-answer', () => {
@@ -157,19 +157,19 @@ describe('classifyTaskByKeywords — text-generation class (OB-1580, OB-1581, OB
     // ("develop" in "developers", "begin" in "beginners") in the prompt
     const result = classify(manager, 'write a tweet about OpenBridge for casual users');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(10); // OB-1649: text-generation maxTurns increased 5→10
   });
 
   it('classifies "draft a LinkedIn post" as quick-answer', () => {
     const result = classify(manager, 'draft a LinkedIn post about our new release');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(10); // OB-1649: text-generation maxTurns increased 5→10
   });
 
   it('classifies "rephrase this" as quick-answer', () => {
     const result = classify(manager, 'rephrase this paragraph to sound more professional');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(10); // OB-1649: text-generation maxTurns increased 5→10
   });
 
   // ── Fallback is quick-answer not tool-use (OB-1581) ───────────────
@@ -200,5 +200,86 @@ describe('classifyTaskByKeywords — text-generation class (OB-1580, OB-1581, OB
     const result = classify(manager, 'mix of 1 and 3', recentMessages);
     expect(result.class).toBe('quick-answer');
     expect(result.reason).toContain('text-generation follow-up');
+  });
+});
+
+describe('classifyTaskByKeywords — OB-1648/1649/1650/1651 classification improvements', () => {
+  let testWorkspace: string;
+  let manager: MasterManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    testWorkspace = path.join(os.tmpdir(), 'test-classifier-improvements-' + Date.now());
+    await fs.mkdir(testWorkspace, { recursive: true });
+
+    manager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+  });
+
+  afterEach(async () => {
+    try {
+      await fs.rm(testWorkspace, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  // ── OB-1648: strategic / brainstorming keywords ────────────────────
+
+  it('classifies "brainstorm with me" as complex-task (OB-1648)', () => {
+    const result = classify(manager, 'brainstorm with me about the product direction');
+    expect(result.class).toBe('complex-task');
+    expect(result.maxTurns).toBe(25);
+  });
+
+  it('classifies "create a strategy to commercialise" as complex-task (OB-1648)', () => {
+    const result = classify(manager, 'create a strategy to commercialise our SaaS product');
+    expect(result.class).toBe('complex-task');
+    expect(result.maxTurns).toBe(25);
+  });
+
+  it('classifies "commercialize the platform" as complex-task (OB-1648)', () => {
+    const result = classify(manager, 'how should we commercialize the platform?');
+    expect(result.class).toBe('complex-task');
+    expect(result.maxTurns).toBe(25);
+  });
+
+  // ── OB-1649: text-generation maxTurns increased to 10 ─────────────
+
+  it('classifies "write a tweet" as quick-answer with 10 turns (OB-1649)', () => {
+    const result = classify(manager, 'write a tweet about our new release');
+    expect(result.class).toBe('quick-answer');
+    // OB-1649: text-generation maxTurns increased from 5 → 10
+    expect(result.maxTurns).toBe(10);
+    expect(result.reason).toContain('text-generation');
+  });
+
+  // ── OB-1650: long multi-sentence message → not quick-answer ────────
+
+  it('classifies long multi-sentence message as tool-use, not quick-answer (OB-1650)', () => {
+    // > 100 chars, 3 sentences → triggers length-based upgrade to tool-use
+    const longMessage =
+      'Our codebase has grown significantly over the past year. We are experiencing performance issues in multiple places. I would appreciate your thoughts on this.';
+    expect(longMessage.length).toBeGreaterThan(100);
+    const result = classify(manager, longMessage);
+    expect(result.class).not.toBe('quick-answer');
+    expect(result.maxTurns).toBeGreaterThanOrEqual(15);
+  });
+
+  // ── OB-1651: length-based complex-task heuristic (> 200 chars + planning) ─
+
+  it('classifies long message with planning/strategy language as complex-task (OB-1651)', () => {
+    const longPlanningMessage =
+      'I want to discuss the overall strategy and roadmap for our product. We need to define a clear plan with milestones and deliverables. Please help me think through the objectives and framework we should adopt going forward into Q3 and Q4 of this year.';
+    expect(longPlanningMessage.length).toBeGreaterThan(200);
+    const result = classify(manager, longPlanningMessage);
+    expect(result.class).toBe('complex-task');
+    expect(result.maxTurns).toBe(25);
+    expect(result.reason).toContain('length heuristic');
   });
 });

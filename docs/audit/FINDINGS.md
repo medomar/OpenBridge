@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 40 | **Fixed:** 86 | **Last Audit:** 2026-03-05
+> **Open:** 39 | **Fixed:** 87 | **Last Audit:** 2026-03-05
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
@@ -48,28 +48,28 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 
 ### Tier 1c — Runtime Issues (discovered 2026-03-05 Telegram session)
 
-| #       | Finding                                                    | Severity    | Impact                                                                                     | Status |
-| ------- | ---------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------ | ------ |
-| OB-F95  | Worker re-spawn crash after escalation grant               | 🔴 Critical | Escalation grants silently fail — user approves but worker never runs                      | Open   |
-| OB-F96  | Escalation state cleared before all workers granted        | 🟠 High     | Multi-worker escalation queue handles only one — remaining workers stuck                   | Open   |
-| OB-F97  | Escalation timeout too short for multi-worker spawns       | 🟡 Medium   | 60s auto-deny before user can respond to multiple escalation prompts                       | Open   |
-| OB-F98  | Misclassification of strategic/brainstorming messages      | 🟠 High     | Strategic questions get 5 turns instead of 25 — shallow answers                            | Open   |
-| OB-F99  | RAG returns zero results for real user questions           | 🟡 Medium   | Real queries return 0 chunks, single-char queries return 10 — RAG is inverted              | Open   |
-| OB-F100 | Single-character messages trigger full agent invocations   | 🟢 Low      | "1", "3" go through full pipeline: classification → RAG → agent spawn — 60s and $0.02 each | Open   |
-| OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | Open   |
-| OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | Open   |
-| OB-F103 | Orphaned workers never reach terminal state                | 🔴 Critical | 7/61 workers unaccounted for — stuck processes, resource leaks, one ran 6.4 hours          | Open   |
-| OB-F104 | Workers exhaust max-turns without completing               | 🟡 Medium   | Workers counted as "completed" with partial results — Master gets incomplete data          | Open   |
-| OB-F105 | Master tool selection flow redundant and confusing         | 🟡 Medium   | 5 contradictory log lines during startup — debugging confusion                             | Open   |
-| OB-F106 | Whitelist normalization drops entries without details      | 🟡 Medium   | Dropped phone number silently locks out user with no diagnostic path                       | Open   |
-| OB-F107 | `.env.example` incorrectly flagged as sensitive file       | 🟢 Low      | Template documentation file auto-excluded — false positive erodes trust                    | Open   |
-| OB-F108 | Batch continuation timers not cancelled on shutdown        | 🟡 Medium   | Pending timers fire into destroyed system on shutdown — unhandled errors                   | Open   |
-| OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | Open   |
-| OB-F110 | Docker sandbox `exec()` reads wrong exit code property     | 🟡 Medium   | All non-zero exits default to 1 — can't distinguish OOM-kill from general error            | Open   |
-| OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | Open   |
-| OB-F112 | Batch sender info not persisted across process restarts    | 🟢 Low      | Resumed batches can't route messages to original user after restart                        | Open   |
-| OB-F113 | 37 test failures from stale mocks after Phase 98           | 🟠 High     | CI is red — test failures mask real regressions                                            | Open   |
-| OB-F114 | `getActiveBatchId()` inconsistent with `isActive()`        | 🟢 Low      | Returns paused batches — semantic trap for future callers                                  | Open   |
+| #       | Finding                                                    | Severity    | Impact                                                                                     | Status   |
+| ------- | ---------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------ | -------- |
+| OB-F95  | Worker re-spawn crash after escalation grant               | 🔴 Critical | Escalation grants silently fail — user approves but worker never runs                      | Open     |
+| OB-F96  | Escalation state cleared before all workers granted        | 🟠 High     | Multi-worker escalation queue handles only one — remaining workers stuck                   | Open     |
+| OB-F97  | Escalation timeout too short for multi-worker spawns       | 🟡 Medium   | 60s auto-deny before user can respond to multiple escalation prompts                       | Open     |
+| OB-F98  | Misclassification of strategic/brainstorming messages      | 🟠 High     | Strategic questions get 5 turns instead of 25 — shallow answers                            | ✅ Fixed |
+| OB-F99  | RAG returns zero results for real user questions           | 🟡 Medium   | Real queries return 0 chunks, single-char queries return 10 — RAG is inverted              | Open     |
+| OB-F100 | Single-character messages trigger full agent invocations   | 🟢 Low      | "1", "3" go through full pipeline: classification → RAG → agent spawn — 60s and $0.02 each | Open     |
+| OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | Open     |
+| OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | Open     |
+| OB-F103 | Orphaned workers never reach terminal state                | 🔴 Critical | 7/61 workers unaccounted for — stuck processes, resource leaks, one ran 6.4 hours          | Open     |
+| OB-F104 | Workers exhaust max-turns without completing               | 🟡 Medium   | Workers counted as "completed" with partial results — Master gets incomplete data          | Open     |
+| OB-F105 | Master tool selection flow redundant and confusing         | 🟡 Medium   | 5 contradictory log lines during startup — debugging confusion                             | Open     |
+| OB-F106 | Whitelist normalization drops entries without details      | 🟡 Medium   | Dropped phone number silently locks out user with no diagnostic path                       | Open     |
+| OB-F107 | `.env.example` incorrectly flagged as sensitive file       | 🟢 Low      | Template documentation file auto-excluded — false positive erodes trust                    | Open     |
+| OB-F108 | Batch continuation timers not cancelled on shutdown        | 🟡 Medium   | Pending timers fire into destroyed system on shutdown — unhandled errors                   | Open     |
+| OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | Open     |
+| OB-F110 | Docker sandbox `exec()` reads wrong exit code property     | 🟡 Medium   | All non-zero exits default to 1 — can't distinguish OOM-kill from general error            | Open     |
+| OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | Open     |
+| OB-F112 | Batch sender info not persisted across process restarts    | 🟢 Low      | Resumed batches can't route messages to original user after restart                        | Open     |
+| OB-F113 | 37 test failures from stale mocks after Phase 98           | 🟠 High     | CI is red — test failures mask real regressions                                            | Open     |
+| OB-F114 | `getActiveBatchId()` inconsistent with `isActive()`        | 🟢 Low      | Returns paused batches — semantic trap for future callers                                  | Open     |
 
 ### Tier 2b — Platform Completion (Sprint 4 — v0.0.12)
 
@@ -695,7 +695,7 @@ User must manually say: "continue with the next task"
 
 ---
 
-### OB-F98 — Misclassification of strategic/brainstorming messages (High)
+### OB-F98 — Misclassification of strategic/brainstorming messages (High) ✅ Fixed
 
 **Source:** Production Telegram session logs (2026-03-05)
 
@@ -706,6 +706,8 @@ User must manually say: "continue with the next task"
 **Key files:** `src/master/master-manager.ts` (classification logic)
 
 **Scope:** ~4–6 tasks (Phase 100)
+
+**Fixed in:** OB-1648 (strategic keywords), OB-1649 (text-gen maxTurns 5→10), OB-1650 (long multi-sentence → tool-use), OB-1651 (length heuristic → complex-task), OB-1652 (tests)
 
 ---
 
