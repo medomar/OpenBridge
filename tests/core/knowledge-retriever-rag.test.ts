@@ -24,7 +24,7 @@ import type { Chunk } from '../../src/memory/chunk-store.js';
 // accessible inside the factory even though they appear later in source.
 // ---------------------------------------------------------------------------
 
-const mockLoggerWarn = vi.fn();
+const mockLoggerWarn = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/core/logger.js', () => ({
   createLogger: () => ({
@@ -93,8 +93,9 @@ describe('buildSearchQuery — preserves short domain terms', () => {
   it('keeps 2-char domain terms like "api" and "ui" in the search query', async () => {
     await retriever.query('what is the api and ui');
 
-    // searchContext should have been called with 'api' and 'ui' preserved
-    expect(memoryManager.searchContext).toHaveBeenCalledOnce();
+    // searchContext should have been called — first call uses the built search query
+    // (fallback keyword retries may add more calls when the first returns empty)
+    expect(memoryManager.searchContext).toHaveBeenCalled();
     const query = memoryManager.searchContext.mock.calls[0]?.[0] as string;
     expect(query).toContain('api');
     expect(query).toContain('ui');

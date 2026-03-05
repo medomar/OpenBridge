@@ -314,6 +314,7 @@ describe('convertV2ToInternal', () => {
     });
     expect(internalConfig.router).toEqual({
       progressIntervalMs: 15_000,
+      escalationTimeoutMs: 180_000,
     });
     expect(internalConfig.audit).toEqual({
       enabled: false,
