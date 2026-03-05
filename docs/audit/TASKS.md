@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 10 | **In Progress:** 0 | **Done:** 8 (1045 archived)
+> **Pending:** 9 | **In Progress:** 0 | **Done:** 9 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -67,7 +67,7 @@
 
 | Task    | What                                                                                  | Key File                       | Status  |
 | ------- | ------------------------------------------------------------------------------------- | ------------------------------ | ------- |
-| OB-1608 | Extract `turns_used` in `masterTaskToMemoryTask()` from task metadata                 | `src/master/master-manager.ts` | Pending |
+| OB-1608 | Extract `turns_used` in `masterTaskToMemoryTask()` from task metadata                 | `src/master/master-manager.ts` | ✅ Done |
 | OB-1609 | Pass actual `turns_used` (not `0`) to `recordLearning()` at line ~2987 (worker tasks) | `src/master/master-manager.ts` | Pending |
 | OB-1610 | Pass actual turns to `recordLearning()` at line ~3193 (classification tasks)          | `src/master/master-manager.ts` | Pending |
 
