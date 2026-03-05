@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { createLogger } from './logger.js';
 import { DockerSandbox } from './docker-sandbox.js';
+import { sanitizeEnv } from './env-sanitizer.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { TaskManifest, ToolProfile } from '../types/agent.js';
 import type { ModelRegistry } from './model-registry.js';
 import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
-import type { SandboxConfig } from '../types/config.js';
+import type { SandboxConfig, SecurityConfig } from '../types/config.js';
 
 const logger = createLogger('agent-runner');
 
@@ -510,6 +511,14 @@ export interface SpawnOptions {
    * Default: `{ mode: 'none' }` — run as a regular child process.
    */
   sandbox?: SandboxConfig;
+  /**
+   * Security configuration for env var sanitization inside the Docker sandbox.
+   * When `sandbox.mode` is `'docker'`, the sanitizer strips env vars matching
+   * `envDenyPatterns` (unless overridden by `envAllowPatterns`) before passing
+   * them to the container via `-e` flags.
+   * If omitted, the default deny/allow patterns from Phase 85 are used.
+   */
+  securityConfig?: SecurityConfig;
 }
 
 /**
@@ -1054,15 +1063,29 @@ export class AgentRunner {
     sandboxConfig: SandboxConfig,
     timeout?: number,
     maxTurns?: number,
+    securityConfig?: SecurityConfig,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const dockerSandbox = new DockerSandbox();
 
-    // Filter undefined env values — Docker only accepts string values
+    // Apply env sanitizer (Phase 85) to strip secrets before passing to the container.
+    // sanitizeEnv() expects Record<string, string | undefined>; Docker only accepts strings,
+    // so we filter undefined values out in the same pass.
+    const rawEnv: Record<string, string | undefined> = config.env;
+    const sanitized = securityConfig ? sanitizeEnv(rawEnv, securityConfig) : rawEnv;
     const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(config.env)) {
+    for (const [key, value] of Object.entries(sanitized)) {
       if (value !== undefined) {
         env[key] = value;
       }
+    }
+
+    const rawCount = Object.keys(rawEnv).filter((k) => rawEnv[k] !== undefined).length;
+    const sanitizedCount = Object.keys(env).length;
+    if (sanitizedCount < rawCount) {
+      logger.debug(
+        { stripped: rawCount - sanitizedCount, kept: sanitizedCount },
+        'Docker sandbox: stripped secret env vars via sanitizer',
+      );
     }
 
     const containerName = `ob-worker-${randomUUID().slice(0, 8)}`;
@@ -1170,6 +1193,7 @@ export class AgentRunner {
             opts.sandbox,
             opts.timeout,
             opts.maxTurns,
+            opts.securityConfig,
           );
         } else {
           const { promise: execPromise } = execOnce(
