@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 45 | **In Progress:** 0 | **Done:** 236 (112 archived)
+> **Pending:** 44 | **In Progress:** 0 | **Done:** 237 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -536,7 +536,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1648 | Add `complex-task` keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts`: "brainstorm", "strategy", "business model", "commercialise", "commercialize", "roadmap review", "strategic plan", "market analysis", "go-to-market"             | ◻ Pending |
+| 1   | OB-1648 | Add `complex-task` keywords in `classifyTaskByKeywords()` in `src/master/master-manager.ts`: "brainstorm", "strategy", "business model", "commercialise", "commercialize", "roadmap review", "strategic plan", "market analysis", "go-to-market"             | ✅ Done   |
 | 2   | OB-1649 | Increase `text-generation` maxTurns from 5 to 10 in task class definitions — long-form text generation (articles, strategies, plans) needs more turns than quick answers                                                                                     | ◻ Pending |
 | 3   | OB-1650 | Improve fallback logic in classifier — if message length > 100 chars AND contains question marks or multiple sentences, default to `tool-use` (15 turns) instead of `quick-answer` (5 turns)                                                                 | ◻ Pending |
 | 4   | OB-1651 | Add length-based heuristic for `complex-task` — messages > 200 chars with planning/strategy language patterns should be `complex-task` (25 turns) regardless of keyword matches                                                                              | ◻ Pending |
