@@ -241,7 +241,7 @@ export interface WorkspaceState {
 export interface SessionRecord {
   id: string;
   type: 'master' | 'exploration';
-  status: 'active' | 'ended' | 'crashed' | 'closed';
+  status: 'active' | 'ended' | 'crashed' | 'closed' | 'expired';
   restart_count?: number;
   message_count?: number;
   allowed_tools?: string;
@@ -361,6 +361,25 @@ export function closeActiveSessions(db: Database.Database): void {
   db.prepare(`UPDATE sessions SET status = 'closed', last_used_at = ? WHERE status = 'active'`).run(
     now,
   );
+}
+
+/**
+ * On startup, mark any session that is still `active` but whose `last_used_at`
+ * is more than 24 hours ago as `expired`.  These are sessions from a previous
+ * process run that were never cleanly closed (e.g. the process was killed) and
+ * are now too old to resume safely.  Returns the number of rows updated.
+ */
+export function markExpiredSessions(db: Database.Database, thresholdHours = 24): number {
+  const cutoff = new Date(Date.now() - thresholdHours * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      `UPDATE sessions
+       SET status = 'expired', last_used_at = ?
+       WHERE status = 'active' AND last_used_at < ?`,
+    )
+    .run(now, cutoff);
+  return result.changes;
 }
 
 // ---------------------------------------------------------------------------

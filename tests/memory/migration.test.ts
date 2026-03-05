@@ -11,6 +11,7 @@ import {
   updateWorkspaceState,
   getSession,
   upsertSession,
+  markExpiredSessions,
   type WorkspaceState,
   type SessionRecord,
 } from '../../src/memory/migration.js';
@@ -131,6 +132,79 @@ describe('migration.ts', () => {
       upsertSession(db, makeSession({ type: 'master', last_used_at: '2026-01-03T00:00:00.000Z' }));
       const retrieved = getSession(db, 'master');
       expect(retrieved!.last_used_at).toBe('2026-01-03T00:00:00.000Z');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // markExpiredSessions
+  // ---------------------------------------------------------------------------
+
+  describe('markExpiredSessions', () => {
+    const makeSession = (overrides: Partial<SessionRecord> = {}): SessionRecord => ({
+      id: 'sess-exp-' + Math.random().toString(36).slice(2),
+      type: 'master',
+      status: 'active',
+      restart_count: 0,
+      message_count: 0,
+      created_at: '2026-01-01T00:00:00.000Z',
+      last_used_at: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+
+    it('returns 0 when no sessions exist', () => {
+      expect(markExpiredSessions(db)).toBe(0);
+    });
+
+    it('marks active sessions older than 24 h as expired', () => {
+      const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+      upsertSession(db, makeSession({ id: 'stale-1', last_used_at: old }));
+      upsertSession(db, makeSession({ id: 'stale-2', last_used_at: old }));
+
+      const changed = markExpiredSessions(db);
+      expect(changed).toBe(2);
+
+      // Both sessions are expired — verify via direct query
+      const allRows = db
+        .prepare(`SELECT id, status FROM sessions WHERE status = 'expired'`)
+        .all() as { id: string; status: string }[];
+      expect(allRows).toHaveLength(2);
+      expect(allRows.every((r) => r.status === 'expired')).toBe(true);
+    });
+
+    it('does not expire active sessions used within the threshold', () => {
+      const recent = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(); // 1 h ago
+      upsertSession(db, makeSession({ id: 'fresh-1', last_used_at: recent }));
+
+      const changed = markExpiredSessions(db);
+      expect(changed).toBe(0);
+
+      const row = db.prepare(`SELECT status FROM sessions WHERE id = 'fresh-1'`).get() as {
+        status: string;
+      };
+      expect(row.status).toBe('active');
+    });
+
+    it('does not change non-active sessions', () => {
+      const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+      upsertSession(db, makeSession({ id: 'closed-1', status: 'closed', last_used_at: old }));
+      upsertSession(db, makeSession({ id: 'ended-1', status: 'ended', last_used_at: old }));
+
+      const changed = markExpiredSessions(db);
+      expect(changed).toBe(0);
+    });
+
+    it('respects a custom thresholdHours', () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      upsertSession(db, makeSession({ id: 'semi-stale', last_used_at: twoHoursAgo }));
+
+      // 1-hour threshold — session is 2 h old, so it qualifies
+      const changed = markExpiredSessions(db, 1);
+      expect(changed).toBe(1);
+
+      const row = db.prepare(`SELECT status FROM sessions WHERE id = 'semi-stale'`).get() as {
+        status: string;
+      };
+      expect(row.status).toBe('expired');
     });
   });
 

@@ -52,6 +52,7 @@ import {
   getSession as _getSession,
   upsertSession as _upsertSession,
   closeActiveSessions as _closeActiveSessions,
+  markExpiredSessions as _markExpiredSessions,
   type WorkspaceState,
   type SessionRecord,
 } from './migration.js';
@@ -195,6 +196,10 @@ export class MemoryManager {
       if (this.db) this.qaCache.evictStale(SEVEN_DAYS_MS);
     }, ONE_DAY_MS);
     this._qaCacheEvictionTimer.unref();
+
+    // Mark sessions that are still 'active' but last used more than 24 h ago
+    // as 'expired' — these are orphaned from a previous process run.
+    _markExpiredSessions(this.db);
 
     return Promise.resolve();
   }
@@ -568,6 +573,16 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _closeActiveSessions(this.db);
     return Promise.resolve();
+  }
+
+  /**
+   * Mark sessions that are still `active` but whose `last_used_at` is older
+   * than `thresholdHours` (default 24) as `expired`.  Returns the count of
+   * rows updated.  Called automatically during `init()`.
+   */
+  markExpiredSessions(thresholdHours?: number): number {
+    if (!this.db) return 0;
+    return _markExpiredSessions(this.db, thresholdHours);
   }
 
   // -------------------------------------------------------------------------
