@@ -319,10 +319,12 @@ const MASTER_MAX_TURNS = 50;
 /**
  * Max turns for message processing — varies by task classification.
  * quick-answer: questions, lookups, explanations → 5 turns
+ * text-generation: articles, strategies, long-form content → 10 turns
  * tool-use: file generation, single edits, targeted fixes → 15 turns
  * complex-task (planning): forces Master to output SPAWN markers → 25 turns
  */
 const MESSAGE_MAX_TURNS_QUICK = 5;
+const MESSAGE_MAX_TURNS_TEXT_GEN = 10;
 const MESSAGE_MAX_TURNS_TOOL_USE = 15;
 const MESSAGE_MAX_TURNS_PLANNING = 25;
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
@@ -3328,8 +3330,8 @@ export class MasterManager {
     if (textGenKeywords.some((kw) => lower.includes(kw))) {
       return {
         class: 'quick-answer',
-        maxTurns: MESSAGE_MAX_TURNS_QUICK,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+        maxTurns: MESSAGE_MAX_TURNS_TEXT_GEN,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TEXT_GEN),
         reason: 'keyword match: text-generation',
       };
     }
@@ -3345,8 +3347,8 @@ export class MasterManager {
       if (recentTextGenCount >= 1 && lower.length <= 120) {
         return {
           class: 'quick-answer',
-          maxTurns: MESSAGE_MAX_TURNS_QUICK,
-          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+          maxTurns: MESSAGE_MAX_TURNS_TEXT_GEN,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TEXT_GEN),
           reason: 'conversation context: text-generation follow-up',
         };
       }
