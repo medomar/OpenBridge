@@ -315,6 +315,63 @@ export function getProfileCostCap(
 }
 
 /**
+ * Module-level in-memory running average of worker costs per profile (OB-1673).
+ * Tracks { sum, count } so we can compute mean without storing all values.
+ * Resets on process restart — this is intentional (short-lived diagnostic signal).
+ */
+const _profileCostAccumulator: Map<string, { sum: number; count: number }> = new Map();
+
+/**
+ * Record a completed worker cost for its profile and warn if the cost is
+ * more than 10x the running average for that profile.
+ *
+ * Only called after the agent has successfully produced a result (not on abort).
+ * The average is updated AFTER the spike check so extreme outliers do not
+ * immediately skew the baseline.
+ */
+export function checkProfileCostSpike(profile: string | undefined, costUsd: number): void {
+  if (!profile || costUsd <= 0) return;
+
+  const acc = _profileCostAccumulator.get(profile);
+  if (acc && acc.count > 0) {
+    const avg = acc.sum / acc.count;
+    if (avg > 0 && costUsd > avg * 10) {
+      const multiplier = (costUsd / avg).toFixed(0);
+      logger.warn(
+        { cost: costUsd, average: avg, multiplier: Number(multiplier), profile },
+        `Worker cost $${costUsd.toFixed(4)} is ${multiplier}x average $${avg.toFixed(4)} for ${profile} profile`,
+      );
+    }
+  }
+
+  // Update accumulator after the check to keep baseline stable
+  if (acc) {
+    acc.sum += costUsd;
+    acc.count += 1;
+  } else {
+    _profileCostAccumulator.set(profile, { sum: costUsd, count: 1 });
+  }
+}
+
+/**
+ * Return a snapshot of the current profile cost averages (for testing).
+ */
+export function getProfileCostAverages(): Record<string, { avg: number; count: number }> {
+  const result: Record<string, { avg: number; count: number }> = {};
+  for (const [profile, acc] of _profileCostAccumulator) {
+    result[profile] = { avg: acc.count > 0 ? acc.sum / acc.count : 0, count: acc.count };
+  }
+  return result;
+}
+
+/**
+ * Reset the cost accumulator (exposed for tests only).
+ */
+export function resetProfileCostAverages(): void {
+  _profileCostAccumulator.clear();
+}
+
+/**
  * Resolve a profile name to its tool list.
  * Checks custom profiles first (if provided), then falls back to built-in profiles.
  * Returns undefined if the profile name is not recognized in either source.
@@ -1351,6 +1408,9 @@ export class AgentRunner {
       );
     }
 
+    // 10x average spike detection (OB-1673)
+    checkProfileCostSpike(opts.profile, costUsd);
+
     const result: AgentResult = {
       stdout: lastResult.stdout,
       stderr: lastResult.stderr,
@@ -1533,6 +1593,9 @@ export class AgentRunner {
           `Worker cost cap exceeded: ${costUsdHandle.toFixed(4)} > ${costCapHandle} for profile ${opts.profile ?? 'unknown'}`,
         );
       }
+
+      // 10x average spike detection (OB-1673)
+      checkProfileCostSpike(opts.profile, costUsdHandle);
 
       const result: AgentResult = {
         stdout: lastResult.stdout,
@@ -1746,6 +1809,11 @@ export class AgentRunner {
             }
           }
 
+          const streamCostUsd = estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8'));
+
+          // 10x average spike detection (OB-1673)
+          checkProfileCostSpike(opts.profile, streamCostUsd);
+
           const result: AgentResult = {
             stdout: parsedStdout,
             stderr: streamResult!.stderr,
@@ -1754,7 +1822,7 @@ export class AgentRunner {
             retryCount,
             model: currentModel,
             modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
-            costUsd: estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8')),
+            costUsd: streamCostUsd,
             turnsExhausted: turnsExhausted || undefined,
             turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
           };
