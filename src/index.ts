@@ -125,6 +125,9 @@ async function startV2Flow(
   logger.info('Discovering AI tools...');
   const scanResult = await scanForAITools();
 
+  // --verbose flag enables full tool selection trace logs
+  const isVerbose = process.argv.includes('--verbose');
+
   // Step 1a: Exclude tools if configured — removes them from discovery results entirely
   const excludeTools = v2Config.master?.excludeTools;
   if (excludeTools && excludeTools.length > 0) {
@@ -133,15 +136,17 @@ async function startV2Flow(
     scanResult.cliTools = scanResult.cliTools.filter(
       (tool) => !excludeSet.has(tool.name.toLowerCase()),
     );
-    logger.info(
-      { excludeTools, removed: before - scanResult.cliTools.length },
-      'Excluded tools from discovery',
-    );
+    if (isVerbose) {
+      logger.info(
+        { excludeTools, removed: before - scanResult.cliTools.length },
+        'Excluded tools from discovery',
+      );
+    }
 
     // Re-select master if the current master was excluded
     if (scanResult.master && excludeSet.has(scanResult.master.name.toLowerCase())) {
       scanResult.master = scanResult.cliTools[0] ?? null;
-      if (scanResult.master) {
+      if (isVerbose && scanResult.master) {
         logger.info(
           { newMaster: scanResult.master.name },
           'Previous master was excluded — auto-selected next available tool',
@@ -154,7 +159,9 @@ async function startV2Flow(
   let selectedMaster = scanResult.master;
 
   if (v2Config.master?.tool) {
-    logger.info({ override: v2Config.master.tool }, 'Master tool override specified in config');
+    if (isVerbose) {
+      logger.info({ override: v2Config.master.tool }, 'Master tool override specified in config');
+    }
 
     // Try to find the tool in discovered tools by name or path
     const overrideTool = scanResult.cliTools.find(
@@ -166,10 +173,12 @@ async function startV2Flow(
 
     if (overrideTool) {
       selectedMaster = overrideTool;
-      logger.info(
-        { tool: overrideTool.name },
-        'Using overridden Master tool from discovered tools',
-      );
+      if (isVerbose) {
+        logger.info(
+          { tool: overrideTool.name },
+          'Using overridden Master tool from discovered tools',
+        );
+      }
     } else {
       logger.warn(
         { requested: v2Config.master.tool },
@@ -203,16 +212,30 @@ async function startV2Flow(
     );
   }
 
-  logger.info(
-    {
-      master: selectedMaster.name,
-      provider: masterProviderName,
-      totalTools: scanResult.cliTools.length + scanResult.vscodeExtensions.length,
-      cliTools: scanResult.cliTools.length,
-      vscodeExtensions: scanResult.vscodeExtensions.length,
-    },
-    'AI tool discovery complete',
-  );
+  // Single summary log — always shown regardless of verbosity
+  {
+    const summaryParts: string[] = [];
+    if (excludeTools?.length) {
+      summaryParts.push(`${excludeTools.join(', ')} excluded per config.excludeTools`);
+    }
+    if (v2Config.master?.tool && selectedMaster.name === v2Config.master.tool) {
+      summaryParts.push('override: config.master.tool');
+    }
+    const suffix = summaryParts.length ? ` (${summaryParts.join('; ')})` : '';
+    logger.info(`Master AI: ${selectedMaster.name}${suffix}`);
+  }
+  if (isVerbose) {
+    logger.info(
+      {
+        master: selectedMaster.name,
+        provider: masterProviderName,
+        totalTools: scanResult.cliTools.length + scanResult.vscodeExtensions.length,
+        cliTools: scanResult.cliTools.length,
+        vscodeExtensions: scanResult.vscodeExtensions.length,
+      },
+      'AI tool discovery complete',
+    );
+  }
 
   // Step 2: Load config and create bridge
   const config = await loadConfig();

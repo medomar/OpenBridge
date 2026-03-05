@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 14 | **In Progress:** 0 | **Done:** 267 (112 archived)
+> **Pending:** 13 | **In Progress:** 0 | **Done:** 268 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -616,7 +616,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                              | Status    |
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ◻ Pending |
+| 1   | OB-1679 | Consolidate Master tool selection logs in `src/index.ts` — replace 5 sequential log lines with single summary: "Master AI: codex (claude excluded per config.excludeTools)". Add `--verbose` check for full selection trace              | ✅ Done   |
 | 2   | OB-1680 | Log reason for each tool exclusion — e.g., "claude excluded: listed in config.excludeTools". Skip redundant override log when config override matches auto-selected fallback                                                             | ◻ Pending |
 | 3   | OB-1681 | In `src/core/auth.ts`, log each dropped whitelist entry with reason — e.g., "Dropped whitelist entry '+1-abc': non-numeric characters" or "Duplicate whitelist entry: +212600000000". Don't just log raw vs normalized count             | ◻ Pending |
 | 4   | OB-1682 | In `npx openbridge init` (`src/cli/init.ts`), validate whitelist entries at config generation time — warn about non-numeric characters, duplicates. Offer to fix automatically                                                           | ◻ Pending |
