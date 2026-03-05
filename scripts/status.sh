@@ -260,7 +260,7 @@ show_tasks() {
   local task_rows done_count pending_count progress_count
   task_rows=$(grep 'OB-[0-9]' "$TASKS_PATH" 2>/dev/null || true)
   done_count=$(echo "$task_rows" | grep -c "✅ Done" 2>/dev/null || true)
-  pending_count=$(echo "$task_rows" | grep -c "◻ Pending" 2>/dev/null || true)
+  pending_count=$(echo "$task_rows" | grep -c -E "◻ Pending|\\| Pending" 2>/dev/null || true)
   progress_count=$(echo "$task_rows" | grep -c "🔄 In Progress" 2>/dev/null || true)
   # Ensure numeric (default to 0)
   done_count=${done_count:-0}
@@ -303,7 +303,7 @@ show_tasks() {
     phase_rows=$(awk "/^## Phase $phase_num/{found=1; next} /^## /{found=0} found && /OB-[0-9]/" "$TASKS_PATH" 2>/dev/null || true)
     if [[ -n "$phase_rows" ]]; then
       phase_done=$(echo "$phase_rows" | grep -c "✅ Done" 2>/dev/null || true)
-      phase_pending=$(echo "$phase_rows" | grep -c -E "◻ Pending|🔄 In Progress" 2>/dev/null || true)
+      phase_pending=$(echo "$phase_rows" | grep -c -E "◻ Pending|\\| Pending|🔄 In Progress" 2>/dev/null || true)
     else
       phase_done=0
       phase_pending=0
