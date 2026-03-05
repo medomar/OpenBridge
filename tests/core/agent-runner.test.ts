@@ -3081,3 +3081,62 @@ describe('streaming cost cap abort (OB-F101)', () => {
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
+
+// ── turnsExhausted → status: 'partial' (OB-1675) ────────────────────
+
+describe('turnsExhausted sets result status to partial', () => {
+  let runner: AgentRunner;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    runner = new AgentRunner();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sets status to "partial" when stdout contains max-turns indicator', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'Task incomplete.\nmax turns reached', 0);
+    const result = await promise;
+
+    expect(result.status).toBe('partial');
+    expect(result.turnsExhausted).toBe(true);
+  });
+
+  it('sets status to "completed" when stdout is normal output', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    resolveChild(lastChild(), 'Task completed successfully.', 0);
+    const result = await promise;
+
+    expect(result.status).toBe('completed');
+    expect(result.turnsExhausted).toBeUndefined();
+  });
+
+  it('preserves maxTurns in result when turns are exhausted', async () => {
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+      maxTurns: 5,
+    });
+
+    resolveChild(lastChild(), 'turn budget exhausted before completing', 0);
+    const result = await promise;
+
+    expect(result.status).toBe('partial');
+    expect(result.turnsExhausted).toBe(true);
+    expect(result.maxTurns).toBe(5);
+  });
+});
