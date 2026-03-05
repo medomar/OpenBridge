@@ -293,8 +293,8 @@ export class Router {
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
   private readonly pendingSpawnConfirmations = new Map<string, PendingSpawnEntry>();
-  /** Pending tool escalation requests — keyed by sender, awaiting user "/allow" or "/deny". */
-  private readonly pendingEscalations = new Map<string, PendingEscalation>();
+  /** Pending tool escalation requests — keyed by sender, queue of pending entries (FIFO). Each /allow pops the first. */
+  private readonly pendingEscalations = new Map<string, PendingEscalation[]>();
   /** Session-level tool grants — keyed by sender, value is the set of tool/profile names granted for this session. */
   private readonly sessionGrantedTools = new Map<string, Set<string>>();
   /** Security config — controls confirmation requirements for high-risk spawns. */
@@ -745,11 +745,14 @@ export class Router {
       `Reply '${allowExample}' to grant, or '/deny' to reject.\n` +
       `Auto-deny in 60 seconds if no reply.`;
 
-    // Set 60-second auto-deny timeout
+    // Set 60-second auto-deny timeout — removes only this entry from the queue
     const timeoutHandle = setTimeout(() => {
-      const stillPending = this.pendingEscalations.get(sender);
-      if (!stillPending) return;
-      this.pendingEscalations.delete(sender);
+      const queue = this.pendingEscalations.get(sender);
+      if (!queue) return;
+      const idx = queue.findIndex((e) => e.workerId === workerId);
+      if (idx === -1) return;
+      queue.splice(idx, 1);
+      if (queue.length === 0) this.pendingEscalations.delete(sender);
 
       const timeoutMsg: OutboundMessage = {
         target: message.source,
@@ -766,7 +769,7 @@ export class Router {
       );
     }, 60_000);
 
-    this.pendingEscalations.set(sender, {
+    const queueEntry: PendingEscalation = {
       workerId,
       requestedTools,
       currentProfile,
@@ -775,7 +778,10 @@ export class Router {
       connector,
       timeoutHandle,
       respawn,
-    });
+    };
+    const existingQueue = this.pendingEscalations.get(sender) ?? [];
+    existingQueue.push(queueEntry);
+    this.pendingEscalations.set(sender, existingQueue);
 
     await connector.sendMessage({
       target: message.source,
@@ -797,17 +803,23 @@ export class Router {
    * Used by the /allow and /deny command handlers (OB-1586, OB-1587).
    */
   public takePendingEscalation(sender: string): PendingEscalation | undefined {
-    const entry = this.pendingEscalations.get(sender);
-    if (entry) {
-      clearTimeout(entry.timeoutHandle);
-      this.pendingEscalations.delete(sender);
-    }
+    const queue = this.pendingEscalations.get(sender);
+    if (!queue || queue.length === 0) return undefined;
+    const entry = queue.shift()!;
+    clearTimeout(entry.timeoutHandle);
+    if (queue.length === 0) this.pendingEscalations.delete(sender);
     return entry;
+  }
+
+  /** Return the number of pending escalations queued for a sender. */
+  public pendingEscalationCount(sender: string): number {
+    return this.pendingEscalations.get(sender)?.length ?? 0;
   }
 
   /** Check whether a pending tool escalation exists for a sender. */
   public hasPendingEscalation(sender: string): boolean {
-    return this.pendingEscalations.has(sender);
+    const queue = this.pendingEscalations.get(sender);
+    return !!queue && queue.length > 0;
   }
 
   /**
