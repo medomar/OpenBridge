@@ -607,6 +607,8 @@ export class MasterManager {
   private batchManager: BatchManager | null = null;
   /** Maps batchId → original sender info for sending failure/status messages (OB-1616). */
   private readonly batchSenderInfo = new Map<string, { sender: string; source: string }>();
+  /** Tracks active batch continuation timer handles for cleanup on shutdown (OB-1664). */
+  private readonly batchTimers = new Set<NodeJS.Timeout>();
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -2524,9 +2526,11 @@ export class MasterManager {
       // Re-inject continuation to trigger the next item
       if (this.router) {
         const router = this.router;
-        setTimeout(() => {
+        const handle = setTimeout(() => {
+          this.batchTimers.delete(handle);
           void router.routeBatchContinuation(batchId, sender);
         }, 500);
+        this.batchTimers.add(handle);
       }
       return `▶ Resuming batch from item ${current}...`;
     }
@@ -2550,9 +2554,11 @@ export class MasterManager {
       // Schedule next continuation
       if (this.router) {
         const router = this.router;
-        setTimeout(() => {
+        const handle = setTimeout(() => {
+          this.batchTimers.delete(handle);
           void router.routeBatchContinuation(batchId, sender);
         }, 1000);
+        this.batchTimers.add(handle);
       }
       logger.info(
         { batchId, nextIndex: result.nextIndex },
@@ -2567,9 +2573,11 @@ export class MasterManager {
     // Schedule continuation (same index, so same item runs again)
     if (this.router) {
       const router = this.router;
-      setTimeout(() => {
+      const handle = setTimeout(() => {
+        this.batchTimers.delete(handle);
         void router.routeBatchContinuation(batchId, sender);
       }, 1000);
+      this.batchTimers.add(handle);
     }
     logger.info({ batchId }, 'Batch item retry scheduled by user command');
     return '🔄 Retrying item...';
@@ -5453,9 +5461,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           // The commit worker runs before scheduling the next batch item so changes
           // from the current item are committed before the next item begins.
           const scheduleNext = (): void => {
-            setTimeout(() => {
+            const handle = setTimeout(() => {
+              this.batchTimers.delete(handle);
               void router.routeBatchContinuation(activeBatchId, batchSender);
             }, 2000);
+            this.batchTimers.add(handle);
           };
 
           if (this.batchManager.shouldCommitAfterEach(activeBatchId)) {
