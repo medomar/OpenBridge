@@ -481,6 +481,90 @@ describe('KnowledgeRetriever.storeWorkerResult', () => {
 });
 
 // ---------------------------------------------------------------------------
+// OB-1657 — buildSearchQuery behavior: multi-word, single-char, fallback retry
+// ---------------------------------------------------------------------------
+
+describe('OB-1657 — KnowledgeRetriever RAG query behaviors', () => {
+  let memoryManager: MockMemoryManager;
+  let dotFolderManager: MockDotFolderManager;
+  let retriever: KnowledgeRetriever;
+
+  beforeEach(() => {
+    memoryManager = { searchContext: vi.fn(), getDb: vi.fn().mockReturnValue(null) };
+    dotFolderManager = {
+      readWorkspaceMap: vi.fn().mockResolvedValue(null),
+      listDirDiveResults: vi.fn().mockResolvedValue([]),
+      readDirectoryDive: vi.fn(),
+    };
+    retriever = new KnowledgeRetriever(memoryManager as never, dotFolderManager as never);
+  });
+
+  it('multi-word query returns results when chunks exist', async () => {
+    // A natural-language multi-word query should reach FTS5 and return chunks
+    const chunks: Chunk[] = [
+      makeChunk('src/core/router.ts', 'Router handles message routing and deployment'),
+    ];
+    memoryManager.searchContext.mockResolvedValue(chunks);
+
+    const result = await retriever.query('Can you deploy and send the link?');
+
+    expect(result.chunks.length).toBeGreaterThan(0);
+    expect(result.sources).toContain('fts5');
+    // searchContext must have been called (multi-word queries are NOT skipped)
+    expect(memoryManager.searchContext).toHaveBeenCalled();
+  });
+
+  it('single-char query is skipped — searchContext not called', async () => {
+    // Single-character inputs like "1" or "3" are menu selections, not searchable
+    const result = await retriever.query('1');
+
+    expect(result.chunks).toHaveLength(0);
+    expect(result.confidence).toBe(0);
+    expect(result.sources).toHaveLength(0);
+    // RAG must be bypassed — no FTS5 call should have been made
+    expect(memoryManager.searchContext).not.toHaveBeenCalled();
+  });
+
+  it('fallback retry triggers on zero results — searchContext called multiple times', async () => {
+    // First call (full query) returns empty; fallback retries with individual keywords
+    // keywords extracted from "deploy send link" → ["deploy", "send", "link"]
+    memoryManager.searchContext
+      .mockResolvedValueOnce([]) // initial FTS5 query returns nothing
+      .mockResolvedValueOnce([makeChunk('src/deploy.ts', 'Deployment helpers')]) // keyword 1
+      .mockResolvedValue([]); // keywords 2, 3 return nothing
+
+    const result = await retriever.query('deploy send link');
+
+    // searchContext should have been called more than once (initial + keyword fallbacks)
+    expect(memoryManager.searchContext.mock.calls.length).toBeGreaterThan(1);
+    // Fallback chunks should be surfaced
+    expect(result.chunks.length).toBeGreaterThan(0);
+    expect(result.sources).toContain('fts5');
+  });
+
+  it('FTS5 query string passed to searchContext has stop words removed', async () => {
+    // "the router and the auth module" — articles ("the") and conjunctions ("and")
+    // are in STOP_WORDS and must be filtered; content words ("router", "auth", "module")
+    // must be preserved and passed to searchContext.
+    memoryManager.searchContext.mockResolvedValue([]);
+
+    await retriever.query('the router and the auth module');
+
+    expect(memoryManager.searchContext).toHaveBeenCalled();
+    const firstCallArg = memoryManager.searchContext.mock.calls[0][0] as string;
+    // Confirmed stop words from STOP_WORDS set must be absent
+    const queryTokens = firstCallArg.split(/\s+/);
+    const filteredStopWords = new Set(['the', 'and']);
+    const hasFilteredStopWord = queryTokens.some((t) => filteredStopWords.has(t));
+    expect(hasFilteredStopWord).toBe(false);
+    // Content words must be present in the FTS5 query
+    expect(firstCallArg).toContain('router');
+    expect(firstCallArg).toContain('auth');
+    expect(firstCallArg).toContain('module');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // KnowledgeRetriever.query — Q&A cache integration — OB-1362
 // ---------------------------------------------------------------------------
 
