@@ -421,6 +421,7 @@ function masterTaskToMemoryTask(
     profile: task.metadata?.['profile'] as string | undefined,
     exit_code: task.metadata?.['exitCode'] as number | undefined,
     max_turns: task.metadata?.['maxTurns'] as number | undefined,
+    turns_used: task.metadata?.['turnsUsed'] as number | undefined,
     duration_ms: task.durationMs,
     created_at: task.createdAt,
     completed_at: task.completedAt,
@@ -5396,6 +5397,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         model: result.model,
         exitCode: result.exitCode,
         maxTurns: maxTurnsToUse,
+        turnsUsed: result.turnsUsed,
       };
 
       await this.recordTaskToStore(task);
@@ -5970,6 +5972,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       task.result = fullResponse.trim() || 'No response from AI';
       task.completedAt = new Date().toISOString();
       task.durationMs = new Date(task.completedAt).getTime() - new Date(task.startedAt!).getTime();
+      task.metadata = {
+        ...task.metadata,
+        turnsUsed: streamResult.turnsUsed,
+      };
 
       await this.recordTaskToStore(task);
 
