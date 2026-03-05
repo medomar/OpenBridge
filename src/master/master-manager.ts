@@ -2529,7 +2529,15 @@ export class MasterManager {
         const handle = setTimeout(() => {
           this.batchTimers.delete(handle);
           if (this.state === 'shutdown') return;
-          void router.routeBatchContinuation(batchId, sender);
+          router.routeBatchContinuation(batchId, sender).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            void this.batchManager?.pauseBatch(batchId);
+            void router.sendDirect(source, sender, `Batch paused due to error: ${msg}`);
+            logger.error(
+              { batchId, err },
+              'routeBatchContinuation failed — batch paused (OB-1666)',
+            );
+          });
         }, 500);
         this.batchTimers.add(handle);
       }
@@ -2558,7 +2566,15 @@ export class MasterManager {
         const handle = setTimeout(() => {
           this.batchTimers.delete(handle);
           if (this.state === 'shutdown') return;
-          void router.routeBatchContinuation(batchId, sender);
+          router.routeBatchContinuation(batchId, sender).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            void this.batchManager?.pauseBatch(batchId);
+            void router.sendDirect(source, sender, `Batch paused due to error: ${msg}`);
+            logger.error(
+              { batchId, err },
+              'routeBatchContinuation failed — batch paused (OB-1666)',
+            );
+          });
         }, 1000);
         this.batchTimers.add(handle);
       }
@@ -2578,7 +2594,12 @@ export class MasterManager {
       const handle = setTimeout(() => {
         this.batchTimers.delete(handle);
         if (this.state === 'shutdown') return;
-        void router.routeBatchContinuation(batchId, sender);
+        router.routeBatchContinuation(batchId, sender).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          void this.batchManager?.pauseBatch(batchId);
+          void router.sendDirect(source, sender, `Batch paused due to error: ${msg}`);
+          logger.error({ batchId, err }, 'routeBatchContinuation failed — batch paused (OB-1666)');
+        });
       }, 1000);
       this.batchTimers.add(handle);
     }
@@ -5467,7 +5488,19 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             const handle = setTimeout(() => {
               this.batchTimers.delete(handle);
               if (this.state === 'shutdown') return;
-              void router.routeBatchContinuation(activeBatchId, batchSender);
+              router.routeBatchContinuation(activeBatchId, batchSender).catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                void this.batchManager?.pauseBatch(activeBatchId);
+                void router.sendDirect(
+                  batchSource,
+                  batchSender,
+                  `Batch paused due to error: ${msg}`,
+                );
+                logger.error(
+                  { batchId: activeBatchId, err },
+                  'routeBatchContinuation failed — batch paused (OB-1666)',
+                );
+              });
             }, 2000);
             this.batchTimers.add(handle);
           };
