@@ -885,6 +885,21 @@ export class DotFolderManager {
   }
 
   /**
+   * Returns true if memory.md is missing or was last modified more than
+   * `maxAgeMs` milliseconds ago (default: 24 hours).
+   * Used on startup to decide whether to regenerate from SQLite data (OB-1617).
+   */
+  public async isMemoryStale(maxAgeMs = 24 * 60 * 60 * 1000): Promise<boolean> {
+    try {
+      const stat = await fs.stat(this.getMemoryFilePath());
+      return Date.now() - stat.mtimeMs > maxAgeMs;
+    } catch {
+      // File does not exist
+      return true;
+    }
+  }
+
+  /**
    * Read the Master's curated memory from `.openbridge/context/memory.md`.
    * Returns null if the file does not exist.
    */

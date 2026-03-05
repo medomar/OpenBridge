@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 21 | **Fixed:** 121 | **Last Audit:** 2026-03-05
+> **Open:** 20 | **Fixed:** 122 | **Last Audit:** 2026-03-05
 > **Current focus:** Data integrity fixes (Phase 97) + community-inspired improvements (v0.0.13+).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md) | [V21 archive](archive/v21/FINDINGS-v21.md)
 
@@ -24,7 +24,7 @@ Issues discovered by auditing the `.openbridge/openbridge.db` runtime data. Feat
 | OB-F92 | Learnings `total_turns` always 0 — model efficiency data blind | 🟠 High   | `recordLearning()` hardcodes `0` for turns; `masterTaskToMemoryTask()` skips `turns_used`    | `src/master/master-manager.ts` (lines 2987, 3193, 403–428)        | Open     |
 | OB-F93 | Prompt evolution never activates (usage_count=0)               | 🟡 Medium | `seedPromptLibrary()` exists but is never called — only `master-system` prompt seeded        | `src/master/master-manager.ts`, `src/master/seed-prompts.ts`      | ✅ Fixed |
 | OB-F94 | Sub-master detection never triggered (0 rows)                  | 🟡 Medium | `detectSubProjects()` / `spawnSubMaster()` exist but are never called anywhere               | `src/master/master-manager.ts`                                    | ✅ Fixed |
-| OB-F95 | memory.md goes stale — fire-and-forget with no verification    | 🟠 High   | `triggerMemoryUpdate()` relies on Master AI writing — no verification, no retry, no fallback | `src/master/master-manager.ts`, `src/master/dotfolder-manager.ts` | Open     |
+| OB-F95 | memory.md goes stale — fire-and-forget with no verification    | 🟠 High   | `triggerMemoryUpdate()` relies on Master AI writing — no verification, no retry, no fallback | `src/master/master-manager.ts`, `src/master/dotfolder-manager.ts` | ✅ Fixed |
 
 ### Open Findings — Community-Inspired Improvements (v0.0.13)
 

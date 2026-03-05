@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 | **In Progress:** 0 | **Done:** 16 (1045 archived)
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 17 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -91,7 +91,7 @@
 | ------- | ------------------------------------------------------------------------------------------------- | --------------------------------- | ------- |
 | OB-1615 | Add verification after `triggerMemoryUpdate()` — check memory.md was actually written/modified    | `src/master/master-manager.ts`    | ✅ Done |
 | OB-1616 | Add fallback: if Master's Write fails, directly write memory.md from conversation history summary | `src/master/dotfolder-manager.ts` | ✅ Done |
-| OB-1617 | On startup, detect stale memory.md (>24h old or missing) and regenerate from SQLite data          | `src/master/dotfolder-manager.ts` | Pending |
+| OB-1617 | On startup, detect stale memory.md (>24h old or missing) and regenerate from SQLite data          | `src/master/dotfolder-manager.ts` | ✅ Done |
 
 ---
 
