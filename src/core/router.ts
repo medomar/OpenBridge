@@ -317,7 +317,7 @@ export class Router {
 
   constructor(
     defaultProvider: string,
-    _config?: RouterConfig,
+    private readonly routerConfig?: RouterConfig,
     auditLogger?: AuditLogger,
     metrics?: MetricsCollector,
   ) {
@@ -685,8 +685,8 @@ export class Router {
    * Sends: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or
    * '/allow {profile}' to grant, '/deny' to reject."
    *
-   * Registers a 60-second auto-deny timeout — cleared when the user replies with
-   * /allow or /deny via the respective command handlers (OB-1586, OB-1587).
+   * Registers an auto-deny timeout (default 180s, configurable via `router.escalationTimeoutMs`) —
+   * cleared when the user replies with /allow or /deny via the respective command handlers (OB-1586, OB-1587).
    */
   public async requestToolEscalation(
     workerId: string,
@@ -733,7 +733,8 @@ export class Router {
       }
     }
 
-    // Set 60-second auto-deny timeout — removes only this entry from the queue
+    // Set auto-deny timeout (default 180s, configurable via escalationTimeoutMs) — removes only this entry from the queue
+    const escalationTimeoutMs = this.routerConfig?.escalationTimeoutMs ?? 180_000;
     const timeoutHandle = setTimeout(() => {
       const queue = this.pendingEscalations.get(sender);
       if (!queue) return;
@@ -755,7 +756,7 @@ export class Router {
         { sender, workerId, requestedTools, currentProfile },
         'Tool escalation timed out — auto-denied',
       );
-    }, 60_000);
+    }, escalationTimeoutMs);
 
     const queueEntry: PendingEscalation = {
       workerId,
