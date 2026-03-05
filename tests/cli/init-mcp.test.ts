@@ -198,6 +198,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       'n', // skip MCP
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -213,6 +214,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       'N', // skip MCP
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -232,6 +234,7 @@ describe('runInit() — MCP interactive flow', () => {
       'npx -y @anthropic/canva-mcp-server', // command
       'done', // finish servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -263,6 +266,7 @@ describe('runInit() — MCP interactive flow', () => {
       'npx -y @anthropic/slack-mcp-server', // server 3 command
       'done', // finish servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -285,6 +289,7 @@ describe('runInit() — MCP interactive flow', () => {
       'y', // enable MCP
       'done', // no inline servers
       '~/.claude/claude_desktop_config.json', // configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -305,6 +310,7 @@ describe('runInit() — MCP interactive flow', () => {
       'y', // enable MCP
       'done', // no inline servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -324,6 +330,7 @@ describe('runInit() — MCP interactive flow', () => {
       'npx -y @anthropic/gmail-mcp-server', // command
       'done', // finish servers
       '~/.claude/claude_desktop_config.json', // configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });

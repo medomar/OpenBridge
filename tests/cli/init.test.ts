@@ -254,6 +254,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -279,6 +280,7 @@ describe('runInit', () => {
       '/home/user/my-project', // workspace path
       '5', // connector: Console
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -298,6 +300,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '', // empty = default console
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -318,6 +321,7 @@ describe('runInit', () => {
       '+555', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -334,6 +338,7 @@ describe('runInit', () => {
       '', // empty workspace path → defaults to cwd
       '', // connector (default console)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -354,6 +359,7 @@ describe('runInit', () => {
       '', // empty whitelist → warns and loops (step 7)
       'skip', // skip whitelist on retry (with security warning)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -398,6 +404,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -416,6 +423,7 @@ describe('runInit', () => {
       '2', // connector: Telegram
       '123456:ABC-DEF', // bot token
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -451,6 +459,7 @@ describe('runInit', () => {
       'MTk4NjIy.discord-token', // bot token
       '123456789012345678', // application ID
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -487,6 +496,7 @@ describe('runInit', () => {
       'some-bot-token', // bot token
       '', // skip application ID
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -509,6 +519,7 @@ describe('runInit', () => {
       '4', // connector: WebChat
       '8080', // custom port
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -530,6 +541,7 @@ describe('runInit', () => {
       '4', // connector: WebChat
       '', // empty → default port 3000
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -550,6 +562,7 @@ describe('runInit', () => {
       '2', // connector: Telegram
       'not-a-valid-token', // invalid token format
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -566,6 +579,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -580,6 +594,7 @@ describe('runInit', () => {
       '/home/user/project',
       '5', // connector: Console
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -599,6 +614,7 @@ describe('runInit', () => {
       'npx -y @anthropic/canva-mcp-server', // command
       'done', // finish servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -623,6 +639,7 @@ describe('runInit', () => {
       'y', // Enable MCP
       'done', // no servers
       '~/.claude/claude_desktop_config.json', // configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -643,6 +660,7 @@ describe('runInit', () => {
       'y', // Enable MCP
       'done', // no servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -664,6 +682,7 @@ describe('runInit', () => {
       'npx -y @anthropic/gmail-mcp-server', // server 2 command
       'done', // finish servers
       '', // skip configPath
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
