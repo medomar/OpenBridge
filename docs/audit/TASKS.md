@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 11 | **In Progress:** 0 | **Done:** 7 (1045 archived)
+> **Pending:** 10 | **In Progress:** 0 | **Done:** 8 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -61,7 +61,7 @@
 | ------- | ------------------------------------------------------------------------------------- | ------------------------------ | ------- |
 | OB-1605 | Call `closeActiveSessions()` in `MasterManager.shutdown()` after saving session state | `src/master/master-manager.ts` | ✅ Done |
 | OB-1606 | Call `closeActiveSessions()` in `Bridge.shutdown()` as final cleanup step             | `src/core/bridge.ts`           | ✅ Done |
-| OB-1607 | On startup, mark stale sessions (active but `last_used_at` > 24h ago) as `expired`    | `src/memory/index.ts`          | Pending |
+| OB-1607 | On startup, mark stale sessions (active but `last_used_at` > 24h ago) as `expired`    | `src/memory/index.ts`          | ✅ Done |
 
 ### OB-F92 — Learnings turns tracking broken (hardcoded zeros)
 
