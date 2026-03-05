@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 39 | **In Progress:** 0 | **Done:** 242 (112 archived)
+> **Pending:** 38 | **In Progress:** 0 | **Done:** 243 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -547,7 +547,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                      | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 6   | OB-1653 | Investigate `buildSearchQuery()` in `src/core/knowledge-retriever.ts` — log the actual FTS5 query string being generated for multi-word queries vs single-character queries. Add debug logging to identify tokenization issues                   | ✅ Done   |
-| 7   | OB-1654 | Fix FTS5 query construction — natural language questions ("Can you deploy and send the link?") likely fail because of stop-word filtering or over-quoting. Ensure individual content words are OR-joined, not AND-joined                         | ◻ Pending |
+| 7   | OB-1654 | Fix FTS5 query construction — natural language questions ("Can you deploy and send the link?") likely fail because of stop-word filtering or over-quoting. Ensure individual content words are OR-joined, not AND-joined                         | ✅ Done   |
 | 8   | OB-1655 | Add fallback query strategy — if initial FTS5 query returns 0 results, retry with individual keywords extracted from the query (top 3 content words by length). Log "RAG fallback: retrying with individual keywords"                            | ◻ Pending |
 | 9   | OB-1656 | Skip RAG for messages shorter than 3 characters — single-character inputs ("1", "3") should bypass RAG entirely. Return empty results with `confidence: 0` immediately                                                                           | ◻ Pending |
 | 10  | OB-1657 | Add tests: (1) multi-word query returns results when chunks exist, (2) single-char query skipped, (3) fallback retry triggers on zero results, (4) FTS5 query logged for debugging. At least 4 tests in `tests/core/knowledge-retriever.test.ts` | ◻ Pending |

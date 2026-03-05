@@ -499,12 +499,12 @@ describe('retrieval.ts', () => {
 
     it('handles multiple tokens separated by spaces', () => {
       const result = sanitizeFts5Query('hello world');
-      expect(result).toBe('"hello" "world"');
+      expect(result).toBe('"hello" OR "world"');
     });
 
     it('handles mixed text with special characters', () => {
       const result = sanitizeFts5Query('hello (world)');
-      expect(result).toBe('"hello" "world"');
+      expect(result).toBe('"hello" OR "world"');
     });
 
     it('preserves plain words without modification other than quoting', () => {
