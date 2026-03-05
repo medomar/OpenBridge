@@ -198,8 +198,8 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
   // ── Prompt length scaling ──────────────────────────────────────────
 
   describe('Prompt length scaling', () => {
-    it('scales maxTurns for code-edit profile: baseline(15) + ceil(2000/1000)=2 → 17', async () => {
-      // code-edit baseline = 15, 2000-char prompt → extra = 2 → adaptive = 17
+    it('scales maxTurns for code-edit profile: baseline(15) + ceil(2000/1000)=2 + longExtra(5) → 22', async () => {
+      // code-edit baseline = 15, 2000-char prompt → promptExtra=2, longExtra=5 → adaptive = 22
       const prompt = 'A'.repeat(2000);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -207,11 +207,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(17);
+      expect(workerCall?.maxTurns).toBe(22);
     });
 
-    it('scales maxTurns for read-only profile: baseline(10) + ceil(5000/1000)=5 → 15', async () => {
-      // read-only baseline = 10, 5000-char prompt → extra = 5 → adaptive = 15
+    it('scales maxTurns for read-only profile: baseline(10) + ceil(5000/1000)=5 + longExtra(5) → 20', async () => {
+      // read-only baseline = 10, 5000-char prompt → promptExtra=5, longExtra=5 → adaptive = 20 (cap=25)
       const prompt = 'B'.repeat(5000);
       const marker = `[SPAWN:read-only]${JSON.stringify({ prompt, model: 'haiku' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -219,11 +219,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(15);
+      expect(workerCall?.maxTurns).toBe(20);
     });
 
-    it('scales maxTurns for full-access profile: baseline(15) + ceil(3000/1000)=3 → 18', async () => {
-      // full-access baseline = 15, 3000-char prompt → extra = 3 → adaptive = 18
+    it('scales maxTurns for full-access profile: baseline(15) + ceil(3000/1000)=3 + longExtra(5) → 23', async () => {
+      // full-access baseline = 15, 3000-char prompt → promptExtra=3, longExtra=5 → adaptive = 23
       const prompt = 'C'.repeat(3000);
       const marker = `[SPAWN:full-access]${JSON.stringify({ prompt, model: 'opus' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -231,13 +231,12 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(18);
+      expect(workerCall?.maxTurns).toBe(23);
     });
 
-    it('adds 1 turn for a minimal valid prompt (ceil always rounds a non-zero fraction up)', async () => {
-      // code-edit baseline = 15, 1-char prompt → extra = ceil(1/1000) = 1 → adaptive = 16
-      // Note: the schema requires prompt.length >= 1, so 0-char prompts are rejected.
-      // Even the shortest valid prompt contributes +1 turn due to Math.ceil rounding up.
+    it('adds 1 turn for a minimal valid prompt with no long-prompt bonus (≤200 chars)', async () => {
+      // code-edit baseline = 15, 1-char prompt → promptExtra=ceil(1/1000)=1, longExtra=0 → adaptive = 16
+      // Prompts of ≤200 chars do NOT trigger the OB-1677 long-prompt bonus.
       const prompt = 'A'; // 1 char
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -245,11 +244,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(16); // 15 + ceil(1/1000)=1 = 16
+      expect(workerCall?.maxTurns).toBe(16); // 15 + 1 = 16
     });
 
-    it('adds 1 turn for a sub-1000-char prompt (ceil rounds up a fractional value)', async () => {
-      // code-edit baseline = 15, 999-char prompt → extra = ceil(0.999) = 1 → adaptive = 16
+    it('adds 1 promptExtra turn + 5 longExtra turns for 999-char prompt', async () => {
+      // code-edit baseline = 15, 999-char prompt → promptExtra=ceil(0.999)=1, longExtra=5 → adaptive = 21
       const prompt = 'A'.repeat(999);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -257,11 +256,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(16); // 15 + 1 = 16
+      expect(workerCall?.maxTurns).toBe(21); // 15 + 1 + 5 = 21
     });
 
-    it('adds exactly 1 turn for a 1000-char prompt (ceil(1000/1000)=1)', async () => {
-      // code-edit baseline = 15, 1000-char prompt → extra = ceil(1) = 1 → adaptive = 16
+    it('adds 1 promptExtra turn + 5 longExtra turns for 1000-char prompt', async () => {
+      // code-edit baseline = 15, 1000-char prompt → promptExtra=ceil(1)=1, longExtra=5 → adaptive = 21
       const prompt = 'A'.repeat(1000);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -269,7 +268,7 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(16); // 15 + 1 = 16
+      expect(workerCall?.maxTurns).toBe(21); // 15 + 1 + 5 = 21
     });
   });
 
@@ -324,11 +323,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
     });
   });
 
-  // ── 50-turn cap on adaptive ───────────────────────────────────────
+  // ── Profile-specific caps on adaptive calculation ──────────────────
 
-  describe('50-turn cap on adaptive calculation', () => {
-    it('caps at 50 when code-edit + very long prompt would exceed the limit', async () => {
-      // code-edit baseline = 15, 40 000-char prompt → 15 + 40 = 55 → capped at 50
+  describe('Profile-specific cap on adaptive calculation', () => {
+    it('caps at 40 for code-edit when long prompt would exceed the code-edit limit', async () => {
+      // code-edit cap = 40, 40 000-char prompt → 15 + 40 + 5 = 60 → capped at 40
       const prompt = 'A'.repeat(40_000);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -336,11 +335,11 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(50);
+      expect(workerCall?.maxTurns).toBe(40);
     });
 
-    it('caps at 50 when read-only + very long prompt would exceed the limit', async () => {
-      // read-only baseline = 10, 50 000-char prompt → 10 + 50 = 60 → capped at 50
+    it('caps at 25 for read-only when long prompt would exceed the read-only limit', async () => {
+      // read-only cap = 25, 50 000-char prompt → 10 + 50 + 5 = 65 → capped at 25
       const prompt = 'B'.repeat(50_000);
       const marker = `[SPAWN:read-only]${JSON.stringify({ prompt, model: 'haiku' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
@@ -348,31 +347,110 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(50);
+      expect(workerCall?.maxTurns).toBe(25);
     });
 
-    it('returns exactly 50 when prompt length hits the cap boundary', async () => {
-      // code-edit baseline = 15, 35 000-char prompt → 15 + 35 = 50 (exactly at cap)
-      const prompt = 'A'.repeat(35_000);
+    it('returns exactly 40 (code-edit cap) when prompt hits the boundary', async () => {
+      // code-edit cap = 40: baseline(15) + promptExtra(20) + longExtra(5) = 40 exactly
+      // → 20 000-char prompt: ceil(20000/1000) = 20, > 200 → longExtra = 5
+      const prompt = 'A'.repeat(20_000);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
 
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(50);
+      expect(workerCall?.maxTurns).toBe(40);
     });
 
-    it('does not cap when prompt length stays just under the cap boundary', async () => {
-      // code-edit baseline = 15, 34 000-char prompt → 15 + 34 = 49 (one under the cap)
-      const prompt = 'A'.repeat(34_000);
+    it('does not cap when prompt length stays just under the code-edit cap boundary', async () => {
+      // code-edit cap = 40: baseline(15) + promptExtra(19) + longExtra(5) = 39 (one under cap)
+      // → 19 000-char prompt: ceil(19000/1000) = 19
+      const prompt = 'A'.repeat(19_000);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
 
       await masterManager.processMessage(makeMessage('do something'));
 
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.maxTurns).toBe(49);
+      expect(workerCall?.maxTurns).toBe(39);
+    });
+  });
+
+  // ── OB-1677: Long prompt and keyword bonuses ───────────────────────
+
+  describe('OB-1677: Long prompt and keyword bonuses', () => {
+    it('adds +5 turns for prompts longer than 200 chars', async () => {
+      // 201-char code-edit: baseline(15) + promptExtra(1) + longExtra(5) = 21
+      // vs 200-char: baseline(15) + promptExtra(1) + 0 = 16
+      const prompt = 'A'.repeat(201);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(21); // 15 + 1 + 5 = 21
+    });
+
+    it('does NOT add +5 turns for prompts of exactly 200 chars', async () => {
+      // 200-char code-edit: baseline(15) + promptExtra(1) + 0 (not > 200) = 16
+      const prompt = 'A'.repeat(200);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(16); // 15 + 1 + 0 = 16
+    });
+
+    it('adds +10 turns when prompt contains "thorough"', async () => {
+      // 500-char prompt with "thorough": baseline(15) + promptExtra(1) + longExtra(5) + keywordExtra(10) = 31
+      const prompt = 'Please do a thorough review of ' + 'A'.repeat(470);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(31); // 15 + 1 + 5 + 10 = 31
+    });
+
+    it('adds +10 turns when prompt contains "comprehensive"', async () => {
+      // 500-char prompt with "comprehensive": same formula → 31
+      const prompt = 'Give a comprehensive analysis of ' + 'A'.repeat(467);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(31); // 15 + 1 + 5 + 10 = 31
+    });
+
+    it('adds +10 turns when prompt contains "detailed"', async () => {
+      // 500-char prompt with "detailed": same formula → 31
+      const prompt = 'Provide a detailed explanation of ' + 'A'.repeat(467);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(31); // 15 + 1 + 5 + 10 = 31
+    });
+
+    it('keyword and long-prompt bonuses are both capped by profile max', async () => {
+      // 40 000-char code-edit + "thorough" → 15 + 40 + 5 + 10 = 70 → capped at 40 (code-edit cap)
+      const prompt = 'Please do a thorough analysis: ' + 'A'.repeat(39_969);
+      const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
+      setupSingleWorkerMocks(marker);
+
+      await masterManager.processMessage(makeMessage('do something'));
+
+      const workerCall = getSpawnCallOpts(1);
+      expect(workerCall?.maxTurns).toBe(40); // capped at code-edit limit
     });
   });
 });

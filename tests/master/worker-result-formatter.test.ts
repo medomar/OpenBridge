@@ -84,6 +84,61 @@ describe('Worker Result Formatter', () => {
       expect(result).toContain('output with spaces');
       expect(result).not.toContain('  output');
     });
+
+    it('appends PARTIAL warning when turnsExhausted is true (OB-1676)', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 5000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        turnsExhausted: true,
+        maxTurns: 15,
+      };
+
+      const result = formatWorkerResult(meta, 'Found the issue but ran out of turns');
+
+      expect(result).toContain('[PARTIAL — worker used all 15 turns, result may be incomplete]');
+      expect(result).toContain('Found the issue but ran out of turns');
+    });
+
+    it('does not append PARTIAL warning when turnsExhausted is absent', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 5000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+      };
+
+      const result = formatWorkerResult(meta, 'All done');
+
+      expect(result).not.toContain('[PARTIAL');
+    });
+
+    it('uses "?" for maxTurns in PARTIAL warning when maxTurns is not provided', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'read-only',
+        model: 'haiku',
+        durationMs: 3000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        turnsExhausted: true,
+      };
+
+      const result = formatWorkerResult(meta, 'Partial output');
+
+      expect(result).toContain('[PARTIAL — worker used all ? turns, result may be incomplete]');
+    });
   });
 
   describe('formatWorkerError', () => {
