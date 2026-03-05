@@ -6793,7 +6793,46 @@ ${currentContent}
     };
     this.workerRegistry.registerWorkerWithId(newWorkerId, escalatedManifest);
 
-    await this.spawnWorker(newWorkerId, upgradedMarker, index, customProfiles, attachments);
+    try {
+      await this.spawnWorker(newWorkerId, upgradedMarker, index, customProfiles, attachments);
+    } catch (spawnError) {
+      const errorMessage = spawnError instanceof Error ? spawnError.message : String(spawnError);
+      logger.error(
+        { originalWorkerId, newWorkerId, error: errorMessage },
+        'Worker re-spawn failed after grant',
+      );
+
+      // Mark escalated worker as failed (OB-1627).
+      const failedResult: AgentResult = {
+        exitCode: -1,
+        stdout: '',
+        stderr: errorMessage,
+        durationMs: 0,
+        retryCount: 0,
+      };
+      try {
+        this.workerRegistry.markFailed(newWorkerId, failedResult, 'respawn-failed');
+      } catch (markErr) {
+        logger.warn({ newWorkerId, err: markErr }, 'Failed to mark escalated worker as failed');
+      }
+
+      // Also attempt to mark original worker as failed (OB-1627).
+      // The original may already be in a terminal state — guard with try-catch.
+      try {
+        this.workerRegistry.markFailed(originalWorkerId, failedResult, 'respawn-failed');
+      } catch {
+        // Original worker already in a terminal state — this is expected.
+      }
+
+      // Notify the user so they can retry (OB-1627).
+      if (this.router && this.activeMessage) {
+        void this.router.sendDirect(
+          this.activeMessage.source,
+          this.activeMessage.sender,
+          'Worker re-spawn failed after grant, please retry',
+        );
+      }
+    }
   }
 
   /**
