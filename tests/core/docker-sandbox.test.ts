@@ -270,3 +270,132 @@ describe('DockerSandbox.cleanupDanglingContainers (OB-1554)', () => {
     expect(removed).toBe(0);
   });
 });
+
+// ── OB-1559: comprehensive Docker sandbox tests ──────────────────────────────
+
+describe('DockerSandbox — daemon availability (OB-1559)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('isAvailable() calls docker info to check daemon', async () => {
+    mockResponseQueue = [{ stdout: 'Docker daemon info' }];
+    const sandbox = new DockerSandbox();
+    const result = await sandbox.isAvailable();
+    expect(result).toBe(true);
+    expect(capturedArgs[0]).toBe('info');
+  });
+
+  it('isAvailable() returns false when docker info fails', async () => {
+    const err = Object.assign(new Error('Cannot connect to the Docker daemon'), { code: 1 });
+    mockResponseQueue = [{ error: err }];
+    const sandbox = new DockerSandbox();
+    const result = await sandbox.isAvailable();
+    expect(result).toBe(false);
+  });
+});
+
+describe('DockerSandbox — createContainer volume mounts (OB-1559)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('includes --volume flag with :ro suffix for read-only workspace mount', async () => {
+    const args = await callCreate({
+      mounts: [{ host: '/my/workspace', container: '/workspace', readOnly: true }],
+    });
+    const idx = args.indexOf('--volume');
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe('/my/workspace:/workspace:ro');
+  });
+
+  it('includes --volume flag WITHOUT :ro suffix for read-write .openbridge mount', async () => {
+    const args = await callCreate({
+      mounts: [
+        { host: '/my/workspace', container: '/workspace', readOnly: true },
+        { host: '/my/workspace/.openbridge', container: '/workspace/.openbridge', readOnly: false },
+      ],
+    });
+
+    const volumes: string[] = [];
+    for (let i = 0; i < args.length - 1; i++) {
+      if (args[i] === '--volume') volumes.push(args[i + 1]);
+    }
+
+    const obVolume = volumes.find((v) => v.includes('.openbridge'));
+    expect(obVolume).toBeDefined();
+    expect(obVolume).not.toMatch(/:ro$/);
+  });
+
+  it('image name is included as a positional argument after options', async () => {
+    const args = await callCreate({});
+    expect(args).toContain('openbridge-worker:latest');
+  });
+});
+
+describe('DockerSandbox — env vars (OB-1559)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('passes env vars as --env KEY=VALUE flags', async () => {
+    const args = await callCreate({ env: { FOO: 'bar', HELLO: 'world' } });
+
+    const envPairs: string[] = [];
+    for (let i = 0; i < args.length - 1; i++) {
+      if (args[i] === '--env') envPairs.push(args[i + 1]);
+    }
+
+    expect(envPairs).toContain('FOO=bar');
+    expect(envPairs).toContain('HELLO=world');
+  });
+
+  it('does not include --env when no env vars are provided', async () => {
+    const args = await callCreate({ env: {} });
+    expect(args).not.toContain('--env');
+  });
+
+  it('each env var gets its own --env flag', async () => {
+    const args = await callCreate({ env: { A: '1', B: '2', C: '3' } });
+    const envFlagCount = args.filter((a) => a === '--env').length;
+    expect(envFlagCount).toBe(3);
+  });
+});
+
+describe('DockerSandbox — cleanup after exit (OB-1559)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('stopContainer calls docker stop with the container ID', async () => {
+    const sandbox = new DockerSandbox();
+    await sandbox.stopContainer('abc123def456');
+    expect(allCapturedArgs[0][0]).toBe('stop');
+    expect(allCapturedArgs[0]).toContain('abc123def456');
+  });
+
+  it('removeContainer calls docker rm with the container ID', async () => {
+    const sandbox = new DockerSandbox();
+    await sandbox.removeContainer('abc123def456');
+    expect(allCapturedArgs[0][0]).toBe('rm');
+    expect(allCapturedArgs[0]).toContain('abc123def456');
+  });
+
+  it('removeContainer with force=true includes --force flag', async () => {
+    const sandbox = new DockerSandbox();
+    await sandbox.removeContainer('abc123def456', true);
+    expect(allCapturedArgs[0]).toContain('--force');
+  });
+});
