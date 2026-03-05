@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 28 | **In Progress:** 0 | **Done:** 253 (112 archived)
+> **Pending:** 27 | **In Progress:** 0 | **Done:** 254 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -577,7 +577,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
 | 1   | OB-1664 | Add `batchTimers: Set<NodeJS.Timeout>` field to MasterManager. Store each `setTimeout` handle from batch continuation (lines ~2518, ~2544, ~2561, ~5328 in `src/master/master-manager.ts`). Remove handle from set when timer fires                          | ✅ Done   |
-| 2   | OB-1665 | In `MasterManager.shutdown()`, call `clearTimeout()` on all remaining handles in `batchTimers` set. Add guard in timer callback: `if (this.state === 'shutdown') return;` to prevent firing into destroyed system                                            | ◻ Pending |
+| 2   | OB-1665 | In `MasterManager.shutdown()`, call `clearTimeout()` on all remaining handles in `batchTimers` set. Add guard in timer callback: `if (this.state === 'shutdown') return;` to prevent firing into destroyed system                                            | ✅ Done   |
 | 3   | OB-1666 | Replace all `void router.routeBatchContinuation(...)` calls with `.catch()` handlers — on catch, call `batchManager.pauseBatch()` and notify user "Batch paused due to error: {message}". Lines ~2519, ~2545, ~2562, ~5329 in `src/master/master-manager.ts` | ◻ Pending |
 | 4   | OB-1667 | Include `senderInfo: { sender, source }` in persisted batch state JSON (`src/master/batch-manager.ts`). On `initialize()` reload, restore `batchSenderInfo` map from persisted state so batch messages route correctly after restart                         | ◻ Pending |
 | 5   | OB-1668 | Rename `getActiveBatchId()` to `getCurrentBatchId()` in `src/master/batch-manager.ts` to signal it includes paused batches. Add JSDoc clarifying difference from `isActive()`. Update all callers                                                            | ◻ Pending |

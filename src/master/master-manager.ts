@@ -2528,6 +2528,7 @@ export class MasterManager {
         const router = this.router;
         const handle = setTimeout(() => {
           this.batchTimers.delete(handle);
+          if (this.state === 'shutdown') return;
           void router.routeBatchContinuation(batchId, sender);
         }, 500);
         this.batchTimers.add(handle);
@@ -2556,6 +2557,7 @@ export class MasterManager {
         const router = this.router;
         const handle = setTimeout(() => {
           this.batchTimers.delete(handle);
+          if (this.state === 'shutdown') return;
           void router.routeBatchContinuation(batchId, sender);
         }, 1000);
         this.batchTimers.add(handle);
@@ -2575,6 +2577,7 @@ export class MasterManager {
       const router = this.router;
       const handle = setTimeout(() => {
         this.batchTimers.delete(handle);
+        if (this.state === 'shutdown') return;
         void router.routeBatchContinuation(batchId, sender);
       }, 1000);
       this.batchTimers.add(handle);
@@ -5463,6 +5466,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           const scheduleNext = (): void => {
             const handle = setTimeout(() => {
               this.batchTimers.delete(handle);
+              if (this.state === 'shutdown') return;
               void router.routeBatchContinuation(activeBatchId, batchSender);
             }, 2000);
             this.batchTimers.add(handle);
@@ -6572,6 +6576,12 @@ ${currentContent}
 
     // Stop idle detection timer
     this.stopIdleDetection();
+
+    // Clear all pending batch continuation timers (OB-1665)
+    for (const handle of this.batchTimers) {
+      clearTimeout(handle);
+    }
+    this.batchTimers.clear();
 
     // Shutdown delegation coordinator
     this.delegationCoordinator.shutdown();
