@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 72 | **In Progress:** 0 | **Done:** 209 (112 archived)
+> **Pending:** 71 | **In Progress:** 0 | **Done:** 210 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -472,7 +472,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 9   | OB-1553 | Wire sandbox into AgentRunner.spawn() — when mode is docker, spawn worker inside container. Build docker run command with volumes, env vars (sanitized), limits, and worker command. Capture stdout/stderr                                                                                                  | ✅ Done   |
 | 10  | OB-1554 | Add container cleanup on worker completion — stop and remove container after exit. Timeout: maxTurns \* 30s force-kills container. Clean dangling containers on bridge startup                                                                                                                              | ✅ Done   |
 | 11  | OB-1555 | Pass sanitized env vars through sandbox — use --env-file or -e flags for allowed vars only. Integrate with env sanitizer from Phase 85                                                                                                                                                                      | ✅ Done   |
-| 12  | OB-1556 | Forward MCP config into container — mount temp MCP config as read-only. Pass --mcp-config inside container. Maintain per-worker isolation                                                                                                                                                                   | ◻ Pending |
+| 12  | OB-1556 | Forward MCP config into container — mount temp MCP config as read-only. Pass --mcp-config inside container. Maintain per-worker isolation                                                                                                                                                                   | ✅ Done   |
 | 13  | OB-1557 | Add startup health check — verify Docker daemon running before enabling sandbox. If unavailable, warn and fall back to unsandboxed. Recheck every 5 min                                                                                                                                                     | ◻ Pending |
 | 14  | OB-1558 | Add fallback in AgentRunner — if docker mode set but Docker unavailable, fall back to direct spawn with warning. Never silently fail                                                                                                                                                                        | ◻ Pending |
 | 15  | OB-1559 | Add tests in `tests/core/docker-sandbox.test.ts` — test: (1) isAvailable checks daemon, (2) createContainer builds correct command, (3) workspace read-only, (4) .openbridge read-write, (5) env vars sanitized, (6) resource limits applied, (7) cleanup after exit. At least 7 tests (mock child_process) | ◻ Pending |

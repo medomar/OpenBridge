@@ -1064,6 +1064,7 @@ export class AgentRunner {
     timeout?: number,
     maxTurns?: number,
     securityConfig?: SecurityConfig,
+    mcpConfigPath?: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const dockerSandbox = new DockerSandbox();
 
@@ -1091,6 +1092,27 @@ export class AgentRunner {
     const containerName = `ob-worker-${randomUUID().slice(0, 8)}`;
     const mounts = DockerSandbox.buildWorkspaceMounts({ workspacePath });
 
+    // MCP config isolation (OB-1556): if a per-worker MCP config file was written
+    // on the host, mount it read-only into the container and rewrite the CLI args
+    // so the agent references the container path instead of the host path.
+    const CONTAINER_MCP_CONFIG_PATH = '/tmp/ob-mcp-config.json';
+    let containerArgs = config.args;
+    if (mcpConfigPath) {
+      mounts.push({
+        host: mcpConfigPath,
+        container: CONTAINER_MCP_CONFIG_PATH,
+        readOnly: true,
+      });
+      // Replace the host path with the container path in the arg list.
+      containerArgs = config.args.map((arg) =>
+        arg === mcpConfigPath ? CONTAINER_MCP_CONFIG_PATH : arg,
+      );
+      logger.debug(
+        { mcpConfigPath, containerPath: CONTAINER_MCP_CONFIG_PATH },
+        'Mounting MCP config into Docker container',
+      );
+    }
+
     // Compute exec timeout: use explicit timeout when provided, otherwise derive
     // from maxTurns (30 seconds per turn) so long-running workers are eventually
     // force-killed by the exec call.  Fall back to 5 minutes if neither is set.
@@ -1117,7 +1139,7 @@ export class AgentRunner {
 
       await dockerSandbox.startContainer(containerId);
 
-      const result = await dockerSandbox.exec(containerId, [config.binary, ...config.args], {
+      const result = await dockerSandbox.exec(containerId, [config.binary, ...containerArgs], {
         cwd: '/workspace',
         timeout: effectiveTimeout,
       });
@@ -1194,6 +1216,7 @@ export class AgentRunner {
             opts.timeout,
             opts.maxTurns,
             opts.securityConfig,
+            opts.mcpConfigPath,
           );
         } else {
           const { promise: execPromise } = execOnce(
