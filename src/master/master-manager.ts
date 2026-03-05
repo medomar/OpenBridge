@@ -3152,6 +3152,7 @@ export class MasterManager {
     normalizedKey: string,
     turnBudgetSufficient: boolean,
     timedOut: boolean,
+    turnsUsed?: number,
   ): Promise<void> {
     const entry = this.classificationCache.get(normalizedKey);
     if (!entry) return;
@@ -3191,7 +3192,7 @@ export class MasterManager {
             'classification',
             entry.result.class,
             turnBudgetSufficient,
-            0,
+            turnsUsed ?? 0,
             0,
           );
         } catch (err) {
@@ -5429,7 +5430,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       }
 
       // Record classification feedback: task succeeded → turn budget was sufficient
-      void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
+      void this.recordClassificationFeedback(
+        this.normalizeForCache(message.content),
+        true,
+        false,
+        result.turnsUsed,
+      );
 
       // Increment completed task counter and trigger prompt evolution every 50 tasks (OB-734)
       this.onTaskCompleted();
