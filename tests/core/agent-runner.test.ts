@@ -21,10 +21,30 @@ import {
   resolveProfile,
   resolveTools,
   manifestToSpawnOptions,
+  getProfileCostCap,
+  PROFILE_COST_CAPS,
+  checkProfileCostSpike,
+  getProfileCostAverages,
+  resetProfileCostAverages,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import { BUILT_IN_PROFILES } from '../../src/types/agent.js';
 import type { TaskManifest } from '../../src/types/agent.js';
+
+// ── Mock logger (captures warn calls for cost-spike tests) ──────────
+
+const { mockLoggerWarn } = vi.hoisted(() => ({ mockLoggerWarn: vi.fn() }));
+
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: mockLoggerWarn,
+    error: vi.fn(),
+    trace: vi.fn(),
+  }),
+  setLogLevel: vi.fn(),
+}));
 
 // ── Mock node:fs/promises ───────────────────────────────────────────
 
@@ -2947,5 +2967,117 @@ describe('AgentRunner.spawnWithHandle()', () => {
 
     // Promise should resolve because exit code was 0
     await handle.promise;
+  });
+});
+
+// ── Cost controls (OB-F101, OB-1673) ─────────────────────────────────
+
+describe('getProfileCostCap()', () => {
+  it('returns the default cap for each known profile', () => {
+    expect(getProfileCostCap('read-only')).toBe(PROFILE_COST_CAPS['read-only']);
+    expect(getProfileCostCap('code-edit')).toBe(PROFILE_COST_CAPS['code-edit']);
+    expect(getProfileCostCap('code-audit')).toBe(PROFILE_COST_CAPS['code-audit']);
+    expect(getProfileCostCap('full-access')).toBe(PROFILE_COST_CAPS['full-access']);
+  });
+
+  it('returns the override value when workerCostCaps is provided for the profile', () => {
+    const overrides = { 'read-only': 0.25, 'code-edit': 0.5 };
+    expect(getProfileCostCap('read-only', overrides)).toBe(0.25);
+    expect(getProfileCostCap('code-edit', overrides)).toBe(0.5);
+    // Profile without override falls back to the default
+    expect(getProfileCostCap('full-access', overrides)).toBe(PROFILE_COST_CAPS['full-access']);
+  });
+
+  it('returns undefined for an unknown profile with no overrides', () => {
+    expect(getProfileCostCap('unknown-profile')).toBeUndefined();
+    expect(getProfileCostCap(undefined)).toBeUndefined();
+  });
+});
+
+describe('checkProfileCostSpike() — average tracking and 10x warning', () => {
+  beforeEach(() => {
+    resetProfileCostAverages();
+    mockLoggerWarn.mockClear();
+  });
+
+  it('accumulates cost averages per profile across multiple calls', () => {
+    checkProfileCostSpike('read-only', 0.1);
+    checkProfileCostSpike('read-only', 0.3);
+    checkProfileCostSpike('read-only', 0.2);
+
+    const averages = getProfileCostAverages();
+    expect(averages['read-only']).toBeDefined();
+    expect(averages['read-only']!.count).toBe(3);
+    expect(averages['read-only']!.avg).toBeCloseTo(0.2, 5);
+  });
+
+  it('tracks different profiles independently', () => {
+    checkProfileCostSpike('read-only', 0.1);
+    checkProfileCostSpike('code-edit', 0.5);
+    checkProfileCostSpike('code-edit', 0.7);
+
+    const averages = getProfileCostAverages();
+    expect(averages['read-only']!.count).toBe(1);
+    expect(averages['code-edit']!.count).toBe(2);
+    expect(averages['code-edit']!.avg).toBeCloseTo(0.6, 5);
+  });
+
+  it('logs a WARNING when a cost is more than 10x the running average', () => {
+    // Seed the accumulator with a low baseline
+    checkProfileCostSpike('read-only', 0.01);
+    checkProfileCostSpike('read-only', 0.01);
+    // avg ≈ $0.01; a $1.00 cost = 100x average → spike detected
+    checkProfileCostSpike('read-only', 1.0);
+
+    expect(mockLoggerWarn).toHaveBeenCalledOnce();
+    const [, msg] = mockLoggerWarn.mock.calls[0] as [unknown, string];
+    expect(msg).toMatch(/100x average/i);
+  });
+
+  it('does NOT log a warning when the cost is within 10x of the average', () => {
+    checkProfileCostSpike('code-edit', 0.1);
+    // 0.15 is 1.5x of 0.1 — no spike
+    checkProfileCostSpike('code-edit', 0.15);
+
+    expect(mockLoggerWarn).not.toHaveBeenCalled();
+  });
+
+  it('resetProfileCostAverages() clears all tracked profile data', () => {
+    checkProfileCostSpike('read-only', 0.5);
+    checkProfileCostSpike('code-edit', 0.8);
+    resetProfileCostAverages();
+
+    const averages = getProfileCostAverages();
+    expect(Object.keys(averages)).toHaveLength(0);
+  });
+});
+
+describe('streaming cost cap abort (OB-F101)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('aborts the streaming agent and rejects with AgentExhaustedError when cost cap is exceeded', async () => {
+    const runner = new AgentRunner();
+    // Tiny cap ($0.001): sonnet base cost ($0.01) exceeds it on the first chunk
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test task',
+      workspacePath: '/tmp/ws',
+      retries: 0,
+      profile: 'read-only',
+      workerCostCaps: { 'read-only': 0.001 },
+    });
+
+    const child = lastChild();
+    // Emit stdout — cost check fires in the streaming loop
+    child.stdout.emit('data', Buffer.from('some output from the agent'));
+
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+    // The process must have been killed
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
