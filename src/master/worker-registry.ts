@@ -15,6 +15,9 @@ import { z } from 'zod';
 import type { TaskManifest } from '../types/agent.js';
 import { TaskManifestSchema } from '../types/agent.js';
 import type { AgentResult } from '../core/agent-runner.js';
+import { createLogger } from '../core/logger.js';
+
+const logger = createLogger('worker-registry');
 
 // ── Worker Record Schema ────────────────────────────────────────
 
@@ -383,14 +386,40 @@ export class WorkerRegistry {
   }
 
   /**
+   * Get workers that are stuck in a non-terminal state (pending or running).
+   * These are workers that have not completed, failed, or been cancelled —
+   * they may be orphaned if their process has died without updating their status.
+   */
+  public getOrphanedWorkers(): WorkerRecord[] {
+    return this.getAllWorkers().filter((w) => w.status === 'pending' || w.status === 'running');
+  }
+
+  /**
    * Compute aggregated statistics across all workers in the registry.
    * Breaks down by status, profile, and model.
+   * Logs a WARNING if total workers != completed + failed + cancelled (orphans detected).
    */
   public getAggregatedStats(): WorkerStats {
     const workers = this.getAllWorkers();
     const completed = workers.filter((w) => w.status === 'completed');
     const failed = workers.filter((w) => w.status === 'failed');
     const cancelled = workers.filter((w) => w.status === 'cancelled');
+
+    // Audit: detect orphaned workers (not in any terminal state)
+    const terminalCount = completed.length + failed.length + cancelled.length;
+    if (workers.length !== terminalCount) {
+      const orphaned = this.getOrphanedWorkers();
+      const orphanDetails = orphaned.map((w) => `${w.id}(${w.status})`).join(', ');
+      logger.warn(
+        {
+          orphanCount: orphaned.length,
+          total: workers.length,
+          terminalCount,
+          orphanIds: orphaned.map((w) => w.id),
+        },
+        `Worker state audit: ${orphaned.length} orphaned worker(s) detected [${orphanDetails}]`,
+      );
+    }
 
     // Average duration across completed + failed (those with results)
     const withDuration = workers.filter((w) => w.result?.durationMs !== undefined);

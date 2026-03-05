@@ -732,5 +732,116 @@ describe('WorkerRegistry', () => {
       expect(stats.byModel['unknown']).toBeDefined();
       expect(stats.byModel['unknown'].total).toBe(1);
     });
+
+    it('logs WARNING when orphaned workers are detected', async () => {
+      // Import the logger module to spy on it
+      const loggerModule = await import('../../src/core/logger.js');
+      const warnSpy = vi.spyOn(loggerModule, 'createLogger').mockReturnValue({
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn(),
+        child: vi.fn(),
+      } as unknown as ReturnType<typeof loggerModule.createLogger>);
+
+      const reg = new WorkerRegistry();
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+      reg.markCompleted(w1, sampleResult);
+
+      // Add a worker stuck in running state (orphan)
+      const w2 = reg.addWorker(sampleManifest);
+      reg.markRunning(w2, 1002);
+
+      // Add a worker stuck in pending state (orphan)
+      const _w3 = reg.addWorker(sampleManifest);
+
+      const stats = reg.getAggregatedStats();
+      // total=3, terminal=1 → 2 orphans
+      expect(stats.totalWorkers).toBe(3);
+      expect(stats.completed).toBe(1);
+
+      warnSpy.mockRestore();
+    });
+
+    it('does not log WARNING when all workers are in terminal states', async () => {
+      const loggerModule = await import('../../src/core/logger.js');
+      const mockWarn = vi.fn();
+      const warnSpy = vi.spyOn(loggerModule, 'createLogger').mockReturnValue({
+        warn: mockWarn,
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn(),
+        child: vi.fn(),
+      } as unknown as ReturnType<typeof loggerModule.createLogger>);
+
+      const reg = new WorkerRegistry();
+      const w1 = reg.addWorker(sampleManifest);
+      reg.markRunning(w1, 1001);
+      reg.markCompleted(w1, sampleResult);
+
+      const w2 = reg.addWorker(sampleManifest);
+      reg.markRunning(w2, 1002);
+      reg.markFailed(w2, { ...sampleResult, exitCode: 1 }, 'error');
+
+      const stats = reg.getAggregatedStats();
+      // total=2, terminal=2 → no orphans → no warning
+      expect(stats.totalWorkers).toBe(2);
+
+      warnSpy.mockRestore();
+    });
+  });
+
+  // ── getOrphanedWorkers ──────────────────────────────────────────
+
+  describe('getOrphanedWorkers', () => {
+    it('returns empty array when registry is empty', () => {
+      expect(registry.getOrphanedWorkers()).toEqual([]);
+    });
+
+    it('returns pending and running workers as orphans', () => {
+      const w1 = registry.addWorker(sampleManifest); // pending
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002); // running
+      const w3 = registry.addWorker(sampleManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCompleted(w3, sampleResult); // completed — not orphaned
+
+      const orphans = registry.getOrphanedWorkers();
+      expect(orphans).toHaveLength(2);
+      expect(orphans.map((w) => w.id)).toContain(w1);
+      expect(orphans.map((w) => w.id)).toContain(w2);
+    });
+
+    it('returns empty array when all workers are in terminal states', () => {
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, sampleResult);
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1 }, 'err');
+
+      const w3 = registry.addWorker(sampleManifest);
+      registry.markRunning(w3, 1003);
+      registry.markCancelled(w3, 'cancelled');
+
+      expect(registry.getOrphanedWorkers()).toEqual([]);
+    });
+
+    it('correctly identifies orphaned worker statuses', () => {
+      registry.addWorker(sampleManifest); // pending
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002); // running
+
+      const orphans = registry.getOrphanedWorkers();
+      const statuses = orphans.map((w) => w.status);
+      expect(statuses).toContain('pending');
+      expect(statuses).toContain('running');
+    });
   });
 });
