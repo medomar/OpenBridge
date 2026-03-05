@@ -3226,6 +3226,41 @@ export class MasterManager {
       };
     }
 
+    // Length-based heuristic for complex-task — messages > 200 chars with planning/strategy
+    // language patterns are promoted to complex-task (25 turns) regardless of keyword matches
+    // (OB-1651). These are typically detailed briefs, multi-paragraph requests, or scoped
+    // planning documents that clearly require multi-step orchestration.
+    const planningPatterns = [
+      'plan',
+      'planning',
+      'strategy',
+      'strategic',
+      'vision',
+      'goals',
+      'objective',
+      'approach',
+      'framework',
+      'roadmap',
+      'milestone',
+      'proposal',
+      'initiative',
+      'project',
+      'scope',
+      'phase',
+      'timeline',
+      'deliverable',
+      'outcome',
+      'model',
+    ];
+    if (lower.length > 200 && planningPatterns.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'complex-task',
+        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
+        reason: 'length heuristic: long message with planning/strategy language → complex-task',
+      };
+    }
+
     // Complex task keywords — multi-step work requiring planning and delegation
     const complexKeywords = [
       'implement',
