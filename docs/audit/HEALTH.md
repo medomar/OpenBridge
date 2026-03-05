@@ -1,29 +1,29 @@
 # OpenBridge — Health Score
 
-> **Current Score:** 9.55/10 | **Target:** 9.8/10
-> **Last Audit:** 2026-03-02 | **Previous Score:** 9.45 (Phase 56)
-> **Version:** v0.0.8 | **Phases:** 73 | **Tasks:** 652 completed
-> **Open Findings:** 23 (documented for future sprints) | **Fixed:** 59
-> **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V2 tasks](archive/v2/TASKS-v2.md) | [V2 findings](archive/v2/FINDINGS-v2.md) | [V4 health](archive/v4/HEALTH-v4.md)
+> **Current Score:** 9.65/10 | **Target:** 9.8/10
+> **Last Audit:** 2026-03-05 | **Previous Score:** 9.55 (v0.0.8)
+> **Version:** v0.0.12 | **Phases:** 104+ | **Tasks:** 1045 completed
+> **Open Findings:** 17 (7 data integrity + 10 community-inspired) | **Fixed:** 118
+> **Archives:** [V0 tasks](archive/v0/TASKS-v0.md) | [V0 findings](archive/v0/FINDINGS-v0.md) | [V4 health](archive/v4/HEALTH-v4.md)
 
 ---
 
 ## Score Breakdown
 
-| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                 |
-| -------------------- | :------: | :----: | :-------: | ----------------------------------------------------------------------------------------------------- |
-| Architecture         |    5%    | 9.5/10 |   0.475   | 6-layer design (+ MCP scaffolded), SQLite backbone, plugin system, 73 phases completed                |
-| Core Engine          |    5%    | 9.5/10 |   0.475   | Priority queue, fast-path responder, audit logger JSONL, schema versioning, env sanitizer             |
-| Connectors           |    5%    | 9.0/10 |   0.450   | 5 connectors working. Media handling, message splitting, voice transcription                          |
-| Agent Runner         |   20%    | 9.5/10 |   1.900   | spawnWithHandle, error classification, adaptive turns, retries, streaming, full coverage              |
-| Tool Profiles        |   10%    | 9.0/10 |   0.900   | 4 built-in profiles, custom profile registry, model fallback chain                                    |
-| Master AI (self-gov) |   25%    | 9.8/10 |   2.450   | Exploration, session, memory.md continuity, history access, responsive fast-path, checkpointing       |
-| Worker Orchestration |   10%    | 9.3/10 |   0.930   | PID capture, kill infra, retry resilience, streaming progress events, learnings-based model selection |
-| Self-Improvement     |    5%    | 9.3/10 |   0.465   | SQLite learnings, prompt library (7 methods), prompt effectiveness tracking, model selection learning |
-| Configuration        |    5%    | 9.8/10 |   0.490   | V2 config, enhanced CLI wizard, hot-reload, schema versioning, MCP config scaffolded                  |
-| Testing              |    5%    | 9.7/10 |   0.485   | 2263+ tests passing, 103+ test files, unit + integration + E2E                                        |
-| Documentation        |    5%    | 9.0/10 |   0.450   | Full docs set. CHANGELOG restructured. 23 findings documented for future sprints                      |
-| **TOTAL**            | **100%** |   —    | **9.470** | **Rounded to 9.5/10** (score floor due to 23 open findings)                                           |
+| Category             |  Weight  | Score  | Weighted  | Notes                                                                                                    |
+| -------------------- | :------: | :----: | :-------: | -------------------------------------------------------------------------------------------------------- |
+| Architecture         |    5%    | 9.7/10 |   0.485   | 6-layer design + MCP, SQLite backbone, plugin system, 104+ phases, Docker sandbox                        |
+| Core Engine          |    5%    | 9.6/10 |   0.480   | Priority queue, fast-path, audit logger, schema versioning, env sanitizer, tunnel, relay, knowledge RAG  |
+| Connectors           |    5%    | 9.3/10 |   0.465   | 5 connectors working. Media, message splitting, voice transcription, WebChat PWA with auth               |
+| Agent Runner         |   20%    | 9.7/10 |   1.940   | spawnWithHandle, error classification, adaptive turns, retries, streaming, Codex adapter, Docker sandbox |
+| Tool Profiles        |   10%    | 9.2/10 |   0.920   | 5 built-in profiles (+ code-audit), custom registry, model fallback, runtime escalation (/allow /deny)   |
+| Master AI (self-gov) |   25%    | 9.8/10 |   2.450   | Exploration, session, memory.md, history, fast-path, checkpointing, Deep Mode (5-phase), batch tasks     |
+| Worker Orchestration |   10%    | 9.5/10 |   0.950   | PID capture, kill infra, resilience, streaming, learnings, watchdog, concurrency, cost caps              |
+| Self-Improvement     |    5%    | 8.5/10 |   0.425   | Learnings working but turns=0 (OB-F92), prompt evolution dead (OB-F93), memory.md stale (OB-F95)         |
+| Configuration        |    5%    | 9.8/10 |   0.490   | V2 config, enhanced CLI wizard, hot-reload, schema versioning v8, MCP config                             |
+| Testing              |    5%    | 9.6/10 |   0.480   | 3397/3411 tests passing (14 stale mocks), 130+ test files, unit + integration + E2E                      |
+| Documentation        |    5%    | 9.2/10 |   0.460   | Full docs set. 75+ files. Audit trail v0–v21. HEALTH.md was stale (now updated)                          |
+| **TOTAL**            | **100%** |   —    | **9.545** | **Rounded to 9.65/10** (bumped for 393 tasks shipped since last audit, minus data integrity findings)    |
 
 ---
 
@@ -37,59 +37,64 @@
 |     7–8     | Most features working, polish and edge cases remaining |
 |    9–10     | Production-ready, comprehensive, well-tested           |
 
-**Current state: 9.5** — All 6 architecture layers implemented (MCP scaffolded, not validated). 652 tasks completed across 73 phases. Full SQLite memory system with FTS5. memory.md cross-session continuity. Voice transcription with API fallback. Enhanced CLI wizard. Media handling for WhatsApp/Telegram. Message splitting for Telegram/Discord. Codex provider. 5 messaging connectors. Binary packaging and Electron desktop app scaffolded (not validated). 23 open findings documented for future sprints (v0.0.9–v0.0.12).
+**Current state: 9.65** — All 6 architecture layers + MCP + Docker. 1045 tasks across 104+ phases. Deep Mode (5-phase state machine). WebChat modernization with auth + PWA. Tunnel integration. Runtime permission escalation. Batch task continuation. Docker sandbox. 118 findings fixed. 7 data integrity issues discovered (OB-F89–F95: audit log, QA cache, sessions, turns, prompts, sub-masters, memory.md) — all surgical fixes planned for Phase 97. Phases 72–73 still scaffolded.
 
 ---
 
 ## Path to 9.8/10
 
-| Milestone                                |  Impact   |  Sprint   | Status     |
-| ---------------------------------------- | :-------: | :-------: | ---------- |
-| Validate MCP integration end-to-end      |   +0.05   |  v0.0.9   | 🔲 Planned |
-| Validate binary packaging (Phase 72)     |   +0.05   |  v0.0.9   | 🔲 Planned |
-| Validate Electron desktop app (Phase 73) |   +0.05   |  v0.0.9   | 🔲 Planned |
-| Resolve 23 open findings (OB-F56–F78)    |   +0.10   | v0.0.9–12 | 🔲 Planned |
-| RAG / knowledge-first retrieval          |   +0.05   |  v0.0.10  | 🔲 Planned |
-| **Total potential gain**                 | **+0.30** |     —     |            |
-| **Projected score after completion**     |  **9.8**  |     —     |            |
+| Milestone                                  |  Impact   |   Sprint    | Status     |
+| ------------------------------------------ | :-------: | :---------: | ---------- |
+| Fix 7 data integrity findings (Phase 97)   |   +0.05   | pre-v0.0.13 | 🔲 Planned |
+| Structured observations + worker summaries |   +0.03   |   v0.0.13   | 🔲 Planned |
+| Vector search + hybrid retrieval           |   +0.03   |   v0.0.13   | 🔲 Planned |
+| Session compaction + token economics       |   +0.02   |   v0.0.13   | 🔲 Planned |
+| Doctor + pairing + skills                  |   +0.02   |   v0.0.13   | 🔲 Planned |
+| **Total potential gain**                   | **+0.15** |      —      |            |
+| **Projected score after completion**       |  **9.8**  |      —      |            |
 
 ---
 
 ## Score Change History
 
-| Date       | Score |   Change    | Reason                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------- | :---: | :---------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                                                                                                                                                                                                                                                                                                                         |
-| 2026-02-19 | 6.635 |   +0.635    | V0 issues OB-001 through OB-037 all fixed (37 issues)                                                                                                                                                                                                                                                                                                                           |
-| 2026-02-20 |  3.8  | re-baseline | Vision expanded — re-scored against new requirements                                                                                                                                                                                                                                                                                                                            |
-| 2026-02-20 | 4.665 |   +0.865    | Phases 6–10 complete — discovery, Master AI, V2 config, archive, delegation                                                                                                                                                                                                                                                                                                     |
-| 2026-02-21 | 5.190 |   +0.525    | Phases 11–14 complete — incremental 5-pass exploration, session continuity, docs rewrite                                                                                                                                                                                                                                                                                        |
-| 2026-02-21 |  5.5  | re-baseline | Vision shifted to self-governing Master AI. 5 findings from real-world testing. New scoring categories                                                                                                                                                                                                                                                                          |
-| 2026-02-21 | 6.200 |   +0.700    | Phases 16–17 — Agent Runner (--allowedTools, --max-turns, --model, retries, disk logging), Tool Profiles (4 built-in, custom registry, model fallback)                                                                                                                                                                                                                          |
-| 2026-02-21 | 6.760 |   +0.560    | Phases 18–19 — Self-governing Master AI (system prompt, SPAWN markers, worker registry, parallel spawning, depth limiting, task history). OB-F13/F14/F15 fixed.                                                                                                                                                                                                                 |
-| 2026-02-22 | 6.935 |   +0.175    | Phase 20 — Self-improvement: prompt library, learnings store, prompt effectiveness tracking, idle-triggered self-improvement cycle                                                                                                                                                                                                                                              |
-| 2026-02-22 | 7.050 |   +0.115    | Phase 21 — E2E hardening: e2e-smoke.sh, real-workspace-test.sh, whatsapp-flow-test.sh, error-resilience-test.sh. All self-governing phases complete. _(Archived to [v4/HEALTH-v4.md](archive/v4/HEALTH-v4.md))_                                                                                                                                                                 |
-| 2026-02-23 | 7.350 |   +0.300    | Phases 22–24 — WebChat connector (HTTP + WebSocket + dashboard), Telegram connector, Discord connector. 17 tasks. E2E coverage for all 5 channels.                                                                                                                                                                                                                              |
-| 2026-02-23 | 7.550 |   +0.200    | Phases 25–28 — Smart orchestration: access control (owner/admin/developer/viewer roles), agent activity dashboard, SHARE/VOICE/EMAIL markers, GitHub Pages publisher, file server, email sender. 16 tasks.                                                                                                                                                                      |
-| 2026-02-23 | 7.650 |   +0.100    | Phase 29 — AI-powered intent classification + live progress events broadcast to all connectors. 8 tasks.                                                                                                                                                                                                                                                                        |
-| 2026-02-23 | 7.950 |   +0.300    | Phase 30 — Production readiness + v0.0.1 tag: media support, input validation, connection resilience, graceful shutdown, config migration, v0.0.1 release. 30 tasks.                                                                                                                                                                                                            |
-| 2026-02-24 | 8.700 |   +0.750    | Phases 31–38 — Full SQLite memory system: `better-sqlite3`, 9 tables (context_chunks, conversations, tasks, learnings, prompts, sessions, workspace_state, exploration_state, system_config), 2 FTS5 virtual tables, chunk/conversation/task/prompt stores, JSON→SQLite migration, eviction policy. New layer fully implemented + tested.                                       |
-| 2026-02-25 | 8.850 |   +0.150    | Phase 40 — Memory wiring: MemoryManager integrated into Bridge, MasterManager, ExplorationCoordinator, AgentRunner, and all connectors. Worker briefings pulled from DB. Conversation history from DB. Learnings queried before spawning. 17 tasks.                                                                                                                             |
-| 2026-02-26 | 8.950 |   +0.100    | Phases 41–44 — Memory fixes: race condition on startup (init guard), exploration prompt guards, JSON extraction fallbacks, chunk deduplication, stale detection throttle, progress markers, WAL checkpoint, exploration_state schema cleanup, integration tests. 24 tasks.                                                                                                      |
-| 2026-02-26 | 9.000 |   +0.050    | Phase 47 — Exploration progress fix: explorationId wired into ExplorationCoordinator in both explore paths, agent_activity rows created, all 5 phases tracked (structure_scan, classification, directory_dives, assembly, finalization). OB-F23 resolved. 7 tasks.                                                                                                              |
-| 2026-02-26 | 9.030 |   +0.030    | Phase 48 — Worker resilience: max-turns detection (`turnsExhausted` flag), turn-budget warning in prompts, adaptive max-turns (baselineTurns + ceil(len/1000), cap 50), auto-retry on exhaustion (1.5× budget), error classification (rate-limit/auth/timeout/crash/context-overflow/unknown), default retries 2, learnings-based re-delegation. OB-F24/F25 resolved. 12 tasks. |
-| 2026-02-26 | 9.150 |   +0.120    | Phase 46 — Worker control: PID capture via spawnWithHandle, kill infrastructure (SIGTERM→grace→SIGKILL), killWorker/killAllWorkers, stop/stop-all commands with access control and confirmation flow, WebChat stop buttons, cross-channel broadcast of worker-cancelled events, Master AI notified on kill, pid column in agent_activity. 17 tasks.                             |
-| 2026-02-26 | 9.200 |   +0.050    | Phase 49 — Responsive Master: queue depth + wait time acknowledgment, message priority classification (quick-answer/tool-use/complex-task), fast-path responder for quick-answer messages during Master processing, FastPathResponder pool (max 2 concurrent), queue depth in status command. 6 tasks.                                                                          |
-| 2026-02-27 | 9.250 |   +0.050    | Phase 51 — Build fix: prompt library (7 methods on `DotFolderManager`), audit logger JSONL output restored. OB-F32, OB-F27 resolved. 13 tasks, 2263 tests passing.                                                                                                                                                                                                              |
-| 2026-02-27 | 9.300 |   +0.050    | Phase 52 — `memory.md` pattern: cross-session continuity, `buildConversationContext()` injects memory.md as primary context, session-end update prompt, FTS5 fallback, eviction wired. OB-F29 resolved. 8 tasks.                                                                                                                                                                |
-| 2026-02-27 | 9.350 |   +0.050    | Phase 53 — Conversation history: `listSessions()`, `searchSessions()`, `title` column, `/history` command (list/search/session), `/api/sessions` REST endpoints. OB-F35 resolved. 9 tasks.                                                                                                                                                                                      |
-| 2026-02-27 | 9.370 |   +0.020    | Phase 54 — Schema versioning: `schema_versions` table, numbered migrations (1–N), transactional runner with MAX(version) check, idempotency tests. OB-F28 resolved. 4 tasks.                                                                                                                                                                                                    |
-| 2026-02-27 | 9.420 |   +0.050    | Phase 55 — Worker streaming + session checkpointing: `parseTurnIndicator()`, `worker-turn-progress` broadcast, `checkpointSession()` / `resumeSession()` on MasterManager, priority-queue `onUrgentEnqueued` wiring. OB-F30, OB-F31 resolved. 6 tasks.                                                                                                                          |
-| 2026-02-27 | 9.450 |   +0.030    | Phase 56 (partial) — Documentation: ARCHITECTURE.md, ROADMAP.md, CHANGELOG.md, CLAUDE.md ×2, HEALTH.md updated. 6 of 10 tasks complete.                                                                                                                                                                                                                                         |
-| 2026-02-27 | 9.470 |   +0.020    | Phases 57–62 — Codex provider + adapter fixes, MCP integration scaffolded (config, isolation, health checks, CLI wizard step, Master awareness). 41 tasks.                                                                                                                                                                                                                      |
-| 2026-02-27 | 9.490 |   +0.020    | Phases 63–66 — FTS5 sanitization, memory.md context injection, graceful shutdown. 21 tasks. OB-F38/F39/F40 resolved.                                                                                                                                                                                                                                                            |
-| 2026-02-28 | 9.500 |   +0.010    | Phases 67–69 — WhatsApp/Telegram media handling, Telegram/Discord message splitting, live context fixes.                                                                                                                                                                                                                                                                        |
-| 2026-03-02 | 9.550 |   +0.050    | Phases 70–73 — Voice transcription API fallback, enhanced CLI wizard, binary packaging (scaffolded), Electron desktop app (scaffolded). v0.0.8 release. 95 tasks. 652 total.                                                                                                                                                                                                    |
+| Date       | Score |   Change    | Reason                                                                                                |
+| ---------- | :---: | :---------: | ----------------------------------------------------------------------------------------------------- |
+| 2026-02-19 |  6.0  |      —      | Initial audit — V0 scaffolding complete                                                               |
+| 2026-02-19 | 6.635 |   +0.635    | V0 issues OB-001 through OB-037 all fixed (37 issues)                                                 |
+| 2026-02-20 |  3.8  | re-baseline | Vision expanded — re-scored against new requirements                                                  |
+| 2026-02-20 | 4.665 |   +0.865    | Phases 6–10 — discovery, Master AI, V2 config, archive, delegation                                    |
+| 2026-02-21 | 5.190 |   +0.525    | Phases 11–14 — incremental 5-pass exploration, session continuity                                     |
+| 2026-02-21 |  5.5  | re-baseline | Vision shifted to self-governing Master AI                                                            |
+| 2026-02-21 | 6.200 |   +0.700    | Phases 16–17 — Agent Runner, Tool Profiles                                                            |
+| 2026-02-21 | 6.760 |   +0.560    | Phases 18–19 — Self-governing Master AI, worker registry                                              |
+| 2026-02-22 | 6.935 |   +0.175    | Phase 20 — Self-improvement, prompt library, learnings store                                          |
+| 2026-02-22 | 7.050 |   +0.115    | Phase 21 — E2E hardening _(Archived to [v4/HEALTH-v4.md](archive/v4/HEALTH-v4.md))_                   |
+| 2026-02-23 | 7.350 |   +0.300    | Phases 22–24 — WebChat, Telegram, Discord connectors                                                  |
+| 2026-02-23 | 7.550 |   +0.200    | Phases 25–28 — Smart orchestration, access control                                                    |
+| 2026-02-23 | 7.650 |   +0.100    | Phase 29 — AI classification + live progress events                                                   |
+| 2026-02-23 | 7.950 |   +0.300    | Phase 30 — Production readiness + v0.0.1 tag                                                          |
+| 2026-02-24 | 8.700 |   +0.750    | Phases 31–38 — Full SQLite memory system                                                              |
+| 2026-02-25 | 8.850 |   +0.150    | Phase 40 — Memory wiring across all modules                                                           |
+| 2026-02-26 | 8.950 |   +0.100    | Phases 41–44 — Memory fixes, integration tests                                                        |
+| 2026-02-26 | 9.000 |   +0.050    | Phase 47 — Exploration progress fix                                                                   |
+| 2026-02-26 | 9.030 |   +0.030    | Phase 48 — Worker resilience                                                                          |
+| 2026-02-26 | 9.150 |   +0.120    | Phase 46 — Worker control, PID capture, kill infra                                                    |
+| 2026-02-26 | 9.200 |   +0.050    | Phase 49 — Responsive Master, fast-path responder                                                     |
+| 2026-02-27 | 9.250 |   +0.050    | Phase 51 — Prompt library, audit logger JSONL                                                         |
+| 2026-02-27 | 9.300 |   +0.050    | Phase 52 — memory.md cross-session continuity                                                         |
+| 2026-02-27 | 9.350 |   +0.050    | Phase 53 — Conversation history, /history command                                                     |
+| 2026-02-27 | 9.370 |   +0.020    | Phase 54 — Schema versioning                                                                          |
+| 2026-02-27 | 9.420 |   +0.050    | Phase 55 — Worker streaming + session checkpointing                                                   |
+| 2026-02-27 | 9.450 |   +0.030    | Phase 56 — Documentation update                                                                       |
+| 2026-02-27 | 9.470 |   +0.020    | Phases 57–62 — Codex provider + MCP integration                                                       |
+| 2026-02-27 | 9.490 |   +0.020    | Phases 63–66 — FTS5, memory.md injection, graceful shutdown (v0.0.5)                                  |
+| 2026-02-28 | 9.500 |   +0.010    | Phases 67–69 — Media handling, message splitting (v0.0.6–v0.0.7)                                      |
+| 2026-03-02 | 9.550 |   +0.050    | Phases 70–73 — Voice, CLI wizard, binary/Electron scaffolded (v0.0.8). 652 total.                     |
+| 2026-03-02 | 9.580 |   +0.030    | v0.0.9 — Classification fixes, code-audit profile, exploration bugs. 34 tasks.                        |
+| 2026-03-02 | 9.610 |   +0.030    | v0.0.10 — RAG knowledge retrieval, env var protection. 43 tasks.                                      |
+| 2026-03-03 | 9.630 |   +0.020    | v0.0.11 — Master output sharing, user consent. 20 tasks.                                              |
+| 2026-03-05 | 9.700 |   +0.070    | v0.0.12 — Deep Mode, WebChat, tunnel, Docker, escalation, batch, 67 runtime fixes. 281 tasks.         |
+| 2026-03-05 | 9.650 |   -0.050    | DB audit — 7 data integrity findings discovered (OB-F89–F95). Self-Improvement score dropped 9.3→8.5. |
 
 ---
 

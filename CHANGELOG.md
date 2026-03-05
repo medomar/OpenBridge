@@ -7,7 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Discovered
+
+- **7 data integrity findings (OB-F89–F95)** — DB audit revealed broken data pipelines: audit log disabled by default, QA cache write path missing, sessions never close, learnings turns always 0, prompt evolution dead, sub-master detection never triggered, memory.md stale. Phase 97 planned (18 tasks).
+
+## [0.0.12] — 2026-03-05
+
+### Added
+
+#### Deep Mode — 5-Phase Analysis (Phase Deep)
+
+- **DeepModeManager** — investigate → report → plan → execute → verify state machine
+- **Per-phase model selection** — each phase picks the best model for its task type
+- **Interactive commands** — `/deep`, phase navigation, task model overrides via chat
+- **Plan task parsing** — dependency-ordered batching with BFS topological sort
+- **Session persistence** — completed sessions saved to `.openbridge/deep-mode/`
+
+#### Output Delivery Pipeline (Phases 82–84)
+
+- **Tunnel integration** — auto-detects cloudflared/ngrok, generates public URLs
+- **Ephemeral app server** — scaffold detection, port allocation, idle timeout
+- **Interaction relay** — WebSocket bidirectional app↔Master communication
+
+#### WebChat Modernization (Phases 88–92)
+
+- **Extracted frontend** — modular JS/CSS, dark mode, markdown, syntax highlighting
+- **Authentication** — token/password auth, sessions, rate limiting
+- **Mobile PWA** — LAN/tunnel access, QR codes, responsive, service worker
+- **Conversation history** — sidebar, file upload, voice input, autocomplete
+- **Settings panel** — gear panel, stepper, phase cards
+
+#### Runtime Features (Phases 97–104)
+
+- **Permission escalation** — `/allow`, `/deny`, persistent tool grants
+- **Batch task continuation** — self-messaging loop with safety rails (iteration + cost + time limits)
+- **Docker sandbox** — container isolation, resource limits, cleanup
+- **Worker watchdog** — orphan detection, state audit, `/workers` command
+- **Cost controls** — per-profile cost caps, partial status, adaptive maxTurns
+
+### Fixed
+
+- Codex streaming output parsing (RWT phase)
+- RAG zero-result fallback (RWT phase)
+- Classifier strategic keywords and menu-selection handling (Phase 100)
+- Batch timer cleanup and .catch handlers (Phase 101)
+- Whitelist diagnostics on startup (Phase 103)
+- 14 stale test mocks updated (Phase 104)
+
+## [0.0.11] — 2026-03-03
+
+### Added
+
+- **Master output sharing** — `[SHARE:*]` markers, file-server URL delivery, routing guidelines (Phase 81)
+- **User consent** — risk classification, confirmation prompts for high-risk operations, cost estimation (Phase 86)
+
+## [0.0.10] — 2026-03-02
+
+### Added
+
+- **RAG knowledge retrieval** — FTS5 queries, workspace map context, dir-dive results, Q&A cache infrastructure (Phases 74–77)
+- **Environment variable protection** — deny-list, allow-list, per-adapter sanitization strips CLAUDECODE/CLAUDE*CODE*_/CLAUDE*AGENT_SDK*_ vars (Phase 85)
+
+## [0.0.9] — 2026-03-02
+
+### Fixed
+
+- **Classification fixes** — strategic keywords, SPAWN response parsing, text-generation keyword classifier (Phase 78a)
+- **Code-audit profile** — new read-only + analysis tool profile for security audits (Phase 78b)
+- **Exploration bugs** — 8 bugs fixed: JSON fallbacks, chunk dedup, stale detection (Phase 79)
+- **.openbridge data cleanup** — orphaned entries, corrupted state files (Phase 80)
 
 ## [0.0.8] — 2026-03-02
 

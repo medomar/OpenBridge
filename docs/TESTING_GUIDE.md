@@ -1,6 +1,6 @@
 # OpenBridge — Testing Guide
 
-> **Last Updated:** 2026-02-21
+> **Last Updated:** 2026-03-05
 
 ---
 
@@ -377,6 +377,66 @@ I don't see any sales or revenue data in this workspace. The workspace contains 
 **Cause:** Workspace contains code files (package.json, _.ts, _.py)
 
 **Fix:** Ensure test workspace has ONLY business files (CSV, TXT, MD, XLSX). Remove any code artifacts.
+
+---
+
+## Post-Branch Testing Checklist (v0.0.12 → Phase 97)
+
+After the current branch merges, validate these features end-to-end:
+
+### Data Integrity (Phase 97 — after fixes land)
+
+- [ ] **Sessions close on shutdown** — start bridge, send messages, Ctrl+C, check `sessions` table has `status='closed'`
+- [ ] **Stale sessions expire on startup** — leave a session idle >24h, restart bridge, check it's marked `expired`
+- [ ] **QA cache populates** — ask the same question twice, verify `qa_cache` table has an entry and second answer is faster
+- [ ] **Learnings track turns** — run a task, check `learnings` table has `total_turns > 0`
+- [ ] **Prompts seed on first run** — delete `.openbridge/openbridge.db`, start bridge, check `prompts` table has multiple entries
+- [ ] **Audit log captures events** — with `audit.enabled: true`, send messages, check `audit_log` table has rows
+- [ ] **memory.md updates reliably** — run 10+ tasks, check memory.md timestamp is recent, content reflects recent work
+
+### Deep Mode
+
+- [ ] **`/deep <topic>`** — triggers 5-phase analysis (investigate → report → plan → execute → verify)
+- [ ] **Phase navigation** — `/deep next`, `/deep skip`, `/deep status` work correctly
+- [ ] **Model override** — "use opus for this" changes the model mid-session
+- [ ] **Session persistence** — `.openbridge/deep-mode/session-*.json` created after completion
+
+### WebChat
+
+- [ ] **Auth flow** — WebChat login with token/password works, unauthorized users rejected
+- [ ] **PWA install** — mobile browser shows "Add to Home Screen" prompt
+- [ ] **Dark mode** — settings toggle switches theme
+- [ ] **History sidebar** — past conversations load, search works
+- [ ] **File upload** — drag-and-drop or button uploads a file to the conversation
+
+### Tunnel & Sharing
+
+- [ ] **Tunnel auto-detect** — `cloudflared` or `ngrok` detected and tunnel URL generated
+- [ ] **[SHARE:*] markers** — Master output with `[SHARE:webchat]` delivers file via WebChat
+- [ ] **App server** — scaffolded web apps served on auto-allocated port with idle timeout
+
+### Runtime Controls
+
+- [ ] **`/allow` and `/deny`** — escalation prompts appear, grants persist across messages
+- [ ] **Batch continuation** — multi-step tasks self-continue with safety limits (iteration, cost, time)
+- [ ] **`/workers`** — shows active workers with PID, status, elapsed time
+- [ ] **`stop <id>`** — kills specific worker, Master AI notified
+
+### Docker Sandbox
+
+- [ ] **Docker isolation** — workers run in containers when Docker is available
+- [ ] **Resource limits** — containers respect CPU/memory limits from config
+- [ ] **Cleanup** — containers removed after worker completes
+
+### Regression
+
+- [ ] **Console connector** — basic Q&A flow works end-to-end
+- [ ] **WhatsApp connector** — QR scan, message routing, voice messages
+- [ ] **Telegram connector** — bot responds, message splitting on long responses
+- [ ] **Discord connector** — DM and guild channel support
+- [ ] **Session continuity** — multi-turn conversation preserves context
+- [ ] **Exploration** — `.openbridge/workspace-map.json` created with correct structure
+- [ ] **`/history`** — lists sessions, search works, full transcript retrieval
 
 ---
 
