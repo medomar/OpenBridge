@@ -1097,3 +1097,211 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
     expect(ninthPrompt.content).toContain('600 seconds');
   });
 });
+
+// ---------------------------------------------------------------------------
+// OB-1641 — 50% reminder + auto-deny explicit verification
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — 50% reminder (OB-1640 / OB-1641)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sends a reminder message at 50% of the timeout (90s for 180s base)', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('run the tests');
+    await router.requestToolEscalation(
+      'worker-r1',
+      ['Bash'],
+      'read-only',
+      'needs bash',
+      msg,
+      connector,
+    );
+
+    // Initial escalation prompt sent (1 message so far)
+    const initialCount = connector.sentMessages.length;
+    expect(initialCount).toBeGreaterThanOrEqual(1);
+
+    // Advance to just before 50% (89s) — no reminder yet
+    await vi.advanceTimersByTimeAsync(89_000);
+    expect(connector.sentMessages.length).toBe(initialCount);
+
+    // Advance past 50% (90s total) — reminder should fire
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    const reminderMsg = connector.sentMessages.find((m) =>
+      m.content.includes('pending escalation request'),
+    );
+    expect(reminderMsg).toBeDefined();
+    expect(reminderMsg!.content).toContain('/allow');
+    expect(reminderMsg!.content).toContain('/deny');
+  });
+
+  it('sends reminder only once per batch — not repeated for each escalation in queue', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('multi-step task');
+
+    // Add 3 escalations — reminder should only fire once (for the batch)
+    await router.requestToolEscalation(
+      'worker-r2a',
+      ['Bash'],
+      'read-only',
+      'step 1',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-r2b',
+      ['Write'],
+      'read-only',
+      'step 2',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-r2c',
+      ['Edit'],
+      'read-only',
+      'step 3',
+      msg,
+      connector,
+    );
+
+    const msgsBefore = connector.sentMessages.length;
+
+    // Advance 91s — reminder fires once for the batch (based on first escalation's 180s timeout)
+    await vi.advanceTimersByTimeAsync(91_000);
+
+    const reminderMsgs = connector.sentMessages
+      .slice(msgsBefore)
+      .filter((m) => m.content.includes('pending escalation request'));
+
+    // Exactly one reminder for the batch
+    expect(reminderMsgs).toHaveLength(1);
+  });
+
+  it('reminder shows correct pending count at the time it fires', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('long task');
+
+    await router.requestToolEscalation(
+      'worker-r3a',
+      ['Bash'],
+      'read-only',
+      'step 1',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-r3b',
+      ['Write'],
+      'read-only',
+      'step 2',
+      msg,
+      connector,
+    );
+
+    // Advance past 50% — reminder fires
+    await vi.advanceTimersByTimeAsync(91_000);
+
+    const reminderMsg = connector.sentMessages.find((m) =>
+      m.content.includes('pending escalation request'),
+    );
+    expect(reminderMsg).toBeDefined();
+    // At 91s the queue still has 2 entries (neither has timed out yet)
+    expect(reminderMsg!.content).toMatch(/2 pending escalation request/);
+  });
+});
+
+describe('permission escalation — auto-deny after full timeout (OB-1638 / OB-1641)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('auto-denies and sends timeout message after the full 180s elapses', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const respawn = vi.fn().mockResolvedValue(undefined);
+    const msg = makeMsg('build the app');
+    await router.requestToolEscalation(
+      'worker-ad1',
+      ['Bash'],
+      'read-only',
+      'needs bash to build',
+      msg,
+      connector,
+      respawn,
+    );
+
+    expect(router.hasPendingEscalation('+1234567890')).toBe(true);
+
+    // Advance to just before full timeout
+    await vi.advanceTimersByTimeAsync(179_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(true);
+    // respawn must NOT have been called
+    expect(respawn).not.toHaveBeenCalled();
+
+    // Advance past 180s — auto-deny fires
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+    // respawn still must NOT have been called (auto-deny, not grant)
+    expect(respawn).not.toHaveBeenCalled();
+
+    // Timeout notification sent to user
+    const timeoutMsg = connector.sentMessages.find((m) => m.content.includes('timed out'));
+    expect(timeoutMsg).toBeDefined();
+    expect(timeoutMsg!.content).toContain('worker-ad1');
+  });
+
+  it('scaled timeout auto-denies at 240s for 2 pending escalations', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('parallel tasks');
+    await router.requestToolEscalation(
+      'worker-ad2a',
+      ['Bash'],
+      'read-only',
+      'step 1',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-ad2b',
+      ['Write'],
+      'read-only',
+      'step 2',
+      msg,
+      connector,
+    );
+
+    // After 181s the first entry auto-denies; second still pending (240s timeout)
+    await vi.advanceTimersByTimeAsync(181_000);
+    expect(router.pendingEscalationCount('+1234567890')).toBe(1);
+
+    // After another 60s (241s total) the second also auto-denies
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+
+    // Both timeout notifications were sent
+    const timeoutMsgs = connector.sentMessages.filter((m) => m.content.includes('timed out'));
+    expect(timeoutMsgs.length).toBeGreaterThanOrEqual(2);
+  });
+});
