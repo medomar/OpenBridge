@@ -57,7 +57,7 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F99  | RAG returns zero results for real user questions           | 🟡 Medium   | Real queries return 0 chunks, single-char queries return 10 — RAG is inverted              | Open     |
 | OB-F100 | Single-character messages trigger full agent invocations   | 🟢 Low      | "1", "3" go through full pipeline: classification → RAG → agent spawn — 60s and $0.02 each | Open     |
 | OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | Open     |
-| OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | Open     |
+| OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | ✅ Fixed |
 | OB-F103 | Orphaned workers never reach terminal state                | 🔴 Critical | 7/61 workers unaccounted for — stuck processes, resource leaks, one ran 6.4 hours          | Open     |
 | OB-F104 | Workers exhaust max-turns without completing               | 🟡 Medium   | Workers counted as "completed" with partial results — Master gets incomplete data          | Open     |
 | OB-F105 | Master tool selection flow redundant and confusing         | 🟡 Medium   | 5 contradictory log lines during startup — debugging confusion                             | Open     |
