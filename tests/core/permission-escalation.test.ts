@@ -767,6 +767,98 @@ describe('permission escalation — grant triggers spawn failure → workers mar
 });
 
 // ---------------------------------------------------------------------------
+// 13. Queue: 3 workers request escalation → /deny all (OB-1637)
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — queue: /deny all (OB-1637)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('3 workers escalate → /deny all marks all as denied and notifies the user', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const respawn1 = vi.fn().mockResolvedValue(undefined);
+    const respawn2 = vi.fn().mockResolvedValue(undefined);
+    const respawn3 = vi.fn().mockResolvedValue(undefined);
+
+    const msg = makeMsg('run the full test suite');
+
+    // Enqueue 3 escalation requests sequentially
+    await router.requestToolEscalation(
+      'worker-d1',
+      ['Bash'],
+      'read-only',
+      'needs bash',
+      msg,
+      connector,
+      respawn1,
+    );
+    await router.requestToolEscalation(
+      'worker-d2',
+      ['Write'],
+      'read-only',
+      'needs write',
+      msg,
+      connector,
+      respawn2,
+    );
+    await router.requestToolEscalation(
+      'worker-d3',
+      ['full-access'],
+      'read-only',
+      'needs full access',
+      msg,
+      connector,
+      respawn3,
+    );
+
+    // All 3 should be in the queue
+    expect(router.pendingEscalationCount('+1234567890')).toBe(3);
+
+    // /deny all — rejects all 3 at once
+    await router.route({ ...makeMsg('/deny all'), id: 'msg-deny-all' });
+
+    // No respawn callbacks should have been called
+    expect(respawn1).not.toHaveBeenCalled();
+    expect(respawn2).not.toHaveBeenCalled();
+    expect(respawn3).not.toHaveBeenCalled();
+
+    // All escalations should be cleared
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+    expect(router.pendingEscalationCount('+1234567890')).toBe(0);
+
+    // User should be notified about all denied workers
+    const denyAllMsg = connector.sentMessages.at(-1)!;
+    expect(denyAllMsg.content).toContain('Denied all');
+    expect(denyAllMsg.content).toContain('3 worker(s)');
+    expect(denyAllMsg.content).toContain('worker-d1');
+    expect(denyAllMsg.content).toContain('worker-d2');
+    expect(denyAllMsg.content).toContain('worker-d3');
+  });
+
+  it('/deny all with no pending escalations sends a "no pending" message', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    // No escalations queued
+    expect(router.pendingEscalationCount('+1234567890')).toBe(0);
+
+    await router.route({ ...makeMsg('/deny all'), id: 'msg-deny-all-empty' });
+
+    // Should send a message about no pending escalations
+    const reply = connector.sentMessages.at(-1)!;
+    expect(reply).toBeDefined();
+    expect(reply.content.toLowerCase()).toMatch(/no pending/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 12. Queue: 3 workers request escalation → /allow → 2 remain → /allow all (OB-1636)
 // ---------------------------------------------------------------------------
 
