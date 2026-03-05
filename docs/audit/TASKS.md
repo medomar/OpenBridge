@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 32 | **In Progress:** 0 | **Done:** 249 (112 archived)
+> **Pending:** 31 | **In Progress:** 0 | **Done:** 250 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -564,7 +564,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                                       | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 14  | OB-1661 | When `cleanedLength === 0` after SPAWN marker removal in `src/master/master-manager.ts`, generate a structured status message from the parsed SPAWN markers: "I'm spawning N workers: 1) {summary1}, 2) {summary2}, ..." Extract worker task summaries from SPAWN marker prompts                  | ◻ Pending |
+| 14  | OB-1661 | When `cleanedLength === 0` after SPAWN marker removal in `src/master/master-manager.ts`, generate a structured status message from the parsed SPAWN markers: "I'm spawning N workers: 1) {summary1}, 2) {summary2}, ..." Extract worker task summaries from SPAWN marker prompts                  | ✅ Done   |
 | 15  | OB-1662 | Update Master system prompt in `src/master/master-system-prompt.ts` to instruct: "Always include a brief human-readable summary explaining your plan BEFORE any SPAWN markers. The user should understand what you're about to do even if SPAWN markers are removed from the displayed response." | ◻ Pending |
 | 16  | OB-1663 | Add tests: (1) response with only SPAWN markers generates summary, (2) response with text + SPAWN markers preserves text, (3) summary includes worker task descriptions. At least 3 tests                                                                                                         | ◻ Pending |
 

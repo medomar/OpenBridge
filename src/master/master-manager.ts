@@ -5220,14 +5220,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             );
           }
           let statusMessage: string | undefined;
-          if (cleanedOutput.length < 80) {
-            const taskSummaries = spawnResult.markers.map((m) => {
-              const summary = m.body.prompt.trim();
-              return summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
-            });
+          if (cleanedLength === 0) {
+            // Entire response was SPAWN markers — build a numbered summary from extracted prompts
+            const numbered = spawnSummaries.map((s, i) => `${i + 1}) ${s}`).join(', ');
+            statusMessage = `I'm spawning ${n} worker${n === 1 ? '' : 's'}: ${numbered}`;
+          } else if (cleanedLength < 80) {
             statusMessage =
               `Working on your request — dispatching ${n} worker(s) for:\n` +
-              taskSummaries.map((s) => `• ${s}`).join('\n');
+              spawnSummaries.map((s) => `• ${s}`).join('\n');
           }
 
           // (3) Emit spawning event — N workers are being created
@@ -5776,14 +5776,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             );
           }
           let streamStatusMessage: string | undefined;
-          if (streamCleanedOutput.length < 80) {
-            const streamTaskSummaries = spawnResult.markers.map((m) => {
-              const summary = m.body.prompt.trim();
-              return summary.length > 120 ? summary.slice(0, 120) + '…' : summary;
-            });
+          if (streamCleanedLength === 0) {
+            // Entire response was SPAWN markers — build a numbered summary from extracted prompts
+            const streamNumbered = streamSpawnSummaries.map((s, i) => `${i + 1}) ${s}`).join(', ');
+            streamStatusMessage = `I'm spawning ${streamN} worker${streamN === 1 ? '' : 's'}: ${streamNumbered}`;
+          } else if (streamCleanedLength < 80) {
             streamStatusMessage =
               `Working on your request — dispatching ${streamN} worker(s) for:\n` +
-              streamTaskSummaries.map((s) => `• ${s}`).join('\n');
+              streamSpawnSummaries.map((s) => `• ${s}`).join('\n');
           }
 
           // (3) Emit spawning event — N workers are being created
