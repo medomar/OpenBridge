@@ -25,7 +25,7 @@
  *  5. cleanupDanglingContainers returns 0 and warns when docker ps fails
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ContainerOptions } from '../../src/core/docker-sandbox.js';
 
 // ── Mock node:child_process ──────────────────────────────────────────────────
@@ -35,11 +35,21 @@ let capturedArgs: string[] = [];
 // All captured args across multiple calls within a single test.
 let allCapturedArgs: string[][] = [];
 // Allow individual tests to override the mock behaviour (e.g. simulate OOM).
-let mockError: (Error & { stdout?: string; stderr?: string; code?: number }) | null = null;
+let mockError:
+  | (Error & {
+      stdout?: string;
+      stderr?: string;
+      code?: number;
+      status?: number;
+    })
+  | null = null;
 // Queue of responses — each call pops the first item. Falls back to default when empty.
 type MockResponse =
   | { stdout: string; error?: null }
-  | { error: Error & { stdout?: string; stderr?: string; code?: number }; stdout?: never };
+  | {
+      error: Error & { stdout?: string; stderr?: string; code?: number; status?: number };
+      stdout?: never;
+    };
 let mockResponseQueue: MockResponse[] = [];
 
 vi.mock('node:child_process', () => ({
@@ -49,7 +59,7 @@ vi.mock('node:child_process', () => ({
       args: string[],
       _opts: unknown,
       cb: (
-        err: (Error & { stdout?: string; stderr?: string; code?: number }) | null,
+        err: (Error & { stdout?: string; stderr?: string; code?: number; status?: number }) | null,
         result: { stdout: string; stderr: string },
       ) => void,
     ) => {
@@ -73,7 +83,8 @@ vi.mock('node:child_process', () => ({
 // ── Import AFTER mocking ─────────────────────────────────────────────────────
 
 // Dynamic import is used so the vi.mock() above is hoisted first.
-const { DockerSandbox } = await import('../../src/core/docker-sandbox.js');
+const { DockerSandbox, cleanupSandboxContainers } =
+  await import('../../src/core/docker-sandbox.js');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,11 +204,12 @@ describe('DockerSandbox — resource limits (OB-1551)', () => {
     expect(argValueAt(args, '--pids-limit')).toBe('50');
   });
 
-  it('exec() returns exit code 137 when container is OOM-killed', async () => {
+  it('exec() returns exit code 137 when container is OOM-killed (reads .status)', async () => {
+    // OB-1685: implementation reads execErr.status, not execErr.code
     const oomErr = Object.assign(new Error('Container killed'), {
       stdout: '',
       stderr: 'Killed',
-      code: 137,
+      status: 137,
     });
     mockError = oomErr;
 
@@ -397,5 +409,121 @@ describe('DockerSandbox — cleanup after exit (OB-1559)', () => {
     const sandbox = new DockerSandbox();
     await sandbox.removeContainer('abc123def456', true);
     expect(allCapturedArgs[0]).toContain('--force');
+  });
+});
+
+// ── OB-1685: exec() reads .status not .code for exit code ────────────────────
+
+describe('DockerSandbox.exec() exit code from .status property (OB-1685)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('returns exit code from execErr.status when status is set', async () => {
+    // The fix: implementation reads execErr.status ?? 1
+    const err = Object.assign(new Error('Command failed'), {
+      stdout: 'partial output',
+      stderr: 'error text',
+      status: 42,
+    });
+    mockError = err;
+
+    const sandbox = new DockerSandbox();
+    const result = await sandbox.exec('ctr123', ['echo', 'hi']);
+    expect(result.exitCode).toBe(42);
+  });
+
+  it('falls back to 1 when neither .status nor .code is set', async () => {
+    // Only .code is set (old behavior) — implementation ignores .code and uses .status ?? 1
+    const err = Object.assign(new Error('Command failed'), {
+      stdout: '',
+      stderr: 'error',
+      code: 99, // old property — should be ignored
+    });
+    mockError = err;
+
+    const sandbox = new DockerSandbox();
+    const result = await sandbox.exec('ctr123', ['echo', 'hi']);
+    // .status is undefined → fallback to 1
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('returns 0 when exec succeeds without error', async () => {
+    mockResponseQueue = [{ stdout: 'command output' }];
+
+    const sandbox = new DockerSandbox();
+    const result = await sandbox.exec('ctr123', ['echo', 'hello']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('command output');
+  });
+});
+
+// ── OB-1686: trackContainer / cleanupSandboxContainers ───────────────────────
+
+describe('DockerSandbox container crash-cleanup tracking (OB-1686)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  afterEach(async () => {
+    // Drain any remaining tracked containers so tests don't bleed into each other
+    await cleanupSandboxContainers();
+    allCapturedArgs = [];
+  });
+
+  it('trackContainer registers container ID for cleanup', async () => {
+    const sandbox = new DockerSandbox();
+    sandbox.trackContainer('tracked-abc12345');
+
+    // cleanupSandboxContainers should issue docker rm --force for the tracked ID
+    await cleanupSandboxContainers();
+
+    const rmCall = allCapturedArgs.find(
+      (args) => args[0] === 'rm' && args.includes('--force') && args.includes('tracked-abc12345'),
+    );
+    expect(rmCall).toBeDefined();
+  });
+
+  it('untrackContainer removes container from the tracked set', async () => {
+    const sandbox = new DockerSandbox();
+    sandbox.trackContainer('untrack-test-xyz');
+    sandbox.untrackContainer('untrack-test-xyz');
+
+    // After untracking, cleanup should NOT remove this container
+    await cleanupSandboxContainers();
+
+    const rmCall = allCapturedArgs.find((args) => args.includes('untrack-test-xyz'));
+    expect(rmCall).toBeUndefined();
+  });
+
+  it('cleanupSandboxContainers removes all tracked containers', async () => {
+    const sandbox = new DockerSandbox();
+    sandbox.trackContainer('multi-cleanup-1');
+    sandbox.trackContainer('multi-cleanup-2');
+
+    await cleanupSandboxContainers();
+
+    const rm1 = allCapturedArgs.find(
+      (args) => args[0] === 'rm' && args.includes('--force') && args.includes('multi-cleanup-1'),
+    );
+    const rm2 = allCapturedArgs.find(
+      (args) => args[0] === 'rm' && args.includes('--force') && args.includes('multi-cleanup-2'),
+    );
+    expect(rm1).toBeDefined();
+    expect(rm2).toBeDefined();
+  });
+
+  it('cleanupSandboxContainers is a no-op when no containers are tracked', async () => {
+    // Fresh state — no containers tracked
+    await cleanupSandboxContainers();
+    // No docker rm calls should have been made
+    const rmCalls = allCapturedArgs.filter((args) => args[0] === 'rm');
+    expect(rmCalls).toHaveLength(0);
   });
 });
