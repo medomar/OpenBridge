@@ -48,7 +48,7 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
-import { applyToolPromptPrefix, seedPromptLibrary } from './seed-prompts.js';
+import { applyToolPromptPrefix, seedPromptLibrary, SEED_PROMPTS } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { DeepModeManager } from './deep-mode.js';
 import type {
@@ -1587,6 +1587,20 @@ export class MasterManager {
       try {
         await seedPromptLibrary(this.dotFolder);
         logger.info('Seeded prompt library');
+        // Also seed worker prompt IDs into SQLite so recordPromptOutcome() can track them (OB-1612)
+        if (this.memory) {
+          for (const prompt of SEED_PROMPTS) {
+            try {
+              await this.memory.createPromptVersion(prompt.id, prompt.content);
+            } catch (dbErr) {
+              logger.warn(
+                { error: dbErr, promptId: prompt.id },
+                'Failed to seed worker prompt to DB — non-blocking',
+              );
+            }
+          }
+          logger.info('Seeded worker prompt IDs to SQLite for outcome tracking');
+        }
       } catch (error) {
         logger.warn({ error }, 'Failed to seed prompt library');
       }
@@ -2828,6 +2842,43 @@ export class MasterManager {
       return 'task-verify';
     }
 
+    // Check for code audit markers
+    if (prompt.includes('Task: Code Audit') || prompt.includes('Code Audit')) {
+      return 'task-code-audit';
+    }
+
+    // Check for generate output markers
+    if (prompt.includes('Generate Output File') || prompt.includes('SHARE marker')) {
+      return 'task-generate-output';
+    }
+
+    // Check for targeted read markers
+    if (prompt.includes('Targeted File Read') || prompt.includes('Files to Read')) {
+      return 'task-targeted-read';
+    }
+
+    // Check for build app markers
+    if (prompt.includes('Build Web App') || prompt.includes('APP:start')) {
+      return 'task-build-app';
+    }
+
+    // Check for Deep Mode markers (most specific first to avoid cross-matching)
+    if (prompt.includes('Deep Mode') && prompt.includes('Verify Phase')) {
+      return 'deep-verify';
+    }
+    if (prompt.includes('Deep Mode') && prompt.includes('Execute Phase')) {
+      return 'deep-execute';
+    }
+    if (prompt.includes('Deep Mode') && prompt.includes('Plan Phase')) {
+      return 'deep-plan';
+    }
+    if (prompt.includes('Deep Mode') && prompt.includes('Report Phase')) {
+      return 'deep-report';
+    }
+    if (prompt.includes('Deep Mode') && prompt.includes('Investigate Phase')) {
+      return 'deep-investigate';
+    }
+
     return null;
   }
 
@@ -2928,6 +2979,9 @@ export class MasterManager {
       if (this.memory) {
         await this.memory.recordPromptOutcome(promptId, isValid);
       }
+
+      // Also record in dotfolder manifest (used by prompt evolution / evolvePrompts) (OB-1612)
+      await this.dotFolder.recordPromptUsage(promptId, isValid);
 
       logger.debug(
         {
