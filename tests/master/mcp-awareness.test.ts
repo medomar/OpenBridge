@@ -91,6 +91,8 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     listPrompts: vi.fn().mockResolvedValue([]),
     getClassificationCache: vi.fn().mockResolvedValue(null),
     saveClassificationCache: vi.fn().mockResolvedValue(undefined),
+    readPromptManifest: vi.fn().mockResolvedValue(null),
+    writePromptTemplate: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 

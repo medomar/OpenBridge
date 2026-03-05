@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 | **In Progress:** 0 | **Done:** 10 (1045 archived)
+> **Pending:** 7 | **In Progress:** 0 | **Done:** 11 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -75,7 +75,7 @@
 
 | Task    | What                                                                                        | Key File                       | Status  |
 | ------- | ------------------------------------------------------------------------------------------- | ------------------------------ | ------- |
-| OB-1611 | Call `seedPromptLibrary()` after `seedSystemPrompt()` during Master initialization          | `src/master/master-manager.ts` | Pending |
+| OB-1611 | Call `seedPromptLibrary()` after `seedSystemPrompt()` during Master initialization          | `src/master/master-manager.ts` | ✅ Done |
 | OB-1612 | Wire `recordPromptOutcome()` calls after worker tasks complete (connect to prompt tracking) | `src/master/master-manager.ts` | Pending |
 
 ### OB-F94 — Sub-master detection never triggered
