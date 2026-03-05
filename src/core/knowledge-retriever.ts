@@ -582,6 +582,19 @@ export class KnowledgeRetriever {
    * OB-1338: confidence scoring + needsWorker flag.
    */
   async query(question: string): Promise<KnowledgeResult> {
+    // --- OB-1656: skip RAG for very short inputs (< 3 chars) ---
+    // Single-character inputs like "1" or "3" are menu selections, not
+    // searchable questions. Running FTS5 on them wastes resources and returns
+    // noise. Return empty results immediately so the router falls through to the
+    // Master AI directly.
+    if (question.trim().length < 3) {
+      this.logger.debug(
+        { question: question.trim(), length: question.trim().length },
+        'RAG skipped: query shorter than 3 characters',
+      );
+      return { chunks: [], confidence: 0, sources: [] };
+    }
+
     // --- Q&A cache check (OB-1362) ---
     const qaCache = this.getQACache();
     if (qaCache) {
