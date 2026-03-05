@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 74 | **In Progress:** 0 | **Done:** 207 (112 archived)
+> **Pending:** 73 | **In Progress:** 0 | **Done:** 208 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -470,7 +470,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 7   | OB-1551 | Add resource limits — --memory 512m, --cpus 1, --pids-limit 100 defaults. Config options for each. Kill container if exceeded                                                                                                                                                                               | ✅ Done   |
 | 8   | OB-1552 | Add sandbox config to `src/types/config.ts` — security.sandbox section: mode (none/docker/bubblewrap, default: none), network, memoryMB, cpus. Zod validation                                                                                                                                               | ✅ Done   |
 | 9   | OB-1553 | Wire sandbox into AgentRunner.spawn() — when mode is docker, spawn worker inside container. Build docker run command with volumes, env vars (sanitized), limits, and worker command. Capture stdout/stderr                                                                                                  | ✅ Done   |
-| 10  | OB-1554 | Add container cleanup on worker completion — stop and remove container after exit. Timeout: maxTurns \* 30s force-kills container. Clean dangling containers on bridge startup                                                                                                                              | ◻ Pending |
+| 10  | OB-1554 | Add container cleanup on worker completion — stop and remove container after exit. Timeout: maxTurns \* 30s force-kills container. Clean dangling containers on bridge startup                                                                                                                              | ✅ Done   |
 | 11  | OB-1555 | Pass sanitized env vars through sandbox — use --env-file or -e flags for allowed vars only. Integrate with env sanitizer from Phase 85                                                                                                                                                                      | ◻ Pending |
 | 12  | OB-1556 | Forward MCP config into container — mount temp MCP config as read-only. Pass --mcp-config inside container. Maintain per-worker isolation                                                                                                                                                                   | ◻ Pending |
 | 13  | OB-1557 | Add startup health check — verify Docker daemon running before enabling sandbox. If unavailable, warn and fall back to unsandboxed. Recheck every 5 min                                                                                                                                                     | ◻ Pending |

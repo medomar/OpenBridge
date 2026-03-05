@@ -335,6 +335,69 @@ export class DockerSandbox {
     ];
   }
 
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
+
+  /**
+   * Remove stopped, created, or dead containers whose names start with `ob-worker-`.
+   *
+   * Called on bridge startup to purge any containers that were left behind by a
+   * previous run (e.g. after a hard crash).  The operation is best-effort —
+   * failures are logged as warnings but never propagated to the caller.
+   *
+   * @returns The number of containers successfully removed.
+   */
+  async cleanupDanglingContainers(): Promise<number> {
+    const listArgs = [
+      'ps',
+      '-a',
+      '--filter',
+      'name=ob-worker-',
+      '--filter',
+      'status=exited',
+      '--filter',
+      'status=created',
+      '--filter',
+      'status=dead',
+      '--format',
+      '{{.ID}}',
+    ];
+
+    let ids: string[];
+    try {
+      const { stdout } = await execFileAsync('docker', listArgs, { timeout: 30_000 });
+      ids = stdout
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to list dangling ob-worker containers — cleanup skipped');
+      return 0;
+    }
+
+    if (ids.length === 0) {
+      logger.debug('No dangling ob-worker containers found');
+      return 0;
+    }
+
+    logger.info({ count: ids.length }, 'Cleaning up dangling ob-worker containers');
+
+    let removed = 0;
+    for (const id of ids) {
+      try {
+        await execFileAsync('docker', ['rm', '--force', id], { timeout: 15_000 });
+        removed++;
+      } catch (err) {
+        logger.warn({ containerId: id.slice(0, 12), err }, 'Failed to remove dangling container');
+      }
+    }
+
+    if (removed > 0) {
+      logger.info({ removed }, 'Dangling ob-worker containers removed');
+    }
+
+    return removed;
+  }
+
   // ─── Private helpers ───────────────────────────────────────────────────────
 
   /** Validate that a host path is a non-empty absolute path. */

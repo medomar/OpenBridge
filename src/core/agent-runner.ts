@@ -1053,6 +1053,7 @@ export class AgentRunner {
     workspacePath: string,
     sandboxConfig: SandboxConfig,
     timeout?: number,
+    maxTurns?: number,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const dockerSandbox = new DockerSandbox();
 
@@ -1067,8 +1068,14 @@ export class AgentRunner {
     const containerName = `ob-worker-${randomUUID().slice(0, 8)}`;
     const mounts = DockerSandbox.buildWorkspaceMounts({ workspacePath });
 
+    // Compute exec timeout: use explicit timeout when provided, otherwise derive
+    // from maxTurns (30 seconds per turn) so long-running workers are eventually
+    // force-killed by the exec call.  Fall back to 5 minutes if neither is set.
+    const SECS_PER_TURN = 30;
+    const effectiveTimeout = timeout ?? (maxTurns ? maxTurns * SECS_PER_TURN * 1_000 : 300_000);
+
     logger.debug(
-      { containerName, binary: config.binary, argCount: config.args.length },
+      { containerName, binary: config.binary, argCount: config.args.length, effectiveTimeout },
       'Spawning agent inside Docker container',
     );
 
@@ -1089,7 +1096,7 @@ export class AgentRunner {
 
       const result = await dockerSandbox.exec(containerId, [config.binary, ...config.args], {
         cwd: '/workspace',
-        timeout,
+        timeout: effectiveTimeout,
       });
 
       logger.info({ containerName, exitCode: result.exitCode }, 'Docker agent exec completed');
@@ -1162,6 +1169,7 @@ export class AgentRunner {
             opts.workspacePath,
             opts.sandbox,
             opts.timeout,
+            opts.maxTurns,
           );
         } else {
           const { promise: execPromise } = execOnce(

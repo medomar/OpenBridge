@@ -35,6 +35,7 @@ import type { AppServer } from './app-server.js';
 import type { InteractionRelay } from './interaction-relay.js';
 import { SecretScanner } from './secret-scanner.js';
 import type { SecretMatch } from './secret-scanner.js';
+import { DockerSandbox } from './docker-sandbox.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -280,6 +281,14 @@ export class Bridge {
     // Scan workspace root for sensitive files — non-fatal, logs warnings and builds session exclude list
     if (this.workspacePath) {
       await this.runSecretScan(this.workspacePath);
+    }
+
+    // Clean up dangling Docker containers left by previous runs — non-fatal (OB-1554)
+    if (this.securityConfig?.sandbox?.mode === 'docker') {
+      const dockerSandbox = new DockerSandbox();
+      dockerSandbox.cleanupDanglingContainers().catch((err: unknown) => {
+        logger.warn({ err }, 'Docker startup cleanup failed — continuing');
+      });
     }
 
     // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
