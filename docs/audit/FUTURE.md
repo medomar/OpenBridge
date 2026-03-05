@@ -2,7 +2,7 @@
 
 > **Purpose:** Planned features, deferred findings, finalization items, and backlog for future versions.
 > **Last Updated:** 2026-03-05 | **Current Release:** v0.0.12 (Phases 1–104 + Deep, 1045 tasks shipped)
-> **10 open findings** — all community-inspired (v0.0.13). See [FINDINGS.md](FINDINGS.md) for details.
+> **17 open findings** — 10 community-inspired (v0.0.13) + 7 skill/agent patterns (v0.0.14). See [FINDINGS.md](FINDINGS.md) for details.
 
 ---
 
@@ -242,7 +242,153 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ---
 
-## Deferred — Post v0.0.13
+## Sprint 6 — Skill System, Agent Patterns & Business Output (v0.0.14) — ~85–105 tasks
+
+**Goal:** Make OpenBridge useful for _any user_ — not just developers. Business owners, marketers, analysts, and designers should be able to generate documents, presentations, visual assets, and reports via messaging. Adopt battle-tested agent patterns from leading AI tools (Manus, Devin, Cursor).
+
+**Inspired by:** [travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (Claude Skills ecosystem — document, design, security, testing skills) and [x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools) (30+ AI tool architectures).
+
+**Why now (after v0.0.13):** v0.0.13 upgrades the memory and retrieval layer. v0.0.14 makes OpenBridge a _general-purpose AI assistant_ — any user, any task, any output format.
+
+### Phase 98 — Skill Pack System (~18–22 tasks)
+
+**Finding:** OB-F96
+
+**Problem:** Workers receive generic prompts regardless of task type. A security audit worker gets the same instructions as a document generation worker. No reusable domain-specific instruction sets.
+
+**Inspired by:** [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) — progressive disclosure architecture, structured skill folders with instructions + scripts + resources. [obra/superpowers](https://github.com/obra/superpowers) — 20+ battle-tested skills including TDD, debugging, collaboration.
+
+| Task | Finding | What                                                                                                             | Key File                                         |
+| ---- | ------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1    | OB-F96  | Define `SkillPack` type — `name`, `description`, `toolProfile`, `systemPromptExtension`, `requiredTools`, `tags` | `src/types/agent.ts`                             |
+| 2    | OB-F96  | Create `skill-pack-loader.ts` — discovers skill packs from `.openbridge/skill-packs/` and built-in defaults      | `src/master/skill-pack-loader.ts` (new)          |
+| 3    | OB-F96  | Define `SKILLPACK.md` format — name, when to use, tools needed, prompt extension, example tasks, constraints     | `src/master/skill-pack-loader.ts`                |
+| 4    | OB-F96  | Built-in skill pack: `security-audit` — CodeQL/Semgrep patterns, vulnerability detection prompts                 | `src/master/skill-packs/security-audit.ts` (new) |
+| 5    | OB-F96  | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts                     | `src/master/skill-packs/code-review.ts` (new)    |
+| 6    | OB-F96  | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts               | `src/master/skill-packs/test-writer.ts` (new)    |
+| 7    | OB-F96  | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts         | `src/master/skill-packs/data-analysis.ts` (new)  |
+| 8    | OB-F96  | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  |
+| 9    | OB-F96  | Master reads available skill packs on startup, includes summary in system prompt                                 | `src/master/master-system-prompt.ts`             |
+| 10   | OB-F96  | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   |
+| 11   | OB-F96  | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile            | `src/master/master-manager.ts`                   |
+| 12   | OB-F96  | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                                | `src/master/skill-pack-loader.ts`                |
+| 13   | OB-F96  | Master can create new skill packs from successful task patterns (extends prompt evolution from OB-F93)           | `src/master/skill-pack-loader.ts`                |
+| 14   | OB-F96  | Add `/skill-packs` chat command — list available packs with descriptions                                         | `src/core/router.ts`                             |
+| 15   | OB-F96  | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               |
+| 16   | OB-F96  | Wire skill pack loader into MemoryManager facade                                                                 | `src/memory/index.ts`                            |
+| 17   | —       | Tests: skill pack discovery, SKILLPACK.md parsing, prompt injection, tool profile override                       | `tests/master/skill-pack-loader.test.ts`         |
+| 18   | —       | Tests: Master skill selection logic, user override precedence                                                    | `tests/master/master-manager.test.ts`            |
+
+---
+
+### Phase 99 — Document Generation Skills (~16–20 tasks)
+
+**Finding:** OB-F98
+
+**Problem:** Business users can't generate documents, reports, presentations, or spreadsheets. OpenBridge is code-only — missing an entire use case category for non-developer users.
+
+**Inspired by:** [awesome-claude-skills official skills](https://github.com/travisvn/awesome-claude-skills) — `docx` (Word creation/editing), `pdf` (manipulation/extraction), `pptx` (PowerPoint generation), `xlsx` (Excel with formulas/charts).
+
+| Task | Finding | What                                                                                                           | Key File                                                  |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 1    | OB-F98  | Built-in skill pack: `document-writer` — Word/DOCX generation prompts, structure templates, formatting rules   | `src/master/skill-packs/document-writer.ts` (new)         |
+| 2    | OB-F98  | Built-in skill pack: `presentation-maker` — PPTX generation prompts, slide layouts, design principles          | `src/master/skill-packs/presentation-maker.ts` (new)      |
+| 3    | OB-F98  | Built-in skill pack: `spreadsheet-builder` — XLSX generation prompts, formula patterns, chart generation       | `src/master/skill-packs/spreadsheet-builder.ts` (new)     |
+| 4    | OB-F98  | Built-in skill pack: `report-generator` — PDF/HTML report generation, data formatting, executive summary style | `src/master/skill-packs/report-generator.ts` (new)        |
+| 5    | OB-F98  | Add `docx` worker tooling — npm dependency selection (officegen, docx, or pandoc-based), worker prompt         | `src/master/skill-packs/document-writer.ts`               |
+| 6    | OB-F98  | Add `pptx` worker tooling — npm dependency (pptxgenjs or similar), slide template system                       | `src/master/skill-packs/presentation-maker.ts`            |
+| 7    | OB-F98  | Add `xlsx` worker tooling — npm dependency (exceljs or sheetjs), formula + chart support                       | `src/master/skill-packs/spreadsheet-builder.ts`           |
+| 8    | OB-F98  | Add `pdf` worker tooling — HTML-to-PDF via Puppeteer or wkhtmltopdf, styled templates                          | `src/master/skill-packs/report-generator.ts`              |
+| 9    | OB-F98  | Output delivery integration — generated files served via file-server (existing), shared via [SHARE:FILE]       | `src/core/file-server.ts`, `src/master/master-manager.ts` |
+| 10   | OB-F98  | WhatsApp/Telegram file attachment — send generated documents as attachments via connector                      | `src/connectors/whatsapp/`, `src/connectors/telegram/`    |
+| 11   | OB-F98  | WebChat file download — generated documents available as download links                                        | `src/connectors/webchat/`                                 |
+| 12   | OB-F98  | Master auto-detects document tasks — intent classification extended with document/report/presentation intents  | `src/core/router.ts`                                      |
+| 13   | OB-F98  | Add optional dependencies to `package.json` — `docx`, `pptxgenjs`, `exceljs` (opt-in, zero by default)         | `package.json`                                            |
+| 14   | OB-F98  | `openbridge doctor` checks for document generation prerequisites (Puppeteer, LibreOffice, etc.)                | `src/cli/doctor.ts`                                       |
+| 15   | —       | Tests: document skill pack selection, file generation, output delivery, attachment sending                     | `tests/master/document-skills.test.ts`                    |
+| 16   | —       | Documentation: document generation setup guide, supported formats, examples                                    | `docs/DOCUMENT_GENERATION.md` (new)                       |
+
+---
+
+### Phase 100 — Design & Creative Output Skills (~14–18 tasks)
+
+**Finding:** OB-F99
+
+**Problem:** No support for visual output — diagrams, charts, generative art, marketing materials, or presentation visuals. Business owners, marketers, and content creators need visual assets from their AI assistant.
+
+**Inspired by:** [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) — `algorithmic-art` (p5.js generative art), `canvas-design` (PNG/PDF visual art), `frontend-design` (React/Tailwind UI), `web-artifacts-builder` (HTML artifacts), `claude-d3js-skill` (D3.js data visualization), `frontend-slides` (animation-rich HTML presentations).
+
+| Task | Finding | What                                                                                                           | Key File                                               |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 1    | OB-F99  | Built-in skill pack: `diagram-maker` — Mermaid/PlantUML/D2 diagram generation, architecture diagrams, flows    | `src/master/skill-packs/diagram-maker.ts` (new)        |
+| 2    | OB-F99  | Built-in skill pack: `chart-generator` — D3.js/Chart.js data visualization, bar/line/pie/scatter charts        | `src/master/skill-packs/chart-generator.ts` (new)      |
+| 3    | OB-F99  | Built-in skill pack: `web-designer` — HTML/CSS/React landing pages, marketing materials, email templates       | `src/master/skill-packs/web-designer.ts` (new)         |
+| 4    | OB-F99  | Built-in skill pack: `slide-designer` — HTML-based presentation slides with animations, exportable to PDF      | `src/master/skill-packs/slide-designer.ts` (new)       |
+| 5    | OB-F99  | Built-in skill pack: `generative-art` — p5.js algorithmic art, SVG patterns, creative coding prompts           | `src/master/skill-packs/generative-art.ts` (new)       |
+| 6    | OB-F99  | Built-in skill pack: `brand-assets` — logo concepts (SVG), social media images, favicon generation             | `src/master/skill-packs/brand-assets.ts` (new)         |
+| 7    | OB-F99  | HTML-to-image pipeline — render HTML outputs to PNG/JPG using Puppeteer for sending via messaging channels     | `src/core/html-renderer.ts` (new)                      |
+| 8    | OB-F99  | SVG output support — workers generate SVG, file-server serves, channels send as image                          | `src/core/file-server.ts`                              |
+| 9    | OB-F99  | Mermaid rendering support — mermaid-cli or mermaid.ink API for diagram-to-image conversion                     | `src/core/html-renderer.ts`                            |
+| 10   | OB-F99  | Output preview via app server — HTML outputs served as interactive previews (builds on Phase 83 ephemeral app) | `src/core/tunnel-manager.ts`                           |
+| 11   | OB-F99  | Master auto-detects creative tasks — intent classification extended with design/visual/chart/diagram intents   | `src/core/router.ts`                                   |
+| 12   | OB-F99  | Image delivery via WhatsApp/Telegram — send rendered PNG/SVG as media messages                                 | `src/connectors/whatsapp/`, `src/connectors/telegram/` |
+| 13   | —       | Tests: diagram generation, chart rendering, HTML-to-image pipeline, creative skill selection                   | `tests/master/creative-skills.test.ts`                 |
+| 14   | —       | Documentation: creative output guide, supported formats, rendering prerequisites                               | `docs/CREATIVE_OUTPUT.md` (new)                        |
+
+---
+
+### Phase 101 — Agent Orchestration Patterns (~18–22 tasks)
+
+**Findings:** OB-F97, OB-F100, OB-F101, OB-F102
+
+**Problem:** Master has no formal planning phase, workers aren't grouped, no test protection, and fix loops can run forever. These patterns are standard in production AI tools (Devin, Manus, Cursor) but missing from OpenBridge.
+
+**Inspired by:** [Devin AI](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools/tree/main/Devin%20AI) — planning mode vs standard mode, think-before-critical-decisions, no-test-modification rule. [Manus](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools/tree/main/Manus%20Agent%20Tools%20%26%20Prompt) — single-tool-per-iteration, swarm coordination. [Cursor](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools/tree/main/Cursor%20Prompts) — parallel-by-default, 3-iteration fix cap, atomic task decomposition.
+
+| Task | Finding | What                                                                                                                   | Key File                                      |
+| ---- | ------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1    | OB-F97  | Add `PlanningGate` class — Master enters analysis phase (read-only workers) before execution phase (code-edit workers) | `src/master/planning-gate.ts` (new)           |
+| 2    | OB-F97  | Planning phase: spawn 1–2 read-only workers to investigate before committing to a strategy                             | `src/master/planning-gate.ts`                 |
+| 3    | OB-F97  | Execution phase: only starts after planning workers return and Master confirms approach                                | `src/master/planning-gate.ts`                 |
+| 4    | OB-F97  | Skip planning for simple tasks — Master auto-detects complexity (single-file edits, FAQ answers bypass planning)       | `src/master/planning-gate.ts`                 |
+| 5    | OB-F97  | Wire planning gate into Master session flow — before SPAWN, check if planning phase completed                          | `src/master/master-manager.ts`                |
+| 6    | OB-F97  | Add reasoning checkpoint before full-access workers — Master self-checks: "What could go wrong?"                       | `src/master/master-manager.ts`                |
+| 7    | OB-F100 | Add `WorkerSwarm` type — named group of workers with shared context and handoff protocol                               | `src/types/agent.ts`                          |
+| 8    | OB-F100 | Create `swarm-coordinator.ts` — groups workers into swarms (research, implement, review, test)                         | `src/master/swarm-coordinator.ts` (new)       |
+| 9    | OB-F100 | Swarm handoff — research swarm results feed into implement swarm context, implement into review                        | `src/master/swarm-coordinator.ts`             |
+| 10   | OB-F100 | Master decides swarm composition per task — simple tasks skip swarms, complex tasks use full pipeline                  | `src/master/swarm-coordinator.ts`             |
+| 11   | OB-F100 | Parallel spawning within swarms — independent workers in same swarm run concurrently (Cursor pattern)                  | `src/master/swarm-coordinator.ts`             |
+| 12   | OB-F101 | Add test protection to worker system prompts — "Do not modify test files unless explicitly authorized"                 | `src/master/master-system-prompt.ts`          |
+| 13   | OB-F101 | Master can grant test modification permission per-worker when task requires it (e.g., "update tests for new API")      | `src/master/master-manager.ts`                |
+| 14   | OB-F101 | Detect test file modification in worker results — flag for Master review if unauthorized                               | `src/master/worker-result-formatter.ts`       |
+| 15   | OB-F102 | Add iteration cap to worker fix loops — max 3 attempts at lint/test fixes before escalating to Master                  | `src/core/agent-runner.ts`                    |
+| 16   | OB-F102 | On cap hit: worker reports partial fix + error details to Master, Master decides next action                           | `src/core/agent-runner.ts`                    |
+| 17   | OB-F102 | Configurable cap via `worker.maxFixIterations` config option (default: 3)                                              | `src/types/config.ts`                         |
+| 18   | —       | Tests: planning gate flow, swarm coordination, test protection, iteration caps                                         | `tests/master/orchestration-patterns.test.ts` |
+| 19   | —       | Tests: parallel spawning within swarms, handoff data integrity                                                         | `tests/master/swarm-coordinator.test.ts`      |
+
+---
+
+### Sprint 6 Summary
+
+| Phase     | Focus                           | Findings                          | Est. Tasks  | Key Community Reference                                                                                                             |
+| --------- | ------------------------------- | --------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 98        | Skill Pack System               | OB-F96                            | ~18–22      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills), [obra/superpowers](https://github.com/obra/superpowers) |
+| 99        | Document Generation Skills      | OB-F98                            | ~16–20      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (docx, pdf, pptx, xlsx skills)                           |
+| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (algorithmic-art, canvas-design, d3js, frontend-slides)  |
+| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22      | [system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools) (Devin, Manus, Cursor)    |
+| **Total** |                                 | **7 findings**                    | **~85–105** |                                                                                                                                     |
+
+**Dependencies:**
+
+- **Sprint 5 (v0.0.13) should complete first** — Phase 98 (skill packs) extends the skills directory from Phase 96c (OB-F87)
+- Phase 98 (skill packs) is foundational — Phases 99 and 100 are skill packs themselves
+- Phase 99 (documents) and Phase 100 (design) are independent — can run in parallel
+- Phase 101 (orchestration) is independent — can run in parallel with 99/100
+
+---
+
+## Deferred — Post v0.0.14
 
 ### Finalization Required (Phases 72–73 + MCP UI)
 
@@ -289,19 +435,26 @@ Backend is intact (`mcp-registry.ts`, `mcp-catalog.ts`). WebChat MCP UI was remo
 
 ## Backlog (Unscoped Ideas)
 
-| Feature                  | Description                                                      | Notes                  |
-| ------------------------ | ---------------------------------------------------------------- | ---------------------- |
-| E2E test: business files | CSV workspace E2E test                                           | Testing gap            |
-| Scheduled tasks          | Cron-like task scheduling ("run tests every morning at 9am")     | New capability         |
-| AI tool marketplace      | Browse and install community-built connectors and providers      | Plugin ecosystem       |
-| Webhook connector        | HTTP webhook endpoint for CI/CD integration                      | New connector type     |
-| PDF generation           | Built-in HTML-to-PDF conversion for generated reports            | Uses Puppeteer         |
-| Secrets management       | Encrypted storage for Discord/Telegram tokens                    | Security               |
-| WhatsApp session persist | Avoid re-scan when session expires                               | UX improvement         |
-| Skill creator            | Master creates reusable skill templates from successful patterns | Self-improvement       |
-| Access Control Dashboard | Web-based UI for managing per-user access control                | ~10–15 tasks           |
-| Server Deployment Mode   | Docker container + headless mode for VPS/cloud                   | Infrastructure         |
-| Agent Orchestration      | Role-based workers with dependency chains                        | Advanced orchestration |
+| Feature                      | Description                                                                                                    | Notes                     | Inspired By                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------- |
+| E2E test: business files     | CSV workspace E2E test                                                                                         | Testing gap               | —                                   |
+| Scheduled tasks              | Cron-like task scheduling ("run tests every morning at 9am")                                                   | New capability            | —                                   |
+| AI tool marketplace          | Browse and install community-built connectors and providers                                                    | Plugin ecosystem          | —                                   |
+| Webhook connector            | HTTP webhook endpoint for CI/CD integration                                                                    | New connector type        | —                                   |
+| Secrets management           | Encrypted storage for Discord/Telegram tokens                                                                  | Security                  | —                                   |
+| WhatsApp session persist     | Avoid re-scan when session expires                                                                             | UX improvement            | —                                   |
+| Access Control Dashboard     | Web-based UI for managing per-user access control                                                              | ~10–15 tasks              | —                                   |
+| Server Deployment Mode       | Docker container + headless mode for VPS/cloud                                                                 | Infrastructure            | —                                   |
+| MCP server builder skill     | Master auto-generates MCP server stubs for custom integrations ("connect my Notion")                           | Extends MCP ecosystem     | awesome-claude-skills (mcp-builder) |
+| Browser automation skill     | Playwright-based web scraping, form filling, and UI testing via workers                                        | Extends worker capability | awesome-claude-skills (playwright)  |
+| iOS/Android testing skill    | Mobile app build + simulator testing via workers                                                               | Mobile development        | awesome-claude-skills (ios-sim)     |
+| Email template generator     | HTML email design + send via SMTP — marketing, newsletters, notifications                                      | Business use case         | awesome-claude-skills               |
+| Scientific computing skill   | Data science libraries (pandas, numpy, scipy) integration for analysis workers                                 | Research use case         | awesome-claude-skills (scientific)  |
+| Multi-agent startup mode     | Loki-mode inspired — orchestrate 30+ agents across functional swarms for large projects                        | Advanced orchestration    | awesome-claude-skills (loki-mode)   |
+| Sandbox-first deployments    | Workers deploy preview apps in sandboxed containers with temp public URLs (extends tunnel + Docker)            | Manus pattern             | system-prompts (Manus)              |
+| Atomic task decomposition    | Master breaks tasks into verb-led, single-outcome, ≤14-word items for clearer worker instructions              | Cursor pattern            | system-prompts (Cursor)             |
+| Parallel-by-default spawning | Master spawns independent workers simultaneously by default, with explicit dependency detection for sequencing | Cursor pattern            | system-prompts (Cursor)             |
+| Worker reasoning checkpoints | Workers run self-check ("Am I sure?") before destructive operations (git push, file delete, deploy)            | Devin pattern             | system-prompts (Devin)              |
 
 ---
 
