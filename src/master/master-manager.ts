@@ -3393,6 +3393,22 @@ export class MasterManager {
       };
     }
 
+    // Length-based fallback — long messages with question marks or multiple sentences
+    // are likely multi-step requests, not simple conversational messages (OB-1650).
+    // If message > 100 chars AND contains a '?' or multiple sentences (2+ sentence-ending
+    // punctuation marks), upgrade to tool-use (15 turns) instead of quick-answer (5 turns).
+    const hasQuestionMark = lower.includes('?');
+    const sentenceEndCount = (lower.match(/[.!?]/g) || []).length;
+    const hasMultipleSentences = sentenceEndCount >= 2;
+    if (lower.length > 100 && (hasQuestionMark || hasMultipleSentences)) {
+      return {
+        class: 'tool-use',
+        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
+        reason: 'length heuristic: long message with question/multi-sentence → tool-use',
+      };
+    }
+
     // Default: quick-answer for unrecognized conversational messages — most messages
     // that don't match any keyword are simple conversational requests that don't need
     // file tools. If the AI classifier is available it will override this for tool-heavy
