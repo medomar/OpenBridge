@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 3 | **In Progress:** 0 | **Done:** 278 (112 archived)
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 280 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -54,7 +54,7 @@
 | 101    | Batch & Shutdown Safety              | 7     | ✅ (7/7 done)   |
 | 102    | Worker & Cost Controls               | 8     | ✅ (8/8 done)   |
 | 103    | Docker & Startup Polish              | 9     | ✅ (9/9 done)   |
-| 104    | Test Suite Fixes (Stale Mocks)       | 5     | ◻               |
+| 104    | Test Suite Fixes (Stale Mocks)       | 5     | ◻ (4/5 done)    |
 
 **Completed (archived):** Sprint 1 (34), Sprint 2 (43), Sprint 3 (20), Deep-1 (15) = 112 tasks
 **Sprint 4 Remaining:** 277 tasks (v0.0.12) — includes Phases 97–104 (runtime fixes from production testing)
@@ -636,8 +636,8 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1   | OB-1688 | Fix DotFolderManager mocks in `tests/integration/memory-wiring.test.ts` (18 failures) — add `readBatchState: vi.fn().mockReturnValue(null)`, `writeBatchState: vi.fn()`, `deleteBatchState: vi.fn()` to all mock objects                       | ✅ Done   |
 | 2   | OB-1689 | Fix DotFolderManager mocks in `tests/e2e/graceful-unknown-handling.test.ts` (2 failures) and `tests/integration/master-prefix-stripping.test.ts` (3 failures) — same batch state mock additions                                                | ✅ Done   |
-| 3   | OB-1690 | Fix Progress Events tests in `tests/master/master-manager.test.ts` (3 failures) — update mock return values to match new `processMessage()` flow with batch continuation. Ensure progress event assertions match current emit patterns         | ◻ Pending |
-| 4   | OB-1691 | Fix `tests/connectors/webchat/webchat-mobile.test.ts` (1 failure) — add missing `homedir` to `node:os` mock. Pre-existing issue since Phase 62                                                                                                 | ◻ Pending |
+| 3   | OB-1690 | Fix Progress Events tests in `tests/master/master-manager.test.ts` (3 failures) — update mock return values to match new `processMessage()` flow with batch continuation. Ensure progress event assertions match current emit patterns         | ✅ Done   |
+| 4   | OB-1691 | Fix `tests/connectors/webchat/webchat-mobile.test.ts` (1 failure) — add missing `homedir` to `node:os` mock. Pre-existing issue since Phase 62                                                                                                 | ✅ Done   |
 | 5   | OB-1692 | Run full test suite (`npm run test`) and verify all newly fixed tests pass. Document any remaining pre-existing failures (CLI wizard timeouts in `init-mcp.test.ts` and `init-wizard.test.ts`) as known issues with skip annotations if needed | ◻ Pending |
 
 ---

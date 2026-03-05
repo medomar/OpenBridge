@@ -97,6 +97,8 @@ const mockNetworkInterfaces = vi.fn<[], Record<string, NetIface[]>>();
 
 vi.mock('node:os', () => ({
   networkInterfaces: () => mockNetworkInterfaces() as Record<string, NetIface[]>,
+  homedir: () => '/home/testuser',
+  tmpdir: () => '/tmp',
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
