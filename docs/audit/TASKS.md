@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 | **In Progress:** 0 | **Done:** 12 (1045 archived)
+> **Pending:** 5 | **In Progress:** 0 | **Done:** 13 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -82,7 +82,7 @@
 
 | Task    | What                                                                                         | Key File                       | Status  |
 | ------- | -------------------------------------------------------------------------------------------- | ------------------------------ | ------- |
-| OB-1613 | Call `detectSubProjects()` after workspace exploration completes in `explore()` or `start()` | `src/master/master-manager.ts` | Pending |
+| OB-1613 | Call `detectSubProjects()` after workspace exploration completes in `explore()` or `start()` | `src/master/master-manager.ts` | ✅ Done |
 | OB-1614 | If sub-projects detected, call `spawnSubMaster()` for each and store in `sub_masters` table  | `src/master/master-manager.ts` | Pending |
 
 ### OB-F95 — memory.md staleness (fire-and-forget)

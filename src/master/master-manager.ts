@@ -39,6 +39,7 @@ import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { SubMasterManager } from './sub-master-manager.js';
 import type { SubMasterRecord } from './sub-master-manager.js';
+import { detectSubProjects } from './sub-master-detector.js';
 import { openDatabase, closeDatabase } from '../memory/database.js';
 import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers, extractTaskSummaries } from './spawn-parser.js';
@@ -3993,6 +3994,19 @@ export class MasterManager {
       await this.masterDrivenExplore();
 
       this.state = 'ready';
+
+      // Detect sub-projects after successful exploration (OB-1613)
+      try {
+        const subProjects = await detectSubProjects(this.workspacePath);
+        if (subProjects.length > 0) {
+          logger.info(
+            { count: subProjects.length, paths: subProjects.map((p) => p.path) },
+            'Sub-projects detected after exploration',
+          );
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Sub-project detection failed — skipping');
+      }
 
       // Drain any messages queued while exploration was running
       await this.drainPendingMessages();
