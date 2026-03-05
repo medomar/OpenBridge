@@ -3245,6 +3245,16 @@ export class MasterManager {
       'start execution',
       'execute group',
       'start group',
+      // Strategic / brainstorming keywords (OB-1648)
+      'brainstorm',
+      'strategy',
+      'business model',
+      'commercialise',
+      'commercialize',
+      'roadmap review',
+      'strategic plan',
+      'market analysis',
+      'go-to-market',
     ];
     // Word-boundary keywords — must match as whole words (e.g. "architect" not "architecture")
     const complexWordBoundary = [/\barchitect\b/];
