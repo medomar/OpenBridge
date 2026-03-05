@@ -1378,6 +1378,23 @@ export class MasterManager {
     // Reads from system_config which is never touched by agent_activity cleanup (OB-1405).
     await this.checkIncompleteDeepModeSessions();
 
+    // OB-1617: Detect stale or missing memory.md on startup — regenerate from SQLite.
+    if (this.memory) {
+      try {
+        const isStale = await this.dotFolder.isMemoryStale();
+        if (isStale) {
+          const recentMessages = await this.memory.getRecentMessages(20);
+          await this.dotFolder.writeMemoryFallback(recentMessages);
+          logger.info(
+            { messageCount: recentMessages.length },
+            'Regenerated stale memory.md from SQLite on startup (OB-1617)',
+          );
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Failed to check/regenerate stale memory.md on startup');
+      }
+    }
+
     // Initialize Master session — so exploration can use it
     await this.initMasterSession();
 
