@@ -313,9 +313,10 @@ export class DockerSandbox {
       const execErr = err as NodeJS.ErrnoException & {
         stdout?: string;
         stderr?: string;
-        code?: number;
+        code?: string;
+        status?: number;
       };
-      const exitCode: number = typeof execErr.code === 'number' ? execErr.code : 1;
+      const exitCode: number = execErr.status ?? 1;
 
       // Exit code 137 = SIGKILL, typically the Docker OOM killer.
       if (exitCode === 137) {
