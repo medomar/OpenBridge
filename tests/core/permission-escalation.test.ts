@@ -5,7 +5,7 @@
  *  1. Escalation prompt sent when requestToolEscalation() is called
  *  2. /allow grants the tool and triggers worker re-spawn
  *  3. /deny rejects and sends rejection message
- *  4. Timeout (60s) auto-denies when no user reply arrives
+ *  4. Timeout auto-denies when no user reply arrives (scales with queue size)
  *  5. /allow <tool> --permanent persists grant in DB
  *  6. Session grant (/allow <tool> --session) is cleared on router restart
  *  7. predictToolRequirements() correctly predicts profile upgrades from keywords
@@ -120,7 +120,7 @@ describe('permission escalation — requestToolEscalation()', () => {
     expect(text).toContain('Bash');
     expect(text).toContain('/allow');
     expect(text).toContain('/deny');
-    expect(text).toContain('60 seconds');
+    expect(text).toContain('180 seconds');
   });
 
   it('registers the escalation as pending after requestToolEscalation()', async () => {
@@ -229,7 +229,7 @@ describe('permission escalation — /deny command', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Timeout auto-denies after 60 seconds
+// 4. Timeout auto-denies after the configured timeout (scaled by queue size)
 // ---------------------------------------------------------------------------
 
 describe('permission escalation — timeout auto-deny', () => {
@@ -241,7 +241,7 @@ describe('permission escalation — timeout auto-deny', () => {
     vi.useRealTimers();
   });
 
-  it('sends a timeout notification and clears the escalation after 60 seconds', async () => {
+  it('sends a timeout notification and clears the escalation after 180 seconds (single entry)', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -257,13 +257,17 @@ describe('permission escalation — timeout auto-deny', () => {
 
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
 
-    // Advance time past the 60-second timeout
-    await vi.advanceTimersByTimeAsync(61_000);
+    // Should NOT fire before 180s
+    await vi.advanceTimersByTimeAsync(179_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(true);
+
+    // Advance past the 180-second timeout
+    await vi.advanceTimersByTimeAsync(2_000);
 
     // Escalation should be cleared
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
 
-    // Timeout notification should have been sent (last sent message)
+    // Timeout notification should have been sent
     const messages = connector.sentMessages;
     const timeoutMsg = messages.find((m) => m.content.includes('timed out'));
     expect(timeoutMsg).toBeDefined();
@@ -943,5 +947,153 @@ describe('permission escalation — queue: /allow then /allow all (OB-1636)', ()
     expect(bulkGrantMsg.content).toContain('2 worker(s)');
     expect(bulkGrantMsg.content).toContain('worker-q2');
     expect(bulkGrantMsg.content).toContain('worker-q3');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OB-1639 — Timeout scales with queue size
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — timeout scales with queue size (OB-1639)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('uses base timeout (180s) for a single pending escalation', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('task a');
+    await router.requestToolEscalation(
+      'worker-s1',
+      ['Bash'],
+      'read-only',
+      'needs bash',
+      msg,
+      connector,
+    );
+
+    // The escalation prompt should show 180 seconds
+    const promptMsg = connector.sentMessages.at(-1)!;
+    expect(promptMsg.content).toContain('180 seconds');
+
+    // Should NOT fire before 180s
+    await vi.advanceTimersByTimeAsync(179_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(true);
+
+    // Fire after 180s
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+  });
+
+  it('adds 60s per additional pending escalation — 2 pending = 240s', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg1 = makeMsg('task a');
+    const msg2 = makeMsg('task b');
+    await router.requestToolEscalation(
+      'worker-s1',
+      ['Bash'],
+      'read-only',
+      'step 1',
+      msg1,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-s2',
+      ['Write'],
+      'read-only',
+      'step 2',
+      msg2,
+      connector,
+    );
+
+    // Second escalation prompt should show 240 seconds (180 + 60)
+    const promptMsg = connector.sentMessages.at(-1)!;
+    expect(promptMsg.content).toContain('240 seconds');
+
+    // First entry timeout fires at 180s, second at 240s
+    await vi.advanceTimersByTimeAsync(181_000);
+    // First should be gone; second still pending
+    expect(router.pendingEscalationCount('+1234567890')).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+  });
+
+  it('adds 60s per additional pending escalation — 3 pending = 300s', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('task');
+    await router.requestToolEscalation(
+      'worker-t1',
+      ['Bash'],
+      'read-only',
+      'step 1',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-t2',
+      ['Write'],
+      'read-only',
+      'step 2',
+      msg,
+      connector,
+    );
+    await router.requestToolEscalation(
+      'worker-t3',
+      ['Edit'],
+      'read-only',
+      'step 3',
+      msg,
+      connector,
+    );
+
+    // Third escalation prompt should show 300 seconds (180 + 2×60)
+    const promptMsg = connector.sentMessages.at(-1)!;
+    expect(promptMsg.content).toContain('300 seconds');
+
+    expect(router.pendingEscalationCount('+1234567890')).toBe(3);
+  });
+
+  it('caps timeout at 600s (10 minutes) regardless of queue size', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const msg = makeMsg('task');
+    // Add 8 escalations: 180 + 7×60 = 600s exactly (at or above cap)
+    for (let i = 1; i <= 8; i++) {
+      await router.requestToolEscalation(
+        `worker-c${i}`,
+        ['Bash'],
+        'read-only',
+        `step ${i}`,
+        msg,
+        connector,
+      );
+    }
+
+    // 8 pending = 180 + 7×60 = 600s — should show 600
+    const eighthPrompt = connector.sentMessages.at(-1)!;
+    expect(eighthPrompt.content).toContain('600 seconds');
+
+    // Add a 9th — still capped at 600s
+    await router.requestToolEscalation(
+      'worker-c9',
+      ['Bash'],
+      'read-only',
+      'step 9',
+      msg,
+      connector,
+    );
+    const ninthPrompt = connector.sentMessages.at(-1)!;
+    expect(ninthPrompt.content).toContain('600 seconds');
   });
 });

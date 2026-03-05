@@ -733,8 +733,16 @@ export class Router {
       }
     }
 
-    // Set auto-deny timeout (default 180s, configurable via escalationTimeoutMs) — removes only this entry from the queue
-    const escalationTimeoutMs = this.routerConfig?.escalationTimeoutMs ?? 180_000;
+    // Get queue state BEFORE adding new entry to compute scaled timeout (OB-1639)
+    const existingQueue = this.pendingEscalations.get(sender) ?? [];
+    const pendingCount = existingQueue.length + 1; // includes the escalation being added
+
+    // Scale timeout: base + 60s per additional pending escalation beyond the first, capped at 600s
+    const baseTimeoutMs = this.routerConfig?.escalationTimeoutMs ?? 180_000;
+    const scaledTimeoutMs = Math.min(baseTimeoutMs + (pendingCount - 1) * 60_000, 600_000);
+    const scaledTimeoutSec = Math.round(scaledTimeoutMs / 1000);
+
+    // Set auto-deny timeout — removes only this entry from the queue
     const timeoutHandle = setTimeout(() => {
       const queue = this.pendingEscalations.get(sender);
       if (!queue) return;
@@ -756,7 +764,7 @@ export class Router {
         { sender, workerId, requestedTools, currentProfile },
         'Tool escalation timed out — auto-denied',
       );
-    }, escalationTimeoutMs);
+    }, scaledTimeoutMs);
 
     const queueEntry: PendingEscalation = {
       workerId,
@@ -768,7 +776,6 @@ export class Router {
       timeoutHandle,
       respawn,
     };
-    const existingQueue = this.pendingEscalations.get(sender) ?? [];
     existingQueue.push(queueEntry);
     this.pendingEscalations.set(sender, existingQueue);
 
@@ -784,7 +791,7 @@ export class Router {
         `⚠️ Worker ${workerId} needs *${toolsList}* access for:\n${reason}\n\n` +
         `Current profile: ${currentProfile}\n\n` +
         `Reply '${allowExample}', '/allow all', or '/deny' to reject.\n` +
-        `Auto-deny in 60 seconds if no reply.`;
+        `Auto-deny in ${scaledTimeoutSec} seconds if no reply.`;
     } else {
       const workerLines = existingQueue
         .map((e, i) => `(${i + 1}) ${e.workerId} needs ${e.requestedTools.join(', ')}`)
@@ -792,7 +799,7 @@ export class Router {
       escalationText =
         `⚠️ ${queueCount} workers requesting elevated access:\n${workerLines}\n\n` +
         `Reply /allow for next, /allow all for all, or /deny to reject next.\n` +
-        `Auto-deny for first request in 60 seconds if no reply.`;
+        `Auto-deny for first request in ${scaledTimeoutSec} seconds if no reply.`;
     }
 
     await connector.sendMessage({
