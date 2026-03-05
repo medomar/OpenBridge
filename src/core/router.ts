@@ -733,18 +733,6 @@ export class Router {
       }
     }
 
-    // Build the example allow invocation — use first requested tool as hint
-    const allowExample =
-      requestedTools.length === 1
-        ? `/allow ${requestedTools[0]}`
-        : `/allow ${requestedTools[0]} (or /allow code-edit)`;
-
-    const escalationText =
-      `⚠️ Worker ${workerId} needs *${toolsList}* access for:\n${reason}\n\n` +
-      `Current profile: ${currentProfile}\n\n` +
-      `Reply '${allowExample}' to grant, or '/deny' to reject.\n` +
-      `Auto-deny in 60 seconds if no reply.`;
-
     // Set 60-second auto-deny timeout — removes only this entry from the queue
     const timeoutHandle = setTimeout(() => {
       const queue = this.pendingEscalations.get(sender);
@@ -782,6 +770,29 @@ export class Router {
     const existingQueue = this.pendingEscalations.get(sender) ?? [];
     existingQueue.push(queueEntry);
     this.pendingEscalations.set(sender, existingQueue);
+
+    // Build escalation prompt showing full queue state (OB-1635)
+    const queueCount = existingQueue.length;
+    let escalationText: string;
+    if (queueCount === 1) {
+      const allowExample =
+        requestedTools.length === 1
+          ? `/allow ${requestedTools[0]}`
+          : `/allow ${requestedTools[0]} (or /allow code-edit)`;
+      escalationText =
+        `⚠️ Worker ${workerId} needs *${toolsList}* access for:\n${reason}\n\n` +
+        `Current profile: ${currentProfile}\n\n` +
+        `Reply '${allowExample}', '/allow all', or '/deny' to reject.\n` +
+        `Auto-deny in 60 seconds if no reply.`;
+    } else {
+      const workerLines = existingQueue
+        .map((e, i) => `(${i + 1}) ${e.workerId} needs ${e.requestedTools.join(', ')}`)
+        .join('\n');
+      escalationText =
+        `⚠️ ${queueCount} workers requesting elevated access:\n${workerLines}\n\n` +
+        `Reply /allow for next, /allow all for all, or /deny to reject next.\n` +
+        `Auto-deny for first request in 60 seconds if no reply.`;
+    }
 
     await connector.sendMessage({
       target: message.source,
