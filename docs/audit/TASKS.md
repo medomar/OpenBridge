@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 51 | **In Progress:** 0 | **Done:** 230 (112 archived)
+> **Pending:** 50 | **In Progress:** 0 | **Done:** 231 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -519,7 +519,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 17  | OB-1642 | Add worker state audit in `WorkerRegistry` — on batch stats collection, if `total != completed + failed + cancelled`, log WARNING with orphaned worker IDs and their last known state. Add `getOrphanedWorkers()` method                                     | ◻ Pending |
+| 17  | OB-1642 | Add worker state audit in `WorkerRegistry` — on batch stats collection, if `total != completed + failed + cancelled`, log WARNING with orphaned worker IDs and their last known state. Add `getOrphanedWorkers()` method                                     | ✅ Done   |
 | 18  | OB-1643 | Add worker watchdog timer — if a worker hasn't reported progress in 10 minutes (read-only) or 30 minutes (code-edit/full-access), force-kill via PID and mark as `failed` with reason "watchdog-timeout". Configurable via `workerWatchdogMinutes` in config | ◻ Pending |
 | 19  | OB-1644 | When escalation times out (auto-deny), explicitly mark the worker as `cancelled` in WorkerRegistry — currently the worker is left in "pending" state indefinitely                                                                                            | ◻ Pending |
 | 20  | OB-1645 | When re-spawn fails (OB-F95 fix), mark BOTH the original worker and the escalated worker as `failed` in WorkerRegistry — prevent either from being counted as "active"                                                                                       | ◻ Pending |
