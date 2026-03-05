@@ -796,6 +796,119 @@ describe('WorkerRegistry', () => {
     });
   });
 
+  // ── OB-1647: Watchdog, escalation, /workers data, and batch stats audit ──
+
+  describe('OB-1647 — watchdog, escalation, /workers, and batch stats audit', () => {
+    it('watchdog kills worker after timeout and marks it failed', () => {
+      vi.useFakeTimers();
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockReturnValue(undefined as unknown as ReturnType<typeof process.kill>);
+
+      try {
+        const reg = new WorkerRegistry();
+        const readOnlyManifest: TaskManifest = { ...sampleManifest, profile: 'read-only' };
+        const wId = reg.addWorker(readOnlyManifest);
+        reg.markRunning(wId, 99999);
+
+        // Start watchdog with short timeout so it fires quickly
+        reg.startWatchdog({ readOnlyMs: 1000, codeEditMs: 30000, intervalMs: 500 });
+
+        // Advance past timeout (1000ms) + an additional interval tick so the check fires
+        vi.advanceTimersByTime(2000);
+
+        const worker = reg.getWorker(wId);
+        expect(worker?.status).toBe('failed');
+        expect(worker?.error).toBe('watchdog-timeout');
+        expect(killSpy).toHaveBeenCalledWith(99999, 'SIGKILL');
+
+        reg.stopWatchdog();
+      } finally {
+        vi.useRealTimers();
+        killSpy.mockRestore();
+      }
+    });
+
+    it('escalation timeout marks worker as cancelled and removes it from active', () => {
+      const wId = registry.addWorker(sampleManifest);
+      registry.markRunning(wId, 12345);
+
+      // Simulate auto-deny on escalation timeout (OB-1644 path)
+      registry.markCancelled(wId, 'escalation-timeout');
+
+      const worker = registry.getWorker(wId);
+      expect(worker?.status).toBe('cancelled');
+      expect(worker?.error).toBe('escalation-timeout');
+      expect(worker?.completedAt).toBeDefined();
+      expect(worker?.pid).toBeUndefined();
+
+      // Cancelled worker is no longer counted as running or orphaned
+      expect(registry.getRunningWorkers()).toHaveLength(0);
+      expect(registry.getOrphanedWorkers()).toHaveLength(0);
+      expect(registry.getCancelledWorkers()).toHaveLength(1);
+    });
+
+    it('/workers command data: registry correctly exposes active and orphaned workers', () => {
+      // running worker
+      const runningId = registry.addWorker(sampleManifest);
+      registry.markRunning(runningId, 1001);
+
+      // pending worker (stuck — acts as orphan)
+      const pendingId = registry.addWorker(sampleManifest);
+
+      // completed worker (terminal — should not appear as active or orphaned)
+      const completedId = registry.addWorker(sampleManifest);
+      registry.markRunning(completedId, 1002);
+      registry.markCompleted(completedId, sampleResult);
+
+      // Data the /workers command uses
+      const activeWorkers = registry
+        .getAllWorkers()
+        .filter((w) => w.status === 'pending' || w.status === 'running');
+      const orphaned = registry.getOrphanedWorkers();
+
+      expect(activeWorkers).toHaveLength(2);
+      expect(activeWorkers.map((w) => w.id)).toContain(runningId);
+      expect(activeWorkers.map((w) => w.id)).toContain(pendingId);
+      expect(activeWorkers.map((w) => w.id)).not.toContain(completedId);
+
+      // Orphaned == active (both pending and running are non-terminal)
+      expect(orphaned).toHaveLength(2);
+      expect(orphaned.map((w) => w.id)).not.toContain(completedId);
+    });
+
+    it('batch stats audit: getAggregatedStats detects orphaned workers', () => {
+      // Terminal workers
+      const w1 = registry.addWorker(sampleManifest);
+      registry.markRunning(w1, 1001);
+      registry.markCompleted(w1, sampleResult);
+
+      const w2 = registry.addWorker(sampleManifest);
+      registry.markRunning(w2, 1002);
+      registry.markFailed(w2, { ...sampleResult, exitCode: 1 }, 'error');
+
+      // Non-terminal (orphaned) workers
+      const w3 = registry.addWorker(sampleManifest);
+      registry.markRunning(w3, 1003); // stuck in running
+
+      registry.addWorker(sampleManifest); // stuck in pending
+
+      const stats = registry.getAggregatedStats();
+      const terminalCount = stats.completed + stats.failed + stats.cancelled;
+
+      // total (4) != terminal (2) → audit detects 2 orphans
+      expect(stats.totalWorkers).toBe(4);
+      expect(terminalCount).toBe(2);
+      expect(stats.totalWorkers).toBeGreaterThan(terminalCount);
+
+      const orphaned = registry.getOrphanedWorkers();
+      expect(orphaned).toHaveLength(2);
+      for (const orphan of orphaned) {
+        expect(['pending', 'running']).toContain(orphan.status);
+      }
+    });
+  });
+
   // ── getOrphanedWorkers ──────────────────────────────────────────
 
   describe('getOrphanedWorkers', () => {

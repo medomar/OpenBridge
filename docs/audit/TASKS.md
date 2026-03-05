@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 46 | **In Progress:** 0 | **Done:** 235 (112 archived)
+> **Pending:** 45 | **In Progress:** 0 | **Done:** 236 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -49,7 +49,7 @@
 | 91     | Conversation History + Rich Input    | 15    | ✅ (15/15 done) |
 | 92     | Settings Panel + Deep Mode UI        | 12    | ✅ (12/12 done) |
 | Docker | Docker Sandbox                       | 16    | ✅ (16/16 done) |
-| 99     | Escalation Queue & Orphan Fixes      | 22    | ◻               |
+| 99     | Escalation Queue & Orphan Fixes      | 22    | ✅ (22/22 done) |
 | 100    | Classification & RAG Fixes           | 16    | ◻               |
 | 101    | Batch & Shutdown Safety              | 7     | ◻               |
 | 102    | Worker & Cost Controls               | 8     | ◻               |
@@ -517,14 +517,14 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 99-4 — Orphaned Worker Cleanup (OB-F103) — 6 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 17  | OB-1642 | Add worker state audit in `WorkerRegistry` — on batch stats collection, if `total != completed + failed + cancelled`, log WARNING with orphaned worker IDs and their last known state. Add `getOrphanedWorkers()` method                                     | ✅ Done   |
-| 18  | OB-1643 | Add worker watchdog timer — if a worker hasn't reported progress in 10 minutes (read-only) or 30 minutes (code-edit/full-access), force-kill via PID and mark as `failed` with reason "watchdog-timeout". Configurable via `workerWatchdogMinutes` in config | ✅ Done   |
-| 19  | OB-1644 | When escalation times out (auto-deny), explicitly mark the worker as `cancelled` in WorkerRegistry — currently the worker is left in "pending" state indefinitely                                                                                            | ✅ Done   |
-| 20  | OB-1645 | When re-spawn fails (OB-F95 fix), mark BOTH the original worker and the escalated worker as `failed` in WorkerRegistry — prevent either from being counted as "active"                                                                                       | ✅ Done   |
-| 21  | OB-1646 | Add `/workers` command to Router — list all active workers with: worker ID, status, profile, duration, PID. Include count of orphaned workers. User can reply `/kill <worker-id>` to force-stop a stuck worker                                               | ✅ Done   |
-| 22  | OB-1647 | Add tests: (1) watchdog kills worker after timeout, (2) escalation timeout marks worker cancelled, (3) `/workers` shows active and orphaned workers, (4) batch stats audit detects orphans. At least 4 tests in `tests/master/worker-registry.test.ts`       | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| 17  | OB-1642 | Add worker state audit in `WorkerRegistry` — on batch stats collection, if `total != completed + failed + cancelled`, log WARNING with orphaned worker IDs and their last known state. Add `getOrphanedWorkers()` method                                     | ✅ Done |
+| 18  | OB-1643 | Add worker watchdog timer — if a worker hasn't reported progress in 10 minutes (read-only) or 30 minutes (code-edit/full-access), force-kill via PID and mark as `failed` with reason "watchdog-timeout". Configurable via `workerWatchdogMinutes` in config | ✅ Done |
+| 19  | OB-1644 | When escalation times out (auto-deny), explicitly mark the worker as `cancelled` in WorkerRegistry — currently the worker is left in "pending" state indefinitely                                                                                            | ✅ Done |
+| 20  | OB-1645 | When re-spawn fails (OB-F95 fix), mark BOTH the original worker and the escalated worker as `failed` in WorkerRegistry — prevent either from being counted as "active"                                                                                       | ✅ Done |
+| 21  | OB-1646 | Add `/workers` command to Router — list all active workers with: worker ID, status, profile, duration, PID. Include count of orphaned workers. User can reply `/kill <worker-id>` to force-stop a stuck worker                                               | ✅ Done |
+| 22  | OB-1647 | Add tests: (1) watchdog kills worker after timeout, (2) escalation timeout marks worker cancelled, (3) `/workers` shows active and orphaned workers, (4) batch stats audit detects orphans. At least 4 tests in `tests/master/worker-registry.test.ts`       | ✅ Done |
 
 ---
 
