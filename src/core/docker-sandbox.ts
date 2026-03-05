@@ -9,6 +9,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -82,6 +83,21 @@ export interface BuildImageOptions {
    * from dist/core/docker-sandbox.js → project root).
    */
   context?: string;
+}
+
+/** Options for buildWorkspaceMounts() */
+export interface WorkspaceMountOptions {
+  /**
+   * Absolute path to the workspace (target project) on the host.
+   * Mounted at /workspace inside the container as read-only.
+   */
+  workspacePath: string;
+  /**
+   * Absolute path to the .openbridge/ folder on the host.
+   * Mounted at /workspace/.openbridge as read-write so agents can write outputs.
+   * Defaults to `{workspacePath}/.openbridge`.
+   */
+  openbridgePath?: string;
 }
 
 // ─── DockerSandbox ────────────────────────────────────────────────────────────
@@ -268,7 +284,60 @@ export class DockerSandbox {
     logger.info({ tag }, 'Worker image built successfully');
   }
 
+  // ─── Workspace mounting ─────────────────────────────────────────────────────
+
+  /**
+   * Build the standard workspace volume mounts for a sandboxed worker.
+   *
+   * Produces two mounts:
+   *   - `workspacePath` → `/workspace`          (read-only)
+   *   - `.openbridge/`  → `/workspace/.openbridge` (read-write, for outputs)
+   *
+   * If `.openbridge/` does not exist it is created automatically so Docker
+   * does not create it as root-owned (which would break non-root writes).
+   *
+   * @throws if either resolved path is not absolute.
+   */
+  static buildWorkspaceMounts(options: WorkspaceMountOptions): VolumeMount[] {
+    const { workspacePath } = options;
+    const openbridgePath = options.openbridgePath ?? path.join(workspacePath, '.openbridge');
+
+    DockerSandbox._validateMountPath(workspacePath, 'workspacePath');
+    DockerSandbox._validateMountPath(openbridgePath, 'openbridgePath');
+
+    // Ensure .openbridge/ exists before Docker mounts it. If the directory is
+    // absent Docker creates it as root, preventing the non-root container user
+    // from writing outputs.
+    if (!fs.existsSync(openbridgePath)) {
+      fs.mkdirSync(openbridgePath, { recursive: true });
+      logger.debug({ openbridgePath }, 'Created .openbridge directory for container mount');
+    }
+
+    return [
+      {
+        host: workspacePath,
+        container: '/workspace',
+        readOnly: true,
+      },
+      {
+        host: openbridgePath,
+        container: '/workspace/.openbridge',
+        readOnly: false,
+      },
+    ];
+  }
+
   // ─── Private helpers ───────────────────────────────────────────────────────
+
+  /** Validate that a host path is a non-empty absolute path. */
+  private static _validateMountPath(hostPath: string, label: string): void {
+    if (!hostPath || typeof hostPath !== 'string') {
+      throw new Error(`DockerSandbox: ${label} must be a non-empty string`);
+    }
+    if (!path.isAbsolute(hostPath)) {
+      throw new Error(`DockerSandbox: ${label} must be an absolute path, got: ${hostPath}`);
+    }
+  }
 
   /** Returns true if a Docker image with the given tag exists locally. */
   private async _imageExists(tag: string): Promise<boolean> {

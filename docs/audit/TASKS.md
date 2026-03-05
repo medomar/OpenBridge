@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 79 | **In Progress:** 0 | **Done:** 202 (112 archived)
+> **Pending:** 78 | **In Progress:** 0 | **Done:** 203 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -465,7 +465,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 2   | OB-1546 | Add Docker detection to `src/discovery/tool-scanner.ts` — check for docker in PATH, verify daemon running with docker info. Report version and status. Handle: not installed, installed but no daemon, available                                                                                            | ✅ Done   |
 | 3   | OB-1547 | Create `docker/Dockerfile.worker` — based on node:22-slim. Install claude CLI. Set /workspace working directory. Non-root user. Keep image < 500MB                                                                                                                                                          | ✅ Done   |
 | 4   | OB-1548 | Add buildImage() to DockerSandbox — build worker image from Dockerfile.worker. Tag as openbridge-worker:latest. Cache layers. Skip if image exists                                                                                                                                                          | ✅ Done   |
-| 5   | OB-1549 | Add workspace volume mounting — workspace as read-only (-v workspace:/workspace:ro). .openbridge/ as read-write for outputs. Validate mount paths                                                                                                                                                           | ◻ Pending |
+| 5   | OB-1549 | Add workspace volume mounting — workspace as read-only (-v workspace:/workspace:ro). .openbridge/ as read-write for outputs. Validate mount paths                                                                                                                                                           | ✅ Done   |
 | 6   | OB-1550 | Add network isolation — default --network none. Config: none (isolated), host (full), bridge (Docker only). Default none for max security                                                                                                                                                                   | ◻ Pending |
 | 7   | OB-1551 | Add resource limits — --memory 512m, --cpus 1, --pids-limit 100 defaults. Config options for each. Kill container if exceeded                                                                                                                                                                               | ◻ Pending |
 | 8   | OB-1552 | Add sandbox config to `src/types/config.ts` — security.sandbox section: mode (none/docker/bubblewrap, default: none), network, memoryMB, cpus. Zod validation                                                                                                                                               | ◻ Pending |
