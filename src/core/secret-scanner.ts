@@ -21,6 +21,19 @@ interface SensitivePattern {
 }
 
 /**
+ * Environment-file basenames that are documentation / templates, not real secrets.
+ * These are matched case-insensitively against the file basename and skipped
+ * before any SENSITIVE_PATTERNS check.
+ */
+export const SENSITIVE_FILE_EXCEPTIONS: ReadonlySet<string> = new Set([
+  '.env.example',
+  '.env.sample',
+  '.env.template',
+  '.env.test',
+  '.env.defaults',
+]);
+
+/**
  * Scans a workspace root (1 level deep) for files whose names match sensitive patterns.
  * Name-check only — file contents are never read.
  *
@@ -59,6 +72,9 @@ export class SecretScanner {
 
       const basename = entry.name;
       const filePath = path.join(workspacePath, basename);
+
+      // Skip well-known documentation / template env files — not real secrets
+      if (SENSITIVE_FILE_EXCEPTIONS.has(basename.toLowerCase())) continue;
 
       for (const { pattern, severity } of this.patterns) {
         if (matchesPattern(basename, pattern)) {
