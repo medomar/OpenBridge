@@ -324,6 +324,7 @@ const MASTER_MAX_TURNS = 50;
  * complex-task (planning): forces Master to output SPAWN markers → 25 turns
  */
 const MESSAGE_MAX_TURNS_QUICK = 5;
+const MESSAGE_MAX_TURNS_MENU_SELECTION = 2;
 const MESSAGE_MAX_TURNS_TEXT_GEN = 10;
 const MESSAGE_MAX_TURNS_TOOL_USE = 15;
 const MESSAGE_MAX_TURNS_PLANNING = 25;
@@ -432,8 +433,8 @@ function masterTaskToMemoryTask(
  * replacing the fixed MESSAGE_MAX_TURNS_QUICK / MESSAGE_MAX_TURNS_TOOL_USE constants.
  */
 export interface ClassificationResult {
-  /** One of quick-answer, tool-use, or complex-task */
-  class: 'quick-answer' | 'tool-use' | 'complex-task';
+  /** One of quick-answer, tool-use, complex-task, or menu-selection */
+  class: 'quick-answer' | 'tool-use' | 'complex-task' | 'menu-selection';
   /** AI-suggested turn budget for this specific message */
   maxTurns: number;
   /** Computed wall-clock timeout in milliseconds (maxTurns × PER_TURN_BUDGET_MS) */
@@ -448,6 +449,12 @@ export interface ClassificationResult {
   batchMode?: boolean;
   /** When true, the message includes "commit after each" — BatchManager sets commitAfterEach (OB-1615). */
   commitAfterEach?: boolean;
+  /** When true, RAG retrieval is skipped for this message (e.g. menu-selection, very short inputs). */
+  skipRag?: boolean;
+  /** When true, the message is a numeric menu selection from a previous numbered list (OB-1658). */
+  menuSelection?: boolean;
+  /** The option text extracted from the previous bot response for this menu selection (OB-1658). */
+  selectedOptionText?: string;
 }
 
 /**
@@ -3177,8 +3184,42 @@ export class MasterManager {
   private classifyTaskByKeywords(
     content: string,
     recentUserMessages?: string[],
+    lastBotResponse?: string,
   ): ClassificationResult {
     const lower = content.toLowerCase();
+
+    // Menu-selection: single numeric digit (1–9) — user is selecting from a numbered list (OB-1658).
+    // Set maxTurns: 2 (just relay the choice) and skip RAG (no context retrieval needed).
+    // If a previous bot response is available, check it contains a numbered list to confirm intent,
+    // and extract the matching option text for use in the Master prompt (OB-1659).
+    const trimmedContent = content.trim();
+    if (/^\d$/.test(trimmedContent) && trimmedContent >= '1' && trimmedContent <= '9') {
+      const digitValue = parseInt(trimmedContent, 10);
+      let selectedOptionText: string | undefined;
+      // Confirm the previous bot response contained a numbered list
+      const hasNumberedList = lastBotResponse ? /^\s*\d+[.)]\s+\S/m.test(lastBotResponse) : false;
+      if (hasNumberedList && lastBotResponse) {
+        // Extract the line matching the selected option number
+        const lines = lastBotResponse.split('\n');
+        const optionPattern = new RegExp(`^\\s*${digitValue}[.)]\\s+(.+)`);
+        const matchedLine = lines.find((l) => optionPattern.test(l));
+        if (matchedLine) {
+          const match = optionPattern.exec(matchedLine);
+          selectedOptionText = match && match[1] ? match[1].trim() : undefined;
+        }
+      }
+      return {
+        class: 'menu-selection',
+        maxTurns: MESSAGE_MAX_TURNS_MENU_SELECTION,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_MENU_SELECTION),
+        skipRag: true,
+        menuSelection: true,
+        selectedOptionText,
+        reason: hasNumberedList
+          ? `menu-selection: digit ${trimmedContent} from numbered list`
+          : `menu-selection: single digit ${trimmedContent}`,
+      };
+    }
 
     // Batch Mode keywords — multi-task iteration requests that trigger Batch Task Continuation (OB-1605)
     // e.g. "implement all tasks", "go through each one", "for each pending item"
@@ -3491,8 +3532,9 @@ export class MasterManager {
     }
 
     // Fetch recent user messages from session history for conversation context (OB-1582).
-    // Used by the keyword classifier to detect text-generation follow-ups.
+    // Also fetch last bot response for menu-selection detection (OB-1658).
     let recentUserMessages: string[] | undefined;
+    let lastBotResponse: string | undefined;
     if (sessionId && this.memory) {
       try {
         const sessionMessages = await this.memory.getSessionHistory(sessionId, 6);
@@ -3502,6 +3544,13 @@ export class MasterManager {
           .map((e) => e.content);
         if (userMessages.length > 0) {
           recentUserMessages = userMessages;
+        }
+        const botMessages = sessionMessages
+          .filter((e) => e.role === 'master')
+          .slice(-1)
+          .map((e) => e.content);
+        if (botMessages.length > 0) {
+          lastBotResponse = botMessages[0];
         }
       } catch {
         // Non-fatal: conversation context is a best-effort enhancement
@@ -3517,7 +3566,11 @@ export class MasterManager {
         { adapter: this.adapter.name },
         'Skipping AI classifier for non-Claude adapter, using keyword heuristics',
       );
-      const keywordResult = this.classifyTaskByKeywords(content, recentUserMessages);
+      const keywordResult = this.classifyTaskByKeywords(
+        content,
+        recentUserMessages,
+        lastBotResponse,
+      );
       this.classificationCache.set(cacheKey, {
         normalizedKey: cacheKey,
         result: keywordResult,
@@ -3670,7 +3723,11 @@ export class MasterManager {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      classificationResult = this.classifyTaskByKeywords(content, recentUserMessages);
+      classificationResult = this.classifyTaskByKeywords(
+        content,
+        recentUserMessages,
+        lastBotResponse,
+      );
     }
 
     // Apply classification learning: if aggregate data shows this class underperforms,
