@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 39 | **Fixed:** 87 | **Last Audit:** 2026-03-05
+> **Open:** 38 | **Fixed:** 88 | **Last Audit:** 2026-03-05
 > **Current focus:** Making OpenBridge effective for finishing the Marketplace projects (frontend, dashboard, backend).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md)
 
@@ -56,7 +56,7 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F98  | Misclassification of strategic/brainstorming messages      | 🟠 High     | Strategic questions get 5 turns instead of 25 — shallow answers                            | ✅ Fixed |
 | OB-F99  | RAG returns zero results for real user questions           | 🟡 Medium   | Real queries return 0 chunks, single-char queries return 10 — RAG is inverted              | Open     |
 | OB-F100 | Single-character messages trigger full agent invocations   | 🟢 Low      | "1", "3" go through full pipeline: classification → RAG → agent spawn — 60s and $0.02 each | Open     |
-| OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | Open     |
+| OB-F101 | Codex worker cost spike ($1.14 for read-only task)         | 🟡 Medium   | Unpredictable cost spikes — read-only task should not cost $1.14                           | ✅ Fixed |
 | OB-F102 | Master response truncated to empty after SPAWN removal     | 🟡 Medium   | User gets "I'm working on it" instead of Master's plan when response is all SPAWN markers  | ✅ Fixed |
 | OB-F103 | Orphaned workers never reach terminal state                | 🔴 Critical | 7/61 workers unaccounted for — stuck processes, resource leaks, one ran 6.4 hours          | Open     |
 | OB-F104 | Workers exhaust max-turns without completing               | 🟡 Medium   | Workers counted as "completed" with partial results — Master gets incomplete data          | Open     |
