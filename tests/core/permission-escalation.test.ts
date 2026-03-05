@@ -22,10 +22,13 @@ import {
 } from '../../src/memory/access-store.js';
 import { Router } from '../../src/core/router.js';
 import { predictToolRequirements } from '../../src/master/master-manager.js';
+import { WorkerRegistry } from '../../src/master/worker-registry.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
 import type { InboundMessage } from '../../src/types/message.js';
 import type { MemoryManager } from '../../src/memory/index.js';
+import type { AgentResult } from '../../src/core/agent-runner.js';
+import type { TaskManifest } from '../../src/types/agent.js';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -501,5 +504,158 @@ describe('permission escalation — auto-approve-up-to-edit mode', () => {
     // Escalation should still be pending — full-access exceeds edit level
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
     expect(respawn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. WorkerRegistry — escalated worker registration and execution (OB-1629)
+// ---------------------------------------------------------------------------
+
+describe('WorkerRegistry — escalated worker registration and execution', () => {
+  it('registerWorkerWithId() registers worker with escalated ID in pending state', () => {
+    const registry = new WorkerRegistry();
+
+    const taskManifest: TaskManifest = {
+      prompt: 'run the tests',
+      workspacePath: '/tmp/test-workspace',
+      profile: 'read-only-escalated',
+    };
+
+    const originalWorkerId = 'worker-abc123';
+    const escalatedWorkerId = `${originalWorkerId}-escalated`;
+
+    // Register with explicit ID (mirrors what respawnWorkerAfterGrant() does)
+    registry.registerWorkerWithId(escalatedWorkerId, taskManifest);
+
+    // Verify worker is registered with the correct ID and pending state
+    const worker = registry.getWorker(escalatedWorkerId);
+    expect(worker).toBeDefined();
+    expect(worker!.id).toBe(escalatedWorkerId);
+    expect(worker!.status).toBe('pending');
+    expect(worker!.taskManifest.prompt).toBe('run the tests');
+  });
+
+  it('escalated worker can be marked running and then completed successfully', () => {
+    const registry = new WorkerRegistry();
+
+    const taskManifest: TaskManifest = {
+      prompt: 'run npm test',
+      workspacePath: '/tmp/test-workspace',
+      profile: 'code-edit',
+    };
+
+    const escalatedWorkerId = 'worker-xyz789-escalated';
+    registry.registerWorkerWithId(escalatedWorkerId, taskManifest);
+
+    // Simulate the worker being picked up and starting
+    registry.markRunning(escalatedWorkerId, 12345);
+    expect(registry.getWorker(escalatedWorkerId)!.status).toBe('running');
+    expect(registry.getWorker(escalatedWorkerId)!.pid).toBe(12345);
+
+    // Simulate successful completion
+    const result: AgentResult = {
+      exitCode: 0,
+      stdout: 'All tests passed',
+      stderr: '',
+      durationMs: 1200,
+      retryCount: 0,
+    };
+    registry.markCompleted(escalatedWorkerId, result);
+
+    const completed = registry.getWorker(escalatedWorkerId);
+    expect(completed!.status).toBe('completed');
+    expect(completed!.result?.exitCode).toBe(0);
+    expect(completed!.result?.stdout).toBe('All tests passed');
+    expect(completed!.pid).toBeUndefined(); // PID cleared after completion
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Integration: grant escalation → worker registered → executes (OB-1629)
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — grant triggers worker registration and execution', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('grant escalation → respawn callback registers escalated worker → executes successfully', async () => {
+    const registry = new WorkerRegistry();
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const originalWorkerId = 'worker-integration-001';
+    const escalatedWorkerId = `${originalWorkerId}-escalated`;
+
+    let registeredWorkerFound = false;
+    let workerExecutedSuccessfully = false;
+
+    // The respawn callback simulates what respawnWorkerAfterGrant() does:
+    // 1. Register escalated worker with explicit ID BEFORE spawning (OB-1626 fix)
+    // 2. Execute the worker (mark running → completed)
+    const respawnCallback = async (grantedTools: string[]): Promise<void> => {
+      expect(grantedTools).toContain('Bash');
+
+      const taskManifest: TaskManifest = {
+        prompt: 'run the tests with bash',
+        workspacePath: '/tmp/workspace',
+        profile: 'read-only-escalated',
+      };
+
+      // Register BEFORE spawning — this is the critical ordering from OB-1626
+      registry.registerWorkerWithId(escalatedWorkerId, taskManifest);
+
+      // Verify worker is registered immediately after registration
+      const worker = registry.getWorker(escalatedWorkerId);
+      registeredWorkerFound = worker !== undefined && worker.id === escalatedWorkerId;
+
+      // Simulate successful spawn and execution
+      registry.markRunning(escalatedWorkerId, 99999);
+      const result: AgentResult = {
+        exitCode: 0,
+        stdout: 'task completed successfully',
+        stderr: '',
+        durationMs: 500,
+        retryCount: 0,
+      };
+      registry.markCompleted(escalatedWorkerId, result);
+      workerExecutedSuccessfully = registry.getWorker(escalatedWorkerId)!.status === 'completed';
+    };
+
+    const msg = makeMsg('run the tests');
+    await router.requestToolEscalation(
+      originalWorkerId,
+      ['Bash'],
+      'read-only',
+      'needs bash to run tests',
+      msg,
+      connector,
+      respawnCallback,
+    );
+
+    // Grant escalation via /allow
+    await router.route({ ...makeMsg('/allow Bash'), id: 'msg-grant-integration' });
+
+    // Verify the respawn callback was invoked and registered the worker
+    expect(registeredWorkerFound).toBe(true);
+    expect(workerExecutedSuccessfully).toBe(true);
+
+    // Verify the escalated worker is in completed state in the registry
+    const completedWorker = registry.getWorker(escalatedWorkerId);
+    expect(completedWorker).toBeDefined();
+    expect(completedWorker!.status).toBe('completed');
+    expect(completedWorker!.id).toBe(escalatedWorkerId);
+    expect(completedWorker!.result?.exitCode).toBe(0);
+
+    // Verify the router sent a grant confirmation message
+    const grantMsg = connector.sentMessages.find((m) => m.content.includes('Granted'));
+    expect(grantMsg).toBeDefined();
+
+    // Escalation is cleared after grant
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
   });
 });
