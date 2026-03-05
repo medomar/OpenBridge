@@ -891,7 +891,7 @@ export class Bridge {
    */
   private async runSecretScan(workspacePath: string): Promise<void> {
     try {
-      const scanner = new SecretScanner();
+      const scanner = new SecretScanner(undefined, this.securityConfig?.sensitiveFileExceptions);
       const matches = await scanner.scanWorkspace(workspacePath);
 
       if (matches.length === 0) return;
