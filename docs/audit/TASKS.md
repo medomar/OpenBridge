@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 62 | **In Progress:** 0 | **Done:** 219 (112 archived)
+> **Pending:** 61 | **In Progress:** 0 | **Done:** 220 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -498,7 +498,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                             | Status    |
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 6   | OB-1631 | Refactor `pendingEscalations` in Router from single-entry to queue — change from `Map<sender, PendingEscalation>` to `Map<sender, PendingEscalation[]>`. Each `/allow` pops the next pending escalation instead of clearing all state   | ◻ Pending |
+| 6   | OB-1631 | Refactor `pendingEscalations` in Router from single-entry to queue — change from `Map<sender, PendingEscalation>` to `Map<sender, PendingEscalation[]>`. Each `/allow` pops the next pending escalation instead of clearing all state   | ✅ Done   |
 | 7   | OB-1632 | Add `/allow all` command to Router — grants all pending escalations for a sender at once. Iterates through the queue and processes each grant sequentially                                                                              | ◻ Pending |
 | 8   | OB-1633 | After each `/allow`, show remaining count: "Granted. X more pending escalation(s) — reply /allow for next or /allow all for all"                                                                                                        | ◻ Pending |
 | 9   | OB-1634 | Add `/deny all` command — denies all pending escalations for a sender at once. Marks all queued workers as denied                                                                                                                       | ◻ Pending |
