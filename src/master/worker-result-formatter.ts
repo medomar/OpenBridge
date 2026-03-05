@@ -41,6 +41,10 @@ export interface WorkerResultMeta {
    * so the Master AI can take category-specific re-delegation actions.
    */
   errorCategory?: ErrorCategory;
+  /** Whether the worker exhausted its turn budget before completing */
+  turnsExhausted?: boolean;
+  /** Maximum turns the worker was allowed (used in the partial warning message) */
+  maxTurns?: number;
 }
 
 /**
@@ -72,7 +76,13 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
   const safeOutput = sanitizeWorkerOutput(output);
 
-  return `[WORKER RESULT (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel})]\n${safeOutput.trim()}\n[/WORKER RESULT]`;
+  let body = safeOutput.trim();
+  if (meta.turnsExhausted) {
+    const turns = meta.maxTurns ?? '?';
+    body += `\n\n[PARTIAL — worker used all ${turns} turns, result may be incomplete]`;
+  }
+
+  return `[WORKER RESULT (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel})]\n${body}\n[/WORKER RESULT]`;
 }
 
 /**
@@ -180,6 +190,8 @@ export function formatWorkerBatch(
         // Classify the error so the Master can take category-specific re-delegation actions
         errorCategory:
           result.exitCode !== 0 ? classifyError(result.stderr, result.exitCode) : undefined,
+        turnsExhausted: result.turnsExhausted,
+        maxTurns: result.maxTurns,
       };
 
       if (result.exitCode === 0) {
