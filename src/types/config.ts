@@ -282,6 +282,15 @@ export const SecurityConfigSchema = z.object({
   confirmHighRisk: z.boolean().default(true),
   /** Sandbox configuration for worker process isolation */
   sandbox: SandboxConfigSchema.default({}),
+  /**
+   * Glob patterns for file basenames to exclude from sensitive file detection.
+   * Files matching any of these patterns will not be flagged as secrets,
+   * even if their names match a sensitive pattern (e.g. `.env.*`).
+   * Default: [".env.example", ".env.sample", ".env.template"] — documentation/template files.
+   */
+  sensitiveFileExceptions: z
+    .array(z.string())
+    .default(['.env.example', '.env.sample', '.env.template']),
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;

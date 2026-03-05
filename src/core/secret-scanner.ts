@@ -43,9 +43,11 @@ export const SENSITIVE_FILE_EXCEPTIONS: ReadonlySet<string> = new Set([
  */
 export class SecretScanner {
   private readonly patterns: readonly SensitivePattern[];
+  private readonly configExceptionPatterns: readonly string[];
 
-  constructor(patterns?: SensitivePattern[]) {
+  constructor(patterns?: SensitivePattern[], configExceptionPatterns?: string[]) {
     this.patterns = patterns ?? SENSITIVE_PATTERNS;
+    this.configExceptionPatterns = configExceptionPatterns ?? [];
   }
 
   /**
@@ -75,6 +77,9 @@ export class SecretScanner {
 
       // Skip well-known documentation / template env files — not real secrets
       if (SENSITIVE_FILE_EXCEPTIONS.has(basename.toLowerCase())) continue;
+
+      // Skip user-configured exception patterns from config.security.sensitiveFileExceptions
+      if (this.configExceptionPatterns.some((pat) => matchesPattern(basename, pat))) continue;
 
       for (const { pattern, severity } of this.patterns) {
         if (matchesPattern(basename, pattern)) {
