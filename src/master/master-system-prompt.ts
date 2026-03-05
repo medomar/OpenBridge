@@ -274,6 +274,7 @@ ${mcpSpawnField}
 
 ### Guidelines
 
+- **Always write a brief human-readable summary BEFORE any SPAWN markers.** Explain what you are about to do and why, so the user understands your plan even if SPAWN markers are stripped from the displayed response. Example: "I'll analyse the test suite and check for linting errors in parallel." followed by SPAWN markers.
 - Use \`read-only\` + \`${fastModel}\` for information gathering (cheapest, fastest)
 - Use \`code-edit\` + \`${balancedModel}\` for code modifications (balanced)
 - Use \`code-audit\` + \`${balancedModel}\` when the user asks to test, analyze, audit, or verify code. Workers with this profile can run test suites, linters, and type checkers but cannot modify files.
