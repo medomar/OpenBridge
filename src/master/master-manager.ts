@@ -6679,21 +6679,68 @@ ${currentContent}
   }
 
   /**
-   * Compute adaptive max-turns for a worker based on profile baseline + prompt length (OB-902).
+   * Return the maximum allowed turns for a worker based on its profile (OB-1677).
+   *
+   * Profile-specific caps prevent runaway workers while giving complex tasks
+   * enough headroom to complete:
+   *   - read-only:               25 turns
+   *   - code-edit / full-access: 40 turns
+   *   - other / unknown:         50 turns
+   */
+  private maxTurnsCapForProfile(profile: string): number {
+    if (profile === 'read-only') return 25;
+    if (profile === 'code-edit' || profile === 'full-access') return 40;
+    return 50;
+  }
+
+  /**
+   * Compute adaptive max-turns for a worker based on profile baseline + prompt heuristics (OB-902, OB-1677).
    *
    * If the SPAWN marker explicitly set maxTurns, that value is used directly (caller's
    * responsibility). This method only computes the fallback value when maxTurns is absent.
    *
-   * Formula: baselineTurns + ceil(promptLength / 1000), capped at 50.
-   * A 2 000-char prompt on code-edit (baseline 15) → 15 + 2 = 17 turns.
-   * A 20 000-char prompt on code-edit              → 15 + 20 = 35 turns.
+   * Formula:
+   *   1. baselineTurns (profile-based)
+   *   2. + ceil(promptLength / 1000)   — scales with prompt complexity
+   *   3. + 5 if promptLength > 200     — longer tasks need more room (OB-1677)
+   *   4. + 10 if prompt contains "thorough", "comprehensive", or "detailed" (OB-1677)
+   *   5. capped at maxTurnsCapForProfile(profile)
+   *
+   * Examples (code-edit, baseline 15, cap 40):
+   *   200-char prompt, no keywords → 15 + 1 = 16 turns
+   *   500-char prompt, no keywords → 15 + 1 + 5 = 21 turns
+   *   500-char prompt + "thorough" → 15 + 1 + 5 + 10 = 31 turns
    */
   private computeAdaptiveMaxTurns(profile: string, prompt: string): number {
     const baselineTurns = this.defaultMaxTurnsForProfile(profile);
+    const profileCap = this.maxTurnsCapForProfile(profile);
+
     const promptExtra = Math.ceil(prompt.length / 1000);
-    const adaptive = Math.min(baselineTurns + promptExtra, 50);
+
+    // OB-1677: Add 5 turns for prompts longer than 200 chars (more context = more work).
+    const longPromptExtra = prompt.length > 200 ? 5 : 0;
+
+    // OB-1677: Add 10 turns when the task explicitly requests thoroughness.
+    const THOROUGHNESS_KEYWORDS = ['thorough', 'comprehensive', 'detailed'];
+    const lowerPrompt = prompt.toLowerCase();
+    const keywordExtra = THOROUGHNESS_KEYWORDS.some((kw) => lowerPrompt.includes(kw)) ? 10 : 0;
+
+    const adaptive = Math.min(
+      baselineTurns + promptExtra + longPromptExtra + keywordExtra,
+      profileCap,
+    );
+
     logger.debug(
-      { profile, baselineTurns, promptLength: prompt.length, promptExtra, adaptive },
+      {
+        profile,
+        baselineTurns,
+        profileCap,
+        promptLength: prompt.length,
+        promptExtra,
+        longPromptExtra,
+        keywordExtra,
+        adaptive,
+      },
       'Computed adaptive max-turns for worker',
     );
     return adaptive;
