@@ -1243,6 +1243,7 @@ export class AgentRunner {
         cpus: sandboxConfig.cpus,
         workdir: '/workspace',
       });
+      dockerSandbox.trackContainer(containerId);
 
       await dockerSandbox.startContainer(containerId);
 
@@ -1256,6 +1257,8 @@ export class AgentRunner {
       return result;
     } finally {
       if (containerId) {
+        // Untrack before cleanup so the crash-exit handler skips this container.
+        dockerSandbox.untrackContainer(containerId);
         try {
           await dockerSandbox.stopContainer(containerId, 5);
         } catch {

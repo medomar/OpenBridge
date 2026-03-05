@@ -8,7 +8,7 @@
  * @see OB-1545
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,62 @@ import { createLogger } from './logger.js';
 const execFileAsync = promisify(execFile);
 
 const logger = createLogger('docker-sandbox');
+
+// ─── Container lifecycle tracking ─────────────────────────────────────────────
+
+/**
+ * Module-level set of container IDs that are currently running.
+ * Populated by DockerSandbox.trackContainer() and cleared by untrackContainer().
+ * Process-exit and SIGINT handlers use this set to force-remove orphaned containers.
+ */
+const _activeContainerIds = new Set<string>();
+
+/**
+ * Synchronously remove all tracked containers via execFileSync.
+ * Called from process.on('exit') and process.on('SIGINT') where async is unavailable
+ * or unreliable.  Best-effort — errors are silently ignored.
+ */
+function _syncCleanupContainers(): void {
+  if (_activeContainerIds.size === 0) return;
+  const ids = [..._activeContainerIds];
+  _activeContainerIds.clear();
+  for (const id of ids) {
+    try {
+      execFileSync('docker', ['rm', '--force', id], { stdio: 'ignore', timeout: 10_000 });
+    } catch {
+      // best-effort: ignore errors during emergency cleanup
+    }
+  }
+}
+
+// Synchronous safety net — fires when the Node process is about to exit for any reason
+// (normal exit, uncaughtException, or after SIGINT/SIGTERM handlers complete).
+process.on('exit', _syncCleanupContainers);
+
+// SIGINT safety net — cleans up containers if the bridge does not reach graceful shutdown.
+// Does NOT call process.exit() so that other SIGINT handlers (e.g. graceful shutdown in
+// index.ts) can still fire and perform their own cleanup before the process terminates.
+process.on('SIGINT', _syncCleanupContainers);
+
+/**
+ * Async cleanup of all currently-tracked containers — intended for graceful shutdown paths
+ * (e.g. Bridge.shutdown()) where async operations are available.
+ *
+ * Clears the tracking set immediately so that the synchronous exit handler is a no-op if
+ * this function already ran.
+ */
+export async function cleanupSandboxContainers(): Promise<void> {
+  if (_activeContainerIds.size === 0) return;
+  const ids = [..._activeContainerIds];
+  _activeContainerIds.clear();
+  for (const id of ids) {
+    try {
+      await execFileAsync('docker', ['rm', '--force', id], { timeout: 30_000 });
+    } catch {
+      // best-effort
+    }
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,6 +267,23 @@ export class DockerSandbox {
       logger.warn({ err: message }, 'Docker not available');
       return false;
     }
+  }
+
+  /**
+   * Register a container ID as active so it is cleaned up on process crash.
+   * Call this immediately after createContainer() succeeds.
+   */
+  trackContainer(containerId: string): void {
+    _activeContainerIds.add(containerId);
+    logger.debug({ containerId: containerId.slice(0, 12) }, 'Container tracked for crash cleanup');
+  }
+
+  /**
+   * Remove a container ID from the crash-cleanup tracking set.
+   * Call this before attempting normal cleanup so the exit handler skips it.
+   */
+  untrackContainer(containerId: string): void {
+    _activeContainerIds.delete(containerId);
   }
 
   /**
