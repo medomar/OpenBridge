@@ -241,6 +241,23 @@ export const EmailConfigSchema = z.object({
   allowlist: z.array(z.string().email()).default([]),
 });
 
+/** Schema for tunnel configuration — exposes the local file server to the internet */
+export const TunnelConfigSchema = z.object({
+  /** Enable tunnel on startup (default: false) */
+  enabled: z.boolean().default(false),
+  /**
+   * Preferred tunnel provider.
+   * - auto: use the first detected tool (cloudflared > ngrok > localtunnel)
+   * - cloudflared: force cloudflared (free, no signup)
+   * - ngrok: force ngrok (requires auth token for reserved domains)
+   */
+  provider: z.enum(['auto', 'cloudflared', 'ngrok']).default('auto'),
+  /** Optional subdomain hint (supported by some tunnel providers) */
+  subdomain: z.string().optional(),
+});
+
+export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;
+
 /** Schema for app server resource limits */
 export const AppsConfigSchema = z.object({
   /** Maximum number of apps that can run concurrently (default: 5) */
@@ -301,6 +318,7 @@ export const V2ConfigSchema = z
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
     mcp: MCPConfigSchema.optional(),
+    tunnel: TunnelConfigSchema.optional(),
     apps: AppsConfigSchema.optional(),
     deep: DeepConfigSchema.optional(),
     batch: BatchConfigSchema.optional(),

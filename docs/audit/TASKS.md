@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 83 | **In Progress:** 0 | **Done:** 198 (112 archived)
+> **Pending:** 82 | **In Progress:** 0 | **Done:** 199 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -39,7 +39,7 @@
 | Deep   | Deep Mode (OB-F56) — remaining       | 20    | ✅ (35/35 done) |
 | 97     | Runtime Permission Escalation        | 20    | ✅ (20/20 done) |
 | 98     | Batch Task Continuation              | 22    | ✅ (22/22 done) |
-| 82     | Tunnel Integration                   | 10    | ◻ (9/10 done)   |
+| 82     | Tunnel Integration                   | 10    | ✅ (10/10 done) |
 | 83     | Ephemeral App Server                 | 12    | ✅ (12/12 done) |
 | 84     | Interaction Relay                    | 8     | ✅ (8/8 done)   |
 | 87     | Document Visibility Controls         | 14    | ✅ (14/14 done) |
@@ -181,18 +181,18 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 > **Goal:** Expose local file-server to the internet so Master can send public URLs to mobile users. Auto-detect cloudflared/ngrok/localtunnel.
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status    |
-| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1432 | Auto-detect tunnel tools in `src/discovery/tool-scanner.ts` — add cloudflared, ngrok, localtunnel to detection list using which. Add metadata: name, version command, priority (cloudflared > ngrok > localtunnel). Return in scan results                                                  | ✅ Done   |
-| 2   | OB-1433 | Create `src/core/tunnel-manager.ts` — TunnelManager class with methods: start(port) returns public URL, stop(), getUrl(), isActive(). Constructor takes detected tunnel tool name and optional config                                                                                       | ✅ Done   |
-| 3   | OB-1434 | Implement cloudflared tunnel adapter — spawn `cloudflared tunnel --url localhost:{port}` as child process. Parse public URL from stdout. Handle errors and unexpected exits. Preferred — free, no signup                                                                                    | ✅ Done   |
-| 4   | OB-1435 | Implement ngrok tunnel adapter — spawn `ngrok http {port}`. Query ngrok API at localhost:4040 for public URL. Handle auth token requirement. Fallback if cloudflared unavailable                                                                                                            | ✅ Done   |
-| 5   | OB-1436 | Wire TunnelManager into Bridge startup in `src/core/bridge.ts` — if tunnel tool detected and tunnel.enabled is true, start tunnel during initialization. Store and log public URL                                                                                                           | ✅ Done   |
-| 6   | OB-1437 | Update file-server to return public URL in `src/core/file-server.ts` — add setPublicUrl() method. getFileUrl() returns tunnel URL when active, localhost otherwise                                                                                                                          | ✅ Done   |
-| 7   | OB-1438 | Update Master system prompt with tunnel capability — when tunnel active, add public URL info. When not active, note files only accessible on localhost                                                                                                                                      | ✅ Done   |
-| 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ✅ Done   |
-| 9   | OB-1440 | Add tunnel config to `src/types/config.ts` — tunnel section: enabled (default: false), provider (auto/cloudflared/ngrok, default: auto), subdomain (optional). Add to schema and config.example.json                                                                                        | ◻ Pending |
-| 10  | OB-1441 | Add tests in `tests/core/tunnel-manager.test.ts` — test: (1) start() spawns with correct args, (2) stop() kills process, (3) getUrl() null when not started, (4) getUrl() returns URL after start, (5) isActive() correct state, (6) exit handler registered. At least 6 tests (mock spawn) | ✅ Done   |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                                 | Status  |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1432 | Auto-detect tunnel tools in `src/discovery/tool-scanner.ts` — add cloudflared, ngrok, localtunnel to detection list using which. Add metadata: name, version command, priority (cloudflared > ngrok > localtunnel). Return in scan results                                                  | ✅ Done |
+| 2   | OB-1433 | Create `src/core/tunnel-manager.ts` — TunnelManager class with methods: start(port) returns public URL, stop(), getUrl(), isActive(). Constructor takes detected tunnel tool name and optional config                                                                                       | ✅ Done |
+| 3   | OB-1434 | Implement cloudflared tunnel adapter — spawn `cloudflared tunnel --url localhost:{port}` as child process. Parse public URL from stdout. Handle errors and unexpected exits. Preferred — free, no signup                                                                                    | ✅ Done |
+| 4   | OB-1435 | Implement ngrok tunnel adapter — spawn `ngrok http {port}`. Query ngrok API at localhost:4040 for public URL. Handle auth token requirement. Fallback if cloudflared unavailable                                                                                                            | ✅ Done |
+| 5   | OB-1436 | Wire TunnelManager into Bridge startup in `src/core/bridge.ts` — if tunnel tool detected and tunnel.enabled is true, start tunnel during initialization. Store and log public URL                                                                                                           | ✅ Done |
+| 6   | OB-1437 | Update file-server to return public URL in `src/core/file-server.ts` — add setPublicUrl() method. getFileUrl() returns tunnel URL when active, localhost otherwise                                                                                                                          | ✅ Done |
+| 7   | OB-1438 | Update Master system prompt with tunnel capability — when tunnel active, add public URL info. When not active, note files only accessible on localhost                                                                                                                                      | ✅ Done |
+| 8   | OB-1439 | Add auto-cleanup tunnel on process exit — register exit and SIGINT handlers that call tunnelManager.stop(). Also call during Bridge graceful shutdown                                                                                                                                       | ✅ Done |
+| 9   | OB-1440 | Add tunnel config to `src/types/config.ts` — tunnel section: enabled (default: false), provider (auto/cloudflared/ngrok, default: auto), subdomain (optional). Add to schema and config.example.json                                                                                        | ✅ Done |
+| 10  | OB-1441 | Add tests in `tests/core/tunnel-manager.test.ts` — test: (1) start() spawns with correct args, (2) stop() kills process, (3) getUrl() null when not started, (4) getUrl() returns URL after start, (5) isActive() correct state, (6) exit handler registered. At least 6 tests (mock spawn) | ✅ Done |
 
 ---
 
