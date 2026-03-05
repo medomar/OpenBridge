@@ -100,6 +100,85 @@ export interface WorkspaceMountOptions {
   openbridgePath?: string;
 }
 
+// ─── DockerHealthMonitor ───────────────────────────────────────────────────────
+
+/**
+ * Monitors Docker daemon availability at startup and on a periodic interval.
+ *
+ * On `start()`:
+ *   1. Performs an immediate availability check and logs the result.
+ *   2. Schedules a recheck every `recheckIntervalMs` milliseconds (default: 5 min).
+ *
+ * Callers can read the cached result via `isDockerAvailable()` at any time without
+ * incurring a blocking `docker info` call.
+ *
+ * Call `stop()` to cancel the interval (e.g. on bridge shutdown).
+ *
+ * @see OB-1557
+ */
+export class DockerHealthMonitor {
+  private readonly sandbox: DockerSandbox;
+  private readonly recheckIntervalMs: number;
+  private available = false;
+  private interval: ReturnType<typeof setInterval> | null = null;
+  private readonly monitorLogger = createLogger('docker-health-monitor');
+
+  constructor(sandbox: DockerSandbox, recheckIntervalMs = 5 * 60 * 1_000) {
+    this.sandbox = sandbox;
+    this.recheckIntervalMs = recheckIntervalMs;
+  }
+
+  /**
+   * Run the initial health check and start the periodic recheck interval.
+   *
+   * Resolves after the first check completes so callers know the initial
+   * availability state before proceeding with startup.
+   */
+  async start(): Promise<void> {
+    await this._check();
+
+    this.interval = setInterval(() => {
+      this._check().catch((err: unknown) => {
+        this.monitorLogger.warn({ err }, 'Docker health recheck failed unexpectedly');
+      });
+    }, this.recheckIntervalMs);
+
+    // Prevent the interval from blocking the Node process from exiting.
+    if (this.interval.unref) {
+      this.interval.unref();
+    }
+  }
+
+  /** Stop the periodic recheck interval. */
+  stop(): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+  }
+
+  /** Returns the most recently cached Docker availability result. */
+  isDockerAvailable(): boolean {
+    return this.available;
+  }
+
+  private async _check(): Promise<void> {
+    const wasAvailable = this.available;
+    this.available = await this.sandbox.isAvailable();
+
+    if (!this.available) {
+      this.monitorLogger.warn(
+        'Docker daemon is not available — sandbox mode disabled; falling back to direct (unsandboxed) spawn',
+      );
+    } else if (!wasAvailable && this.available) {
+      // Docker became available after a previous failure.
+      this.monitorLogger.info('Docker daemon is now available — sandbox mode enabled');
+    } else {
+      this.monitorLogger.debug('Docker daemon health check passed');
+    }
+  }
+}
+
 // ─── DockerSandbox ────────────────────────────────────────────────────────────
 
 /**
