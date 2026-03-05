@@ -816,6 +816,19 @@ export class Router {
     return this.pendingEscalations.get(sender)?.length ?? 0;
   }
 
+  /**
+   * Retrieve and remove ALL pending escalation entries for a sender.
+   * Clears all auto-deny timeouts. Returns an empty array if none are pending.
+   * Used by the /allow all command handler (OB-1632).
+   */
+  public takeAllPendingEscalations(sender: string): PendingEscalation[] {
+    const queue = this.pendingEscalations.get(sender);
+    if (!queue || queue.length === 0) return [];
+    this.pendingEscalations.delete(sender);
+    for (const entry of queue) clearTimeout(entry.timeoutHandle);
+    return queue;
+  }
+
   /** Check whether a pending tool escalation exists for a sender. */
   public hasPendingEscalation(sender: string): boolean {
     const queue = this.pendingEscalations.get(sender);
@@ -2226,6 +2239,15 @@ export class Router {
    * stores the grant in the appropriate backing store (session Map or DB) per scope (OB-1588).
    */
   private async handleAllowCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    // Parse: /allow all — grant all pending escalations at once (OB-1632)
+    const trimmed = message.content.trim();
+    const rest = trimmed.slice('/allow'.length).trim();
+
+    if (/^all$/i.test(rest)) {
+      await this.handleAllowAllCommand(message, connector);
+      return;
+    }
+
     const entry = this.takePendingEscalation(message.sender);
     if (!entry) {
       await connector.sendMessage({
@@ -2237,10 +2259,6 @@ export class Router {
       logger.info({ sender: message.sender }, 'Allow: no pending escalation');
       return;
     }
-
-    // Parse: /allow <token> [--session | --permanent]
-    const trimmed = message.content.trim();
-    const rest = trimmed.slice('/allow'.length).trim();
 
     // Extract scope suffix
     let scope: 'once' | 'session' | 'permanent' = 'once';
@@ -2318,6 +2336,56 @@ export class Router {
           'Worker re-spawn after tool grant failed',
         );
       });
+    }
+  }
+
+  /**
+   * Handle the "/allow all" command — grant all pending tool escalations for the sender
+   * at once (OB-1632).
+   *
+   * Drains the escalation queue, grants each worker's originally-requested tools, and
+   * triggers their respawn callbacks sequentially.  Scope is always "once" — no
+   * --session / --permanent modifiers are supported for bulk grants.
+   */
+  private async handleAllowAllCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const entries = this.takeAllPendingEscalations(message.sender);
+    if (entries.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending tool escalations.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Allow all: no pending escalations');
+      return;
+    }
+
+    const workerIds = entries.map((e) => e.workerId).join(', ');
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `✅ Granted all pending escalations (${entries.length} worker(s): ${workerIds}).\nEach worker will be notified to retry with the granted access.`,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, count: entries.length, workerIds },
+      'All pending tool escalations granted via /allow all',
+    );
+
+    for (const entry of entries) {
+      if (entry.respawn) {
+        logger.info(
+          { workerId: entry.workerId, requestedTools: entry.requestedTools },
+          'Triggering worker re-spawn after /allow all grant',
+        );
+        entry.respawn(entry.requestedTools).catch((err: unknown) => {
+          logger.warn({ err, workerId: entry.workerId }, 'Worker re-spawn after /allow all failed');
+        });
+      }
     }
   }
 
@@ -3817,6 +3885,7 @@ export class Router {
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
       '• /allow <tool|profile> --session — grant for the entire session',
       '• /allow <tool|profile> --permanent — grant permanently',
+      '• /allow all — grant all pending escalations at once',
       '• /deny — reject a pending tool escalation',
       '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
