@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 60 | **In Progress:** 0 | **Done:** 221 (112 archived)
+> **Pending:** 59 | **In Progress:** 0 | **Done:** 222 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -500,7 +500,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | --- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 6   | OB-1631 | Refactor `pendingEscalations` in Router from single-entry to queue — change from `Map<sender, PendingEscalation>` to `Map<sender, PendingEscalation[]>`. Each `/allow` pops the next pending escalation instead of clearing all state   | ✅ Done   |
 | 7   | OB-1632 | Add `/allow all` command to Router — grants all pending escalations for a sender at once. Iterates through the queue and processes each grant sequentially                                                                              | ✅ Done   |
-| 8   | OB-1633 | After each `/allow`, show remaining count: "Granted. X more pending escalation(s) — reply /allow for next or /allow all for all"                                                                                                        | ◻ Pending |
+| 8   | OB-1633 | After each `/allow`, show remaining count: "Granted. X more pending escalation(s) — reply /allow for next or /allow all for all"                                                                                                        | ✅ Done   |
 | 9   | OB-1634 | Add `/deny all` command — denies all pending escalations for a sender at once. Marks all queued workers as denied                                                                                                                       | ◻ Pending |
 | 10  | OB-1635 | Update escalation prompt message to show queue count: "3 workers requesting elevated access: (1) worker-xxx needs Bash(npm:test), (2) worker-yyy needs code-edit, (3) worker-zzz needs full-access. Reply /allow, /allow all, or /deny" | ◻ Pending |
 | 11  | OB-1636 | Add test: 3 workers request escalation → user sends /allow → first is granted, 2 remain → user sends /allow all → remaining 2 granted. Test in `tests/core/permission-escalation.test.ts`                                               | ◻ Pending |
