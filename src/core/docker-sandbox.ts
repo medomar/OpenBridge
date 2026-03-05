@@ -9,6 +9,8 @@
  */
 
 import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createLogger } from './logger.js';
 
@@ -65,6 +67,21 @@ export interface ExecResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+}
+
+/** Options for buildImage() */
+export interface BuildImageOptions {
+  /**
+   * Rebuild the image even if it already exists locally.
+   * Default: false — skips build when `openbridge-worker:latest` is present.
+   */
+  force?: boolean;
+  /**
+   * Absolute path to the project root used as the Docker build context.
+   * Default: auto-resolved from this module's location (two directories up
+   * from dist/core/docker-sandbox.js → project root).
+   */
+  context?: string;
 }
 
 // ─── DockerSandbox ────────────────────────────────────────────────────────────
@@ -218,7 +235,60 @@ export class DockerSandbox {
     }
   }
 
+  /**
+   * Build the worker image from `docker/Dockerfile.worker`.
+   *
+   * Tags the image as `openbridge-worker:latest`.  Docker layer caching keeps
+   * incremental rebuilds fast when the Dockerfile has not changed.
+   *
+   * Skips the build when the image already exists locally unless `force` is
+   * set to `true`.
+   *
+   * @param options.force   - Rebuild even when the image exists (default: false)
+   * @param options.context - Project root build context (default: auto-resolved)
+   */
+  async buildImage(options: BuildImageOptions = {}): Promise<void> {
+    const tag = 'openbridge-worker:latest';
+    const force = options.force ?? false;
+
+    if (!force && (await this._imageExists(tag))) {
+      logger.info({ tag }, 'Worker image already exists — skipping build');
+      return;
+    }
+
+    const projectRoot = options.context ?? this._resolveProjectRoot();
+    const dockerfile = path.join(projectRoot, 'docker', 'Dockerfile.worker');
+
+    logger.info({ tag, dockerfile }, 'Building worker image');
+
+    await execFileAsync('docker', ['build', '--file', dockerfile, '--tag', tag, projectRoot], {
+      timeout: 600_000, // 10 minutes for a full image build
+    });
+
+    logger.info({ tag }, 'Worker image built successfully');
+  }
+
   // ─── Private helpers ───────────────────────────────────────────────────────
+
+  /** Returns true if a Docker image with the given tag exists locally. */
+  private async _imageExists(tag: string): Promise<boolean> {
+    try {
+      await execFileAsync('docker', ['image', 'inspect', tag], { timeout: 10_000 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Resolve the project root from this module's compiled location.
+   *
+   * At runtime the compiled file lives at `dist/core/docker-sandbox.js`.
+   * Two directory levels up yields the project root.
+   */
+  private _resolveProjectRoot(): string {
+    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  }
 
   private _buildCreateArgs(options: ContainerOptions): string[] {
     const args: string[] = ['create'];
