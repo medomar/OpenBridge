@@ -16,6 +16,13 @@
  *  5. Custom cpus overrides the default
  *  6. Custom pidsLimit overrides the default
  *  7. exec() logs a warning on exit code 137 (OOM kill)
+ *
+ * Covers OB-1554:
+ *  1. cleanupDanglingContainers returns 0 when no containers listed
+ *  2. cleanupDanglingContainers removes containers returned by docker ps
+ *  3. cleanupDanglingContainers passes the correct --filter flags
+ *  4. cleanupDanglingContainers is resilient to docker rm failures
+ *  5. cleanupDanglingContainers returns 0 and warns when docker ps fails
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -25,8 +32,15 @@ import type { ContainerOptions } from '../../src/core/docker-sandbox.js';
 
 // Capture args passed to execFile so we can assert on them.
 let capturedArgs: string[] = [];
+// All captured args across multiple calls within a single test.
+let allCapturedArgs: string[][] = [];
 // Allow individual tests to override the mock behaviour (e.g. simulate OOM).
 let mockError: (Error & { stdout?: string; stderr?: string; code?: number }) | null = null;
+// Queue of responses — each call pops the first item. Falls back to default when empty.
+type MockResponse =
+  | { stdout: string; error?: null }
+  | { error: Error & { stdout?: string; stderr?: string; code?: number }; stdout?: never };
+let mockResponseQueue: MockResponse[] = [];
 
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(
@@ -40,7 +54,13 @@ vi.mock('node:child_process', () => ({
       ) => void,
     ) => {
       capturedArgs = args;
-      if (mockError) {
+      allCapturedArgs.push(args);
+      const queued = mockResponseQueue.shift();
+      if (queued && 'error' in queued && queued.error) {
+        cb(queued.error, { stdout: queued.error.stdout ?? '', stderr: queued.error.stderr ?? '' });
+      } else if (queued && 'stdout' in queued) {
+        cb(null, { stdout: queued.stdout, stderr: '' });
+      } else if (mockError) {
         cb(mockError, { stdout: mockError.stdout ?? '', stderr: mockError.stderr ?? '' });
       } else {
         // Simulate success: stdout is a fake container ID, stderr is empty.
@@ -79,7 +99,9 @@ async function callCreate(options: Partial<ContainerOptions>): Promise<string[]>
 describe('DockerSandbox — network isolation (OB-1550)', () => {
   beforeEach(() => {
     capturedArgs = [];
+    allCapturedArgs = [];
     mockError = null;
+    mockResponseQueue = [];
   });
 
   it('defaults to --network none when no network option is provided', async () => {
@@ -136,7 +158,9 @@ describe('DockerSandbox.buildWorkspaceMounts — path validation (OB-1550)', () 
 describe('DockerSandbox — resource limits (OB-1551)', () => {
   beforeEach(() => {
     capturedArgs = [];
+    allCapturedArgs = [];
     mockError = null;
+    mockResponseQueue = [];
   });
 
   it('defaults to --memory 512m when no memoryMB option is provided', async () => {
@@ -180,5 +204,69 @@ describe('DockerSandbox — resource limits (OB-1551)', () => {
     const sandbox = new DockerSandbox();
     const result = await sandbox.exec('abc123', ['claude', '--print', 'hello']);
     expect(result.exitCode).toBe(137);
+  });
+});
+
+describe('DockerSandbox.cleanupDanglingContainers (OB-1554)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('returns 0 when docker ps lists no containers', async () => {
+    // docker ps returns empty string — nothing to clean up
+    mockResponseQueue = [{ stdout: '' }];
+    const sandbox = new DockerSandbox();
+    const removed = await sandbox.cleanupDanglingContainers();
+    expect(removed).toBe(0);
+  });
+
+  it('removes listed containers and returns the count', async () => {
+    // docker ps returns two IDs, then two successful rm calls
+    mockResponseQueue = [
+      { stdout: 'deadbeef\ncafe1234\n' }, // docker ps
+      { stdout: '' }, // docker rm deadbeef
+      { stdout: '' }, // docker rm cafe1234
+    ];
+    const sandbox = new DockerSandbox();
+    const removed = await sandbox.cleanupDanglingContainers();
+    expect(removed).toBe(2);
+  });
+
+  it('passes name=ob-worker- and status filters to docker ps', async () => {
+    mockResponseQueue = [{ stdout: '' }];
+    const sandbox = new DockerSandbox();
+    await sandbox.cleanupDanglingContainers();
+    // The first call should be docker ps -a ...
+    const psArgs = allCapturedArgs[0];
+    expect(psArgs[0]).toBe('ps');
+    expect(psArgs).toContain('--filter');
+    const nameFilterIdx = psArgs.indexOf('name=ob-worker-');
+    expect(nameFilterIdx).toBeGreaterThan(-1);
+    // Should include at least one status filter
+    expect(psArgs).toContain('status=exited');
+  });
+
+  it('is resilient to individual docker rm failures', async () => {
+    const rmErr = Object.assign(new Error('No such container'), { code: 1 });
+    mockResponseQueue = [
+      { stdout: 'deadbeef\ncafe1234\n' }, // docker ps — 2 containers
+      { error: rmErr }, // docker rm deadbeef — fails
+      { stdout: '' }, // docker rm cafe1234 — succeeds
+    ];
+    const sandbox = new DockerSandbox();
+    const removed = await sandbox.cleanupDanglingContainers();
+    // Only cafe1234 succeeded
+    expect(removed).toBe(1);
+  });
+
+  it('returns 0 and does not throw when docker ps itself fails', async () => {
+    const psErr = Object.assign(new Error('Cannot connect to Docker daemon'), { code: 1 });
+    mockResponseQueue = [{ error: psErr }];
+    const sandbox = new DockerSandbox();
+    const removed = await sandbox.cleanupDanglingContainers();
+    expect(removed).toBe(0);
   });
 });
