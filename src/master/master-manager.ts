@@ -5056,8 +5056,16 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // For complex tasks, send a planning prompt that forces the Master to output
       // SPAWN markers within a small turn budget instead of attempting execution itself.
-      const promptToSend =
+      let promptToSend =
         taskClass === 'complex-task' ? this.buildPlanningPrompt(message.content) : message.content;
+      // For menu-selection, inject the selected option text so Master sees context, not just a digit (OB-1659).
+      // E.g., user sends "3" → Master sees "User selected option 3: 'Deploy to staging'"
+      if (classification.menuSelection) {
+        const digit = message.content.trim();
+        promptToSend = classification.selectedOptionText
+          ? `User selected option ${digit}: '${classification.selectedOptionText}'`
+          : `User selected option ${digit}`;
+      }
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
