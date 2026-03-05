@@ -280,13 +280,16 @@ export async function hybridSearch(
 /**
  * Sanitize a user-provided string for use in an FTS5 MATCH expression.
  * Strips special FTS5 syntax characters and wraps each token in double quotes.
+ * Multiple tokens are OR-joined so that any matching term returns results,
+ * instead of AND-joining (which requires all terms to match and causes
+ * natural-language questions to return zero results).
  * Returns an empty string if no usable tokens remain.
  */
 export function sanitizeFts5Query(raw: string): string {
   const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
   const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
   if (tokens.length === 0) return '';
-  return tokens.map((t) => `"${t}"`).join(' ');
+  return tokens.map((t) => `"${t}"`).join(' OR ');
 }
 
 // ---------------------------------------------------------------------------
