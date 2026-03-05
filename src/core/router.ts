@@ -1609,6 +1609,19 @@ export class Router {
     await connector.sendMessage(response);
     void this.auditLogger?.logOutbound(response);
 
+    // Cache Q&A pair after successful Master response (OB-1602)
+    if (useMaster && this.memory?.qaCache) {
+      try {
+        this.memory.qaCache.store({
+          question: message.content,
+          answer: cleanedContent,
+          confidence: 0.9,
+        });
+      } catch {
+        logger.debug({ messageId: message.id }, 'QA cache store failed (non-critical)');
+      }
+    }
+
     logger.info({ messageId: message.id }, 'Message processed and response sent');
   }
 
