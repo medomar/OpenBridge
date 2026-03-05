@@ -1301,6 +1301,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/deny all" command — reject all pending tool escalations (OB-1634)
+    if (/^\/deny\s+all$/i.test(message.content.trim())) {
+      await this.handleDenyAllCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/deny" command — reject pending tool escalation (OB-1587)
     if (/^\/deny$/i.test(message.content.trim())) {
       await this.handleDenyCommand(message, connector);
@@ -2428,6 +2434,39 @@ export class Router {
     logger.info(
       { sender: message.sender, workerId: entry.workerId, requestedTools: entry.requestedTools },
       'Tool escalation denied via /deny',
+    );
+  }
+
+  /**
+   * Handle the "/deny all" command — deny all pending tool escalations for the sender
+   * at once (OB-1634).
+   *
+   * Drains the escalation queue and marks all queued workers as denied.
+   */
+  private async handleDenyAllCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const entries = this.takeAllPendingEscalations(message.sender);
+    if (entries.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No pending tool escalations.',
+        replyTo: message.id,
+      });
+      logger.info({ sender: message.sender }, 'Deny all: no pending escalations');
+      return;
+    }
+
+    const workerIds = entries.map((e) => e.workerId).join(', ');
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `❌ Denied all pending escalations (${entries.length} worker(s): ${workerIds}).\nEach worker will continue with its current profile or abort if unable to proceed.`,
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, count: entries.length, workerIds },
+      'All pending tool escalations denied via /deny all',
     );
   }
 
@@ -3892,6 +3931,7 @@ export class Router {
       '• /allow <tool|profile> --permanent — grant permanently',
       '• /allow all — grant all pending escalations at once',
       '• /deny — reject a pending tool escalation',
+      '• /deny all — reject all pending escalations at once',
       '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
       '*Batch Control*',
