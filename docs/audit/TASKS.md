@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 63 | **In Progress:** 0 | **Done:** 218 (112 archived)
+> **Pending:** 62 | **In Progress:** 0 | **Done:** 219 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -486,13 +486,13 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 99-1 — Worker Re-Spawn Crash (OB-F95) — 5 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                                                  | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 1   | OB-1626 | Register escalated worker ID in `WorkerRegistry` BEFORE calling `spawnWorker()` in `respawnWorkerAfterGrant()` (`src/master/master-manager.ts` ~line 6782). Currently the `-escalated` suffix worker is never registered, causing `markFailed()` to throw "worker not found" | ✅ Done   |
-| 2   | OB-1627 | Add error handling around re-spawn in `respawnWorkerAfterGrant()` — if spawn fails, send user message "Worker re-spawn failed after grant, please retry" and mark both original and escalated worker as `failed` in WorkerRegistry                                           | ✅ Done   |
-| 3   | OB-1628 | When re-spawn fails, clean up the escalated worker entry from `WorkerRegistry` to prevent orphaned state. Call `markFailed()` with reason "respawn-failed" for the escalated worker ID                                                                                       | ✅ Done   |
-| 4   | OB-1629 | Add integration test: grant escalation → verify worker is registered in WorkerRegistry → verify worker executes successfully. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ✅ Done   |
-| 5   | OB-1630 | Add integration test: grant escalation → spawn fails → verify both workers marked as failed → verify user gets error message. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                                                  | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 1   | OB-1626 | Register escalated worker ID in `WorkerRegistry` BEFORE calling `spawnWorker()` in `respawnWorkerAfterGrant()` (`src/master/master-manager.ts` ~line 6782). Currently the `-escalated` suffix worker is never registered, causing `markFailed()` to throw "worker not found" | ✅ Done |
+| 2   | OB-1627 | Add error handling around re-spawn in `respawnWorkerAfterGrant()` — if spawn fails, send user message "Worker re-spawn failed after grant, please retry" and mark both original and escalated worker as `failed` in WorkerRegistry                                           | ✅ Done |
+| 3   | OB-1628 | When re-spawn fails, clean up the escalated worker entry from `WorkerRegistry` to prevent orphaned state. Call `markFailed()` with reason "respawn-failed" for the escalated worker ID                                                                                       | ✅ Done |
+| 4   | OB-1629 | Add integration test: grant escalation → verify worker is registered in WorkerRegistry → verify worker executes successfully. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ✅ Done |
+| 5   | OB-1630 | Add integration test: grant escalation → spawn fails → verify both workers marked as failed → verify user gets error message. Test in `tests/core/permission-escalation.test.ts`                                                                                             | ✅ Done |
 
 ### 99-2 — Escalation Queue for Multiple Workers (OB-F96) — 7 tasks
 
