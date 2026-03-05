@@ -765,3 +765,91 @@ describe('permission escalation — grant triggers spawn failure → workers mar
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 12. Queue: 3 workers request escalation → /allow → 2 remain → /allow all (OB-1636)
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — queue: /allow then /allow all (OB-1636)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('3 workers escalate → /allow grants first → 2 remain → /allow all grants remaining 2', async () => {
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const respawn1 = vi.fn().mockResolvedValue(undefined);
+    const respawn2 = vi.fn().mockResolvedValue(undefined);
+    const respawn3 = vi.fn().mockResolvedValue(undefined);
+
+    const msg = makeMsg('run the full test suite');
+
+    // Enqueue 3 escalation requests sequentially
+    await router.requestToolEscalation(
+      'worker-q1',
+      ['Bash'],
+      'read-only',
+      'needs bash',
+      msg,
+      connector,
+      respawn1,
+    );
+    await router.requestToolEscalation(
+      'worker-q2',
+      ['Write'],
+      'read-only',
+      'needs write',
+      msg,
+      connector,
+      respawn2,
+    );
+    await router.requestToolEscalation(
+      'worker-q3',
+      ['full-access'],
+      'read-only',
+      'needs full access',
+      msg,
+      connector,
+      respawn3,
+    );
+
+    // All 3 should be in the queue
+    expect(router.pendingEscalationCount('+1234567890')).toBe(3);
+
+    // /allow — pops worker-q1 (first in queue)
+    await router.route({ ...makeMsg('/allow Bash'), id: 'msg-allow-1' });
+
+    // worker-q1 granted, 2 remain
+    expect(respawn1).toHaveBeenCalledOnce();
+    expect(respawn1).toHaveBeenCalledWith(['Bash']);
+    expect(respawn2).not.toHaveBeenCalled();
+    expect(respawn3).not.toHaveBeenCalled();
+    expect(router.pendingEscalationCount('+1234567890')).toBe(2);
+
+    // Confirmation message should mention remaining count
+    const afterFirstAllow = connector.sentMessages.at(-1)!;
+    expect(afterFirstAllow.content).toContain('Granted');
+    expect(afterFirstAllow.content).toContain('worker-q1');
+    expect(afterFirstAllow.content).toMatch(/2 more pending/i);
+
+    // /allow all — grants remaining 2 (worker-q2 and worker-q3)
+    await router.route({ ...makeMsg('/allow all'), id: 'msg-allow-all' });
+
+    expect(respawn2).toHaveBeenCalledOnce();
+    expect(respawn3).toHaveBeenCalledOnce();
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+    expect(router.pendingEscalationCount('+1234567890')).toBe(0);
+
+    // Bulk grant confirmation message
+    const bulkGrantMsg = connector.sentMessages.at(-1)!;
+    expect(bulkGrantMsg.content).toContain('Granted all pending escalations');
+    expect(bulkGrantMsg.content).toContain('2 worker(s)');
+    expect(bulkGrantMsg.content).toContain('worker-q2');
+    expect(bulkGrantMsg.content).toContain('worker-q3');
+  });
+});
