@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 33 | **In Progress:** 0 | **Done:** 248 (112 archived)
+> **Pending:** 32 | **In Progress:** 0 | **Done:** 249 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -554,11 +554,11 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 ### 100-3 — Single-Character Message Optimization (OB-F100) — 3 tasks
 
-| #   | Task ID | Description                                                                                                                                                                                                                                          | Status    |
-| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| 11  | OB-1658 | Add `menu-selection` task class in `classifyTaskByKeywords()` — detect numeric-only messages (1–9 or single digits). Set maxTurns: 2, skip RAG. Check if previous response contained a numbered list and extract the selected option                 | ✅ Done   |
-| 12  | OB-1659 | In `processMessage()`, when `menu-selection` detected, inject the selected option text from the previous response into the Master prompt instead of the raw number. E.g., user sends "3" → Master sees "User selected option 3: 'Deploy to staging'" | ✅ Done   |
-| 13  | OB-1660 | Add tests: (1) "1" classified as menu-selection, (2) "hello" NOT classified as menu-selection, (3) RAG skipped for menu-selection, (4) option text injected from previous response. At least 3 tests                                                 | ◻ Pending |
+| #   | Task ID | Description                                                                                                                                                                                                                                          | Status  |
+| --- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 11  | OB-1658 | Add `menu-selection` task class in `classifyTaskByKeywords()` — detect numeric-only messages (1–9 or single digits). Set maxTurns: 2, skip RAG. Check if previous response contained a numbered list and extract the selected option                 | ✅ Done |
+| 12  | OB-1659 | In `processMessage()`, when `menu-selection` detected, inject the selected option text from the previous response into the Master prompt instead of the raw number. E.g., user sends "3" → Master sees "User selected option 3: 'Deploy to staging'" | ✅ Done |
+| 13  | OB-1660 | Add tests: (1) "1" classified as menu-selection, (2) "hello" NOT classified as menu-selection, (3) RAG skipped for menu-selection, (4) option text injected from previous response. At least 3 tests                                                 | ✅ Done |
 
 ### 100-4 — SPAWN Marker Truncation Fix (OB-F102) — 3 tasks
 
