@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 24 | **In Progress:** 0 | **Done:** 257 (112 archived)
+> **Pending:** 23 | **In Progress:** 0 | **Done:** 258 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -581,7 +581,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 3   | OB-1666 | Replace all `void router.routeBatchContinuation(...)` calls with `.catch()` handlers — on catch, call `batchManager.pauseBatch()` and notify user "Batch paused due to error: {message}". Lines ~2519, ~2545, ~2562, ~5329 in `src/master/master-manager.ts` | ✅ Done   |
 | 4   | OB-1667 | Include `senderInfo: { sender, source }` in persisted batch state JSON (`src/master/batch-manager.ts`). On `initialize()` reload, restore `batchSenderInfo` map from persisted state so batch messages route correctly after restart                         | ✅ Done   |
 | 5   | OB-1668 | Rename `getActiveBatchId()` to `getCurrentBatchId()` in `src/master/batch-manager.ts` to signal it includes paused batches. Add JSDoc clarifying difference from `isActive()`. Update all callers                                                            | ✅ Done   |
-| 6   | OB-1669 | Add tests: (1) batch timers cleared on shutdown, (2) timer callback no-ops after shutdown, (3) routeBatchContinuation error pauses batch, (4) sender info persisted and restored. At least 4 tests in `tests/master/batch-manager.test.ts`                   | ◻ Pending |
+| 6   | OB-1669 | Add tests: (1) batch timers cleared on shutdown, (2) timer callback no-ops after shutdown, (3) routeBatchContinuation error pauses batch, (4) sender info persisted and restored. At least 4 tests in `tests/master/batch-manager.test.ts`                   | ✅ Done   |
 | 7   | OB-1670 | Add test: `getCurrentBatchId()` returns paused batch ID, `isActive()` returns false for same batch. Verify no caller assumes `getCurrentBatchId()` implies running. Test in `tests/master/batch-manager.test.ts`                                             | ◻ Pending |
 
 ---

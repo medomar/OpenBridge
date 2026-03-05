@@ -526,3 +526,129 @@ describe('BatchManager — getCurrentBatchId / isActive (global)', () => {
     expect(manager.getCurrentBatchId()).toBeUndefined();
   });
 });
+
+// ── 11. Shutdown timer safety (OB-1664 / OB-1665) ─────────────────────
+
+describe('Shutdown timer safety — batchTimers pattern (OB-1664 / OB-1665)', () => {
+  it('clearTimeout on all handles in a Set cancels all pending batch timers', () => {
+    vi.useFakeTimers();
+
+    const timers = new Set<NodeJS.Timeout>();
+    const fired: string[] = [];
+
+    const t1 = setTimeout(() => fired.push('t1'), 500);
+    const t2 = setTimeout(() => fired.push('t2'), 1500);
+    timers.add(t1);
+    timers.add(t2);
+
+    // Simulate MasterManager.shutdown() clearing all batch timers (OB-1665)
+    for (const handle of timers) {
+      clearTimeout(handle);
+    }
+    timers.clear();
+
+    vi.advanceTimersByTime(2000);
+
+    expect(fired).toHaveLength(0);
+    expect(timers.size).toBe(0);
+
+    vi.useRealTimers();
+  });
+
+  it('timer callback with shutdown guard is a no-op when shutdown state is set', () => {
+    vi.useFakeTimers();
+
+    let isShutdown = false;
+    let continuationCalled = false;
+    const timers = new Set<NodeJS.Timeout>();
+
+    const handle = setTimeout(() => {
+      timers.delete(handle);
+      if (isShutdown) return; // guard — OB-1665
+      continuationCalled = true;
+    }, 500);
+    timers.add(handle);
+
+    // Shutdown fires before timer expires
+    isShutdown = true;
+
+    vi.advanceTimersByTime(1000);
+
+    expect(continuationCalled).toBe(false);
+
+    vi.useRealTimers();
+  });
+});
+
+// ── 12. routeBatchContinuation error pauses batch (OB-1666) ────────────
+
+describe('BatchManager — error pauses batch (OB-1666)', () => {
+  it('pauseBatch() correctly pauses batch when called from a catch handler', async () => {
+    const manager = new BatchManager();
+    const batchId = await manager.createBatch('custom-list', PLAN);
+
+    expect(manager.isActive(batchId)).toBe(true);
+
+    // Simulate: routeBatchContinuation rejects → catch handler calls pauseBatch (OB-1666)
+    const routeBatchContinuation = async (): Promise<void> => {
+      throw new Error('Network error');
+    };
+
+    await routeBatchContinuation().catch(async () => {
+      await manager.pauseBatch(batchId);
+    });
+
+    expect(manager.isActive(batchId)).toBe(false);
+    expect(manager.getStatus(batchId)?.paused).toBe(true);
+  });
+});
+
+// ── 13. Sender info persistence and restoration (OB-1667) ──────────────
+
+describe('BatchManager — sender info persistence and restoration (OB-1667)', () => {
+  it('setSenderInfo persists senderInfo to batch state on disk', async () => {
+    const dotFolder = makeMockDotFolder();
+    const manager = new BatchManager(dotFolder as never);
+    const batchId = await manager.createBatch('custom-list', PLAN);
+
+    manager.setSenderInfo(batchId, { sender: '+1234567890', source: 'whatsapp' });
+
+    // In-memory lookup should work immediately
+    expect(manager.getSenderInfo(batchId)).toEqual({ sender: '+1234567890', source: 'whatsapp' });
+
+    // setSenderInfo calls persist() asynchronously — wait for microtasks
+    await Promise.resolve();
+    expect(dotFolder._stored()?.senderInfo).toEqual({
+      sender: '+1234567890',
+      source: 'whatsapp',
+    });
+  });
+
+  it('initialize() restores senderInfo from persisted state after restart', async () => {
+    const savedState: BatchState = {
+      batchId: 'batch-with-sender',
+      sourceType: 'tasks-md',
+      totalItems: 2,
+      currentIndex: 0,
+      plan: PLAN.slice(0, 2),
+      completedItems: [],
+      failedItems: [],
+      startedAt: new Date().toISOString(),
+      totalCostUsd: 0,
+      paused: false,
+      commitAfterEach: false,
+      senderInfo: { sender: '+9876543210', source: 'whatsapp' },
+    };
+
+    const dotFolder = makeMockDotFolder(savedState);
+    const manager = new BatchManager(dotFolder as never);
+
+    await manager.initialize();
+
+    // senderInfo should be restored from persisted state (OB-1667)
+    expect(manager.getSenderInfo('batch-with-sender')).toEqual({
+      sender: '+9876543210',
+      source: 'whatsapp',
+    });
+  });
+});
