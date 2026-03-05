@@ -53,16 +53,20 @@ async function main() {
   let html = readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
 
   // 5. Replace <link rel="stylesheet" ...> with inline <style>
-  html = html.replace(
-    /<link\s+rel="stylesheet"\s+href="css\/styles\.css"\s*\/>/,
-    `<style>\n${css}\n</style>`,
-  );
+  // Use indexOf/slice instead of replace() to avoid $& special pattern interpretation
+  const cssTag = html.match(/<link\s+rel="stylesheet"\s+href="css\/styles\.css"\s*\/>/);
+  if (cssTag) {
+    const idx = html.indexOf(cssTag[0]);
+    html = html.slice(0, idx) + `<style>\n${css}\n</style>` + html.slice(idx + cssTag[0].length);
+  }
 
   // 6. Replace <script src="js/app.js" type="module"> with inline bundled JS
-  html = html.replace(
-    /<script\s+src="js\/app\.js"\s+type="module"><\/script>/,
-    `<script>\n${bundledJs}\n</script>`,
-  );
+  // Use indexOf/slice to avoid $& in minified JS being interpreted as replace() patterns
+  const scriptTag = html.match(/<script\s+src="js\/app\.js"\s+type="module"><\/script>/);
+  if (scriptTag) {
+    const idx = html.indexOf(scriptTag[0]);
+    html = html.slice(0, idx) + `<script>\n${bundledJs}\n</script>` + html.slice(idx + scriptTag[0].length);
+  }
 
   // 7. Escape backticks and template literal markers for embedding in TS template literal
   const escaped = html.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');

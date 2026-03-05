@@ -1,4 +1,4 @@
-import type { BatchManager } from './batch-manager.js';
+import { BatchManager } from './batch-manager.js';
 import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
@@ -1295,6 +1295,12 @@ export class MasterManager {
 
     // Initialize .openbridge folder early so we can create the Master session
     await this.dotFolder.initialize();
+
+    // Initialize BatchManager (OB-1609): load any persisted batch state.
+    if (!this.batchManager) {
+      this.batchManager = new BatchManager(this.dotFolder);
+    }
+    await this.batchManager.initialize();
 
     // Clean up stale agent_activity rows from previous process BEFORE
     // creating the new master session, so the fresh 'running' row isn't wiped.
@@ -4713,6 +4719,36 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       return `The AI is currently ${this.state}. Please try again in a moment.`;
     }
 
+    const originalContent = message.content;
+    const originalRawContent = message.rawContent;
+    let activeBatchId: string | undefined;
+    let activeBatchItemId: string | undefined;
+
+    // If a batch is active, process the next batch item instead of re-parsing the incoming message.
+    if (this.batchManager && this.batchManager.isActive()) {
+      const currentBatchId = this.batchManager.getActiveBatchId();
+      if (currentBatchId) {
+        const state = this.batchManager.getStatus(currentBatchId);
+        const currentItem = state?.plan[state.currentIndex];
+        if (currentItem) {
+          activeBatchId = currentBatchId;
+          activeBatchItemId = currentItem.id;
+          const batchPrompt = currentItem.description?.trim() || currentItem.id;
+          message.content = batchPrompt;
+          message.rawContent = batchPrompt;
+          logger.info(
+            { batchId: currentBatchId, itemId: currentItem.id },
+            'Batch active — processing next item',
+          );
+        } else {
+          logger.warn(
+            { batchId: currentBatchId },
+            'Batch active but no current item found — falling back to incoming message',
+          );
+        }
+      }
+    }
+
     this.state = 'processing';
     this.activeMessage = message;
 
@@ -4736,6 +4772,15 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         source: message.source,
       },
     };
+    if (activeBatchId && activeBatchItemId) {
+      task.metadata = {
+        ...task.metadata,
+        batchId: activeBatchId,
+        batchItemId: activeBatchItemId,
+        originalUserMessage: originalRawContent,
+        originalUserContent: originalContent,
+      };
+    }
 
     // Build a ProgressReporter that maps events to the connector's sendProgress()
     const progress = this.makeProgressReporter(message.source, message.sender);
@@ -5199,6 +5244,29 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // Record the Master AI response to conversation history (OB-730)
       await this.recordConversationMessage(sessionId, 'master', response);
+
+      // Advance batch state after successfully completing the current batch item (OB-1609).
+      if (this.batchManager && activeBatchId && activeBatchItemId) {
+        const normalized = response.replace(/\s+/g, ' ').trim();
+        const summary =
+          normalized.length > 160 ? normalized.slice(0, 157) + '...' : normalized || 'Completed';
+        try {
+          await this.batchManager.advanceBatch(
+            activeBatchId,
+            {
+              id: activeBatchItemId,
+              summary,
+              status: 'completed',
+            },
+            result.costUsd ?? 0,
+          );
+        } catch (err) {
+          logger.warn(
+            { batchId: activeBatchId, itemId: activeBatchItemId, err },
+            'Failed to advance batch state after item completion',
+          );
+        }
+      }
 
       // Record classification feedback: task succeeded → turn budget was sufficient
       void this.recordClassificationFeedback(this.normalizeForCache(message.content), true, false);
