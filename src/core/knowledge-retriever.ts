@@ -199,7 +199,22 @@ export class KnowledgeRetriever {
       );
     }
 
-    return tokens.length > 0 ? tokens.join(' ') : question.trim();
+    const finalQuery = tokens.length > 0 ? tokens.join(' ') : question.trim();
+
+    this.logger.debug(
+      {
+        originalQuestion: question,
+        rawTokens,
+        filteredTokens: tokens,
+        finalQuery,
+        tokenCount: tokens.length,
+        isSingleChar: question.trim().length === 1,
+        isMultiWord: rawTokens.length > 1,
+      },
+      'buildSearchQuery: FTS5 query constructed',
+    );
+
+    return finalQuery;
   }
 
   /**
