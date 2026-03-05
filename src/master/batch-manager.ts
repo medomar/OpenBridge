@@ -80,6 +80,12 @@ export class BatchManager {
   /** Optional persistence layer — when set, batch state is saved after every mutation. */
   private dotFolder: DotFolderManager | undefined;
 
+  /**
+   * Maps batchId → original sender info for routing failure/status messages (OB-1667).
+   * Lives independently of BatchState lifecycle so it survives state deletion on completion.
+   */
+  private readonly batchSenderInfo = new Map<string, { sender: string; source: string }>();
+
   /** Stores the completion summary for the most-recently-finished batch (OB-1618). */
   private lastCompletionSummary: string | null = null;
 
@@ -104,12 +110,18 @@ export class BatchManager {
     saved.paused = true;
     this.batches.set(saved.batchId, saved);
 
+    // Restore sender info so failure/completion messages route correctly after restart (OB-1667).
+    if (saved.senderInfo) {
+      this.batchSenderInfo.set(saved.batchId, saved.senderInfo);
+    }
+
     logger.info(
       {
         batchId: saved.batchId,
         currentIndex: saved.currentIndex,
         totalItems: saved.totalItems,
         completedItems: saved.completedItems.length,
+        hasSenderInfo: saved.senderInfo !== undefined,
       },
       'Resumed batch from persisted state',
     );
@@ -438,6 +450,51 @@ export class BatchManager {
     const summary = this.lastCompletionSummary;
     this.lastCompletionSummary = null;
     return summary;
+  }
+
+  // ── Sender info ────────────────────────────────────────────────
+
+  /**
+   * Store the original sender info for a batch (OB-1667).
+   *
+   * Persists sender info into the batch state on disk so it survives process restarts.
+   * The in-memory map is updated synchronously; disk write is fire-and-forget.
+   *
+   * @param batchId  The batch to associate with the sender.
+   * @param info     The sender identifier and source connector.
+   */
+  setSenderInfo(batchId: string, info: { sender: string; source: string }): void {
+    this.batchSenderInfo.set(batchId, info);
+    // Persist sender info in the batch state so it's restored on restart.
+    const state = this.batches.get(batchId);
+    if (state) {
+      state.senderInfo = info;
+      void this.persist(state);
+    }
+  }
+
+  /**
+   * Retrieve the original sender info for a batch (OB-1667).
+   *
+   * Returns from the in-memory map, which persists beyond batch state deletion so
+   * completion/failure messages can still be routed after the batch finishes.
+   *
+   * @param batchId  The batch to look up.
+   * @returns        Sender info, or undefined if not set.
+   */
+  getSenderInfo(batchId: string): { sender: string; source: string } | undefined {
+    return this.batchSenderInfo.get(batchId);
+  }
+
+  /**
+   * Remove the stored sender info for a batch (OB-1667).
+   *
+   * Should be called after the completion/failure message has been delivered.
+   *
+   * @param batchId  The batch whose sender info should be removed.
+   */
+  deleteSenderInfo(batchId: string): void {
+    this.batchSenderInfo.delete(batchId);
   }
 
   // ── Query methods ──────────────────────────────────────────────

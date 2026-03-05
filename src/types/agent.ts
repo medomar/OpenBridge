@@ -416,6 +416,8 @@ export const BatchStateSchema = z.object({
   paused: z.boolean().default(false),
   /** When true, a git-commit worker is spawned after each batch item completes (OB-1615) */
   commitAfterEach: z.boolean().default(false),
+  /** Original sender info for routing failure/status messages — persisted for restart recovery (OB-1667) */
+  senderInfo: z.object({ sender: z.string(), source: z.string() }).optional(),
 });
 
 // ── Inferred Types ───────────────────────────────────────────────
