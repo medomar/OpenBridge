@@ -35,7 +35,7 @@ import type { AppServer } from './app-server.js';
 import type { InteractionRelay } from './interaction-relay.js';
 import { SecretScanner } from './secret-scanner.js';
 import type { SecretMatch } from './secret-scanner.js';
-import { DockerSandbox } from './docker-sandbox.js';
+import { DockerSandbox, DockerHealthMonitor } from './docker-sandbox.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -97,6 +97,7 @@ export class Bridge {
   private lastMessageAt: string | null = null;
   private tunnelExitHandler: (() => void) | null = null;
   private tunnelSigintHandler: (() => void) | null = null;
+  private dockerHealthMonitor: DockerHealthMonitor | null = null;
   private readonly detectedSecrets: SecretMatch[] = [];
   private readonly sessionExcludePatterns: string[] = [];
   private readonly workspaceInclude: readonly string[];
@@ -283,12 +284,18 @@ export class Bridge {
       await this.runSecretScan(this.workspacePath);
     }
 
-    // Clean up dangling Docker containers left by previous runs — non-fatal (OB-1554)
+    // Docker startup health check + periodic recheck (OB-1557)
     if (this.securityConfig?.sandbox?.mode === 'docker') {
       const dockerSandbox = new DockerSandbox();
-      dockerSandbox.cleanupDanglingContainers().catch((err: unknown) => {
-        logger.warn({ err }, 'Docker startup cleanup failed — continuing');
-      });
+      this.dockerHealthMonitor = new DockerHealthMonitor(dockerSandbox);
+      await this.dockerHealthMonitor.start();
+
+      // Clean up dangling containers only when daemon is reachable (OB-1554)
+      if (this.dockerHealthMonitor.isDockerAvailable()) {
+        dockerSandbox.cleanupDanglingContainers().catch((err: unknown) => {
+          logger.warn({ err }, 'Docker startup cleanup failed — continuing');
+        });
+      }
     }
 
     // Initialize memory system (SQLite) — non-fatal: DotFolderManager is the fallback
@@ -649,6 +656,8 @@ export class Bridge {
       clearInterval(this.evictionInterval);
       this.evictionInterval = null;
     }
+
+    this.dockerHealthMonitor?.stop();
 
     this.configWatcher?.stop();
 
