@@ -659,3 +659,109 @@ describe('permission escalation — grant triggers worker registration and execu
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 11. Integration: grant escalation → spawn fails → both workers failed (OB-1630)
+// ---------------------------------------------------------------------------
+
+describe('permission escalation — grant triggers spawn failure → workers marked failed', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('grant escalation → spawn fails → both workers marked failed → user gets error message', async () => {
+    const registry = new WorkerRegistry();
+    const { router, connector } = makeRouter();
+    await connector.initialize();
+
+    const originalWorkerId = 'worker-spawn-fail-001';
+    const escalatedWorkerId = `${originalWorkerId}-escalated`;
+
+    // Register the original worker and mark it running (simulates pre-existing state)
+    const originalManifest: TaskManifest = {
+      prompt: 'run the tests',
+      workspacePath: '/tmp/workspace',
+      profile: 'read-only',
+    };
+    registry.registerWorkerWithId(originalWorkerId, originalManifest);
+    registry.markRunning(originalWorkerId, 11111);
+
+    // The respawn callback mirrors the failure path of respawnWorkerAfterGrant() (OB-1627, OB-1628)
+    const respawnCallback = async (_grantedTools: string[]): Promise<void> => {
+      const escalatedManifest: TaskManifest = {
+        prompt: 'run the tests with bash',
+        workspacePath: '/tmp/workspace',
+        profile: 'read-only-escalated',
+      };
+
+      // 1. Register escalated worker BEFORE spawning (OB-1626 fix)
+      registry.registerWorkerWithId(escalatedWorkerId, escalatedManifest);
+
+      // 2. Simulate spawn failure
+      const spawnError = new Error('Failed to start process: ENOENT');
+      const failedResult: AgentResult = {
+        exitCode: -1,
+        stdout: '',
+        stderr: spawnError.message,
+        durationMs: 0,
+        retryCount: 0,
+      };
+
+      // 3. Mark escalated worker as failed (OB-1628)
+      registry.markFailed(escalatedWorkerId, failedResult, 'respawn-failed');
+
+      // 4. Also mark original worker as failed (OB-1627)
+      try {
+        registry.markFailed(originalWorkerId, failedResult, 'respawn-failed');
+      } catch {
+        // Original worker already in terminal state — expected in some paths
+      }
+
+      // 5. Notify user (OB-1627) — mirrors this.router.sendDirect() in MasterManager
+      await connector.sendMessage({
+        target: 'mock',
+        recipient: '+1234567890',
+        content: 'Worker re-spawn failed after grant, please retry',
+      });
+    };
+
+    const msg = makeMsg('run the tests');
+    await router.requestToolEscalation(
+      originalWorkerId,
+      ['Bash'],
+      'read-only',
+      'needs bash to run tests',
+      msg,
+      connector,
+      respawnCallback,
+    );
+
+    // Grant escalation via /allow — triggers respawnCallback which simulates spawn failure
+    await router.route({ ...makeMsg('/allow Bash'), id: 'msg-grant-fail' });
+
+    // Verify escalated worker is marked as failed
+    const escalatedWorker = registry.getWorker(escalatedWorkerId);
+    expect(escalatedWorker).toBeDefined();
+    expect(escalatedWorker!.status).toBe('failed');
+    expect(escalatedWorker!.error).toBe('respawn-failed');
+
+    // Verify original worker is also marked as failed
+    const originalWorker = registry.getWorker(originalWorkerId);
+    expect(originalWorker).toBeDefined();
+    expect(originalWorker!.status).toBe('failed');
+    expect(originalWorker!.error).toBe('respawn-failed');
+
+    // Verify the user received the error message
+    const errorMsg = connector.sentMessages.find((m) =>
+      m.content.includes('Worker re-spawn failed after grant, please retry'),
+    );
+    expect(errorMsg).toBeDefined();
+
+    // Escalation should be cleared after grant
+    expect(router.hasPendingEscalation('+1234567890')).toBe(false);
+  });
+});
