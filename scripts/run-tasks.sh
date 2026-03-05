@@ -371,13 +371,23 @@ run_agent() {
   prompt=$(build_prompt "$task_id")
 
   local flags=(--print --model "$MODEL" --max-budget-usd "$MAX_BUDGET")
+
+  # Disable MCP servers — task agents don't need them and they add
+  # significant startup latency + memory overhead per iteration.
+  local empty_mcp
+  empty_mcp=$(mktemp "${TMPDIR:-/tmp}/ob-empty-mcp.XXXXXX.json")
+  echo '{"mcpServers":{}}' > "$empty_mcp"
+  flags+=(--mcp-config "$empty_mcp" --strict-mcp-config)
+
   for tool in "${ALLOWED_TOOLS[@]}"; do
     flags+=(--allowedTools "$tool")
   done
 
   cd "$PROJECT_DIR"
   claude "${flags[@]}" -p "$prompt" 2>&1 | tee "$log_file"
-  return ${PIPESTATUS[0]}
+  local rc=${PIPESTATUS[0]}
+  rm -f "$empty_mcp"
+  return "$rc"
 }
 
 # ══════════════════════════════════════════════════════════════════
