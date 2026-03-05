@@ -238,6 +238,7 @@ describe('runInit() — health check integration', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
     ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
@@ -251,7 +252,7 @@ describe('runInit() — health check integration', () => {
       checks: [{ name: 'Config file', passed: true, message: 'config.json is valid' }],
     });
 
-    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', 'n']);
+    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', 'n', 'Y']);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
@@ -267,7 +268,7 @@ describe('runInit() — health check integration', () => {
       ],
     });
 
-    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', 'n']);
+    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', 'n', 'Y']);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
