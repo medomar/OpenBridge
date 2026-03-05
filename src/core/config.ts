@@ -189,6 +189,7 @@ export function convertV2ToInternal(v2Config: V2Config): AppConfig {
     },
     router: v2Config.router ?? {
       progressIntervalMs: 15_000,
+      escalationTimeoutMs: 180_000,
     },
     audit: v2Config.audit ?? {
       enabled: false,
