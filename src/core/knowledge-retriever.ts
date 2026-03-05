@@ -612,6 +612,35 @@ export class KnowledgeRetriever {
       if (fts5Chunks.length > 0) {
         result.chunks.push(...fts5Chunks);
         result.sources.push('fts5');
+      } else {
+        // OB-1655: fallback — retry with top-3 content words individually
+        const keywords = question
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((t) => t.length > 1 && !STOP_WORDS.has(t))
+          .sort((a, b) => b.length - a.length)
+          .slice(0, 3);
+        if (keywords.length > 0) {
+          this.logger.info(
+            { originalQuery: searchQuery, keywords },
+            'RAG fallback: retrying with individual keywords',
+          );
+          const seen = new Set<string>();
+          const fallbackChunks: Chunk[] = [];
+          for (const kw of keywords) {
+            const kwChunks = await this.memoryManager.searchContext(kw, 10);
+            for (const c of kwChunks) {
+              if (!seen.has(c.content)) {
+                seen.add(c.content);
+                fallbackChunks.push(c);
+              }
+            }
+          }
+          if (fallbackChunks.length > 0) {
+            result.chunks.push(...fallbackChunks);
+            result.sources.push('fts5');
+          }
+        }
       }
     }
 
