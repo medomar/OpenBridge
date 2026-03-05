@@ -66,7 +66,7 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F108 | Batch continuation timers not cancelled on shutdown        | 🟡 Medium   | Pending timers fire into destroyed system on shutdown — unhandled errors                   | Open     |
 | OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | ✅ Fixed |
 | OB-F110 | Docker sandbox `exec()` reads wrong exit code property     | 🟡 Medium   | All non-zero exits default to 1 — can't distinguish OOM-kill from general error            | Open     |
-| OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | Open     |
+| OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | ✅ Fixed |
 | OB-F112 | Batch sender info not persisted across process restarts    | 🟢 Low      | Resumed batches can't route messages to original user after restart                        | Open     |
 | OB-F113 | 37 test failures from stale mocks after Phase 98           | 🟠 High     | CI is red — test failures mask real regressions                                            | Open     |
 | OB-F114 | `getActiveBatchId()` inconsistent with `isActive()`        | 🟢 Low      | Returns paused batches — semantic trap for future callers                                  | Open     |

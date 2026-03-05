@@ -35,7 +35,7 @@ import type { AppServer } from './app-server.js';
 import type { InteractionRelay } from './interaction-relay.js';
 import { SecretScanner } from './secret-scanner.js';
 import type { SecretMatch } from './secret-scanner.js';
-import { DockerSandbox, DockerHealthMonitor } from './docker-sandbox.js';
+import { DockerSandbox, DockerHealthMonitor, cleanupSandboxContainers } from './docker-sandbox.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -658,6 +658,11 @@ export class Bridge {
     }
 
     this.dockerHealthMonitor?.stop();
+
+    // Force-remove any Docker containers that are still tracked (OB-F111).
+    if (this.securityConfig?.sandbox?.mode === 'docker') {
+      await cleanupSandboxContainers();
+    }
 
     this.configWatcher?.stop();
 

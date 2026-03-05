@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 7 | **In Progress:** 0 | **Done:** 274 (112 archived)
+> **Pending:** 6 | **In Progress:** 0 | **Done:** 275 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -623,7 +623,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 | 5   | OB-1683 | In `src/core/bridge.ts`, whitelist `.env.example`, `.env.sample`, `.env.template` from sensitive file detection — these are documentation, not secrets. Only flag `.env`, `.env.local`, `.env.production`, etc.                          | ✅ Done   |
 | 6   | OB-1684 | Add `sensitiveFileExceptions` config option in `src/types/config.ts` — array of glob patterns to exclude from sensitive file detection. Default includes `.env.example`, `.env.sample`, `.env.template`                                  | ✅ Done   |
 | 7   | OB-1685 | Fix Docker sandbox exit code in `src/core/docker-sandbox.ts` (~line 206) — read `.status` instead of `.code` for process exit code. Type error correctly: `code?: string; status?: number`. Fallback: `execErr.status ?? 1`              | ✅ Done   |
-| 8   | OB-1686 | Add Docker container cleanup on process crash — track container IDs in `Set<string>`, register `process.on('exit')` and `process.on('SIGINT')` handlers that call `removeContainer(id, true)`. Wire `cleanup()` into `Bridge.shutdown()` | ◻ Pending |
+| 8   | OB-1686 | Add Docker container cleanup on process crash — track container IDs in `Set<string>`, register `process.on('exit')` and `process.on('SIGINT')` handlers that call `removeContainer(id, true)`. Wire `cleanup()` into `Bridge.shutdown()` | ✅ Done   |
 | 9   | OB-1687 | Add tests: (1) tool selection summary log, (2) whitelist dropped entry logged, (3) .env.example not flagged, (4) Docker exit code reads .status, (5) Docker cleanup on exit. At least 5 tests across relevant test files                 | ◻ Pending |
 
 ---
