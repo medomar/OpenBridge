@@ -586,7 +586,7 @@ function makeConfig(connectorTypes: string[] = ['console']): AppConfig {
     },
     queue: { maxRetries: 3, retryDelayMs: 1_000 },
     router: { progressIntervalMs: 15_000 },
-    audit: { enabled: false, logPath: 'audit.log' },
+    audit: { enabled: true, logPath: 'audit.log' },
     health: { enabled: false, port: 8080 },
     metrics: { enabled: false, port: 9090 },
     logLevel: 'info',

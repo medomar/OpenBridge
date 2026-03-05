@@ -56,7 +56,7 @@ export const RouterConfigSchema = z.object({
 
 /** Schema for audit log configuration */
 export const AuditConfigSchema = z.object({
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   logPath: z.string().default('audit.log'),
 });
 

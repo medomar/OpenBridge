@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 18 | **In Progress:** 0 | **Done:** 0 (1045 archived)
+> **Pending:** 17 | **In Progress:** 0 | **Done:** 1 (1045 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -44,7 +44,7 @@
 
 | Task    | What                                                                | Key File              | Status  |
 | ------- | ------------------------------------------------------------------- | --------------------- | ------- |
-| OB-1600 | Default `audit.enabled` to `true` in config Zod schema              | `src/types/config.ts` | Pending |
+| OB-1600 | Default `audit.enabled` to `true` in config Zod schema              | `src/types/config.ts` | ✅ Done |
 | OB-1601 | Update `config.example.json` to show `"audit": { "enabled": true }` | `config.example.json` | Pending |
 
 ### OB-F90 — QA cache write path missing
