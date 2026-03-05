@@ -2278,9 +2278,14 @@ export class Router {
       scope === 'once' ? 'this request' : scope === 'session' ? 'this session' : 'permanently';
     const grantDescription = isProfile ? `profile upgrade to *${grantArg}*` : `tool *${grantArg}*`;
 
+    const remaining = this.pendingEscalationCount(message.sender);
+    const remainingLine =
+      remaining > 0
+        ? `\n${remaining} more pending escalation(s) — reply /allow for next or /allow all for all`
+        : '';
     const confirmText =
       `✅ Granted ${grantDescription} to worker ${entry.workerId} for ${scopeLabel}.\n` +
-      `Worker will be notified to retry with the granted access.`;
+      `Worker will be notified to retry with the granted access.${remainingLine}`;
 
     await connector.sendMessage({
       target: message.source,
