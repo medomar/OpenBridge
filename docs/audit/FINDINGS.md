@@ -64,7 +64,7 @@ Ordered by impact on the **Marketplace development workflow** — the immediate 
 | OB-F106 | Whitelist normalization drops entries without details      | 🟡 Medium   | Dropped phone number silently locks out user with no diagnostic path                       | Open     |
 | OB-F107 | `.env.example` incorrectly flagged as sensitive file       | 🟢 Low      | Template documentation file auto-excluded — false positive erodes trust                    | Open     |
 | OB-F108 | Batch continuation timers not cancelled on shutdown        | 🟡 Medium   | Pending timers fire into destroyed system on shutdown — unhandled errors                   | Open     |
-| OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | Open     |
+| OB-F109 | Unhandled rejections in batch continuation fire-and-forget | 🟡 Medium   | `void` discards Promise — rejection crashes process with --unhandled-rejections=throw      | ✅ Fixed |
 | OB-F110 | Docker sandbox `exec()` reads wrong exit code property     | 🟡 Medium   | All non-zero exits default to 1 — can't distinguish OOM-kill from general error            | Open     |
 | OB-F111 | Docker sandbox has no container cleanup on process crash   | 🟡 Medium   | Orphaned Docker containers run indefinitely after bridge crash                             | Open     |
 | OB-F112 | Batch sender info not persisted across process restarts    | 🟢 Low      | Resumed batches can't route messages to original user after restart                        | Open     |
