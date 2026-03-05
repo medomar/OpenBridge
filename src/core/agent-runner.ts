@@ -287,6 +287,34 @@ export const TOOLS_CODE_AUDIT = [
 ] as const;
 
 /**
+ * Default per-profile cost caps in USD.
+ * If a worker's estimated cost exceeds the cap for its profile,
+ * the agent is aborted and a WARNING is logged (OB-F101).
+ */
+export const PROFILE_COST_CAPS: Record<string, number> = {
+  'read-only': 0.5,
+  'code-edit': 1.0,
+  'code-audit': 1.0,
+  'full-access': 2.0,
+};
+
+/**
+ * Get the cost cap in USD for a given tool profile.
+ * Returns the cap from `overrides` first, then `PROFILE_COST_CAPS`.
+ * Returns `undefined` if the profile is unknown or no cap is configured.
+ */
+export function getProfileCostCap(
+  profile: string | undefined,
+  overrides?: Record<string, number>,
+): number | undefined {
+  if (!profile) return undefined;
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, profile)) {
+    return overrides[profile];
+  }
+  return PROFILE_COST_CAPS[profile];
+}
+
+/**
  * Resolve a profile name to its tool list.
  * Checks custom profiles first (if provided), then falls back to built-in profiles.
  * Returns undefined if the profile name is not recognized in either source.
@@ -387,6 +415,7 @@ export async function manifestToSpawnOptions(
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
     maxBudgetUsd: manifest.maxBudgetUsd,
+    profile: manifest.profile,
   };
 
   // No MCP servers requested — return immediately with a no-op cleanup
@@ -519,6 +548,19 @@ export interface SpawnOptions {
    * If omitted, the default deny/allow patterns from Phase 85 are used.
    */
   securityConfig?: SecurityConfig;
+  /**
+   * Tool profile name used for per-profile cost cap enforcement (OB-F101).
+   * When set, the runner checks accumulated cost against PROFILE_COST_CAPS[profile]
+   * during streaming and logs a WARNING + aborts if the cap is exceeded.
+   * Populated automatically by manifestToSpawnOptions() from TaskManifest.profile.
+   */
+  profile?: string;
+  /**
+   * Per-profile cost cap overrides in USD.
+   * Merged on top of PROFILE_COST_CAPS defaults — caller-supplied values win.
+   * Example: `{ 'read-only': 0.25 }` to tighten the default $0.50 cap.
+   */
+  workerCostCaps?: Record<string, number>;
 }
 
 /**
@@ -1297,6 +1339,18 @@ export class AgentRunner {
 
     const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
 
+    const costUsd = estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8'));
+
+    // Post-hoc cost cap warning for non-streaming path (OB-F101).
+    // Cannot abort after completion — log warning so callers can diagnose spikes.
+    const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+    if (costCap !== undefined && costUsd > costCap) {
+      logger.warn(
+        { cost: costUsd, cap: costCap, profile: opts.profile },
+        `Worker cost cap exceeded: ${costUsd.toFixed(4)} > ${costCap} for profile ${opts.profile ?? 'unknown'}`,
+      );
+    }
+
     const result: AgentResult = {
       stdout: lastResult.stdout,
       stderr: lastResult.stderr,
@@ -1305,7 +1359,7 @@ export class AgentRunner {
       retryCount,
       model: currentModel,
       modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
-      costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+      costUsd,
       turnsExhausted: turnsExhausted || undefined,
     };
 
@@ -1466,6 +1520,20 @@ export class AgentRunner {
 
       const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
 
+      const costUsdHandle = estimateCostUsd(
+        currentModel,
+        Buffer.byteLength(lastResult.stdout, 'utf8'),
+      );
+
+      // Post-hoc cost cap warning for non-streaming path (OB-F101).
+      const costCapHandle = getProfileCostCap(opts.profile, opts.workerCostCaps);
+      if (costCapHandle !== undefined && costUsdHandle > costCapHandle) {
+        logger.warn(
+          { cost: costUsdHandle, cap: costCapHandle, profile: opts.profile },
+          `Worker cost cap exceeded: ${costUsdHandle.toFixed(4)} > ${costCapHandle} for profile ${opts.profile ?? 'unknown'}`,
+        );
+      }
+
       const result: AgentResult = {
         stdout: lastResult.stdout,
         stderr: lastResult.stderr,
@@ -1474,7 +1542,7 @@ export class AgentRunner {
         retryCount,
         model: currentModel,
         modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
-        costUsd: estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8')),
+        costUsd: costUsdHandle,
         turnsExhausted: turnsExhausted || undefined,
       };
 
@@ -1584,6 +1652,8 @@ export class AgentRunner {
         let stdout = '';
         let streamResult: { exitCode: number; stderr: string } | undefined;
         let spawnError: Error | undefined;
+        let costCapExceeded = false;
+        let costCapMessage = '';
 
         try {
           // Drain all chunks — accumulate stdout and report turn progress
@@ -1591,6 +1661,27 @@ export class AgentRunner {
           while (!iterResult.done) {
             const chunk = iterResult.value;
             stdout += chunk;
+
+            // Per-profile cost cap check (OB-F101).
+            // Estimate cost from accumulated output; abort early if cap exceeded.
+            const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+            if (costCap !== undefined) {
+              const currentCostUsd = estimateCostUsd(
+                currentModel,
+                Buffer.byteLength(stdout, 'utf8'),
+              );
+              if (currentCostUsd > costCap) {
+                costCapMessage = `Worker cost cap exceeded: ${currentCostUsd.toFixed(4)} > ${costCap} for profile ${opts.profile ?? 'unknown'}`;
+                logger.warn(
+                  { cost: currentCostUsd, cap: costCap, profile: opts.profile },
+                  costCapMessage,
+                );
+                currentAbort?.();
+                costCapExceeded = true;
+                break;
+              }
+            }
+
             if (onProgress) {
               if (currentConfig.parseStreamChunk) {
                 // Adapter has incremental stream parser (e.g. Codex --json JSONL).
@@ -1616,10 +1707,18 @@ export class AgentRunner {
             }
             iterResult = await currentStreaming.chunks.next();
           }
-          streamResult = iterResult.value;
+          if (!costCapExceeded && iterResult.done) {
+            streamResult = iterResult.value;
+          }
         } catch (error) {
           logger.error({ error, attempt }, 'Agent streaming handle error');
           spawnError = error instanceof Error ? error : new Error(String(error));
+        }
+
+        // Cost cap exceeded — abort immediately without retrying
+        if (costCapExceeded) {
+          attemptRecords.push({ attempt, exitCode: 1, stderr: costCapMessage });
+          throw new AgentExhaustedError(attemptRecords, Date.now() - startTime);
         }
 
         if (spawnError) {

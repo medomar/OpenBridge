@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 | **In Progress:** 0 | **Done:** 259 (112 archived)
+> **Pending:** 21 | **In Progress:** 0 | **Done:** 260 (112 archived)
 > **Last Updated:** 2026-03-05
 
 <details>
@@ -594,7 +594,7 @@ See [FUTURE.md](FUTURE.md) for Sprint 5 (v0.0.13), Sprint 6 (v0.0.14), and [ROAD
 
 | #   | Task ID | Description                                                                                                                                                                                                                                                                    | Status    |
 | --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
-| 1   | OB-1671 | Add per-profile cost caps in `src/core/agent-runner.ts` — `read-only`: $0.50, `code-edit`: $1.00, `code-audit`: $1.00, `full-access`: $2.00. If streaming cost exceeds cap, abort the agent and log WARNING "Worker cost cap exceeded: ${cost} > ${cap} for profile {profile}" | ◻ Pending |
+| 1   | OB-1671 | Add per-profile cost caps in `src/core/agent-runner.ts` — `read-only`: $0.50, `code-edit`: $1.00, `code-audit`: $1.00, `full-access`: $2.00. If streaming cost exceeds cap, abort the agent and log WARNING "Worker cost cap exceeded: ${cost} > ${cap} for profile {profile}" | ✅ Done   |
 | 2   | OB-1672 | Add `workerCostCaps` config option in `src/types/config.ts` — per-profile overrides: `{ "read-only": 0.50, "code-edit": 1.00 }`. Merge with defaults. Zod validation                                                                                                           | ◻ Pending |
 | 3   | OB-1673 | Log WARNING when worker cost exceeds 10x the average for its profile tier — e.g., "Worker cost $1.14 is 114x average $0.01 for read-only profile". Track running average per profile in memory                                                                                 | ◻ Pending |
 | 4   | OB-1674 | Add tests: (1) cost cap aborts agent, (2) cost cap configurable, (3) 10x warning logged, (4) average tracking works. At least 3 tests in `tests/core/agent-runner.test.ts`                                                                                                     | ◻ Pending |
