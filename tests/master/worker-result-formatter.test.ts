@@ -443,5 +443,105 @@ describe('Worker Result Formatter', () => {
 
       expect(formattedResults[0]).toContain('sonnet');
     });
+
+    it('returns empty observations array when sessionId is not provided', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Fixed the authentication bug in src/core/auth.ts',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1000,
+            retryCount: 0,
+          },
+        },
+      ];
+
+      const markers = [{ profile: 'code-edit', body: { model: 'sonnet' } }];
+
+      const { observations } = formatWorkerBatch(outcomes, markers);
+
+      expect(observations).toHaveLength(0);
+    });
+
+    it('extracts observation for each fulfilled worker when sessionId is provided', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Fixed the authentication bug in src/core/auth.ts',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1000,
+            retryCount: 0,
+          },
+        },
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Updated src/memory/database.ts with new schema',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 800,
+            retryCount: 0,
+          },
+        },
+      ];
+
+      const markers = [
+        { profile: 'code-edit', body: { model: 'sonnet', prompt: 'Fix auth bug' } },
+        { profile: 'code-edit', body: { model: 'haiku', prompt: 'Update schema' } },
+      ];
+      const workerIds = ['worker-abc', 'worker-def'];
+
+      const { observations } = formatWorkerBatch(outcomes, markers, workerIds, 'session-123');
+
+      expect(observations).toHaveLength(2);
+      expect(observations[0]).toHaveProperty('session_id', 'session-123');
+      expect(observations[0]).toHaveProperty('worker_id', 'worker-abc');
+      expect(observations[0]).toHaveProperty('type');
+      expect(observations[0]).toHaveProperty('title');
+      expect(observations[0]).toHaveProperty('narrative');
+      expect(observations[1]).toHaveProperty('session_id', 'session-123');
+      expect(observations[1]).toHaveProperty('worker_id', 'worker-def');
+    });
+
+    it('uses fallback worker ID when workerIds array is not provided', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Investigated the codebase',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 500,
+            retryCount: 0,
+          },
+        },
+      ];
+
+      const markers = [{ profile: 'read-only', body: { model: 'haiku' } }];
+
+      const { observations } = formatWorkerBatch(outcomes, markers, undefined, 'session-xyz');
+
+      expect(observations).toHaveLength(1);
+      expect(observations[0]!.worker_id).toBe('worker-1');
+    });
+
+    it('skips observation extraction for rejected promises', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'rejected',
+          reason: new Error('Spawn failed'),
+        },
+      ];
+
+      const markers = [{ profile: 'full-access', body: { model: 'opus' } }];
+
+      const { observations } = formatWorkerBatch(outcomes, markers, ['worker-1'], 'session-abc');
+
+      expect(observations).toHaveLength(0);
+    });
   });
 });
