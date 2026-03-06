@@ -143,6 +143,138 @@ function checkConfig(): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// SQLite database health check (OB-1688)
+// ---------------------------------------------------------------------------
+
+const TRACKED_TABLES = [
+  'schema_versions',
+  'context_chunks',
+  'conversations',
+  'tasks',
+  'learnings',
+  'agent_activity',
+  'prompts',
+  'observations',
+] as const;
+
+function findDbPath(): string | null {
+  // Try to resolve workspacePath from config.json first
+  const configDir = getConfigDir();
+  const candidates = [join(configDir, 'config.json'), join(process.cwd(), 'config.json')];
+  const configPath = candidates.find((p) => existsSync(p));
+
+  if (configPath) {
+    try {
+      const raw = readFileSync(configPath, 'utf-8');
+      const parsed = JSON.parse(raw) as unknown;
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'workspacePath' in parsed &&
+        typeof (parsed as Record<string, unknown>)['workspacePath'] === 'string'
+      ) {
+        const wsPath = (parsed as Record<string, unknown>)['workspacePath'] as string;
+        const wsDbPath = join(wsPath, '.openbridge', 'openbridge.db');
+        if (existsSync(wsDbPath)) return wsDbPath;
+      }
+    } catch {
+      // ignore — fall through to default
+    }
+  }
+
+  // Fall back to default location alongside config
+  const defaultPath = join(getConfigDir(), 'openbridge.db');
+  if (existsSync(defaultPath)) return defaultPath;
+
+  return null;
+}
+
+function checkSQLiteDatabase(): CheckResult {
+  const dbPath = findDbPath();
+
+  if (!dbPath) {
+    return {
+      pass: true,
+      message: 'no database found (not yet initialised — will be created on first run)',
+    };
+  }
+
+  let BetterSQLite: (
+    path: string,
+    opts?: object,
+  ) => {
+    pragma: (sql: string) => unknown;
+    prepare: (sql: string) => { all: () => unknown[]; get: () => unknown };
+  };
+  try {
+    BetterSQLite = require('better-sqlite3') as typeof BetterSQLite;
+  } catch {
+    return {
+      pass: false,
+      message: 'better-sqlite3 not available — run: npm install better-sqlite3',
+    };
+  }
+
+  let db: ReturnType<typeof BetterSQLite>;
+  try {
+    db = BetterSQLite(dbPath, { readonly: true });
+  } catch (err) {
+    return {
+      pass: false,
+      message: `cannot open database at ${dbPath}: ${(err as Error).message}`,
+    };
+  }
+
+  try {
+    // Integrity check
+    const integrityRows = db.prepare('PRAGMA integrity_check').all() as Array<{
+      integrity_check: string;
+    }>;
+    const integrityOk = integrityRows.length === 1 && integrityRows[0]?.integrity_check === 'ok';
+
+    if (!integrityOk) {
+      const issues = integrityRows.map((r) => r.integrity_check).join(', ');
+      return {
+        pass: false,
+        message: `integrity_check FAILED at ${dbPath}: ${issues}`,
+      };
+    }
+
+    // Schema version
+    let schemaVersion = 0;
+    try {
+      const vRow = db.prepare('SELECT MAX(version) as v FROM schema_versions').get() as
+        | { v: number | null }
+        | undefined;
+      schemaVersion = vRow?.v ?? 0;
+    } catch {
+      // schema_versions table may not exist yet in very early DBs
+    }
+
+    // Row counts for key tables
+    const counts: string[] = [];
+    for (const table of TRACKED_TABLES) {
+      try {
+        const row = db.prepare(`SELECT COUNT(*) as n FROM "${table}"`).get() as
+          | { n: number }
+          | undefined;
+        counts.push(`${table}:${row?.n ?? 0}`);
+      } catch {
+        // table may not exist in older schema versions
+      }
+    }
+
+    const summary = counts.join(' | ');
+    return {
+      pass: true,
+      message: `${dbPath} — schema v${schemaVersion} — ${summary}`,
+    };
+  } finally {
+    (db as unknown as { close: () => void }).close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -203,6 +335,7 @@ const CHECKS: Check[] = [
   { label: 'Node.js', run: checkNodeVersion },
   { label: 'AI tools', run: checkAITools },
   { label: 'Config', run: checkConfig },
+  { label: 'SQLite DB', run: checkSQLiteDatabase },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
