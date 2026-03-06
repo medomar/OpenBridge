@@ -12,8 +12,13 @@
 import type { AgentResult, ErrorCategory } from '../core/agent-runner.js';
 import { classifyError } from '../core/agent-runner.js';
 import { parseCodexJsonlOutput } from '../core/adapters/codex-adapter.js';
-import { extractObservation } from './observation-extractor.js';
+import {
+  extractObservation,
+  extractFilesRead,
+  extractFilesModified,
+} from './observation-extractor.js';
 import type { Observation } from '../memory/observation-store.js';
+import type { WorkerSummary } from '../types/agent.js';
 
 /**
  * Metadata about a completed worker execution.
@@ -175,9 +180,15 @@ export function formatWorkerBatch(
   markers: Array<{ profile: string; body: { model?: string; tool?: string; prompt?: string } }>,
   workerIds?: string[],
   sessionId?: string,
-): { formattedResults: string[]; feedbackPrompt: string; observations: Observation[] } {
+): {
+  formattedResults: string[];
+  feedbackPrompt: string;
+  observations: Observation[];
+  workerSummaries: WorkerSummary[];
+} {
   const formattedResults: string[] = [];
   const observations: Observation[] = [];
+  const workerSummaries: WorkerSummary[] = [];
 
   for (let i = 0; i < outcomes.length; i++) {
     const outcome = outcomes[i]!;
@@ -225,6 +236,14 @@ export function formatWorkerBatch(
           );
         }
       }
+
+      // Extract a structured WorkerSummary from the worker output (OB-1632)
+      const workerOutput = result.stdout || result.stderr;
+      if (workerOutput.trim()) {
+        workerSummaries.push(
+          extractWorkerSummary(workerOutput, marker.body.prompt ?? '', result.exitCode !== 0),
+        );
+      }
     } else {
       const errorMsg =
         outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
@@ -249,6 +268,127 @@ export function formatWorkerBatch(
     formattedResults,
     feedbackPrompt: buildWorkerFeedbackPrompt(formattedResults),
     observations,
+    workerSummaries,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Worker Summary Extraction (OB-1632)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the text body of the first matching markdown section.
+ * Returns content between the matched heading and the next heading (or EOF),
+ * collapsed to a single line and trimmed to maxChars.
+ */
+function extractMarkdownSection(text: string, headingRe: RegExp, maxChars = 300): string {
+  const lines = text.split('\n');
+  const collected: string[] = [];
+  let capturing = false;
+
+  for (const line of lines) {
+    if (headingRe.test(line)) {
+      capturing = true;
+      continue;
+    }
+    if (capturing) {
+      if (/^#{1,3}\s/.test(line)) break; // next heading → stop collecting
+      collected.push(line);
+    }
+  }
+
+  return collected.join(' ').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+}
+
+/**
+ * Extract lines that match keyword patterns and join them into a string.
+ * Lines shorter than 10 characters are skipped.
+ */
+function extractByKeywords(text: string, keywordRe: RegExp, maxChars = 300): string {
+  const matches: string[] = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length < 10) continue;
+    if (keywordRe.test(trimmed)) matches.push(trimmed);
+  }
+  return matches.join(' ').slice(0, maxChars).trim();
+}
+
+/**
+ * Extract a structured WorkerSummary from raw worker output text.
+ *
+ * Uses regex heuristics to identify:
+ *  - investigated: what the worker read/explored
+ *  - completed:    what was accomplished
+ *  - learned:      key insights from the task
+ *  - next_steps:   recommended follow-up actions
+ *  - files_read / files_modified: delegated to observation-extractor helpers
+ *  - error_summary: error text when the worker failed (isError=true)
+ *
+ * No AI calls — pure regex + heuristics.
+ */
+export function extractWorkerSummary(
+  output: string,
+  request: string,
+  isError = false,
+): WorkerSummary {
+  const investigated =
+    extractMarkdownSection(
+      output,
+      /^#{1,3}\s+(investigation|analysis|what\s+i?\s*(investigated|explored|analy[sz]ed?|found)|context)/i,
+    ) ||
+    extractByKeywords(
+      output,
+      /\b(read|explored?|investigated?|inspected?|scanned?|analy[sz]ed?|examined?|loaded?)\b/i,
+    );
+
+  const completed =
+    extractMarkdownSection(
+      output,
+      /^#{1,3}\s+(summary|completed?|result|what\s+was\s+done|changes?\s+made|accomplished|done)/i,
+    ) ||
+    extractByKeywords(
+      output,
+      /^(fixed|updated|added|removed?|created|modified|refactored|implemented|resolved|wrote|completed|changed|migrated|improved)\b/i,
+    );
+
+  const learned =
+    extractMarkdownSection(
+      output,
+      /^#{1,3}\s+(finding|insight|learned?|key\s+(note|insight|finding)|important|takeaway)/i,
+    ) ||
+    extractByKeywords(
+      output,
+      /^(note:|finding:|insight:|learned:|important:|discovered:|key\s+(insight|finding):)/i,
+    );
+
+  const next_steps =
+    extractMarkdownSection(
+      output,
+      /^#{1,3}\s+(next[\s-]steps?|todo|remaining|follow.?up|what\s+(remains?|next)|recommendation)/i,
+    ) ||
+    extractByKeywords(
+      output,
+      /\b(next\s+steps?:?|todo:|remaining:|follow-?up:|should\s+(be\s+done|implement|fix|add)|needs?\s+to)\b/i,
+    );
+
+  let error_summary: string | undefined;
+  if (isError && output.trim()) {
+    error_summary =
+      extractMarkdownSection(output, /^#{1,3}\s+(error|failure|problem|issue)/i, 200) ||
+      extractByKeywords(output, /\b(error:|Error:|failed?:|exception:|error\s+message:)\b/i, 200) ||
+      output.replace(/\s+/g, ' ').trim().slice(0, 200);
+  }
+
+  return {
+    request: request.trim() || 'unknown',
+    investigated: investigated || '',
+    completed: completed || '',
+    learned: learned || '',
+    next_steps: next_steps || '',
+    files_modified: extractFilesModified(output),
+    files_read: extractFilesRead(output),
+    ...(error_summary !== undefined ? { error_summary } : {}),
   };
 }
 
