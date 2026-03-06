@@ -42,6 +42,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     TOOLS_FULL: profiles['full-access'],
     DEFAULT_MAX_TURNS_EXPLORATION: 15,
     DEFAULT_MAX_TURNS_TASK: 25,
+    DEFAULT_MAX_FIX_ITERATIONS: 3,
     sanitizePrompt: vi.fn((s: string) => s),
     buildArgs: vi.fn(),
     isValidModel: vi.fn(() => true),
