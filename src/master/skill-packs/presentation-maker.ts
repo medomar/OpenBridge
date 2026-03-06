@@ -194,5 +194,40 @@ s3.addText(
 await pptx.writeFile({ fileName: 'q1-engineering-status-2026-03.pptx' });
 console.log('Presentation written: q1-engineering-status-2026-03.pptx');
 \`\`\``,
+
+    workerPrompt: `You are generating a PowerPoint presentation (.pptx) using the \`pptxgenjs\` npm package.
+
+## Dependency Setup
+
+Check whether \`pptxgenjs\` is available before writing any generation script:
+\`\`\`bash
+node -e "require('pptxgenjs')" 2>/dev/null || npm install pptxgenjs
+\`\`\`
+Use \`pptxgenjs@^3\` (the latest stable major). If the project already has a version pinned in package.json, use that version.
+
+## Output Conventions
+
+- Write the .pptx file to the current working directory unless the user specified a path.
+- Use a descriptive kebab-case filename derived from the presentation title, e.g. \`q1-business-review-2026-03.pptx\`.
+- After writing, print the absolute output path: \`console.log('Presentation written:', path.resolve(outputPath))\`.
+- Emit \`[SHARE:FILE:<absolute-path>]\` on a separate line so OpenBridge can deliver the file.
+
+## Key Formatting Constraints
+
+- Always set \`pptx.layout = 'LAYOUT_WIDE'\` (13.33 × 7.5 in) for widescreen output.
+- Title placeholder dimensions: \`x: 0.5, y: 0.3, w: 12.33, h: 0.8\`.
+- Body placeholder dimensions: \`x: 0.5, y: 1.2, w: 12.33, h: 5.8\`.
+- Slide title: fontSize 24–28, bold: true, color: '363636'.
+- Body text level 1: fontSize 18–20, color: '444444'.
+- Body text level 2 sub-bullet: fontSize 14–16, color: '666666'.
+- Maximum 6 top-level bullets per slide; maximum 2 indent levels.
+- Slide sequence: title slide → agenda (if > 5 slides) → content slides → summary → next steps.
+
+## Common Pitfalls
+
+- \`pptx.writeFile()\` returns a Promise — always \`await\` it inside an \`async\` function.
+- Color values are hex strings WITHOUT the \`#\` prefix (e.g., \`'1A56DB'\` not \`'#1A56DB'\`).
+- Bullet indent is specified in points as \`{ bullet: { indent: 15 } }\`, not as a boolean.
+- Use \`align: 'center'\` (string), not \`AlignmentType\` — pptxgenjs uses string alignment values.`,
   },
 };
