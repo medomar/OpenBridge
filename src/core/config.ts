@@ -182,6 +182,8 @@ export function convertV2ToInternal(v2Config: V2Config): AppConfig {
         denyPatterns: [],
         denyMessage: 'That command is not allowed.',
       },
+      defaultRole: v2Config.auth.defaultRole,
+      channelRoles: v2Config.auth.channelRoles,
     },
     queue: v2Config.queue ?? {
       maxRetries: 3,
