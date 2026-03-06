@@ -463,4 +463,16 @@ export class AuthService {
   getPendingPairings(): ReadonlyMap<string, PendingPairing> {
     return this.pendingPairings;
   }
+
+  /**
+   * Initiate a pairing for an unknown sender.
+   * Generates a 6-digit code, stores the pending pairing, and returns the
+   * message to send back to the unknown sender.
+   */
+  initiatePairing(senderId: string, channel: string): string {
+    const code = AuthService.generatePairingCode();
+    this.storePairing(code, senderId, channel);
+    logger.info({ senderId, channel, code }, 'Pairing initiated for unknown sender');
+    return `To connect, ask the admin to approve code: ${code} (expires in 5 minutes)`;
+  }
 }
