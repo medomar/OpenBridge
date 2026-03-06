@@ -129,6 +129,7 @@ function parseMultipartFile(
  */
 export class WebChatConnector implements Connector {
   readonly name = 'webchat';
+  readonly supportsFileAttachments = true as const;
   private config: WebChatConfig;
   private connected = false;
   private httpServer: { close(cb?: (err?: Error) => void): void } | null = null;
