@@ -213,6 +213,81 @@ function trackReadTokens(db: Database.Database, chunks: Chunk[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// Vector similarity search (sqlite-vec KNN)
+// ---------------------------------------------------------------------------
+
+/** A single result from {@link knnSearch}: chunk ID paired with its similarity score. */
+export interface KnnResult {
+  /** Primary key of the matching row in `context_chunks`. */
+  chunkId: number;
+  /**
+   * Cosine similarity score in the range [0, 1].
+   * Computed as `1 - cosine_distance` where 0 = completely dissimilar,
+   * 1 = identical direction. Higher is more relevant.
+   */
+  score: number;
+}
+
+/**
+ * Vector similarity search over the `embeddings` table using the sqlite-vec
+ * extension and cosine distance.
+ *
+ * Returns the top-K most similar chunks ordered by descending similarity
+ * (highest score first). Returns an empty array when:
+ * - `queryVector` has zero dimensions (NoOpEmbeddingProvider / provider='none')
+ * - The `embeddings` table does not exist (database predates OB-1646)
+ * - The `sqlite-vec` extension is not loaded (graceful fallback)
+ * - No embeddings are stored yet
+ *
+ * @param db           SQLite database instance (must have sqlite-vec loaded)
+ * @param queryVector  Float32Array embedding of the search query
+ * @param k            Maximum number of results to return (default 10)
+ */
+export function knnSearch(db: Database.Database, queryVector: Float32Array, k = 10): KnnResult[] {
+  // No-op when the vector is empty (NoOpEmbeddingProvider, provider='none')
+  if (queryVector.length === 0) return [];
+
+  // Gracefully skip if the embeddings table does not exist
+  const tableExists =
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='embeddings'`)
+        .get() as { c: number }
+    ).c > 0;
+  if (!tableExists) return [];
+
+  try {
+    // sqlite-vec vec_distance_cosine() returns values in [0, 2] (0 = identical,
+    // 2 = opposite directions). We normalise to cosine similarity [0, 1] by
+    // computing `1 - distance / 2` so the result is directly comparable to
+    // FTS5 / temporal scores used by the hybrid ranker (OB-1654).
+    const vectorBlob = Buffer.from(
+      queryVector.buffer,
+      queryVector.byteOffset,
+      queryVector.byteLength,
+    );
+
+    const rows = db
+      .prepare(
+        `SELECT chunk_id, vec_distance_cosine(vector, ?) AS distance
+         FROM embeddings
+         ORDER BY distance ASC
+         LIMIT ?`,
+      )
+      .all(vectorBlob, k) as { chunk_id: number; distance: number }[];
+
+    return rows.map((row) => ({
+      chunkId: row.chunk_id,
+      score: 1 - row.distance / 2,
+    }));
+  } catch {
+    // sqlite-vec extension not loaded or other runtime error — fall back
+    // gracefully so callers can degrade to FTS5-only search (OB-1657).
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hybrid FTS5 + metadata search
 // ---------------------------------------------------------------------------
 
