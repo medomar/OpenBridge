@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 71 | **In Progress:** 0 | **Done:** 105 (1063 archived)
+> **Pending:** 70 | **In Progress:** 0 | **Done:** 106 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -277,7 +277,7 @@
 | OB-1690 | Check: Channel prerequisites — WhatsApp session dir, Telegram BOT_TOKEN, Discord BOT_TOKEN, WebChat port                        | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1691 | Color-coded summary output (green ✓ / red ✗ / yellow ⚠) with fix suggestions per failing check                                  | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1692 | Wire `doctor` command into CLI entry point (`src/cli/index.ts`)                                                                 | `src/cli/index.ts`        | ✅ Done |
-| OB-1693 | Add `/doctor` chat command (runs same checks, sends summary via messaging channel)                                              | `src/core/router.ts`      | Pending |
+| OB-1693 | Add `/doctor` chat command (runs same checks, sends summary via messaging channel)                                              | `src/core/router.ts`      | ✅ Done |
 
 **Phase 96a Total:** 10 tasks
 
