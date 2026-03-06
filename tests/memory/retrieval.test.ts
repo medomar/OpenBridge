@@ -4,6 +4,7 @@ import { openDatabase, closeDatabase } from '../../src/memory/database.js';
 import { storeChunks, markStale, type Chunk } from '../../src/memory/chunk-store.js';
 import {
   hybridSearch,
+  knnSearch,
   searchConversations,
   rerank,
   sanitizeFts5Query,
@@ -11,6 +12,7 @@ import {
   computeHybridScore,
   applyMMR,
 } from '../../src/memory/retrieval.js';
+import { NoOpEmbeddingProvider } from '../../src/memory/embedding-provider.js';
 import type { ConversationEntry } from '../../src/memory/index.js';
 import type { AgentRunner } from '../../src/core/agent-runner.js';
 
@@ -803,6 +805,100 @@ describe('retrieval.ts', () => {
       const results = await hybridSearch(db, 'bridge', { limit: 4, mmr: false });
       // Without MMR, results are purely relevance-ordered — no assertion on scope diversity
       expect(results.length).toBeLessThanOrEqual(4);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // knnSearch + hybridSearch — provider='none' graceful fallback (OB-1657)
+  // -------------------------------------------------------------------------
+
+  describe("provider='none' graceful fallback (OB-1657)", () => {
+    it('NoOpEmbeddingProvider embed() returns an empty Float32Array (dimensions=0)', async () => {
+      const provider = new NoOpEmbeddingProvider();
+      const result = await provider.embed('any text');
+      expect(result.vector).toBeInstanceOf(Float32Array);
+      expect(result.vector.length).toBe(0);
+      expect(result.dimensions).toBe(0);
+      expect(result.model).toBe('none');
+    });
+
+    it('NoOpEmbeddingProvider embedBatch() returns empty vectors for every text', async () => {
+      const provider = new NoOpEmbeddingProvider();
+      const results = await provider.embedBatch(['a', 'b', 'c']);
+      expect(results).toHaveLength(3);
+      for (const r of results) {
+        expect(r.vector.length).toBe(0);
+      }
+    });
+
+    it('NoOpEmbeddingProvider isAvailable() returns true', async () => {
+      const provider = new NoOpEmbeddingProvider();
+      await expect(provider.isAvailable()).resolves.toBe(true);
+    });
+
+    it('knnSearch returns empty array when queryVector is empty (provider=none)', () => {
+      // NoOpEmbeddingProvider yields Float32Array(0) — knnSearch must short-circuit
+      const emptyVector = new Float32Array(0);
+      const results = knnSearch(db, emptyVector);
+      expect(results).toEqual([]);
+    });
+
+    it('knnSearch returns empty array for any k when vector is empty', () => {
+      for (const k of [1, 5, 10, 100]) {
+        expect(knnSearch(db, new Float32Array(0), k)).toEqual([]);
+      }
+    });
+
+    it('hybridSearch with empty queryVector (provider=none) falls back to FTS5-only — returns same results as no queryVector', async () => {
+      void storeChunks(db, [
+        makeChunk({ content: 'authentication service handles login sessions' }),
+        makeChunk({ scope: 'src/types', content: 'TypeScript strict mode configuration' }),
+      ]);
+
+      // Simulate what happens when NoOpEmbeddingProvider produces an empty vector
+      const noopVector = new Float32Array(0);
+      const withNoopVector = await hybridSearch(db, 'authentication', { queryVector: noopVector });
+      const withoutVector = await hybridSearch(db, 'authentication');
+
+      // Results must be identical — zero degradation guarantee
+      expect(withNoopVector).toEqual(withoutVector);
+    });
+
+    it('hybridSearch with provider=none still returns FTS5 matches (zero degradation)', async () => {
+      void storeChunks(db, [
+        makeChunk({ content: 'routing module dispatches messages to handlers' }),
+      ]);
+
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'routing', { queryVector: noopVector });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].content).toContain('routing');
+    });
+
+    it('hybridSearch with provider=none returns empty array when no FTS5 matches exist', async () => {
+      void storeChunks(db, [makeChunk({ content: 'database connection pool management' })]);
+
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'xyznonexistentterm', { queryVector: noopVector });
+      expect(results).toHaveLength(0);
+    });
+
+    it('hybridSearch with provider=none respects limit and scope filters', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/core', content: 'core authentication middleware provider' }),
+        makeChunk({ scope: 'src/master', content: 'master authentication orchestration provider' }),
+      ]);
+
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'authentication', {
+        queryVector: noopVector,
+        scope: 'src/core',
+        limit: 1,
+      });
+
+      expect(results.length).toBeLessThanOrEqual(1);
+      expect(results.every((r) => r.scope.startsWith('src/core'))).toBe(true);
     });
   });
 
