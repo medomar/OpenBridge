@@ -38,12 +38,21 @@ export interface ActivityRecord {
   started_at: string;
   updated_at: string;
   completed_at?: string;
+  /** JSON-serialized WorkerSummary, set when a worker completes. */
+  summary_json?: string;
 }
 
 export type ActivityUpdate = Partial<
   Pick<
     ActivityRecord,
-    'status' | 'progress_pct' | 'cost_usd' | 'completed_at' | 'task_summary' | 'model' | 'pid'
+    | 'status'
+    | 'progress_pct'
+    | 'cost_usd'
+    | 'completed_at'
+    | 'task_summary'
+    | 'model'
+    | 'pid'
+    | 'summary_json'
   >
 > & { updated_at?: string };
 
@@ -56,9 +65,9 @@ export function insertActivity(db: Database.Database, activity: ActivityRecord):
   db.prepare(
     `INSERT OR IGNORE INTO agent_activity
        (id, type, model, profile, task_summary, status, progress_pct,
-        parent_id, pid, cost_usd, started_at, updated_at, completed_at)
+        parent_id, pid, cost_usd, started_at, updated_at, completed_at, summary_json)
      VALUES
-       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     activity.id,
     activity.type,
@@ -73,6 +82,7 @@ export function insertActivity(db: Database.Database, activity: ActivityRecord):
     activity.started_at,
     activity.updated_at,
     activity.completed_at ?? null,
+    activity.summary_json ?? null,
   );
 }
 
@@ -109,6 +119,10 @@ export function updateActivity(db: Database.Database, id: string, updates: Activ
   if (updates.pid !== undefined) {
     fields.push('pid = ?');
     values.push(updates.pid);
+  }
+  if (updates.summary_json !== undefined) {
+    fields.push('summary_json = ?');
+    values.push(updates.summary_json);
   }
 
   values.push(id);
