@@ -35,6 +35,7 @@ import { AgentRunner, estimateCost, DEFAULT_MAX_TURNS_TASK } from './agent-runne
 import { FastPathResponder } from './fast-path-responder.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
+import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
@@ -1463,6 +1464,12 @@ export class Router {
     // Handle built-in "/skills" command — list available skills with descriptions and usage counts (OB-1712)
     if (/^\/skills$/i.test(message.content.trim())) {
       await this.handleSkillsCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/skill-packs" command — list available skill packs with descriptions (OB-1756)
+    if (/^\/skill-packs$/i.test(message.content.trim())) {
+      await this.handleSkillPacksCommand(message, connector);
       return;
     }
 
@@ -4550,6 +4557,85 @@ export class Router {
   }
 
   /**
+   * Handle the built-in "/skill-packs" command — list available skill packs with descriptions.
+   *
+   * Shows built-in packs first, then user-defined overrides from
+   * `.openbridge/skill-packs/`. Each entry shows the pack name, tool profile,
+   * and description. User-defined packs are labelled with "(custom)".
+   */
+  private async handleSkillPacksCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    if (!this.workspacePath) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Skill packs not available — workspace path not configured.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let packs: Awaited<ReturnType<typeof loadAllSkillPacks>>['packs'];
+    let userDefinedCount: number;
+    try {
+      ({ packs, userDefinedCount } = await loadAllSkillPacks(this.workspacePath));
+    } catch (err) {
+      logger.warn({ err }, 'handleSkillPacksCommand: failed to load skill packs');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Failed to load skill packs.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (packs.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No skill packs available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const builtIn = packs.filter((p) => !p.isUserDefined);
+    const userDefined = packs.filter((p) => p.isUserDefined);
+
+    const lines: string[] = ['*Available Skill Packs*', ''];
+
+    if (builtIn.length > 0) {
+      lines.push('*Built-in*');
+      for (const pack of builtIn) {
+        lines.push(`• *${pack.name}* [${pack.toolProfile}] — ${pack.description}`);
+      }
+    }
+
+    if (userDefined.length > 0) {
+      if (builtIn.length > 0) lines.push('');
+      lines.push('*Workspace (custom)*');
+      for (const pack of userDefined) {
+        lines.push(`• *${pack.name}* [${pack.toolProfile}] — ${pack.description}`);
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, total: packs.length, userDefinedCount },
+      'Skill packs listed via /skill-packs',
+    );
+  }
+
+  /**
    * Handle the built-in "/help" command — list all available commands.
    *
    * Displays all built-in commands with brief descriptions, grouped by category:
@@ -4815,6 +4901,7 @@ export class Router {
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
       '• /skills — list available skills with descriptions and usage counts',
+      '• /skill-packs — list available skill packs (built-in + workspace custom)',
       '',
       '*Tool Escalation*',
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
