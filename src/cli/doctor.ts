@@ -33,6 +33,54 @@ function checkNodeVersion(): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// AI tools check (OB-1686)
+// ---------------------------------------------------------------------------
+
+const AI_TOOLS: Array<{ name: string; versionFlag: string }> = [
+  { name: 'claude', versionFlag: '--version' },
+  { name: 'codex', versionFlag: '--version' },
+  { name: 'aider', versionFlag: '--version' },
+];
+
+function checkAITools(): CheckResult {
+  const found: string[] = [];
+  const missing: string[] = [];
+
+  for (const tool of AI_TOOLS) {
+    try {
+      execSync(`which ${tool.name}`, { stdio: 'pipe' });
+      // Tool exists — try to get version output
+      let version = 'found';
+      try {
+        const raw = execSync(`${tool.name} ${tool.versionFlag} 2>&1`, {
+          stdio: 'pipe',
+          timeout: 5000,
+        })
+          .toString()
+          .trim()
+          .split('\n')[0];
+        if (raw) version = raw;
+      } catch {
+        // version flag may not work — tool is still present
+      }
+      found.push(`${tool.name} (${version})`);
+    } catch {
+      missing.push(tool.name);
+    }
+  }
+
+  if (found.length === 0) {
+    return {
+      pass: false,
+      message: `no AI tools found — install one of: ${AI_TOOLS.map((t) => t.name).join(', ')}`,
+    };
+  }
+
+  const msg = found.join(', ') + (missing.length > 0 ? ` | not found: ${missing.join(', ')}` : '');
+  return { pass: true, message: msg };
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -91,6 +139,7 @@ function checkPuppeteer(): CheckResult {
 
 const CHECKS: Check[] = [
   { label: 'Node.js', run: checkNodeVersion },
+  { label: 'AI tools', run: checkAITools },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
