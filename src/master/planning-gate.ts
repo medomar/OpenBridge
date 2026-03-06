@@ -1,5 +1,5 @@
 /**
- * Planning Gate (OB-1775, OB-1776)
+ * Planning Gate (OB-1775, OB-1776, OB-1777)
  *
  * Controls the two-phase execution model for Master AI task processing:
  *
@@ -9,8 +9,10 @@
  *      MAX_ANALYSIS_WORKERS (2).
  *
  *   2. Execution phase — code-edit workers implement the confirmed strategy.
- *      This phase only starts after the analysis phase concludes and the
- *      Master has confirmed its approach.
+ *      This phase ONLY starts after ALL analysis workers have returned their
+ *      output AND the Master has explicitly confirmed the approach via
+ *      confirmApproach(). Attempting to complete the analysis phase before all
+ *      workers have finished throws an error (OB-1777).
  *
  * For simple tasks (single-file edits, FAQ answers), planning is bypassed
  * automatically (OB-1778). Wiring into MasterManager is done by OB-1779;
@@ -179,12 +181,33 @@ export class PlanningGate {
    * Mark the analysis phase as complete with its aggregated output.
    * Transitions status from `analysis` to `awaiting_confirmation`.
    *
+   * **Enforcement (OB-1777):** All registered analysis workers must have
+   * returned (i.e. have a `completedAt` timestamp) before this method
+   * succeeds. If any worker is still running, an error is thrown to prevent
+   * the execution phase from starting prematurely.
+   *
+   * Use `canCompleteAnalysis` to check readiness before calling this method,
+   * and `aggregateWorkerOutputs()` to build the combined output automatically.
+   *
    * @param aggregatedOutput Combined output from all analysis workers.
+   *   You can use `aggregateWorkerOutputs()` to generate this automatically.
    * @returns A snapshot of the updated state.
+   * @throws If any registered analysis worker has not yet completed.
    */
   completeAnalysis(aggregatedOutput: string): PlanningGateState {
     this._requireStatus('analysis', 'completeAnalysis');
     const state = this._state!;
+
+    // OB-1777: Enforce that every registered analysis worker has returned
+    // before allowing the execution phase to proceed.
+    const incompleteWorkers = state.analysisWorkers.filter((w) => !w.completedAt);
+    if (incompleteWorkers.length > 0) {
+      throw new Error(
+        `PlanningGate.completeAnalysis(): ${incompleteWorkers.length} analysis worker(s) have not yet returned. ` +
+          'Wait for all workers to complete before ending the analysis phase.',
+      );
+    }
+
     state.analysisOutput = aggregatedOutput;
     state.analysisCompletedAt = new Date().toISOString();
     state.status = 'awaiting_confirmation';
@@ -293,6 +316,26 @@ export class PlanningGate {
     worker.output = output;
     worker.completedAt = new Date().toISOString();
     return true;
+  }
+
+  // ── Output Aggregation ───────────────────────────────────────────
+
+  /**
+   * Aggregate the outputs from all completed analysis workers into a single
+   * string, labelled by worker index (OB-1777).
+   *
+   * Returns an empty string if no workers have completed yet.
+   * Callers may pass the result directly to `completeAnalysis()`.
+   */
+  aggregateWorkerOutputs(): string {
+    if (!this._state) return '';
+    const completed = this._state.analysisWorkers.filter(
+      (w) => w.completedAt !== undefined && w.output !== undefined,
+    );
+    if (completed.length === 0) return '';
+    return completed
+      .map((w, i) => `## Analysis Worker ${i + 1}\n\n${w.output ?? ''}`)
+      .join('\n\n---\n\n');
   }
 
   // ── Analysis Worker Factory ──────────────────────────────────────
@@ -408,6 +451,17 @@ export class PlanningGate {
   /** `true` when the gate session has fully concluded (complete or bypassed). */
   get isComplete(): boolean {
     return this._state?.status === 'complete' || this._state?.status === 'bypassed';
+  }
+
+  /**
+   * `true` when the analysis phase is active and all registered workers have
+   * returned their output (OB-1777). Callers should check this before calling
+   * `completeAnalysis()` to avoid the incomplete-worker error.
+   */
+  get canCompleteAnalysis(): boolean {
+    if (this._state?.status !== 'analysis') return false;
+    if (this._state.analysisWorkers.length === 0) return false;
+    return this._state.analysisWorkers.every((w) => w.completedAt !== undefined);
   }
 
   /** Number of analysis workers that have finished (have a `completedAt` timestamp). */

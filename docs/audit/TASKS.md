@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 | **In Progress:** 0 | **Done:** 159 (1063 archived)
+> **Pending:** 16 | **In Progress:** 0 | **Done:** 160 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -388,7 +388,7 @@
 | ------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------- |
 | OB-1775 | Add `PlanningGate` class — Master enters analysis phase (read-only workers) before execution phase (code-edit workers) | `src/master/planning-gate.ts` (new)           | ✅ Done |
 | OB-1776 | Planning phase: spawn 1–2 read-only workers to investigate before committing to a strategy                             | `src/master/planning-gate.ts`                 | ✅ Done |
-| OB-1777 | Execution phase: only starts after planning workers return and Master confirms approach                                | `src/master/planning-gate.ts`                 | Pending |
+| OB-1777 | Execution phase: only starts after planning workers return and Master confirms approach                                | `src/master/planning-gate.ts`                 | ✅ Done |
 | OB-1778 | Skip planning for simple tasks — Master auto-detects complexity (single-file edits, FAQ answers bypass planning)       | `src/master/planning-gate.ts`                 | Pending |
 | OB-1779 | Wire planning gate into Master session flow — before SPAWN, check if planning phase completed                          | `src/master/master-manager.ts`                | Pending |
 | OB-1780 | Add reasoning checkpoint before full-access workers — Master self-checks: "What could go wrong?"                       | `src/master/master-manager.ts`                | Pending |
