@@ -56,14 +56,15 @@ function createSchema(db: Database.Database): void {
 
     -- context_chunks: workspace knowledge, chunked for retrieval
     CREATE TABLE IF NOT EXISTS context_chunks (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      scope       TEXT    NOT NULL,
-      category    TEXT    NOT NULL,
-      content     TEXT    NOT NULL,
-      source_hash TEXT,
-      created_at  TEXT    NOT NULL,
-      updated_at  TEXT    NOT NULL,
-      stale       BOOLEAN DEFAULT 0
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope        TEXT    NOT NULL,
+      category     TEXT    NOT NULL,
+      content      TEXT    NOT NULL,
+      source_hash  TEXT,
+      content_hash TEXT,
+      created_at   TEXT    NOT NULL,
+      updated_at   TEXT    NOT NULL,
+      stale        BOOLEAN DEFAULT 0
     );
 
     CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_fts

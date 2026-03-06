@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -10,6 +11,7 @@ export interface Chunk {
   category: 'structure' | 'patterns' | 'dependencies' | 'api' | 'config';
   content: string;
   source_hash?: string;
+  content_hash?: string;
   created_at?: string;
   updated_at?: string;
   stale?: boolean;
@@ -22,6 +24,7 @@ export interface ChunkRow {
   category: Chunk['category'];
   content: string;
   source_hash: string | null;
+  content_hash: string | null;
   created_at: string;
   updated_at: string;
   stale: number;
@@ -34,10 +37,20 @@ function rowToChunk(row: ChunkRow): Chunk {
     category: row.category,
     content: row.content,
     source_hash: row.source_hash ?? undefined,
+    content_hash: row.content_hash ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
     stale: row.stale === 1,
   };
+}
+
+/**
+ * Computes a SHA-256 hash of normalized chunk content.
+ * Normalization: trim whitespace, collapse internal whitespace runs to a single space.
+ */
+export function computeContentHash(content: string): string {
+  const normalized = content.trim().replace(/\s+/g, ' ');
+  return createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
 // ---------------------------------------------------------------------------
@@ -65,8 +78,8 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
   const now = new Date().toISOString();
 
   const insertChunk = db.prepare(`
-    INSERT INTO context_chunks (scope, category, content, source_hash, created_at, updated_at, stale)
-    VALUES (@scope, @category, @content, @source_hash, @created_at, @updated_at, 0)
+    INSERT INTO context_chunks (scope, category, content, source_hash, content_hash, created_at, updated_at, stale)
+    VALUES (@scope, @category, @content, @source_hash, @content_hash, @created_at, @updated_at, 0)
   `);
 
   const insertFts = db.prepare(`
@@ -81,6 +94,7 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
         category: chunk.category,
         content: chunk.content,
         source_hash: chunk.source_hash ?? null,
+        content_hash: chunk.content_hash ?? computeContentHash(chunk.content),
         created_at: now,
         updated_at: now,
       });
