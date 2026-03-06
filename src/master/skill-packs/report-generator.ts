@@ -155,6 +155,41 @@ Use Unicode arrows with CSS colour to show period-over-period changes:
 - Use bold for the first 2–4 words of each bullet ("**Revenue grew 18%** — driven by new enterprise contracts signed in Q1.").
 - Keep the entire summary to one page.`,
 
+    workerPrompt: `You are generating a PDF report using the \`puppeteer\` npm package (HTML-to-PDF rendering).
+
+## Dependency Setup
+
+Check whether \`puppeteer\` is available before writing any generation script:
+\`\`\`bash
+node -e "require('puppeteer')" 2>/dev/null || npm install puppeteer
+\`\`\`
+Use \`puppeteer@^22\` (the latest stable major). If the project already has a version pinned in package.json, use that version.
+
+## Output Conventions
+
+- Write the .pdf file to the current working directory unless the user specified a path.
+- Use a descriptive kebab-case filename derived from the report title, e.g. \`quarterly-report-2026-03.pdf\`.
+- After writing, print the absolute output path: \`console.log('PDF written:', path.resolve(outputPath))\`.
+- Emit \`[SHARE:FILE:<absolute-path>]\` on a separate line so OpenBridge can deliver the file.
+
+## Key Formatting Constraints
+
+- Build the full report as an HTML string with embedded CSS, then call \`page.setContent(html, { waitUntil: 'networkidle0' })\`.
+- Render to PDF with: \`page.pdf({ path: outputPath, format: 'A4', printBackground: true })\`.
+- Set page margins via CSS \`@page { margin: 2cm; }\` — do NOT use the Puppeteer \`margin\` option.
+- Use print-safe CSS: prefer flexbox or tables over CSS Grid for multi-column layouts; add \`page-break-inside: avoid\` on tables.
+- Stick to system fonts (Arial, Helvetica, Georgia) — never load web fonts that require network access.
+- Always close the browser: \`await browser.close()\`.
+- Finish the script with \`console.log('PDF written:', path.resolve(outputPath))\`.
+
+## Common Pitfalls
+
+- \`page.pdf()\` returns a Promise — always \`await\` it inside an \`async\` function.
+- Launch with \`{ headless: true }\` (not \`'new'\` — that string form is deprecated in newer Puppeteer).
+- In Linux/Docker environments add \`args: ['--no-sandbox', '--disable-setuid-sandbox']\` to \`puppeteer.launch()\`.
+- \`waitUntil: 'networkidle0'\` ensures all content (inline images, fonts) is loaded before PDF capture.
+- Avoid \`page.goto()\` for local HTML — always use \`page.setContent()\` with the HTML string directly.`,
+
     example: `## Example: Quarterly Performance Report
 
 \`\`\`ts
