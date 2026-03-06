@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 93 | **In Progress:** 0 | **Done:** 83 (1063 archived)
+> **Pending:** 92 | **In Progress:** 0 | **Done:** 84 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -236,7 +236,7 @@
 
 | Task    | What                                                                                                                                 | Key File                  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | ------- |
-| OB-1653 | Vector similarity search via `sqlite-vec` — `knn_search()` with cosine distance, returns top-K chunk IDs + scores                    | `src/memory/retrieval.ts` | Pending |
+| OB-1653 | Vector similarity search via `sqlite-vec` — `knn_search()` with cosine distance, returns top-K chunk IDs + scores                    | `src/memory/retrieval.ts` | ✅ Done |
 | OB-1654 | Hybrid scoring function — weighted combination: `0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore`                          | `src/memory/retrieval.ts` | Pending |
 | OB-1655 | MMR (Maximal Marginal Relevance) — diversify results, prevent 5 chunks from same file, configurable `lambda` (default 0.7)           | `src/memory/retrieval.ts` | Pending |
 | OB-1656 | Temporal decay scoring — recent chunks rank higher: `score * exp(-decay * daysSinceUpdate)`, configurable `decayRate` (default 0.01) | `src/memory/retrieval.ts` | Pending |
