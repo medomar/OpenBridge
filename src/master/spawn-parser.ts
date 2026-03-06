@@ -39,6 +39,11 @@ export const SpawnMarkerBodySchema = z.object({
   retries: z.number().int().nonnegative().optional(),
   /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
   maxBudgetUsd: z.number().positive().optional(),
+  /** Explicitly grant this worker permission to modify test files (OB-1787).
+   * When true, the spawnWorker logic injects an authorization header so the
+   * worker knows test modifications are intentional and approved by the Master.
+   * Use this when the user has explicitly requested test file changes. */
+  allowTestModification: z.boolean().optional(),
 });
 
 export type SpawnMarkerBody = z.infer<typeof SpawnMarkerBodySchema>;
