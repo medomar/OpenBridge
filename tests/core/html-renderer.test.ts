@@ -6,6 +6,8 @@ import {
   parseSvgDimensions,
   HTMLRenderer,
   renderSvgToImage,
+  MermaidRenderer,
+  renderMermaidToImage,
 } from '../../src/core/html-renderer.js';
 
 // ---------------------------------------------------------------------------
@@ -110,5 +112,61 @@ describe('HTMLRenderer.renderSvgFile', () => {
 describe('renderSvgToImage', () => {
   it('is a callable function export', () => {
     expect(typeof renderSvgToImage).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MermaidRenderer — static helpers and construction
+// ---------------------------------------------------------------------------
+
+describe('MermaidRenderer', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'mermaid-renderer-'));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('isAvailable() returns true (no install required for mermaid.ink backend)', async () => {
+    const result = await MermaidRenderer.isAvailable();
+    expect(result).toBe(true);
+  });
+
+  it('constructs without throwing', () => {
+    expect(() => new MermaidRenderer(tempDir)).not.toThrow();
+  });
+
+  it('renderToSvgString returns a promise', () => {
+    const renderer = new MermaidRenderer(tempDir);
+    expect(typeof renderer.renderToSvgString).toBe('function');
+    // Call and settle without throwing synchronously
+    const promise = renderer.renderToSvgString('graph TD; A-->B;');
+    expect(promise).toBeInstanceOf(Promise);
+    // Settle the promise (success or failure) to avoid unhandled rejection
+    return promise.catch(() => {});
+  });
+
+  it('renderDefinition returns a MermaidRenderResult with required fields', async () => {
+    const renderer = new MermaidRenderer(tempDir);
+    // This will use whichever backend is available (mermaid.ink or Puppeteer)
+    const result = await renderer.renderDefinition('graph TD; A-->B;');
+    expect(result.outputPath).toContain('mermaid-');
+    expect(result.format).toBe('png');
+    expect(result.sizeBytes).toBeGreaterThan(0);
+    expect(result.definition).toBe('graph TD; A-->B;');
+    expect(['mermaid-ink', 'puppeteer']).toContain(result.backend);
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// renderMermaidToImage convenience export
+// ---------------------------------------------------------------------------
+
+describe('renderMermaidToImage', () => {
+  it('is a callable function export', () => {
+    expect(typeof renderMermaidToImage).toBe('function');
   });
 });
