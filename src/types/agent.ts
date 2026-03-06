@@ -413,6 +413,28 @@ export const ObservationSchema = z.object({
   created_at: z.string().datetime().optional(),
 });
 
+// ── Worker Summary ───────────────────────────────────────────────
+
+/** Structured summary produced by a worker agent after completing its task */
+export const WorkerSummarySchema = z.object({
+  /** The original request / prompt given to the worker */
+  request: z.string().min(1),
+  /** What the worker investigated or explored during execution */
+  investigated: z.string().default(''),
+  /** What was accomplished / completed */
+  completed: z.string().default(''),
+  /** Key insights or knowledge gained during the task */
+  learned: z.string().default(''),
+  /** Recommended follow-up actions or remaining work */
+  next_steps: z.string().default(''),
+  /** File paths that were written or modified */
+  files_modified: z.array(z.string()).default([]),
+  /** File paths that were read or inspected */
+  files_read: z.array(z.string()).default([]),
+  /** Human-readable description of any errors encountered (absent when clean) */
+  error_summary: z.string().optional(),
+});
+
 // ── Batch Mode ───────────────────────────────────────────────────
 
 /** Source of the batch item list */
@@ -496,3 +518,4 @@ export type BatchPlanItem = z.infer<typeof BatchPlanItemSchema>;
 export type BatchState = z.infer<typeof BatchStateSchema>;
 export type ObservationType = z.infer<typeof ObservationTypeSchema>;
 export type Observation = z.infer<typeof ObservationSchema>;
+export type WorkerSummary = z.infer<typeof WorkerSummarySchema>;
