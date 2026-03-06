@@ -32,6 +32,8 @@ import type { FileServer } from './file-server.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { AgentRunner, estimateCost, DEFAULT_MAX_TURNS_TASK } from './agent-runner.js';
 import { FastPathResponder } from './fast-path-responder.js';
+import { CHECKS } from '../cli/doctor.js';
+import type { CheckResult } from '../cli/doctor.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('router');
@@ -1513,6 +1515,12 @@ export class Router {
     // Handle built-in "/stats" command — show exploration ROI (OB-1680)
     if (/^\/stats$/i.test(message.content.trim())) {
       await this.handleStatsCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/doctor" command — run health checks and send summary (OB-1693)
+    if (/^\/doctor$/i.test(message.content.trim())) {
+      await this.handleDoctorCommand(message, connector);
       return;
     }
 
@@ -4555,6 +4563,56 @@ export class Router {
     logger.info({ sender: message.sender }, '/stats command handled');
   }
 
+  private async handleDoctorCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const lines: string[] = ['*OpenBridge Health*', ''];
+
+    let failCount = 0;
+    let warnCount = 0;
+
+    for (const check of CHECKS) {
+      let result: CheckResult;
+      try {
+        result = check.run();
+      } catch (err) {
+        result = { pass: false, message: `check threw: ${(err as Error).message}` };
+      }
+
+      let icon: string;
+      if (result.pass === true) {
+        icon = '✓';
+      } else if (result.pass === 'warn') {
+        icon = '⚠';
+        warnCount++;
+      } else {
+        icon = '✗';
+        failCount++;
+      }
+
+      lines.push(`${icon} ${check.label.padEnd(14)} ${result.message}`);
+      if (result.pass !== true && result.fixHint) {
+        lines.push(`  → ${result.fixHint}`);
+      }
+    }
+
+    lines.push('');
+    if (failCount === 0 && warnCount === 0) {
+      lines.push('All checks passed.');
+    } else if (failCount === 0) {
+      lines.push(`${warnCount} warning${warnCount !== 1 ? 's' : ''} (non-critical).`);
+    } else {
+      lines.push(`${failCount} failed, ${warnCount} warning${warnCount !== 1 ? 's' : ''}.`);
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender }, '/doctor command handled');
+  }
+
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
     const lines: string[] = [
       '*OpenBridge Commands*',
@@ -4570,6 +4628,7 @@ export class Router {
       '• /workers — list active workers with ID, status, profile, duration, and PID',
       '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
+      '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
       '',
       '*Tool Escalation*',
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',

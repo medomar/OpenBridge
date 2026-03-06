@@ -577,7 +577,7 @@ function checkPuppeteer(): CheckResult {
 // Check registry — add checks here; they run in order
 // ---------------------------------------------------------------------------
 
-const CHECKS: Check[] = [
+export const CHECKS: Check[] = [
   { label: 'Node.js', run: checkNodeVersion },
   { label: 'AI tools', run: checkAITools },
   { label: 'Config', run: checkConfig },
