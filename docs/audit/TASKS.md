@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 140 | **In Progress:** 0 | **Done:** 36 (1063 archived)
+> **Pending:** 139 | **In Progress:** 0 | **Done:** 37 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -127,7 +127,7 @@
 
 | Task    | What                                                                                                                                                      | Key File                    | Status  |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------- |
-| OB-1675 | Add `token_economics` table — `id`, `chunk_id` (FK), `discovery_tokens` (estimated), `retrieval_count`, `total_read_tokens`, `created_at`, `last_read_at` | `src/memory/database.ts`    | Pending |
+| OB-1675 | Add `token_economics` table — `id`, `chunk_id` (FK), `discovery_tokens` (estimated), `retrieval_count`, `total_read_tokens`, `created_at`, `last_read_at` | `src/memory/database.ts`    | ✅ Done |
 | OB-1676 | Add migration (version 14) for `token_economics` table                                                                                                    | `src/memory/migration.ts`   | Pending |
 | OB-1677 | Track `discovery_tokens` per chunk — estimate from worker turn count × avg tokens/turn (configurable, default 4000 tokens/turn)                           | `src/memory/chunk-store.ts` | Pending |
 | OB-1678 | Track `read_tokens` per retrieval — estimate from returned content length × chars-to-tokens ratio (÷4)                                                    | `src/memory/retrieval.ts`   | Pending |
