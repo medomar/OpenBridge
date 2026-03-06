@@ -20,6 +20,7 @@ import type {
   ExplorationProgressRow,
   SessionSummary,
 } from '../memory/index.js';
+import type { AccessRole } from '../memory/access-store.js';
 import type { MessageQueue } from './queue.js';
 import type { RiskLevel, ExecutionProfile, DeepPhase } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
@@ -1422,6 +1423,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/role <user_id> <role>" command — owner/admin only, sets role for another user (OB-1721)
+    if (/^\/role\b/i.test(message.content.trim())) {
+      await this.handleRoleCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/workers" command — list active workers with ID, status, profile, duration, PID (OB-1646)
     if (/^\/workers$/i.test(message.content.trim())) {
       await this.handleWorkersCommand(message, connector);
@@ -2771,6 +2778,95 @@ export class Router {
     });
 
     logger.info({ sender: message.sender }, 'Identity info displayed via /whoami');
+  }
+
+  /**
+   * Handle the built-in "/role <user_id> <role>" command.
+   *
+   * Syntax: /role <user_id> <role>
+   * Valid roles: owner, admin, developer, viewer, custom
+   *
+   * Only owner or admin callers may use this command.
+   * Sets the role for the target user on the same channel (OB-1721).
+   */
+  private async handleRoleCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const VALID_ROLES = new Set(['owner', 'admin', 'developer', 'viewer', 'custom']);
+
+    const send = (content: string): Promise<void> =>
+      connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content,
+        replyTo: message.id,
+      });
+
+    // Check caller has owner or admin role
+    if (this.memory) {
+      try {
+        const callerEntry = await this.memory.getAccess(message.sender, message.source);
+        const callerRole = callerEntry?.role ?? 'owner';
+        if (callerRole !== 'owner' && callerRole !== 'admin') {
+          await send(
+            `Permission denied. The /role command requires owner or admin role. Your current role is *${callerRole}*.`,
+          );
+          return;
+        }
+      } catch {
+        // allow fallthrough — default is owner
+      }
+    }
+
+    // Parse: /role <user_id> <role>
+    const parts = message.content.trim().split(/\s+/);
+    // parts[0] = "/role", parts[1] = user_id, parts[2] = role
+    const [, rawTargetUserId, rawNewRole] = parts;
+    if (!rawTargetUserId || !rawNewRole) {
+      await send(
+        'Usage: /role <user_id> <role>\nValid roles: owner, admin, developer, viewer, custom',
+      );
+      return;
+    }
+
+    const targetUserId = rawTargetUserId;
+    const newRole = rawNewRole.toLowerCase();
+
+    if (!VALID_ROLES.has(newRole)) {
+      await send(`Invalid role *${newRole}*. Valid roles: owner, admin, developer, viewer, custom`);
+      return;
+    }
+
+    if (!this.memory) {
+      await send('Role management is unavailable: memory system not initialised.');
+      return;
+    }
+
+    try {
+      const existing = await this.memory.getAccess(targetUserId, message.source);
+      if (existing) {
+        await this.memory.setAccess({ ...existing, role: newRole as AccessRole });
+      } else {
+        await this.memory.setAccess({
+          user_id: targetUserId,
+          channel: message.source,
+          role: newRole as AccessRole,
+        });
+      }
+
+      const displayTarget =
+        targetUserId.length > 20
+          ? `${targetUserId.slice(0, 8)}…${targetUserId.slice(-6)}`
+          : targetUserId;
+      await send(
+        `Role updated: *${displayTarget}* is now *${newRole}* on channel *${message.source}*.`,
+      );
+      logger.info(
+        { sender: message.sender, targetUserId, newRole, channel: message.source },
+        'Role updated via /role command',
+      );
+    } catch (err) {
+      logger.error({ err }, 'Failed to update role via /role command');
+      await send('Failed to update role. Please try again.');
+    }
   }
 
   /**
@@ -4362,6 +4458,7 @@ export class Router {
       '• /deny — reject a pending tool escalation',
       '• /deny all — reject all pending escalations at once',
       '• /whoami — show your role, channel, allowed actions, daily cost, and consent mode',
+      '• /role <user_id> <role> — (owner/admin) set role for another user on this channel',
       '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
       '*Batch Control*',
