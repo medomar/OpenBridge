@@ -120,11 +120,16 @@ done
 # ── Find Claude CLI ──────────────────────────────────────────────
 
 find_claude_cli() {
+  # Temporarily disable set -u: sourcing zsh/bash configs from bash
+  # may reference unbound variables (e.g. $ZSH), which would kill
+  # the entire script under set -u.
+  set +u
   if [ -f "$HOME/.zshrc" ]; then
     source "$HOME/.zshrc" 2>/dev/null || true
   elif [ -f "$HOME/.bashrc" ]; then
     source "$HOME/.bashrc" 2>/dev/null || true
   fi
+  set -u
 
   if ! command -v claude &>/dev/null; then
     for dir in "$HOME/.local/bin" "$HOME/.npm-global/bin" "/usr/local/bin" "/opt/homebrew/bin"; do

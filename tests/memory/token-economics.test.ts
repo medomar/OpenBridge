@@ -63,7 +63,7 @@ describe('token_economics — tracking', () => {
 
   describe('discovery tokens', () => {
     it('records a token_economics row for each inserted chunk', () => {
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 2 });
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 2 });
 
       const chunkId = getChunkId(db, 'src/core');
       const row = getTokenRow(db, chunkId);
@@ -74,7 +74,7 @@ describe('token_economics — tracking', () => {
 
     it('calculates discovery_tokens as workerTurns × avgTokensPerTurn', () => {
       const workerTurns = 3;
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns });
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns });
 
       const chunkId = getChunkId(db, 'src/core');
       const row = getTokenRow(db, chunkId);
@@ -83,7 +83,7 @@ describe('token_economics — tracking', () => {
     });
 
     it('uses custom avgTokensPerTurn when provided', () => {
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], {
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], {
         workerTurns: 2,
         avgTokensPerTurn: 1000,
       });
@@ -95,7 +95,7 @@ describe('token_economics — tracking', () => {
     });
 
     it('stores zero discovery_tokens when workerTurns is not provided', () => {
-      storeChunks(db, [makeChunk({ scope: 'src/core' })]);
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })]);
 
       const chunkId = getChunkId(db, 'src/core');
       const row = getTokenRow(db, chunkId);
@@ -104,7 +104,7 @@ describe('token_economics — tracking', () => {
     });
 
     it('records a token_economics row for every chunk in a batch', () => {
-      storeChunks(
+      void storeChunks(
         db,
         [
           makeChunk({ scope: 'src/core', content: 'core chunk content one' }),
@@ -126,7 +126,7 @@ describe('token_economics — tracking', () => {
 
     it('does not overwrite an existing token_economics row (INSERT OR IGNORE)', () => {
       // First store — records discovery tokens
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 5 });
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 5 });
       const chunkId = getChunkId(db, 'src/core');
 
       // Backdate so the 30-second window does not apply
@@ -135,14 +135,14 @@ describe('token_economics — tracking', () => {
       ).run(chunkId);
 
       // Second store with different turn count should not update the existing row
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 1 });
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 1 });
 
       const row = getTokenRow(db, chunkId);
       expect(row!.discovery_tokens).toBe(5 * DEFAULT_AVG_TOKENS_PER_TURN);
     });
 
     it('sets initial retrieval_count to 0', () => {
-      storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 1 });
+      void storeChunks(db, [makeChunk({ scope: 'src/core' })], { workerTurns: 1 });
 
       const chunkId = getChunkId(db, 'src/core');
       const row = getTokenRow(db, chunkId);
@@ -160,7 +160,7 @@ describe('token_economics — tracking', () => {
     const UNIQUE_TERM = 'xyzuniqtokenterm';
 
     beforeEach(() => {
-      storeChunks(
+      void storeChunks(
         db,
         [
           makeChunk({
@@ -223,7 +223,7 @@ describe('token_economics — tracking', () => {
 
     it('upserts a token_economics row for chunks that have no prior discovery record', async () => {
       // Insert chunk without workerTurns — storeChunks creates a row with 0 discovery_tokens
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/types', content: `${UNIQUE_TERM} type definitions` }),
       ]);
 
@@ -271,7 +271,7 @@ describe('token_economics — tracking', () => {
     });
 
     it('sums discovery_tokens across all tracked chunks', () => {
-      storeChunks(
+      void storeChunks(
         db,
         [
           makeChunk({ scope: 'src/core', content: 'alpha content unique chunk' }),
@@ -294,7 +294,7 @@ describe('token_economics — tracking', () => {
     });
 
     it('reports chunks_tracked equal to number of rows in token_economics', () => {
-      storeChunks(
+      void storeChunks(
         db,
         [
           makeChunk({ scope: 'src/core', content: 'scope core unique' }),
@@ -317,7 +317,7 @@ describe('token_economics — tracking', () => {
 
     it('accumulates total_retrievals and total_read_tokens across all chunks', async () => {
       const TERM = 'zyxwvutstats';
-      storeChunks(
+      void storeChunks(
         db,
         [
           makeChunk({ scope: 'src/core', content: `${TERM} core content` }),

@@ -112,7 +112,7 @@ describe('eviction.ts', () => {
 
   describe('stale chunk eviction', () => {
     it('deletes stale chunks older than staleChunkRetentionDays', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         { scope: 'old-stale', category: 'structure', content: 'old stale content' },
       ]);
       markStale(db, ['old-stale']);
@@ -122,7 +122,7 @@ describe('eviction.ts', () => {
         'old-stale',
       );
 
-      storeChunks(db, [
+      void storeChunks(db, [
         { scope: 'fresh', category: 'structure', content: 'fresh non-stale content' },
       ]);
 
@@ -133,7 +133,7 @@ describe('eviction.ts', () => {
     });
 
     it('keeps recently stale chunks', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         { scope: 'new-stale', category: 'patterns', content: 'newly stale content' },
       ]);
       markStale(db, ['new-stale']); // updated_at is now
@@ -145,7 +145,9 @@ describe('eviction.ts', () => {
     });
 
     it('keeps non-stale chunks regardless of age', async () => {
-      storeChunks(db, [{ scope: 'very-old-fresh', category: 'api', content: 'old but not stale' }]);
+      void storeChunks(db, [
+        { scope: 'very-old-fresh', category: 'api', content: 'old but not stale' },
+      ]);
       db.prepare('UPDATE context_chunks SET updated_at = ? WHERE scope = ?').run(
         daysAgo(365),
         'very-old-fresh',
@@ -169,7 +171,7 @@ describe('eviction.ts', () => {
   describe('combined eviction', () => {
     it('runs all eviction policies in one call without error', async () => {
       recordMessage(db, makeConv({ created_at: daysAgo(100) }));
-      storeChunks(db, [{ scope: 'stale-s', category: 'config', content: 'stale' }]);
+      void storeChunks(db, [{ scope: 'stale-s', category: 'config', content: 'stale' }]);
       markStale(db, ['stale-s']);
       db.prepare('UPDATE context_chunks SET updated_at = ?').run(daysAgo(50));
 

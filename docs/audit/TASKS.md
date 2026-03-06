@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 | **In Progress:** 0 | **Done:** 175 (1063 archived)
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 176 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -404,7 +404,7 @@
 | OB-1790 | On cap hit: worker reports partial fix + error details to Master, Master decides next action                           | `src/core/agent-runner.ts`                    | ✅ Done |
 | OB-1791 | Configurable cap via `worker.maxFixIterations` config option (default: 3)                                              | `src/types/config.ts`                         | ✅ Done |
 | OB-1792 | Tests: planning gate flow, swarm coordination, test protection, iteration caps                                         | `tests/master/orchestration-patterns.test.ts` | ✅ Done |
-| OB-1793 | Tests: parallel spawning within swarms, handoff data integrity                                                         | `tests/master/swarm-coordinator.test.ts`      | Pending |
+| OB-1793 | Tests: parallel spawning within swarms, handoff data integrity                                                         | `tests/master/swarm-coordinator.test.ts`      | ✅ Done |
 
 **Phase 101 Total:** 19 tasks
 
