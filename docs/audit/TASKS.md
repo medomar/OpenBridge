@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 87 | **In Progress:** 0 | **Done:** 89 (1063 archived)
+> **Pending:** 86 | **In Progress:** 0 | **Done:** 90 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -247,7 +247,7 @@
 | Task    | What                                                                                                                                       | Key File                             | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ | ------- |
 | OB-1658 | Add `searchIndex()` method — returns compact results: `{ id, title, score, snippet(80 chars), source_file, category }` — ~10x fewer tokens | `src/memory/retrieval.ts`            | ✅ Done |
-| OB-1659 | Add `getDetails(ids: string[])` method — returns full content for selected chunk IDs only                                                  | `src/memory/retrieval.ts`            | Pending |
+| OB-1659 | Add `getDetails(ids: string[])` method — returns full content for selected chunk IDs only                                                  | `src/memory/retrieval.ts`            | ✅ Done |
 | OB-1660 | Wire 2-step retrieval into RAG flow: `searchIndex(query)` → filter by score > 0.3 → `getDetails(topIds)` → return to Master                | `src/core/knowledge-retriever.ts`    | Pending |
 | OB-1661 | Update Master system prompt to teach 2-step retrieval pattern: "Use searchIndex first, then getDetails for relevant results only"          | `src/master/master-system-prompt.ts` | Pending |
 
