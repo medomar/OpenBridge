@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 51 | **In Progress:** 0 | **Done:** 125 (1063 archived)
+> **Pending:** 50 | **In Progress:** 0 | **Done:** 126 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -315,7 +315,7 @@
 | OB-1710 | Master reads available skills on startup, includes skill directory summary in system prompt                           | `src/master/master-system-prompt.ts`            | ✅ Done |
 | OB-1711 | Master auto-creates new skills from successful task patterns — track success rate, extract reusable prompt patterns   | `src/master/skill-manager.ts`                   | ✅ Done |
 | OB-1712 | Add `/skills` chat command — list available skills with descriptions and usage counts                                 | `src/core/router.ts`                            | ✅ Done |
-| OB-1713 | Tests: skill discovery from filesystem, SKILL.md parsing, system prompt injection, auto-creation from patterns        | `tests/master/skill-manager.test.ts` (new)      | Pending |
+| OB-1713 | Tests: skill discovery from filesystem, SKILL.md parsing, system prompt injection, auto-creation from patterns        | `tests/master/skill-manager.test.ts` (new)      | ✅ Done |
 
 **Phase 96c Total:** 10 tasks
 
