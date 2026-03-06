@@ -70,12 +70,20 @@ function sanitizeFts5Query(raw: string): string {
 
 /**
  * Insert chunks into `context_chunks` and keep `context_chunks_fts` in sync.
- * All inserts run inside a single transaction.
+ * If a chunk with the same `content_hash` already exists, only its `updated_at`
+ * timestamp is refreshed — no duplicate row is created.
+ * All operations run inside a single transaction.
  */
 export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
   if (chunks.length === 0) return;
 
   const now = new Date().toISOString();
+
+  const findByHash = db.prepare<[string], { id: number }>(
+    `SELECT id FROM context_chunks WHERE content_hash = ? LIMIT 1`,
+  );
+
+  const touchChunk = db.prepare(`UPDATE context_chunks SET updated_at = ? WHERE id = ?`);
 
   const insertChunk = db.prepare(`
     INSERT INTO context_chunks (scope, category, content, source_hash, content_hash, created_at, updated_at, stale)
@@ -89,12 +97,20 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
 
   const insertAll = db.transaction((rows: Chunk[]) => {
     for (const chunk of rows) {
+      const hash = chunk.content_hash ?? computeContentHash(chunk.content);
+      const existing = findByHash.get(hash);
+
+      if (existing) {
+        touchChunk.run(now, existing.id);
+        continue;
+      }
+
       const result = insertChunk.run({
         scope: chunk.scope,
         category: chunk.category,
         content: chunk.content,
         source_hash: chunk.source_hash ?? null,
-        content_hash: chunk.content_hash ?? computeContentHash(chunk.content),
+        content_hash: hash,
         created_at: now,
         updated_at: now,
       });
