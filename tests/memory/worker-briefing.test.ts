@@ -60,7 +60,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
 
   describe('Project Context section', () => {
     it('includes "## Project Context" header when relevant chunks exist', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         {
           scope: 'src/core',
           category: 'structure',
@@ -74,7 +74,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
 
     it('omits Project Context section when no matching chunks exist', async () => {
       // Store a chunk that does NOT match the query
-      storeChunks(db, [
+      void storeChunks(db, [
         { scope: 'src/core', category: 'structure', content: 'database connection pooling' },
       ]);
 
@@ -83,7 +83,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
     });
 
     it('scope filter narrows context chunks to relevant directory', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         {
           scope: 'src/core',
           category: 'structure',
@@ -189,7 +189,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
   describe('token budget enforcement', () => {
     it('keeps briefing under budget even with many large chunks', async () => {
       // Insert chunks with large content
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 20 }, (_, i) => ({
           scope: `src/module${i}`,
@@ -228,7 +228,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
   describe('integration: store → search → build briefing', () => {
     it('assembles a multi-section briefing from real DB data', async () => {
       // 1. Store relevant context chunks
-      storeChunks(db, [
+      void storeChunks(db, [
         {
           scope: 'src/core',
           category: 'structure',
@@ -270,7 +270,7 @@ describe('worker-briefing.ts — buildBriefing', () => {
 
     it('passes agentRunner through to hybridSearch for AI reranking', async () => {
       // Insert >10 chunks so reranking can trigger
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 12 }, (_, i) => ({
           scope: 'src/core',
