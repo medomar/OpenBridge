@@ -369,6 +369,22 @@ export const DeepModeStateSchema = z.object({
   taskModelOverrides: z.record(z.string(), z.enum(['fast', 'balanced', 'powerful'])).default({}),
 });
 
+// ── Observation Types ────────────────────────────────────────────
+
+/** Taxonomy of observation types produced by worker agents */
+export const ObservationTypeSchema = z.enum([
+  'bugfix',
+  'architecture',
+  'investigation',
+  'refactor',
+  'test-result',
+  'dependency',
+  'config',
+  'documentation',
+  'performance',
+  'security',
+]);
+
 // ── Batch Mode ───────────────────────────────────────────────────
 
 /** Source of the batch item list */
@@ -450,3 +466,4 @@ export type BatchSourceType = z.infer<typeof BatchSourceTypeSchema>;
 export type BatchCompletedItem = z.infer<typeof BatchCompletedItemSchema>;
 export type BatchPlanItem = z.infer<typeof BatchPlanItemSchema>;
 export type BatchState = z.infer<typeof BatchStateSchema>;
+export type ObservationType = z.infer<typeof ObservationTypeSchema>;
