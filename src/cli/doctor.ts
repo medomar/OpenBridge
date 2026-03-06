@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { AppConfigSchema, V2ConfigSchema } from '../types/config.js';
@@ -275,6 +275,110 @@ function checkSQLiteDatabase(): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// .openbridge/ state check (OB-1689)
+// ---------------------------------------------------------------------------
+
+function getWorkspacePath(): string | null {
+  const configDir = getConfigDir();
+  const candidates = [join(configDir, 'config.json'), join(process.cwd(), 'config.json')];
+  const configPath = candidates.find((p) => existsSync(p));
+  if (!configPath) return null;
+  try {
+    const raw = readFileSync(configPath, 'utf-8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'workspacePath' in parsed &&
+      typeof (parsed as Record<string, unknown>)['workspacePath'] === 'string'
+    ) {
+      return (parsed as Record<string, unknown>)['workspacePath'] as string;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+const JSON_FILES_IN_OPENBRIDGE = [
+  'workspace-map.json',
+  'agents.json',
+  'exploration/exploration-state.json',
+  'exploration/structure-scan.json',
+  'exploration/classification.json',
+];
+
+function checkOpenBridgeState(): CheckResult {
+  const wsPath = getWorkspacePath();
+
+  if (!wsPath) {
+    return {
+      pass: true,
+      message: '.openbridge/ check skipped (no workspacePath in config)',
+    };
+  }
+
+  const openbridgeDir = join(wsPath, '.openbridge');
+  if (!existsSync(openbridgeDir)) {
+    return {
+      pass: true,
+      message: `${openbridgeDir} not found (will be created on first run)`,
+    };
+  }
+
+  const issues: string[] = [];
+  const info: string[] = [];
+
+  // Check memory.md freshness
+  const memoryPath = join(openbridgeDir, 'context', 'memory.md');
+  if (existsSync(memoryPath)) {
+    try {
+      const ageMs = Date.now() - statSync(memoryPath).mtimeMs;
+      const ageHours = Math.floor(ageMs / (1000 * 60 * 60));
+      info.push(
+        `memory.md ${ageHours < 72 ? `fresh (${ageHours}h ago)` : `stale (${ageHours}h ago)`}`,
+      );
+    } catch {
+      issues.push('memory.md unreadable');
+    }
+  } else {
+    info.push('memory.md not yet created');
+  }
+
+  // Check workspace-map.json existence
+  const wsMapPath = join(openbridgeDir, 'workspace-map.json');
+  if (existsSync(wsMapPath)) {
+    info.push('workspace-map.json present');
+  } else {
+    info.push('workspace-map.json not yet created');
+  }
+
+  // Check for corrupted JSON files
+  for (const relPath of JSON_FILES_IN_OPENBRIDGE) {
+    const fullPath = join(openbridgeDir, relPath);
+    if (existsSync(fullPath)) {
+      try {
+        JSON.parse(readFileSync(fullPath, 'utf-8'));
+      } catch {
+        issues.push(`${relPath} corrupted (invalid JSON)`);
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    return {
+      pass: false,
+      message: `${openbridgeDir} — ${issues.join('; ')} | ${info.join(', ')}`,
+    };
+  }
+
+  return {
+    pass: true,
+    message: `${openbridgeDir} — ${info.join(', ')}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -336,6 +440,7 @@ const CHECKS: Check[] = [
   { label: 'AI tools', run: checkAITools },
   { label: 'Config', run: checkConfig },
   { label: 'SQLite DB', run: checkSQLiteDatabase },
+  { label: '.openbridge/', run: checkOpenBridgeState },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
