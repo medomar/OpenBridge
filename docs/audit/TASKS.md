@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 124 | **In Progress:** 0 | **Done:** 52 (1063 archived)
+> **Pending:** 123 | **In Progress:** 0 | **Done:** 53 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -159,7 +159,7 @@
 | OB-1718 | Auto-create `access_control` entry with correct role on first authorized message (if no entry exists) — prevents the "no entry = owner fallback" ambiguity           | `src/core/bridge.ts`         | ✅ Done |
 | OB-1719 | Improve denied message — include user's current role, the classified action, and what actions their role allows                                                      | `src/core/auth.ts`           | ✅ Done |
 | OB-1720 | Add `/whoami` chat command — shows user their role, channel, allowed actions, daily cost usage, and consent mode                                                     | `src/core/router.ts`         | ✅ Done |
-| OB-1721 | Add `/role <user_id> <role>` chat command — owner/admin only, sets role for another user on the same channel                                                         | `src/core/router.ts`         | Pending |
+| OB-1721 | Add `/role <user_id> <role>` chat command — owner/admin only, sets role for another user on the same channel                                                         | `src/core/router.ts`         | ✅ Done |
 | OB-1722 | Add role step to init wizard — after whitelist setup, ask "Default role for whitelisted users: owner / developer / viewer" with explanation of each                  | `src/cli/init.ts`            | Pending |
 | OB-1723 | Update `config.example.json` — add `auth.defaultRole` and `auth.channelRoles` examples with comments                                                                 | `config.example.json`        | Pending |
 | OB-1724 | Soften action classification — add `chat` action (default for messages without strong edit/deploy/stop keywords), allowed for all roles including `viewer`           | `src/core/auth.ts`           | Pending |
