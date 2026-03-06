@@ -54,6 +54,9 @@ export interface PendingPairing {
   attempts: number;
 }
 
+const PAIRING_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PAIRING_CLEANUP_INTERVAL_MS = 60 * 1000; // 60 seconds
+
 export class AuthService {
   private whitelist: Set<string>;
   private prefix: string;
@@ -64,6 +67,7 @@ export class AuthService {
   private defaultRole: string;
   private channelRoles: Record<string, string>;
   private pendingPairings: Map<string, PendingPairing> = new Map();
+  private expiryTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Normalize a phone number to digits-only for comparison.
@@ -160,6 +164,8 @@ export class AuthService {
         'Auth whitelist is empty — ALL senders are authorized. To restrict access, add phone numbers to auth.whitelist in config.json.',
       );
     }
+
+    this.startExpiryTimer();
   }
 
   /** Attach a SQLite database for access_control enforcement. */
@@ -415,6 +421,46 @@ export class AuthService {
       logger.info({ userId, channel, role }, 'AuthService: auto-created access_control entry');
     } catch (err) {
       logger.warn({ err, userId, channel }, 'AuthService: ensureAccessEntry failed — continuing');
+    }
+  }
+
+  /**
+   * Evict all pending pairings whose requestedAt is older than PAIRING_TTL_MS.
+   * Also removes expired entries from the DB if attached.
+   */
+  evictExpiredPairings(): void {
+    const now = Date.now();
+    for (const [code, pairing] of this.pendingPairings) {
+      if (now - pairing.requestedAt.getTime() >= PAIRING_TTL_MS) {
+        this.pendingPairings.delete(code);
+        logger.info({ code, senderId: pairing.senderId }, 'Pairing code expired — removed');
+        if (this.db) {
+          try {
+            this.db.prepare(`DELETE FROM pending_pairings WHERE code = ?`).run(code);
+          } catch (err) {
+            logger.warn({ err, code }, 'AuthService: failed to remove expired pairing from DB');
+          }
+        }
+      }
+    }
+  }
+
+  /** Start the background timer that evicts expired pairings every 60 seconds. */
+  private startExpiryTimer(): void {
+    this.expiryTimer = setInterval(() => {
+      this.evictExpiredPairings();
+    }, PAIRING_CLEANUP_INTERVAL_MS);
+    // Allow the Node.js process to exit even if the timer is still running.
+    if (this.expiryTimer.unref) {
+      this.expiryTimer.unref();
+    }
+  }
+
+  /** Stop the background expiry timer. Call this when shutting down. */
+  stopExpiryTimer(): void {
+    if (this.expiryTimer !== null) {
+      clearInterval(this.expiryTimer);
+      this.expiryTimer = null;
     }
   }
 
