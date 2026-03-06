@@ -117,6 +117,13 @@ import {
   getRecentByType as _getRecentByType,
   type Observation,
 } from './observation-store.js';
+import type { DocumentSkill, SkillPack } from '../types/agent.js';
+import {
+  loadAllSkillPacks as _loadAllSkillPacks,
+  getBuiltInSkillPacks as _getBuiltInSkillPacks,
+  selectSkillPackForTask as _selectSkillPackForTask,
+  type AllSkillPacksResult,
+} from '../master/skill-pack-loader.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -162,6 +169,8 @@ export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 export type { QACacheEntry } from './qa-cache-store.js';
 export type { Observation } from './observation-store.js';
+export type { DocumentSkill, SkillPack } from '../types/agent.js';
+export type { AllSkillPacksResult } from '../master/skill-pack-loader.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -1142,6 +1151,25 @@ export class MemoryManager {
         created_at: row.created_at,
       })),
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill packs (skill-pack-loader.ts — OB-1758)
+  // -------------------------------------------------------------------------
+
+  /** Load all skill packs — built-in defaults merged with user-defined overrides from disk. */
+  loadSkillPacks(workspacePath: string): Promise<AllSkillPacksResult> {
+    return _loadAllSkillPacks(workspacePath);
+  }
+
+  /** Return the built-in skill pack list synchronously (no file I/O). */
+  getBuiltInSkillPacks(): DocumentSkill[] {
+    return _getBuiltInSkillPacks();
+  }
+
+  /** Select the best-matching skill pack for a worker task prompt. */
+  selectSkillPackForTask(prompt: string, packs: SkillPack[]): SkillPack | undefined {
+    return _selectSkillPackForTask(prompt, packs);
   }
 
   /** Expose the raw Database instance — used by AuthService for synchronous access control checks. */
