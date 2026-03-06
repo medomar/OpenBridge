@@ -186,6 +186,41 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 9,
+    description: 'Add observations table for structured worker output facts',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='observations'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE observations (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id     TEXT    NOT NULL,
+            worker_id      TEXT    NOT NULL,
+            type           TEXT    NOT NULL,
+            title          TEXT    NOT NULL,
+            narrative      TEXT    NOT NULL,
+            facts          TEXT    NOT NULL DEFAULT '[]',
+            concepts       TEXT    NOT NULL DEFAULT '[]',
+            files_read     TEXT    NOT NULL DEFAULT '[]',
+            files_modified TEXT    NOT NULL DEFAULT '[]',
+            created_at     TEXT    NOT NULL
+          );
+          CREATE INDEX idx_observations_session ON observations(session_id);
+          CREATE INDEX idx_observations_worker  ON observations(worker_id);
+          CREATE INDEX idx_observations_type    ON observations(type);
+          CREATE INDEX idx_observations_created ON observations(created_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**
