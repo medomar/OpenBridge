@@ -47,6 +47,13 @@ function classifyMessageAction(content: string): string {
   return 'chat';
 }
 
+export interface PendingPairing {
+  senderId: string;
+  channel: string;
+  requestedAt: Date;
+  attempts: number;
+}
+
 export class AuthService {
   private whitelist: Set<string>;
   private prefix: string;
@@ -56,6 +63,7 @@ export class AuthService {
   private db: Database.Database | null = null;
   private defaultRole: string;
   private channelRoles: Record<string, string>;
+  private pendingPairings: Map<string, PendingPairing> = new Map();
 
   /**
    * Normalize a phone number to digits-only for comparison.
@@ -420,5 +428,39 @@ export class AuthService {
    */
   static generatePairingCode(): string {
     return randomInt(100000, 999999).toString();
+  }
+
+  /** Store a new pending pairing for an unknown sender. */
+  storePairing(code: string, senderId: string, channel: string): void {
+    this.pendingPairings.set(code, {
+      senderId,
+      channel,
+      requestedAt: new Date(),
+      attempts: 0,
+    });
+    logger.info({ code, senderId, channel }, 'Pending pairing stored');
+  }
+
+  /** Retrieve a pending pairing by code, or undefined if not found. */
+  getPairing(code: string): PendingPairing | undefined {
+    return this.pendingPairings.get(code);
+  }
+
+  /** Remove a pending pairing (after approval or expiry). */
+  removePairing(code: string): void {
+    this.pendingPairings.delete(code);
+  }
+
+  /** Increment the attempt counter for a pairing code. */
+  incrementPairingAttempts(code: string): void {
+    const pairing = this.pendingPairings.get(code);
+    if (pairing) {
+      pairing.attempts += 1;
+    }
+  }
+
+  /** Return all pending pairings (for inspection/testing). */
+  getPendingPairings(): ReadonlyMap<string, PendingPairing> {
+    return this.pendingPairings;
   }
 }
