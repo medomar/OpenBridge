@@ -112,7 +112,8 @@
   "optionalDependencies": {
     "docx": "^8.5.0",
     "exceljs": "^4.4.0",
-    "pptxgenjs": "^3.12.0"
+    "pptxgenjs": "^3.12.0",
+    "sqlite-vec": "^0.1.0"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
