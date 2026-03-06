@@ -158,6 +158,60 @@ export async function rerank(
 }
 
 // ---------------------------------------------------------------------------
+// Token economics helpers
+// ---------------------------------------------------------------------------
+
+/** Estimated characters per token — matches OpenAI / Anthropic rule of thumb. */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * Estimate the number of tokens in a string using the chars-to-tokens ratio (÷4).
+ */
+function estimateTokens(content: string): number {
+  return Math.ceil(content.length / CHARS_PER_TOKEN);
+}
+
+/**
+ * Update `total_read_tokens` and `last_read_at` in `token_economics` for each
+ * retrieved chunk. Uses UPSERT so rows are created if they don't exist yet.
+ * Gracefully skips if the `token_economics` table does not exist (e.g. older
+ * databases that haven't run migration 14).
+ */
+function trackReadTokens(db: Database.Database, chunks: Chunk[]): void {
+  if (chunks.length === 0) return;
+
+  const tableExists =
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='token_economics'`,
+        )
+        .get() as { c: number }
+    ).c > 0;
+
+  if (!tableExists) return;
+
+  const nowIso = new Date().toISOString();
+
+  const upsert = db.prepare(`
+    INSERT INTO token_economics (chunk_id, discovery_tokens, total_read_tokens, created_at, last_read_at)
+    VALUES (?, 0, ?, ?, ?)
+    ON CONFLICT (chunk_id) DO UPDATE SET
+      total_read_tokens = total_read_tokens + excluded.total_read_tokens,
+      last_read_at = excluded.last_read_at
+  `);
+
+  const updateAll = db.transaction(() => {
+    for (const chunk of chunks) {
+      if (chunk.id === undefined) continue;
+      upsert.run(chunk.id, estimateTokens(chunk.content), nowIso, nowIso);
+    }
+  });
+
+  updateAll();
+}
+
+// ---------------------------------------------------------------------------
 // Hybrid FTS5 + metadata search
 // ---------------------------------------------------------------------------
 
@@ -227,7 +281,9 @@ export async function hybridSearch(
   // If the sanitized query is empty, fall back to recent chunks by timestamp
   // so callers always receive context rather than an empty array.
   if (!sanitized) {
-    return recentChunksFallback(db, options);
+    const fallbackChunks = recentChunksFallback(db, options);
+    trackReadTokens(db, fallbackChunks);
+    return fallbackChunks;
   }
 
   const { scope, category, limit = 10, excludeStale = true } = options;
@@ -271,9 +327,12 @@ export async function hybridSearch(
 
   // Layer 4: AI reranking — only when explicitly enabled and results exceed 10
   if (options.rerank && agentRunner && chunks.length > 10) {
-    return rerank(chunks, query, agentRunner, options.workspacePath);
+    const reranked = await rerank(chunks, query, agentRunner, options.workspacePath);
+    trackReadTokens(db, reranked);
+    return reranked;
   }
 
+  trackReadTokens(db, chunks);
   return chunks;
 }
 
