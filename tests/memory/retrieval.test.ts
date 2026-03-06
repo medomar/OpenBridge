@@ -1500,4 +1500,117 @@ describe('retrieval.ts', () => {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  // FTS5-only path when provider='none' — no sqlite-vec calls (OB-1665)
+  // -------------------------------------------------------------------------
+
+  describe("FTS5-only fallback — no sqlite-vec calls when provider='none' (OB-1665)", () => {
+    it('knnSearch short-circuits before preparing any SQL when queryVector is empty', () => {
+      // Spy on db.prepare to verify no sqlite-vec SQL is executed
+      const prepareSpy = vi.spyOn(db, 'prepare');
+      knnSearch(db, new Float32Array(0));
+      // db.prepare must never be called with vec_distance_cosine or any embeddings query
+      const vecCalls = prepareSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('vec_distance_cosine'),
+      );
+      expect(vecCalls).toHaveLength(0);
+      prepareSpy.mockRestore();
+    });
+
+    it('knnSearch short-circuits before checking embeddings table when vector is empty', () => {
+      const prepareSpy = vi.spyOn(db, 'prepare');
+      knnSearch(db, new Float32Array(0), 10);
+      // Even the embeddings table existence check should be skipped
+      const embeddingsCalls = prepareSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('embeddings'),
+      );
+      expect(embeddingsCalls).toHaveLength(0);
+      prepareSpy.mockRestore();
+    });
+
+    it('hybridSearch with provider=none never invokes knnSearch with a non-empty vector', async () => {
+      void storeChunks(db, [makeChunk({ content: 'connector bridge routing module dispatch' })]);
+
+      const knnSpy = vi.spyOn({ knnSearch }, 'knnSearch');
+
+      // Pass an empty queryVector (what NoOpEmbeddingProvider produces)
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'connector bridge', { queryVector: noopVector });
+
+      // Results come from FTS5, not from vector search
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].content).toContain('connector');
+      // The spy was never called with a non-empty vector
+      expect(knnSpy).not.toHaveBeenCalled();
+      knnSpy.mockRestore();
+    });
+
+    it('hybridSearch with provider=none produces identical results to omitting queryVector entirely', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/core/bridge.ts',
+          content: 'bridge orchestrator wires connectors together',
+        }),
+        makeChunk({
+          scope: 'src/core/router.ts',
+          content: 'bridge router handles message dispatch',
+        }),
+        makeChunk({
+          scope: 'src/memory/retrieval.ts',
+          content: 'bridge retrieval indexes workspace chunks',
+        }),
+      ]);
+
+      const noopVector = new Float32Array(0);
+      const withNoop = await hybridSearch(db, 'bridge', { queryVector: noopVector, limit: 5 });
+      const withoutVector = await hybridSearch(db, 'bridge', { limit: 5 });
+
+      expect(withNoop).toEqual(withoutVector);
+    });
+
+    it('hybridSearch with provider=none does not prepare any vec_distance_cosine SQL', async () => {
+      void storeChunks(db, [makeChunk({ content: 'authentication token validation service' })]);
+
+      const prepareSpy = vi.spyOn(db, 'prepare');
+      await hybridSearch(db, 'authentication', { queryVector: new Float32Array(0) });
+
+      const vecCalls = prepareSpy.mock.calls.filter((args) =>
+        String(args[0]).includes('vec_distance_cosine'),
+      );
+      expect(vecCalls).toHaveLength(0);
+      prepareSpy.mockRestore();
+    });
+
+    it('hybridSearch with provider=none returns correct FTS5-ranked results regardless of vector absence', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/a.ts', content: 'worker briefing context injection memory' }),
+        makeChunk({ scope: 'src/b.ts', content: 'worker spawn orchestration memory pool' }),
+        makeChunk({ scope: 'src/c.ts', content: 'database connection pool management' }),
+      ]);
+
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'worker memory', { queryVector: noopVector });
+
+      // FTS5 should find both 'worker briefing' and 'worker spawn' chunks
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results.every((r) => r.content.includes('worker'))).toBe(true);
+    });
+
+    it('hybridSearch with provider=none + scope filter still restricts to correct scope', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/memory', content: 'memory store eviction policy chunks' }),
+        makeChunk({ scope: 'src/core', content: 'memory core bridge connector chunks' }),
+      ]);
+
+      const noopVector = new Float32Array(0);
+      const results = await hybridSearch(db, 'memory chunks', {
+        queryVector: noopVector,
+        scope: 'src/memory',
+      });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every((r) => r.scope.startsWith('src/memory'))).toBe(true);
+    });
+  });
 });

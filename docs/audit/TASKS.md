@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 81 | **In Progress:** 0 | **Done:** 95 (1063 archived)
+> **Pending:** 80 | **In Progress:** 0 | **Done:** 96 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -258,7 +258,7 @@
 | OB-1662 | Tests: Ollama embedding provider — mock HTTP, embed single, batch embed, connection failure fallback  | `tests/memory/embedding-provider.test.ts` (new) | ✅ Done |
 | OB-1663 | Tests: vector search — knn query, hybrid ranking, MMR diversity, temporal decay                       | `tests/memory/retrieval.test.ts`                | ✅ Done |
 | OB-1664 | Tests: progressive disclosure — searchIndex compact results, getDetails full content, 2-step RAG flow | `tests/memory/retrieval.test.ts`                | ✅ Done |
-| OB-1665 | Tests: graceful fallback — FTS5-only when provider='none', no sqlite-vec calls                        | `tests/memory/retrieval.test.ts`                | Pending |
+| OB-1665 | Tests: graceful fallback — FTS5-only when provider='none', no sqlite-vec calls                        | `tests/memory/retrieval.test.ts`                | ✅ Done |
 
 **Phase 94 Total:** 21 tasks
 
