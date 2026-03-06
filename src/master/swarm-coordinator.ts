@@ -10,7 +10,7 @@
  *
  * Subsequent tasks extend this coordinator:
  *   OB-1783 — Swarm handoff (research output feeds implement context)
- *   OB-1784 — Master-driven swarm composition (simple vs complex tasks)
+ *   OB-1784 — Master-driven swarm composition (simple vs complex tasks) ✅
  *   OB-1785 — Parallel worker spawning within swarms
  */
 
@@ -29,6 +29,142 @@ const logger = createLogger('swarm-coordinator');
  * Swarms with a lower index run before swarms with a higher index.
  */
 export const SWARM_PIPELINE_ORDER: SwarmType[] = ['research', 'implement', 'review', 'test'];
+
+// ---------------------------------------------------------------------------
+// Task Complexity Classification (OB-1784)
+// ---------------------------------------------------------------------------
+
+/**
+ * Task complexity level that drives swarm composition decisions.
+ *
+ * - `simple`   — Single-step tasks (questions, lookups, trivial edits).
+ *                Swarms are skipped; Master handles them directly.
+ * - `moderate` — Medium-scope tasks (single-function changes, bug fixes).
+ *                Only an `implement` swarm is created; no research/review.
+ * - `complex`  — Multi-step tasks (feature implementation, refactoring,
+ *                architecture changes). Full pipeline is used.
+ */
+export type TaskComplexity = 'simple' | 'moderate' | 'complex';
+
+/**
+ * Result of the swarm composition planner (OB-1784).
+ *
+ * `skipSwarms` is `true` for simple tasks (no swarms at all).
+ * `swarmTypes` lists the swarm types to create in pipeline order.
+ */
+export interface SwarmCompositionPlan {
+  /** Assessed complexity of the task. */
+  complexity: TaskComplexity;
+  /** When true the caller should skip swarm creation and run directly. */
+  skipSwarms: boolean;
+  /** Ordered list of swarm types to create (empty when `skipSwarms` is true). */
+  swarmTypes: SwarmType[];
+}
+
+// Word patterns that suggest a task is simple (information requests / trivial).
+const SIMPLE_PATTERNS = [
+  /\bwhat\s+is\b/i,
+  /\bwhat'?s\b/i,
+  /\bwhere\s+is\b/i,
+  /\bshow\s+me\b/i,
+  /\blist\b/i,
+  /\bexplain\b/i,
+  /\bdescribe\b/i,
+  /\bprint\b/i,
+  /\blog\b/i,
+  /\becho\b/i,
+  /\bdisplay\b/i,
+  /\bsummariz/i,
+  /\bcount\b/i,
+  /\bhow\s+many\b/i,
+  /\bcan\s+you\s+(tell|show|find)\b/i,
+];
+
+// Word patterns that strongly indicate a complex task.
+const COMPLEX_PATTERNS = [
+  /\brefactor\b/i,
+  /\barchitecture\b/i,
+  /\bdesign\b/i,
+  /\binvestigat/i,
+  /\banalyze?\b/i,
+  /\bauditing?\b/i,
+  /\bperformance\b/i,
+  /\bsecurity\b/i,
+  /\bmigrat/i,
+  /\bintegrat/i,
+  /\binfrastructure\b/i,
+  /\boverhaul\b/i,
+  /\brewrite\b/i,
+  /\bscalability\b/i,
+  /\boptimiz/i,
+  /\bdebug.*and.*fix\b/i,
+  /\bmultiple\s+(files?|modules?|components?|classes?|functions?)\b/i,
+];
+
+// Multi-step connectors — presence raises complexity.
+const MULTI_STEP_PATTERNS = [/\bthen\b/i, /\bafter\s+that\b/i, /\bstep\s+\d/i, /\band\s+also\b/i];
+
+/**
+ * Classify a task description into a complexity tier.
+ *
+ * Heuristics (in order of precedence):
+ * 1. Matches a simple-pattern AND no complex-pattern → `simple`
+ * 2. Matches a complex-pattern OR ≥ 2 multi-step connectors → `complex`
+ * 3. Word count ≥ 30 words → `complex`
+ * 4. Otherwise → `moderate`
+ *
+ * @param taskDescription Raw text description of the task.
+ */
+export function classifyTaskComplexity(taskDescription: string): TaskComplexity {
+  const text = taskDescription.trim();
+  if (!text) return 'simple';
+
+  const hasSimpleSignal = SIMPLE_PATTERNS.some((p) => p.test(text));
+  const hasComplexSignal = COMPLEX_PATTERNS.some((p) => p.test(text));
+
+  if (hasSimpleSignal && !hasComplexSignal) return 'simple';
+
+  if (hasComplexSignal) return 'complex';
+
+  const multiStepHits = MULTI_STEP_PATTERNS.filter((p) => p.test(text)).length;
+  if (multiStepHits >= 2) return 'complex';
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount >= 30) return 'complex';
+
+  return 'moderate';
+}
+
+/**
+ * Determine which swarm types to create for a given task description.
+ *
+ * | Complexity | Swarms created                       |
+ * |------------|--------------------------------------|
+ * | simple     | none — `skipSwarms: true`            |
+ * | moderate   | `implement` only                     |
+ * | complex    | full pipeline: research → implement → review → test |
+ *
+ * @param taskDescription Raw text description of the task.
+ * @returns A `SwarmCompositionPlan` that callers use to drive swarm creation.
+ */
+export function planSwarmComposition(taskDescription: string): SwarmCompositionPlan {
+  const complexity = classifyTaskComplexity(taskDescription);
+
+  if (complexity === 'simple') {
+    return { complexity, skipSwarms: true, swarmTypes: [] };
+  }
+
+  if (complexity === 'moderate') {
+    return { complexity, skipSwarms: false, swarmTypes: ['implement'] };
+  }
+
+  // complex — full pipeline
+  return {
+    complexity,
+    skipSwarms: false,
+    swarmTypes: ['research', 'implement', 'review', 'test'],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Public Interfaces
@@ -373,6 +509,21 @@ export class SwarmCoordinator {
   /** Total number of swarms managed by this coordinator. */
   get swarmCount(): number {
     return this._swarms.size;
+  }
+
+  // ── Composition Planning (OB-1784) ───────────────────────────────
+
+  /**
+   * Decide which swarms to create for a task based on its complexity.
+   *
+   * Delegates to the module-level `planSwarmComposition()` so callers can
+   * use either the standalone function or the instance method.
+   *
+   * @param taskDescription Raw text description of the task.
+   * @returns A `SwarmCompositionPlan` the caller uses to drive swarm creation.
+   */
+  planComposition(taskDescription: string): SwarmCompositionPlan {
+    return planSwarmComposition(taskDescription);
   }
 
   // ── Reset ────────────────────────────────────────────────────────
