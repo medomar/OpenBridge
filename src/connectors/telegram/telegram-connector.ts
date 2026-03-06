@@ -193,6 +193,7 @@ interface GrammyContext {
  */
 export class TelegramConnector implements Connector {
   readonly name = 'telegram';
+  readonly supportsFileAttachments = true as const;
   private config: TelegramConfig;
   private connected = false;
   private bot: GrammyBot | null = null;

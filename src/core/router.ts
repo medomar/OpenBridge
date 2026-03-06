@@ -99,6 +99,18 @@ function getMimeType(filename: string): {
     csv: { mimeType: 'text/csv', mediaType: 'document' },
     json: { mimeType: 'application/json', mediaType: 'document' },
     md: { mimeType: 'text/markdown', mediaType: 'document' },
+    docx: {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      mediaType: 'document',
+    },
+    xlsx: {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mediaType: 'document',
+    },
+    pptx: {
+      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      mediaType: 'document',
+    },
     png: { mimeType: 'image/png', mediaType: 'image' },
     jpg: { mimeType: 'image/jpeg', mediaType: 'image' },
     jpeg: { mimeType: 'image/jpeg', mediaType: 'image' },
@@ -1849,7 +1861,8 @@ export class Router {
         continue;
       }
 
-      // Handle FILE channel — create a shareable link via the local file server
+      // Handle FILE channel — create a shareable link via the local file server,
+      // and additionally send as a native attachment for connectors that support it (WhatsApp, Telegram).
       if (channel === 'FILE') {
         if (this.fileServer) {
           const filename = path.basename(resolvedPath);
@@ -1871,6 +1884,32 @@ export class Router {
           );
           cleaned = cleaned.replace(fullMatch, '');
         }
+
+        // Also deliver as a native file attachment when the connector supports it (e.g. WhatsApp, Telegram)
+        if (connector.supportsFileAttachments) {
+          try {
+            const data = await readFile(resolvedPath);
+            const filename = path.basename(resolvedPath);
+            const { mimeType, mediaType } = getMimeType(filename);
+            await connector.sendMessage({
+              target: connector.name,
+              recipient,
+              content: '',
+              replyTo,
+              media: { type: mediaType, data, mimeType, filename },
+            });
+            logger.info(
+              { filename, recipient, connector: connector.name },
+              'SHARE:FILE attachment dispatched',
+            );
+          } catch (err) {
+            logger.warn(
+              { filePath: resolvedPath, err },
+              'SHARE:FILE: failed to send native attachment',
+            );
+          }
+        }
+
         continue;
       }
 

@@ -106,6 +106,7 @@ interface WAClient {
 
 export class WhatsAppConnector implements Connector {
   readonly name = 'whatsapp';
+  readonly supportsFileAttachments = true as const;
   private config: WhatsAppConfig;
   private connected = false;
   private client: WAClient | null = null;
