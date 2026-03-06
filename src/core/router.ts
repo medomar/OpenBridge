@@ -1524,6 +1524,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/approve <code>" command — owner/admin approves a pairing code (OB-1698)
+    if (/^\/approve\b/i.test(message.content.trim())) {
+      await this.handleApproveCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -2995,6 +3001,98 @@ export class Router {
     } catch (err) {
       logger.error({ err }, 'Failed to update role via /role command');
       await send('Failed to update role. Please try again.');
+    }
+  }
+
+  /**
+   * Handle the built-in "/approve <code>" command.
+   *
+   * Owner or admin users can approve a pending pairing request by submitting
+   * the 6-digit code that the unknown sender received. On success the sender
+   * is added to access_control with the viewer role and the pending pairing
+   * entry is removed (OB-1698).
+   */
+  private async handleApproveCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const send = (content: string): Promise<void> =>
+      connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content,
+        replyTo: message.id,
+      });
+
+    // Only owner or admin may approve pairing requests
+    if (this.memory) {
+      try {
+        const callerEntry = await this.memory.getAccess(message.sender, message.source);
+        const callerRole = callerEntry?.role ?? 'owner';
+        if (callerRole !== 'owner' && callerRole !== 'admin') {
+          await send(
+            `Permission denied. The /approve command requires owner or admin role. Your current role is *${callerRole}*.`,
+          );
+          return;
+        }
+      } catch {
+        // allow fallthrough — default is owner
+      }
+    }
+
+    // Parse: /approve <code>
+    const parts = message.content.trim().split(/\s+/);
+    const code = parts[1];
+    if (!code) {
+      await send('Usage: /approve <code>\nExample: /approve 482916');
+      return;
+    }
+
+    if (!this.auth) {
+      await send('Pairing approval unavailable: auth service not initialised.');
+      return;
+    }
+
+    const pairing = this.auth.getPairing(code);
+    if (!pairing) {
+      await send(
+        `No pending pairing found for code *${code}*. It may have already been used or expired.`,
+      );
+      return;
+    }
+
+    // Grant access — default role: viewer
+    if (!this.memory) {
+      await send('Pairing approval unavailable: memory system not initialised.');
+      return;
+    }
+
+    try {
+      const existing = await this.memory.getAccess(pairing.senderId, pairing.channel);
+      if (existing) {
+        await this.memory.setAccess({ ...existing, active: true });
+      } else {
+        await this.memory.setAccess({
+          user_id: pairing.senderId,
+          channel: pairing.channel,
+          role: 'viewer' as AccessRole,
+          active: true,
+        });
+      }
+
+      this.auth.removePairing(code);
+
+      const displayId =
+        pairing.senderId.length > 20
+          ? `${pairing.senderId.slice(0, 8)}…${pairing.senderId.slice(-6)}`
+          : pairing.senderId;
+      await send(
+        `Pairing approved. *${displayId}* has been granted *viewer* access on channel *${pairing.channel}*.`,
+      );
+      logger.info(
+        { approver: message.sender, senderId: pairing.senderId, channel: pairing.channel, code },
+        'Pairing approved via /approve command',
+      );
+    } catch (err) {
+      logger.error({ err }, 'Failed to approve pairing via /approve command');
+      await send('Failed to approve pairing. Please try again.');
     }
   }
 
@@ -4639,6 +4737,7 @@ export class Router {
       '• /deny all — reject all pending escalations at once',
       '• /whoami — show your role, channel, allowed actions, daily cost, and consent mode',
       '• /role <user_id> <role> — (owner/admin) set role for another user on this channel',
+      '• /approve <code> — (owner/admin) approve a pairing request using the 6-digit code',
       '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
       '*Batch Control*',
