@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 27 | **In Progress:** 0 | **Done:** 149 (1063 archived)
+> **Pending:** 26 | **In Progress:** 0 | **Done:** 150 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -367,7 +367,7 @@
 | OB-1764 | Built-in skill pack: `slide-designer` — HTML-based presentation slides with animations, exportable to PDF    | `src/master/skill-packs/slide-designer.ts` (new)       | ✅ Done |
 | OB-1765 | Built-in skill pack: `generative-art` — p5.js algorithmic art, SVG patterns, creative coding prompts         | `src/master/skill-packs/generative-art.ts` (new)       | ✅ Done |
 | OB-1766 | Built-in skill pack: `brand-assets` — logo concepts (SVG), social media images, favicon generation           | `src/master/skill-packs/brand-assets.ts` (new)         | ✅ Done |
-| OB-1767 | HTML-to-image pipeline — render HTML outputs to PNG/JPG using Puppeteer for sending via messaging channels   | `src/core/html-renderer.ts` (new)                      | Pending |
+| OB-1767 | HTML-to-image pipeline — render HTML outputs to PNG/JPG using Puppeteer for sending via messaging channels   | `src/core/html-renderer.ts` (new)                      | ✅ Done |
 | OB-1768 | SVG output support — workers generate SVG, file-server serves, channels send as image                        | `src/core/file-server.ts`                              | Pending |
 | OB-1769 | Mermaid rendering support — mermaid-cli or mermaid.ink API for diagram-to-image conversion                   | `src/core/html-renderer.ts`                            | Pending |
 | OB-1770 | Output preview via app server — HTML outputs served as interactive previews                                  | `src/core/tunnel-manager.ts`                           | Pending |
