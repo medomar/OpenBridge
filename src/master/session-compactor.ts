@@ -34,6 +34,24 @@ export interface ConversationTurn {
 }
 
 /**
+ * Identifiers extracted from a block of text by `extractIdentifiers()`.
+ *
+ * Used by `compactTurns()` internally and available as a standalone public
+ * method so callers can extract identifiers from any text without running a
+ * full compaction (e.g. for populating `compaction_history.identifiers_preserved`).
+ */
+export interface ExtractedIdentifiers {
+  /** Deduplicated file paths found in the text (e.g. `src/master/session-compactor.ts`). */
+  filePaths: string[];
+  /** Function/method names found in the text, with trailing `()`. */
+  functionNames: string[];
+  /** OpenBridge task IDs found in the text (e.g. `OB-1669`). */
+  taskIds: string[];
+  /** OpenBridge finding IDs found in the text (e.g. `OB-F84`). */
+  findingIds: string[];
+}
+
+/**
  * Structured compaction summary produced by `compactTurns()`.
  *
  * Preserves identifiers extracted from the original turns so the next session
@@ -294,6 +312,34 @@ export class SessionCompactor {
   }
 
   // ---------------------------------------------------------------------------
+  // Identifier Extraction (OB-1669)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Extract key identifiers from any block of text using regex patterns.
+   *
+   * Scans for:
+   * - File paths: `src/...`, `tests/...`, `docs/...`, `scripts/...`, `./...`,
+   *   and common absolute paths (`/Users/...`, `/home/...`, etc.)
+   * - Function/method names: any camelCase/snake_case token followed by `()`
+   * - OpenBridge task IDs: `OB-NNNN` (four or more digits)
+   * - OpenBridge finding IDs: `OB-FNNNN`
+   *
+   * All results are deduplicated and sorted. This method is the canonical
+   * extraction implementation — `compactTurns()` delegates to it internally.
+   *
+   * @param text - Raw text to scan (may be concatenated conversation content).
+   */
+  extractIdentifiers(text: string): ExtractedIdentifiers {
+    return {
+      filePaths: this._extractFilePaths(text),
+      functionNames: this._extractFunctionNames(text),
+      taskIds: this._extractTaskIds(text),
+      findingIds: this._extractFindingIds(text),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Compaction Strategy (OB-1668)
   // ---------------------------------------------------------------------------
 
@@ -327,13 +373,14 @@ export class SessionCompactor {
     }
 
     const allContent = turns.map((t) => t.content).join('\n');
+    const ids = this.extractIdentifiers(allContent);
 
     return {
       overview: this._buildOverview(turns),
-      filePaths: this._extractFilePaths(allContent),
-      functionNames: this._extractFunctionNames(allContent),
-      taskIds: this._extractTaskIds(allContent),
-      findingIds: this._extractFindingIds(allContent),
+      filePaths: ids.filePaths,
+      functionNames: ids.functionNames,
+      taskIds: ids.taskIds,
+      findingIds: ids.findingIds,
       completedWork: this._extractCompletedWork(allContent),
       pendingWork: this._extractPendingWork(allContent),
       turnCount: turns.length,
