@@ -196,6 +196,36 @@ export interface ModelStats {
   total_tasks: number;
 }
 
+export interface LearningsSummary {
+  task_type: string;
+  success_rate: number;
+  total_tasks: number;
+  success_count: number;
+}
+
+/**
+ * Return task types with sufficient total tasks and a high success rate,
+ * aggregated across all models. Used by the skill pack synthesis heuristic.
+ */
+export function getHighSuccessLearnings(
+  db: Database.Database,
+  minSuccessRate = 0.8,
+  minTotalTasks = 5,
+): LearningsSummary[] {
+  return db
+    .prepare(
+      `SELECT task_type,
+              CAST(SUM(success_count) AS REAL) / NULLIF(SUM(success_count) + SUM(failure_count), 0) AS success_rate,
+              SUM(success_count) + SUM(failure_count) AS total_tasks,
+              SUM(success_count) AS success_count
+       FROM learnings
+       GROUP BY task_type
+       HAVING total_tasks >= ? AND success_rate >= ?
+       ORDER BY total_tasks DESC`,
+    )
+    .all(minTotalTasks, minSuccessRate) as LearningsSummary[];
+}
+
 /**
  * Return the success_rate and total task count for a specific (task_type, model) pair.
  * Returns null when no learning data exists for that combination.
