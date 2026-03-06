@@ -17,7 +17,7 @@ import {
   runCommand,
 } from './utils.js';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 13;
 
 export interface InitOptions {
   input?: NodeJS.ReadableStream;
@@ -35,6 +35,7 @@ interface Answers {
   workspacePath: string;
   whitelist?: string[];
   prefix?: string;
+  defaultRole?: string;
   mcpServers?: McpServerEntry[];
   mcpConfigPath?: string;
   connectorOptions?: Record<string, unknown>;
@@ -235,10 +236,14 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
   };
 
   if (answers.whitelist !== undefined) {
-    config['auth'] = {
+    const auth: Record<string, unknown> = {
       whitelist: answers.whitelist,
       prefix: answers.prefix ?? '/ai',
     };
+    if (answers.defaultRole !== undefined) {
+      auth['defaultRole'] = answers.defaultRole;
+    }
+    config['auth'] = auth;
   }
 
   if (answers.mcpServers?.length || answers.mcpConfigPath) {
@@ -376,6 +381,34 @@ export async function promptWhitelist(
     }
 
     return numbers;
+  }
+}
+
+export async function promptDefaultRole(
+  rl: ReadlineInterface,
+  write: (text: string) => void,
+): Promise<string> {
+  write('\n  Default Role — Role assigned to whitelisted users on first message\n\n');
+  write('    1. owner      Full access — run agents, deploy, manage roles, all commands\n');
+  write('    2. developer  Run agents + read operations; cannot manage roles or deploy\n');
+  write('    3. viewer     Read-only — /whoami, /history, status queries only\n\n');
+
+  for (;;) {
+    const choice = await ask(rl, '  Default role (1/2/3) [default: 1 — owner]: ');
+    const normalized = choice.trim().toLowerCase();
+
+    if (normalized === '' || normalized === '1' || normalized === 'owner') {
+      printSuccess('Default role: owner');
+      return 'owner';
+    } else if (normalized === '2' || normalized === 'developer') {
+      printSuccess('Default role: developer');
+      return 'developer';
+    } else if (normalized === '3' || normalized === 'viewer') {
+      printSuccess('Default role: viewer');
+      return 'viewer';
+    } else {
+      write('  Error: enter 1, 2, or 3.\n');
+    }
   }
 }
 
@@ -597,8 +630,12 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       write(`\n  Whitelist — not required for ${connector} connector\n`);
     }
 
-    // Step 8: MCP setup
-    printStep(8, TOTAL_STEPS, 'MCP Setup');
+    // Step 8: Default role
+    printStep(8, TOTAL_STEPS, 'Default Role');
+    const defaultRole = await promptDefaultRole(rl, write);
+
+    // Step 9: MCP setup
+    printStep(9, TOTAL_STEPS, 'MCP Setup');
     write('\n');
     const mcpServers: McpServerEntry[] = [];
     let mcpConfigPath: string | undefined;
@@ -622,8 +659,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Step 9: Visibility preferences
-    printStep(9, TOTAL_STEPS, 'Visibility Preferences');
+    // Step 10: Visibility preferences
+    printStep(10, TOTAL_STEPS, 'Visibility Preferences');
     write('\n');
     write('  Sensitive files (.env, *.pem, *.key, credentials.*, etc.) can be\n');
     write('  automatically hidden from AI workers to prevent accidental exposure.\n\n');
@@ -638,14 +675,15 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       printWarning('Sensitive file hiding disabled — all files visible to AI');
     }
 
-    // Step 10: Config generation
-    printStep(10, TOTAL_STEPS, 'Config Generation');
+    // Step 11: Config generation
+    printStep(11, TOTAL_STEPS, 'Config Generation');
     write('\n');
     const config = buildConfig({
       connector,
       workspacePath,
       whitelist: connector === 'whatsapp' ? whitelist : undefined,
       prefix: connector === 'whatsapp' ? prefix : undefined,
+      defaultRole,
       mcpServers,
       mcpConfigPath,
       connectorOptions,
@@ -655,8 +693,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     await writeFile(outputPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
     write(`  Config written to ${outputPath}\n`);
 
-    // Step 11: Health check
-    printStep(11, TOTAL_STEPS, 'Health Check');
+    // Step 12: Health check
+    printStep(12, TOTAL_STEPS, 'Health Check');
     write('\n');
     const healthResult = runHealthCheck(outputPath);
     for (const check of healthResult.checks) {
@@ -675,8 +713,8 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     }
     write('\n');
 
-    // Step 12: Summary
-    printStep(12, TOTAL_STEPS, 'Quick Start Summary');
+    // Step 13: Summary
+    printStep(13, TOTAL_STEPS, 'Quick Start Summary');
     printQuickStartSummary(write, outputPath, toolStatus, connector, workspacePath);
   } finally {
     rl.close();
