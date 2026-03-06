@@ -5,6 +5,8 @@ import {
   buildWorkerFeedbackPrompt,
   formatWorkerBatch,
   extractWorkerSummary,
+  isTestFile,
+  detectTestFileModification,
 } from '../../src/master/worker-result-formatter.js';
 import type { WorkerResultMeta } from '../../src/master/worker-result-formatter.js';
 import type { AgentResult } from '../../src/core/agent-runner.js';
@@ -725,6 +727,237 @@ describe('Worker Result Formatter', () => {
       const summary = extractWorkerSummary(output, 'Add route');
       // Should match "Added" or "Created" — both start with action verbs
       expect(summary.completed).toMatch(/added|created/i);
+    });
+  });
+
+  describe('isTestFile (OB-1788)', () => {
+    it('returns true for files in tests/ directory', () => {
+      expect(isTestFile('tests/core/auth.test.ts')).toBe(true);
+      expect(isTestFile('tests/memory/eviction.test.ts')).toBe(true);
+    });
+
+    it('returns true for files in __tests__/ directory', () => {
+      expect(isTestFile('src/__tests__/helper.ts')).toBe(true);
+      expect(isTestFile('__tests__/unit.ts')).toBe(true);
+    });
+
+    it('returns true for *.test.ts and *.spec.ts files', () => {
+      expect(isTestFile('src/core/auth.test.ts')).toBe(true);
+      expect(isTestFile('src/memory/eviction.spec.ts')).toBe(true);
+      expect(isTestFile('auth.test.js')).toBe(true);
+      expect(isTestFile('router.spec.js')).toBe(true);
+    });
+
+    it('returns false for regular source files', () => {
+      expect(isTestFile('src/core/auth.ts')).toBe(false);
+      expect(isTestFile('src/memory/database.ts')).toBe(false);
+      expect(isTestFile('package.json')).toBe(false);
+    });
+
+    it('returns false for files with "test" in name but not matching pattern', () => {
+      expect(isTestFile('src/core/test-runner.ts')).toBe(false);
+      expect(isTestFile('src/utils/testing-helpers.ts')).toBe(false);
+    });
+  });
+
+  describe('detectTestFileModification (OB-1788)', () => {
+    it('returns only test files from a mixed list', () => {
+      const files = [
+        'src/core/auth.ts',
+        'tests/core/auth.test.ts',
+        'src/memory/database.ts',
+        'tests/memory/eviction.test.ts',
+      ];
+      const testFiles = detectTestFileModification(files);
+      expect(testFiles).toEqual(['tests/core/auth.test.ts', 'tests/memory/eviction.test.ts']);
+    });
+
+    it('returns empty array when no test files present', () => {
+      const files = ['src/core/auth.ts', 'src/memory/database.ts'];
+      expect(detectTestFileModification(files)).toEqual([]);
+    });
+
+    it('returns all files when all are test files', () => {
+      const files = ['tests/a.test.ts', 'tests/b.spec.ts'];
+      expect(detectTestFileModification(files)).toEqual(files);
+    });
+
+    it('returns empty array for empty input', () => {
+      expect(detectTestFileModification([])).toEqual([]);
+    });
+  });
+
+  describe('formatWorkerResult — unauthorized test file detection (OB-1788)', () => {
+    it('appends flag when code-edit worker modifies test files without authorization', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 2000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        testModificationAuthorized: false,
+      };
+      const output = 'Updated tests/core/auth.test.ts with new test cases.';
+      const result = formatWorkerResult(meta, output);
+      expect(result).toContain('[TEST FILES MODIFIED — UNAUTHORIZED:');
+      expect(result).toContain('tests/core/auth.test.ts');
+    });
+
+    it('appends flag when full-access worker modifies test files without authorization', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'full-access',
+        model: 'opus',
+        durationMs: 3000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        testModificationAuthorized: false,
+      };
+      const output = 'Edited tests/memory/eviction.test.ts to add coverage.';
+      const result = formatWorkerResult(meta, output);
+      expect(result).toContain('[TEST FILES MODIFIED — UNAUTHORIZED:');
+      expect(result).toContain('tests/memory/eviction.test.ts');
+    });
+
+    it('does NOT append flag when testModificationAuthorized is true', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 2000,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        testModificationAuthorized: true,
+      };
+      const output = 'Updated tests/core/auth.test.ts as requested.';
+      const result = formatWorkerResult(meta, output);
+      expect(result).not.toContain('[TEST FILES MODIFIED');
+    });
+
+    it('does NOT append flag for read-only profile even if output mentions test files', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'read-only',
+        model: 'haiku',
+        durationMs: 500,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+      };
+      const output = 'Read tests/core/auth.test.ts for context.';
+      const result = formatWorkerResult(meta, output);
+      expect(result).not.toContain('[TEST FILES MODIFIED');
+    });
+
+    it('does NOT append flag when no test files are detected in output', () => {
+      const meta: WorkerResultMeta = {
+        workerIndex: 1,
+        totalWorkers: 1,
+        profile: 'code-edit',
+        model: 'sonnet',
+        durationMs: 1500,
+        success: true,
+        exitCode: 0,
+        retryCount: 0,
+        testModificationAuthorized: false,
+      };
+      const output = 'Updated src/core/auth.ts with new logic.';
+      const result = formatWorkerResult(meta, output);
+      expect(result).not.toContain('[TEST FILES MODIFIED');
+    });
+  });
+
+  describe('formatWorkerBatch — test modification authorization (OB-1788)', () => {
+    it('flags unauthorized test file modification from allowTestModification:false', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Modified tests/core/auth.test.ts to add new assertions.',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1500,
+            retryCount: 0,
+          },
+        },
+      ];
+      const markers = [
+        { profile: 'code-edit', body: { model: 'sonnet', allowTestModification: false } },
+      ];
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+      expect(formattedResults[0]).toContain('[TEST FILES MODIFIED — UNAUTHORIZED:');
+    });
+
+    it('does NOT flag when allowTestModification:true in marker body', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Added tests/memory/eviction.test.ts with new LRU tests.',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1500,
+            retryCount: 0,
+          },
+        },
+      ];
+      const markers = [
+        { profile: 'code-edit', body: { model: 'sonnet', allowTestModification: true } },
+      ];
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+      expect(formattedResults[0]).not.toContain('[TEST FILES MODIFIED');
+    });
+
+    it('does NOT flag when prompt contains AUTHORIZED marker', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Updated tests/core/auth.test.ts as requested.',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1500,
+            retryCount: 0,
+          },
+        },
+      ];
+      const markers = [
+        {
+          profile: 'code-edit',
+          body: {
+            model: 'sonnet',
+            prompt: 'AUTHORIZED: test modification permitted\n\nUpdate tests.',
+          },
+        },
+      ];
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+      expect(formattedResults[0]).not.toContain('[TEST FILES MODIFIED');
+    });
+
+    it('does NOT flag for read-only profile even without authorization', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Read tests/core/auth.test.ts for review.',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 800,
+            retryCount: 0,
+          },
+        },
+      ];
+      const markers = [{ profile: 'read-only', body: { model: 'haiku' } }];
+      const { formattedResults } = formatWorkerBatch(outcomes, markers);
+      expect(formattedResults[0]).not.toContain('[TEST FILES MODIFIED');
     });
   });
 
