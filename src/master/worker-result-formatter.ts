@@ -12,6 +12,8 @@
 import type { AgentResult, ErrorCategory } from '../core/agent-runner.js';
 import { classifyError } from '../core/agent-runner.js';
 import { parseCodexJsonlOutput } from '../core/adapters/codex-adapter.js';
+import { extractObservation } from './observation-extractor.js';
+import type { Observation } from '../memory/observation-store.js';
 
 /**
  * Metadata about a completed worker execution.
@@ -163,12 +165,19 @@ export function buildWorkerFeedbackPrompt(formattedResults: string[]): string {
 /**
  * Format a batch of worker outcomes (from Promise.allSettled) into structured results.
  * Returns both the formatted results array and the combined feedback prompt.
+ *
+ * When `workerIds` and `sessionId` are provided, also extracts a structured
+ * Observation from each fulfilled worker result via the observation extractor.
+ * The caller is responsible for persisting the returned observations.
  */
 export function formatWorkerBatch(
   outcomes: PromiseSettledResult<AgentResult>[],
-  markers: Array<{ profile: string; body: { model?: string; tool?: string } }>,
-): { formattedResults: string[]; feedbackPrompt: string } {
+  markers: Array<{ profile: string; body: { model?: string; tool?: string; prompt?: string } }>,
+  workerIds?: string[],
+  sessionId?: string,
+): { formattedResults: string[]; feedbackPrompt: string; observations: Observation[] } {
   const formattedResults: string[] = [];
+  const observations: Observation[] = [];
 
   for (let i = 0; i < outcomes.length; i++) {
     const outcome = outcomes[i]!;
@@ -199,6 +208,23 @@ export function formatWorkerBatch(
       } else {
         formattedResults.push(formatWorkerError(meta, result.stderr || result.stdout));
       }
+
+      // Extract a structured observation from the worker output when we have session context
+      if (sessionId) {
+        const workerId = workerIds?.[i] || `worker-${i + 1}`;
+        const output = result.stdout || result.stderr;
+        if (output.trim()) {
+          observations.push(
+            extractObservation({
+              output,
+              sessionId,
+              workerId,
+              profile: marker.profile,
+              prompt: marker.body.prompt,
+            }),
+          );
+        }
+      }
     } else {
       const errorMsg =
         outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
@@ -222,6 +248,7 @@ export function formatWorkerBatch(
   return {
     formattedResults,
     feedbackPrompt: buildWorkerFeedbackPrompt(formattedResults),
+    observations,
   };
 }
 

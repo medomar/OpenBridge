@@ -7052,7 +7052,20 @@ ${currentContent}
     logger.info(stats, 'Worker batch stats');
 
     // Format all results with structured metadata and build the feedback prompt
-    const { feedbackPrompt } = formatWorkerBatch(settled, markers);
+    const { feedbackPrompt, observations } = formatWorkerBatch(
+      settled,
+      markers,
+      workerIds,
+      this.masterSession?.sessionId,
+    );
+
+    // Persist extracted observations (fire-and-forget — don't block the response)
+    if (observations.length > 0 && this.memory) {
+      Promise.all(observations.map((obs) => this.memory!.insertObservation(obs))).catch((err) =>
+        logger.warn({ err }, 'Failed to store worker observations'),
+      );
+    }
+
     return feedbackPrompt;
   }
 
@@ -7146,7 +7159,20 @@ ${currentContent}
     await this.persistWorkerRegistry();
 
     // Format all results and build the feedback prompt
-    const { feedbackPrompt } = formatWorkerBatch(finalSettled, markers);
+    const { feedbackPrompt, observations } = formatWorkerBatch(
+      finalSettled,
+      markers,
+      workerIds,
+      this.masterSession?.sessionId,
+    );
+
+    // Persist extracted observations (fire-and-forget — don't block the response)
+    if (observations.length > 0 && this.memory) {
+      Promise.all(observations.map((obs) => this.memory!.insertObservation(obs))).catch((err) =>
+        logger.warn({ err }, 'Failed to store worker observations'),
+      );
+    }
+
     return feedbackPrompt;
   }
 
