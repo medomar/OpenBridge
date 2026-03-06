@@ -194,9 +194,10 @@ function trackReadTokens(db: Database.Database, chunks: Chunk[]): void {
   const nowIso = new Date().toISOString();
 
   const upsert = db.prepare(`
-    INSERT INTO token_economics (chunk_id, discovery_tokens, total_read_tokens, created_at, last_read_at)
-    VALUES (?, 0, ?, ?, ?)
+    INSERT INTO token_economics (chunk_id, discovery_tokens, retrieval_count, total_read_tokens, created_at, last_read_at)
+    VALUES (?, 0, 1, ?, ?, ?)
     ON CONFLICT (chunk_id) DO UPDATE SET
+      retrieval_count = retrieval_count + 1,
       total_read_tokens = total_read_tokens + excluded.total_read_tokens,
       last_read_at = excluded.last_read_at
   `);
