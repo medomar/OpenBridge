@@ -186,6 +186,86 @@ export interface PendingEscalation {
 export type MessagePriority = 1 | 2 | 3;
 
 /**
+ * Creative intent types — maps to the skill packs in src/master/skill-packs/.
+ * - diagram    → diagram-maker skill pack
+ * - chart      → chart-generator skill pack
+ * - design     → web-designer or slide-designer skill pack
+ * - art        → generative-art skill pack
+ * - brand      → brand-assets skill pack
+ */
+export type CreativeIntent = 'diagram' | 'chart' | 'design' | 'art' | 'brand';
+
+/**
+ * Classify a message to detect creative/visual output intent.
+ *
+ * Returns the creative intent type when the message is asking for a visual
+ * output (diagram, chart, web design, generative art, brand assets), or
+ * `null` if no creative intent is detected. Runs synchronously — no AI calls.
+ *
+ * Matching priority (highest to lowest):
+ * 1. Explicit format or tool keywords (mermaid, d3, plantuml, p5.js, etc.)
+ * 2. Output-type keywords (diagram, chart, logo, landing page, etc.)
+ * 3. Verb + visual noun combinations
+ */
+export function classifyCreativeIntent(content: string): CreativeIntent | null {
+  const lower = content.toLowerCase().trim();
+
+  // Diagram — explicit tool or output-type keywords
+  if (
+    /\b(mermaid|plantuml|plant uml|d2 diagram|graphviz)\b/.test(lower) ||
+    /\b(flowchart|flow chart|sequence diagram|er diagram|erd|class diagram|architecture diagram|network diagram|uml)\b/.test(
+      lower,
+    ) ||
+    (/\bdiagram\b/.test(lower) &&
+      /\b(create|generate|make|draw|build|produce|show|render)\b/.test(lower))
+  )
+    return 'diagram';
+
+  // Chart — explicit tool or visualization keywords
+  if (
+    /\b(d3\.?js|chart\.?js|chartjs|d3 chart|recharts|vega)\b/.test(lower) ||
+    /\b(bar chart|line chart|pie chart|scatter plot|histogram|area chart|bubble chart|heatmap|treemap)\b/.test(
+      lower,
+    ) ||
+    (/\b(chart|graph|visualization|visualise|visualize)\b/.test(lower) &&
+      /\b(create|generate|make|draw|build|produce|show|render|plot)\b/.test(lower))
+  )
+    return 'chart';
+
+  // Brand assets — logos, favicons, social media images
+  if (
+    /\b(logo|favicon|brand asset|social media image|og image|twitter card|app icon)\b/.test(
+      lower,
+    ) &&
+    /\b(create|generate|make|design|draw|build|produce)\b/.test(lower)
+  )
+    return 'brand';
+
+  // Generative art — p5.js, algorithmic, creative coding
+  if (
+    /\b(p5\.?js|processing|generative art|algorithmic art|creative coding|svg pattern|svg art)\b/.test(
+      lower,
+    ) ||
+    (/\b(generative|algorithmic|procedural)\b/.test(lower) &&
+      /\b(art|image|pattern|design|visual)\b/.test(lower))
+  )
+    return 'art';
+
+  // Design — web pages, landing pages, slides, HTML templates
+  if (
+    /\b(landing page|web page|webpage|email template|html template|marketing page|hero section)\b/.test(
+      lower,
+    ) ||
+    /\b(presentation slide|html slide|slide deck)\b/.test(lower) ||
+    (/\b(design|redesign)\b/.test(lower) &&
+      /\b(website|webpage|web page|ui|interface|layout|page)\b/.test(lower))
+  )
+    return 'design';
+
+  return null;
+}
+
+/**
  * Classify a message to detect document-generation intent.
  *
  * Returns the target file format when the message is asking for document
@@ -240,6 +320,11 @@ export function classifyMessagePriority(content: string): MessagePriority {
 
   // Document-generation tasks — always complex (multi-step: plan → generate → write → deliver)
   if (classifyDocumentIntent(lower) !== null) {
+    return 3;
+  }
+
+  // Creative/visual tasks — always complex (render pipeline: generate → render → deliver)
+  if (classifyCreativeIntent(lower) !== null) {
     return 3;
   }
 
