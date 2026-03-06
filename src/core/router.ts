@@ -1416,6 +1416,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/whoami" command — show user's role, channel, allowed actions, daily cost, consent mode (OB-1720)
+    if (/^\/whoami$/i.test(message.content.trim())) {
+      await this.handleWhoamiCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/workers" command — list active workers with ID, status, profile, duration, PID (OB-1646)
     if (/^\/workers$/i.test(message.content.trim())) {
       await this.handleWorkersCommand(message, connector);
@@ -2670,6 +2676,101 @@ export class Router {
     });
 
     logger.info({ sender: message.sender }, 'Permissions displayed via /permissions');
+  }
+
+  /**
+   * Handle the built-in "/whoami" command.
+   *
+   * Shows the user their role, channel, allowed actions, daily cost usage, and consent mode.
+   * Requires no elevated permissions — any user can see their own identity info (OB-1720).
+   */
+  private async handleWhoamiCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const lines: string[] = ['*Who Am I*', ''];
+
+    // Sender (truncated for display)
+    const sender = message.sender;
+    const displaySender = sender.length > 20 ? `${sender.slice(0, 8)}…${sender.slice(-6)}` : sender;
+    lines.push(`*User:* ${displaySender}`);
+    lines.push(`*Channel:* ${message.source}`);
+    lines.push('');
+
+    // Role + allowed actions from access_control
+    let role = 'owner'; // default fallback
+    let allowedActions: string[] | null = null;
+    let dailyCostUsed: number | null = null;
+    let dailyCostLimit: number | null = null;
+
+    if (this.memory) {
+      try {
+        const entry = await this.memory.getAccess(sender, message.source);
+        if (entry) {
+          role = entry.role;
+          // Resolve effective allowed actions: explicit list takes precedence over role default
+          if (entry.allowed_actions && entry.allowed_actions.length > 0) {
+            allowedActions = entry.allowed_actions;
+          } else {
+            const roleDefaults: Record<string, string[] | null> = {
+              owner: null,
+              admin: null,
+              developer: ['read', 'edit', 'test'],
+              viewer: ['read'],
+              custom: null,
+            };
+            allowedActions = roleDefaults[entry.role] ?? null;
+          }
+          dailyCostUsed = entry.daily_cost_used ?? null;
+          dailyCostLimit = entry.max_cost_per_day_usd ?? null;
+        }
+      } catch {
+        // leave defaults
+      }
+    }
+
+    lines.push(`*Role:* ${role}`);
+
+    if (allowedActions === null) {
+      lines.push('*Allowed actions:* all (no restrictions)');
+    } else {
+      lines.push(`*Allowed actions:* ${allowedActions.join(', ')}`);
+    }
+    lines.push('');
+
+    // Daily cost usage
+    if (dailyCostUsed !== null) {
+      const usedStr = `$${dailyCostUsed.toFixed(4)}`;
+      const limitStr = dailyCostLimit != null ? ` / $${dailyCostLimit.toFixed(2)} limit` : '';
+      lines.push(`*Daily cost:* ${usedStr}${limitStr}`);
+    } else if (this.memory) {
+      try {
+        const totalCost = await this.memory.getDailyCost();
+        lines.push(`*Daily cost (shared):* $${totalCost.toFixed(4)}`);
+      } catch {
+        lines.push('*Daily cost:* unavailable');
+      }
+    } else {
+      lines.push('*Daily cost:* unavailable');
+    }
+    lines.push('');
+
+    // Consent mode
+    let consentMode = 'always-ask';
+    if (this.memory) {
+      try {
+        consentMode = await this.memory.getConsentMode(sender, message.source);
+      } catch {
+        consentMode = 'always-ask';
+      }
+    }
+    lines.push(`*Consent mode:* ${consentMode}`);
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender }, 'Identity info displayed via /whoami');
   }
 
   /**
@@ -4260,6 +4361,7 @@ export class Router {
       '• /allow all — grant all pending escalations at once',
       '• /deny — reject a pending tool escalation',
       '• /deny all — reject all pending escalations at once',
+      '• /whoami — show your role, channel, allowed actions, daily cost, and consent mode',
       '• /permissions — show your consent mode, session grants, and permanent grants',
       '',
       '*Batch Control*',
