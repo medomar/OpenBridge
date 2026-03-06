@@ -22,7 +22,7 @@ import type {
 } from '../memory/index.js';
 import type { AccessRole } from '../memory/access-store.js';
 import type { MessageQueue } from './queue.js';
-import type { RiskLevel, ExecutionProfile, DeepPhase } from '../types/agent.js';
+import type { RiskLevel, ExecutionProfile, DeepPhase, DocumentFileFormat } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
@@ -169,12 +169,62 @@ export interface PendingEscalation {
 export type MessagePriority = 1 | 2 | 3;
 
 /**
+ * Classify a message to detect document-generation intent.
+ *
+ * Returns the target file format when the message is asking for document
+ * generation (docx, pptx, xlsx, or pdf), or `null` if no document intent
+ * is detected. Runs synchronously — no AI calls.
+ *
+ * Matching priority (highest to lowest):
+ * 1. Explicit format extension or acronym in the message (.docx, pptx, etc.)
+ * 2. Document-type keywords (presentation, spreadsheet, report, …)
+ * 3. Generic document-creation verb + "document" noun → defaults to docx
+ */
+export function classifyDocumentIntent(content: string): DocumentFileFormat | null {
+  const lower = content.toLowerCase().trim();
+
+  // Explicit format keywords — highest confidence
+  if (lower.includes('.pptx') || /\bpptx\b/.test(lower)) return 'pptx';
+  if (lower.includes('.xlsx') || /\bxlsx\b/.test(lower)) return 'xlsx';
+  if (lower.includes('.docx') || /\bdocx\b/.test(lower)) return 'docx';
+  if (lower.includes('.pdf') || /\bpdf\b/.test(lower)) return 'pdf';
+
+  // Presentation / slides
+  if (/\b(presentation|slide deck|slideshow|powerpoint|slides)\b/.test(lower)) return 'pptx';
+
+  // Spreadsheet / Excel
+  if (/\b(spreadsheet|excel|workbook)\b/.test(lower)) return 'xlsx';
+
+  // Report — maps to PDF (report-generator skill pack)
+  if (
+    /\breport\b/.test(lower) &&
+    /\b(generate|create|make|write|build|produce|draft)\b/.test(lower)
+  )
+    return 'pdf';
+
+  // Word document — proposals, memos, letters, business documents
+  if (/\b(word document|word doc|proposal|memo|business document|cover letter)\b/.test(lower))
+    return 'docx';
+
+  // Generic "write/create/draft a document" → default to docx
+  if (/\b(write|create|generate|make|draft)\b/.test(lower) && /\bdocument\b/.test(lower))
+    return 'docx';
+
+  return null;
+}
+
+/**
  * Classify a message by priority using keyword heuristics.
  * Returns 1 (quick-answer), 2 (tool-use), or 3 (complex-task).
  * Runs synchronously — no AI calls, safe to call before enqueueing.
  */
 export function classifyMessagePriority(content: string): MessagePriority {
   const lower = content.toLowerCase().trim();
+
+  // Document-generation tasks — always complex (multi-step: plan → generate → write → deliver)
+  if (classifyDocumentIntent(lower) !== null) {
+    return 3;
+  }
 
   // Complex-task keywords — multi-step work requiring planning and delegation
   const complexKeywords = [
