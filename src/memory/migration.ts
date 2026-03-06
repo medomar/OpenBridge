@@ -14,7 +14,7 @@ import {
 } from '../types/master.js';
 import { WorkersRegistrySchema } from '../master/worker-registry.js';
 import { ProfilesRegistrySchema } from '../types/agent.js';
-import { storeChunks } from './chunk-store.js';
+import { storeChunks, computeContentHash } from './chunk-store.js';
 import { recordTask, recordLearning } from './task-store.js';
 
 // ---------------------------------------------------------------------------
@@ -235,6 +235,48 @@ const MIGRATIONS: Migration[] = [
         ).c > 0;
       if (!has) {
         db.exec('ALTER TABLE agent_activity ADD COLUMN summary_json TEXT');
+      }
+    },
+  },
+  {
+    version: 11,
+    description: 'Add content_hash column to context_chunks and backfill existing rows',
+    apply: (db): void => {
+      // Skip if context_chunks table does not exist (e.g. minimal test databases)
+      const tableExists =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='context_chunks'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!tableExists) return;
+
+      const hasColumn =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('context_chunks') WHERE name='content_hash'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasColumn) {
+        db.exec('ALTER TABLE context_chunks ADD COLUMN content_hash TEXT');
+      }
+
+      // Backfill rows that have no content_hash yet
+      const rows = db
+        .prepare('SELECT id, content FROM context_chunks WHERE content_hash IS NULL')
+        .all() as { id: number; content: string }[];
+
+      if (rows.length > 0) {
+        const update = db.prepare('UPDATE context_chunks SET content_hash = ? WHERE id = ?');
+        db.transaction(() => {
+          for (const row of rows) {
+            update.run(computeContentHash(row.content), row.id);
+          }
+        })();
       }
     },
   },
