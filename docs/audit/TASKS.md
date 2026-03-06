@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 132 | **In Progress:** 0 | **Done:** 44 (1063 archived)
+> **Pending:** 131 | **In Progress:** 0 | **Done:** 45 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -140,7 +140,7 @@
 | Task    | What                                                                                                   | Key File                                       | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ------- |
 | OB-1682 | Tests: compaction trigger threshold, identifier extraction, summary generation, retry on failure       | `tests/master/session-compactor.test.ts` (new) | ✅ Done |
-| OB-1683 | Tests: token economics tracking — discovery tokens, read tokens, retrieval count, /stats output format | `tests/memory/token-economics.test.ts` (new)   | Pending |
+| OB-1683 | Tests: token economics tracking — discovery tokens, read tokens, retrieval count, /stats output format | `tests/memory/token-economics.test.ts` (new)   | ✅ Done |
 
 **Phase 95 Total:** 18 tasks
 
