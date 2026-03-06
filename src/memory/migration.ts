@@ -221,6 +221,23 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 10,
+    description: 'Add summary_json column to agent_activity',
+    apply: (db): void => {
+      const has =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('agent_activity') WHERE name='summary_json'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!has) {
+        db.exec('ALTER TABLE agent_activity ADD COLUMN summary_json TEXT');
+      }
+    },
+  },
 ];
 
 /**

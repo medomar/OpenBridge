@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 160 | **In Progress:** 0 | **Done:** 16 (1063 archived)
+> **Pending:** 159 | **In Progress:** 0 | **Done:** 17 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -79,7 +79,7 @@
 | OB-1631 | Define `WorkerSummary` Zod schema: `{ request, investigated, completed, learned, next_steps, files_modified, files_read, error_summary? }` | `src/types/agent.ts`                    | ✅ Done |
 | OB-1632 | Update `worker-result-formatter.ts` — extract `WorkerSummary` from worker output text using structured parsing                             | `src/master/worker-result-formatter.ts` | ✅ Done |
 | OB-1633 | Extend `agent_activity` schema — add `summary_json` TEXT column (nullable) for storing serialized `WorkerSummary`                          | `src/memory/activity-store.ts`          | ✅ Done |
-| OB-1634 | Add migration (version 10) to ALTER TABLE `agent_activity` ADD COLUMN `summary_json`                                                       | `src/memory/migration.ts`               | Pending |
+| OB-1634 | Add migration (version 10) to ALTER TABLE `agent_activity` ADD COLUMN `summary_json`                                                       | `src/memory/migration.ts`               | ✅ Done |
 | OB-1635 | Master reads `next_steps` from 5 most recent worker summaries and injects into system prompt context                                       | `src/master/master-system-prompt.ts`    | Pending |
 | OB-1636 | Auto-update `memory.md` with `learned` items from worker summaries (append to knowledge section, dedup by content similarity)              | `src/master/dotfolder-manager.ts`       | Pending |
 
