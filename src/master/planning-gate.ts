@@ -1,10 +1,12 @@
 /**
- * Planning Gate (OB-1775)
+ * Planning Gate (OB-1775, OB-1776)
  *
  * Controls the two-phase execution model for Master AI task processing:
  *
- *   1. Analysis phase  — read-only workers investigate the codebase,
+ *   1. Analysis phase  — 1–2 read-only workers investigate the codebase,
  *      gather facts, and surface risks before any code is written.
+ *      Workers are built via buildAnalysisWorkerSpecs() and capped at
+ *      MAX_ANALYSIS_WORKERS (2).
  *
  *   2. Execution phase — code-edit workers implement the confirmed strategy.
  *      This phase only starts after the analysis phase concludes and the
@@ -19,6 +21,23 @@ import { randomUUID } from 'node:crypto';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('planning-gate');
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum number of read-only workers that may be spawned during the analysis
+ * phase. Keeping the cap at 2 avoids over-investigation for most tasks while
+ * still allowing a second worker for risk/dependency assessment.
+ */
+export const MAX_ANALYSIS_WORKERS = 2;
+
+/**
+ * Max agentic turns for each read-only analysis worker.
+ * Analysis workers explore and report — they don't need many turns.
+ */
+export const ANALYSIS_WORKER_MAX_TURNS = 10;
 
 // ---------------------------------------------------------------------------
 // Public Types
@@ -48,6 +67,23 @@ export interface PlanningWorker {
   output?: string;
   /** ISO 8601 timestamp when this worker completed. */
   completedAt?: string;
+}
+
+/**
+ * Specification for a read-only planning worker to be spawned during the
+ * analysis phase. Callers receive these specs from `buildAnalysisWorkerSpecs()`
+ * and are responsible for actually spawning the workers via AgentRunner, then
+ * calling `recordAnalysisWorker()` / `completeAnalysisWorker()` to track them.
+ */
+export interface AnalysisWorkerSpec {
+  /** Unique ID — must match the `PlanningWorker.id` passed to `recordAnalysisWorker()`. */
+  id: string;
+  /** Always 'read-only' — analysis workers must not modify files. */
+  profile: 'read-only';
+  /** Prompt/instructions for the worker. */
+  prompt: string;
+  /** Max agentic turns (bounded for fast analysis). */
+  maxTurns: number;
 }
 
 /** Live state for an active PlanningGate session. */
@@ -227,11 +263,20 @@ export class PlanningGate {
    * Register a read-only planning worker spawned during the analysis phase.
    * Must be called while status is `analysis`.
    *
+   * At most `MAX_ANALYSIS_WORKERS` (2) workers may be registered per session.
+   * Attempting to register a third worker throws an error.
+   *
    * @param worker The worker record to register.
    */
   recordAnalysisWorker(worker: PlanningWorker): void {
     this._requireStatus('analysis', 'recordAnalysisWorker');
-    this._state!.analysisWorkers.push({ ...worker });
+    const state = this._state!;
+    if (state.analysisWorkers.length >= MAX_ANALYSIS_WORKERS) {
+      throw new Error(
+        `PlanningGate.recordAnalysisWorker(): cannot register more than ${MAX_ANALYSIS_WORKERS} analysis workers per session`,
+      );
+    }
+    state.analysisWorkers.push({ ...worker });
   }
 
   /**
@@ -248,6 +293,78 @@ export class PlanningGate {
     worker.output = output;
     worker.completedAt = new Date().toISOString();
     return true;
+  }
+
+  // ── Analysis Worker Factory ──────────────────────────────────────
+
+  /**
+   * Build 1–2 read-only worker specifications for the analysis phase.
+   *
+   * Always generates two workers:
+   *
+   *   1. **Investigation worker** — reads relevant files and summarises what
+   *      already exists in the codebase that relates to the task.
+   *
+   *   2. **Risk-assessment worker** — identifies potential breakage points,
+   *      dependencies, and edge cases that the implementation must handle.
+   *
+   * Both workers use the `'read-only'` profile (Read, Glob, Grep only) and
+   * are capped at `ANALYSIS_WORKER_MAX_TURNS` turns so they return quickly.
+   *
+   * Callers must spawn the workers themselves (via AgentRunner), then call
+   * `recordAnalysisWorker()` and `completeAnalysisWorker()` to update state.
+   *
+   * @param taskDescription A plain-text description of the task to investigate.
+   * @returns Exactly two `AnalysisWorkerSpec` objects ready for spawning.
+   */
+  buildAnalysisWorkerSpecs(taskDescription: string): AnalysisWorkerSpec[] {
+    const investigationId = randomUUID();
+    const riskId = randomUUID();
+
+    const investigationPrompt = [
+      'You are a read-only investigation worker. Your job is to explore the codebase',
+      'and gather facts relevant to the following task. Do NOT modify any files.',
+      '',
+      `Task: ${taskDescription}`,
+      '',
+      'Investigate:',
+      '1. Which files and modules are most relevant to this task?',
+      '2. What does the current implementation look like in those areas?',
+      '3. Are there existing patterns or conventions to follow?',
+      '4. What tests currently cover this area?',
+      '',
+      'End your output with a brief summary of your findings (3–8 bullet points).',
+    ].join('\n');
+
+    const riskPrompt = [
+      'You are a read-only risk-assessment worker. Your job is to identify what could',
+      'go wrong when implementing the following task. Do NOT modify any files.',
+      '',
+      `Task: ${taskDescription}`,
+      '',
+      'Identify:',
+      '1. Which other parts of the codebase depend on the files likely to change?',
+      '2. What edge cases or inputs might break the implementation?',
+      '3. Are there any circular dependencies or shared-state hazards?',
+      '4. What is the minimum safe scope for this change?',
+      '',
+      'End your output with a brief risk summary (3–8 bullet points).',
+    ].join('\n');
+
+    return [
+      {
+        id: investigationId,
+        profile: 'read-only',
+        prompt: investigationPrompt,
+        maxTurns: ANALYSIS_WORKER_MAX_TURNS,
+      },
+      {
+        id: riskId,
+        profile: 'read-only',
+        prompt: riskPrompt,
+        maxTurns: ANALYSIS_WORKER_MAX_TURNS,
+      },
+    ];
   }
 
   // ── Inspection ──────────────────────────────────────────────────
