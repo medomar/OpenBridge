@@ -20,6 +20,39 @@ import {
 import type { Observation } from '../memory/observation-store.js';
 import type { WorkerSummary } from '../types/agent.js';
 
+// ---------------------------------------------------------------------------
+// Test file protection constants (OB-1788)
+// ---------------------------------------------------------------------------
+
+/** Profiles for which test file protection applies (mirrors master-manager.ts) */
+const TEST_PROTECTION_PROFILES = new Set(['code-edit', 'full-access']);
+
+/** In-prompt authorization marker set by master-manager.ts (OB-1787) */
+const AUTHORIZED_MARKER = 'AUTHORIZED: test modification permitted';
+
+/** Regex patterns identifying test file paths */
+const TEST_FILE_PATTERNS: RegExp[] = [
+  /(?:^|\/)tests\//,
+  /(?:^|\/)__tests__\//,
+  /\.test\.[jt]sx?$/,
+  /\.spec\.[jt]sx?$/,
+];
+
+/**
+ * Returns true if the file path matches any test file pattern.
+ */
+export function isTestFile(filePath: string): boolean {
+  return TEST_FILE_PATTERNS.some((re) => re.test(filePath));
+}
+
+/**
+ * Returns the subset of files that are test files.
+ * Used by OB-1788 to detect unauthorized test file modifications.
+ */
+export function detectTestFileModification(files: string[]): string[] {
+  return files.filter(isTestFile);
+}
+
 /**
  * Metadata about a completed worker execution.
  */
@@ -52,6 +85,12 @@ export interface WorkerResultMeta {
   turnsExhausted?: boolean;
   /** Maximum turns the worker was allowed (used in the partial warning message) */
   maxTurns?: number;
+  /**
+   * Whether this worker was explicitly authorized to modify test files (OB-1787/OB-1788).
+   * When false and test files are detected in the output, a flag is appended for Master review.
+   * Only relevant for code-edit and full-access profiles.
+   */
+  testModificationAuthorized?: boolean;
 }
 
 /**
@@ -87,6 +126,16 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
   if (meta.turnsExhausted) {
     const turns = meta.maxTurns ?? '?';
     body += `\n\n[PARTIAL — worker used all ${turns} turns, result may be incomplete]`;
+  }
+
+  // OB-1788: Detect unauthorized test file modifications and flag for Master review.
+  // Only applies to profiles that have test protection (code-edit, full-access).
+  if (TEST_PROTECTION_PROFILES.has(meta.profile) && !meta.testModificationAuthorized) {
+    const modifiedFiles = extractFilesModified(safeOutput);
+    const unauthorizedTestFiles = detectTestFileModification(modifiedFiles);
+    if (unauthorizedTestFiles.length > 0) {
+      body += `\n\n[TEST FILES MODIFIED — UNAUTHORIZED: ${unauthorizedTestFiles.join(', ')}]`;
+    }
   }
 
   return `[WORKER RESULT (${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel})]\n${body}\n[/WORKER RESULT]`;
@@ -177,7 +226,10 @@ export function buildWorkerFeedbackPrompt(formattedResults: string[]): string {
  */
 export function formatWorkerBatch(
   outcomes: PromiseSettledResult<AgentResult>[],
-  markers: Array<{ profile: string; body: { model?: string; tool?: string; prompt?: string } }>,
+  markers: Array<{
+    profile: string;
+    body: { model?: string; tool?: string; prompt?: string; allowTestModification?: boolean };
+  }>,
   workerIds?: string[],
   sessionId?: string,
 ): {
@@ -197,6 +249,11 @@ export function formatWorkerBatch(
 
     if (outcome.status === 'fulfilled') {
       const result = outcome.value;
+      // OB-1788: Determine if this worker was authorized to modify test files.
+      // Authorization comes from the SPAWN marker flag OR the in-prompt AUTHORIZED_MARKER text.
+      const isTestAuthorized =
+        marker.body.allowTestModification === true ||
+        (marker.body.prompt?.includes(AUTHORIZED_MARKER) ?? false);
       const meta: WorkerResultMeta = {
         workerIndex: i + 1,
         totalWorkers,
@@ -212,6 +269,10 @@ export function formatWorkerBatch(
           result.exitCode !== 0 ? classifyError(result.stderr, result.exitCode) : undefined,
         turnsExhausted: result.turnsExhausted,
         maxTurns: result.maxTurns,
+        // Only set for profiles where test protection is enforced
+        testModificationAuthorized: TEST_PROTECTION_PROFILES.has(marker.profile)
+          ? isTestAuthorized
+          : undefined,
       };
 
       if (result.exitCode === 0) {
