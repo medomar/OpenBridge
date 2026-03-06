@@ -10,7 +10,7 @@
  */
 
 import type { AgentResult, ErrorCategory } from '../core/agent-runner.js';
-import { classifyError } from '../core/agent-runner.js';
+import { classifyError, extractRemainingErrors } from '../core/agent-runner.js';
 import { parseCodexJsonlOutput } from '../core/adapters/codex-adapter.js';
 import {
   extractObservation,
@@ -91,6 +91,14 @@ export interface WorkerResultMeta {
    * Only relevant for code-edit and full-access profiles.
    */
   testModificationAuthorized?: boolean;
+  /**
+   * True when the worker hit the fix iteration cap before resolving all errors (OB-1790).
+   * When set, formatWorkerResult appends a [FIX CAP REACHED] block so the Master
+   * can decide whether to retry, split the task, or accept the partial result.
+   */
+  fixCapReached?: boolean;
+  /** Number of fix iterations the worker used before the cap was hit (OB-1790). */
+  fixIterationsUsed?: number;
 }
 
 /**
@@ -126,6 +134,22 @@ export function formatWorkerResult(meta: WorkerResultMeta, output: string): stri
   if (meta.turnsExhausted) {
     const turns = meta.maxTurns ?? '?';
     body += `\n\n[PARTIAL — worker used all ${turns} turns, result may be incomplete]`;
+  }
+
+  // OB-1790: When the fix iteration cap is hit, inject a structured report so the
+  // Master can decide the next action (retry, split, escalate, or accept partial).
+  if (meta.fixCapReached) {
+    const iters = meta.fixIterationsUsed ?? '?';
+    const remainingErrors = extractRemainingErrors(safeOutput);
+    const errorList =
+      remainingErrors.length > 0
+        ? remainingErrors.map((e) => `• ${e}`).join('\n')
+        : '(no specific error lines detected — review full output above)';
+    body +=
+      `\n\n[FIX CAP REACHED — ${iters} fix iterations exhausted, errors remain unresolved]\n` +
+      `Unresolved errors:\n${errorList}\n` +
+      `Decide: retry with narrower scope | split into subtasks | accept partial result\n` +
+      `[/FIX CAP REACHED]`;
   }
 
   // OB-1788: Detect unauthorized test file modifications and flag for Master review.
@@ -273,6 +297,9 @@ export function formatWorkerBatch(
         testModificationAuthorized: TEST_PROTECTION_PROFILES.has(marker.profile)
           ? isTestAuthorized
           : undefined,
+        // OB-1790: pass fix cap state so formatWorkerResult can build the escalation report
+        fixCapReached: result.fixCapReached,
+        fixIterationsUsed: result.fixIterationsUsed,
       };
 
       if (result.exitCode === 0) {
