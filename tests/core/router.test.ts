@@ -18,7 +18,7 @@ vi.mock('../../src/core/agent-runner.js', () => ({
   DEFAULT_MAX_TURNS_TASK: 15,
 }));
 
-import { Router, classifyMessagePriority } from '../../src/core/router.js';
+import { Router, classifyMessagePriority, classifyDocumentIntent } from '../../src/core/router.js';
 import { AgentOrchestrator } from '../../src/core/agent-orchestrator.js';
 import { MockConnector } from '../helpers/mock-connector.js';
 import { MockProvider } from '../helpers/mock-provider.js';
@@ -1662,6 +1662,101 @@ describe('Router', () => {
     it('should classify short questions ending in "?" as quick-answer (priority 1)', () => {
       // Short generic question — no keywords needed, just "?" + short length
       expect(classifyMessagePriority('Where is the config?')).toBe(1);
+    });
+
+    it('should classify document-generation tasks as complex-task (priority 3)', () => {
+      expect(classifyMessagePriority('create a presentation about Q1 results')).toBe(3);
+      expect(classifyMessagePriority('generate a report for the team')).toBe(3);
+      expect(classifyMessagePriority('write a proposal in docx format')).toBe(3);
+      expect(classifyMessagePriority('make a spreadsheet with the budget data')).toBe(3);
+    });
+  });
+
+  describe('classifyDocumentIntent (OB-1736)', () => {
+    it('detects pptx from explicit format keyword', () => {
+      expect(classifyDocumentIntent('create a pptx for the board meeting')).toBe('pptx');
+    });
+
+    it('detects pptx from .pptx extension', () => {
+      expect(classifyDocumentIntent('generate output.pptx')).toBe('pptx');
+    });
+
+    it('detects pptx from presentation keyword', () => {
+      expect(classifyDocumentIntent('create a presentation about Q1 results')).toBe('pptx');
+    });
+
+    it('detects pptx from slides keyword', () => {
+      expect(classifyDocumentIntent('make slides for the team meeting')).toBe('pptx');
+    });
+
+    it('detects pptx from slide deck keyword', () => {
+      expect(classifyDocumentIntent('build a slide deck for investors')).toBe('pptx');
+    });
+
+    it('detects xlsx from explicit format keyword', () => {
+      expect(classifyDocumentIntent('export data as xlsx')).toBe('xlsx');
+    });
+
+    it('detects xlsx from spreadsheet keyword', () => {
+      expect(classifyDocumentIntent('make a spreadsheet with the budget')).toBe('xlsx');
+    });
+
+    it('detects xlsx from excel keyword', () => {
+      expect(classifyDocumentIntent('generate an excel file with the metrics')).toBe('xlsx');
+    });
+
+    it('detects docx from explicit format keyword', () => {
+      expect(classifyDocumentIntent('write a docx report')).toBe('docx');
+    });
+
+    it('detects docx from .docx extension', () => {
+      expect(classifyDocumentIntent('save as output.docx')).toBe('docx');
+    });
+
+    it('detects docx from proposal keyword', () => {
+      expect(classifyDocumentIntent('write a proposal for the client')).toBe('docx');
+    });
+
+    it('detects docx from memo keyword', () => {
+      expect(classifyDocumentIntent('draft a memo to the engineering team')).toBe('docx');
+    });
+
+    it('detects docx from word document keyword', () => {
+      expect(classifyDocumentIntent('create a word document summarising the project')).toBe('docx');
+    });
+
+    it('detects docx from generic "create a document"', () => {
+      expect(classifyDocumentIntent('create a document outlining the architecture')).toBe('docx');
+    });
+
+    it('detects pdf from explicit format keyword', () => {
+      expect(classifyDocumentIntent('generate a pdf of the results')).toBe('pdf');
+    });
+
+    it('detects pdf from .pdf extension', () => {
+      expect(classifyDocumentIntent('save as report.pdf')).toBe('pdf');
+    });
+
+    it('detects pdf from report + creation verb', () => {
+      expect(classifyDocumentIntent('create a report for the stakeholders')).toBe('pdf');
+      expect(classifyDocumentIntent('generate a report on system performance')).toBe('pdf');
+    });
+
+    it('returns null for messages with no document intent', () => {
+      expect(classifyDocumentIntent('fix the login bug')).toBeNull();
+      expect(classifyDocumentIntent('what is the entry point?')).toBeNull();
+      expect(classifyDocumentIntent('implement auth middleware')).toBeNull();
+      expect(classifyDocumentIntent('refactor the router')).toBeNull();
+    });
+
+    it('is case-insensitive', () => {
+      expect(classifyDocumentIntent('Create a PRESENTATION for the CEO')).toBe('pptx');
+      expect(classifyDocumentIntent('GENERATE A SPREADSHEET')).toBe('xlsx');
+    });
+
+    it('pptx takes precedence over later patterns', () => {
+      // pptx keyword appears first in the matching priority
+      expect(classifyDocumentIntent('create a pptx spreadsheet')).toBe('pptx');
     });
   });
 
