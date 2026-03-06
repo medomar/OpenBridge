@@ -11,6 +11,8 @@ import {
   computeTemporalScore,
   computeHybridScore,
   applyMMR,
+  searchIndex,
+  getDetails,
 } from '../../src/memory/retrieval.js';
 import { NoOpEmbeddingProvider } from '../../src/memory/embedding-provider.js';
 import type { ConversationEntry } from '../../src/memory/index.js';
@@ -1184,6 +1186,318 @@ describe('retrieval.ts', () => {
     it('preserves plain words without modification other than quoting', () => {
       const result = sanitizeFts5Query('authentication');
       expect(result).toBe('"authentication"');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Progressive disclosure — searchIndex (OB-1658) + getDetails (OB-1659)
+  // -------------------------------------------------------------------------
+
+  describe('searchIndex', () => {
+    it('returns empty array when no chunks exist', async () => {
+      const results = await searchIndex(db, 'authentication');
+      expect(results).toEqual([]);
+    });
+
+    it('returns IndexResult objects with all required fields', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/core/auth.ts',
+          category: 'patterns',
+          content: 'Authentication middleware validates JWT tokens on every request.',
+        }),
+      ]);
+
+      const results = await searchIndex(db, 'authentication');
+      expect(results.length).toBeGreaterThan(0);
+
+      const result = results[0]!;
+      expect(typeof result.id).toBe('number');
+      expect(typeof result.title).toBe('string');
+      expect(typeof result.score).toBe('number');
+      expect(typeof result.snippet).toBe('string');
+      expect(typeof result.source_file).toBe('string');
+      expect(typeof result.category).toBe('string');
+    });
+
+    it('snippet is at most 80 characters', async () => {
+      const longContent =
+        'This is a very long chunk content that exceeds eighty characters and should be truncated by the snippet field in searchIndex results.';
+      void storeChunks(db, [makeChunk({ content: longContent })]);
+
+      const results = await searchIndex(db, 'long chunk content');
+      expect(results.length).toBeGreaterThan(0);
+      for (const result of results) {
+        expect(result.snippet.length).toBeLessThanOrEqual(80);
+      }
+    });
+
+    it('top result scores 1.0 when there is one result', async () => {
+      void storeChunks(db, [makeChunk({ content: 'unique bridge connector routing module' })]);
+
+      const results = await searchIndex(db, 'unique bridge connector routing');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]!.score).toBe(1.0);
+    });
+
+    it('scores decay from 1.0 to 1/n across multiple results', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/core/router.ts', content: 'router handles message routing' }),
+        makeChunk({ scope: 'src/core/auth.ts', content: 'router authentication filter chain' }),
+        makeChunk({
+          scope: 'src/core/queue.ts',
+          content: 'router queue message processing router',
+        }),
+      ]);
+
+      const results = await searchIndex(db, 'router');
+      expect(results.length).toBeGreaterThanOrEqual(2);
+
+      // Scores must be in descending order
+      for (let i = 1; i < results.length; i++) {
+        expect(results[i]!.score).toBeLessThanOrEqual(results[i - 1]!.score);
+      }
+
+      // Top score is 1.0; bottom score is >= 1/n
+      const n = results.length;
+      expect(results[0]!.score).toBe(1.0);
+      expect(results[n - 1]!.score).toBeGreaterThanOrEqual(1 / n - 0.01);
+    });
+
+    it('title is derived from the last path component of scope', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/core/router.ts',
+          content: 'The router module handles message routing between connectors.',
+        }),
+      ]);
+
+      const results = await searchIndex(db, 'router module');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]!.title).toBe('router.ts');
+      expect(results[0]!.source_file).toBe('src/core/router.ts');
+    });
+
+    it('title is truncated to 60 characters for very long scope components', async () => {
+      const longScope = 'src/core/' + 'a'.repeat(80) + '.ts';
+      void storeChunks(db, [
+        makeChunk({
+          scope: longScope,
+          content: 'module with extremely long filename in scope path',
+        }),
+      ]);
+
+      const results = await searchIndex(db, 'extremely long filename');
+      if (results.length > 0) {
+        expect(results[0]!.title.length).toBeLessThanOrEqual(60);
+      }
+    });
+
+    it('category field matches the stored chunk category', async () => {
+      void storeChunks(db, [
+        makeChunk({ category: 'dependencies', content: 'npm package dependency resolution list' }),
+      ]);
+
+      const results = await searchIndex(db, 'dependency resolution');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]!.category).toBe('dependencies');
+    });
+
+    it('respects limit option', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/a.ts', content: 'connector routing module one' }),
+        makeChunk({ scope: 'src/b.ts', content: 'connector routing module two' }),
+        makeChunk({ scope: 'src/c.ts', content: 'connector routing module three' }),
+      ]);
+
+      const results = await searchIndex(db, 'connector routing', { limit: 2 });
+      expect(results.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getDetails (OB-1659)
+  // -------------------------------------------------------------------------
+
+  describe('getDetails', () => {
+    it('returns empty array for empty id list', () => {
+      const result = getDetails(db, []);
+      expect(result).toEqual([]);
+    });
+
+    it('returns full chunk content for a valid id', async () => {
+      void storeChunks(db, [
+        makeChunk({ content: 'Full content of the authentication module with all details.' }),
+      ]);
+
+      // Retrieve the inserted ID via searchIndex
+      const indexResults = await searchIndex(db, 'authentication module');
+      expect(indexResults.length).toBeGreaterThan(0);
+
+      const id = indexResults[0]!.id;
+      const chunks = getDetails(db, [id]);
+
+      expect(chunks.length).toBe(1);
+      expect(chunks[0]!.content).toBe(
+        'Full content of the authentication module with all details.',
+      );
+      expect(chunks[0]!.id).toBe(id);
+    });
+
+    it('preserves input order when fetching multiple ids', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/first.ts', content: 'first module discovery scanning order' }),
+        makeChunk({ scope: 'src/second.ts', content: 'second module discovery scanning order' }),
+        makeChunk({ scope: 'src/third.ts', content: 'third module discovery scanning order' }),
+      ]);
+
+      const indexResults = await searchIndex(db, 'discovery scanning order', { limit: 3 });
+      expect(indexResults.length).toBeGreaterThanOrEqual(2);
+
+      const ids = indexResults.map((r) => r.id);
+      const chunks = getDetails(db, ids);
+
+      // getDetails returns chunks in the same order as the input ids
+      for (let i = 0; i < ids.length; i++) {
+        expect(chunks[i]!.id).toBe(ids[i]);
+      }
+    });
+
+    it('silently omits ids that do not correspond to existing chunks', () => {
+      const nonExistentId = 999999;
+      const chunks = getDetails(db, [nonExistentId]);
+      expect(chunks).toEqual([]);
+    });
+
+    it('handles mix of valid and non-existent ids', async () => {
+      void storeChunks(db, [makeChunk({ content: 'valid chunk for mixed id test' })]);
+
+      const indexResults = await searchIndex(db, 'valid chunk mixed');
+      expect(indexResults.length).toBeGreaterThan(0);
+
+      const validId = indexResults[0]!.id;
+      const chunks = getDetails(db, [validId, 888888, 777777]);
+
+      // Only the valid chunk should be returned
+      expect(chunks.length).toBe(1);
+      expect(chunks[0]!.id).toBe(validId);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 2-step RAG flow (OB-1660)
+  // -------------------------------------------------------------------------
+
+  describe('2-step RAG flow', () => {
+    it('step 1 searchIndex returns compact results with fewer tokens than full chunks', async () => {
+      const longContent = 'A'.repeat(500) + ' router bridge connector authentication module.';
+      void storeChunks(db, [makeChunk({ content: longContent })]);
+
+      const indexResults = await searchIndex(db, 'router bridge connector authentication');
+      expect(indexResults.length).toBeGreaterThan(0);
+
+      // Index result snippet is bounded at 80 chars — much shorter than full content
+      const totalSnippetChars = indexResults.reduce((sum, r) => sum + r.snippet.length, 0);
+      const totalContentChars = longContent.length * indexResults.length;
+      expect(totalSnippetChars).toBeLessThan(totalContentChars);
+    });
+
+    it('step 2 filters low-scoring results by score threshold', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/core/router.ts',
+          content: 'bridge router message routing connector',
+        }),
+        makeChunk({
+          scope: 'src/core/auth.ts',
+          content: 'bridge router authentication validation',
+        }),
+        makeChunk({ scope: 'src/unrelated.ts', content: 'bridge router unrelated content xyz' }),
+      ]);
+
+      const indexResults = await searchIndex(db, 'bridge router', { limit: 3 });
+      expect(indexResults.length).toBeGreaterThan(0);
+
+      // Apply a score threshold (step 2): only keep results above 0.3
+      const scoreThreshold = 0.3;
+      const relevant = indexResults.filter((r) => r.score > scoreThreshold);
+
+      // At minimum the top result always scores 1.0 and passes the threshold
+      expect(relevant.length).toBeGreaterThan(0);
+      expect(relevant[0]!.score).toBeGreaterThan(scoreThreshold);
+    });
+
+    it('step 3 getDetails returns full content only for relevant ids', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/core/router.ts',
+          content:
+            'The routing module handles message routing between connectors and providers in full detail.',
+        }),
+        makeChunk({
+          scope: 'src/core/auth.ts',
+          content:
+            'The authentication module validates JWT tokens and enforces whitelist rules in full detail.',
+        }),
+      ]);
+
+      // Step 1: compact index search
+      const indexResults = await searchIndex(db, 'routing module connector', { limit: 2 });
+      expect(indexResults.length).toBeGreaterThan(0);
+
+      // Step 2: filter by score (all pass since scores are always >= 1/n)
+      const topIds = indexResults.map((r) => r.id);
+
+      // Step 3: fetch full content
+      const chunks = getDetails(db, topIds);
+      expect(chunks.length).toBe(topIds.length);
+
+      // Full content is longer than the 80-char snippet
+      for (let i = 0; i < chunks.length; i++) {
+        expect(chunks[i]!.content.length).toBeGreaterThan(indexResults[i]!.snippet.length);
+      }
+    });
+
+    it('full 2-step flow: searchIndex → filter → getDetails returns expected chunks', async () => {
+      void storeChunks(db, [
+        makeChunk({
+          scope: 'src/memory/chunk-store.ts',
+          content:
+            'Chunk store manages workspace knowledge base with FTS5 full-text search indexing.',
+        }),
+        makeChunk({
+          scope: 'src/memory/retrieval.ts',
+          content:
+            'Retrieval module provides hybrid FTS5 and vector search for workspace knowledge.',
+        }),
+      ]);
+
+      // Step 1
+      const indexResults = await searchIndex(db, 'workspace knowledge FTS5 search');
+      expect(indexResults.length).toBeGreaterThanOrEqual(1);
+
+      // Verify compact structure
+      for (const r of indexResults) {
+        expect(r.snippet.length).toBeLessThanOrEqual(80);
+        expect(r.score).toBeGreaterThan(0);
+        expect(r.id).toBeGreaterThan(0);
+      }
+
+      // Step 2: filter by score > 0.3
+      const relevant = indexResults.filter((r) => r.score > 0.3);
+      expect(relevant.length).toBeGreaterThan(0);
+
+      // Step 3: fetch full content
+      const ids = relevant.map((r) => r.id);
+      const chunks = getDetails(db, ids);
+      expect(chunks.length).toBe(ids.length);
+
+      // Each chunk has full content (not truncated)
+      for (const chunk of chunks) {
+        expect(chunk.content.length).toBeGreaterThan(0);
+        expect(chunk.scope).toBeTruthy();
+        expect(chunk.category).toBeTruthy();
+      }
     });
   });
 });
