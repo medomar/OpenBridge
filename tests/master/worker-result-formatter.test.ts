@@ -4,6 +4,7 @@ import {
   formatWorkerError,
   buildWorkerFeedbackPrompt,
   formatWorkerBatch,
+  extractWorkerSummary,
 } from '../../src/master/worker-result-formatter.js';
 import type { WorkerResultMeta } from '../../src/master/worker-result-formatter.js';
 import type { AgentResult } from '../../src/core/agent-runner.js';
@@ -542,6 +543,120 @@ describe('Worker Result Formatter', () => {
       const { observations } = formatWorkerBatch(outcomes, markers, ['worker-1'], 'session-abc');
 
       expect(observations).toHaveLength(0);
+    });
+
+    it('returns workerSummaries for each fulfilled worker (OB-1632)', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        {
+          status: 'fulfilled',
+          value: {
+            stdout: 'Fixed the auth bug in src/core/auth.ts',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 1000,
+            retryCount: 0,
+          },
+        },
+        {
+          status: 'rejected',
+          reason: new Error('Spawn failed'),
+        },
+      ];
+
+      const markers = [
+        { profile: 'code-edit', body: { model: 'sonnet', prompt: 'Fix the auth bug' } },
+        { profile: 'read-only', body: { model: 'haiku', prompt: 'Investigate routes' } },
+      ];
+
+      const { workerSummaries } = formatWorkerBatch(outcomes, markers);
+
+      // Only fulfilled workers produce summaries
+      expect(workerSummaries).toHaveLength(1);
+      expect(workerSummaries[0]).toHaveProperty('request', 'Fix the auth bug');
+      expect(workerSummaries[0]).toHaveProperty('files_modified');
+      expect(workerSummaries[0]).toHaveProperty('files_read');
+    });
+
+    it('returns empty workerSummaries when all workers are rejected', () => {
+      const outcomes: PromiseSettledResult<AgentResult>[] = [
+        { status: 'rejected', reason: new Error('Spawn failed') },
+      ];
+
+      const markers = [{ profile: 'code-edit', body: {} }];
+
+      const { workerSummaries } = formatWorkerBatch(outcomes, markers);
+
+      expect(workerSummaries).toHaveLength(0);
+    });
+  });
+
+  describe('extractWorkerSummary', () => {
+    it('sets request from the input prompt', () => {
+      const summary = extractWorkerSummary('Some output text here.', 'Fix the login bug');
+      expect(summary.request).toBe('Fix the login bug');
+    });
+
+    it('uses "unknown" when request is empty', () => {
+      const summary = extractWorkerSummary('Some output here.', '');
+      expect(summary.request).toBe('unknown');
+    });
+
+    it('extracts completed field from summary-verb lines', () => {
+      const output = 'Fixed the authentication issue in router.ts\nUpdated session handling.';
+      const summary = extractWorkerSummary(output, 'Fix auth');
+      expect(summary.completed).toMatch(/fixed|updated/i);
+    });
+
+    it('extracts completed field from markdown Summary section', () => {
+      const output = '## Summary\nAdded retry logic for failed requests.\n## Next Steps\nTest it.';
+      const summary = extractWorkerSummary(output, 'Add retry logic');
+      expect(summary.completed).toContain('Added retry logic');
+    });
+
+    it('extracts next_steps from markdown section', () => {
+      const output =
+        'Did the work.\n\n## Next Steps\nRun tests on the new endpoint.\nDeploy to staging.';
+      const summary = extractWorkerSummary(output, 'Implement endpoint');
+      expect(summary.next_steps).toMatch(/run tests|deploy/i);
+    });
+
+    it('extracts investigated field from markdown Analysis section', () => {
+      const output =
+        '## Analysis\nRead src/core/auth.ts and reviewed the token logic.\n## Result\nDone.';
+      const summary = extractWorkerSummary(output, 'Investigate auth');
+      expect(summary.investigated).toContain('Read src/core/auth.ts');
+    });
+
+    it('extracts files_modified using path patterns', () => {
+      const output = 'Updated src/core/auth.ts with new token validation logic.';
+      const summary = extractWorkerSummary(output, 'Fix auth');
+      expect(summary.files_modified).toContain('src/core/auth.ts');
+    });
+
+    it('does not set error_summary when isError is false', () => {
+      const summary = extractWorkerSummary('All done successfully.', 'Do task', false);
+      expect(summary.error_summary).toBeUndefined();
+    });
+
+    it('sets error_summary when isError is true', () => {
+      const output = 'error: Cannot find module src/missing.ts\nProcess exited with code 1.';
+      const summary = extractWorkerSummary(output, 'Run task', true);
+      expect(summary.error_summary).toBeDefined();
+      expect(summary.error_summary!.length).toBeGreaterThan(0);
+    });
+
+    it('returns empty strings for undetected fields', () => {
+      const summary = extractWorkerSummary('Nothing to extract here.', 'Do something');
+      expect(summary.investigated).toBe('');
+      expect(summary.completed).toBe('');
+      expect(summary.learned).toBe('');
+      expect(summary.next_steps).toBe('');
+    });
+
+    it('caps extracted fields at 300 characters', () => {
+      const longLine = 'Fixed '.padEnd(400, 'x');
+      const summary = extractWorkerSummary(longLine, 'Fix stuff');
+      expect(summary.completed.length).toBeLessThanOrEqual(300);
     });
   });
 });

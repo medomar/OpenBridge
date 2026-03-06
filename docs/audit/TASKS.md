@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 162 | **In Progress:** 0 | **Done:** 14 (1063 archived)
+> **Pending:** 161 | **In Progress:** 0 | **Done:** 15 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -77,7 +77,7 @@
 | Task    | What                                                                                                                                       | Key File                                | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- | ------- |
 | OB-1631 | Define `WorkerSummary` Zod schema: `{ request, investigated, completed, learned, next_steps, files_modified, files_read, error_summary? }` | `src/types/agent.ts`                    | ✅ Done |
-| OB-1632 | Update `worker-result-formatter.ts` — extract `WorkerSummary` from worker output text using structured parsing                             | `src/master/worker-result-formatter.ts` | Pending |
+| OB-1632 | Update `worker-result-formatter.ts` — extract `WorkerSummary` from worker output text using structured parsing                             | `src/master/worker-result-formatter.ts` | ✅ Done |
 | OB-1633 | Extend `agent_activity` schema — add `summary_json` TEXT column (nullable) for storing serialized `WorkerSummary`                          | `src/memory/activity-store.ts`          | Pending |
 | OB-1634 | Add migration (version 10) to ALTER TABLE `agent_activity` ADD COLUMN `summary_json`                                                       | `src/memory/migration.ts`               | Pending |
 | OB-1635 | Master reads `next_steps` from 5 most recent worker summaries and injects into system prompt context                                       | `src/master/master-system-prompt.ts`    | Pending |
