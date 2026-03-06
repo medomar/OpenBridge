@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 176 | **In Progress:** 0 | **Done:** 0 (1063 archived)
+> **Pending:** 175 | **In Progress:** 0 | **Done:** 1 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -53,7 +53,7 @@
 
 | Task    | What                                                                                                                                                                                              | Key File                                | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------- |
-| OB-1618 | Add `observations` table to SQLite — `id`, `session_id`, `worker_id`, `type`, `title`, `narrative`, `facts` (JSON), `concepts` (JSON), `files_read` (JSON), `files_modified` (JSON), `created_at` | `src/memory/database.ts`                | Pending |
+| OB-1618 | Add `observations` table to SQLite — `id`, `session_id`, `worker_id`, `type`, `title`, `narrative`, `facts` (JSON), `concepts` (JSON), `files_read` (JSON), `files_modified` (JSON), `created_at` | `src/memory/database.ts`                | ✅ Done |
 | OB-1619 | Add migration (version 9) for `observations` table with idempotent guard check                                                                                                                    | `src/memory/migration.ts`               | Pending |
 | OB-1620 | Add `observations_fts` FTS5 virtual table on `title`, `narrative` columns with sync triggers (INSERT, UPDATE, DELETE)                                                                             | `src/memory/database.ts`                | Pending |
 | OB-1621 | Create `observation-store.ts` — CRUD: `insertObservation()`, `getBySession()`, `getByWorker()`, `searchObservations()` (FTS5), `getRecentByType()`                                                | `src/memory/observation-store.ts` (new) | Pending |
