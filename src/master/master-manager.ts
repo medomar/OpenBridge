@@ -94,6 +94,7 @@ import {
   loadAllSkillPacks,
 } from './skill-pack-loader.js';
 import { classifyDocumentIntent } from '../core/router.js';
+import { PlanningGate, shouldBypassPlanning } from './planning-gate.js';
 
 const logger = createLogger('master-manager');
 
@@ -626,6 +627,8 @@ export class MasterManager {
   private compactor: SessionCompactor | null = null;
   /** Active skill packs — built-ins merged with user-defined overrides (OB-1754). */
   private activeSkillPacks: SkillPack[] = [...BUILT_IN_SKILL_PACKS];
+  /** Planning gate — two-phase execution guard for complex tasks (OB-1779). */
+  private readonly planningGate = new PlanningGate();
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -5406,6 +5409,72 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         await progress?.({ type: 'planning' });
       }
 
+      // ── Planning Gate (OB-1779) ─────────────────────────────────────────────
+      // Reset the gate for each new message so no state leaks between user turns.
+      // For complex tasks, run up to 2 read-only analysis workers before the Master
+      // generates SPAWN execution markers — gating execution on prior investigation.
+      this.planningGate.reset();
+      let analysisContext: string | null = null;
+      if (taskClass === 'complex-task') {
+        const bypassDecision = shouldBypassPlanning(message.content);
+        if (bypassDecision.bypass) {
+          this.planningGate.bypass(message.content, bypassDecision.reason);
+          logger.debug({ reason: bypassDecision.reason }, 'Planning gate: bypassed');
+        } else {
+          // Analysis phase — spawn read-only workers to investigate before execution (OB-1776)
+          const analysisSpecs = this.planningGate.buildAnalysisWorkerSpecs(message.content);
+          this.planningGate.startAnalysis(message.content);
+          await Promise.all(
+            analysisSpecs.map(async (spec) => {
+              this.planningGate.recordAnalysisWorker({
+                id: spec.id,
+                prompt: spec.prompt,
+                spawnedAt: new Date().toISOString(),
+              });
+              const analysisOpts: SpawnOptions = {
+                workspacePath: this.workspacePath,
+                prompt: spec.prompt,
+                allowedTools: [...TOOLS_READ_ONLY],
+                maxTurns: spec.maxTurns,
+              };
+              try {
+                const ar = await this.agentRunner.spawn(analysisOpts);
+                const out =
+                  ar.exitCode === 0
+                    ? ar.stdout.trim()
+                    : `[analysis worker error: ${ar.stderr.slice(0, 300)}]`;
+                this.planningGate.completeAnalysisWorker(spec.id, out);
+              } catch (err) {
+                this.planningGate.completeAnalysisWorker(
+                  spec.id,
+                  `[analysis worker failed: ${err instanceof Error ? err.message : String(err)}]`,
+                );
+              }
+            }),
+          );
+          if (this.planningGate.canCompleteAnalysis) {
+            const aggregated = this.planningGate.aggregateWorkerOutputs();
+            this.planningGate.completeAnalysis(aggregated);
+            this.planningGate.confirmApproach('Proceeding with execution workers');
+            analysisContext = `## Pre-task Analysis\n\n${aggregated}`;
+            logger.info(
+              { workerCount: this.planningGate.completedAnalysisWorkerCount },
+              'Planning gate: analysis complete, execution phase unlocked',
+            );
+          } else {
+            // Partial analysis — bypass gate rather than block execution
+            logger.warn('Planning gate: not all analysis workers completed — bypassing gate');
+            this.planningGate.bypass(message.content, 'analysis workers incomplete — fallback');
+          }
+        }
+      } else {
+        this.planningGate.bypass(
+          message.content,
+          `task class '${taskClass}' does not require planning`,
+        );
+      }
+      // ── End Planning Gate ───────────────────────────────────────────────────
+
       // Check if task targets a specific sub-master's scope (OB-755)
       // For non-trivial tasks, detect file-path mentions that belong to a sub-project
       // and route directly to that sub-master's context instead of the root Master.
@@ -5474,6 +5543,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           (spawnOpts.systemPrompt ?? '') +
           '\n\n' +
           formatTargetedReaderSection(targetedReaderContext);
+      }
+      // Inject planning gate analysis output into the Master's system prompt (OB-1779)
+      if (analysisContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + analysisContext;
       }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
@@ -5567,6 +5640,15 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
           // (3) Emit spawning event — N workers are being created
           await progress?.({ type: 'spawning', workerCount: n });
+
+          // Planning gate guard (OB-1779): warn if execution workers are spawning
+          // without a completed planning phase (e.g. gate was bypassed or not run).
+          if (!this.planningGate.allowsExecution) {
+            logger.warn(
+              { gateStatus: this.planningGate.status },
+              'Planning gate: spawning execution workers without completed analysis phase',
+            );
+          }
 
           // (4) Emit worker-progress + worker-result events as each worker completes
           const feedbackPrompt = await this.handleSpawnMarkers(
