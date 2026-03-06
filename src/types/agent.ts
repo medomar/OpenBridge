@@ -508,6 +508,12 @@ export const DocumentSkillPromptsSchema = z.object({
   formatting: z.string().optional(),
   /** Example or reference output to guide the AI */
   example: z.string().optional(),
+  /**
+   * Concise worker-injection prompt — injected into the worker's system prompt
+   * when the master assigns a document generation task. Covers dependency setup,
+   * file output conventions, and key formatting constraints in ≤ 300 words.
+   */
+  workerPrompt: z.string().optional(),
 });
 
 /**
