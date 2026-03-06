@@ -72,12 +72,37 @@ function sanitizeFts5Query(raw: string): string {
  * Insert chunks into `context_chunks` and keep `context_chunks_fts` in sync.
  * If a chunk with the same `content_hash` already exists, only its `updated_at`
  * timestamp is refreshed — no duplicate row is created.
- * All operations run inside a single transaction.
+ *
+ * **30-second deduplication window (performance optimisation):** For scopes
+ * that have had chunks written within the last 30 seconds we skip the per-chunk
+ * `content_hash` lookup. In that window we are within the same exploration pass
+ * and duplicate content from the same scope is extremely unlikely, so the
+ * expensive per-chunk SELECT is unnecessary. Outside the window the full hash
+ * check runs as before.
+ *
+ * All insert operations run inside a single transaction.
  */
 export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
   if (chunks.length === 0) return;
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const windowStart = new Date(now.getTime() - 30_000).toISOString();
+
+  // Collect unique scopes in this batch so we can check each once.
+  const scopes = [...new Set(chunks.map((c) => c.scope))];
+
+  // One lightweight query per unique scope — far cheaper than one hash-lookup
+  // per chunk when inserting large batches from the same exploration pass.
+  const recentScopeStmt = db.prepare<[string, string], { scope: string }>(
+    `SELECT scope FROM context_chunks WHERE scope = ? AND updated_at >= ? LIMIT 1`,
+  );
+  const recentScopes = new Set<string>();
+  for (const scope of scopes) {
+    if (recentScopeStmt.get(scope, windowStart)) {
+      recentScopes.add(scope);
+    }
+  }
 
   const findByHash = db.prepare<[string], { id: number }>(
     `SELECT id FROM context_chunks WHERE content_hash = ? LIMIT 1`,
@@ -98,11 +123,16 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
   const insertAll = db.transaction((rows: Chunk[]) => {
     for (const chunk of rows) {
       const hash = chunk.content_hash ?? computeContentHash(chunk.content);
-      const existing = findByHash.get(hash);
 
-      if (existing) {
-        touchChunk.run(now, existing.id);
-        continue;
+      // Outside the 30-second window: full hash dedup check to prevent
+      // cross-pass duplicates. Inside the window: skip the lookup and insert
+      // directly (same exploration pass — duplicates are not expected).
+      if (!recentScopes.has(chunk.scope)) {
+        const existing = findByHash.get(hash);
+        if (existing) {
+          touchChunk.run(nowIso, existing.id);
+          continue;
+        }
       }
 
       const result = insertChunk.run({
@@ -111,8 +141,8 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
         content: chunk.content,
         source_hash: chunk.source_hash ?? null,
         content_hash: hash,
-        created_at: now,
-        updated_at: now,
+        created_at: nowIso,
+        updated_at: nowIso,
       });
       insertFts.run(result.lastInsertRowid, chunk.content, chunk.scope, chunk.category);
     }

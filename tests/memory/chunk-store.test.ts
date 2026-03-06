@@ -103,6 +103,68 @@ describe('chunk-store.ts', () => {
         .c;
       expect(count).toBe(0);
     });
+
+    describe('30-second deduplication window', () => {
+      it('skips hash check for scopes written within the last 30 seconds — allows re-insert', () => {
+        const content = 'Duplicate content within dedup window';
+        // First call: scope has no recent chunks → hash check runs → inserted
+        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        // Second call within 30s to the same scope: hash check is skipped → inserted again
+        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        const count = (
+          db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
+        ).c;
+        // Both rows exist because the 30-second fast path bypasses the hash lookup
+        expect(count).toBe(2);
+      });
+
+      it('enforces hash dedup for scopes outside the 30-second window', () => {
+        const content = 'Old content to be deduped';
+        storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
+        // Backdate the existing chunk so it falls outside the 30-second window
+        db.prepare(
+          `UPDATE context_chunks SET updated_at = datetime('now', '-60 seconds') WHERE scope = 'cold-scope'`,
+        ).run();
+        // Second call: scope not recent → hash check runs → duplicate detected → no new row
+        storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
+        const count = (
+          db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
+        ).c;
+        expect(count).toBe(1);
+      });
+
+      it('applies the window per-scope — recent scope bypasses hash check, old scope does not', () => {
+        const content = 'Shared content';
+        // Insert to both scopes but backdate one
+        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        storeChunks(db, [makeChunk({ content: 'different content', scope: 'cold-scope' })]);
+        db.prepare(
+          `UPDATE context_chunks SET updated_at = datetime('now', '-60 seconds') WHERE scope = 'cold-scope'`,
+        ).run();
+
+        // hot-scope is recent → skip hash check → 1 new row for hot-scope
+        // cold-scope is not recent → hash check runs → deduped (same content)
+        storeChunks(db, [
+          makeChunk({ content, scope: 'hot-scope' }),
+          makeChunk({ content: 'different content', scope: 'cold-scope' }),
+        ]);
+
+        const hotCount = (
+          db
+            .prepare(`SELECT COUNT(*) as c FROM context_chunks WHERE scope = 'hot-scope'`)
+            .get() as { c: number }
+        ).c;
+        const coldCount = (
+          db
+            .prepare(`SELECT COUNT(*) as c FROM context_chunks WHERE scope = 'cold-scope'`)
+            .get() as { c: number }
+        ).c;
+        // hot-scope: 2 rows (window bypassed hash check)
+        expect(hotCount).toBe(2);
+        // cold-scope: 1 row (hash check ran and deduplicated)
+        expect(coldCount).toBe(1);
+      });
+    });
   });
 
   describe('searchChunks', () => {

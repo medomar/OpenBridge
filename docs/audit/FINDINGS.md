@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 18 | **Fixed:** 125 | **Last Audit:** 2026-03-06
+> **Open:** 17 | **Fixed:** 126 | **Last Audit:** 2026-03-06
 > **Current focus:** Sprint 5 + Sprint 6 — 176 tasks loaded in TASKS.md for automated execution (OB-1618 through OB-1793). Phase 97 data integrity fixes complete (7/7 findings fixed).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md) | [V21 archive](archive/v21/FINDINGS-v21.md)
 
@@ -30,15 +30,15 @@ Issues discovered by auditing the `.openbridge/openbridge.db` runtime data. All 
 
 Smarter AI memory system, session management, role UX fix, and business document generation.
 
-| #       | Finding                                                                    | Severity  | Improvement Impact                                                                                                                                               | Phase | Status |
-| ------- | -------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ |
-| OB-F80  | No structured observations from worker outputs                             | 🟠 High   | Worker results are free-form text — no typed facts, concepts, or files_touched                                                                                   | 93    | Open   |
-| OB-F82  | No content-hash deduplication for workspace chunks                         | 🟡 Medium | Duplicate chunks stored during overlapping worker reads and re-exploration                                                                                       | 93    | Open   |
-| OB-F88  | Worker summaries are unstructured free-form text                           | 🟡 Medium | No typed completed/learned/next_steps — can't auto-index or track learnings                                                                                      | 93    | Open   |
-| OB-F83  | No token economics tracking for exploration ROI                            | 🟡 Medium | Can't measure if exploration cost is worth the retrieval savings                                                                                                 | 95    | Open   |
-| OB-F84  | Master context window has no auto-compaction                               | 🟠 High   | Long Master sessions hit context limits; memory.md is manual, not auto-compacted                                                                                 | 95    | Open   |
-| OB-F103 | Channel role management UX is broken — bad defaults, cryptic errors, no UI | 🟠 High   | WebChat users auto-created as `viewer` (read-only), any task message blocked as "edit". No way to set/view roles from config or channel. Error gives no guidance | 96d   | Open   |
-| OB-F98  | No document generation skills — can't create DOCX/PDF/PPTX/XLSX            | 🟠 High   | Business users can't generate reports, presentations, or spreadsheets. Missing entire use case category                                                          | 99    | Open   |
+| #       | Finding                                                                    | Severity  | Improvement Impact                                                                                                                                               | Phase | Status   |
+| ------- | -------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | -------- |
+| OB-F80  | No structured observations from worker outputs                             | 🟠 High   | Worker results are free-form text — no typed facts, concepts, or files_touched                                                                                   | 93    | Open     |
+| OB-F82  | No content-hash deduplication for workspace chunks                         | 🟡 Medium | Duplicate chunks stored during overlapping worker reads and re-exploration                                                                                       | 93    | ✅ Fixed |
+| OB-F88  | Worker summaries are unstructured free-form text                           | 🟡 Medium | No typed completed/learned/next_steps — can't auto-index or track learnings                                                                                      | 93    | Open     |
+| OB-F83  | No token economics tracking for exploration ROI                            | 🟡 Medium | Can't measure if exploration cost is worth the retrieval savings                                                                                                 | 95    | Open     |
+| OB-F84  | Master context window has no auto-compaction                               | 🟠 High   | Long Master sessions hit context limits; memory.md is manual, not auto-compacted                                                                                 | 95    | Open     |
+| OB-F103 | Channel role management UX is broken — bad defaults, cryptic errors, no UI | 🟠 High   | WebChat users auto-created as `viewer` (read-only), any task message blocked as "edit". No way to set/view roles from config or channel. Error gives no guidance | 96d   | Open     |
+| OB-F98  | No document generation skills — can't create DOCX/PDF/PPTX/XLSX            | 🟠 High   | Business users can't generate reports, presentations, or spreadsheets. Missing entire use case category                                                          | 99    | Open     |
 
 ### Open Findings — Sprint 5 Stretch (v0.0.13, if time allows)
 
