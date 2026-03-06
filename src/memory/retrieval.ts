@@ -24,6 +24,13 @@ export interface SearchOptions {
   rerank?: boolean;
   /** Working directory for the AI reranker (required when rerank is true). */
   workspacePath?: string;
+  /**
+   * Query embedding vector for hybrid (vector + FTS5) scoring.
+   * When provided and non-empty, enables hybrid scoring:
+   *   0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore
+   * Chunks from both FTS5 and KNN results are merged into a single ranked list.
+   */
+  queryVector?: Float32Array;
 }
 
 interface ChunkRow {
@@ -70,6 +77,207 @@ function rowToEntry(row: ConversationRow): ConversationEntry {
     user_id: row.user_id ?? undefined,
     created_at: row.created_at,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Hybrid scoring helpers (OB-1654)
+// ---------------------------------------------------------------------------
+
+/** Extended ChunkRow that also carries the raw BM25 rank from FTS5. */
+interface ChunkRowWithRank extends ChunkRow {
+  bm25_rank: number;
+}
+
+/**
+ * Compute a recency-based temporal score in the range [0, 1].
+ *
+ * Uses exponential decay: `exp(-decayRate * daysSinceUpdate)`.
+ * A chunk updated today scores ≈ 1.0; one updated 100 days ago with the
+ * default rate (0.01) scores ≈ 0.37.
+ *
+ * @param updatedAt  ISO-8601 timestamp string (e.g. `chunk.updated_at`)
+ * @param decayRate  Decay rate per day (default 0.01 — configurable in OB-1656)
+ */
+export function computeTemporalScore(updatedAt: string, decayRate = 0.01): number {
+  const daysSince = (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+  return Math.exp(-decayRate * Math.max(0, daysSince));
+}
+
+/**
+ * Compute the hybrid retrieval score from three component scores.
+ *
+ * Formula: `0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore`
+ *
+ * All inputs are expected to be in the range [0, 1].
+ */
+export function computeHybridScore(
+  vectorScore: number,
+  fts5Score: number,
+  temporalScore: number,
+): number {
+  return 0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore;
+}
+
+/**
+ * Normalize an array of raw BM25 rank values (negative; more negative = better)
+ * to the range [0, 1] (higher = more relevant) using min–max normalization.
+ *
+ * - Single-element arrays return `[1.0]`.
+ * - If all ranks are equal, every element returns `1.0`.
+ */
+function normalizeBm25(ranks: number[]): number[] {
+  if (ranks.length === 0) return [];
+  if (ranks.length === 1) return [1.0];
+
+  // Negate so that a higher value means higher relevance
+  const raw = ranks.map((r) => -r);
+  const minRaw = Math.min(...raw);
+  const maxRaw = Math.max(...raw);
+
+  if (maxRaw === minRaw) return ranks.map(() => 1.0);
+  return raw.map((r) => (r - minRaw) / (maxRaw - minRaw));
+}
+
+/**
+ * Run FTS5 search and return chunks paired with their raw BM25 rank.
+ * Used by the hybrid scoring path to obtain per-chunk BM25 relevance values.
+ */
+function fts5SearchWithRanks(
+  db: Database.Database,
+  sanitized: string,
+  options: SearchOptions,
+  fetchLimit: number,
+): Array<{ chunk: Chunk; bm25Rank: number }> {
+  const { scope, category, excludeStale = true } = options;
+
+  const conditions: string[] = [];
+  const extraParams: (string | number)[] = [];
+
+  if (excludeStale) conditions.push('c.stale = 0');
+  if (scope !== undefined) {
+    conditions.push('c.scope LIKE ?');
+    extraParams.push(`${scope}%`);
+  }
+  if (category !== undefined) {
+    conditions.push('c.category = ?');
+    extraParams.push(category);
+  }
+
+  const whereClause = conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : '';
+
+  const sql = `
+    SELECT c.id, c.scope, c.category, c.content, c.source_hash,
+           c.created_at, c.updated_at, c.stale, fts.bm25_rank
+    FROM context_chunks c
+    INNER JOIN (
+      SELECT rowid, rank AS bm25_rank
+      FROM context_chunks_fts
+      WHERE context_chunks_fts MATCH ?
+    ) fts ON c.id = fts.rowid
+    WHERE 1=1 ${whereClause}
+    ORDER BY fts.bm25_rank
+    LIMIT ?
+  `;
+
+  const rows = db.prepare(sql).all(sanitized, ...extraParams, fetchLimit) as ChunkRowWithRank[];
+  return rows.map((row) => ({ chunk: rowToChunk(row), bm25Rank: row.bm25_rank }));
+}
+
+/**
+ * Hybrid search that merges vector KNN results and FTS5 results, then scores
+ * each chunk with the weighted formula:
+ *   `0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore`
+ *
+ * Chunks that appear only in KNN results receive `fts5Score = 0`.
+ * Chunks that appear only in FTS5 results receive `vectorScore = 0`.
+ * All chunks receive a temporal score based on their `updated_at` timestamp.
+ */
+async function hybridSearchWithVectorScoring(
+  db: Database.Database,
+  query: string,
+  sanitized: string,
+  queryVector: Float32Array,
+  options: SearchOptions,
+  agentRunner?: AgentRunner,
+): Promise<Chunk[]> {
+  const { limit = 10 } = options;
+  // Fetch more candidates than needed so the merge has enough material to work with
+  const candidateLimit = limit * 3;
+
+  // --- FTS5 candidates ---
+  const fts5Results = fts5SearchWithRanks(db, sanitized, options, candidateLimit);
+
+  // --- Vector KNN candidates ---
+  const knnResults = knnSearch(db, queryVector, candidateLimit);
+
+  // Build a unified map: chunkId → { chunk, bm25Rank | null, vectorScore }
+  type Entry = { chunk: Chunk; bm25Rank: number | null; vectorScore: number };
+  const chunkMap = new Map<number, Entry>();
+
+  for (const { chunk, bm25Rank } of fts5Results) {
+    if (chunk.id !== undefined) {
+      chunkMap.set(chunk.id, { chunk, bm25Rank, vectorScore: 0 });
+    }
+  }
+
+  // Fetch full chunk rows for any KNN-only hits (not already in FTS5 results)
+  const knnOnlyIds = knnResults.map((r) => r.chunkId).filter((id) => !chunkMap.has(id));
+
+  if (knnOnlyIds.length > 0) {
+    const placeholders = knnOnlyIds.map(() => '?').join(',');
+    const rows = db
+      .prepare(
+        `SELECT id, scope, category, content, source_hash, created_at, updated_at, stale
+         FROM context_chunks WHERE id IN (${placeholders})`,
+      )
+      .all(...knnOnlyIds) as ChunkRow[];
+
+    for (const row of rows) {
+      chunkMap.set(row.id, { chunk: rowToChunk(row), bm25Rank: null, vectorScore: 0 });
+    }
+  }
+
+  // Apply vector scores from KNN results
+  for (const { chunkId, score } of knnResults) {
+    const entry = chunkMap.get(chunkId);
+    if (entry !== undefined) {
+      entry.vectorScore = score;
+    }
+  }
+
+  // Normalize BM25 ranks across all FTS5 results → [0, 1]
+  const bm25Ranks = fts5Results.map((r) => r.bm25Rank);
+  const normalizedBm25 = normalizeBm25(bm25Ranks);
+  const bm25NormMap = new Map<number, number>();
+  for (let i = 0; i < fts5Results.length; i++) {
+    const r = fts5Results[i];
+    const n = normalizedBm25[i];
+    if (r !== undefined && n !== undefined && r.chunk.id !== undefined) {
+      bm25NormMap.set(r.chunk.id, n);
+    }
+  }
+
+  // Score every candidate chunk and sort descending
+  const scored = Array.from(chunkMap.entries()).map(([id, { chunk, vectorScore }]) => {
+    const fts5Score = bm25NormMap.get(id) ?? 0;
+    const temporalScore = computeTemporalScore(chunk.updated_at ?? new Date().toISOString());
+    const hybridScore = computeHybridScore(vectorScore, fts5Score, temporalScore);
+    return { chunk, hybridScore };
+  });
+
+  scored.sort((a, b) => b.hybridScore - a.hybridScore);
+
+  const chunks = scored.slice(0, limit).map((s) => s.chunk);
+
+  // Optional AI reranking (same threshold as FTS5-only path)
+  if (options.rerank && agentRunner && chunks.length > 10) {
+    const reranked = await rerank(chunks, query, agentRunner, options.workspacePath);
+    trackReadTokens(db, reranked);
+    return reranked;
+  }
+
+  trackReadTokens(db, chunks);
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +568,19 @@ export async function hybridSearch(
     const fallbackChunks = recentChunksFallback(db, options);
     trackReadTokens(db, fallbackChunks);
     return fallbackChunks;
+  }
+
+  // Hybrid scoring path (OB-1654) — when a queryVector is provided and non-empty,
+  // merge FTS5 and KNN results and score with the weighted formula.
+  if (options.queryVector !== undefined && options.queryVector.length > 0) {
+    return hybridSearchWithVectorScoring(
+      db,
+      query,
+      sanitized,
+      options.queryVector,
+      options,
+      agentRunner,
+    );
   }
 
   const { scope, category, limit = 10, excludeStale = true } = options;

@@ -7,6 +7,8 @@ import {
   searchConversations,
   rerank,
   sanitizeFts5Query,
+  computeTemporalScore,
+  computeHybridScore,
 } from '../../src/memory/retrieval.js';
 import type { ConversationEntry } from '../../src/memory/index.js';
 import type { AgentRunner } from '../../src/core/agent-runner.js';
@@ -75,7 +77,7 @@ describe('retrieval.ts', () => {
     });
 
     it('finds chunks matching FTS5 keyword query', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ content: 'The authentication module validates user credentials' }),
         makeChunk({ scope: 'src/types', content: 'TypeScript configuration file for strict mode' }),
       ]);
@@ -86,13 +88,13 @@ describe('retrieval.ts', () => {
     });
 
     it('returns empty array when no chunks match query', async () => {
-      storeChunks(db, [makeChunk({ content: 'Database connection pooling logic' })]);
+      void storeChunks(db, [makeChunk({ content: 'Database connection pooling logic' })]);
       const results = await hybridSearch(db, 'xyznonexistentterm');
       expect(results).toHaveLength(0);
     });
 
     it('respects the limit parameter', async () => {
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 5 }, (_, i) => makeChunk({ content: `message routing item ${i}` })),
       );
@@ -102,7 +104,7 @@ describe('retrieval.ts', () => {
     });
 
     it('excludes stale chunks by default (excludeStale=true)', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'stale-scope', content: 'stale authentication chunk here' }),
       ]);
       markStale(db, ['stale-scope']);
@@ -112,7 +114,7 @@ describe('retrieval.ts', () => {
     });
 
     it('includes stale chunks when excludeStale=false', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'stale-scope', content: 'stale authentication chunk here' }),
       ]);
       markStale(db, ['stale-scope']);
@@ -123,7 +125,7 @@ describe('retrieval.ts', () => {
     });
 
     it('returns only chunks whose scope starts with the scope prefix filter', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/core', content: 'core routing logic for messages' }),
         makeChunk({ scope: 'src/master', content: 'master routing and delegation logic' }),
       ]);
@@ -134,7 +136,7 @@ describe('retrieval.ts', () => {
     });
 
     it('scope filter excludes chunks that do not match the prefix', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/master', content: 'master delegation orchestration logic' }),
       ]);
 
@@ -144,7 +146,7 @@ describe('retrieval.ts', () => {
     });
 
     it('category filter returns only matching category chunks', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ category: 'structure', content: 'project structure definition layout here' }),
         makeChunk({ category: 'patterns', content: 'project patterns best practices layout here' }),
       ]);
@@ -155,7 +157,7 @@ describe('retrieval.ts', () => {
     });
 
     it('combined scope and category filter narrows results correctly', async () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({
           scope: 'src/core',
           category: 'structure',
@@ -186,7 +188,7 @@ describe('retrieval.ts', () => {
     it('does not call agentRunner when rerank=false', async () => {
       const mockSpawn = vi.fn();
       const mockRunner = { spawn: mockSpawn } as unknown as AgentRunner;
-      storeChunks(db, [makeChunk({ content: 'message routing logic test' })]);
+      void storeChunks(db, [makeChunk({ content: 'message routing logic test' })]);
 
       await hybridSearch(db, 'message', { rerank: false }, mockRunner);
       expect(mockSpawn).not.toHaveBeenCalled();
@@ -197,7 +199,7 @@ describe('retrieval.ts', () => {
       const mockRunner = { spawn: mockSpawn } as unknown as AgentRunner;
 
       // Insert exactly 5 matching chunks — below the 10-result threshold
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 5 }, (_, i) => makeChunk({ content: `message item ${i}` })),
       );
@@ -215,7 +217,7 @@ describe('retrieval.ts', () => {
       const mockRunner = { spawn: mockSpawn } as unknown as AgentRunner;
 
       // Insert 12 matching chunks — above the threshold
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 12 }, (_, i) =>
           makeChunk({ content: `routing logic module component ${i}` }),
@@ -227,7 +229,7 @@ describe('retrieval.ts', () => {
     });
 
     it('returned chunks have required fields populated', async () => {
-      storeChunks(db, [makeChunk({ content: 'bridge gateway integration module' })]);
+      void storeChunks(db, [makeChunk({ content: 'bridge gateway integration module' })]);
       const results = await hybridSearch(db, 'bridge');
       expect(results.length).toBeGreaterThan(0);
       const chunk = results[0];
@@ -454,6 +456,144 @@ describe('retrieval.ts', () => {
       insertConversation(db, makeMsg({ content: 'some content here' }));
       const results = searchConversations(db, '"*(){}[]');
       expect(results).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // computeTemporalScore (OB-1654)
+  // -------------------------------------------------------------------------
+
+  describe('computeTemporalScore', () => {
+    it('returns ~1.0 for a timestamp from right now', () => {
+      const now = new Date().toISOString();
+      const score = computeTemporalScore(now);
+      expect(score).toBeGreaterThan(0.99);
+      expect(score).toBeLessThanOrEqual(1.0);
+    });
+
+    it('returns a lower score for an older timestamp', () => {
+      const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days ago
+      const score = computeTemporalScore(old);
+      expect(score).toBeLessThan(1.0);
+      expect(score).toBeGreaterThan(0); // never exactly zero
+    });
+
+    it('newer chunks score higher than older chunks', () => {
+      const recent = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+      const older = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+      expect(computeTemporalScore(recent)).toBeGreaterThan(computeTemporalScore(older));
+    });
+
+    it('uses the provided decayRate', () => {
+      const ts = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString(); // 100 days ago
+      const slowDecay = computeTemporalScore(ts, 0.001);
+      const fastDecay = computeTemporalScore(ts, 0.1);
+      expect(slowDecay).toBeGreaterThan(fastDecay);
+    });
+
+    it('returns a value in [0, 1] for various timestamps', () => {
+      const timestamps = [
+        new Date().toISOString(),
+        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
+      ];
+      for (const ts of timestamps) {
+        const score = computeTemporalScore(ts);
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // computeHybridScore (OB-1654)
+  // -------------------------------------------------------------------------
+
+  describe('computeHybridScore', () => {
+    it('returns correct weighted sum: 0.4*v + 0.4*f + 0.2*t', () => {
+      expect(computeHybridScore(1, 1, 1)).toBeCloseTo(1.0);
+      expect(computeHybridScore(0, 0, 0)).toBeCloseTo(0.0);
+      expect(computeHybridScore(1, 0, 0)).toBeCloseTo(0.4);
+      expect(computeHybridScore(0, 1, 0)).toBeCloseTo(0.4);
+      expect(computeHybridScore(0, 0, 1)).toBeCloseTo(0.2);
+    });
+
+    it('weights sum to 1.0 (all-ones input → 1.0 output)', () => {
+      expect(computeHybridScore(1, 1, 1)).toBeCloseTo(1.0);
+    });
+
+    it('vector and FTS5 carry equal weight', () => {
+      const vHeavy = computeHybridScore(1, 0, 0);
+      const fHeavy = computeHybridScore(0, 1, 0);
+      expect(vHeavy).toBeCloseTo(fHeavy);
+    });
+
+    it('temporal score has lower weight than vector or FTS5', () => {
+      const temporal = computeHybridScore(0, 0, 1);
+      const vector = computeHybridScore(1, 0, 0);
+      expect(temporal).toBeLessThan(vector);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // hybridSearch with queryVector (OB-1654)
+  // -------------------------------------------------------------------------
+
+  describe('hybridSearch with queryVector', () => {
+    it('returns FTS5 matches when queryVector is provided but sqlite-vec unavailable', async () => {
+      // In the test environment sqlite-vec is not loaded, so knnSearch returns [].
+      // The hybrid path should still return FTS5 matches (vectorScore=0 for all).
+      void storeChunks(db, [
+        makeChunk({ content: 'authentication service handles login logic' }),
+        makeChunk({ scope: 'src/types', content: 'TypeScript strict mode configuration' }),
+      ]);
+
+      const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+      const results = await hybridSearch(db, 'authentication', { queryVector });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].content).toContain('authentication');
+    });
+
+    it('empty queryVector falls back to FTS5-only path', async () => {
+      void storeChunks(db, [makeChunk({ content: 'bridge routing logic for all messages' })]);
+
+      // Empty vector → should use FTS5-only path (same results as without queryVector)
+      const results = await hybridSearch(db, 'routing', { queryVector: new Float32Array(0) });
+      const resultsFts5 = await hybridSearch(db, 'routing');
+      expect(results).toEqual(resultsFts5);
+    });
+
+    it('returns empty array when no FTS5 or vector matches', async () => {
+      void storeChunks(db, [makeChunk({ content: 'database connection pool' })]);
+      const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+      const results = await hybridSearch(db, 'xyznonexistentterm', { queryVector });
+      expect(results).toHaveLength(0);
+    });
+
+    it('respects scope filter in hybrid path', async () => {
+      void storeChunks(db, [
+        makeChunk({ scope: 'src/core', content: 'core authentication module logic' }),
+        makeChunk({ scope: 'src/master', content: 'master authentication delegation logic' }),
+      ]);
+
+      const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+      const results = await hybridSearch(db, 'authentication', {
+        queryVector,
+        scope: 'src/core',
+      });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every((r) => r.scope.startsWith('src/core'))).toBe(true);
+    });
+
+    it('respects limit in hybrid path', async () => {
+      void storeChunks(
+        db,
+        Array.from({ length: 5 }, (_, i) => makeChunk({ content: `router module entry ${i}` })),
+      );
+
+      const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+      const results = await hybridSearch(db, 'router', { queryVector, limit: 2 });
+      expect(results.length).toBeLessThanOrEqual(2);
     });
   });
 
