@@ -2,6 +2,10 @@ import type Database from 'better-sqlite3';
 import type { Chunk } from './chunk-store.js';
 import type { ConversationEntry } from './index.js';
 import type { AgentRunner } from '../core/agent-runner.js';
+import {
+  type Observation,
+  searchObservations as _searchObservationsStore,
+} from './observation-store.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -290,6 +294,44 @@ export function sanitizeFts5Query(raw: string): string {
   const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
   if (tokens.length === 0) return '';
   return tokens.map((t) => `"${t}"`).join(' OR ');
+}
+
+// ---------------------------------------------------------------------------
+// Combined observation + chunk search
+// ---------------------------------------------------------------------------
+
+/** Result type returned by the combined search. */
+export interface CombinedSearchResult {
+  observations: Observation[];
+  chunks: Chunk[];
+}
+
+/**
+ * Combined search over observations (FTS5) and context chunks (hybridSearch).
+ *
+ * Runs both searches in parallel and returns a unified result containing
+ * matching observations and relevant chunks for the same query.
+ *
+ * @param db               SQLite database instance
+ * @param query            Search query
+ * @param options          Options passed through to hybridSearch; additionally
+ *                         accepts `observationLimit` (default 10)
+ * @param agentRunner      Optional AgentRunner for AI reranking of chunks
+ */
+export async function searchObservations(
+  db: Database.Database,
+  query: string,
+  options: SearchOptions & { observationLimit?: number } = {},
+  agentRunner?: AgentRunner,
+): Promise<CombinedSearchResult> {
+  const { observationLimit = 10, ...chunkOptions } = options;
+
+  const [observations, chunks] = await Promise.all([
+    Promise.resolve(_searchObservationsStore(db, query, observationLimit)),
+    hybridSearch(db, query, chunkOptions, agentRunner),
+  ]);
+
+  return { observations, chunks };
 }
 
 // ---------------------------------------------------------------------------
