@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 164 | **In Progress:** 0 | **Done:** 12 (1063 archived)
+> **Pending:** 163 | **In Progress:** 0 | **Done:** 13 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -70,7 +70,7 @@
 | OB-1627 | Extract `files_modified` from worker output (scan for Edit/Write/Create indicators in output)                                                                    | `src/master/observation-extractor.ts`       | ✅ Done |
 | OB-1628 | Auto-classify observation `type` from worker task profile + output content (code-edit → `refactor`/`bugfix`, read-only → `investigation`, etc.)                  | `src/master/observation-extractor.ts`       | ✅ Done |
 | OB-1629 | Wire extractor into `worker-result-formatter.ts` — call `extractObservation()` after every worker completes, store via MemoryManager                             | `src/master/worker-result-formatter.ts`     | ✅ Done |
-| OB-1630 | Expose observations in `retrieval.ts` — add `searchObservations()` that combines FTS5 observations + chunk results                                               | `src/memory/retrieval.ts`                   | Pending |
+| OB-1630 | Expose observations in `retrieval.ts` — add `searchObservations()` that combines FTS5 observations + chunk results                                               | `src/memory/retrieval.ts`                   | ✅ Done |
 
 #### 93c — Structured Worker Summaries (OB-F88)
 
