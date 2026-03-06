@@ -56,6 +56,8 @@ export interface PendingPairing {
 
 const PAIRING_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const PAIRING_CLEANUP_INTERVAL_MS = 60 * 1000; // 60 seconds
+const PAIRING_RATE_LIMIT_MAX = 3; // max requests per sender per hour
+const PAIRING_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 export class AuthService {
   private whitelist: Set<string>;
@@ -68,6 +70,7 @@ export class AuthService {
   private channelRoles: Record<string, string>;
   private pendingPairings: Map<string, PendingPairing> = new Map();
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
+  private pairingRateLimits: Map<string, Date[]> = new Map();
 
   /**
    * Normalize a phone number to digits-only for comparison.
@@ -543,11 +546,36 @@ export class AuthService {
   }
 
   /**
+   * Check whether a sender is within the pairing rate limit.
+   * Returns true if the request is allowed, false if the limit is exceeded.
+   * Prunes timestamps older than PAIRING_RATE_LIMIT_WINDOW_MS on each call.
+   */
+  checkPairingRateLimit(senderId: string): boolean {
+    const now = Date.now();
+    const cutoff = now - PAIRING_RATE_LIMIT_WINDOW_MS;
+    const timestamps = (this.pairingRateLimits.get(senderId) ?? []).filter(
+      (ts) => ts.getTime() >= cutoff,
+    );
+    if (timestamps.length >= PAIRING_RATE_LIMIT_MAX) {
+      this.pairingRateLimits.set(senderId, timestamps);
+      return false;
+    }
+    timestamps.push(new Date(now));
+    this.pairingRateLimits.set(senderId, timestamps);
+    return true;
+  }
+
+  /**
    * Initiate a pairing for an unknown sender.
    * Generates a 6-digit code, stores the pending pairing, and returns the
    * message to send back to the unknown sender.
+   * Returns null if the sender has exceeded the rate limit.
    */
-  initiatePairing(senderId: string, channel: string): string {
+  initiatePairing(senderId: string, channel: string): string | null {
+    if (!this.checkPairingRateLimit(senderId)) {
+      logger.warn({ senderId, channel }, 'Pairing rate limit exceeded — request denied');
+      return null;
+    }
     const code = AuthService.generatePairingCode();
     this.storePairing(code, senderId, channel);
     logger.info({ senderId, channel, code }, 'Pairing initiated for unknown sender');
