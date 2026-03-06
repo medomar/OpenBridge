@@ -38,7 +38,7 @@ import type {
   ActivityRecord,
 } from '../memory/index.js';
 import { BUILT_IN_PROFILES, BuiltInProfileNameSchema } from '../types/agent.js';
-import type { ToolProfile, ProfilesRegistry, TaskManifest } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry, TaskManifest, SkillPack } from '../types/agent.js';
 import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { SubMasterManager } from './sub-master-manager.js';
@@ -7456,7 +7456,9 @@ ${currentContent}
     customProfiles?: Record<string, ToolProfile>,
     attachments?: InboundMessage['attachments'],
   ): Promise<AgentResult> {
-    const { profile, body } = marker;
+    const { body } = marker;
+    // profile may be overridden by skill pack selection (OB-1753)
+    let profile = marker.profile;
 
     // OB-1596: Compute session-level tool grants for this sender.
     // If the user approved tools earlier this session via /allow, auto-apply them
@@ -7549,8 +7551,9 @@ ${currentContent}
     // runs when no document-generation skill was already applied (avoids double
     // injection). Uses keyword scoring to match security-audit, code-review,
     // test-writer, data-analysis, and documentation packs.
+    let selectedPack: SkillPack | undefined;
     if (!docFormat) {
-      const selectedPack = selectSkillPackForTask(body.prompt, BUILT_IN_SKILL_PACKS);
+      selectedPack = selectSkillPackForTask(body.prompt, BUILT_IN_SKILL_PACKS);
       if (selectedPack) {
         workerPrompt = `${workerPrompt}\n\n---\n\n${selectedPack.systemPromptExtension}`;
         logger.debug(
@@ -7558,6 +7561,25 @@ ${currentContent}
           'Injected skill pack prompt extension into worker',
         );
       }
+    }
+
+    // OB-1753: Apply the selected skill pack's toolProfile to the effective
+    // profile. When a pack like security-audit specifies toolProfile:'code-audit',
+    // the worker should use that profile instead of a broader one (e.g. code-edit)
+    // to enforce the pack's read-only constraints. The pack profile is only
+    // applied when it differs from the SPAWN marker profile — an explicit user
+    // grant or a more-permissive SPAWN marker is respected over the pack default.
+    if (selectedPack?.toolProfile && selectedPack.toolProfile !== profile) {
+      logger.debug(
+        {
+          workerId,
+          previousProfile: profile,
+          newProfile: selectedPack.toolProfile,
+          skillPack: selectedPack.name,
+        },
+        'Skill pack tool profile applied to worker',
+      );
+      profile = selectedPack.toolProfile;
     }
 
     // Adaptive model selection (OB-724): marker override → learned best model → heuristics
