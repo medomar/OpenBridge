@@ -7,10 +7,24 @@ import { getConfigDir } from './utils.js';
 
 const require = createRequire(import.meta.url);
 
+// ANSI color helpers
+const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
+const YELLOW = '\x1b[33m';
+const RESET = '\x1b[0m';
+const DIM = '\x1b[2m';
+
+function c(text: string, color: string): string {
+  if (!process.stdout.isTTY) return text;
+  return `${color}${text}${RESET}`;
+}
+
 // Check registry interface — every check returns { pass, message }
 export interface CheckResult {
-  pass: boolean;
+  pass: boolean | 'warn';
   message: string;
+  /** Actionable fix displayed below a failing/warning line */
+  fixHint?: string;
 }
 
 export type CheckFn = () => CheckResult;
@@ -76,7 +90,8 @@ function checkAITools(): CheckResult {
   if (found.length === 0) {
     return {
       pass: false,
-      message: `no AI tools found — install one of: ${AI_TOOLS.map((t) => t.name).join(', ')}`,
+      message: `no AI tools found`,
+      fixHint: `install one of: ${AI_TOOLS.map((t) => t.name).join(', ')}`,
     };
   }
 
@@ -97,7 +112,8 @@ function checkConfig(): CheckResult {
   if (!configPath) {
     return {
       pass: false,
-      message: `config.json not found (looked in: ${candidates.join(', ')}) — run: npx openbridge init`,
+      message: `config.json not found (looked in: ${candidates.join(', ')})`,
+      fixHint: 'run: npx openbridge init',
     };
   }
 
@@ -211,7 +227,8 @@ function checkSQLiteDatabase(): CheckResult {
   } catch {
     return {
       pass: false,
-      message: 'better-sqlite3 not available — run: npm install better-sqlite3',
+      message: 'better-sqlite3 not available',
+      fixHint: 'run: npm install better-sqlite3',
     };
   }
 
@@ -331,13 +348,17 @@ function checkOpenBridgeState(): CheckResult {
 
   // Check memory.md freshness
   const memoryPath = join(openbridgeDir, 'context', 'memory.md');
+  let memoryStale = false;
   if (existsSync(memoryPath)) {
     try {
       const ageMs = Date.now() - statSync(memoryPath).mtimeMs;
       const ageHours = Math.floor(ageMs / (1000 * 60 * 60));
-      info.push(
-        `memory.md ${ageHours < 72 ? `fresh (${ageHours}h ago)` : `stale (${ageHours}h ago)`}`,
-      );
+      if (ageHours >= 72) {
+        memoryStale = true;
+        info.push(`memory.md stale (${ageHours}h ago)`);
+      } else {
+        info.push(`memory.md fresh (${ageHours}h ago)`);
+      }
     } catch {
       issues.push('memory.md unreadable');
     }
@@ -369,6 +390,15 @@ function checkOpenBridgeState(): CheckResult {
     return {
       pass: false,
       message: `${openbridgeDir} — ${issues.join('; ')} | ${info.join(', ')}`,
+      fixHint: 'delete corrupted files and restart OpenBridge to regenerate them',
+    };
+  }
+
+  if (memoryStale) {
+    return {
+      pass: 'warn',
+      message: `${openbridgeDir} — ${info.join(', ')}`,
+      fixHint: 'send a message to trigger a session and refresh memory.md',
     };
   }
 
@@ -420,6 +450,7 @@ function checkChannelPrerequisites(): CheckResult {
   }
 
   const issues: string[] = [];
+  const hints: string[] = [];
   const info: string[] = [];
 
   for (const ch of channels) {
@@ -449,23 +480,24 @@ function checkChannelPrerequisites(): CheckResult {
       if (typeof token === 'string' && token.length > 0) {
         info.push('telegram: token configured');
       } else {
-        issues.push('telegram: token missing — add token to channels[].options.token');
+        issues.push('telegram: BOT_TOKEN missing');
+        hints.push('telegram: add token to channels[].options.token in config.json');
       }
     } else if (type === 'discord') {
       const token = options['token'];
       if (typeof token === 'string' && token.length > 0) {
         info.push('discord: token configured');
       } else {
-        issues.push('discord: token missing — add token to channels[].options.token');
+        issues.push('discord: BOT_TOKEN missing');
+        hints.push('discord: add token to channels[].options.token in config.json');
       }
     } else if (type === 'webchat') {
       const port = typeof options['port'] === 'number' ? options['port'] : 3000;
       if (isPortAvailable(port)) {
         info.push(`webchat: port ${port} available`);
       } else {
-        issues.push(
-          `webchat: port ${port} already in use — stop the conflicting process or change options.port`,
-        );
+        issues.push(`webchat: port ${port} already in use`);
+        hints.push(`webchat: stop the conflicting process or change options.port to a free port`);
       }
     }
   }
@@ -474,6 +506,7 @@ function checkChannelPrerequisites(): CheckResult {
     return {
       pass: false,
       message: issues.join('; ') + (info.length > 0 ? ` | ${info.join(', ')}` : ''),
+      fixHint: hints.join(' | '),
     };
   }
 
@@ -498,8 +531,9 @@ function checkNpmPackage(pkg: string): CheckResult {
       return { pass: true, message: 'installed' };
     } catch {
       return {
-        pass: false,
-        message: `not installed (optional — run: npm install ${pkg})`,
+        pass: 'warn',
+        message: `not installed (optional)`,
+        fixHint: `npm install ${pkg}`,
       };
     }
   }
@@ -511,8 +545,9 @@ function checkBinary(binary: string, installUrl: string): CheckResult {
     return { pass: true, message: `found (${binary})` };
   } catch {
     return {
-      pass: false,
-      message: `not found — install from ${installUrl}`,
+      pass: 'warn',
+      message: `not found (optional)`,
+      fixHint: `install from ${installUrl}`,
     };
   }
 }
@@ -532,8 +567,9 @@ function checkPuppeteer(): CheckResult {
     }
   }
   return {
-    pass: false,
-    message: 'not installed — needed for PDF generation (run: npm install puppeteer)',
+    pass: 'warn',
+    message: 'not installed (optional — needed for PDF generation)',
+    fixHint: 'npm install puppeteer',
   };
 }
 
@@ -563,34 +599,49 @@ const CHECKS: Check[] = [
 // ---------------------------------------------------------------------------
 
 export function runDoctor(): void {
-  console.log('OpenBridge Doctor — checking document generation prerequisites\n');
+  console.log('OpenBridge Doctor\n');
 
-  let allPass = true;
+  let hasFail = false;
   const failed: string[] = [];
+  const warned: string[] = [];
 
   for (const check of CHECKS) {
     const result = check.run();
-    const icon = result.pass ? '✓' : '✗';
-    console.log(`  ${icon}  ${check.label.padEnd(16)} ${result.message}`);
-    if (!result.pass) {
-      allPass = false;
+    let icon: string;
+
+    if (result.pass === true) {
+      icon = c('✓', GREEN);
+    } else if (result.pass === 'warn') {
+      icon = c('⚠', YELLOW);
+      warned.push(check.label);
+    } else {
+      icon = c('✗', RED);
+      hasFail = true;
       failed.push(check.label);
+    }
+
+    console.log(`  ${icon}  ${check.label.padEnd(16)} ${result.message}`);
+
+    if (result.pass !== true && result.fixHint) {
+      console.log(`     ${c('→', DIM)} ${result.fixHint}`);
     }
   }
 
   console.log('');
 
-  if (allPass) {
-    console.log('All prerequisites satisfied. Document generation is fully operational.');
-  } else {
+  if (!hasFail && warned.length === 0) {
+    console.log(c('All checks passed.', GREEN));
+  } else if (!hasFail) {
     console.log(
-      `Missing: ${failed.join(', ')}. Document features that depend on these will be unavailable.`,
+      c(
+        `Warnings: ${warned.join(', ')}. These are non-critical but may affect some features.`,
+        YELLOW,
+      ),
     );
-    console.log('');
-    console.log('Install optional npm packages:');
-    console.log('  npm install docx pptxgenjs exceljs puppeteer');
-    console.log('');
-    console.log('Install LibreOffice (for DOCX/PPTX → PDF conversion):');
-    console.log('  https://www.libreoffice.org/download/');
+  } else {
+    console.log(c(`Failed: ${failed.join(', ')}.`, RED));
+    if (warned.length > 0) {
+      console.log(c(`Warnings: ${warned.join(', ')}.`, YELLOW));
+    }
   }
 }
