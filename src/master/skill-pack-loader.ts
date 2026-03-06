@@ -9,6 +9,7 @@ import { documentWriterSkill } from './skill-packs/document-writer.js';
 import { presentationMakerSkill } from './skill-packs/presentation-maker.js';
 import { spreadsheetBuilderSkill } from './skill-packs/spreadsheet-builder.js';
 import { reportGeneratorSkill } from './skill-packs/report-generator.js';
+import { BUILT_IN_SKILL_PACKS } from './skill-packs/index.js';
 
 const logger = createLogger('skill-pack-loader');
 
@@ -539,4 +540,40 @@ export async function loadSkillPackMarkdown(
   }
 
   return { packs, count: packs.size };
+}
+
+/** Result returned by {@link loadAllSkillPacks} */
+export interface AllSkillPacksResult {
+  /** Merged skill packs (built-in + user-defined) — user-defined overrides built-ins by name */
+  packs: SkillPack[];
+  /** Number of user-defined packs loaded from .openbridge/skill-packs/ */
+  userDefinedCount: number;
+}
+
+/**
+ * Loads all skill packs — built-in defaults merged with user-defined overrides.
+ *
+ * User-defined packs discovered from `<workspacePath>/.openbridge/skill-packs/*.md`
+ * take precedence over built-ins with the same `name`.
+ *
+ * @param workspacePath - Absolute path to the target workspace.
+ * @returns Merged pack list and count of user-defined packs loaded.
+ */
+export async function loadAllSkillPacks(workspacePath: string): Promise<AllSkillPacksResult> {
+  const merged = new Map<string, SkillPack>();
+
+  for (const pack of BUILT_IN_SKILL_PACKS) {
+    merged.set(pack.name, pack);
+  }
+
+  const { packs: userPacks, count: userDefinedCount } = await loadSkillPackMarkdown(workspacePath);
+
+  for (const [name, pack] of userPacks) {
+    if (merged.has(name)) {
+      logger.info({ name }, 'User-defined skill pack overrides built-in');
+    }
+    merged.set(name, pack);
+  }
+
+  return { packs: Array.from(merged.values()), userDefinedCount };
 }

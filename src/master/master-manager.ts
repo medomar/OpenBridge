@@ -91,6 +91,7 @@ import {
   getBuiltInSkillPacks,
   findSkillByFormat,
   selectSkillPackForTask,
+  loadAllSkillPacks,
 } from './skill-pack-loader.js';
 import { classifyDocumentIntent } from '../core/router.js';
 
@@ -623,6 +624,8 @@ export class MasterManager {
   private readonly batchTimers = new Set<NodeJS.Timeout>();
   /** Session compactor — monitors turn count and triggers memory.md compaction (OB-1672). */
   private compactor: SessionCompactor | null = null;
+  /** Active skill packs — built-ins merged with user-defined overrides (OB-1754). */
+  private activeSkillPacks: SkillPack[] = [...BUILT_IN_SKILL_PACKS];
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -1417,6 +1420,17 @@ export class MasterManager {
     // Initialize .openbridge folder early so we can create the Master session
     await this.dotFolder.initialize();
 
+    // Load user-defined skill packs — overrides built-ins by name (OB-1754)
+    try {
+      const { packs, userDefinedCount } = await loadAllSkillPacks(this.workspacePath);
+      this.activeSkillPacks = packs;
+      if (userDefinedCount > 0) {
+        logger.info({ userDefinedCount }, 'Loaded user-defined skill packs');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to load user-defined skill packs — using built-ins');
+    }
+
     // Initialize BatchManager (OB-1609): load any persisted batch state.
     if (!this.batchManager) {
       this.batchManager = new BatchManager(this.dotFolder);
@@ -1889,7 +1903,7 @@ export class MasterManager {
       workspaceExclude: this.workspaceExclude.length > 0 ? this.workspaceExclude : undefined,
       workspaceInclude: this.workspaceInclude.length > 0 ? this.workspaceInclude : undefined,
       availableSkills: BUILT_IN_SKILLS,
-      availableSkillPacks: BUILT_IN_SKILL_PACKS,
+      availableSkillPacks: this.activeSkillPacks,
     });
 
     try {
@@ -7553,7 +7567,7 @@ ${currentContent}
     // test-writer, data-analysis, and documentation packs.
     let selectedPack: SkillPack | undefined;
     if (!docFormat) {
-      selectedPack = selectSkillPackForTask(body.prompt, BUILT_IN_SKILL_PACKS);
+      selectedPack = selectSkillPackForTask(body.prompt, this.activeSkillPacks);
       if (selectedPack) {
         workerPrompt = `${workerPrompt}\n\n---\n\n${selectedPack.systemPromptExtension}`;
         logger.debug(
