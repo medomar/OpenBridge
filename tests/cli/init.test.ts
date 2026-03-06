@@ -255,6 +255,7 @@ describe('runInit', () => {
       '/ai', // prefix (step 6, WhatsApp-specific)
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -281,6 +282,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/my-project', // workspace path
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -301,6 +303,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project', // workspace path
       '', // empty = default console
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -322,6 +325,7 @@ describe('runInit', () => {
       '', // prefix — default /ai (step 6, WhatsApp-specific)
       '+555', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -339,6 +343,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '', // empty workspace path → defaults to cwd
       '', // connector (default console)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -360,6 +365,7 @@ describe('runInit', () => {
       '', // prefix — default /ai (step 6)
       '', // empty whitelist → warns and loops (step 7)
       'skip', // skip whitelist on retry (with security warning)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -405,6 +411,7 @@ describe('runInit', () => {
       '', // prefix — default /ai (step 6, WhatsApp-specific)
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -424,6 +431,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '2', // connector: Telegram
       '123456:ABC-DEF', // bot token
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -460,6 +468,7 @@ describe('runInit', () => {
       '3', // connector: Discord
       'MTk4NjIy.discord-token', // bot token
       '123456789012345678', // application ID
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -497,6 +506,7 @@ describe('runInit', () => {
       '3', // connector: Discord
       'some-bot-token', // bot token
       '', // skip application ID
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -520,6 +530,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '4', // connector: WebChat
       '8080', // custom port
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -542,6 +553,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '4', // connector: WebChat
       '', // empty → default port 3000
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -563,6 +575,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '2', // connector: Telegram
       'not-a-valid-token', // invalid token format
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -580,6 +593,7 @@ describe('runInit', () => {
       '/ai', // prefix (step 6, WhatsApp-specific)
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -595,6 +609,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project',
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -611,6 +626,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project', // workspace path
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'y', // Enable MCP
       'canva', // server name
       'npx -y @anthropic/canva-mcp-server', // command
@@ -638,6 +654,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project', // workspace path
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'y', // Enable MCP
       'done', // no servers
       '~/.claude/claude_desktop_config.json', // configPath
@@ -659,6 +676,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project', // workspace path
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'y', // Enable MCP
       'done', // no servers
       '', // skip configPath
@@ -677,6 +695,7 @@ describe('runInit', () => {
       '4', // AI tool installation: skip
       '/home/user/project', // workspace path
       '5', // connector: Console
+      '1', // default role: owner (step 8)
       'y', // Enable MCP
       'canva', // server 1 name
       'npx -y @anthropic/canva-mcp-server', // server 1 command
