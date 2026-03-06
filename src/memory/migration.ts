@@ -309,6 +309,36 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 14,
+    description: 'Add token_economics table for chunk token cost and retrieval ROI tracking',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='token_economics'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE token_economics (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id          INTEGER NOT NULL UNIQUE,
+            discovery_tokens  INTEGER NOT NULL DEFAULT 0,
+            retrieval_count   INTEGER NOT NULL DEFAULT 0,
+            total_read_tokens INTEGER NOT NULL DEFAULT 0,
+            created_at        TEXT    NOT NULL,
+            last_read_at      TEXT,
+            FOREIGN KEY (chunk_id) REFERENCES context_chunks(id) ON DELETE CASCADE
+          );
+          CREATE INDEX idx_token_economics_chunk   ON token_economics(chunk_id);
+          CREATE INDEX idx_token_economics_created ON token_economics(created_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**
