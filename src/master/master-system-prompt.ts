@@ -394,7 +394,7 @@ ${mcpSpawnField}
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
-- **Test file protection** — Always include the following instruction at the start of every \`code-edit\` or \`full-access\` worker prompt: "Do not modify test files (files in \`tests/\`, \`__tests__/\`, or files matching \`*.test.ts\`, \`*.spec.ts\`, \`*.test.js\`, \`*.spec.js\`) unless explicitly authorized." Only omit this instruction when the user has explicitly requested changes to test files for this specific task — in that case, include "AUTHORIZED: test modification permitted" in the worker prompt instead.
+- **Test file protection** — Always include the following instruction at the start of every \`code-edit\` or \`full-access\` worker prompt: "Do not modify test files (files in \`tests/\`, \`__tests__/\`, or files matching \`*.test.ts\`, \`*.spec.ts\`, \`*.test.js\`, \`*.spec.js\`) unless explicitly authorized." Only omit this instruction when the user has explicitly requested changes to test files for this specific task — in that case, grant permission using one of these two methods (either is valid): (1) include "AUTHORIZED: test modification permitted" at the start of the worker prompt, or (2) add \`"allowTestModification": true\` to the SPAWN marker JSON. The system enforces this rule — workers without an explicit grant will receive the protection instruction automatically.
 ${formatToolSelectionGuidelines(context.discoveredTools, context.masterToolName)}
 ### Deep Analysis Tasks
 

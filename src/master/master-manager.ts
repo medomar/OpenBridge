@@ -7839,6 +7839,56 @@ ${currentContent}
       }
     }
 
+    // OB-1787: Per-worker test modification permission grant.
+    // The Master AI is instructed (via system prompt) to include either:
+    //   a) "Do not modify test files ... unless explicitly authorized." — protection
+    //   b) "AUTHORIZED: test modification permitted"                   — explicit grant
+    // Additionally, the SPAWN marker may carry allowTestModification:true as a
+    // structured alternative to the in-prompt text marker.
+    //
+    // Enforcement logic for code-edit and full-access workers:
+    // 1. If test modification is explicitly granted (flag OR in-prompt marker):
+    //    - Log the authorization for the audit trail.
+    //    - Ensure the authorization header is present at the top of the prompt
+    //      so the worker receives a clear, unambiguous grant even if the Master
+    //      placed the text mid-prompt.
+    // 2. If NOT granted and no protection instruction is already present:
+    //    - Inject the protection reminder so workers always have an explicit guard,
+    //      regardless of whether the Master included it in the prompt.
+    const TEST_PROTECTION_PROFILES = new Set(['code-edit', 'full-access']);
+    const AUTHORIZED_MARKER = 'AUTHORIZED: test modification permitted';
+    const TEST_PROTECTION_INSTRUCTION =
+      'Do not modify test files (files in `tests/`, `__tests__/`, or files matching ' +
+      '`*.test.ts`, `*.spec.ts`, `*.test.js`, `*.spec.js`) unless explicitly authorized.';
+
+    if (TEST_PROTECTION_PROFILES.has(profile)) {
+      const hasAuthFlag = body.allowTestModification === true;
+      const hasAuthText = workerPrompt.includes(AUTHORIZED_MARKER);
+      const hasProtectionText = workerPrompt.includes(TEST_PROTECTION_INSTRUCTION.slice(0, 40));
+
+      if (hasAuthFlag || hasAuthText) {
+        // Grant: worker is authorized to touch test files.
+        logger.info(
+          { workerId, profile, source: hasAuthFlag ? 'spawn-flag' : 'prompt-marker' },
+          'Test modification permission granted for this worker',
+        );
+        // Normalize: ensure the authorization header is at the very top of the prompt
+        // so the worker cannot miss it (it may have been buried mid-prompt by the Master).
+        if (!workerPrompt.startsWith(AUTHORIZED_MARKER)) {
+          // Remove any existing AUTHORIZED marker to avoid duplication, then prepend.
+          const cleaned = workerPrompt.replace(AUTHORIZED_MARKER, '').trimStart();
+          workerPrompt = `${AUTHORIZED_MARKER}\n\n${cleaned}`;
+        }
+      } else if (!hasProtectionText) {
+        // No grant and no protection text — the Master omitted the guard. Inject it.
+        logger.debug(
+          { workerId, profile },
+          'Test protection instruction injected (Master omitted it)',
+        );
+        workerPrompt = `${TEST_PROTECTION_INSTRUCTION}\n\n${workerPrompt}`;
+      }
+    }
+
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     // manifestToSpawnOptions is async: when manifest.mcpServers is set, it writes a
     // per-worker temp MCP config file and returns a cleanup callback to delete it.
