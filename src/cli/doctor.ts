@@ -379,6 +379,112 @@ function checkOpenBridgeState(): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// Channel prerequisites check (OB-1690)
+// ---------------------------------------------------------------------------
+
+function isPortAvailable(port: number): boolean {
+  try {
+    execSync(`lsof -i :${port} -t 2>/dev/null`, { stdio: 'pipe', timeout: 3000 });
+    // lsof exited 0 — process found using the port → not available
+    return false;
+  } catch {
+    // lsof exited non-zero (no matches = available) or lsof not installed → assume available
+    return true;
+  }
+}
+
+function checkChannelPrerequisites(): CheckResult {
+  const configDir = getConfigDir();
+  const candidates = [join(configDir, 'config.json'), join(process.cwd(), 'config.json')];
+  const configPath = candidates.find((p) => existsSync(p));
+
+  if (!configPath) {
+    return { pass: true, message: 'skipped (no config.json found)' };
+  }
+
+  let parsed: unknown;
+  try {
+    const raw = readFileSync(configPath, 'utf-8');
+    parsed = JSON.parse(raw);
+  } catch {
+    return { pass: true, message: 'skipped (config.json unreadable)' };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || !('channels' in parsed)) {
+    return { pass: true, message: 'skipped (V0 config — no channels array)' };
+  }
+
+  const channels = (parsed as Record<string, unknown>)['channels'];
+  if (!Array.isArray(channels) || channels.length === 0) {
+    return { pass: true, message: 'no channels configured' };
+  }
+
+  const issues: string[] = [];
+  const info: string[] = [];
+
+  for (const ch of channels) {
+    if (typeof ch !== 'object' || ch === null) continue;
+    const channel = ch as Record<string, unknown>;
+    const type = typeof channel['type'] === 'string' ? channel['type'] : '';
+    if (channel['enabled'] === false) continue;
+
+    const options =
+      typeof channel['options'] === 'object' && channel['options'] !== null
+        ? (channel['options'] as Record<string, unknown>)
+        : {};
+
+    if (type === 'whatsapp') {
+      const sessionName =
+        typeof options['sessionName'] === 'string' ? options['sessionName'] : 'openbridge-default';
+      const sessionPath =
+        typeof options['sessionPath'] === 'string' ? options['sessionPath'] : '.wwebjs_auth';
+      const sessionDir = join(sessionPath, `session-${sessionName}`);
+      if (existsSync(sessionDir)) {
+        info.push(`whatsapp: session found (${sessionDir})`);
+      } else {
+        info.push(`whatsapp: no session yet — scan QR code on first run`);
+      }
+    } else if (type === 'telegram') {
+      const token = options['token'];
+      if (typeof token === 'string' && token.length > 0) {
+        info.push('telegram: token configured');
+      } else {
+        issues.push('telegram: token missing — add token to channels[].options.token');
+      }
+    } else if (type === 'discord') {
+      const token = options['token'];
+      if (typeof token === 'string' && token.length > 0) {
+        info.push('discord: token configured');
+      } else {
+        issues.push('discord: token missing — add token to channels[].options.token');
+      }
+    } else if (type === 'webchat') {
+      const port = typeof options['port'] === 'number' ? options['port'] : 3000;
+      if (isPortAvailable(port)) {
+        info.push(`webchat: port ${port} available`);
+      } else {
+        issues.push(
+          `webchat: port ${port} already in use — stop the conflicting process or change options.port`,
+        );
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    return {
+      pass: false,
+      message: issues.join('; ') + (info.length > 0 ? ` | ${info.join(', ')}` : ''),
+    };
+  }
+
+  if (info.length === 0) {
+    return { pass: true, message: 'no recognized channels to check' };
+  }
+
+  return { pass: true, message: info.join(', ') };
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -441,6 +547,7 @@ const CHECKS: Check[] = [
   { label: 'Config', run: checkConfig },
   { label: 'SQLite DB', run: checkSQLiteDatabase },
   { label: '.openbridge/', run: checkOpenBridgeState },
+  { label: 'Channels', run: checkChannelPrerequisites },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 74 | **In Progress:** 0 | **Done:** 102 (1063 archived)
+> **Pending:** 73 | **In Progress:** 0 | **Done:** 103 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -274,7 +274,7 @@
 | OB-1687 | Check: Config file exists + valid (Zod parse with specific error messages per field)                                            | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1688 | Check: SQLite database healthy (`PRAGMA integrity_check`, schema version, table row counts summary)                             | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1689 | Check: `.openbridge/` state — memory.md freshness, workspace-map existence, no corrupted JSON                                   | `src/cli/doctor.ts`       | ✅ Done |
-| OB-1690 | Check: Channel prerequisites — WhatsApp session dir, Telegram BOT_TOKEN, Discord BOT_TOKEN, WebChat port                        | `src/cli/doctor.ts`       | Pending |
+| OB-1690 | Check: Channel prerequisites — WhatsApp session dir, Telegram BOT_TOKEN, Discord BOT_TOKEN, WebChat port                        | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1691 | Color-coded summary output (green ✓ / red ✗ / yellow ⚠) with fix suggestions per failing check                                  | `src/cli/doctor.ts`       | Pending |
 | OB-1692 | Wire `doctor` command into CLI entry point (`src/cli/index.ts`)                                                                 | `src/cli/index.ts`        | Pending |
 | OB-1693 | Add `/doctor` chat command (runs same checks, sends summary via messaging channel)                                              | `src/core/router.ts`      | Pending |
