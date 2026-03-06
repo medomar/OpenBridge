@@ -698,6 +698,77 @@ describe('retrieval.ts', () => {
   });
 
   // -------------------------------------------------------------------------
+  // hybridSearch with decayRate option (OB-1656)
+  // -------------------------------------------------------------------------
+
+  describe('hybridSearch with decayRate option (OB-1656)', () => {
+    /**
+     * Insert a chunk directly so we can control updated_at.
+     * storeChunks() always uses the current timestamp.
+     */
+    function insertChunkAt(
+      testDb: Database.Database,
+      scope: string,
+      content: string,
+      updatedAt: string,
+    ): void {
+      const res = testDb
+        .prepare(
+          `INSERT INTO context_chunks (scope, category, content, source_hash, stale, created_at, updated_at)
+           VALUES (?, 'structure', ?, NULL, 0, ?, ?)`,
+        )
+        .run(scope, content, updatedAt, updatedAt);
+      testDb
+        .prepare(`INSERT INTO context_chunks_fts (rowid, content) VALUES (?, ?)`)
+        .run(res.lastInsertRowid, content);
+    }
+
+    it('accepts decayRate option without error', async () => {
+      void storeChunks(db, [makeChunk({ content: 'authentication service module' })]);
+      await expect(hybridSearch(db, 'authentication', { decayRate: 0.5 })).resolves.toBeDefined();
+    });
+
+    it('with extreme decayRate, recent chunks rank above equally-relevant old chunks', async () => {
+      const recentTs = new Date().toISOString();
+      const oldTs = '2020-01-01T00:00:00.000Z';
+
+      insertChunkAt(db, 'src/recent', 'authentication service module', recentTs);
+      insertChunkAt(db, 'src/old', 'authentication service module', oldTs);
+
+      // decayRate=10 → exp(-10 * ~2200 days) ≈ 0 for the old chunk
+      const results = await hybridSearch(db, 'authentication', { decayRate: 10, limit: 2 });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]?.scope).toBe('src/recent');
+    });
+
+    it('with decayRate=0, BM25 order is preserved (no temporal penalty)', async () => {
+      const oldTs = '2020-01-01T00:00:00.000Z';
+      // Only one chunk — decayRate=0 should not filter it out
+      insertChunkAt(db, 'src/old', 'authentication service module', oldTs);
+      const results = await hybridSearch(db, 'authentication', { decayRate: 0 });
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('with queryVector and extreme decayRate, recent chunks rank above old chunks', async () => {
+      const recentTs = new Date().toISOString();
+      const oldTs = '2020-01-01T00:00:00.000Z';
+
+      insertChunkAt(db, 'src/recent', 'authentication service module', recentTs);
+      insertChunkAt(db, 'src/old', 'authentication service module', oldTs);
+
+      const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+      // sqlite-vec not loaded → vectorScore=0 for all; differentiation via temporalScore
+      const results = await hybridSearch(db, 'authentication', {
+        queryVector,
+        decayRate: 10,
+        limit: 2,
+      });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]?.scope).toBe('src/recent');
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // hybridSearch with mmr option (OB-1655)
   // -------------------------------------------------------------------------
 
