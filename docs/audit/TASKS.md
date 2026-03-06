@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 58 | **In Progress:** 0 | **Done:** 118 (1063 archived)
+> **Pending:** 57 | **In Progress:** 0 | **Done:** 119 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -308,7 +308,7 @@
 | ------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- |
 | OB-1704 | Create `SkillManager` class — discovers and loads skill definitions from `.openbridge/skills/` directory              | `src/master/skill-manager.ts` (new)             | ✅ Done |
 | OB-1705 | Define `Skill` type + `SKILL.md` format: name, description, tools needed, tool profile, example prompts, constraints  | `src/types/agent.ts`                            | ✅ Done |
-| OB-1706 | Create built-in skill definition: `code-review` — diff analysis, review checklist, tool profile: read-only            | `src/master/skills/code-review.ts` (new)        | Pending |
+| OB-1706 | Create built-in skill definition: `code-review` — diff analysis, review checklist, tool profile: read-only            | `src/master/skills/code-review.ts` (new)        | ✅ Done |
 | OB-1707 | Create built-in skill definition: `test-runner` — test execution, coverage, failure analysis, tool profile: code-edit | `src/master/skills/test-runner.ts` (new)        | Pending |
 | OB-1708 | Create built-in skill definition: `dependency-audit` — outdated packages, vulnerability scan, tool profile: read-only | `src/master/skills/dependency-audit.ts` (new)   | Pending |
 | OB-1709 | Create built-in skill definition: `api-docs-generator` — endpoint extraction, OpenAPI gen, tool profile: code-edit    | `src/master/skills/api-docs-generator.ts` (new) | Pending |
