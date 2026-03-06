@@ -434,6 +434,19 @@ export const MemoryConfigSchema = z.object({
 
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 
+/** Schema for worker execution configuration */
+export const WorkerConfigSchema = z.object({
+  /**
+   * Maximum number of lint/test fix iterations before escalating to Master.
+   * Each iteration is counted when the worker runs lint/test commands and then
+   * attempts a fix. When the cap is reached, the worker reports partial results
+   * and escalates to Master. Set to 0 to disable the cap. Default: 3.
+   */
+  maxFixIterations: z.number().int().nonnegative().default(3),
+});
+
+export type WorkerConfig = z.infer<typeof WorkerConfigSchema>;
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
@@ -456,6 +469,8 @@ export const V2ConfigSchema = z
     health: HealthConfigSchema.optional(),
     metrics: MetricsConfigSchema.optional(),
     logLevel: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
+    /** Worker execution configuration — controls fix iteration caps and other worker behaviour */
+    worker: WorkerConfigSchema.optional(),
   })
   .strict();
 

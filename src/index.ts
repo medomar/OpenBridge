@@ -301,6 +301,7 @@ async function startV2Flow(
     deepConfig: v2Config.deep,
     workspaceExclude: v2Config.workspace?.exclude,
     workspaceInclude: v2Config.workspace?.include,
+    workerMaxFixIterations: v2Config.worker?.maxFixIterations,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits

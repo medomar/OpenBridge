@@ -20,6 +20,7 @@ import {
   TOOLS_READ_ONLY,
   TOOLS_CODE_EDIT,
   DEFAULT_MAX_TURNS_TASK,
+  DEFAULT_MAX_FIX_ITERATIONS,
   classifyError,
   resolveProfile,
 } from '../core/agent-runner.js';
@@ -511,6 +512,12 @@ export interface MasterManagerOptions {
   workspaceExclude?: readonly string[];
   /** Glob patterns for files to include — limits AI visibility to only these files (workspace.include from V2 config) */
   workspaceInclude?: readonly string[];
+  /**
+   * Maximum number of lint/test fix iterations before escalating to Master (OB-1791).
+   * Sourced from `config.worker.maxFixIterations`. Defaults to DEFAULT_MAX_FIX_ITERATIONS (3).
+   * Set to 0 to disable the cap.
+   */
+  workerMaxFixIterations?: number;
 }
 
 /**
@@ -629,6 +636,8 @@ export class MasterManager {
   private activeSkillPacks: SkillPack[] = [...BUILT_IN_SKILL_PACKS];
   /** Planning gate — two-phase execution guard for complex tasks (OB-1779). */
   private readonly planningGate = new PlanningGate();
+  /** Max lint/test fix iterations for workers before escalating to Master (OB-1791). */
+  private readonly workerMaxFixIterations: number;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -650,6 +659,7 @@ export class MasterManager {
     this.deepConfig = options.deepConfig;
     this.workspaceExclude = options.workspaceExclude ?? [];
     this.workspaceInclude = options.workspaceInclude ?? [];
+    this.workerMaxFixIterations = options.workerMaxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
 
     // Instantiate DeepModeManager — multi-phase session state machine (OB-1403)
     this.deepMode = new DeepModeManager({ workspacePath: this.workspacePath });
@@ -7905,6 +7915,10 @@ ${currentContent}
       },
       customProfiles,
     );
+
+    // OB-1791: Apply configurable fix iteration cap to workers.
+    // Sourced from config.worker.maxFixIterations (default: 3).
+    spawnOpts.maxFixIterations = this.workerMaxFixIterations;
 
     // OB-1596: Auto-merge session-granted tools into this worker's allowedTools.
     // Tools previously approved by the user this session (via /allow) are applied
