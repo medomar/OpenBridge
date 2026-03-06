@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 70 | **In Progress:** 0 | **Done:** 106 (1063 archived)
+> **Pending:** 69 | **In Progress:** 0 | **Done:** 107 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -287,7 +287,7 @@
 
 | Task    | What                                                                                                                  | Key File                     | Status  |
 | ------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------- |
-| OB-1694 | Generate cryptographically secure 6-digit pairing code for unknown senders (use `crypto.randomInt(100000, 999999)`)   | `src/core/auth.ts`           | Pending |
+| OB-1694 | Generate cryptographically secure 6-digit pairing code for unknown senders (use `crypto.randomInt(100000, 999999)`)   | `src/core/auth.ts`           | ✅ Done |
 | OB-1695 | Store pending pairings in-memory Map: `code → { senderId, channel, requestedAt, attempts }`                           | `src/core/auth.ts`           | Pending |
 | OB-1696 | Send pairing message to unknown sender: "To connect, ask the admin to approve code: XXXXXX (expires in 5 minutes)"    | `src/core/auth.ts`           | Pending |
 | OB-1697 | Add `openbridge pairing approve <code>` CLI command — validates code, adds user to access_control with `viewer` role  | `src/cli/access.ts`          | Pending |
