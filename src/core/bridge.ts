@@ -829,7 +829,7 @@ export class Bridge {
     this.metrics.recordReceived();
     this.lastMessageAt = new Date().toISOString();
 
-    if (!this.auth.isAuthorized(message.sender)) {
+    if (!this.auth.isAuthorized(message.sender, message.source)) {
       logger.warn({ sender: message.sender }, 'Unauthorized sender');
       void this.auditLogger.logAuthDenied(message.sender);
       return;
