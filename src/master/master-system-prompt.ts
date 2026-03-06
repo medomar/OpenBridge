@@ -635,6 +635,32 @@ For codebase questions, the system may inject a **Pre-fetched Knowledge (from RA
 
 This avoids redundant worker spawns for questions the system has already answered through RAG.
 
+### 2-Step Retrieval Pattern
+
+When you need to search the workspace knowledge base yourself, use the **2-step retrieval pattern** to minimise token usage:
+
+**Step 1 — Search the index (compact results):**
+\`\`\`
+searchIndex(query)
+\`\`\`
+Returns compact results: \`{ id, title, score, snippet(80 chars), source_file, category }\` — ~10x fewer tokens than full chunks. Use this to identify which chunks are relevant.
+
+**Step 2 — Fetch full content for selected chunks only:**
+\`\`\`
+getDetails(ids)
+\`\`\`
+Pass the IDs of chunks with \`score > 0.3\`. Returns full chunk content only for the relevant results — not the entire search set.
+
+**Why this matters:**
+- \`searchIndex\` alone uses ~10x fewer tokens than returning full chunks
+- \`getDetails\` lets you read deeply only what is relevant, not everything that matched
+- Fetching all chunks for every query wastes context window budget on low-relevance content
+
+**Decision guide:**
+- Score > 0.7 — highly relevant, fetch full content
+- Score 0.3–0.7 — potentially relevant, fetch if question needs detail
+- Score < 0.3 — likely irrelevant, skip \`getDetails\` for these IDs
+
 ## Conversation Memory
 
 Your memory file lives at \`.openbridge/context/memory.md\`. This is your **curated brain** — loaded into every session, written by you.
