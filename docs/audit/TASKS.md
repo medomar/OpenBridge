@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 37 | **In Progress:** 0 | **Done:** 139 (1063 archived)
+> **Pending:** 36 | **In Progress:** 0 | **Done:** 140 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -346,7 +346,7 @@
 | OB-1754 | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                                | `src/master/skill-pack-loader.ts`                | ✅ Done |
 | OB-1755 | Master can create new skill packs from successful task patterns (extends prompt evolution)                       | `src/master/skill-pack-loader.ts`                | ✅ Done |
 | OB-1756 | Add `/skill-packs` chat command — list available packs with descriptions                                         | `src/core/router.ts`                             | ✅ Done |
-| OB-1757 | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               | Pending |
+| OB-1757 | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               | ✅ Done |
 | OB-1758 | Wire skill pack loader into MemoryManager facade                                                                 | `src/memory/index.ts`                            | Pending |
 | OB-1759 | Tests: skill pack discovery, SKILLPACK.md parsing, prompt injection, tool profile override                       | `tests/master/skill-pack-loader.test.ts`         | Pending |
 | OB-1760 | Tests: Master skill selection logic, user override precedence                                                    | `tests/master/master-manager.test.ts`            | Pending |
