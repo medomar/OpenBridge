@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 60 | **In Progress:** 0 | **Done:** 116 (1063 archived)
+> **Pending:** 59 | **In Progress:** 0 | **Done:** 117 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -306,7 +306,7 @@
 
 | Task    | What                                                                                                                  | Key File                                        | Status  |
 | ------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- |
-| OB-1704 | Create `SkillManager` class — discovers and loads skill definitions from `.openbridge/skills/` directory              | `src/master/skill-manager.ts` (new)             | Pending |
+| OB-1704 | Create `SkillManager` class — discovers and loads skill definitions from `.openbridge/skills/` directory              | `src/master/skill-manager.ts` (new)             | ✅ Done |
 | OB-1705 | Define `Skill` type + `SKILL.md` format: name, description, tools needed, tool profile, example prompts, constraints  | `src/types/agent.ts`                            | Pending |
 | OB-1706 | Create built-in skill definition: `code-review` — diff analysis, review checklist, tool profile: read-only            | `src/master/skills/code-review.ts` (new)        | Pending |
 | OB-1707 | Create built-in skill definition: `test-runner` — test execution, coverage, failure analysis, tool profile: code-edit | `src/master/skills/test-runner.ts` (new)        | Pending |

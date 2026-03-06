@@ -73,3 +73,6 @@ export type { SubProjectInfo, ProjectType } from './sub-master-detector.js';
 // Export sub-master manager for lifecycle management of sub-project masters (OB-754)
 export { SubMasterManager } from './sub-master-manager.js';
 export type { SubMasterRecord, SubMasterStatus } from './sub-master-manager.js';
+
+// Export SkillManager for skills directory discovery and loading (OB-1704)
+export { SkillManager } from './skill-manager.js';

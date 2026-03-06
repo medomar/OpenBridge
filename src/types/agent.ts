@@ -535,6 +535,38 @@ export const DocumentSkillSchema = z.object({
   prompts: DocumentSkillPromptsSchema,
 });
 
+// ── Skills Directory ─────────────────────────────────────────────
+
+/**
+ * A skill definition — a named, reusable task template that the Master AI
+ * can use to spawn workers for common development tasks (code review, testing,
+ * dependency audit, API docs generation, etc.).
+ *
+ * Skill definitions can be:
+ * - Built-in: shipped as TypeScript in `src/master/skills/`
+ * - User-defined: discovered as `SKILL.md` or JSON files in `.openbridge/skills/`
+ */
+export const SkillSchema = z.object({
+  /** Unique identifier for this skill (e.g., 'code-review', 'test-runner') */
+  name: z.string().min(1),
+  /** Human-readable description of what this skill does */
+  description: z.string().min(1),
+  /** Named tool profile the worker should use (e.g., 'read-only', 'code-edit') */
+  toolProfile: z.string().min(1),
+  /** Explicit tools list — overrides toolProfile when provided */
+  toolsNeeded: z.array(z.string().min(1)).default([]),
+  /** Example user prompts that should trigger this skill */
+  examplePrompts: z.array(z.string().min(1)).default([]),
+  /** Constraints or limitations that apply to this skill */
+  constraints: z.array(z.string().min(1)).default([]),
+  /** System prompt template injected into the worker when this skill is used */
+  systemPrompt: z.string().optional(),
+  /** Maximum number of agentic turns for the worker (overrides global default) */
+  maxTurns: z.number().int().positive().optional(),
+  /** Whether this skill is user-defined (loaded from .openbridge/skills/) or built-in */
+  isUserDefined: z.boolean().default(false),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -571,3 +603,4 @@ export type WorkerSummary = z.infer<typeof WorkerSummarySchema>;
 export type DocumentFileFormat = z.infer<typeof DocumentFileFormatSchema>;
 export type DocumentSkillPrompts = z.infer<typeof DocumentSkillPromptsSchema>;
 export type DocumentSkill = z.infer<typeof DocumentSkillSchema>;
+export type Skill = z.infer<typeof SkillSchema>;
