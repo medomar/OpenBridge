@@ -1,6 +1,12 @@
 import * as nodePath from 'node:path';
 import type { MemoryManager, Chunk } from '../memory/index.js';
 import { QACacheStore } from '../memory/qa-cache-store.js';
+import {
+  searchIndex as _searchIndex,
+  getDetails as _getDetails,
+  type SearchOptions,
+  type IndexResult,
+} from '../memory/retrieval.js';
 import type { DotFolderManager } from '../master/dotfolder-manager.js';
 import type { WorkspaceMap } from '../types/master.js';
 import { createLogger } from './logger.js';
@@ -684,5 +690,69 @@ export class KnowledgeRetriever {
     }
 
     return result;
+  }
+
+  /**
+   * 2-step retrieval for the RAG flow (OB-1660).
+   *
+   * Step 1: `searchIndex(query)` — compact results (~10x fewer tokens than full chunks).
+   * Step 2: Filter results with score > scoreThreshold (default 0.3).
+   * Step 3: `getDetails(topIds)` — fetch full content only for the relevant chunks.
+   *
+   * This is more token-efficient than `query()` because it avoids retrieving full
+   * chunk content for low-relevance results. Master should prefer this method when
+   * assembling context for generation.
+   *
+   * @param question       Natural-language question to search for
+   * @param options        hybridSearch options forwarded to searchIndex (scope, category, limit, etc.)
+   * @param scoreThreshold Minimum score to include in getDetails step (default 0.3)
+   */
+  async queryWithIndex(
+    question: string,
+    options: SearchOptions = {},
+    scoreThreshold = 0.3,
+  ): Promise<KnowledgeResult> {
+    if (question.trim().length < 3) {
+      return { chunks: [], confidence: 0, sources: [] };
+    }
+
+    const db = this.memoryManager.getDb();
+    if (!db) {
+      return { chunks: [], confidence: 0, sources: [] };
+    }
+
+    // Step 1: get compact index results
+    let indexResults: IndexResult[];
+    try {
+      indexResults = await _searchIndex(db, question, options);
+    } catch (err) {
+      this.logger.warn({ err }, 'queryWithIndex: searchIndex failed, returning empty result');
+      return { chunks: [], confidence: 0, sources: [] };
+    }
+
+    // Step 2: filter by score threshold
+    const relevant = indexResults.filter((r) => r.score > scoreThreshold);
+
+    if (relevant.length === 0) {
+      return { chunks: [], confidence: 0, sources: ['index'] };
+    }
+
+    // Step 3: fetch full content for relevant IDs
+    const topIds = relevant.map((r) => r.id);
+    let chunks: Chunk[];
+    try {
+      chunks = _getDetails(db, topIds);
+    } catch (err) {
+      this.logger.warn({ err }, 'queryWithIndex: getDetails failed, returning empty result');
+      return { chunks: [], confidence: 0, sources: ['index'] };
+    }
+
+    const confidence = this.computeConfidence(chunks.length, 1);
+    return {
+      chunks,
+      confidence,
+      sources: ['index'],
+      needsWorker: confidence < 0.3,
+    };
   }
 }
