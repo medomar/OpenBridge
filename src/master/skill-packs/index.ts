@@ -9,6 +9,7 @@ import { chartGeneratorSkillPack } from './chart-generator.js';
 import { webDesignerSkillPack } from './web-designer.js';
 import { slideDesignerSkillPack } from './slide-designer.js';
 import { generativeArtSkillPack } from './generative-art.js';
+import { brandAssetsSkillPack } from './brand-assets.js';
 
 /**
  * All built-in skill packs shipped with OpenBridge.
@@ -25,4 +26,5 @@ export const BUILT_IN_SKILL_PACKS: SkillPack[] = [
   webDesignerSkillPack,
   slideDesignerSkillPack,
   generativeArtSkillPack,
+  brandAssetsSkillPack,
 ];
