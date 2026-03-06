@@ -236,7 +236,10 @@ export class AuthService {
       // blocked_actions always take precedence (explicit deny list)
       if (entry.blocked_actions && entry.blocked_actions.includes(action)) {
         logger.warn({ userId, channel, action }, 'Access denied — action in blocked list');
-        return { allowed: false, reason: 'That action is not permitted for your role.' };
+        return {
+          allowed: false,
+          reason: `Action "${action}" is blocked for your account (role: ${entry.role}).`,
+        };
       }
 
       // Determine the effective allowed-action set:
@@ -253,7 +256,11 @@ export class AuthService {
           { userId, channel, role: entry.role, action, effectiveAllowed },
           'Access denied — action not in allowed list for role',
         );
-        return { allowed: false, reason: 'That action is not permitted for your role.' };
+        const allowedList = effectiveAllowed.join(', ');
+        return {
+          allowed: false,
+          reason: `Action "${action}" is not permitted for your role (${entry.role}). Your role allows: ${allowedList}.`,
+        };
       }
 
       // 4. Scope check — only enforced when explicit file paths appear in the message.
