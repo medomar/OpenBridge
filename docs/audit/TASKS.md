@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 108 | **In Progress:** 0 | **Done:** 68 (1063 archived)
+> **Pending:** 107 | **In Progress:** 0 | **Done:** 69 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -193,7 +193,7 @@
 | OB-1734 | Add `pdf` worker tooling — HTML-to-PDF via Puppeteer or wkhtmltopdf, styled templates                                         | `src/master/skill-packs/report-generator.ts`    | ✅ Done |
 | OB-1735 | Create `skill-pack-loader.ts` — discovers and loads skill packs from built-in defaults + `.openbridge/skill-packs/` directory | `src/master/skill-pack-loader.ts` (new)         | ✅ Done |
 | OB-1736 | Master auto-detects document tasks — intent classification extended with document/report/presentation/spreadsheet intents     | `src/core/router.ts`                            | ✅ Done |
-| OB-1737 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt                   | `src/master/master-manager.ts`                  | Pending |
+| OB-1737 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt                   | `src/master/master-manager.ts`                  | ✅ Done |
 
 #### 99c — Output Delivery
 

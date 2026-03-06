@@ -85,6 +85,8 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { SessionCompactor } from './session-compactor.js';
 import type { ConversationTurn } from './session-compactor.js';
+import { getBuiltInSkillPacks, findSkillByFormat } from './skill-pack-loader.js';
+import { classifyDocumentIntent } from '../core/router.js';
 
 const logger = createLogger('master-manager');
 
@@ -7516,6 +7518,23 @@ ${currentContent}
     // Codex workers waste turns on shell gymnastics — the prefix steers them
     // toward simple, direct file-reading commands (OB-F91).
     workerPrompt = applyToolPromptPrefix(workerPrompt, toolUsed);
+
+    // OB-1737: Inject skill pack prompt extension when the worker task involves
+    // document generation. classifyDocumentIntent maps task text to a file format
+    // (docx, pptx, xlsx, pdf), then we locate the matching built-in skill pack and
+    // append its workerPrompt section so the worker has precise generation guidance.
+    const docFormat = classifyDocumentIntent(body.prompt);
+    if (docFormat) {
+      const skillPacks = new Map(getBuiltInSkillPacks().map((s) => [s.name, s]));
+      const skill = findSkillByFormat(skillPacks, docFormat);
+      if (skill) {
+        workerPrompt = `${workerPrompt}\n\n---\n\n${skill.prompts.workerPrompt}`;
+        logger.debug(
+          { workerId, skillName: skill.name, docFormat },
+          'Injected skill pack prompt extension into worker',
+        );
+      }
+    }
 
     // Adaptive model selection (OB-724): marker override → learned best model → heuristics
     if (!resolvedModel && this.memory) {
