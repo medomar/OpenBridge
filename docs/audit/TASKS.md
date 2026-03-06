@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 98 | **In Progress:** 0 | **Done:** 78 (1063 archived)
+> **Pending:** 97 | **In Progress:** 0 | **Done:** 79 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -226,7 +226,7 @@
 | OB-1645 | Add `sqlite-vec` dependency to `package.json` (native addon, like `better-sqlite3`)                                                                | `package.json`                           | ✅ Done |
 | OB-1646 | Add `embeddings` table — `id`, `chunk_id` (FK → context_chunks), `vector` (BLOB, float32), `model`, `dimensions`, `created_at`                     | `src/memory/database.ts`                 | ✅ Done |
 | OB-1647 | Add migration (version 12) for `embeddings` table + `sqlite-vec` initialization via `db.loadExtension()`                                           | `src/memory/migration.ts`                | ✅ Done |
-| OB-1648 | Create `embedding-provider.ts` — abstract `EmbeddingProvider` interface: `embed(text): Promise<Float32Array>`, `embedBatch(texts[]): Promise<...>` | `src/memory/embedding-provider.ts` (new) | Pending |
+| OB-1648 | Create `embedding-provider.ts` — abstract `EmbeddingProvider` interface: `embed(text): Promise<Float32Array>`, `embedBatch(texts[]): Promise<...>` | `src/memory/embedding-provider.ts` (new) | ✅ Done |
 | OB-1649 | Implement local Ollama provider (`nomic-embed-text`, 768 dims) — HTTP call to `localhost:11434/api/embeddings`                                     | `src/memory/embeddings/local.ts` (new)   | Pending |
 | OB-1650 | Implement OpenAI provider (`text-embedding-3-small`, 1536 dims) — optional, requires OPENAI_API_KEY                                                | `src/memory/embeddings/openai.ts` (new)  | Pending |
 | OB-1651 | Add `memory.embedding` config section to Zod schema — `provider` ('local'\|'openai'\|'none'), `model`, `batchSize` (default 50), `dimensions`      | `src/types/config.ts`                    | Pending |
