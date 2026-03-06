@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type { EmbeddingProvider } from './embedding-provider.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -21,6 +22,13 @@ export interface StoreChunksOptions {
   workerTurns?: number;
   /** Average tokens consumed per turn (default: {@link DEFAULT_AVG_TOKENS_PER_TURN}). */
   avgTokensPerTurn?: number;
+  /**
+   * Optional embedding provider. When supplied (and not the 'none' no-op),
+   * newly inserted chunks are batch-embedded and their vectors stored in the
+   * `embeddings` table immediately after the SQLite transaction commits.
+   * Embedding failures are non-fatal — the chunk is still stored.
+   */
+  embeddingProvider?: EmbeddingProvider;
 }
 
 export interface Chunk {
@@ -98,13 +106,19 @@ function sanitizeFts5Query(raw: string): string {
  * expensive per-chunk SELECT is unnecessary. Outside the window the full hash
  * check runs as before.
  *
+ * **Batch embedding:** When `options.embeddingProvider` is supplied and its
+ * `name` is not `'none'`, all newly inserted chunks (those that were not
+ * dedup-touched) are batch-embedded after the SQLite transaction commits and
+ * their vectors are stored in the `embeddings` table. Embedding failures are
+ * non-fatal — the chunk row is already committed and remains usable via FTS5.
+ *
  * All insert operations run inside a single transaction.
  */
-export function storeChunks(
+export async function storeChunks(
   db: Database.Database,
   chunks: Chunk[],
   options: StoreChunksOptions = {},
-): void {
+): Promise<void> {
   if (chunks.length === 0) return;
 
   const now = new Date();
@@ -164,6 +178,9 @@ export function storeChunks(
       )
     : null;
 
+  // Track newly inserted chunk IDs + content for batch embedding after the transaction.
+  const newlyInserted: Array<{ id: number; content: string }> = [];
+
   const insertAll = db.transaction((rows: Chunk[]) => {
     for (const chunk of rows) {
       const hash = chunk.content_hash ?? computeContentHash(chunk.content);
@@ -194,10 +211,59 @@ export function storeChunks(
       // avoid overwriting an existing row if the chunk was previously inserted
       // in an earlier pass with a different turn count).
       insertTokenEcon?.run(result.lastInsertRowid, discoveryTokens, nowIso);
+
+      // Collect for batch embedding below.
+      newlyInserted.push({ id: Number(result.lastInsertRowid), content: chunk.content });
     }
   });
 
   insertAll(chunks);
+
+  // ---------------------------------------------------------------------------
+  // Batch embedding (async, non-fatal)
+  // ---------------------------------------------------------------------------
+  const { embeddingProvider } = options;
+  if (embeddingProvider && embeddingProvider.name !== 'none' && newlyInserted.length > 0) {
+    // Check that the embeddings table exists (graceful for minimal test DBs).
+    const embeddingsTableExists =
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='embeddings'`,
+          )
+          .get() as { c: number }
+      ).c > 0;
+
+    if (embeddingsTableExists) {
+      try {
+        const results = await embeddingProvider.embedBatch(newlyInserted.map((c) => c.content));
+
+        const upsertEmbedding = db.prepare(
+          `INSERT OR REPLACE INTO embeddings (chunk_id, vector, model, dimensions, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        );
+
+        db.transaction(() => {
+          for (let i = 0; i < newlyInserted.length; i++) {
+            const entry = newlyInserted[i];
+            const result = results[i];
+            if (!entry || !result || result.dimensions === 0) continue; // skip no-op results
+            const { id } = entry;
+            upsertEmbedding.run(
+              id,
+              Buffer.from(result.vector.buffer, result.vector.byteOffset, result.vector.byteLength),
+              result.model,
+              result.dimensions,
+              nowIso,
+            );
+          }
+        })();
+      } catch {
+        // Embedding failures are non-critical — chunks are already stored and
+        // searchable via FTS5. Vector search will skip chunks without embeddings.
+      }
+    }
+  }
 }
 
 /**

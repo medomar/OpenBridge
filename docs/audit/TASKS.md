@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 94 | **In Progress:** 0 | **Done:** 82 (1063 archived)
+> **Pending:** 93 | **In Progress:** 0 | **Done:** 83 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -230,7 +230,7 @@
 | OB-1649 | Implement local Ollama provider (`nomic-embed-text`, 768 dims) — HTTP call to `localhost:11434/api/embeddings`                                     | `src/memory/embeddings/local.ts` (new)   | ✅ Done |
 | OB-1650 | Implement OpenAI provider (`text-embedding-3-small`, 1536 dims) — optional, requires OPENAI_API_KEY                                                | `src/memory/embeddings/openai.ts` (new)  | ✅ Done |
 | OB-1651 | Add `memory.embedding` config section to Zod schema — `provider` ('local'\|'openai'\|'none'), `model`, `batchSize` (default 50), `dimensions`      | `src/types/config.ts`                    | ✅ Done |
-| OB-1652 | Batch embedding during chunk storage — embed new chunks as they're inserted via `storeChunks()`                                                    | `src/memory/chunk-store.ts`              | Pending |
+| OB-1652 | Batch embedding during chunk storage — embed new chunks as they're inserted via `storeChunks()`                                                    | `src/memory/chunk-store.ts`              | ✅ Done |
 
 #### 94b — Hybrid Search & Ranking (OB-F79)
 

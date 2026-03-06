@@ -12,6 +12,7 @@ import {
   computeContentHash,
   type Chunk,
 } from '../../src/memory/chunk-store.js';
+import type { EmbeddingProvider, EmbeddingResult } from '../../src/memory/embedding-provider.js';
 
 describe('chunk-store.ts', () => {
   let db: Database.Database;
@@ -33,13 +34,13 @@ describe('chunk-store.ts', () => {
 
   describe('storeChunks', () => {
     it('inserts chunks into context_chunks table', () => {
-      storeChunks(db, [makeChunk()]);
+      void storeChunks(db, [makeChunk()]);
       const rows = db.prepare('SELECT * FROM context_chunks').all() as Chunk[];
       expect(rows).toHaveLength(1);
     });
 
     it('inserts multiple chunks in a single transaction', () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/core', content: 'Bridge core message routing logic' }),
         makeChunk({
           scope: 'src/master',
@@ -58,13 +59,13 @@ describe('chunk-store.ts', () => {
 
     it('deduplicates chunks with the same content hash — updates updated_at instead of inserting', () => {
       const content = 'Shared content that appears in multiple scopes';
-      storeChunks(db, [makeChunk({ content, scope: 'src/a' })]);
+      void storeChunks(db, [makeChunk({ content, scope: 'src/a' })]);
       const before = (
         db.prepare('SELECT updated_at FROM context_chunks LIMIT 1').get() as { updated_at: string }
       ).updated_at;
 
       // Insert identical content again — should not create a new row
-      storeChunks(db, [makeChunk({ content, scope: 'src/b' })]);
+      void storeChunks(db, [makeChunk({ content, scope: 'src/b' })]);
       const count = (db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number })
         .c;
       expect(count).toBe(1);
@@ -77,7 +78,7 @@ describe('chunk-store.ts', () => {
     });
 
     it('stores optional source_hash', () => {
-      storeChunks(db, [makeChunk({ source_hash: 'abc123' })]);
+      void storeChunks(db, [makeChunk({ source_hash: 'abc123' })]);
       const row = db.prepare('SELECT source_hash FROM context_chunks').get() as {
         source_hash: string;
       };
@@ -85,13 +86,13 @@ describe('chunk-store.ts', () => {
     });
 
     it('sets stale = 0 on new chunks', () => {
-      storeChunks(db, [makeChunk()]);
+      void storeChunks(db, [makeChunk()]);
       const row = db.prepare('SELECT stale FROM context_chunks').get() as { stale: number };
       expect(row.stale).toBe(0);
     });
 
     it('keeps FTS5 table in sync (rowid matches)', () => {
-      storeChunks(db, [makeChunk({ content: 'xyzuniqueftsword' })]);
+      void storeChunks(db, [makeChunk({ content: 'xyzuniqueftsword' })]);
       const chunk = db.prepare('SELECT id FROM context_chunks').get() as { id: number };
       const ftsRow = db
         .prepare('SELECT rowid FROM context_chunks_fts WHERE content MATCH ?')
@@ -101,7 +102,7 @@ describe('chunk-store.ts', () => {
     });
 
     it('is a no-op when given an empty array', () => {
-      storeChunks(db, []);
+      void storeChunks(db, []);
       const count = (db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number })
         .c;
       expect(count).toBe(0);
@@ -111,9 +112,9 @@ describe('chunk-store.ts', () => {
       it('skips hash check for scopes written within the last 30 seconds — allows re-insert', () => {
         const content = 'Duplicate content within dedup window';
         // First call: scope has no recent chunks → hash check runs → inserted
-        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        void storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
         // Second call within 30s to the same scope: hash check is skipped → inserted again
-        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        void storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
         const count = (
           db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
         ).c;
@@ -123,13 +124,13 @@ describe('chunk-store.ts', () => {
 
       it('enforces hash dedup for scopes outside the 30-second window', () => {
         const content = 'Old content to be deduped';
-        storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
+        void storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
         // Backdate the existing chunk so it falls outside the 30-second window
         db.prepare(
           `UPDATE context_chunks SET updated_at = datetime('now', '-60 seconds') WHERE scope = 'cold-scope'`,
         ).run();
         // Second call: scope not recent → hash check runs → duplicate detected → no new row
-        storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
+        void storeChunks(db, [makeChunk({ content, scope: 'cold-scope' })]);
         const count = (
           db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
         ).c;
@@ -139,15 +140,15 @@ describe('chunk-store.ts', () => {
       it('applies the window per-scope — recent scope bypasses hash check, old scope does not', () => {
         const content = 'Shared content';
         // Insert to both scopes but backdate one
-        storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
-        storeChunks(db, [makeChunk({ content: 'different content', scope: 'cold-scope' })]);
+        void storeChunks(db, [makeChunk({ content, scope: 'hot-scope' })]);
+        void storeChunks(db, [makeChunk({ content: 'different content', scope: 'cold-scope' })]);
         db.prepare(
           `UPDATE context_chunks SET updated_at = datetime('now', '-60 seconds') WHERE scope = 'cold-scope'`,
         ).run();
 
         // hot-scope is recent → skip hash check → 1 new row for hot-scope
         // cold-scope is not recent → hash check runs → deduped (same content)
-        storeChunks(db, [
+        void storeChunks(db, [
           makeChunk({ content, scope: 'hot-scope' }),
           makeChunk({ content: 'different content', scope: 'cold-scope' }),
         ]);
@@ -172,7 +173,7 @@ describe('chunk-store.ts', () => {
 
   describe('searchChunks', () => {
     beforeEach(() => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ content: 'Bridge routes messages between connectors and providers' }),
         makeChunk({ scope: 'src/master', content: 'Master AI spawns worker agents for tasks' }),
         makeChunk({ scope: 'src/types', content: 'TypeScript strict mode configuration' }),
@@ -196,13 +197,13 @@ describe('chunk-store.ts', () => {
     });
 
     it('respects the limit parameter', () => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ content: 'extra chunk alpha one' }),
         makeChunk({ content: 'extra chunk beta two' }),
         makeChunk({ content: 'extra chunk gamma three' }),
       ]);
       // Store many chunks with the same keyword
-      storeChunks(
+      void storeChunks(
         db,
         Array.from({ length: 8 }, (_, i) => makeChunk({ content: `keyword item ${i}` })),
       );
@@ -211,7 +212,9 @@ describe('chunk-store.ts', () => {
     });
 
     it('excludes stale chunks from search results', () => {
-      storeChunks(db, [makeChunk({ scope: 'stale-scope', content: 'stale content fragment' })]);
+      void storeChunks(db, [
+        makeChunk({ scope: 'stale-scope', content: 'stale content fragment' }),
+      ]);
       markStale(db, ['stale-scope']);
       const results = searchChunks(db, 'stale');
       expect(results.every((r) => r.stale !== true)).toBe(true);
@@ -220,7 +223,7 @@ describe('chunk-store.ts', () => {
 
   describe('markStale', () => {
     beforeEach(() => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/core', content: 'Core routing logic content' }),
         makeChunk({ scope: 'src/master', content: 'Master AI lifecycle content' }),
         makeChunk({ scope: 'src/types', content: 'TypeScript type definitions content' }),
@@ -270,7 +273,7 @@ describe('chunk-store.ts', () => {
 
   describe('deleteStaleChunks', () => {
     beforeEach(() => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'src/core', content: 'fresh chunk stays' }),
         makeChunk({ scope: 'src/stale', content: 'stale chunk goes' }),
       ]);
@@ -313,7 +316,7 @@ describe('chunk-store.ts', () => {
 
   describe('deleteChunksByScope', () => {
     beforeEach(() => {
-      storeChunks(db, [
+      void storeChunks(db, [
         makeChunk({ scope: 'target-scope', content: 'old structure chunk' }),
         makeChunk({ scope: 'target-scope', category: 'config', content: 'old config chunk' }),
         makeChunk({ scope: 'keep-scope', content: 'should stay' }),
@@ -625,6 +628,159 @@ describe('chunk-store.ts', () => {
       expect(count).toBe(0);
 
       legacyDb.close();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Batch embedding (OB-1652)
+  // ---------------------------------------------------------------------------
+
+  describe('batch embedding via embeddingProvider', () => {
+    /** Build a mock EmbeddingProvider that records which texts were embedded. */
+    function makeMockProvider(
+      dims = 4,
+      failBatch = false,
+    ): EmbeddingProvider & { calls: string[][] } {
+      const provider: EmbeddingProvider & { calls: string[][] } = {
+        name: 'mock',
+        dimensions: dims,
+        calls: [],
+        embed(_text: string): Promise<EmbeddingResult> {
+          return Promise.resolve({
+            vector: new Float32Array(dims).fill(0.1),
+            model: 'mock',
+            dimensions: dims,
+          });
+        },
+        embedBatch(texts: string[]): Promise<EmbeddingResult[]> {
+          if (failBatch) return Promise.reject(new Error('Network error'));
+          provider.calls.push([...texts]);
+          return Promise.resolve(
+            texts.map(() => ({
+              vector: new Float32Array(dims).fill(0.1),
+              model: 'mock',
+              dimensions: dims,
+            })),
+          );
+        },
+        isAvailable(): Promise<boolean> {
+          return Promise.resolve(true);
+        },
+      };
+      return provider;
+    }
+
+    it('stores embeddings in the embeddings table for newly inserted chunks', async () => {
+      const provider = makeMockProvider();
+      await storeChunks(
+        db,
+        [
+          makeChunk({ content: 'Chunk alpha content', scope: 'embed-scope' }),
+          makeChunk({ content: 'Chunk beta content', scope: 'embed-scope' }),
+        ],
+        { embeddingProvider: provider },
+      );
+
+      const count = (db.prepare('SELECT COUNT(*) as c FROM embeddings').get() as { c: number }).c;
+      expect(count).toBe(2);
+      // embedBatch should have been called once with both texts
+      expect(provider.calls).toHaveLength(1);
+      expect(provider.calls[0]).toHaveLength(2);
+    });
+
+    it('does not store embeddings when provider name is "none"', async () => {
+      const noopProvider: EmbeddingProvider = {
+        name: 'none',
+        dimensions: 0,
+        embed: () => Promise.resolve({ vector: new Float32Array(0), model: 'none', dimensions: 0 }),
+        embedBatch: (texts) =>
+          Promise.resolve(
+            texts.map(() => ({ vector: new Float32Array(0), model: 'none', dimensions: 0 })),
+          ),
+        isAvailable: () => Promise.resolve(true),
+      };
+
+      await storeChunks(db, [makeChunk({ content: 'No-op embed content' })], {
+        embeddingProvider: noopProvider,
+      });
+
+      const count = (db.prepare('SELECT COUNT(*) as c FROM embeddings').get() as { c: number }).c;
+      expect(count).toBe(0);
+    });
+
+    it('chunk is still stored even when embedding fails', async () => {
+      const failingProvider = makeMockProvider(4, true);
+
+      await expect(
+        storeChunks(db, [makeChunk({ content: 'Chunk survives embedding failure' })], {
+          embeddingProvider: failingProvider,
+        }),
+      ).resolves.not.toThrow();
+
+      const chunkCount = (
+        db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
+      ).c;
+      expect(chunkCount).toBe(1);
+
+      const embeddingCount = (
+        db.prepare('SELECT COUNT(*) as c FROM embeddings').get() as { c: number }
+      ).c;
+      expect(embeddingCount).toBe(0);
+    });
+
+    it('only embeds newly inserted chunks, not dedup-touched ones', async () => {
+      const content = 'Dedup embedding test content';
+      // Insert once (outside any window) so hash is stored
+      await storeChunks(db, [makeChunk({ content, scope: 'cold-embed-scope' })]);
+      // Backdate so it falls outside the 30-second window
+      db.prepare(
+        `UPDATE context_chunks SET updated_at = datetime('now', '-60 seconds') WHERE scope = 'cold-embed-scope'`,
+      ).run();
+
+      const provider = makeMockProvider();
+      // Second insert: same content → dedup touch, no new row, no new embedding
+      await storeChunks(db, [makeChunk({ content, scope: 'cold-embed-scope' })], {
+        embeddingProvider: provider,
+      });
+
+      // No embedBatch call because no new chunk was inserted
+      expect(provider.calls).toHaveLength(0);
+    });
+
+    it('does not embed when no provider is given', async () => {
+      await storeChunks(db, [makeChunk({ content: 'No provider chunk' })]);
+
+      const count = (db.prepare('SELECT COUNT(*) as c FROM embeddings').get() as { c: number }).c;
+      expect(count).toBe(0);
+    });
+
+    it('gracefully skips embedding when embeddings table does not exist', async () => {
+      // Create a minimal DB without the embeddings table
+      const minimalDb = new BetterSqlite3(':memory:');
+      minimalDb.exec(`
+        CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL);
+        CREATE TABLE context_chunks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          scope TEXT NOT NULL, category TEXT NOT NULL, content TEXT NOT NULL,
+          source_hash TEXT, content_hash TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL, stale BOOLEAN DEFAULT 0
+        );
+        CREATE VIRTUAL TABLE context_chunks_fts USING fts5(content, scope, category);
+      `);
+
+      const provider = makeMockProvider();
+      await expect(
+        storeChunks(minimalDb, [makeChunk({ content: 'Minimal DB chunk' })], {
+          embeddingProvider: provider,
+        }),
+      ).resolves.not.toThrow();
+
+      const chunkCount = (
+        minimalDb.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
+      ).c;
+      expect(chunkCount).toBe(1);
+
+      minimalDb.close();
     });
   });
 });

@@ -229,7 +229,7 @@ describe('RAG zero-chunk re-indexing pipeline (OB-1569 / OB-1573)', () => {
     ];
 
     // Store chunks — simulating the OB-1569 indexWorkspaceMapAsChunks() call
-    storeChunks(db, workspaceChunks);
+    void storeChunks(db, workspaceChunks);
 
     // Now hybridSearch should return results for a relevant query
     const results = await hybridSearch(db, 'router message routing');
@@ -249,7 +249,7 @@ describe('hybridSearch — recentChunksFallback when sanitized query is empty (O
     db = openDatabase(':memory:');
 
     // Seed the DB with some chunks so recentChunksFallback has data to return
-    storeChunks(db, [
+    void storeChunks(db, [
       { scope: 'src/core/router.ts', category: 'patterns', content: 'Router handles routing' },
       { scope: 'src/core/auth.ts', category: 'patterns', content: 'Auth validates users' },
       { scope: 'src/memory/index.ts', category: 'patterns', content: 'Memory manager facade' },
@@ -285,7 +285,7 @@ describe('hybridSearch — recentChunksFallback when sanitized query is empty (O
       category: 'patterns' as const,
       content: `Module ${i} content`,
     }));
-    storeChunks(db, extraChunks);
+    void storeChunks(db, extraChunks);
 
     const results = await hybridSearch(db, '');
 
