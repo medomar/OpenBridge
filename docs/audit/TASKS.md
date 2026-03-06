@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 44 | **In Progress:** 0 | **Done:** 132 (1063 archived)
+> **Pending:** 43 | **In Progress:** 0 | **Done:** 133 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -339,7 +339,7 @@
 | OB-1747 | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts                     | `src/master/skill-packs/code-review.ts` (new)    | ✅ Done |
 | OB-1748 | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts               | `src/master/skill-packs/test-writer.ts` (new)    | ✅ Done |
 | OB-1749 | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts         | `src/master/skill-packs/data-analysis.ts` (new)  | ✅ Done |
-| OB-1750 | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  | Pending |
+| OB-1750 | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  | ✅ Done |
 | OB-1751 | Master reads available skill packs on startup, includes summary in system prompt                                 | `src/master/master-system-prompt.ts`             | Pending |
 | OB-1752 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   | Pending |
 | OB-1753 | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile            | `src/master/master-manager.ts`                   | Pending |
