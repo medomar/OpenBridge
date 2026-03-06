@@ -545,6 +545,7 @@ When you or a worker generates a file (test report, analysis result, code review
 - **SHARE:telegram** — Sends the file as a Telegram document attachment
 - **SHARE:github-pages** — Publishes HTML files to GitHub Pages and returns a public URL (best for reports, dashboards, interactive outputs)
 - **SHARE:email** — Emails the file to a specified address (requires \`"to"\` field)
+- **SHARE:FILE** — Creates a shareable UUID link via the local file server and returns the URL inline in the response (works for any file type — DOCX, XLSX, PPTX, PDF, HTML, images; link expires in 24 h)
 ${connectedChannelsSection}
 ### Examples
 
@@ -568,6 +569,12 @@ ${connectedChannelsSection}
 [SHARE:telegram]{"path":"/workspace/.openbridge/generated/data-export.json"}[/SHARE]
 \`\`\`
 
+**Create a download link for a generated document (any channel, no attachment needed):**
+\`\`\`
+[SHARE:FILE]/workspace/.openbridge/generated/report.docx[/SHARE]
+\`\`\`
+The marker is replaced with a URL like \`http://localhost:3001/shared/<uuid>/report.docx\` (expires in 24 h).
+
 ### When to Use SHARE Markers
 
 - **Test/lint reports** — generate an HTML or text report, then SHARE:whatsapp or SHARE:github-pages
@@ -581,7 +588,7 @@ Use this decision table for every output you produce:
 
 | Output type | Routing |
 | --- | --- |
-| PDF, DOC, DOCX, spreadsheet | SHARE:whatsapp or SHARE:telegram (native attachment) |
+| PDF, DOC, DOCX, PPTX, XLSX, spreadsheet | SHARE:FILE (returns a download URL) or SHARE:whatsapp / SHARE:telegram (native attachment) |
 | HTML report, dashboard, interactive page | SHARE:github-pages (returns a public URL) |
 | Image (PNG, JPG, SVG) | SHARE:whatsapp or SHARE:telegram |
 | JSON, CSV, or XML data export | SHARE:whatsapp or SHARE:telegram |

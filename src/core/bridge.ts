@@ -547,6 +547,8 @@ export class Bridge {
           { url: this.fileServer.baseUrl, dir: this.fileServer.directory },
           'File server started — generated content available at /shared/:filename',
         );
+        // Wire file server into router so [SHARE:FILE] markers create shareable links
+        this.router.setFileServer(this.fileServer);
       } catch (error) {
         logger.warn({ err: error }, 'File server failed to start — continuing without it');
         this.fileServer = null;

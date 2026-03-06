@@ -28,6 +28,7 @@ import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
+import type { FileServer } from './file-server.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { AgentRunner, estimateCost, DEFAULT_MAX_TURNS_TASK } from './agent-runner.js';
 import { FastPathResponder } from './fast-path-responder.js';
@@ -362,6 +363,7 @@ export class Router {
   private auth?: AuthService;
   private workspacePath?: string;
   private emailConfig?: EmailConfig;
+  private fileServer?: FileServer;
   private memory?: MemoryManager;
   private queue?: MessageQueue;
   private appServer?: AppServer;
@@ -430,6 +432,11 @@ export class Router {
   /** Set the email config — enables [SHARE:email] marker support */
   setEmailConfig(config: EmailConfig): void {
     this.emailConfig = config;
+  }
+
+  /** Set the file server — enables [SHARE:FILE] marker support (creates shareable links) */
+  setFileServer(server: FileServer): void {
+    this.fileServer = server;
   }
 
   /** Set the MemoryManager — enables the "status" command and fast-path context chunks */
@@ -1839,6 +1846,31 @@ export class Router {
       if (channel === 'github-pages') {
         await this.handleGitHubPagesShare(resolvedPath);
         cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Handle FILE channel — create a shareable link via the local file server
+      if (channel === 'FILE') {
+        if (this.fileServer) {
+          const filename = path.basename(resolvedPath);
+          try {
+            const url = await this.fileServer.createShareableLink(filename);
+            cleaned = cleaned.replace(fullMatch, url);
+            logger.info({ filename, url }, 'SHARE:FILE link created');
+          } catch (err) {
+            logger.warn(
+              { filePath: resolvedPath, err },
+              'SHARE:FILE: failed to create shareable link',
+            );
+            cleaned = cleaned.replace(fullMatch, '');
+          }
+        } else {
+          logger.warn(
+            { filePath: resolvedPath },
+            'SHARE:FILE marker received but file server is not running — skipping',
+          );
+          cleaned = cleaned.replace(fullMatch, '');
+        }
         continue;
       }
 
