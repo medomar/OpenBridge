@@ -213,7 +213,14 @@ const READ_CONTEXT_RE =
 
 /**
  * Extract file paths that appear in a read context.
- * Scans for path patterns on lines containing read-context keywords.
+ *
+ * Strategy:
+ *  1. Lines with explicit read-context keywords (opened, scanned, imported…) → high confidence
+ *  2. Neutral lines — file path present but no write-context keyword → treated as read
+ *  3. Tool output patterns ("Reading src/…", "Read file: …") → explicit tool signal
+ *
+ * Lines that match WRITE_CONTEXT_RE are skipped here; those paths belong to
+ * extractFilesModified().
  */
 export function extractFilesRead(output: string): string[] {
   const paths = new Set<string>();
@@ -222,12 +229,19 @@ export function extractFilesRead(output: string): string[] {
     const allPaths = matchFilePaths(line);
     if (allPaths.length === 0) continue;
 
+    // Explicit read context: high confidence
     if (READ_CONTEXT_RE.test(line)) {
+      for (const p of allPaths) paths.add(p);
+      continue;
+    }
+
+    // Neutral lines (no write indicator): file is referenced, treat as read
+    if (!WRITE_CONTEXT_RE.test(line)) {
       for (const p of allPaths) paths.add(p);
     }
   }
 
-  // Also add any paths from tool output patterns like "Read file: src/..."
+  // Explicit tool output patterns: "Reading src/…" / "Read file: src/…"
   const readToolRe = /\bread(?:ing)?\s+(?:file\s+)?([./][\w./-]+\.\w+)/gi;
   for (const m of output.matchAll(readToolRe)) {
     if (m[1] && hasKnownExtension(m[1])) paths.add(m[1]);
