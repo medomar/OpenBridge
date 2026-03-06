@@ -1,5 +1,5 @@
 /**
- * Planning Gate (OB-1775, OB-1776, OB-1777)
+ * Planning Gate (OB-1775, OB-1776, OB-1777, OB-1778)
  *
  * Controls the two-phase execution model for Master AI task processing:
  *
@@ -15,8 +15,9 @@
  *      workers have finished throws an error (OB-1777).
  *
  * For simple tasks (single-file edits, FAQ answers), planning is bypassed
- * automatically (OB-1778). Wiring into MasterManager is done by OB-1779;
- * the reasoning checkpoint before full-access workers is OB-1780.
+ * automatically via `shouldBypassPlanning()` (OB-1778). Wiring into
+ * MasterManager is done by OB-1779; the reasoning checkpoint before
+ * full-access workers is OB-1780.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -40,6 +41,126 @@ export const MAX_ANALYSIS_WORKERS = 2;
  * Analysis workers explore and report — they don't need many turns.
  */
 export const ANALYSIS_WORKER_MAX_TURNS = 10;
+
+// ---------------------------------------------------------------------------
+// Simple-Task Heuristics (OB-1778)
+// ---------------------------------------------------------------------------
+
+/**
+ * Word-count threshold below which a task is considered too short to need a
+ * planning phase. Very brief tasks are typically single-step commands.
+ */
+const BYPASS_WORD_COUNT_THRESHOLD = 15;
+
+/**
+ * If a task mentions more than this many distinct file-path-like tokens it is
+ * considered multi-file and therefore non-trivial (planning is NOT bypassed).
+ */
+const BYPASS_MAX_FILE_PATHS = 1;
+
+/** Regex that matches a leading question word at the start of a task. */
+const FAQ_PATTERN =
+  /^\s*(what|how|why|who|where|when|which|explain|describe|list|show me|tell me|can you tell|is there|are there|does|do you|what is|what are|what does|what's)\b/i;
+
+/** Regex that matches file-path-like tokens (src/…, ./…, absolute /path/…). */
+const FILE_PATH_PATTERN = /(?:^|[\s"'`(])(?:\.{0,2}\/[\w./-]+|src\/[\w./-]+)/g;
+
+/**
+ * Result returned by `shouldBypassPlanning()`.
+ *
+ * When `bypass` is `true`, callers should call `gate.bypass(task, reason)`
+ * immediately and skip the analysis phase entirely.
+ */
+export interface BypassDecision {
+  /** Whether to skip the planning/analysis phase. */
+  bypass: boolean;
+  /** Human-readable reason (always set, even when bypass is false). */
+  reason: string;
+}
+
+/**
+ * Analyse a task description and decide whether the analysis phase should be
+ * bypassed (OB-1778).
+ *
+ * A task bypasses planning when **any** of the following are true:
+ *
+ * 1. **FAQ / read-only question** — the task starts with a question word
+ *    (what, how, why, explain, …) and contains no write-intent verbs
+ *    (create, add, fix, update, refactor, delete, remove, implement).
+ *
+ * 2. **Single-file edit** — the task references exactly one file path token
+ *    (e.g. `src/core/router.ts`) and does not involve many moving parts.
+ *
+ * 3. **Very short task** — the task is fewer than `BYPASS_WORD_COUNT_THRESHOLD`
+ *    words, implying a single, atomic action that needs no pre-investigation.
+ *
+ * When multiple signals conflict (e.g. a short task with a write verb that
+ * touches more than one file), the function returns `bypass: false` to keep
+ * planning enabled.
+ *
+ * @param taskDescription Plain-text description of the task to evaluate.
+ * @returns A `BypassDecision` with a boolean and human-readable reason.
+ */
+export function shouldBypassPlanning(taskDescription: string): BypassDecision {
+  const trimmed = taskDescription.trim();
+
+  if (!trimmed) {
+    return { bypass: true, reason: 'empty task description — no planning needed' };
+  }
+
+  const words = trimmed.split(/\s+/);
+  const wordCount = words.length;
+
+  // Detect write-intent verbs — these suggest the task will modify files.
+  const writeIntentPattern =
+    /\b(create|add|fix|update|refactor|delete|remove|implement|write|rewrite|rename|move|migrate|replace|change|modify|patch|edit|set|enable|disable|configure)\b/i;
+  const hasWriteIntent = writeIntentPattern.test(trimmed);
+
+  // Count distinct file-path-like tokens in the task.
+  const filePaths = Array.from(new Set(trimmed.match(FILE_PATH_PATTERN) ?? []));
+  const filePathCount = filePaths.length;
+
+  // ── Rule 1: FAQ / read-only question ──────────────────────────────────────
+  if (FAQ_PATTERN.test(trimmed) && !hasWriteIntent) {
+    return {
+      bypass: true,
+      reason: 'read-only FAQ question — no code changes implied',
+    };
+  }
+
+  // ── Rule 2: Single-file edit ──────────────────────────────────────────────
+  if (filePathCount === BYPASS_MAX_FILE_PATHS && hasWriteIntent) {
+    return {
+      bypass: true,
+      reason: `single-file edit (${filePaths[0]?.trim()}) — no multi-file analysis required`,
+    };
+  }
+
+  // ── Rule 3: Very short task (no multi-file concern) ───────────────────────
+  if (wordCount < BYPASS_WORD_COUNT_THRESHOLD && filePathCount <= BYPASS_MAX_FILE_PATHS) {
+    return {
+      bypass: true,
+      reason: `short task (${wordCount} words) — simple enough to skip planning`,
+    };
+  }
+
+  // ── Default: planning required ────────────────────────────────────────────
+  const reasons: string[] = [];
+  if (filePathCount > BYPASS_MAX_FILE_PATHS) {
+    reasons.push(`${filePathCount} file paths mentioned`);
+  }
+  if (wordCount >= BYPASS_WORD_COUNT_THRESHOLD) {
+    reasons.push(`${wordCount} words`);
+  }
+  if (hasWriteIntent) {
+    reasons.push('write-intent detected');
+  }
+
+  return {
+    bypass: false,
+    reason: `complex task — planning required (${reasons.join(', ')})`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Public Types
