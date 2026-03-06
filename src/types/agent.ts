@@ -385,6 +385,34 @@ export const ObservationTypeSchema = z.enum([
   'security',
 ]);
 
+// ── Observation ──────────────────────────────────────────────────
+
+/** A structured observation produced by a worker agent after completing a task */
+export const ObservationSchema = z.object({
+  /** Auto-assigned SQLite row id (absent before INSERT) */
+  id: z.number().int().positive().optional(),
+  /** Session in which this observation was produced */
+  session_id: z.string().min(1),
+  /** Worker agent that produced this observation */
+  worker_id: z.string().min(1),
+  /** Categorized type of observation */
+  type: ObservationTypeSchema,
+  /** One-line headline summarising the observation */
+  title: z.string().min(1),
+  /** Human-readable explanation — what was done and why */
+  narrative: z.string().min(1),
+  /** Discrete facts extracted from the worker output */
+  facts: z.array(z.string()).default([]),
+  /** Domain concepts / keywords referenced in the output */
+  concepts: z.array(z.string()).default([]),
+  /** File paths that were read during task execution */
+  files_read: z.array(z.string()).default([]),
+  /** File paths that were written or modified during task execution */
+  files_modified: z.array(z.string()).default([]),
+  /** ISO 8601 creation timestamp (set by the store if absent) */
+  created_at: z.string().datetime().optional(),
+});
+
 // ── Batch Mode ───────────────────────────────────────────────────
 
 /** Source of the batch item list */
@@ -467,3 +495,4 @@ export type BatchCompletedItem = z.infer<typeof BatchCompletedItemSchema>;
 export type BatchPlanItem = z.infer<typeof BatchPlanItemSchema>;
 export type BatchState = z.infer<typeof BatchStateSchema>;
 export type ObservationType = z.infer<typeof ObservationTypeSchema>;
+export type Observation = z.infer<typeof ObservationSchema>;
