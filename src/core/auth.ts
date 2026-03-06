@@ -24,13 +24,14 @@ export interface CommandFilterResult {
 const ROLE_ALLOWED_ACTIONS: Record<string, string[] | null> = {
   owner: null,
   admin: null,
-  developer: ['read', 'edit', 'test'],
-  viewer: ['read'],
+  developer: ['read', 'edit', 'test', 'chat'],
+  viewer: ['read', 'chat'],
   custom: null, // governed by entry.allowed_actions
 };
 
 // Keywords used to classify a message into an action category.
-// Order matters — stop > deploy > edit > test > read (most → least restrictive).
+// Order matters — stop > deploy > edit > test > chat (most → least restrictive).
+// 'chat' is the default for conversational messages with no strong action keywords.
 const STOP_RE = /\bstop\b/i;
 const DEPLOY_RE = /\b(deploy|release|publish|push to|ship|launch|stage)\b/i;
 const EDIT_RE =
@@ -42,7 +43,7 @@ function classifyMessageAction(content: string): string {
   if (DEPLOY_RE.test(content)) return 'deploy';
   if (EDIT_RE.test(content)) return 'edit';
   if (TEST_RE.test(content)) return 'test';
-  return 'read';
+  return 'chat';
 }
 
 export class AuthService {
