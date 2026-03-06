@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 114 | **In Progress:** 0 | **Done:** 62 (1063 archived)
+> **Pending:** 113 | **In Progress:** 0 | **Done:** 63 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -187,7 +187,7 @@
 
 | Task    | What                                                                                                                          | Key File                                        | Status  |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- |
-| OB-1731 | Add `docx` worker tooling — npm dependency selection (`docx` package), worker prompt with formatting instructions             | `src/master/skill-packs/document-writer.ts`     | Pending |
+| OB-1731 | Add `docx` worker tooling — npm dependency selection (`docx` package), worker prompt with formatting instructions             | `src/master/skill-packs/document-writer.ts`     | ✅ Done |
 | OB-1732 | Add `pptx` worker tooling — npm dependency (`pptxgenjs`), slide template system with layout options                           | `src/master/skill-packs/presentation-maker.ts`  | Pending |
 | OB-1733 | Add `xlsx` worker tooling — npm dependency (`exceljs`), formula + chart support                                               | `src/master/skill-packs/spreadsheet-builder.ts` | Pending |
 | OB-1734 | Add `pdf` worker tooling — HTML-to-PDF via Puppeteer or wkhtmltopdf, styled templates                                         | `src/master/skill-packs/report-generator.ts`    | Pending |

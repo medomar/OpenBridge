@@ -166,5 +166,35 @@ const buffer = await Packer.toBuffer(doc);
 fs.writeFileSync('api-integration-report.docx', buffer);
 console.log('Document written: api-integration-report.docx');
 \`\`\``,
+
+    workerPrompt: `You are generating a Word document (.docx) using the \`docx\` npm package.
+
+## Dependency Setup
+
+Check whether \`docx\` is available before writing any generation script:
+\`\`\`bash
+node -e "require('docx')" 2>/dev/null || npm install docx
+\`\`\`
+Use \`docx@^8\` (the latest stable major). If the project already has a version pinned in package.json, use that version.
+
+## Output Conventions
+
+- Write the .docx file to the current working directory unless the user specified a path.
+- Use a descriptive kebab-case filename derived from the document title, e.g. \`project-proposal-2026-03.docx\`.
+- After writing, print the absolute output path: \`console.log('Document written:', path.resolve(outputPath))\`.
+- Emit \`[SHARE:FILE:<absolute-path>]\` on a separate line so OpenBridge can deliver the file.
+
+## Key Formatting Constraints
+
+- Heading hierarchy: HEADING_1 → HEADING_2 → HEADING_3 → body paragraphs. Never skip levels.
+- Body font size: 24 half-points (12pt). Heading 1: 32 half-points (16pt).
+- Paragraph spacing: \`spacing: { after: 120 }\` (6pt) on every paragraph.
+- Tables: always include a header row with \`shading: { fill: 'D9D9D9' }\` and bold text.
+- Lists: use \`NumberingLevel\` for numbered lists; for bullets set \`bullet: { level: 0 }\` on each paragraph.
+- Finish with \`const buffer = await Packer.toBuffer(doc); fs.writeFileSync(outputPath, buffer);\`
+
+## Common Pitfall
+
+\`Packer.toBuffer()\` returns a Promise — always \`await\` it inside an \`async\` function or use \`.then()\`.`,
   },
 };
