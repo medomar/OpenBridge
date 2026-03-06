@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 155 | **In Progress:** 0 | **Done:** 21 (1063 archived)
+> **Pending:** 154 | **In Progress:** 0 | **Done:** 22 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -89,7 +89,7 @@
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ------- |
 | OB-1637 | Add `content_hash` TEXT column to `context_chunks` table (SHA-256 of normalized content)                                           | `src/memory/chunk-store.ts` | ✅ Done |
 | OB-1638 | Add migration (version 11) to ALTER TABLE `context_chunks` ADD COLUMN `content_hash`, backfill existing rows                       | `src/memory/migration.ts`   | ✅ Done |
-| OB-1639 | Before INSERT in `storeChunks()`, check for existing chunk with same hash — UPDATE `updated_at` timestamp if duplicate found       | `src/memory/chunk-store.ts` | Pending |
+| OB-1639 | Before INSERT in `storeChunks()`, check for existing chunk with same hash — UPDATE `updated_at` timestamp if duplicate found       | `src/memory/chunk-store.ts` | ✅ Done |
 | OB-1640 | Add 30-second deduplication window — skip hash check for chunks written within last 30s from same scope (performance optimization) | `src/memory/chunk-store.ts` | Pending |
 
 #### 93e — Tests

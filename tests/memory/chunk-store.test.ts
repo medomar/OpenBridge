@@ -37,12 +37,40 @@ describe('chunk-store.ts', () => {
 
     it('inserts multiple chunks in a single transaction', () => {
       storeChunks(db, [
-        makeChunk({ scope: 'src/core' }),
-        makeChunk({ scope: 'src/master', category: 'patterns' }),
-        makeChunk({ scope: 'src/types', category: 'api' }),
+        makeChunk({ scope: 'src/core', content: 'Bridge core message routing logic' }),
+        makeChunk({
+          scope: 'src/master',
+          category: 'patterns',
+          content: 'Master AI worker spawning patterns',
+        }),
+        makeChunk({
+          scope: 'src/types',
+          category: 'api',
+          content: 'TypeScript strict config definitions',
+        }),
       ]);
       const rows = db.prepare('SELECT * FROM context_chunks').all() as Chunk[];
       expect(rows).toHaveLength(3);
+    });
+
+    it('deduplicates chunks with the same content hash — updates updated_at instead of inserting', () => {
+      const content = 'Shared content that appears in multiple scopes';
+      storeChunks(db, [makeChunk({ content, scope: 'src/a' })]);
+      const before = (
+        db.prepare('SELECT updated_at FROM context_chunks LIMIT 1').get() as { updated_at: string }
+      ).updated_at;
+
+      // Insert identical content again — should not create a new row
+      storeChunks(db, [makeChunk({ content, scope: 'src/b' })]);
+      const count = (db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number })
+        .c;
+      expect(count).toBe(1);
+
+      const after = (
+        db.prepare('SELECT updated_at FROM context_chunks LIMIT 1').get() as { updated_at: string }
+      ).updated_at;
+      // updated_at should be >= original (same ms is fine in fast tests)
+      expect(after >= before).toBe(true);
     });
 
     it('stores optional source_hash', () => {
@@ -128,9 +156,9 @@ describe('chunk-store.ts', () => {
   describe('markStale', () => {
     beforeEach(() => {
       storeChunks(db, [
-        makeChunk({ scope: 'src/core' }),
-        makeChunk({ scope: 'src/master' }),
-        makeChunk({ scope: 'src/types' }),
+        makeChunk({ scope: 'src/core', content: 'Core routing logic content' }),
+        makeChunk({ scope: 'src/master', content: 'Master AI lifecycle content' }),
+        makeChunk({ scope: 'src/types', content: 'TypeScript type definitions content' }),
       ]);
     });
 
