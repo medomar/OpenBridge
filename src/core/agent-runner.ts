@@ -99,6 +99,46 @@ const AUTH_PATTERNS = [
 ];
 
 /**
+ * Default maximum number of lint/test fix iterations before escalating to Master.
+ * Configurable via `worker.maxFixIterations` in config (OB-1791).
+ */
+export const DEFAULT_MAX_FIX_ITERATIONS = 3;
+
+/**
+ * Patterns in worker stdout that indicate a lint/test fix iteration.
+ * Each pattern match signals one fix attempt cycle (run checks → fix errors).
+ * Matched case-insensitively against accumulated stdout.
+ */
+export const FIX_ITERATION_PATTERNS: RegExp[] = [
+  /\bnpm run lint\b/i,
+  /\bnpm run typecheck\b/i,
+  /\bvite(?:st)?\s+run\b/i,
+  /\bRunning\s+(?:lint|test|typecheck)\s+fix/i,
+  /\bAttempting\s+to\s+fix\b/i,
+  /\bFix\s+attempt\s+\d+\b/i,
+  /\bApplying\s+(?:lint|type)\s+fix/i,
+  /\bRe-running\s+(?:lint|tests?|typecheck)\b/i,
+];
+
+/**
+ * Count the number of fix iteration signals in worker stdout.
+ * Each pattern match counts as one fix attempt.
+ * Used to enforce the maxFixIterations cap.
+ */
+export function countFixIterations(stdout: string): number {
+  let count = 0;
+  for (const pattern of FIX_ITERATION_PATTERNS) {
+    const globalPattern = new RegExp(
+      pattern.source,
+      pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g',
+    );
+    const matches = stdout.match(globalPattern);
+    if (matches) count += matches.length;
+  }
+  return count;
+}
+
+/**
  * Patterns in streaming stdout that indicate a new agent turn has started.
  * Matched against each chunk to extract the current turn number.
  * Claude CLI emits these markers at the beginning of each agentic turn.
@@ -618,6 +658,14 @@ export interface SpawnOptions {
    * Example: `{ 'read-only': 0.25 }` to tighten the default $0.50 cap.
    */
   workerCostCaps?: Record<string, number>;
+  /**
+   * Maximum number of lint/test fix iterations before escalating to Master (OB-1789).
+   * Each time the worker runs lint/test commands and then attempts a fix, that counts
+   * as one iteration. When the cap is reached, the run is aborted with
+   * `fixCapReached: true` in the result so Master can decide the next action.
+   * Defaults to DEFAULT_MAX_FIX_ITERATIONS (3). Set to 0 to disable the cap.
+   */
+  maxFixIterations?: number;
 }
 
 /**
@@ -735,8 +783,20 @@ export interface AgentResult {
    * Completion status of the agent run.
    * - 'completed': agent finished within its turn budget
    * - 'partial': agent hit the max-turns limit before finishing (turnsExhausted: true)
+   * - 'fix-cap-reached': agent hit the fix iteration cap (fixCapReached: true)
    */
-  status: 'completed' | 'partial';
+  status: 'completed' | 'partial' | 'fix-cap-reached';
+  /**
+   * Number of lint/test fix iterations detected in worker output (OB-1789).
+   * Populated when maxFixIterations is set. Undefined if fix cap tracking is disabled.
+   */
+  fixIterationsUsed?: number;
+  /**
+   * True when the worker hit the fix iteration cap without resolving all errors (OB-1789).
+   * Master should inspect the partial output and decide whether to retry, escalate,
+   * or accept the partial result.
+   */
+  fixCapReached?: boolean;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -1422,6 +1482,23 @@ export class AgentRunner {
     // 10x average spike detection (OB-1673)
     checkProfileCostSpike(opts.profile, costUsd);
 
+    // Fix iteration cap check (OB-1789).
+    // Count how many lint/test fix attempts appear in the output.
+    // If the count reaches maxFixIterations, mark the result accordingly.
+    const maxFixIterations = opts.maxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
+    const fixIterationsUsed =
+      maxFixIterations > 0 ? countFixIterations(lastResult.stdout) : undefined;
+    const fixCapReached = fixIterationsUsed !== undefined && fixIterationsUsed >= maxFixIterations;
+
+    let resultStatus: AgentResult['status'];
+    if (fixCapReached) {
+      resultStatus = 'fix-cap-reached';
+    } else if (turnsExhausted) {
+      resultStatus = 'partial';
+    } else {
+      resultStatus = 'completed';
+    }
+
     const result: AgentResult = {
       stdout: lastResult.stdout,
       stderr: lastResult.stderr,
@@ -1433,10 +1510,21 @@ export class AgentRunner {
       costUsd,
       turnsExhausted: turnsExhausted || undefined,
       maxTurns: opts.maxTurns,
-      status: turnsExhausted ? 'partial' : 'completed',
+      status: resultStatus,
+      fixIterationsUsed,
+      fixCapReached: fixCapReached || undefined,
     };
 
-    if (turnsExhausted) {
+    if (fixCapReached) {
+      logger.warn(
+        {
+          fixIterationsUsed,
+          maxFixIterations,
+          model: currentModel ?? 'default',
+        },
+        'Worker hit fix iteration cap — escalating to Master',
+      );
+    } else if (turnsExhausted) {
       logger.warn(
         { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
         'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
@@ -1453,6 +1541,8 @@ export class AgentRunner {
         costUsd: result.costUsd,
         turnsExhausted: result.turnsExhausted,
         status: result.status,
+        fixIterationsUsed: result.fixIterationsUsed,
+        fixCapReached: result.fixCapReached,
       },
       'Agent completed',
     );
@@ -1611,6 +1701,22 @@ export class AgentRunner {
       // 10x average spike detection (OB-1673)
       checkProfileCostSpike(opts.profile, costUsdHandle);
 
+      // Fix iteration cap check (OB-1789).
+      const maxFixIterationsHandle = opts.maxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
+      const fixIterationsUsedHandle =
+        maxFixIterationsHandle > 0 ? countFixIterations(lastResult.stdout) : undefined;
+      const fixCapReachedHandle =
+        fixIterationsUsedHandle !== undefined && fixIterationsUsedHandle >= maxFixIterationsHandle;
+
+      let handleStatus: AgentResult['status'];
+      if (fixCapReachedHandle) {
+        handleStatus = 'fix-cap-reached';
+      } else if (turnsExhausted) {
+        handleStatus = 'partial';
+      } else {
+        handleStatus = 'completed';
+      }
+
       const result: AgentResult = {
         stdout: lastResult.stdout,
         stderr: lastResult.stderr,
@@ -1622,10 +1728,21 @@ export class AgentRunner {
         costUsd: costUsdHandle,
         turnsExhausted: turnsExhausted || undefined,
         maxTurns: opts.maxTurns,
-        status: turnsExhausted ? 'partial' : 'completed',
+        status: handleStatus,
+        fixIterationsUsed: fixIterationsUsedHandle,
+        fixCapReached: fixCapReachedHandle || undefined,
       };
 
-      if (turnsExhausted) {
+      if (fixCapReachedHandle) {
+        logger.warn(
+          {
+            fixIterationsUsed: fixIterationsUsedHandle,
+            maxFixIterations: maxFixIterationsHandle,
+            model: currentModel ?? 'default',
+          },
+          'Worker hit fix iteration cap — escalating to Master',
+        );
+      } else if (turnsExhausted) {
         logger.warn(
           { model: currentModel ?? 'default', maxTurns: opts.maxTurns ?? DEFAULT_MAX_TURNS_TASK },
           'Agent exited with code 0 but max-turns was exhausted — result may be incomplete',
@@ -1641,6 +1758,8 @@ export class AgentRunner {
           modelFallbacks: result.modelFallbacks,
           costUsd: result.costUsd,
           turnsExhausted: result.turnsExhausted,
+          fixIterationsUsed: result.fixIterationsUsed,
+          fixCapReached: result.fixCapReached,
         },
         'Agent completed',
       );
@@ -1830,6 +1949,23 @@ export class AgentRunner {
           // 10x average spike detection (OB-1673)
           checkProfileCostSpike(opts.profile, streamCostUsd);
 
+          // Fix iteration cap check (OB-1789).
+          const maxFixIterationsStream = opts.maxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
+          const fixIterationsUsedStream =
+            maxFixIterationsStream > 0 ? countFixIterations(stdout) : undefined;
+          const fixCapReachedStream =
+            fixIterationsUsedStream !== undefined &&
+            fixIterationsUsedStream >= maxFixIterationsStream;
+
+          let streamStatus: AgentResult['status'];
+          if (fixCapReachedStream) {
+            streamStatus = 'fix-cap-reached';
+          } else if (turnsExhausted) {
+            streamStatus = 'partial';
+          } else {
+            streamStatus = 'completed';
+          }
+
           const result: AgentResult = {
             stdout: parsedStdout,
             stderr: streamResult!.stderr,
@@ -1842,10 +1978,21 @@ export class AgentRunner {
             turnsExhausted: turnsExhausted || undefined,
             turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
             maxTurns: opts.maxTurns,
-            status: turnsExhausted ? 'partial' : 'completed',
+            status: streamStatus,
+            fixIterationsUsed: fixIterationsUsedStream,
+            fixCapReached: fixCapReachedStream || undefined,
           };
 
-          if (turnsExhausted) {
+          if (fixCapReachedStream) {
+            logger.warn(
+              {
+                fixIterationsUsed: fixIterationsUsedStream,
+                maxFixIterations: maxFixIterationsStream,
+                model: currentModel ?? 'default',
+              },
+              'Streaming worker hit fix iteration cap — escalating to Master',
+            );
+          } else if (turnsExhausted) {
             logger.warn(
               {
                 model: currentModel ?? 'default',
@@ -1864,6 +2011,8 @@ export class AgentRunner {
               modelFallbacks: result.modelFallbacks,
               costUsd: result.costUsd,
               turnsExhausted: result.turnsExhausted,
+              fixIterationsUsed: result.fixIterationsUsed,
+              fixCapReached: result.fixCapReached,
             },
             'Streaming agent completed',
           );

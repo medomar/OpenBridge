@@ -62,8 +62,10 @@ export const WorkerRecordSchema = z.object({
       turnsExhausted: z.boolean().optional(),
       turnsUsed: z.number().optional(),
       maxTurns: z.number().optional(),
-      status: z.enum(['completed', 'partial']).optional(),
+      status: z.enum(['completed', 'partial', 'fix-cap-reached']).optional(),
       costUsd: z.number().optional(),
+      fixIterationsUsed: z.number().optional(),
+      fixCapReached: z.boolean().optional(),
     })
     .optional(),
   /** Error message (if failed or cancelled) */
