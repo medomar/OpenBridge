@@ -184,6 +184,7 @@ export function convertV2ToInternal(v2Config: V2Config): AppConfig {
       },
       defaultRole: v2Config.auth.defaultRole,
       channelRoles: v2Config.auth.channelRoles,
+      pairingEnabled: v2Config.auth.pairingEnabled ?? true,
     },
     queue: v2Config.queue ?? {
       maxRetries: 3,

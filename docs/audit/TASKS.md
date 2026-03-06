@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 62 | **In Progress:** 0 | **Done:** 114 (1063 archived)
+> **Pending:** 61 | **In Progress:** 0 | **Done:** 115 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -295,7 +295,7 @@
 | OB-1699 | Store approved pairing in `access_control` table via `AccessStore.setAccess()` with configurable default role         | `src/memory/access-store.ts` | ✅ Done |
 | OB-1700 | Pairing code expiry — 5-minute TTL, cleanup timer every 60s removes expired entries                                   | `src/core/auth.ts`           | ✅ Done |
 | OB-1701 | Rate limit pairing requests — max 3 requests per sender per hour (prevent code spam / brute force)                    | `src/core/auth.ts`           | ✅ Done |
-| OB-1702 | Coexist with phone whitelist — pairing is additive, not a replacement. Config `auth.pairingEnabled` (default: `true`) | `src/types/config.ts`        | Pending |
+| OB-1702 | Coexist with phone whitelist — pairing is additive, not a replacement. Config `auth.pairingEnabled` (default: `true`) | `src/types/config.ts`        | ✅ Done |
 | OB-1703 | Tests: pairing flow (generate → approve → access granted), expiry, rate limiting, CLI approval, /approve command      | `tests/core/auth.test.ts`    | Pending |
 
 **Phase 96b Total:** 10 tasks

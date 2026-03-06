@@ -51,6 +51,12 @@ export const AuthConfigSchema = z.object({
    * Takes precedence over defaultRole for the matching channel.
    */
   channelRoles: z.record(z.enum(['owner', 'admin', 'developer', 'viewer', 'custom'])).optional(),
+  /**
+   * Enable the pairing system — allows unknown senders to request access via a 6-digit code.
+   * Pairing is additive: whitelisted users are unaffected. Paired users gain access_control
+   * entries that coexist with the whitelist. Default: true.
+   */
+  pairingEnabled: z.boolean().default(true),
 });
 
 /** Schema for queue retry configuration */
@@ -145,6 +151,12 @@ export const V2AuthSchema = z.object({
    * Example: `{ "webchat": "owner", "telegram": "developer" }`
    */
   channelRoles: z.record(z.enum(['owner', 'admin', 'developer', 'viewer', 'custom'])).optional(),
+  /**
+   * Enable the pairing system — allows unknown senders to request access via a 6-digit code.
+   * Pairing is additive: whitelisted users are unaffected. Paired users gain access_control
+   * entries that coexist with the whitelist. Default: true.
+   */
+  pairingEnabled: z.boolean().default(true),
 });
 
 /** Schema for worker watchdog timeout configuration */

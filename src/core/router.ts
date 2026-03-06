@@ -1782,7 +1782,7 @@ export class Router {
       }
 
       // Only allow sending to whitelisted numbers when auth is configured
-      if (this.auth && !this.auth.isAuthorized(trimmedRecipient)) {
+      if (this.auth && !this.auth.isAuthorized(trimmedRecipient, channel)) {
         logger.warn(
           { channel, recipient: trimmedRecipient },
           'SEND marker blocked — recipient not in whitelist',

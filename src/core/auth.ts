@@ -68,6 +68,7 @@ export class AuthService {
   private db: Database.Database | null = null;
   private defaultRole: string;
   private channelRoles: Record<string, string>;
+  private pairingEnabled: boolean;
   private pendingPairings: Map<string, PendingPairing> = new Map();
   private expiryTimer: ReturnType<typeof setInterval> | null = null;
   private pairingRateLimits: Map<string, Date[]> = new Map();
@@ -131,6 +132,7 @@ export class AuthService {
     this.prefix = config.prefix;
     this.defaultRole = config.defaultRole ?? 'owner';
     this.channelRoles = config.channelRoles ?? {};
+    this.pairingEnabled = config.pairingEnabled ?? true;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
       allowPatterns: [],
@@ -178,11 +180,29 @@ export class AuthService {
   }
 
   /** Check if a sender is allowed to use the bridge */
-  isAuthorized(sender: string): boolean {
+  isAuthorized(sender: string, channel?: string): boolean {
     if (this.whitelist.size === 0) {
       return true; // No whitelist = open access
     }
-    return this.whitelist.has(AuthService.normalizeId(sender));
+    if (this.whitelist.has(AuthService.normalizeId(sender))) {
+      return true; // Whitelisted — always authorized
+    }
+    // Pairing is additive: a user approved via pairing has an active access_control entry.
+    // Check the DB when pairing is enabled so paired users coexist with the whitelist.
+    if (this.pairingEnabled && this.db && channel) {
+      try {
+        const entry = getAccess(this.db, sender, channel);
+        if (entry && entry.active) {
+          return true;
+        }
+      } catch (err) {
+        logger.warn(
+          { err, sender, channel },
+          'AuthService: getAccess check in isAuthorized failed',
+        );
+      }
+    }
+    return false;
   }
 
   /**
@@ -369,6 +389,7 @@ export class AuthService {
     this.prefix = config.prefix;
     this.defaultRole = config.defaultRole ?? 'owner';
     this.channelRoles = config.channelRoles ?? {};
+    this.pairingEnabled = config.pairingEnabled ?? true;
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
       allowPatterns: [],
@@ -471,6 +492,10 @@ export class AuthService {
     return this.prefix;
   }
 
+  get isPairingEnabled(): boolean {
+    return this.pairingEnabled;
+  }
+
   /**
    * Generate a cryptographically secure 6-digit pairing code.
    * Returns a zero-padded string in the range "100000"–"999999".
@@ -569,9 +594,13 @@ export class AuthService {
    * Initiate a pairing for an unknown sender.
    * Generates a 6-digit code, stores the pending pairing, and returns the
    * message to send back to the unknown sender.
-   * Returns null if the sender has exceeded the rate limit.
+   * Returns null if pairing is disabled or the sender has exceeded the rate limit.
    */
   initiatePairing(senderId: string, channel: string): string | null {
+    if (!this.pairingEnabled) {
+      logger.info({ senderId, channel }, 'Pairing disabled — request ignored');
+      return null;
+    }
     if (!this.checkPairingRateLimit(senderId)) {
       logger.warn({ senderId, channel }, 'Pairing rate limit exceeded — request denied');
       return null;
