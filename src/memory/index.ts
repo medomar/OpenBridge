@@ -106,6 +106,12 @@ import {
   type AuditSearchOptions,
 } from './audit-store.js';
 import { QACacheStore } from './qa-cache-store.js';
+import {
+  insertObservation as _insertObservation,
+  searchObservations as _searchObservations,
+  getRecentByType as _getRecentByType,
+  type Observation,
+} from './observation-store.js';
 
 // ---------------------------------------------------------------------------
 // Domain types (inferred from the database schema)
@@ -150,6 +156,7 @@ export type { AccessControlEntry, AccessRole, ConsentMode } from './access-store
 export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 export type { QACacheEntry } from './qa-cache-store.js';
+export type { Observation } from './observation-store.js';
 
 export interface ExplorationProgressRow {
   id: number;
@@ -1038,6 +1045,64 @@ export class MemoryManager {
           ...(data !== undefined ? { data } : {}),
         };
       }),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Observations (observation-store.ts — OB-1621)
+  // -------------------------------------------------------------------------
+
+  /** Insert a structured observation and return its row id. */
+  insertObservation(obs: Observation): Promise<number> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_insertObservation(this.db, obs));
+  }
+
+  /** FTS5 full-text search over observation title + narrative columns. */
+  searchObservations(query: string, limit?: number): Promise<Observation[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_searchObservations(this.db, query, limit));
+  }
+
+  /**
+   * Return the most recent observations, optionally filtered by type.
+   * When `type` is omitted, returns the latest observations across all types.
+   */
+  getRecentObservations(type?: string, limit = 10): Promise<Observation[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    if (type) {
+      return Promise.resolve(_getRecentByType(this.db, type, limit));
+    }
+    interface ObsRow {
+      id: number;
+      session_id: string;
+      worker_id: string;
+      type: string;
+      title: string;
+      narrative: string;
+      facts: string;
+      concepts: string;
+      files_read: string;
+      files_modified: string;
+      created_at: string;
+    }
+    const rows = this.db
+      .prepare('SELECT * FROM observations ORDER BY created_at DESC LIMIT ?')
+      .all(limit) as ObsRow[];
+    return Promise.resolve(
+      rows.map((row) => ({
+        id: row.id,
+        session_id: row.session_id,
+        worker_id: row.worker_id,
+        type: row.type,
+        title: row.title,
+        narrative: row.narrative,
+        facts: JSON.parse(row.facts) as string[],
+        concepts: JSON.parse(row.concepts) as string[],
+        files_read: JSON.parse(row.files_read) as string[],
+        files_modified: JSON.parse(row.files_modified) as string[],
+        created_at: row.created_at,
+      })),
     );
   }
 
