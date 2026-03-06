@@ -396,6 +396,32 @@ export const BatchConfigSchema = z.object({
 
 export type BatchConfig = z.infer<typeof BatchConfigSchema>;
 
+/** Schema for embedding provider configuration within the memory section */
+export const MemoryEmbeddingConfigSchema = z.object({
+  /**
+   * Embedding provider to use for vector search.
+   * - none:   Disable embeddings — FTS5-only retrieval (default, zero dependencies).
+   * - local:  Use local Ollama instance (nomic-embed-text, 768 dims).
+   * - openai: Use OpenAI API (text-embedding-3-small, 1536 dims) — requires OPENAI_API_KEY.
+   */
+  provider: z.enum(['none', 'local', 'openai']).default('none'),
+  /** Model name override — defaults per provider: local → nomic-embed-text, openai → text-embedding-3-small */
+  model: z.string().optional(),
+  /** Number of chunks to embed in a single batch call (default: 50) */
+  batchSize: z.number().int().positive().default(50),
+  /** Vector dimensions — inferred from provider/model if omitted */
+  dimensions: z.number().int().positive().optional(),
+});
+
+export type MemoryEmbeddingConfig = z.infer<typeof MemoryEmbeddingConfigSchema>;
+
+/** Schema for the memory subsystem configuration */
+export const MemoryConfigSchema = z.object({
+  embedding: MemoryEmbeddingConfigSchema.default({}),
+});
+
+export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+
 /** V2 config schema — autonomous AI bridge with 3 core fields */
 export const V2ConfigSchema = z
   .object({
@@ -405,6 +431,7 @@ export const V2ConfigSchema = z
     master: V2MasterSchema.optional(),
     workspace: V2WorkspaceSchema.optional(),
     mcp: MCPConfigSchema.optional(),
+    memory: MemoryConfigSchema.optional(),
     tunnel: TunnelConfigSchema.optional(),
     apps: AppsConfigSchema.optional(),
     deep: DeepConfigSchema.optional(),
