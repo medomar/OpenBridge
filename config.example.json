@@ -36,7 +36,14 @@
   ],
   "auth": {
     "whitelist": ["+1234567890"],
-    "prefix": "/ai"
+    "prefix": "/ai",
+    "_defaultRole_note": "Role assigned to whitelisted users when auto-created. Options: owner (full access), admin (manage users), developer (read + write code), viewer (read-only). Defaults to 'owner' so existing setups keep full access.",
+    "defaultRole": "owner",
+    "_channelRoles_note": "Per-channel role overrides — takes precedence over defaultRole for the matching channel type. Useful when you want webchat users to have restricted access while WhatsApp remains owner-level.",
+    "channelRoles": {
+      "webchat": "developer",
+      "telegram": "viewer"
+    }
   },
   "security": {
     "envDenyPatterns": [
