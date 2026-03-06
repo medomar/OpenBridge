@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 145 | **In Progress:** 0 | **Done:** 31 (1063 archived)
+> **Pending:** 144 | **In Progress:** 0 | **Done:** 32 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -117,7 +117,7 @@
 | OB-1667 | Trigger compaction when Master session exceeds configurable threshold (default 80% of `--max-turns`)                                                      | `src/master/session-compactor.ts`       | ✅ Done |
 | OB-1668 | Compaction strategy: summarize old turns into structured summary preserving identifiers (file paths, function names, finding IDs, task IDs)               | `src/master/session-compactor.ts`       | ✅ Done |
 | OB-1669 | Identifier extraction — regex scan conversation for file paths (`src/...`), function names (`functionName()`), IDs (`OB-F*`, `OB-*`)                      | `src/master/session-compactor.ts`       | ✅ Done |
-| OB-1670 | Write compaction summary to `memory.md` before starting new session segment (ensures cross-session continuity)                                            | `src/master/session-compactor.ts`       | Pending |
+| OB-1670 | Write compaction summary to `memory.md` before starting new session segment (ensures cross-session continuity)                                            | `src/master/session-compactor.ts`       | ✅ Done |
 | OB-1671 | Retry on compaction failure (max 2 retries) — log warning but don't crash the session                                                                     | `src/master/session-compactor.ts`       | Pending |
 | OB-1672 | Wire compactor into `master-manager.ts` — check after each Master turn, trigger compaction if threshold exceeded                                          | `src/master/master-manager.ts`          | Pending |
 | OB-1673 | Add `compaction_history` table — `id`, `session_id`, `trigger_reason`, `turns_summarized`, `identifiers_preserved` (JSON), `summary_length`, `created_at` | `src/memory/database.ts`                | Pending |
