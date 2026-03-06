@@ -772,6 +772,75 @@ export function sanitizeFts5Query(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Progressive disclosure — compact index search (OB-1658)
+// ---------------------------------------------------------------------------
+
+/**
+ * Compact index result returned by {@link searchIndex}.
+ *
+ * Contains only summary fields — ~10x fewer tokens than a full Chunk.
+ * Use {@link getDetails} to retrieve full content for selected IDs.
+ */
+export interface IndexResult {
+  /** Chunk ID — pass to getDetails() to retrieve full content. */
+  id: number;
+  /** Derived title from the chunk scope (last path component, max 60 chars). */
+  title: string;
+  /** Normalized relevance score in [0, 1]. Higher is more relevant. Position-based: top result = 1.0. */
+  score: number;
+  /** First 80 characters of chunk content. */
+  snippet: string;
+  /** Source file path — same as the chunk's scope field. */
+  source_file: string;
+  /** Chunk category. */
+  category: Chunk['category'];
+}
+
+/**
+ * Compact index search — runs hybridSearch and projects results to
+ * {@link IndexResult} objects containing only summary fields.
+ *
+ * Returns ~10x fewer tokens than returning full chunks, enabling a
+ * 2-step retrieval flow:
+ *   1. `searchIndex(query)` → inspect compact results
+ *   2. Filter by score > threshold
+ *   3. `getDetails(topIds)` → fetch full content only for relevant chunks
+ *
+ * Scores are position-based: the top result scores 1.0, subsequent results
+ * decay linearly as `(n - i) / n` so all scores are positive (≥ 1/n).
+ *
+ * @param db          SQLite database instance
+ * @param query       Search query
+ * @param options     Same options as hybridSearch (scope, category, limit, etc.)
+ * @param agentRunner Optional AgentRunner for AI reranking
+ */
+export async function searchIndex(
+  db: Database.Database,
+  query: string,
+  options: SearchOptions = {},
+  agentRunner?: AgentRunner,
+): Promise<IndexResult[]> {
+  const chunks = await hybridSearch(db, query, options, agentRunner);
+  const n = chunks.length;
+
+  return chunks.map((chunk, i) => {
+    const score = n > 0 ? Math.round(((n - i) / n) * 1000) / 1000 : 1.0;
+    const parts = chunk.scope.split('/');
+    const lastPart = parts[parts.length - 1] ?? chunk.scope;
+    const title = lastPart.length <= 60 ? lastPart : lastPart.slice(0, 60);
+
+    return {
+      id: chunk.id ?? 0,
+      title,
+      score,
+      snippet: chunk.content.slice(0, 80),
+      source_file: chunk.scope,
+      category: chunk.category,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Combined observation + chunk search
 // ---------------------------------------------------------------------------
 
