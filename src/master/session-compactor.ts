@@ -36,6 +36,29 @@ export interface CompactorConfig {
 }
 
 /**
+ * Async handler invoked when compaction is triggered.
+ * Receives a point-in-time snapshot describing why compaction fired.
+ * Implementations should summarize conversation turns and persist the
+ * summary (e.g. to memory.md) so the next session segment retains context.
+ */
+export type CompactionHandler = (snapshot: TurnSnapshot) => Promise<void>;
+
+/**
+ * Result returned by `triggerIfNeeded()`.
+ */
+export interface CompactionTriggerResult {
+  /** Whether compaction was actually triggered (false when below threshold). */
+  triggered: boolean;
+  /** The turn snapshot captured at trigger time. */
+  snapshot: TurnSnapshot;
+  /**
+   * Reason compaction was skipped (only present when `triggered` is false).
+   * E.g. "below threshold" or "already compacted this session".
+   */
+  skippedReason?: string;
+}
+
+/**
  * A point-in-time snapshot of the session's turn consumption.
  * Returned by `snapshotTurns()` — callers can inspect fields or call
  * `needsCompaction` directly.
@@ -176,5 +199,57 @@ export class SessionCompactor {
    */
   shouldCompact(db: Database.Database, sessionId: string): boolean {
     return this.snapshotTurns(db, sessionId).needsCompaction;
+  }
+
+  /**
+   * Check the session's turn count and trigger compaction if the configurable
+   * threshold has been reached.
+   *
+   * When compaction is needed the provided `handler` is invoked (if any).
+   * If no handler is supplied the method still returns `triggered: true` so
+   * the caller can take its own action (e.g. restart the session segment).
+   *
+   * Returns a {@link CompactionTriggerResult} describing whether compaction
+   * fired and why (or why not).
+   *
+   * @param db        - Open SQLite database handle.
+   * @param sessionId - The current Master session ID to inspect.
+   * @param handler   - Optional async callback invoked when threshold is exceeded.
+   */
+  async triggerIfNeeded(
+    db: Database.Database,
+    sessionId: string,
+    handler?: CompactionHandler,
+  ): Promise<CompactionTriggerResult> {
+    const snapshot = this.snapshotTurns(db, sessionId);
+
+    if (!snapshot.needsCompaction) {
+      logger.debug(
+        {
+          sessionId,
+          totalTurns: snapshot.totalTurns,
+          thresholdTurns: snapshot.thresholdTurns,
+        },
+        'SessionCompactor: below threshold — skipping compaction',
+      );
+      return { triggered: false, snapshot, skippedReason: 'below threshold' };
+    }
+
+    logger.info(
+      {
+        sessionId,
+        totalTurns: snapshot.totalTurns,
+        thresholdTurns: snapshot.thresholdTurns,
+        maxTurns: snapshot.maxTurns,
+        threshold: snapshot.threshold,
+      },
+      'SessionCompactor: threshold exceeded — triggering compaction',
+    );
+
+    if (handler) {
+      await handler(snapshot);
+    }
+
+    return { triggered: true, snapshot };
   }
 }
