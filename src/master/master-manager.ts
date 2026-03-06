@@ -94,7 +94,7 @@ import {
   loadAllSkillPacks,
 } from './skill-pack-loader.js';
 import { classifyDocumentIntent } from '../core/router.js';
-import { PlanningGate, shouldBypassPlanning } from './planning-gate.js';
+import { PlanningGate, shouldBypassPlanning, performReasoningCheckpoint } from './planning-gate.js';
 
 const logger = createLogger('master-manager');
 
@@ -7743,6 +7743,24 @@ ${currentContent}
       },
       'Spawning worker from SPAWN marker',
     );
+
+    // OB-1780: Reasoning checkpoint — "What could go wrong?" before full-access workers.
+    // Scans the task prompt for destructive, broad-scope, and security-sensitive patterns.
+    // The checkpoint is analytical only (does not block execution); it surfaces risks in
+    // the log so engineers and the audit trail can review the reasoning before a high-
+    // privilege worker modifies files, installs packages, or runs system commands.
+    if (profile === 'full-access') {
+      const checkpoint = performReasoningCheckpoint(body.prompt);
+      logger.info(
+        {
+          workerId,
+          riskLevel: checkpoint.riskLevel,
+          risks: checkpoint.risks.map((r) => ({ pattern: r.pattern, level: r.level })),
+          riskCount: checkpoint.risks.length,
+        },
+        'Reasoning checkpoint: pre-spawn risk analysis for full-access worker',
+      );
+    }
 
     // Pre-flight tool prediction (OB-1595): before spending any turns, analyze the
     // task prompt for keywords that suggest the worker will need tools beyond what

@@ -163,6 +163,125 @@ export function shouldBypassPlanning(taskDescription: string): BypassDecision {
 }
 
 // ---------------------------------------------------------------------------
+// Reasoning Checkpoint (OB-1780)
+// ---------------------------------------------------------------------------
+
+/** Risk severity levels for a reasoning checkpoint. */
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+/** A single identified risk signal from a task description. */
+export interface RiskSignal {
+  /** Short label for the risk pattern detected. */
+  pattern: string;
+  /** Human-readable description of what could go wrong. */
+  description: string;
+  /** Severity of this risk. */
+  level: RiskLevel;
+}
+
+/** Result of a reasoning checkpoint performed before a full-access worker spawns. */
+export interface ReasoningCheckpoint {
+  /** The task prompt that was analysed. */
+  prompt: string;
+  /** Zero or more risk signals identified in the prompt. */
+  risks: RiskSignal[];
+  /** Highest risk level across all signals (or 'low' when none detected). */
+  riskLevel: RiskLevel;
+  /** ISO 8601 timestamp when the checkpoint was performed. */
+  performedAt: string;
+}
+
+/** Risk-signal definitions scanned before every full-access worker spawn. */
+const RISK_SIGNAL_DEFS: Array<{
+  pattern: RegExp;
+  label: string;
+  description: string;
+  level: RiskLevel;
+}> = [
+  {
+    pattern: /\brm\s+-rf?\b|\bdelete\s+all\b|\bremove\s+all\b|\bwipe\b|\btruncate\b/i,
+    label: 'destructive-delete',
+    description: 'Task may delete files or data irreversibly',
+    level: 'high',
+  },
+  {
+    pattern: /\b(--force|--no-verify|--hard\s+reset|reset\s+--hard)\b/i,
+    label: 'bypass-safety',
+    description: 'Task may bypass safety checks or git protections',
+    level: 'high',
+  },
+  {
+    pattern: /\b(drop\s+table|drop\s+database|alter\s+table|truncate\s+table)\b/i,
+    label: 'schema-destructive',
+    description: 'Task may make destructive database schema changes',
+    level: 'high',
+  },
+  {
+    pattern: /\b(all\s+files?|entire\s+(?:codebase|repo|project|directory)|every\s+file)\b/i,
+    label: 'broad-scope',
+    description: 'Task scope is unusually broad — may affect many files',
+    level: 'medium',
+  },
+  {
+    pattern: /\b(npm\s+install|pip\s+install|cargo\s+add|yarn\s+add|apt[-\s]install)\b/i,
+    label: 'dependency-install',
+    description: 'Task may install new dependencies',
+    level: 'medium',
+  },
+  {
+    pattern:
+      /\b(auth(?:entication)?|secret|password|token|credential|api[-_]key|private[-_]key)\b/i,
+    label: 'security-sensitive',
+    description: 'Task touches authentication or secret management code',
+    level: 'medium',
+  },
+  {
+    pattern: /\b(migration|schema\s+change|alter\s+column|add\s+column)\b/i,
+    label: 'schema-migration',
+    description: 'Task may modify the database schema',
+    level: 'medium',
+  },
+  {
+    pattern: /\b(config(?:uration)?|env(?:ironment)?\s+(?:variable|var)|\.env\b|dotenv)\b/i,
+    label: 'config-change',
+    description: 'Task modifies configuration or environment settings',
+    level: 'low',
+  },
+];
+
+/**
+ * Perform a reasoning checkpoint before spawning a full-access worker (OB-1780).
+ *
+ * Scans the task prompt for patterns that indicate the worker may perform
+ * destructive, broad-scope, or security-sensitive operations. Returns a
+ * structured `ReasoningCheckpoint` with all identified risk signals and an
+ * overall risk level.
+ *
+ * The checkpoint is purely analytical — it does not block execution. Its
+ * purpose is to surface "what could go wrong" in the log and task record
+ * so engineers can review the reasoning trail.
+ *
+ * @param prompt The task prompt that will be sent to the full-access worker.
+ * @returns A `ReasoningCheckpoint` with identified risks and an overall risk level.
+ */
+export function performReasoningCheckpoint(prompt: string): ReasoningCheckpoint {
+  const risks: RiskSignal[] = [];
+  for (const def of RISK_SIGNAL_DEFS) {
+    if (def.pattern.test(prompt)) {
+      risks.push({ pattern: def.label, description: def.description, level: def.level });
+    }
+  }
+
+  const riskLevel: RiskLevel = risks.some((r) => r.level === 'high')
+    ? 'high'
+    : risks.some((r) => r.level === 'medium')
+      ? 'medium'
+      : 'low';
+
+  return { prompt, risks, riskLevel, performedAt: new Date().toISOString() };
+}
+
+// ---------------------------------------------------------------------------
 // Public Types
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 14 | **In Progress:** 0 | **Done:** 162 (1063 archived)
+> **Pending:** 13 | **In Progress:** 0 | **Done:** 163 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -391,7 +391,7 @@
 | OB-1777 | Execution phase: only starts after planning workers return and Master confirms approach                                | `src/master/planning-gate.ts`                 | ✅ Done |
 | OB-1778 | Skip planning for simple tasks — Master auto-detects complexity (single-file edits, FAQ answers bypass planning)       | `src/master/planning-gate.ts`                 | ✅ Done |
 | OB-1779 | Wire planning gate into Master session flow — before SPAWN, check if planning phase completed                          | `src/master/master-manager.ts`                | ✅ Done |
-| OB-1780 | Add reasoning checkpoint before full-access workers — Master self-checks: "What could go wrong?"                       | `src/master/master-manager.ts`                | Pending |
+| OB-1780 | Add reasoning checkpoint before full-access workers — Master self-checks: "What could go wrong?"                       | `src/master/master-manager.ts`                | ✅ Done |
 | OB-1781 | Add `WorkerSwarm` type — named group of workers with shared context and handoff protocol                               | `src/types/agent.ts`                          | Pending |
 | OB-1782 | Create `swarm-coordinator.ts` — groups workers into swarms (research, implement, review, test)                         | `src/master/swarm-coordinator.ts` (new)       | Pending |
 | OB-1783 | Swarm handoff — research swarm results feed into implement swarm context, implement into review                        | `src/master/swarm-coordinator.ts`             | Pending |
