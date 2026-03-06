@@ -24,6 +24,7 @@ import type { AccessRole } from '../memory/access-store.js';
 import type { MessageQueue } from './queue.js';
 import type { RiskLevel, ExecutionProfile, DeepPhase, DocumentFileFormat } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
+import type { SkillManager } from '../master/skill-manager.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
 import { sendEmail } from './email-sender.js';
@@ -382,6 +383,7 @@ export class Router {
   private queue?: MessageQueue;
   private appServer?: AppServer;
   private relay?: InteractionRelay;
+  private skillManager?: SkillManager;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -431,6 +433,12 @@ export class Router {
   setMaster(master: MasterManager): void {
     this.master = master;
     logger.info('Router configured to use Master AI');
+  }
+
+  /** Set the SkillManager — enables the "/skills" command */
+  setSkillManager(skillManager: SkillManager): void {
+    this.skillManager = skillManager;
+    logger.info('Router configured with SkillManager (/skills command enabled)');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */
@@ -1449,6 +1457,12 @@ export class Router {
     // Handle built-in "/help" command — lists all available commands (OB-1430)
     if (/^\/help$/i.test(message.content.trim())) {
       await this.handleHelpCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/skills" command — list available skills with descriptions and usage counts (OB-1712)
+    if (/^\/skills$/i.test(message.content.trim())) {
+      await this.handleSkillsCommand(message, connector);
       return;
     }
 
@@ -4454,6 +4468,88 @@ export class Router {
   }
 
   /**
+   * Handle the built-in "/skills" command — list available skills with descriptions and usage counts.
+   *
+   * Output sections:
+   *   Built-in skills  — shipped with OpenBridge (code-review, test-runner, etc.)
+   *   User-defined     — workspace-specific skills from .openbridge/skills/
+   *
+   * Each skill line shows: name, description, tool profile, and usage count (if > 0).
+   */
+  private async handleSkillsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.skillManager) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Skills not available — skill manager not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Reload user-defined skills to pick up any new files dropped since startup
+    await this.skillManager.load();
+
+    const allSkills = this.skillManager.getAll();
+
+    if (allSkills.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'No skills available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Fetch usage stats (persisted to .skill-stats.json)
+    const statsArray = await this.skillManager.getSkillStats();
+    const statsMap = new Map(statsArray.map((s) => [s.name, s]));
+
+    const builtIn = allSkills.filter((s) => !s.isUserDefined);
+    const userDefined = allSkills.filter((s) => s.isUserDefined);
+
+    const lines: string[] = ['*Available Skills*', ''];
+
+    const formatSkill = (skill: {
+      name: string;
+      description: string;
+      toolProfile: string;
+    }): string => {
+      const stats = statsMap.get(skill.name);
+      const usageSuffix = stats && stats.usageCount > 0 ? ` (used ${stats.usageCount}×)` : '';
+      return `• *${skill.name}* [${skill.toolProfile}]${usageSuffix} — ${skill.description}`;
+    };
+
+    if (builtIn.length > 0) {
+      lines.push('*Built-in*');
+      for (const skill of builtIn) {
+        lines.push(formatSkill(skill));
+      }
+    }
+
+    if (userDefined.length > 0) {
+      if (builtIn.length > 0) lines.push('');
+      lines.push('*Workspace Skills*');
+      for (const skill of userDefined) {
+        lines.push(formatSkill(skill));
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info(
+      { sender: message.sender, skillCount: allSkills.length },
+      'Skills listed via /skills',
+    );
+  }
+
+  /**
    * Handle the built-in "/help" command — list all available commands.
    *
    * Displays all built-in commands with brief descriptions, grouped by category:
@@ -4718,6 +4814,7 @@ export class Router {
       '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
+      '• /skills — list available skills with descriptions and usage counts',
       '',
       '*Tool Escalation*',
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
