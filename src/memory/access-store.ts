@@ -315,14 +315,18 @@ export function getApprovedEscalations(
 
 /**
  * Append a tool name to the permanent escalation grants for a specific user+channel.
- * Creates an access_control entry with default role 'viewer' if none exists.
+ * Creates an access_control entry with the given defaultRole (default: 'owner') if none exists.
  * No-op if the tool is already in the grants list.
+ *
+ * Pass `defaultRole: 'owner'` (the default) for whitelisted users so they are not
+ * accidentally created as read-only viewers on their first tool escalation.
  */
 export function addApprovedEscalation(
   db: Database.Database,
   userId: string,
   channel: string,
   tool: string,
+  defaultRole: AccessRole = 'owner',
 ): void {
   const now = new Date().toISOString();
   const existing = getAccess(db, userId, channel);
@@ -349,7 +353,7 @@ export function addApprovedEscalation(
     ).run(
       userId,
       channel,
-      'viewer',
+      defaultRole,
       null,
       null,
       null,

@@ -86,6 +86,7 @@ import {
   getConsentMode as _getConsentMode,
   getApprovedEscalations as _getApprovedEscalations,
   addApprovedEscalation as _addApprovedEscalation,
+  type AccessRole,
   type AccessControlEntry,
   type ConsentMode,
 } from './access-store.js';
@@ -816,9 +817,14 @@ export class MemoryManager {
     return Promise.resolve(_getApprovedEscalations(this.db, userId, channel));
   }
 
-  addApprovedEscalation(userId: string, channel: string, tool: string): Promise<void> {
+  addApprovedEscalation(
+    userId: string,
+    channel: string,
+    tool: string,
+    defaultRole: AccessRole = 'owner',
+  ): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    _addApprovedEscalation(this.db, userId, channel, tool);
+    _addApprovedEscalation(this.db, userId, channel, tool, defaultRole);
     return Promise.resolve();
   }
 
