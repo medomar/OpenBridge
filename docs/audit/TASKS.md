@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 168 | **In Progress:** 0 | **Done:** 8 (1063 archived)
+> **Pending:** 167 | **In Progress:** 0 | **Done:** 9 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -66,7 +66,7 @@
 | Task    | What                                                                                                                                                             | Key File                                    | Status  |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------- |
 | OB-1625 | Create `observation-extractor.ts` — parse worker text output into structured `Observation` objects using regex + heuristics (file paths, function names, errors) | `src/master/observation-extractor.ts` (new) | ✅ Done |
-| OB-1626 | Extract `files_read` from worker output (scan for file path patterns like `src/...`, `./...`, absolute paths)                                                    | `src/master/observation-extractor.ts`       | Pending |
+| OB-1626 | Extract `files_read` from worker output (scan for file path patterns like `src/...`, `./...`, absolute paths)                                                    | `src/master/observation-extractor.ts`       | ✅ Done |
 | OB-1627 | Extract `files_modified` from worker output (scan for Edit/Write/Create indicators in output)                                                                    | `src/master/observation-extractor.ts`       | Pending |
 | OB-1628 | Auto-classify observation `type` from worker task profile + output content (code-edit → `refactor`/`bugfix`, read-only → `investigation`, etc.)                  | `src/master/observation-extractor.ts`       | Pending |
 | OB-1629 | Wire extractor into `worker-result-formatter.ts` — call `extractObservation()` after every worker completes, store via MemoryManager                             | `src/master/worker-result-formatter.ts`     | Pending |
