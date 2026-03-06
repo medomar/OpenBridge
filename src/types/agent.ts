@@ -595,6 +595,84 @@ export const SkillPackSchema = z.object({
   isUserDefined: z.boolean().default(false),
 });
 
+// ── Worker Swarm ─────────────────────────────────────────────────
+
+/**
+ * Named categories of worker swarms.
+ * Swarms execute in pipeline order: research → implement → review → test.
+ */
+export const SwarmTypeSchema = z.enum(['research', 'implement', 'review', 'test']);
+
+/** Lifecycle states for a worker swarm */
+export const SwarmStatusSchema = z.enum(['pending', 'running', 'completed', 'failed']);
+
+/**
+ * A completed worker result within a swarm — captures the worker identity,
+ * its output text, and whether it succeeded.
+ */
+export const SwarmWorkerResultSchema = z.object({
+  /** Identifier for this worker within the swarm (e.g. index or task summary) */
+  workerId: z.string().min(1),
+  /** Raw text output produced by the worker */
+  output: z.string(),
+  /** Whether the worker completed successfully */
+  success: z.boolean(),
+  /** Error message when success is false */
+  error: z.string().optional(),
+});
+
+/**
+ * A WorkerSwarm is a named group of workers that share a common goal and
+ * context. Swarms are arranged in a pipeline by the Master AI:
+ *
+ *   research → implement → review → test
+ *
+ * Each swarm receives the combined output of all preceding swarms as its
+ * `handoffContext`, ensuring later swarms (implement, review, test) have
+ * full visibility into earlier findings.
+ *
+ * Within a swarm, `allowParallel` controls whether the workers execute
+ * concurrently (Cursor pattern) or sequentially.
+ */
+export const WorkerSwarmSchema = z.object({
+  /** Unique swarm identifier */
+  id: z.string().min(1),
+  /** Human-readable swarm name (e.g. "research-swarm", "implement-swarm") */
+  name: z.string().min(1),
+  /** Category that determines swarm's role in the pipeline */
+  type: SwarmTypeSchema,
+  /** Current lifecycle status */
+  status: SwarmStatusSchema.default('pending'),
+  /**
+   * Workers that belong to this swarm.
+   * Each element is a full TaskManifest — AgentRunner spawns them directly.
+   */
+  workers: z.array(TaskManifestSchema).min(1),
+  /**
+   * Context shared by all workers in this swarm.
+   * Injected into every worker prompt as a prefix before the individual task.
+   */
+  sharedContext: z.string().default(''),
+  /**
+   * Context handed off from the preceding swarm(s).
+   * Set by SwarmCoordinator after the upstream swarm completes.
+   * Workers receive this alongside sharedContext so they can build on prior results.
+   */
+  handoffContext: z.string().default(''),
+  /**
+   * When true, all workers in this swarm are spawned concurrently.
+   * When false, workers execute sequentially in array order.
+   * Defaults to false for safety; SwarmCoordinator sets this per swarm type.
+   */
+  allowParallel: z.boolean().default(false),
+  /** Results populated by SwarmCoordinator as each worker finishes */
+  results: z.array(SwarmWorkerResultSchema).default([]),
+  /** When this swarm was created (ISO 8601) */
+  createdAt: z.string().datetime(),
+  /** When this swarm finished (absent while pending/running) */
+  completedAt: z.string().datetime().optional(),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -633,3 +711,7 @@ export type DocumentSkillPrompts = z.infer<typeof DocumentSkillPromptsSchema>;
 export type DocumentSkill = z.infer<typeof DocumentSkillSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
 export type SkillPack = z.infer<typeof SkillPackSchema>;
+export type SwarmType = z.infer<typeof SwarmTypeSchema>;
+export type SwarmStatus = z.infer<typeof SwarmStatusSchema>;
+export type SwarmWorkerResult = z.infer<typeof SwarmWorkerResultSchema>;
+export type WorkerSwarm = z.infer<typeof WorkerSwarmSchema>;
