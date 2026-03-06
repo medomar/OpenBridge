@@ -7,6 +7,33 @@ const logger = createLogger('html-renderer');
 
 export type ImageFormat = 'png' | 'jpeg';
 
+/** Parsed natural dimensions from an SVG element */
+export interface SvgDimensions {
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Parse the natural width/height from an SVG string.
+ * Reads `viewBox="minX minY width height"` first; falls back to `width`/`height` attributes.
+ */
+export function parseSvgDimensions(svg: string): SvgDimensions {
+  // viewBox="minX minY width height" — capture the 3rd and 4th values
+  const vbMatch = /viewBox\s*=\s*["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s*["']/.exec(svg);
+  if (vbMatch) {
+    return {
+      width: Math.round(parseFloat(vbMatch[1]!)),
+      height: Math.round(parseFloat(vbMatch[2]!)),
+    };
+  }
+  const wMatch = /\bwidth\s*=\s*["']([\d.]+)(?:px)?["']/.exec(svg);
+  const hMatch = /\bheight\s*=\s*["']([\d.]+)(?:px)?["']/.exec(svg);
+  return {
+    width: wMatch ? Math.round(parseFloat(wMatch[1]!)) : undefined,
+    height: hMatch ? Math.round(parseFloat(hMatch[1]!)) : undefined,
+  };
+}
+
 export interface RenderOptions {
   /** Output image format. Default: 'png' */
   format?: ImageFormat;
@@ -120,6 +147,41 @@ export class HTMLRenderer {
     return this.captureWithPuppeteer({ filePath: resolved }, options);
   }
 
+  /**
+   * Render an SVG string to an image file.
+   *
+   * The SVG is wrapped in a minimal HTML document sized to the SVG's natural dimensions
+   * (derived from `viewBox` or `width`/`height` attributes). Dimensions can be overridden
+   * via `options.width` / `options.height`.
+   *
+   * @param svg     Full SVG markup string
+   * @param options Rendering options (width/height default to SVG's natural size, or 800×600)
+   * @returns       RenderResult with the output file path and metadata
+   */
+  async renderSvgString(svg: string, options: RenderOptions = {}): Promise<RenderResult> {
+    const dims = parseSvgDimensions(svg);
+    const width = options.width ?? dims.width ?? 800;
+    const height = options.height ?? dims.height ?? 600;
+
+    // Wrap SVG in a minimal HTML page sized to match
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;overflow:hidden;}body{width:${width}px;height:${height}px;}</style></head><body>${svg}</body></html>`;
+    return this.captureWithPuppeteer({ html }, { ...options, width, height });
+  }
+
+  /**
+   * Render an SVG file to an image file.
+   *
+   * @param svgFilePath  Absolute path to the SVG file to render
+   * @param options      Rendering options
+   * @returns            RenderResult with the output file path and metadata
+   */
+  async renderSvgFile(svgFilePath: string, options: RenderOptions = {}): Promise<RenderResult> {
+    const resolved = path.resolve(svgFilePath);
+    await fs.access(resolved);
+    const svgContent = await fs.readFile(resolved, 'utf-8');
+    return this.renderSvgString(svgContent, options);
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
@@ -214,4 +276,21 @@ export async function renderHtmlToImage(
 ): Promise<RenderResult> {
   const renderer = new HTMLRenderer(workspacePath);
   return renderer.renderHtmlString(html, options);
+}
+
+/**
+ * Convenience function — render an SVG string to an image in the workspace's generated folder.
+ *
+ * @param workspacePath  Absolute path to the workspace (`.openbridge/generated/` is created inside)
+ * @param svg            SVG markup string
+ * @param options        Rendering options (width/height default to SVG's natural dimensions)
+ * @returns              RenderResult
+ */
+export async function renderSvgToImage(
+  workspacePath: string,
+  svg: string,
+  options: RenderOptions = {},
+): Promise<RenderResult> {
+  const renderer = new HTMLRenderer(workspacePath);
+  return renderer.renderSvgString(svg, options);
 }
