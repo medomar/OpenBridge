@@ -184,6 +184,7 @@ function createSchema(db: Database.Database): void {
       started_at   TEXT    NOT NULL,
       updated_at   TEXT    NOT NULL,
       completed_at TEXT,
+      summary_json TEXT,
       FOREIGN KEY (parent_id) REFERENCES agent_activity(id)
     );
 
