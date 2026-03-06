@@ -231,6 +231,26 @@ function createSchema(db: Database.Database): void {
       status         TEXT    NOT NULL DEFAULT 'active'
     );
 
+    -- observations: structured facts extracted from worker outputs
+    CREATE TABLE IF NOT EXISTS observations (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id     TEXT    NOT NULL,
+      worker_id      TEXT    NOT NULL,
+      type           TEXT    NOT NULL,
+      title          TEXT    NOT NULL,
+      narrative      TEXT    NOT NULL,
+      facts          TEXT    NOT NULL DEFAULT '[]',
+      concepts       TEXT    NOT NULL DEFAULT '[]',
+      files_read     TEXT    NOT NULL DEFAULT '[]',
+      files_modified TEXT    NOT NULL DEFAULT '[]',
+      created_at     TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_observations_session   ON observations(session_id);
+    CREATE INDEX IF NOT EXISTS idx_observations_worker    ON observations(worker_id);
+    CREATE INDEX IF NOT EXISTS idx_observations_type      ON observations(type);
+    CREATE INDEX IF NOT EXISTS idx_observations_created   ON observations(created_at);
+
     -- audit_log: structured audit trail (replaces flat-file JSONL)
     CREATE TABLE IF NOT EXISTS audit_log (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
