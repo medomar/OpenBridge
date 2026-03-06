@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
@@ -277,6 +278,45 @@ const MIGRATIONS: Migration[] = [
             update.run(computeContentHash(row.content), row.id);
           }
         })();
+      }
+    },
+  },
+  {
+    version: 12,
+    description: 'Add embeddings table for vector search and initialize sqlite-vec extension',
+    apply: (db): void => {
+      // Try to load sqlite-vec extension (optional dependency — skip if not installed)
+      try {
+        const req = createRequire(import.meta.url);
+        const sqliteVec = req('sqlite-vec') as { load: (db: Database.Database) => void };
+        sqliteVec.load(db);
+      } catch {
+        // sqlite-vec not installed — vector search will be unavailable
+      }
+
+      // Create embeddings table for existing databases that predate database.ts schema addition
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='embeddings'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE embeddings (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id    INTEGER NOT NULL,
+            vector      BLOB    NOT NULL,
+            model       TEXT    NOT NULL,
+            dimensions  INTEGER NOT NULL,
+            created_at  TEXT    NOT NULL,
+            FOREIGN KEY (chunk_id) REFERENCES context_chunks(id) ON DELETE CASCADE
+          );
+          CREATE UNIQUE INDEX idx_embeddings_chunk ON embeddings(chunk_id);
+          CREATE INDEX idx_embeddings_model ON embeddings(model);
+        `);
       }
     },
   },
