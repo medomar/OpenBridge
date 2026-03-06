@@ -280,6 +280,35 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 13,
+    description: 'Add compaction_history table for session compaction events',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='compaction_history'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE compaction_history (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id            TEXT    NOT NULL,
+            trigger_reason        TEXT    NOT NULL,
+            turns_summarized      INTEGER NOT NULL,
+            identifiers_preserved TEXT    NOT NULL DEFAULT '{}',
+            summary_length        INTEGER NOT NULL DEFAULT 0,
+            created_at            TEXT    NOT NULL
+          );
+          CREATE INDEX idx_compaction_session ON compaction_history(session_id);
+          CREATE INDEX idx_compaction_created ON compaction_history(created_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**
