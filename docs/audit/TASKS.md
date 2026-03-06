@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 105 | **In Progress:** 0 | **Done:** 71 (1063 archived)
+> **Pending:** 104 | **In Progress:** 0 | **Done:** 72 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -201,7 +201,7 @@
 | ------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ------- |
 | OB-1738 | Output delivery integration — generated files served via file-server (existing), shared via `[SHARE:FILE]` markers | `src/core/file-server.ts`, `src/master/master-manager.ts` | ✅ Done |
 | OB-1739 | WhatsApp/Telegram file attachment — send generated documents as attachments via connector                          | `src/connectors/whatsapp/`, `src/connectors/telegram/`    | ✅ Done |
-| OB-1740 | WebChat file download — generated documents available as download links in chat UI                                 | `src/connectors/webchat/`                                 | Pending |
+| OB-1740 | WebChat file download — generated documents available as download links in chat UI                                 | `src/connectors/webchat/`                                 | ✅ Done |
 
 #### 99d — Configuration & Tests
 
