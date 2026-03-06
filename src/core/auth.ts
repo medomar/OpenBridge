@@ -50,6 +50,8 @@ export class AuthService {
   private denyPatterns: RegExp[];
   private denyMessage: string;
   private db: Database.Database | null = null;
+  private defaultRole: string;
+  private channelRoles: Record<string, string>;
 
   /**
    * Normalize a phone number to digits-only for comparison.
@@ -108,6 +110,8 @@ export class AuthService {
     const detailed = AuthService.buildWhitelistDetailed(config.whitelist);
     this.whitelist = detailed.whitelist;
     this.prefix = config.prefix;
+    this.defaultRole = config.defaultRole ?? 'owner';
+    this.channelRoles = config.channelRoles ?? {};
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
       allowPatterns: [],
@@ -335,6 +339,8 @@ export class AuthService {
     const detailed = AuthService.buildWhitelistDetailed(config.whitelist);
     this.whitelist = detailed.whitelist;
     this.prefix = config.prefix;
+    this.defaultRole = config.defaultRole ?? 'owner';
+    this.channelRoles = config.channelRoles ?? {};
 
     const filter: CommandFilterConfig = config.commandFilter ?? {
       allowPatterns: [],
@@ -364,6 +370,14 @@ export class AuthService {
         logger.warn({ entry, reason }, `Dropped whitelist entry '${entry}': ${reason}`);
       }
     }
+  }
+
+  /**
+   * Returns the role to assign for a given channel when auto-creating an access_control entry.
+   * Checks channelRoles[channel] first, then falls back to defaultRole.
+   */
+  getRoleForChannel(channel: string): string {
+    return this.channelRoles[channel] ?? this.defaultRole;
   }
 
   get commandPrefix(): string {

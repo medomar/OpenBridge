@@ -40,6 +40,17 @@ export const AuthConfigSchema = z.object({
   prefix: z.string().default('/ai'),
   rateLimit: RateLimitConfigSchema.default({}),
   commandFilter: CommandFilterConfigSchema.default({}),
+  /**
+   * Default role assigned to whitelisted users when auto-created in access_control.
+   * Defaults to 'owner' so existing setups retain full access without config changes.
+   */
+  defaultRole: z.enum(['owner', 'admin', 'developer', 'viewer', 'custom']).default('owner'),
+  /**
+   * Per-channel role overrides — applied when creating new access_control entries.
+   * Keys are channel type names (e.g. "webchat", "telegram"); values are role names.
+   * Takes precedence over defaultRole for the matching channel.
+   */
+  channelRoles: z.record(z.enum(['owner', 'admin', 'developer', 'viewer', 'custom'])).optional(),
 });
 
 /** Schema for queue retry configuration */
