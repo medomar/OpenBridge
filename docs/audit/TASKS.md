@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 42 | **In Progress:** 0 | **Done:** 134 (1063 archived)
+> **Pending:** 41 | **In Progress:** 0 | **Done:** 135 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -341,7 +341,7 @@
 | OB-1749 | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts         | `src/master/skill-packs/data-analysis.ts` (new)  | ✅ Done |
 | OB-1750 | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  | ✅ Done |
 | OB-1751 | Master reads available skill packs on startup, includes summary in system prompt                                 | `src/master/master-system-prompt.ts`             | ✅ Done |
-| OB-1752 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   | Pending |
+| OB-1752 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   | ✅ Done |
 | OB-1753 | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile            | `src/master/master-manager.ts`                   | Pending |
 | OB-1754 | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                                | `src/master/skill-pack-loader.ts`                | Pending |
 | OB-1755 | Master can create new skill packs from successful task patterns (extends prompt evolution)                       | `src/master/skill-pack-loader.ts`                | Pending |

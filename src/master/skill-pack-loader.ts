@@ -286,6 +286,143 @@ export function parseSkillPackMd(content: string): Partial<SkillPack> {
 }
 
 /**
+ * Keyword sets used to match task prompts to built-in skill packs.
+ * Ordered by specificity so that more specific matches win over general ones.
+ */
+const SKILL_PACK_KEYWORDS: Record<string, string[]> = {
+  'security-audit': [
+    'security',
+    'audit',
+    'vulnerability',
+    'vulnerabilities',
+    'semgrep',
+    'codeql',
+    'owasp',
+    'injection',
+    'xss',
+    'sql injection',
+    'insecure',
+    'cve',
+    'exploit',
+    'penetration',
+    'pentest',
+    'secure code',
+    'security review',
+    'threat',
+  ],
+  'code-review': [
+    'review',
+    'code review',
+    'pull request',
+    'pr review',
+    'diff',
+    'git diff',
+    'feedback on',
+    'review this',
+    'check this code',
+    'review the changes',
+    'review my',
+    'critique',
+    'assess the code',
+  ],
+  'test-writer': [
+    'write test',
+    'write tests',
+    'add test',
+    'add tests',
+    'create test',
+    'create tests',
+    'unit test',
+    'unit tests',
+    'test coverage',
+    'tdd',
+    'test-driven',
+    'vitest',
+    'jest',
+    'mocha',
+    'spec file',
+    'test suite',
+    'edge case',
+    'edge cases',
+  ],
+  'data-analysis': [
+    'analyse data',
+    'analyze data',
+    'data analysis',
+    'csv',
+    'json data',
+    'ndjson',
+    'statistics',
+    'statistical',
+    'dataset',
+    'correlation',
+    'distribution',
+    'visuali',
+    'chart',
+    'histogram',
+    'aggregate',
+    'pivot',
+    'parse data',
+  ],
+  documentation: [
+    'write docs',
+    'generate docs',
+    'documentation',
+    'api docs',
+    'api reference',
+    'readme',
+    'changelog',
+    'jsdoc',
+    'tsdoc',
+    'docstring',
+    'document this',
+    'document the',
+    'write documentation',
+    'update docs',
+    'update the docs',
+    'add docs',
+  ],
+};
+
+/**
+ * Selects the most appropriate skill pack for a worker task based on keyword
+ * matching against the task prompt.
+ *
+ * Scoring: each keyword match increments the pack's score by 1 (phrase matches
+ * count as 2). The pack with the highest score wins. Returns `undefined` when
+ * no pack scores above zero.
+ *
+ * @param prompt - The worker task prompt text.
+ * @param packs  - Candidate skill packs to match against (typically {@link BUILT_IN_SKILL_PACKS}).
+ * @returns The best-matching `SkillPack`, or `undefined` if no match.
+ */
+export function selectSkillPackForTask(prompt: string, packs: SkillPack[]): SkillPack | undefined {
+  const lower = prompt.toLowerCase();
+  let bestPack: SkillPack | undefined;
+  let bestScore = 0;
+
+  for (const pack of packs) {
+    const keywords = SKILL_PACK_KEYWORDS[pack.name];
+    if (!keywords) continue;
+
+    let score = 0;
+    for (const kw of keywords) {
+      if (lower.includes(kw)) {
+        // Phrase keywords (containing a space) worth 2 points for specificity
+        score += kw.includes(' ') ? 2 : 1;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPack = pack;
+    }
+  }
+
+  return bestPack;
+}
+
+/**
  * Serialises a `SkillPack` to SKILLPACK.md format.
  * Useful for persisting auto-created or edited skill packs back to disk.
  *
