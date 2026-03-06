@@ -9,6 +9,7 @@ import {
   sanitizeFts5Query,
   computeTemporalScore,
   computeHybridScore,
+  applyMMR,
 } from '../../src/memory/retrieval.js';
 import type { ConversationEntry } from '../../src/memory/index.js';
 import type { AgentRunner } from '../../src/core/agent-runner.js';
@@ -594,6 +595,143 @@ describe('retrieval.ts', () => {
       const queryVector = new Float32Array([0.1, 0.2, 0.3]);
       const results = await hybridSearch(db, 'router', { queryVector, limit: 2 });
       expect(results.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // applyMMR (OB-1655)
+  // -------------------------------------------------------------------------
+
+  describe('applyMMR', () => {
+    const makeCandidate = (scope: string, score: number): { chunk: Chunk; score: number } => ({
+      chunk: { scope, category: 'structure', content: `content for ${scope}` },
+      score,
+    });
+
+    it('returns empty array for empty input', () => {
+      expect(applyMMR([], 5)).toHaveLength(0);
+    });
+
+    it('returns empty array when limit is 0', () => {
+      expect(applyMMR([makeCandidate('src/a', 0.9)], 0)).toHaveLength(0);
+    });
+
+    it('returns at most limit results', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/b', 0.8),
+        makeCandidate('src/c', 0.7),
+        makeCandidate('src/d', 0.6),
+      ];
+      expect(applyMMR(candidates, 2)).toHaveLength(2);
+    });
+
+    it('with lambda=1.0 returns top-k by relevance score (no diversification)', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/b', 0.8),
+        makeCandidate('src/c', 0.7),
+      ];
+      const result = applyMMR(candidates, 3, 1.0);
+      expect(result[0]?.scope).toBe('src/a');
+      expect(result[1]?.scope).toBe('src/b');
+      expect(result[2]?.scope).toBe('src/c');
+    });
+
+    it('first result is always the highest-scoring candidate regardless of lambda', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/a', 0.85),
+        makeCandidate('src/b', 0.7),
+      ];
+      const result = applyMMR(candidates, 3, 0.5);
+      expect(result[0]?.scope).toBe('src/a');
+    });
+
+    it('diversifies results — prevents same scope from dominating', () => {
+      // 4 high-scoring chunks from src/core, 2 lower-scoring from src/master
+      const candidates = [
+        makeCandidate('src/core', 0.9),
+        makeCandidate('src/core', 0.88),
+        makeCandidate('src/core', 0.85),
+        makeCandidate('src/core', 0.82),
+        makeCandidate('src/master', 0.6),
+        makeCandidate('src/master', 0.5),
+      ];
+      const result = applyMMR(candidates, 4, 0.7);
+      // With lambda=0.7 the diversity penalty keeps src/core from filling all 4 slots
+      const scopes = result.map((c) => c.scope);
+      expect(scopes).toContain('src/master');
+    });
+
+    it('with lambda=0.0 (pure diversity) prefers a different scope over higher score', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/a', 0.89), // same scope, high score
+        makeCandidate('src/b', 0.5), // different scope, lower score
+      ];
+      const result = applyMMR(candidates, 3, 0.0);
+      // First pick is src/a (highest relevance — no selected set yet)
+      expect(result[0]?.scope).toBe('src/a');
+      // Second pick should be src/b: diversity wins over relevance when lambda=0
+      expect(result[1]?.scope).toBe('src/b');
+    });
+
+    it('returns all candidates when limit exceeds candidate count', () => {
+      const candidates = [makeCandidate('src/a', 0.9), makeCandidate('src/b', 0.8)];
+      const result = applyMMR(candidates, 10);
+      expect(result).toHaveLength(2);
+    });
+
+    it('all chunks returned contain valid scope and content', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/b', 0.7),
+        makeCandidate('src/c', 0.5),
+      ];
+      const result = applyMMR(candidates, 3);
+      for (const chunk of result) {
+        expect(chunk.scope).toBeDefined();
+        expect(chunk.content).toBeDefined();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // hybridSearch with mmr option (OB-1655)
+  // -------------------------------------------------------------------------
+
+  describe('hybridSearch with mmr option', () => {
+    it('MMR option diversifies results across different scopes', async () => {
+      // Insert 4 chunks from src/core and 2 from other scopes — without MMR all 4
+      // core chunks might appear; with MMR diversity should spread the results.
+      void storeChunks(db, [
+        ...Array.from({ length: 4 }, (_, i) =>
+          makeChunk({ scope: 'src/core', content: `bridge routing message handler ${i}` }),
+        ),
+        makeChunk({ scope: 'src/types', content: 'bridge type definitions and interfaces' }),
+        makeChunk({ scope: 'src/master', content: 'bridge master delegation message routing' }),
+      ]);
+
+      const results = await hybridSearch(db, 'bridge', { limit: 4, mmr: true });
+      expect(results.length).toBeLessThanOrEqual(4);
+
+      const scopes = new Set(results.map((r) => r.scope));
+      // MMR should bring in at least one chunk from a different scope
+      expect(scopes.size).toBeGreaterThan(1);
+    });
+
+    it('without mmr option all results may come from same scope', async () => {
+      void storeChunks(db, [
+        ...Array.from({ length: 4 }, (_, i) =>
+          makeChunk({ scope: 'src/core', content: `bridge routing message handler ${i}` }),
+        ),
+        makeChunk({ scope: 'src/types', content: 'bridge type definitions and interfaces' }),
+      ]);
+
+      const results = await hybridSearch(db, 'bridge', { limit: 4, mmr: false });
+      // Without MMR, results are purely relevance-ordered — no assertion on scope diversity
+      expect(results.length).toBeLessThanOrEqual(4);
     });
   });
 

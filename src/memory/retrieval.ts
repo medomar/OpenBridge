@@ -31,6 +31,17 @@ export interface SearchOptions {
    * Chunks from both FTS5 and KNN results are merged into a single ranked list.
    */
   queryVector?: Float32Array;
+  /**
+   * Apply MMR (Maximal Marginal Relevance) diversification to results (default false).
+   * Prevents chunks from the same file/scope from dominating the top-K results.
+   */
+  mmr?: boolean;
+  /**
+   * MMR lambda — trade-off between relevance (1.0) and diversity (0.0).
+   * Default 0.7 (relevance-biased). Higher values favour relevance; lower values
+   * favour diversity across different scopes/files.
+   */
+  mmrLambda?: number;
 }
 
 interface ChunkRow {
@@ -116,6 +127,78 @@ export function computeHybridScore(
   temporalScore: number,
 ): number {
   return 0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore;
+}
+
+// ---------------------------------------------------------------------------
+// MMR (Maximal Marginal Relevance) diversification (OB-1655)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply Maximal Marginal Relevance (MMR) diversification to a ranked candidate list.
+ *
+ * MMR selects results that are both relevant and diverse by iteratively choosing
+ * the next item that maximises:
+ *   λ × relevance(c) − (1 − λ) × max_sim(c, S)
+ *
+ * where S is the set of already-selected chunks and similarity is scope-based
+ * (1.0 when two chunks share the same scope, 0.0 otherwise). This prevents any
+ * single file/scope from dominating the returned top-K results.
+ *
+ * @param candidates  Scored chunks sorted by descending relevance (score ∈ [0, 1]).
+ * @param limit       Number of chunks to select.
+ * @param lambda      Relevance/diversity trade-off; default 0.7 (relevance-biased).
+ *                    Use 1.0 for pure relevance (equivalent to no MMR).
+ *                    Use 0.0 for pure diversity.
+ */
+export function applyMMR(
+  candidates: Array<{ chunk: Chunk; score: number }>,
+  limit: number,
+  lambda = 0.7,
+): Chunk[] {
+  if (candidates.length === 0 || limit <= 0) return [];
+
+  // With lambda=1.0 the diversity term vanishes — skip the O(n²) loop.
+  if (lambda >= 1.0) {
+    return candidates.slice(0, limit).map((c) => c.chunk);
+  }
+
+  const selected: Array<{ chunk: Chunk; score: number }> = [];
+  const remaining = [...candidates];
+
+  while (selected.length < limit && remaining.length > 0) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i];
+      if (!candidate) continue;
+
+      // Compute max scope-based similarity to any already-selected chunk.
+      // Scope similarity: 1.0 if same scope (same file), 0.0 otherwise.
+      let maxSim = 0;
+      for (const sel of selected) {
+        if (candidate.chunk.scope === sel.chunk.scope) {
+          maxSim = 1.0;
+          break; // Can't exceed 1.0 — short-circuit.
+        }
+      }
+
+      const mmrScore = lambda * candidate.score - (1 - lambda) * maxSim;
+      if (mmrScore > bestScore) {
+        bestScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx === -1) break;
+    const best = remaining[bestIdx];
+    if (best) {
+      selected.push(best);
+      remaining.splice(bestIdx, 1);
+    }
+  }
+
+  return selected.map((s) => s.chunk);
 }
 
 /**
@@ -267,7 +350,14 @@ async function hybridSearchWithVectorScoring(
 
   scored.sort((a, b) => b.hybridScore - a.hybridScore);
 
-  const chunks = scored.slice(0, limit).map((s) => s.chunk);
+  // Apply MMR diversification before reranking (OB-1655)
+  const chunks = options.mmr
+    ? applyMMR(
+        scored.map((s) => ({ chunk: s.chunk, score: s.hybridScore })),
+        limit,
+        options.mmrLambda,
+      )
+    : scored.slice(0, limit).map((s) => s.chunk);
 
   // Optional AI reranking (same threshold as FTS5-only path)
   if (options.rerank && agentRunner && chunks.length > 10) {
@@ -619,8 +709,22 @@ export async function hybridSearch(
     LIMIT ?
   `;
 
-  const rows = db.prepare(sql).all(sanitized, ...extraParams, limit) as ChunkRow[];
-  const chunks = rows.map(rowToChunk);
+  // For MMR we need extra candidates to diversify from before trimming to limit.
+  const fetchLimit = options.mmr ? limit * 3 : limit;
+  const rows = db.prepare(sql).all(sanitized, ...extraParams, fetchLimit) as ChunkRow[];
+
+  // Apply MMR diversification (OB-1655) — uses BM25 rank position as relevance proxy.
+  let chunks: Chunk[];
+  if (options.mmr && rows.length > 0) {
+    const total = rows.length;
+    const scored = rows.map((row, i) => ({
+      chunk: rowToChunk(row),
+      score: (total - i) / total, // linear decay: index 0 (most relevant) → 1.0
+    }));
+    chunks = applyMMR(scored, limit, options.mmrLambda);
+  } else {
+    chunks = rows.map(rowToChunk);
+  }
 
   // Layer 4: AI reranking — only when explicitly enabled and results exceed 10
   if (options.rerank && agentRunner && chunks.length > 10) {
