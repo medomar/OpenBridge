@@ -8,6 +8,8 @@ import {
 } from '../../src/master/worker-result-formatter.js';
 import type { WorkerResultMeta } from '../../src/master/worker-result-formatter.js';
 import type { AgentResult } from '../../src/core/agent-runner.js';
+import { formatWorkerNextStepsSection } from '../../src/master/master-system-prompt.js';
+import type { WorkerNextStepsEntry } from '../../src/master/master-system-prompt.js';
 
 describe('Worker Result Formatter', () => {
   describe('formatWorkerResult', () => {
@@ -657,6 +659,141 @@ describe('Worker Result Formatter', () => {
       const longLine = 'Fixed '.padEnd(400, 'x');
       const summary = extractWorkerSummary(longLine, 'Fix stuff');
       expect(summary.completed.length).toBeLessThanOrEqual(300);
+    });
+
+    it('extracts learned field from markdown Finding section', () => {
+      const output =
+        '## Key Finding\nThe cache is never invalidated after writes.\n## Done\nFixed it.';
+      const summary = extractWorkerSummary(output, 'Investigate caching');
+      expect(summary.learned).toContain('cache is never invalidated');
+    });
+
+    it('extracts learned field from inline keyword lines', () => {
+      const output = 'Note: The database uses WAL mode by default.\nFixed the migration.';
+      const summary = extractWorkerSummary(output, 'Fix migration');
+      expect(summary.learned).toMatch(/database uses WAL/i);
+    });
+
+    it('extracts next_steps from inline keyword lines', () => {
+      const output =
+        'Updated the handler. Next steps: add integration tests and deploy to staging.';
+      const summary = extractWorkerSummary(output, 'Update handler');
+      expect(summary.next_steps).toMatch(/add integration tests|deploy/i);
+    });
+
+    it('extracts investigated field from inline read/explore keyword lines', () => {
+      const output = 'Explored src/core/auth.ts and found token expiry logic. Then fixed it.';
+      const summary = extractWorkerSummary(output, 'Fix auth');
+      expect(summary.investigated).toMatch(/explored/i);
+    });
+
+    it('extracts files_read using path patterns', () => {
+      const output = 'Read src/memory/database.ts and src/core/router.ts for context.';
+      const summary = extractWorkerSummary(output, 'Investigate DB');
+      expect(summary.files_read).toContain('src/memory/database.ts');
+    });
+
+    it('extracts error_summary from explicit Error section when isError is true', () => {
+      const output =
+        '## Error\nFailed to connect to database: ECONNREFUSED\n## Context\nWas attempting migration.';
+      const summary = extractWorkerSummary(output, 'Run migration', true);
+      expect(summary.error_summary).toContain('ECONNREFUSED');
+    });
+
+    it('falls back to raw output slice for error_summary when no error section found', () => {
+      const output = 'Something went wrong and the process crashed unexpectedly at runtime.';
+      const summary = extractWorkerSummary(output, 'Run task', true);
+      expect(summary.error_summary).toBeDefined();
+      expect(summary.error_summary!.length).toBeGreaterThan(0);
+      expect(summary.error_summary!.length).toBeLessThanOrEqual(200);
+    });
+
+    it('handles completely empty output gracefully', () => {
+      const summary = extractWorkerSummary('   ', 'Do task');
+      expect(summary.request).toBe('Do task');
+      expect(summary.investigated).toBe('');
+      expect(summary.completed).toBe('');
+      expect(summary.learned).toBe('');
+      expect(summary.next_steps).toBe('');
+      expect(summary.files_modified).toEqual([]);
+      expect(summary.files_read).toEqual([]);
+      expect(summary.error_summary).toBeUndefined();
+    });
+
+    it('extracts completed from multi-verb output (first matching verb line)', () => {
+      const output = `Investigated the router module.\nAdded new route handler in src/core/router.ts.\nCreated unit test file.`;
+      const summary = extractWorkerSummary(output, 'Add route');
+      // Should match "Added" or "Created" — both start with action verbs
+      expect(summary.completed).toMatch(/added|created/i);
+    });
+  });
+
+  describe('formatWorkerNextStepsSection (next_steps injection)', () => {
+    it('returns null when entries array is empty', () => {
+      const result = formatWorkerNextStepsSection([]);
+      expect(result).toBeNull();
+    });
+
+    it('returns null when all entries have empty next_steps', () => {
+      const entries: WorkerNextStepsEntry[] = [
+        { taskSummary: 'Fix auth', nextSteps: '' },
+        { taskSummary: 'Update DB', nextSteps: '   ' },
+      ];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).toBeNull();
+    });
+
+    it('formats a single entry with meaningful next_steps', () => {
+      const entries: WorkerNextStepsEntry[] = [
+        { taskSummary: 'Fix auth bug', nextSteps: 'Add integration tests for the login flow.' },
+      ];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).not.toBeNull();
+      expect(result).toContain('## Pending Worker Next Steps');
+      expect(result).toContain('**Fix auth bug**');
+      expect(result).toContain('Add integration tests for the login flow.');
+    });
+
+    it('formats multiple entries, each with their task summary as bold label', () => {
+      const entries: WorkerNextStepsEntry[] = [
+        { taskSummary: 'Fix auth', nextSteps: 'Write unit tests.' },
+        { taskSummary: 'Update DB schema', nextSteps: 'Run the migration on staging.' },
+      ];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).not.toBeNull();
+      expect(result).toContain('**Fix auth**');
+      expect(result).toContain('Write unit tests.');
+      expect(result).toContain('**Update DB schema**');
+      expect(result).toContain('Run the migration on staging.');
+    });
+
+    it('filters out entries with empty next_steps, keeps those with content', () => {
+      const entries: WorkerNextStepsEntry[] = [
+        { taskSummary: 'Worker A', nextSteps: '' },
+        { taskSummary: 'Worker B', nextSteps: 'Deploy to staging.' },
+        { taskSummary: 'Worker C', nextSteps: '  ' },
+      ];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).not.toBeNull();
+      expect(result).toContain('**Worker B**');
+      expect(result).not.toContain('**Worker A**');
+      expect(result).not.toContain('**Worker C**');
+    });
+
+    it('falls back to "Worker task" label when taskSummary is empty', () => {
+      const entries: WorkerNextStepsEntry[] = [
+        { taskSummary: '', nextSteps: 'Add error handling.' },
+      ];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).not.toBeNull();
+      expect(result).toContain('**Worker task**');
+      expect(result).toContain('Add error handling.');
+    });
+
+    it('includes instructional header text for the Master AI', () => {
+      const entries: WorkerNextStepsEntry[] = [{ taskSummary: 'Fix bug', nextSteps: 'Run tests.' }];
+      const result = formatWorkerNextStepsSection(entries);
+      expect(result).toContain('Address them if they are relevant');
     });
   });
 });
