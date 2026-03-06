@@ -1,0 +1,333 @@
+/**
+ * SwarmCoordinator (OB-1782)
+ *
+ * Groups workers into typed swarms — research, implement, review, test — and
+ * manages the lifecycle of each swarm (pending → running → completed | failed).
+ *
+ * A swarm is a named collection of TaskManifest workers that share a common
+ * goal and optional shared context. The coordinator is the single source of
+ * truth for swarm state within a Master AI session.
+ *
+ * Subsequent tasks extend this coordinator:
+ *   OB-1783 — Swarm handoff (research output feeds implement context)
+ *   OB-1784 — Master-driven swarm composition (simple vs complex tasks)
+ *   OB-1785 — Parallel worker spawning within swarms
+ */
+
+import { randomUUID } from 'node:crypto';
+import { createLogger } from '../core/logger.js';
+import type { TaskManifest, WorkerSwarm, SwarmType, SwarmWorkerResult } from '../types/agent.js';
+
+const logger = createLogger('swarm-coordinator');
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Default pipeline order for swarm types.
+ * Swarms with a lower index run before swarms with a higher index.
+ */
+export const SWARM_PIPELINE_ORDER: SwarmType[] = ['research', 'implement', 'review', 'test'];
+
+// ---------------------------------------------------------------------------
+// Public Interfaces
+// ---------------------------------------------------------------------------
+
+/** Options for creating a new swarm. */
+export interface CreateSwarmOptions {
+  /** Human-readable name (defaults to `"${type}-swarm"`). */
+  name?: string;
+  /** Context injected into every worker prompt in this swarm. */
+  sharedContext?: string;
+  /**
+   * When true, workers in this swarm run concurrently.
+   * Defaults to false (sequential).
+   */
+  allowParallel?: boolean;
+}
+
+/** Result of completing a swarm's work. */
+export interface SwarmCompletionResult {
+  /** The swarm that finished. */
+  swarm: WorkerSwarm;
+  /** Combined text from all worker outputs (used for handoff). */
+  combinedOutput: string;
+  /** Number of workers that succeeded. */
+  successCount: number;
+  /** Number of workers that failed. */
+  failureCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// SwarmCoordinator
+// ---------------------------------------------------------------------------
+
+/**
+ * SwarmCoordinator — manages a collection of typed worker swarms for a single
+ * Master AI session.
+ *
+ * Usage:
+ *
+ * ```ts
+ * const coordinator = new SwarmCoordinator();
+ *
+ * // Group workers into typed swarms
+ * const researchSwarm = coordinator.createSwarm('research', researchManifests);
+ * const implSwarm     = coordinator.createSwarm('implement', implManifests);
+ *
+ * // Run a swarm
+ * coordinator.startSwarm(researchSwarm.id);
+ * coordinator.recordWorkerResult(researchSwarm.id, {
+ *   workerId: 'w1', output: '...', success: true,
+ * });
+ * coordinator.completeSwarm(researchSwarm.id);
+ *
+ * // Read the combined output for handoff
+ * const output = coordinator.getCombinedOutput(researchSwarm.id);
+ * ```
+ */
+export class SwarmCoordinator {
+  private _swarms: Map<string, WorkerSwarm> = new Map();
+
+  // ── Swarm Creation ───────────────────────────────────────────────
+
+  /**
+   * Create a new swarm from a list of worker manifests.
+   *
+   * @param type    Swarm category — determines its role in the pipeline.
+   * @param workers Worker manifests to assign to this swarm (at least one).
+   * @param options Optional overrides for name, sharedContext, allowParallel.
+   * @returns The newly created `WorkerSwarm` (status: `pending`).
+   * @throws If `workers` is empty.
+   */
+  createSwarm(
+    type: SwarmType,
+    workers: TaskManifest[],
+    options: CreateSwarmOptions = {},
+  ): WorkerSwarm {
+    if (workers.length === 0) {
+      throw new Error(`SwarmCoordinator.createSwarm(): at least one worker is required`);
+    }
+
+    const id = randomUUID();
+    const name = options.name ?? `${type}-swarm`;
+
+    const swarm: WorkerSwarm = {
+      id,
+      name,
+      type,
+      status: 'pending',
+      workers,
+      sharedContext: options.sharedContext ?? '',
+      handoffContext: '',
+      allowParallel: options.allowParallel ?? false,
+      results: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    this._swarms.set(id, swarm);
+    logger.debug({ swarmId: id, type, name, workerCount: workers.length }, 'Swarm created');
+    return { ...swarm, workers: [...workers], results: [] };
+  }
+
+  // ── Lifecycle ────────────────────────────────────────────────────
+
+  /**
+   * Transition a swarm from `pending` to `running`.
+   *
+   * @param swarmId The swarm to start.
+   * @returns Snapshot of the updated swarm.
+   * @throws If the swarm is not found or not in `pending` status.
+   */
+  startSwarm(swarmId: string): WorkerSwarm {
+    const swarm = this._requireSwarm(swarmId, 'startSwarm');
+    this._requireSwarmStatus(swarm, 'pending', 'startSwarm');
+
+    swarm.status = 'running';
+    logger.debug({ swarmId, type: swarm.type }, 'Swarm started');
+    return this._snapshot(swarm);
+  }
+
+  /**
+   * Mark a swarm as `completed` after all its workers have finished.
+   *
+   * @param swarmId The swarm to complete.
+   * @returns A `SwarmCompletionResult` with statistics and combined output.
+   * @throws If the swarm is not found or not in `running` status.
+   */
+  completeSwarm(swarmId: string): SwarmCompletionResult {
+    const swarm = this._requireSwarm(swarmId, 'completeSwarm');
+    this._requireSwarmStatus(swarm, 'running', 'completeSwarm');
+
+    swarm.status = 'completed';
+    swarm.completedAt = new Date().toISOString();
+
+    const successCount = swarm.results.filter((r) => r.success).length;
+    const failureCount = swarm.results.filter((r) => !r.success).length;
+    const combinedOutput = this._buildCombinedOutput(swarm);
+
+    logger.debug({ swarmId, type: swarm.type, successCount, failureCount }, 'Swarm completed');
+
+    return { swarm: this._snapshot(swarm), combinedOutput, successCount, failureCount };
+  }
+
+  /**
+   * Mark a swarm as `failed` when a critical error prevents it from finishing.
+   *
+   * @param swarmId The swarm to fail.
+   * @param _reason Human-readable reason (logged only).
+   * @returns Snapshot of the failed swarm.
+   * @throws If the swarm is not found or not in `running` status.
+   */
+  failSwarm(swarmId: string, _reason: string): WorkerSwarm {
+    const swarm = this._requireSwarm(swarmId, 'failSwarm');
+    this._requireSwarmStatus(swarm, 'running', 'failSwarm');
+
+    swarm.status = 'failed';
+    swarm.completedAt = new Date().toISOString();
+    logger.warn({ swarmId, type: swarm.type, reason: _reason }, 'Swarm failed');
+    return this._snapshot(swarm);
+  }
+
+  // ── Worker Results ───────────────────────────────────────────────
+
+  /**
+   * Record the result of a single worker completing inside a swarm.
+   *
+   * @param swarmId The swarm that owns this worker.
+   * @param result  The worker result to append.
+   * @throws If the swarm is not found or not in `running` status.
+   */
+  recordWorkerResult(swarmId: string, result: SwarmWorkerResult): void {
+    const swarm = this._requireSwarm(swarmId, 'recordWorkerResult');
+    this._requireSwarmStatus(swarm, 'running', 'recordWorkerResult');
+    swarm.results.push({ ...result });
+    logger.debug(
+      { swarmId, workerId: result.workerId, success: result.success },
+      'Worker result recorded',
+    );
+  }
+
+  // ── Output ───────────────────────────────────────────────────────
+
+  /**
+   * Build the combined output text from all worker results in a swarm.
+   * Returns an empty string if no results are recorded yet.
+   *
+   * @param swarmId The swarm to aggregate.
+   */
+  getCombinedOutput(swarmId: string): string {
+    const swarm = this._swarms.get(swarmId);
+    if (!swarm) return '';
+    return this._buildCombinedOutput(swarm);
+  }
+
+  // ── Queries ──────────────────────────────────────────────────────
+
+  /** Retrieve a swarm by ID, or `undefined` if not found. */
+  getSwarm(swarmId: string): WorkerSwarm | undefined {
+    const swarm = this._swarms.get(swarmId);
+    return swarm ? this._snapshot(swarm) : undefined;
+  }
+
+  /** All swarms in creation order, as snapshots. */
+  get swarms(): WorkerSwarm[] {
+    return Array.from(this._swarms.values()).map((s) => this._snapshot(s));
+  }
+
+  /** Swarms that have not yet started. */
+  get pendingSwarms(): WorkerSwarm[] {
+    return this.swarms.filter((s) => s.status === 'pending');
+  }
+
+  /** Swarms currently executing workers. */
+  get runningSwarms(): WorkerSwarm[] {
+    return this.swarms.filter((s) => s.status === 'running');
+  }
+
+  /** Swarms that finished successfully. */
+  get completedSwarms(): WorkerSwarm[] {
+    return this.swarms.filter((s) => s.status === 'completed');
+  }
+
+  /**
+   * Swarms in pipeline order (research → implement → review → test).
+   * Swarms with types not in the pipeline order are appended at the end
+   * in creation order.
+   */
+  get swarmsByPipelineOrder(): WorkerSwarm[] {
+    const indexed = new Map<SwarmType, WorkerSwarm[]>();
+    for (const type of SWARM_PIPELINE_ORDER) {
+      indexed.set(type, []);
+    }
+    const extras: WorkerSwarm[] = [];
+    for (const swarm of this.swarms) {
+      const bucket = indexed.get(swarm.type);
+      if (bucket) {
+        bucket.push(swarm);
+      } else {
+        extras.push(swarm);
+      }
+    }
+    const ordered: WorkerSwarm[] = [];
+    for (const type of SWARM_PIPELINE_ORDER) {
+      ordered.push(...(indexed.get(type) ?? []));
+    }
+    ordered.push(...extras);
+    return ordered;
+  }
+
+  /** `true` when all swarms are in a terminal state (completed or failed). */
+  get isComplete(): boolean {
+    if (this._swarms.size === 0) return false;
+    return Array.from(this._swarms.values()).every(
+      (s) => s.status === 'completed' || s.status === 'failed',
+    );
+  }
+
+  /** Total number of swarms managed by this coordinator. */
+  get swarmCount(): number {
+    return this._swarms.size;
+  }
+
+  // ── Reset ────────────────────────────────────────────────────────
+
+  /** Clear all swarms so the coordinator can be reused for a new task. */
+  reset(): void {
+    this._swarms.clear();
+  }
+
+  // ── Private ──────────────────────────────────────────────────────
+
+  private _requireSwarm(swarmId: string, method: string): WorkerSwarm {
+    const swarm = this._swarms.get(swarmId);
+    if (!swarm) {
+      throw new Error(`SwarmCoordinator.${method}(): swarm '${swarmId}' not found`);
+    }
+    return swarm;
+  }
+
+  private _requireSwarmStatus(
+    swarm: WorkerSwarm,
+    expected: WorkerSwarm['status'],
+    method: string,
+  ): void {
+    if (swarm.status !== expected) {
+      throw new Error(
+        `SwarmCoordinator.${method}(): swarm '${swarm.id}' expected status '${expected}' but is '${swarm.status}'`,
+      );
+    }
+  }
+
+  private _buildCombinedOutput(swarm: WorkerSwarm): string {
+    if (swarm.results.length === 0) return '';
+    return swarm.results
+      .map((r, i) => `## ${swarm.name} — Worker ${i + 1} (${r.workerId})\n\n${r.output}`)
+      .join('\n\n---\n\n');
+  }
+
+  private _snapshot(swarm: WorkerSwarm): WorkerSwarm {
+    return { ...swarm, workers: [...swarm.workers], results: [...swarm.results] };
+  }
+}

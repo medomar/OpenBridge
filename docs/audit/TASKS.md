@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 12 | **In Progress:** 0 | **Done:** 164 (1063 archived)
+> **Pending:** 11 | **In Progress:** 0 | **Done:** 165 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -393,7 +393,7 @@
 | OB-1779 | Wire planning gate into Master session flow — before SPAWN, check if planning phase completed                          | `src/master/master-manager.ts`                | ✅ Done |
 | OB-1780 | Add reasoning checkpoint before full-access workers — Master self-checks: "What could go wrong?"                       | `src/master/master-manager.ts`                | ✅ Done |
 | OB-1781 | Add `WorkerSwarm` type — named group of workers with shared context and handoff protocol                               | `src/types/agent.ts`                          | ✅ Done |
-| OB-1782 | Create `swarm-coordinator.ts` — groups workers into swarms (research, implement, review, test)                         | `src/master/swarm-coordinator.ts` (new)       | Pending |
+| OB-1782 | Create `swarm-coordinator.ts` — groups workers into swarms (research, implement, review, test)                         | `src/master/swarm-coordinator.ts` (new)       | ✅ Done |
 | OB-1783 | Swarm handoff — research swarm results feed into implement swarm context, implement into review                        | `src/master/swarm-coordinator.ts`             | Pending |
 | OB-1784 | Master decides swarm composition per task — simple tasks skip swarms, complex tasks use full pipeline                  | `src/master/swarm-coordinator.ts`             | Pending |
 | OB-1785 | Parallel spawning within swarms — independent workers in same swarm run concurrently (Cursor pattern)                  | `src/master/swarm-coordinator.ts`             | Pending |
