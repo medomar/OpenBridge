@@ -105,6 +105,19 @@ export class FileServer {
     return `http://localhost:${this.port}`;
   }
 
+  /**
+   * Returns a URL to the interactive preview page for the given filename.
+   * The preview page wraps the file in an iframe with a toolbar showing the
+   * filename and a link to open the file directly.
+   *
+   * Uses the public tunnel URL when active, otherwise localhost.
+   *
+   * @param filename  Name of the file in `.openbridge/generated/` (no path separators)
+   */
+  getPreviewUrl(filename: string): string {
+    return `${this.getFileUrl()}/preview/${encodeURIComponent(filename)}`;
+  }
+
   /** Set the public tunnel URL. Pass null to clear and fall back to localhost. */
   setPublicUrl(url: string | null): void {
     this.publicUrl = url;
@@ -341,6 +354,13 @@ export class FileServer {
       return;
     }
 
+    // Route: GET /preview/:filename  (interactive HTML preview wrapper)
+    const previewMatch = url.match(/^\/preview\/([^/]+)$/);
+    if (previewMatch) {
+      await this.handlePreview(res, previewMatch[1]!);
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
     res.end('Not found');
   }
@@ -387,6 +407,90 @@ export class FileServer {
 
     const filePath = path.join(this.generatedDir, rawFilename);
     await this.serveFile(res, filePath, rawFilename);
+  }
+
+  /**
+   * Serve an interactive preview page for an HTML file.
+   * The preview page embeds the raw file in a full-window iframe with a
+   * minimal toolbar showing the filename and a direct download/open link.
+   * Non-HTML files are redirected to the direct /shared/:filename route.
+   */
+  private async handlePreview(res: ServerResponse, rawFilename: string): Promise<void> {
+    // Security: reject path traversal attempts
+    if (rawFilename.includes('..') || rawFilename.includes('/') || rawFilename.includes('\\')) {
+      res.writeHead(400, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
+      res.end('Invalid filename');
+      return;
+    }
+
+    const filename = decodeURIComponent(rawFilename);
+    const filePath = path.join(this.generatedDir, filename);
+
+    // Verify the file exists
+    try {
+      await fs.access(filePath);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
+      res.end('File not found');
+      return;
+    }
+
+    const ext = path.extname(filename).toLowerCase();
+    const directUrl = `${this.getFileUrl()}/shared/${encodeURIComponent(filename)}`;
+
+    // For non-HTML files, redirect to the direct serve route
+    if (ext !== '.html' && ext !== '.htm') {
+      res.writeHead(302, { Location: directUrl, ...CORS_HEADERS });
+      res.end();
+      return;
+    }
+
+    const escapedFilename = filename
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview: ${escapedFilename}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, sans-serif; background: #1a1a2e; }
+    .toolbar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px; background: #16213e; color: #e0e0e0;
+      border-bottom: 1px solid #0f3460; min-height: 44px; flex-shrink: 0;
+    }
+    .toolbar-title { font-size: 14px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .toolbar-badge { font-size: 11px; background: #0f3460; color: #7ec8e3; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+    .toolbar-link {
+      font-size: 13px; color: #7ec8e3; text-decoration: none; padding: 4px 10px;
+      border: 1px solid #0f3460; border-radius: 4px; white-space: nowrap; transition: background 0.15s;
+    }
+    .toolbar-link:hover { background: #0f3460; }
+    iframe { flex: 1; border: none; width: 100%; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="toolbar-badge">OpenBridge Preview</span>
+    <span class="toolbar-title">${escapedFilename}</span>
+    <a class="toolbar-link" href="${directUrl}" target="_blank" rel="noopener noreferrer">Open full screen ↗</a>
+  </div>
+  <iframe src="${directUrl}" title="${escapedFilename}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+</body>
+</html>`;
+
+    const buf = Buffer.from(html, 'utf-8');
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': buf.length,
+      ...CORS_HEADERS,
+    });
+    res.end(buf);
   }
 
   /** Read and write a file to the response */
