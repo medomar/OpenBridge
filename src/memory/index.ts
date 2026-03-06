@@ -7,6 +7,7 @@ import {
   type PromptManifest,
 } from '../types/master.js';
 import { openDatabase, closeDatabase } from './database.js';
+import type { EmbeddingProvider } from './embedding-provider.js';
 import type { Chunk } from './chunk-store.js';
 import {
   storeChunks as _storeChunks,
@@ -86,6 +87,7 @@ import {
   getConsentMode as _getConsentMode,
   getApprovedEscalations as _getApprovedEscalations,
   addApprovedEscalation as _addApprovedEscalation,
+  approvePairing as _approvePairing,
   type AccessRole,
   type AccessControlEntry,
   type ConsentMode,
@@ -181,12 +183,18 @@ export class MemoryManager {
   private dbPath: string;
   private db: Database.Database | null = null;
   private _qaCacheEvictionTimer: ReturnType<typeof setInterval> | null = null;
+  private embeddingProvider?: EmbeddingProvider;
 
   /** Q&A cache store — available after init(). */
   qaCache!: QACacheStore;
 
   constructor(dbPath: string) {
     this.dbPath = dbPath;
+  }
+
+  /** Set the embedding provider used during chunk storage (OB-1652). */
+  setEmbeddingProvider(provider: EmbeddingProvider): void {
+    this.embeddingProvider = provider;
   }
 
   // -------------------------------------------------------------------------
@@ -236,8 +244,10 @@ export class MemoryManager {
 
   storeChunks(chunks: Chunk[], options?: StoreChunksOptions): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    _storeChunks(this.db, chunks, options);
-    return Promise.resolve();
+    return _storeChunks(this.db, chunks, {
+      ...options,
+      embeddingProvider: options?.embeddingProvider ?? this.embeddingProvider,
+    });
   }
 
   searchContext(query: string, limit?: number, options?: SearchOptions): Promise<Chunk[]> {
@@ -787,6 +797,17 @@ export class MemoryManager {
   setAccess(entry: AccessControlEntry): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _setAccess(this.db, entry);
+    return Promise.resolve();
+  }
+
+  /**
+   * Approve a pending pairing — store the sender in access_control with the given role.
+   * Reactivates an existing entry if one is found; otherwise creates a new one.
+   * Uses 'viewer' as the default role when none is specified.
+   */
+  approvePairing(senderId: string, channel: string, role: AccessRole = 'viewer'): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _approvePairing(this.db, senderId, channel, role);
     return Promise.resolve();
   }
 

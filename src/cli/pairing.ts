@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { closeDatabase, openDatabase } from '../memory/database.js';
-import { setAccess } from '../memory/access-store.js';
+import { approvePairing } from '../memory/access-store.js';
 import type { AccessRole } from '../memory/access-store.js';
 
 const PAIRING_CODE_RE = /^\d{6}$/;
@@ -120,12 +120,7 @@ export function runPairing(subArgs: string[]): void {
       );
     }
 
-    setAccess(db, {
-      user_id: row.sender_id,
-      channel: row.channel,
-      role,
-      active: true,
-    });
+    approvePairing(db, row.sender_id, row.channel, role);
 
     db.prepare('DELETE FROM pending_pairings WHERE code = ?').run(code);
 
