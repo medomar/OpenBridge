@@ -13,6 +13,7 @@ import {
   markStale as _markStale,
   deleteStaleChunks as _deleteStaleChunks,
   deleteChunksByScope as _deleteChunksByScope,
+  type StoreChunksOptions,
 } from './chunk-store.js';
 import {
   hybridSearch as _hybridSearch,
@@ -232,9 +233,9 @@ export class MemoryManager {
   // Context chunks (chunk-store.ts — OB-704)
   // -------------------------------------------------------------------------
 
-  storeChunks(chunks: Chunk[]): Promise<void> {
+  storeChunks(chunks: Chunk[], options?: StoreChunksOptions): Promise<void> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    _storeChunks(this.db, chunks);
+    _storeChunks(this.db, chunks, options);
     return Promise.resolve();
   }
 

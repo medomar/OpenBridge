@@ -2,8 +2,26 @@ import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Default average tokens consumed per worker turn, used to estimate discovery_tokens. */
+export const DEFAULT_AVG_TOKENS_PER_TURN = 4000;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/**
+ * Options for {@link storeChunks}. Controls how `discovery_tokens` is
+ * estimated and recorded in the `token_economics` table.
+ */
+export interface StoreChunksOptions {
+  /** Number of AI turns the worker used to produce these chunks. Used to estimate discovery_tokens. */
+  workerTurns?: number;
+  /** Average tokens consumed per turn (default: {@link DEFAULT_AVG_TOKENS_PER_TURN}). */
+  avgTokensPerTurn?: number;
+}
 
 export interface Chunk {
   id?: number;
@@ -82,12 +100,20 @@ function sanitizeFts5Query(raw: string): string {
  *
  * All insert operations run inside a single transaction.
  */
-export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
+export function storeChunks(
+  db: Database.Database,
+  chunks: Chunk[],
+  options: StoreChunksOptions = {},
+): void {
   if (chunks.length === 0) return;
 
   const now = new Date();
   const nowIso = now.toISOString();
   const windowStart = new Date(now.getTime() - 30_000).toISOString();
+
+  // Calculate estimated discovery tokens from worker turn count.
+  const avgTokensPerTurn = options.avgTokensPerTurn ?? DEFAULT_AVG_TOKENS_PER_TURN;
+  const discoveryTokens = (options.workerTurns ?? 0) * avgTokensPerTurn;
 
   // Collect unique scopes in this batch so we can check each once.
   const scopes = [...new Set(chunks.map((c) => c.scope))];
@@ -120,6 +146,24 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
     VALUES (?, ?, ?, ?)
   `);
 
+  // Prepare the token_economics insert — gracefully skip if the table does not
+  // exist yet (e.g. older or minimal test databases that haven't run migration 14).
+  const tokenEconTableExists =
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='token_economics'`,
+        )
+        .get() as { c: number }
+    ).c > 0;
+
+  const insertTokenEcon = tokenEconTableExists
+    ? db.prepare(
+        `INSERT OR IGNORE INTO token_economics (chunk_id, discovery_tokens, created_at)
+         VALUES (?, ?, ?)`,
+      )
+    : null;
+
   const insertAll = db.transaction((rows: Chunk[]) => {
     for (const chunk of rows) {
       const hash = chunk.content_hash ?? computeContentHash(chunk.content);
@@ -145,6 +189,11 @@ export function storeChunks(db: Database.Database, chunks: Chunk[]): void {
         updated_at: nowIso,
       });
       insertFts.run(result.lastInsertRowid, chunk.content, chunk.scope, chunk.category);
+
+      // Record discovery token cost in token_economics (INSERT OR IGNORE to
+      // avoid overwriting an existing row if the chunk was previously inserted
+      // in an earlier pass with a different turn count).
+      insertTokenEcon?.run(result.lastInsertRowid, discoveryTokens, nowIso);
     }
   });
 
