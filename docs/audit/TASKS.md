@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 4 | **In Progress:** 0 | **Done:** 172 (1063 archived)
+> **Pending:** 3 | **In Progress:** 0 | **Done:** 173 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -401,7 +401,7 @@
 | OB-1787 | Master can grant test modification permission per-worker when task requires it                                         | `src/master/master-manager.ts`                | ✅ Done |
 | OB-1788 | Detect test file modification in worker results — flag for Master review if unauthorized                               | `src/master/worker-result-formatter.ts`       | ✅ Done |
 | OB-1789 | Add iteration cap to worker fix loops — max 3 attempts at lint/test fixes before escalating to Master                  | `src/core/agent-runner.ts`                    | ✅ Done |
-| OB-1790 | On cap hit: worker reports partial fix + error details to Master, Master decides next action                           | `src/core/agent-runner.ts`                    | Pending |
+| OB-1790 | On cap hit: worker reports partial fix + error details to Master, Master decides next action                           | `src/core/agent-runner.ts`                    | ✅ Done |
 | OB-1791 | Configurable cap via `worker.maxFixIterations` config option (default: 3)                                              | `src/types/config.ts`                         | Pending |
 | OB-1792 | Tests: planning gate flow, swarm coordination, test protection, iteration caps                                         | `tests/master/orchestration-patterns.test.ts` | Pending |
 | OB-1793 | Tests: parallel spawning within swarms, handoff data integrity                                                         | `tests/master/swarm-coordinator.test.ts`      | Pending |

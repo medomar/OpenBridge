@@ -139,6 +139,60 @@ export function countFixIterations(stdout: string): number {
 }
 
 /**
+ * Patterns that identify unresolved error lines in worker stdout.
+ * Used by extractRemainingErrors() to surface errors that the worker
+ * failed to fix before hitting the iteration cap (OB-1790).
+ */
+const REMAINING_ERROR_PATTERNS: RegExp[] = [
+  /\berror\s+TS\d+:/i, // TypeScript: error TS2345:
+  /\btype\s+error\b/i, // TypeScript: Type error
+  /^\d+\s+error/i, // "3 errors" summary line
+  /\berror\b[^:]*:\s+.{10,}/i, // generic "error: some message"
+  /[✕✗×]/, // test failure symbols
+  /\bfailing\b/i, // "2 failing"
+  /\bFAIL\b/, // Jest/Vitest FAIL
+  /\bAssertionError\b/i, // assertion failure
+  /Expected.*Received/is, // Jest/Vitest assertion diff
+  /^\s*●\s+.{10,}/, // Jest bullet error
+];
+
+/**
+ * Extract unresolved error lines from worker stdout.
+ *
+ * Scans the last 3 000 characters of output (most recent activity) for
+ * lint, TypeScript, and test failure patterns. Returns up to 10 distinct
+ * error lines that likely represent issues the worker could not fix before
+ * hitting the iteration cap.
+ *
+ * Used to build the error-details section of the [FIX CAP REACHED] report
+ * injected into the Master session (OB-1790).
+ */
+export function extractRemainingErrors(stdout: string): string[] {
+  // Focus on the tail — most recent output is the most relevant
+  const tail = stdout.length > 3_000 ? stdout.slice(-3_000) : stdout;
+  const lines = tail
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const errors: string[] = [];
+
+  for (const line of lines) {
+    if (errors.length >= 10) break;
+    if (REMAINING_ERROR_PATTERNS.some((re) => re.test(line))) {
+      const truncated = line.slice(0, 200);
+      if (!seen.has(truncated)) {
+        seen.add(truncated);
+        errors.push(truncated);
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
  * Patterns in streaming stdout that indicate a new agent turn has started.
  * Matched against each chunk to extract the current turn number.
  * Claude CLI emits these markers at the beginning of each agentic turn.
