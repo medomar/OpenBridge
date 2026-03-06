@@ -3,92 +3,114 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-interface CheckResult {
-  name: string;
-  ok: boolean;
-  detail: string;
+// Check registry interface — every check returns { pass, message }
+export interface CheckResult {
+  pass: boolean;
+  message: string;
 }
+
+export type CheckFn = () => CheckResult;
+
+export interface Check {
+  label: string;
+  run: CheckFn;
+}
+
+// ---------------------------------------------------------------------------
+// Document generation prerequisite checks (Phase 99)
+// ---------------------------------------------------------------------------
 
 function checkNpmPackage(pkg: string): CheckResult {
   try {
     require.resolve(pkg);
-    return { name: pkg, ok: true, detail: 'installed' };
+    return { pass: true, message: 'installed' };
   } catch {
     try {
-      // Try resolving from the project root
       require.resolve(pkg, { paths: [process.cwd()] });
-      return { name: pkg, ok: true, detail: 'installed' };
+      return { pass: true, message: 'installed' };
     } catch {
       return {
-        name: pkg,
-        ok: false,
-        detail: 'not installed (optional — run: npm install ' + pkg + ')',
+        pass: false,
+        message: `not installed (optional — run: npm install ${pkg})`,
       };
     }
   }
 }
 
-function checkBinary(binary: string, displayName: string): CheckResult {
+function checkBinary(binary: string, installUrl: string): CheckResult {
   try {
     execSync(`which ${binary}`, { stdio: 'pipe' });
-    return { name: displayName, ok: true, detail: `found (${binary})` };
+    return { pass: true, message: `found (${binary})` };
   } catch {
     return {
-      name: displayName,
-      ok: false,
-      detail: `not found — install from https://www.libreoffice.org/download/`,
+      pass: false,
+      message: `not found — install from ${installUrl}`,
     };
   }
 }
 
 function checkPuppeteer(): CheckResult {
-  // Puppeteer can ship as 'puppeteer' or 'puppeteer-core'
   for (const pkg of ['puppeteer', 'puppeteer-core']) {
     try {
       require.resolve(pkg);
-      return { name: 'Puppeteer', ok: true, detail: `installed (${pkg})` };
+      return { pass: true, message: `installed (${pkg})` };
     } catch {
       try {
         require.resolve(pkg, { paths: [process.cwd()] });
-        return { name: 'Puppeteer', ok: true, detail: `installed (${pkg})` };
+        return { pass: true, message: `installed (${pkg})` };
       } catch {
         // continue to next
       }
     }
   }
   return {
-    name: 'Puppeteer',
-    ok: false,
-    detail: 'not installed — needed for PDF generation (run: npm install puppeteer)',
+    pass: false,
+    message: 'not installed — needed for PDF generation (run: npm install puppeteer)',
   };
 }
+
+// ---------------------------------------------------------------------------
+// Check registry — add checks here; they run in order
+// ---------------------------------------------------------------------------
+
+const CHECKS: Check[] = [
+  { label: 'docx', run: () => checkNpmPackage('docx') },
+  { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
+  { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
+  { label: 'Puppeteer', run: checkPuppeteer },
+  {
+    label: 'LibreOffice',
+    run: () => checkBinary('soffice', 'https://www.libreoffice.org/download/'),
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Runner
+// ---------------------------------------------------------------------------
 
 export function runDoctor(): void {
   console.log('OpenBridge Doctor — checking document generation prerequisites\n');
 
-  const checks: CheckResult[] = [
-    checkNpmPackage('docx'),
-    checkNpmPackage('pptxgenjs'),
-    checkNpmPackage('exceljs'),
-    checkPuppeteer(),
-    checkBinary('soffice', 'LibreOffice'),
-  ];
+  let allPass = true;
+  const failed: string[] = [];
 
-  let allOk = true;
-  for (const check of checks) {
-    const icon = check.ok ? '✓' : '✗';
-    console.log(`  ${icon}  ${check.name.padEnd(16)} ${check.detail}`);
-    if (!check.ok) allOk = false;
+  for (const check of CHECKS) {
+    const result = check.run();
+    const icon = result.pass ? '✓' : '✗';
+    console.log(`  ${icon}  ${check.label.padEnd(16)} ${result.message}`);
+    if (!result.pass) {
+      allPass = false;
+      failed.push(check.label);
+    }
   }
 
   console.log('');
 
-  if (allOk) {
+  if (allPass) {
     console.log('All prerequisites satisfied. Document generation is fully operational.');
   } else {
-    const missing = checks.filter((c) => !c.ok).map((c) => c.name);
     console.log(
-      `Missing: ${missing.join(', ')}. Document features that depend on these will be unavailable.`,
+      `Missing: ${failed.join(', ')}. Document features that depend on these will be unavailable.`,
     );
     console.log('');
     console.log('Install optional npm packages:');

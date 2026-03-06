@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 80 | **In Progress:** 0 | **Done:** 96 (1063 archived)
+> **Pending:** 79 | **In Progress:** 0 | **Done:** 97 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -268,7 +268,7 @@
 
 | Task    | What                                                                                                                            | Key File                  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------- |
-| OB-1684 | Create `doctor.ts` CLI command entry point with check registry pattern (each check is a function returning `{ pass, message }`) | `src/cli/doctor.ts` (new) | Pending |
+| OB-1684 | Create `doctor.ts` CLI command entry point with check registry pattern (each check is a function returning `{ pass, message }`) | `src/cli/doctor.ts` (new) | ✅ Done |
 | OB-1685 | Check: Node.js version >= 22 (parse `process.version`)                                                                          | `src/cli/doctor.ts`       | Pending |
 | OB-1686 | Check: AI tools detected (`which claude`, `which codex`, `which aider`) with version output                                     | `src/cli/doctor.ts`       | Pending |
 | OB-1687 | Check: Config file exists + valid (Zod parse with specific error messages per field)                                            | `src/cli/doctor.ts`       | Pending |
