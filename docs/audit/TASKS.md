@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 | **In Progress:** 0 | **Done:** 154 (1063 archived)
+> **Pending:** 21 | **In Progress:** 0 | **Done:** 155 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -372,7 +372,7 @@
 | OB-1769 | Mermaid rendering support — mermaid-cli or mermaid.ink API for diagram-to-image conversion                   | `src/core/html-renderer.ts`                            | ✅ Done |
 | OB-1770 | Output preview via app server — HTML outputs served as interactive previews                                  | `src/core/tunnel-manager.ts`                           | ✅ Done |
 | OB-1771 | Master auto-detects creative tasks — intent classification extended with design/visual/chart/diagram intents | `src/core/router.ts`                                   | ✅ Done |
-| OB-1772 | Image delivery via WhatsApp/Telegram — send rendered PNG/SVG as media messages                               | `src/connectors/whatsapp/`, `src/connectors/telegram/` | Pending |
+| OB-1772 | Image delivery via WhatsApp/Telegram — send rendered PNG/SVG as media messages                               | `src/connectors/whatsapp/`, `src/connectors/telegram/` | ✅ Done |
 | OB-1773 | Tests: diagram generation, chart rendering, HTML-to-image pipeline, creative skill selection                 | `tests/master/creative-skills.test.ts`                 | Pending |
 | OB-1774 | Documentation: creative output guide, supported formats, rendering prerequisites                             | `docs/CREATIVE_OUTPUT.md` (new)                        | Pending |
 

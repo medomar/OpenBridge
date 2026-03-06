@@ -120,6 +120,7 @@ function getMimeType(filename: string): {
     jpeg: { mimeType: 'image/jpeg', mediaType: 'image' },
     gif: { mimeType: 'image/gif', mediaType: 'image' },
     webp: { mimeType: 'image/webp', mediaType: 'image' },
+    svg: { mimeType: 'image/svg+xml', mediaType: 'image' },
     mp4: { mimeType: 'video/mp4', mediaType: 'video' },
     mp3: { mimeType: 'audio/mpeg', mediaType: 'audio' },
     wav: { mimeType: 'audio/wav', mediaType: 'audio' },
@@ -2008,18 +2009,45 @@ export class Router {
         // Also deliver as a native file attachment when the connector supports it (e.g. WhatsApp, Telegram)
         if (connector.supportsFileAttachments) {
           try {
-            const data = await readFile(resolvedPath);
             const filename = path.basename(resolvedPath);
-            const { mimeType, mediaType } = getMimeType(filename);
+            const ext = path.extname(filename).slice(1).toLowerCase();
+            let { mimeType, mediaType } = getMimeType(filename);
+            let deliveryPath = resolvedPath;
+            let deliveryFilename = filename;
+
+            // SVG files aren't natively rendered by WhatsApp/Telegram — convert to PNG when possible
+            if (ext === 'svg' && this.fileServer) {
+              try {
+                const renderResult = await this.fileServer.renderSvgToImage(filename);
+                if (renderResult) {
+                  deliveryPath = renderResult.outputPath;
+                  deliveryFilename = path.basename(renderResult.outputPath);
+                  mimeType = 'image/png';
+                  mediaType = 'image';
+                  logger.debug(
+                    { svgFile: filename, pngFile: deliveryFilename },
+                    'SVG converted to PNG for image delivery',
+                  );
+                }
+              } catch (svgErr) {
+                logger.debug(
+                  { filename, err: svgErr },
+                  'SVG-to-PNG conversion failed — sending SVG as document',
+                );
+                mediaType = 'document';
+              }
+            }
+
+            const data = await readFile(deliveryPath);
             await connector.sendMessage({
               target: connector.name,
               recipient,
               content: '',
               replyTo,
-              media: { type: mediaType, data, mimeType, filename },
+              media: { type: mediaType, data, mimeType, filename: deliveryFilename },
             });
             logger.info(
-              { filename, recipient, connector: connector.name },
+              { filename: deliveryFilename, recipient, connector: connector.name },
               'SHARE:FILE attachment dispatched',
             );
           } catch (err) {
