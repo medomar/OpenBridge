@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 8 | **In Progress:** 0 | **Done:** 168 (1063 archived)
+> **Pending:** 7 | **In Progress:** 0 | **Done:** 169 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -397,7 +397,7 @@
 | OB-1783 | Swarm handoff — research swarm results feed into implement swarm context, implement into review                        | `src/master/swarm-coordinator.ts`             | ✅ Done |
 | OB-1784 | Master decides swarm composition per task — simple tasks skip swarms, complex tasks use full pipeline                  | `src/master/swarm-coordinator.ts`             | ✅ Done |
 | OB-1785 | Parallel spawning within swarms — independent workers in same swarm run concurrently (Cursor pattern)                  | `src/master/swarm-coordinator.ts`             | ✅ Done |
-| OB-1786 | Add test protection to worker system prompts — "Do not modify test files unless explicitly authorized"                 | `src/master/master-system-prompt.ts`          | Pending |
+| OB-1786 | Add test protection to worker system prompts — "Do not modify test files unless explicitly authorized"                 | `src/master/master-system-prompt.ts`          | ✅ Done |
 | OB-1787 | Master can grant test modification permission per-worker when task requires it                                         | `src/master/master-manager.ts`                | Pending |
 | OB-1788 | Detect test file modification in worker results — flag for Master review if unauthorized                               | `src/master/worker-result-formatter.ts`       | Pending |
 | OB-1789 | Add iteration cap to worker fix loops — max 3 attempts at lint/test fixes before escalating to Master                  | `src/core/agent-runner.ts`                    | Pending |
