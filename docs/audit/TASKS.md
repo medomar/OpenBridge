@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 29 | **In Progress:** 0 | **Done:** 147 (1063 archived)
+> **Pending:** 28 | **In Progress:** 0 | **Done:** 148 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -365,7 +365,7 @@
 | OB-1762 | Built-in skill pack: `chart-generator` — D3.js/Chart.js data visualization, bar/line/pie/scatter charts      | `src/master/skill-packs/chart-generator.ts` (new)      | ✅ Done |
 | OB-1763 | Built-in skill pack: `web-designer` — HTML/CSS/React landing pages, marketing materials, email templates     | `src/master/skill-packs/web-designer.ts` (new)         | ✅ Done |
 | OB-1764 | Built-in skill pack: `slide-designer` — HTML-based presentation slides with animations, exportable to PDF    | `src/master/skill-packs/slide-designer.ts` (new)       | ✅ Done |
-| OB-1765 | Built-in skill pack: `generative-art` — p5.js algorithmic art, SVG patterns, creative coding prompts         | `src/master/skill-packs/generative-art.ts` (new)       | Pending |
+| OB-1765 | Built-in skill pack: `generative-art` — p5.js algorithmic art, SVG patterns, creative coding prompts         | `src/master/skill-packs/generative-art.ts` (new)       | ✅ Done |
 | OB-1766 | Built-in skill pack: `brand-assets` — logo concepts (SVG), social media images, favicon generation           | `src/master/skill-packs/brand-assets.ts` (new)         | Pending |
 | OB-1767 | HTML-to-image pipeline — render HTML outputs to PNG/JPG using Puppeteer for sending via messaging channels   | `src/core/html-renderer.ts` (new)                      | Pending |
 | OB-1768 | SVG output support — workers generate SVG, file-server serves, channels send as image                        | `src/core/file-server.ts`                              | Pending |
