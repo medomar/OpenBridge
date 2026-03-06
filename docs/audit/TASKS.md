@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 148 | **In Progress:** 0 | **Done:** 28 (1063 archived)
+> **Pending:** 147 | **In Progress:** 0 | **Done:** 29 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -114,7 +114,7 @@
 | Task    | What                                                                                                                                                      | Key File                                | Status  |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------- |
 | OB-1666 | Create `SessionCompactor` class — monitors Master session turn count via `agent_activity` tracking                                                        | `src/master/session-compactor.ts` (new) | ✅ Done |
-| OB-1667 | Trigger compaction when Master session exceeds configurable threshold (default 80% of `--max-turns`)                                                      | `src/master/session-compactor.ts`       | Pending |
+| OB-1667 | Trigger compaction when Master session exceeds configurable threshold (default 80% of `--max-turns`)                                                      | `src/master/session-compactor.ts`       | ✅ Done |
 | OB-1668 | Compaction strategy: summarize old turns into structured summary preserving identifiers (file paths, function names, finding IDs, task IDs)               | `src/master/session-compactor.ts`       | Pending |
 | OB-1669 | Identifier extraction — regex scan conversation for file paths (`src/...`), function names (`functionName()`), IDs (`OB-F*`, `OB-*`)                      | `src/master/session-compactor.ts`       | Pending |
 | OB-1670 | Write compaction summary to `memory.md` before starting new session segment (ensures cross-session continuity)                                            | `src/master/session-compactor.ts`       | Pending |
