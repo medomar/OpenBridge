@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 170 | **In Progress:** 0 | **Done:** 6 (1063 archived)
+> **Pending:** 169 | **In Progress:** 0 | **Done:** 7 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -59,7 +59,7 @@
 | OB-1621 | Create `observation-store.ts` — CRUD: `insertObservation()`, `getBySession()`, `getByWorker()`, `searchObservations()` (FTS5), `getRecentByType()`                                                | `src/memory/observation-store.ts` (new) | ✅ Done |
 | OB-1622 | Define observation type taxonomy enum: `bugfix`, `architecture`, `investigation`, `refactor`, `test-result`, `dependency`, `config`, `documentation`, `performance`, `security`                   | `src/types/agent.ts`                    | ✅ Done |
 | OB-1623 | Define `Observation` Zod schema with all fields + type validation                                                                                                                                 | `src/types/agent.ts`                    | ✅ Done |
-| OB-1624 | Wire `observation-store.ts` into `MemoryManager` facade — add `insertObservation()`, `searchObservations()`, `getRecentObservations()` public methods                                             | `src/memory/index.ts`                   | Pending |
+| OB-1624 | Wire `observation-store.ts` into `MemoryManager` facade — add `insertObservation()`, `searchObservations()`, `getRecentObservations()` public methods                                             | `src/memory/index.ts`                   | ✅ Done |
 
 #### 93b — Observation Extraction Pipeline (OB-F80)
 
