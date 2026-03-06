@@ -14,7 +14,7 @@
  */
 
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { ToolProfile, Skill } from '../types/agent.js';
+import type { ToolProfile, Skill, SkillPack } from '../types/agent.js';
 import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MCPServer } from '../types/config.js';
@@ -45,6 +45,8 @@ export interface MasterSystemPromptContext {
   workspaceInclude?: readonly string[];
   /** Available skills (built-in + user-defined) to include in the system prompt. */
   availableSkills?: Skill[];
+  /** Available skill packs (built-in + user-defined) to include as a summary in the system prompt. */
+  availableSkillPacks?: SkillPack[];
 }
 
 /**
@@ -181,6 +183,40 @@ export function formatSkillsSection(skills: Skill[]): string | null {
 }
 
 /**
+ * Format the "## Available Skill Packs" section for the Master system prompt.
+ * Lists each skill pack with its name, description, tool profile, and tags.
+ * The full systemPromptExtension is NOT included here — it is injected per-worker.
+ * Returns null when no skill packs are provided.
+ */
+export function formatSkillPacksSection(skillPacks: SkillPack[]): string | null {
+  if (skillPacks.length === 0) return null;
+
+  const lines: string[] = [
+    '## Available Skill Packs',
+    '',
+    'Skill packs are domain-specific instruction bundles injected into worker system prompts.',
+    'When delegating a task, select the matching skill pack to give the worker specialised expertise.',
+    '',
+  ];
+
+  for (const pack of skillPacks) {
+    const source = pack.isUserDefined ? 'user-defined' : 'built-in';
+    lines.push(`### \`${pack.name}\` (${source})`);
+    lines.push(pack.description);
+    lines.push(`- **Profile:** \`${pack.toolProfile}\``);
+    if (pack.tags.length > 0) {
+      lines.push(`- **Tags:** ${pack.tags.join(', ')}`);
+    }
+    if (pack.requiredTools.length > 0) {
+      lines.push(`- **Required tools:** ${pack.requiredTools.join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Generate the default Master system prompt content.
  *
  * This is seeded once into `.openbridge/prompts/master-system.md` and can be
@@ -191,6 +227,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
   const skillsSection = formatSkillsSection(context.availableSkills ?? []);
+  const skillPacksSection = formatSkillPacksSection(context.availableSkillPacks ?? []);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
   const fileServerSection = formatFileServerSection(context.fileServerPort, context.tunnelUrl);
   const visibilitySection = formatVisibilitySection(
@@ -247,7 +284,7 @@ ${profilesSection}
 ## Discovered AI Tools
 
 ${toolsSection}
-${mcpSection}${skillsSection ? `${skillsSection}\n` : ''}## Workspace Exploration
+${mcpSection}${skillsSection ? `${skillsSection}\n` : ''}${skillPacksSection ? `${skillPacksSection}\n` : ''}## Workspace Exploration
 
 **You are the sole driver of exploration.** When you receive an exploration prompt (e.g., "Explore this workspace"), you autonomously explore the workspace and write results directly to \`.openbridge/\`. There are no hardcoded phases — you decide the strategy.
 
