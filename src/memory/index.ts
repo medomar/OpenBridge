@@ -1111,6 +1111,61 @@ export class MemoryManager {
   getDb(): Database.Database | null {
     return this.db;
   }
+
+  // -------------------------------------------------------------------------
+  // Token economics (token_economics table — OB-1683)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Return aggregate token economics stats across all chunks.
+   *
+   * Returns null when the `token_economics` table does not exist (older databases
+   * that haven't run migration 14).
+   */
+  getTokenEconomicsStats(): Promise<{
+    totalDiscoveryTokens: number;
+    totalReadTokens: number;
+    totalRetrievals: number;
+    chunksTracked: number;
+  } | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+
+    const tableExists =
+      (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='token_economics'`,
+          )
+          .get() as { c: number }
+      ).c > 0;
+
+    if (!tableExists) return Promise.resolve(null);
+
+    interface StatsRow {
+      total_discovery: number;
+      total_read: number;
+      total_retrievals: number;
+      chunks_tracked: number;
+    }
+
+    const row = this.db
+      .prepare(
+        `SELECT
+           COALESCE(SUM(discovery_tokens), 0)  AS total_discovery,
+           COALESCE(SUM(total_read_tokens), 0) AS total_read,
+           COALESCE(SUM(retrieval_count), 0)   AS total_retrievals,
+           COUNT(*)                             AS chunks_tracked
+         FROM token_economics`,
+      )
+      .get() as StatsRow;
+
+    return Promise.resolve({
+      totalDiscoveryTokens: row.total_discovery,
+      totalReadTokens: row.total_read,
+      totalRetrievals: row.total_retrievals,
+      chunksTracked: row.chunks_tracked,
+    });
+  }
 }
 
 export default MemoryManager;

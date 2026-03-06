@@ -1428,6 +1428,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/stats" command — show exploration ROI (OB-1680)
+    if (/^\/stats$/i.test(message.content.trim())) {
+      await this.handleStatsCommand(message, connector);
+      return;
+    }
+
     // Detect natural language model overrides — "use opus for task 1" / "use haiku for this" (OB-1412)
     if (
       /\b(?:use|switch\s+to|change\s+to)\s+(?:\w+[-\s]?)?(opus|sonnet|haiku|fast|balanced|powerful)\b/i.test(
@@ -4164,6 +4170,73 @@ export class Router {
     logger.info({ sender: message.sender, partialId }, '/kill command handled');
   }
 
+  /**
+   * Handle the built-in "/stats" command — show exploration ROI summary.
+   *
+   * Queries the token_economics table for aggregate stats and formats a
+   * human-readable message:
+   *   "Explored with ~50K tokens, saved ~200K tokens across 15 retrievals (4x ROI)"
+   *
+   * Falls back gracefully when token_economics data is not yet available.
+   */
+  private async handleStatsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    if (!this.memory) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Stats not available — memory not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let content: string;
+
+    try {
+      const stats = await this.memory.getTokenEconomicsStats();
+
+      if (!stats || stats.chunksTracked === 0) {
+        content =
+          '*Exploration Stats*\n\nNo data yet — stats are collected as the workspace is explored and queried.';
+      } else {
+        const { totalDiscoveryTokens, totalReadTokens, totalRetrievals, chunksTracked } = stats;
+
+        // Format large numbers as "~50K" or "~1.2M"
+        const fmt = (n: number): string => {
+          if (n >= 1_000_000) return `~${(n / 1_000_000).toFixed(1)}M`;
+          if (n >= 1_000) return `~${Math.round(n / 1_000)}K`;
+          return `${n}`;
+        };
+
+        const roi =
+          totalDiscoveryTokens > 0 ? (totalReadTokens / totalDiscoveryTokens).toFixed(1) : null;
+
+        const roiStr = roi !== null ? ` (${roi}x ROI)` : '';
+
+        const lines = [
+          '*Exploration Stats*',
+          '',
+          `Explored with ${fmt(totalDiscoveryTokens)} tokens, saved ${fmt(totalReadTokens)} tokens across ${totalRetrievals} retrieval${totalRetrievals !== 1 ? 's' : ''}${roiStr}`,
+          `Chunks tracked: ${chunksTracked}`,
+        ];
+
+        content = lines.join('\n');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'handleStatsCommand: failed to fetch token economics');
+      content = 'Stats unavailable — could not read token economics data.';
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content,
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender }, '/stats command handled');
+  }
+
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
     const lines: string[] = [
       '*OpenBridge Commands*',
@@ -4178,6 +4251,7 @@ export class Router {
       '• /scope — show workspace visibility rules and detected sensitive files',
       '• /workers — list active workers with ID, status, profile, duration, and PID',
       '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
+      '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '',
       '*Tool Escalation*',
       '• /allow <tool|profile> — grant a pending tool escalation (scope: once by default)',
