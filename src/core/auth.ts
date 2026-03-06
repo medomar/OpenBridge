@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import type Database from 'better-sqlite3';
 import type { AuthConfig, CommandFilterConfig } from '../types/config.js';
 import {
@@ -411,5 +412,13 @@ export class AuthService {
 
   get commandPrefix(): string {
     return this.prefix;
+  }
+
+  /**
+   * Generate a cryptographically secure 6-digit pairing code.
+   * Returns a zero-padded string in the range "100000"–"999999".
+   */
+  static generatePairingCode(): string {
+    return randomInt(100000, 999999).toString();
   }
 }
