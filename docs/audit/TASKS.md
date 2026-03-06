@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 101 | **In Progress:** 0 | **Done:** 75 (1063 archived)
+> **Pending:** 100 | **In Progress:** 0 | **Done:** 76 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -223,7 +223,7 @@
 
 | Task    | What                                                                                                                                               | Key File                                 | Status  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------- |
-| OB-1645 | Add `sqlite-vec` dependency to `package.json` (native addon, like `better-sqlite3`)                                                                | `package.json`                           | Pending |
+| OB-1645 | Add `sqlite-vec` dependency to `package.json` (native addon, like `better-sqlite3`)                                                                | `package.json`                           | ✅ Done |
 | OB-1646 | Add `embeddings` table — `id`, `chunk_id` (FK → context_chunks), `vector` (BLOB, float32), `model`, `dimensions`, `created_at`                     | `src/memory/database.ts`                 | Pending |
 | OB-1647 | Add migration (version 12) for `embeddings` table + `sqlite-vec` initialization via `db.loadExtension()`                                           | `src/memory/migration.ts`                | Pending |
 | OB-1648 | Create `embedding-provider.ts` — abstract `EmbeddingProvider` interface: `embed(text): Promise<Float32Array>`, `embedBatch(texts[]): Promise<...>` | `src/memory/embedding-provider.ts` (new) | Pending |
