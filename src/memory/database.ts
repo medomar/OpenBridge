@@ -287,6 +287,21 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_compaction_session  ON compaction_history(session_id);
     CREATE INDEX IF NOT EXISTS idx_compaction_created  ON compaction_history(created_at);
 
+    -- token_economics: tracks token cost and retrieval ROI per chunk
+    CREATE TABLE IF NOT EXISTS token_economics (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      chunk_id          INTEGER NOT NULL UNIQUE,
+      discovery_tokens  INTEGER NOT NULL DEFAULT 0,
+      retrieval_count   INTEGER NOT NULL DEFAULT 0,
+      total_read_tokens INTEGER NOT NULL DEFAULT 0,
+      created_at        TEXT    NOT NULL,
+      last_read_at      TEXT,
+      FOREIGN KEY (chunk_id) REFERENCES context_chunks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_token_economics_chunk   ON token_economics(chunk_id);
+    CREATE INDEX IF NOT EXISTS idx_token_economics_created ON token_economics(created_at);
+
     -- audit_log: structured audit trail (replaces flat-file JSONL)
     CREATE TABLE IF NOT EXISTS audit_log (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
