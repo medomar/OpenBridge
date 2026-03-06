@@ -87,7 +87,11 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { SessionCompactor } from './session-compactor.js';
 import type { ConversationTurn } from './session-compactor.js';
-import { getBuiltInSkillPacks, findSkillByFormat } from './skill-pack-loader.js';
+import {
+  getBuiltInSkillPacks,
+  findSkillByFormat,
+  selectSkillPackForTask,
+} from './skill-pack-loader.js';
 import { classifyDocumentIntent } from '../core/router.js';
 
 const logger = createLogger('master-manager');
@@ -7535,6 +7539,22 @@ ${currentContent}
         workerPrompt = `${workerPrompt}\n\n---\n\n${skill.prompts.workerPrompt}`;
         logger.debug(
           { workerId, skillName: skill.name, docFormat },
+          'Injected skill pack prompt extension into worker',
+        );
+      }
+    }
+
+    // OB-1752: Select the best-matching SkillPack for this worker based on task
+    // type and inject its systemPromptExtension into the worker prompt. Only
+    // runs when no document-generation skill was already applied (avoids double
+    // injection). Uses keyword scoring to match security-audit, code-review,
+    // test-writer, data-analysis, and documentation packs.
+    if (!docFormat) {
+      const selectedPack = selectSkillPackForTask(body.prompt, BUILT_IN_SKILL_PACKS);
+      if (selectedPack) {
+        workerPrompt = `${workerPrompt}\n\n---\n\n${selectedPack.systemPromptExtension}`;
+        logger.debug(
+          { workerId, skillPack: selectedPack.name },
           'Injected skill pack prompt extension into worker',
         );
       }
