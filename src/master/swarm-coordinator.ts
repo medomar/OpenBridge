@@ -152,6 +152,9 @@ export class SwarmCoordinator {
   /**
    * Mark a swarm as `completed` after all its workers have finished.
    *
+   * Automatically propagates the combined output to all downstream swarms in
+   * the pipeline so they receive it as `handoffContext` before they run.
+   *
    * @param swarmId The swarm to complete.
    * @returns A `SwarmCompletionResult` with statistics and combined output.
    * @throws If the swarm is not found or not in `running` status.
@@ -167,7 +170,13 @@ export class SwarmCoordinator {
     const failureCount = swarm.results.filter((r) => !r.success).length;
     const combinedOutput = this._buildCombinedOutput(swarm);
 
-    logger.debug({ swarmId, type: swarm.type, successCount, failureCount }, 'Swarm completed');
+    // Propagate output to downstream swarms so they build on prior results.
+    const handoffCount = this.propagateHandoffToDownstream(swarmId);
+
+    logger.debug(
+      { swarmId, type: swarm.type, successCount, failureCount, handoffCount },
+      'Swarm completed',
+    );
 
     return { swarm: this._snapshot(swarm), combinedOutput, successCount, failureCount };
   }
@@ -221,6 +230,81 @@ export class SwarmCoordinator {
     const swarm = this._swarms.get(swarmId);
     if (!swarm) return '';
     return this._buildCombinedOutput(swarm);
+  }
+
+  /**
+   * Build the full context string to inject into worker prompts for a swarm.
+   * Merges `sharedContext` (swarm-level instructions) and `handoffContext`
+   * (upstream findings propagated from prior swarms). Both sections are
+   * included only when non-empty.
+   *
+   * @param swarmId The swarm whose context to build.
+   * @returns Combined context string, or empty string if swarm not found.
+   */
+  buildWorkerContext(swarmId: string): string {
+    const swarm = this._swarms.get(swarmId);
+    if (!swarm) return '';
+    const parts: string[] = [];
+    if (swarm.sharedContext) parts.push(swarm.sharedContext);
+    if (swarm.handoffContext) parts.push(swarm.handoffContext);
+    return parts.join('\n\n');
+  }
+
+  // ── Handoff ───────────────────────────────────────────────────────
+
+  /**
+   * Propagate the combined output of a completed swarm to all downstream
+   * swarms in the pipeline. "Downstream" means any swarm whose type appears
+   * later in `SWARM_PIPELINE_ORDER`:
+   *
+   *   research → implement → review → test
+   *
+   * Handoff context is **cumulative**: when research completes it propagates
+   * to implement, review, and test; when implement completes it propagates to
+   * review and test. By the time review runs it has both research and
+   * implement findings in its `handoffContext`.
+   *
+   * Called automatically by `completeSwarm()`. May also be called manually
+   * if the caller needs explicit control.
+   *
+   * @param swarmId ID of the completed swarm.
+   * @returns Number of downstream swarms whose `handoffContext` was updated.
+   */
+  propagateHandoffToDownstream(swarmId: string): number {
+    const swarm = this._swarms.get(swarmId);
+    if (!swarm || swarm.status !== 'completed') return 0;
+
+    const combinedOutput = this._buildCombinedOutput(swarm);
+    if (!combinedOutput) return 0;
+
+    const fromIndex = SWARM_PIPELINE_ORDER.indexOf(swarm.type);
+    if (fromIndex === -1) return 0; // custom type — no defined downstream
+
+    const downstreamTypes = new Set(SWARM_PIPELINE_ORDER.slice(fromIndex + 1));
+
+    let updatedCount = 0;
+    for (const [, downstream] of this._swarms) {
+      if (!downstreamTypes.has(downstream.type)) continue;
+      // Don't overwrite swarms that already ran — they can't use the context.
+      if (downstream.status === 'completed' || downstream.status === 'failed') continue;
+
+      const header = `## Handoff from ${swarm.name} (${swarm.type})\n\n`;
+      const separator = downstream.handoffContext ? '\n\n---\n\n' : '';
+      downstream.handoffContext = `${downstream.handoffContext}${separator}${header}${combinedOutput}`;
+
+      updatedCount++;
+      logger.debug(
+        {
+          fromSwarmId: swarmId,
+          fromType: swarm.type,
+          toSwarmId: downstream.id,
+          toType: downstream.type,
+        },
+        'Handoff context propagated',
+      );
+    }
+
+    return updatedCount;
   }
 
   // ── Queries ──────────────────────────────────────────────────────
