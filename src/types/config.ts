@@ -122,6 +122,11 @@ export const V2AuthSchema = z.object({
   prefix: z.string().default('/ai'),
   rateLimit: RateLimitConfigSchema.optional(),
   commandFilter: CommandFilterConfigSchema.optional(),
+  /**
+   * Default role assigned to whitelisted users when they are auto-created in access_control.
+   * Defaults to 'owner' so existing setups retain full access without config changes.
+   */
+  defaultRole: z.enum(['owner', 'admin', 'developer', 'viewer', 'custom']).default('owner'),
 });
 
 /** Schema for worker watchdog timeout configuration */
