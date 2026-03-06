@@ -511,6 +511,76 @@ export class SwarmCoordinator {
     return this._swarms.size;
   }
 
+  // ── Parallel / Sequential Execution (OB-1785) ────────────────────
+
+  /**
+   * Execute all workers in a swarm using the provided spawner callback.
+   *
+   * When `swarm.allowParallel` is `true`, all workers are launched
+   * concurrently via `Promise.all()` — the "Cursor pattern" (OB-1785).
+   * When `false` (default) they run sequentially.
+   *
+   * The swarm is automatically transitioned:
+   *   pending → running → completed
+   *
+   * Each worker result is recorded via `recordWorkerResult()`, then the swarm
+   * is completed with `completeSwarm()` when all workers have finished.
+   *
+   * @param swarmId  The swarm to run (must be in `pending` status).
+   * @param spawner  Callback that executes a single worker. Receives the worker
+   *                 manifest and the pre-built context string for this swarm.
+   *                 If the callback throws, the error is caught and the worker
+   *                 is recorded as failed.
+   * @returns        A `SwarmCompletionResult` when all workers have finished.
+   * @throws         If the swarm is not found or not in `pending` status.
+   */
+  async runSwarm(
+    swarmId: string,
+    spawner: (manifest: TaskManifest, swarmContext: string) => Promise<SwarmWorkerResult>,
+  ): Promise<SwarmCompletionResult> {
+    const swarm = this._requireSwarm(swarmId, 'runSwarm');
+    this._requireSwarmStatus(swarm, 'pending', 'runSwarm');
+
+    // Capture workers + flag before status transition.
+    const { workers, allowParallel, type } = swarm;
+
+    this.startSwarm(swarmId);
+
+    const context = this.buildWorkerContext(swarmId);
+
+    const runOne = async (manifest: TaskManifest, index: number): Promise<void> => {
+      try {
+        const result = await spawner(manifest, context);
+        this.recordWorkerResult(swarmId, result);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        this.recordWorkerResult(swarmId, {
+          workerId: `worker-${index}`,
+          output: `Worker error: ${errorMsg}`,
+          success: false,
+        });
+      }
+    };
+
+    if (allowParallel) {
+      logger.debug(
+        { swarmId, type, workerCount: workers.length },
+        'Running swarm workers in parallel',
+      );
+      await Promise.all(workers.map((manifest, i) => runOne(manifest, i)));
+    } else {
+      logger.debug(
+        { swarmId, type, workerCount: workers.length },
+        'Running swarm workers sequentially',
+      );
+      for (const [i, manifest] of workers.entries()) {
+        await runOne(manifest, i);
+      }
+    }
+
+    return this.completeSwarm(swarmId);
+  }
+
   // ── Composition Planning (OB-1784) ───────────────────────────────
 
   /**
