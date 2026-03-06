@@ -42,6 +42,13 @@ export interface SearchOptions {
    * favour diversity across different scopes/files.
    */
   mmrLambda?: number;
+  /**
+   * Temporal decay rate per day for recency boosting (OB-1656).
+   * Applies `exp(-decayRate * daysSinceUpdate)` to each chunk's `updated_at` timestamp.
+   * Default 0.01 — a chunk updated 100 days ago scores ≈ 0.37; 10 days ago ≈ 0.90.
+   * Set to 0 to disable temporal decay (pure BM25/vector ordering).
+   */
+  decayRate?: number;
 }
 
 interface ChunkRow {
@@ -107,7 +114,7 @@ interface ChunkRowWithRank extends ChunkRow {
  * default rate (0.01) scores ≈ 0.37.
  *
  * @param updatedAt  ISO-8601 timestamp string (e.g. `chunk.updated_at`)
- * @param decayRate  Decay rate per day (default 0.01 — configurable in OB-1656)
+ * @param decayRate  Decay rate per day (default 0.01); override via {@link SearchOptions.decayRate}
  */
 export function computeTemporalScore(updatedAt: string, decayRate = 0.01): number {
   const daysSince = (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
@@ -343,7 +350,10 @@ async function hybridSearchWithVectorScoring(
   // Score every candidate chunk and sort descending
   const scored = Array.from(chunkMap.entries()).map(([id, { chunk, vectorScore }]) => {
     const fts5Score = bm25NormMap.get(id) ?? 0;
-    const temporalScore = computeTemporalScore(chunk.updated_at ?? new Date().toISOString());
+    const temporalScore = computeTemporalScore(
+      chunk.updated_at ?? new Date().toISOString(),
+      options.decayRate,
+    );
     const hybridScore = computeHybridScore(vectorScore, fts5Score, temporalScore);
     return { chunk, hybridScore };
   });
@@ -709,21 +719,26 @@ export async function hybridSearch(
     LIMIT ?
   `;
 
-  // For MMR we need extra candidates to diversify from before trimming to limit.
-  const fetchLimit = options.mmr ? limit * 3 : limit;
+  // Fetch extra candidates — MMR needs diversity pool; temporal re-ranking needs headroom.
+  const fetchLimit = options.mmr ? limit * 3 : limit * 2;
   const rows = db.prepare(sql).all(sanitized, ...extraParams, fetchLimit) as ChunkRow[];
 
-  // Apply MMR diversification (OB-1655) — uses BM25 rank position as relevance proxy.
+  // Score rows: BM25 positional weight × temporal decay (OB-1656).
+  // Position 0 (best BM25) → positional score 1.0; last position → 1/total.
+  const decayRate = options.decayRate ?? 0.01;
+  const total = rows.length;
+  const scored = rows.map((row, i) => ({
+    chunk: rowToChunk(row),
+    score: ((total - i) / total) * computeTemporalScore(row.updated_at, decayRate),
+  }));
+
+  // Apply MMR diversification (OB-1655) or sort by combined score.
   let chunks: Chunk[];
-  if (options.mmr && rows.length > 0) {
-    const total = rows.length;
-    const scored = rows.map((row, i) => ({
-      chunk: rowToChunk(row),
-      score: (total - i) / total, // linear decay: index 0 (most relevant) → 1.0
-    }));
+  if (options.mmr && scored.length > 0) {
     chunks = applyMMR(scored, limit, options.mmrLambda);
   } else {
-    chunks = rows.map(rowToChunk);
+    scored.sort((a, b) => b.score - a.score);
+    chunks = scored.slice(0, limit).map((s) => s.chunk);
   }
 
   // Layer 4: AI reranking — only when explicitly enabled and results exceed 10
