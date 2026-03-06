@@ -2,9 +2,11 @@ import type Database from 'better-sqlite3';
 import type { AuthConfig, CommandFilterConfig } from '../types/config.js';
 import {
   getAccess,
+  setAccess,
   resetDailyCosts,
   incrementDailyCost as storeIncrementDailyCost,
 } from '../memory/access-store.js';
+import type { AccessRole } from '../memory/access-store.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('auth');
@@ -378,6 +380,25 @@ export class AuthService {
    */
   getRoleForChannel(channel: string): string {
     return this.channelRoles[channel] ?? this.defaultRole;
+  }
+
+  /**
+   * Auto-create an access_control entry with the correct role for this user+channel
+   * if none exists. No-op when no DB is attached or an entry already exists.
+   * Called on the first authorized command to eliminate the "no entry = owner fallback"
+   * ambiguity in checkAccessControl.
+   */
+  ensureAccessEntry(userId: string, channel: string): void {
+    if (!this.db) return;
+    try {
+      const existing = getAccess(this.db, userId, channel);
+      if (existing) return;
+      const role = this.getRoleForChannel(channel) as AccessRole;
+      setAccess(this.db, { user_id: userId, channel, role, active: true });
+      logger.info({ userId, channel, role }, 'AuthService: auto-created access_control entry');
+    } catch (err) {
+      logger.warn({ err, userId, channel }, 'AuthService: ensureAccessEntry failed — continuing');
+    }
   }
 
   get commandPrefix(): string {

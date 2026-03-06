@@ -438,4 +438,56 @@ describe('AuthService — access control', () => {
       expect(auth.stripPrefix('/ai fix the bug')).toBe('fix the bug');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // ensureAccessEntry — OB-1718
+  // -------------------------------------------------------------------------
+
+  describe('ensureAccessEntry()', () => {
+    it('creates an entry with defaultRole when none exists', () => {
+      auth.ensureAccessEntry('+1234567890', 'whatsapp');
+      const row = db
+        .prepare('SELECT role, active FROM access_control WHERE user_id = ? AND channel = ?')
+        .get('+1234567890', 'whatsapp') as { role: string; active: number } | undefined;
+      expect(row).toBeDefined();
+      expect(row!.role).toBe('owner'); // defaultRole defaults to 'owner'
+      expect(row!.active).toBe(1);
+    });
+
+    it('uses channelRoles when configured for the channel', () => {
+      const authWithRoles = new AuthService({
+        whitelist: ['+1234567890'],
+        prefix: '/ai',
+        channelRoles: { telegram: 'viewer' },
+      });
+      authWithRoles.setDatabase(db);
+      authWithRoles.ensureAccessEntry('+1234567890', 'telegram');
+      const row = db
+        .prepare('SELECT role FROM access_control WHERE user_id = ? AND channel = ?')
+        .get('+1234567890', 'telegram') as { role: string } | undefined;
+      expect(row!.role).toBe('viewer');
+    });
+
+    it('is a no-op when an entry already exists (does not overwrite)', () => {
+      setAccess(db, { user_id: '+1234567890', channel: 'whatsapp', role: 'developer' });
+      auth.ensureAccessEntry('+1234567890', 'whatsapp');
+      const row = db
+        .prepare('SELECT role FROM access_control WHERE user_id = ? AND channel = ?')
+        .get('+1234567890', 'whatsapp') as { role: string } | undefined;
+      expect(row!.role).toBe('developer'); // unchanged
+    });
+
+    it('is a no-op when no DB is attached', () => {
+      const authNoDb = makeAuth();
+      // Should not throw even without a DB
+      expect(() => authNoDb.ensureAccessEntry('+1234567890', 'whatsapp')).not.toThrow();
+    });
+
+    it('created entry passes checkAccessControl for the assigned role', () => {
+      auth.ensureAccessEntry('+1234567890', 'whatsapp');
+      // owner role allows all actions
+      const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'deploy to production');
+      expect(result.allowed).toBe(true);
+    });
+  });
 });

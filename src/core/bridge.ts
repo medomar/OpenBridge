@@ -849,6 +849,10 @@ export class Bridge {
     const strippedContent = this.auth.stripPrefix(message.rawContent);
     const metadata: Record<string, unknown> = { ...message.metadata };
 
+    // Auto-create access_control entry for whitelisted user on first command.
+    // Ensures checkAccessControl always finds an entry rather than silently defaulting to owner.
+    this.auth.ensureAccessEntry(message.sender, message.source);
+
     // Access control check: verify role, action, scope, and daily budget.
     // Runs after prefix-stripping so the classifier receives the actual command text.
     const accessResult = this.auth.checkAccessControl(
