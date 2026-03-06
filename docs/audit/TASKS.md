@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 134 | **In Progress:** 0 | **Done:** 42 (1063 archived)
+> **Pending:** 133 | **In Progress:** 0 | **Done:** 43 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -133,7 +133,7 @@
 | OB-1678 | Track `read_tokens` per retrieval — estimate from returned content length × chars-to-tokens ratio (÷4)                                                    | `src/memory/retrieval.ts`   | ✅ Done |
 | OB-1679 | Increment `retrieval_count` on each chunk access in `hybridSearch()` and `getDetails()`                                                                   | `src/memory/retrieval.ts`   | ✅ Done |
 | OB-1680 | Add `/stats` chat command — show exploration ROI: "Explored with ~50K tokens, saved ~200K tokens across 15 retrievals (4x ROI)"                           | `src/core/router.ts`        | ✅ Done |
-| OB-1681 | Add `openbridge stats` CLI command (same output as `/stats`, formatted for terminal)                                                                      | `src/cli/index.ts`          | Pending |
+| OB-1681 | Add `openbridge stats` CLI command (same output as `/stats`, formatted for terminal)                                                                      | `src/cli/index.ts`          | ✅ Done |
 
 #### 95c — Tests
 
