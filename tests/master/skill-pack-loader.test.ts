@@ -8,8 +8,13 @@ import {
   parseSkillPackMd,
   skillPackToMarkdown,
   loadSkillPackMarkdown,
+  loadAllSkillPacks,
+  getBuiltInSkillPacks,
+  findSkillByFormat,
+  selectSkillPackForTask,
 } from '../../src/master/skill-pack-loader.js';
-import type { SkillPack } from '../../src/types/agent.js';
+import { BUILT_IN_SKILL_PACKS } from '../../src/master/skill-packs/index.js';
+import type { SkillPack, DocumentSkill } from '../../src/types/agent.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -335,5 +340,264 @@ describe('loadSkillPackMarkdown', () => {
 
     const result = await loadSkillPackMarkdown(tmp);
     expect(result.count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getBuiltInSkillPacks — built-in skill pack discovery
+// ---------------------------------------------------------------------------
+
+describe('getBuiltInSkillPacks', () => {
+  it('returns an array of DocumentSkill objects', () => {
+    const packs = getBuiltInSkillPacks();
+    expect(Array.isArray(packs)).toBe(true);
+    expect(packs.length).toBeGreaterThan(0);
+  });
+
+  it('returns the four built-in document skills', () => {
+    const packs = getBuiltInSkillPacks();
+    const names = packs.map((p) => p.name);
+    expect(names).toContain('document-writer');
+    expect(names).toContain('presentation-maker');
+    expect(names).toContain('spreadsheet-builder');
+    expect(names).toContain('report-generator');
+  });
+
+  it('each built-in skill has required fields', () => {
+    const packs = getBuiltInSkillPacks();
+    for (const pack of packs) {
+      expect(pack.name).toBeTruthy();
+      expect(pack.description).toBeTruthy();
+      expect(pack.fileFormat).toBeTruthy();
+      expect(pack.toolProfile).toBeTruthy();
+      expect(pack.prompts).toBeDefined();
+      expect(pack.prompts.system).toBeTruthy();
+      expect(pack.prompts.structure).toBeTruthy();
+    }
+  });
+
+  it('returns a new array each call (not mutating the original)', () => {
+    const a = getBuiltInSkillPacks();
+    const b = getBuiltInSkillPacks();
+    expect(a).not.toBe(b);
+    expect(a).toEqual(b);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findSkillByFormat — format-based DocumentSkill lookup
+// ---------------------------------------------------------------------------
+
+describe('findSkillByFormat', () => {
+  let skills: Map<string, DocumentSkill>;
+
+  beforeEach(() => {
+    skills = new Map(getBuiltInSkillPacks().map((s) => [s.name, s]));
+  });
+
+  it('finds the document-writer skill by docx format', () => {
+    const skill = findSkillByFormat(skills, 'docx');
+    expect(skill).toBeDefined();
+    expect(skill!.name).toBe('document-writer');
+  });
+
+  it('finds the presentation-maker skill by pptx format', () => {
+    const skill = findSkillByFormat(skills, 'pptx');
+    expect(skill).toBeDefined();
+    expect(skill!.name).toBe('presentation-maker');
+  });
+
+  it('finds the spreadsheet-builder skill by xlsx format', () => {
+    const skill = findSkillByFormat(skills, 'xlsx');
+    expect(skill).toBeDefined();
+    expect(skill!.name).toBe('spreadsheet-builder');
+  });
+
+  it('returns undefined for an unknown format', () => {
+    const skill = findSkillByFormat(skills, 'unknown-format');
+    expect(skill).toBeUndefined();
+  });
+
+  it('returns undefined for an empty skills map', () => {
+    const skill = findSkillByFormat(new Map(), 'docx');
+    expect(skill).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectSkillPackForTask — prompt injection / keyword-based task matching
+// ---------------------------------------------------------------------------
+
+describe('selectSkillPackForTask', () => {
+  const packs = BUILT_IN_SKILL_PACKS;
+
+  it('selects security-audit for a security-related prompt', () => {
+    const result = selectSkillPackForTask('perform a security audit of the codebase', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('security-audit');
+  });
+
+  it('selects code-review for a PR review prompt', () => {
+    const result = selectSkillPackForTask('please do a code review of my pull request', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('code-review');
+  });
+
+  it('selects test-writer for a test writing prompt', () => {
+    const result = selectSkillPackForTask('write unit tests for the auth module', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('test-writer');
+  });
+
+  it('selects data-analysis for a data analysis prompt', () => {
+    const result = selectSkillPackForTask('analyze data in this CSV file', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('data-analysis');
+  });
+
+  it('selects documentation for a docs prompt', () => {
+    const result = selectSkillPackForTask('write documentation for this API', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('documentation');
+  });
+
+  it('returns undefined when no keywords match', () => {
+    const result = selectSkillPackForTask('deploy the application to production', packs);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for an empty prompt', () => {
+    const result = selectSkillPackForTask('', packs);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when packs array is empty', () => {
+    const result = selectSkillPackForTask('perform a security audit', []);
+    expect(result).toBeUndefined();
+  });
+
+  it('is case-insensitive in matching', () => {
+    const result = selectSkillPackForTask('SECURITY AUDIT of dependencies', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('security-audit');
+  });
+
+  it('gives higher score to phrase matches than single-word matches', () => {
+    // 'sql injection' is a phrase keyword (2 pts) vs 'review' (1 pt)
+    const result = selectSkillPackForTask('check for sql injection in the code', packs);
+    expect(result).toBeDefined();
+    expect(result!.name).toBe('security-audit');
+  });
+
+  it('skips packs with no keyword mapping', () => {
+    const customPack: SkillPack = {
+      name: 'unknown-domain',
+      description: 'A custom pack with no keywords.',
+      toolProfile: 'read-only',
+      systemPromptExtension: 'Custom instructions.',
+      requiredTools: [],
+      tags: [],
+      isUserDefined: true,
+    };
+    const result = selectSkillPackForTask('some generic task', [customPack]);
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadAllSkillPacks — merged built-ins + user-defined (override precedence)
+// ---------------------------------------------------------------------------
+
+describe('loadAllSkillPacks', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await makeTempWorkspace();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('returns all built-in packs when no user-defined packs exist', async () => {
+    const result = await loadAllSkillPacks(tmp);
+    const builtInNames = BUILT_IN_SKILL_PACKS.map((p) => p.name);
+    for (const name of builtInNames) {
+      expect(result.packs.some((p) => p.name === name)).toBe(true);
+    }
+    expect(result.userDefinedCount).toBe(0);
+  });
+
+  it('user-defined pack overrides built-in with same name', async () => {
+    const dir = path.join(tmp, '.openbridge', 'skill-packs');
+    await fs.mkdir(dir, { recursive: true });
+
+    // Override security-audit with a different toolProfile
+    const overrideMd = [
+      '# security-audit',
+      '',
+      'Custom security pack with full access.',
+      '',
+      '## Tool Profile',
+      'full-access',
+      '',
+      '## Prompt Extension',
+      'Custom security instructions with elevated permissions.',
+      '',
+    ].join('\n');
+
+    await fs.writeFile(path.join(dir, 'security-audit.md'), overrideMd, 'utf-8');
+
+    const result = await loadAllSkillPacks(tmp);
+
+    const secAudit = result.packs.find((p) => p.name === 'security-audit');
+    expect(secAudit).toBeDefined();
+    // User-defined version should override the built-in toolProfile
+    expect(secAudit!.toolProfile).toBe('full-access');
+    expect(secAudit!.isUserDefined).toBe(true);
+    expect(result.userDefinedCount).toBe(1);
+  });
+
+  it('user-defined pack added alongside built-ins (new name)', async () => {
+    const dir = path.join(tmp, '.openbridge', 'skill-packs');
+    await fs.mkdir(dir, { recursive: true });
+
+    const newPackMd = [
+      '# my-custom-pack',
+      '',
+      'A brand new custom skill pack.',
+      '',
+      '## Tool Profile',
+      'read-only',
+      '',
+      '## Prompt Extension',
+      'Custom instructions for a domain-specific task.',
+      '',
+    ].join('\n');
+
+    await fs.writeFile(path.join(dir, 'my-custom-pack.md'), newPackMd, 'utf-8');
+
+    const result = await loadAllSkillPacks(tmp);
+
+    expect(result.packs.some((p) => p.name === 'my-custom-pack')).toBe(true);
+    expect(result.userDefinedCount).toBe(1);
+    // Built-ins still present
+    expect(result.packs.some((p) => p.name === 'security-audit')).toBe(true);
+  });
+
+  it('all built-in packs have isUserDefined=false', async () => {
+    const result = await loadAllSkillPacks(tmp);
+    const builtInNames = new Set(BUILT_IN_SKILL_PACKS.map((p) => p.name));
+    for (const pack of result.packs) {
+      if (builtInNames.has(pack.name)) {
+        expect(pack.isUserDefined).toBe(false);
+      }
+    }
+  });
+
+  it('returns userDefinedCount=0 when skill-packs dir is missing', async () => {
+    const result = await loadAllSkillPacks(tmp);
+    expect(result.userDefinedCount).toBe(0);
+    expect(result.packs.length).toBeGreaterThanOrEqual(BUILT_IN_SKILL_PACKS.length);
   });
 });
