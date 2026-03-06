@@ -302,6 +302,20 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_token_economics_chunk   ON token_economics(chunk_id);
     CREATE INDEX IF NOT EXISTS idx_token_economics_created ON token_economics(created_at);
 
+    -- embeddings: vector representations of context chunks for semantic search
+    CREATE TABLE IF NOT EXISTS embeddings (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      chunk_id    INTEGER NOT NULL,
+      vector      BLOB    NOT NULL,
+      model       TEXT    NOT NULL,
+      dimensions  INTEGER NOT NULL,
+      created_at  TEXT    NOT NULL,
+      FOREIGN KEY (chunk_id) REFERENCES context_chunks(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_chunk ON embeddings(chunk_id);
+    CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
+
     -- audit_log: structured audit trail (replaces flat-file JSONL)
     CREATE TABLE IF NOT EXISTS audit_log (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
