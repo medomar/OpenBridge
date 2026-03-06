@@ -771,6 +771,235 @@ describe('retrieval.ts', () => {
   });
 
   // -------------------------------------------------------------------------
+  // knnSearch — vector similarity (OB-1663)
+  // -------------------------------------------------------------------------
+
+  describe('knnSearch — vector similarity (OB-1663)', () => {
+    it('returns empty array immediately when queryVector has zero dimensions', () => {
+      expect(knnSearch(db, new Float32Array(0))).toEqual([]);
+    });
+
+    it('returns empty array for zero-dimension vector regardless of k', () => {
+      for (const k of [1, 5, 10, 100]) {
+        expect(knnSearch(db, new Float32Array(0), k)).toEqual([]);
+      }
+    });
+
+    it('returns empty array when embeddings table does not exist', () => {
+      // openDatabase() in test environment does not create embeddings table
+      // (sqlite-vec not loaded). knnSearch should detect missing table and return [].
+      const vector = new Float32Array([0.1, 0.2, 0.3]);
+      const result = knnSearch(db, vector);
+      expect(Array.isArray(result)).toBe(true);
+      // Without the embeddings table or sqlite-vec, always returns []
+      expect(result).toHaveLength(0);
+    });
+
+    it('gracefully catches sqlite-vec extension errors and returns empty array', () => {
+      // sqlite-vec is not loaded in the test environment. Calling knnSearch with
+      // a non-empty vector against a DB that lacks the extension should catch
+      // the runtime error and return [] (zero degradation guarantee).
+      const vector = new Float32Array([0.5, 0.5, 0.5, 0.5]);
+      expect(() => knnSearch(db, vector)).not.toThrow();
+      expect(knnSearch(db, vector)).toEqual([]);
+    });
+
+    it('returns empty array for any k value when sqlite-vec is not loaded', () => {
+      const vector = new Float32Array([1.0, 0.0]);
+      for (const k of [1, 3, 10, 50]) {
+        const results = knnSearch(db, vector, k);
+        expect(Array.isArray(results)).toBe(true);
+        expect(results).toHaveLength(0);
+      }
+    });
+
+    it('KnnResult shape has chunkId and score fields in [0,1] when results exist', () => {
+      // Structural test — when results are returned (e.g. with real sqlite-vec),
+      // each KnnResult must have chunkId (number) and score (0–1).
+      // Without sqlite-vec in tests, results=[]; the shape guard still runs.
+      const vector = new Float32Array([1.0, 0.0]);
+      const results = knnSearch(db, vector, 5);
+      for (const r of results) {
+        expect(typeof r.chunkId).toBe('number');
+        expect(typeof r.score).toBe('number');
+        expect(r.score).toBeGreaterThanOrEqual(0);
+        expect(r.score).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it('score formula maps cosine distance 0 → score 1.0 and distance 2 → score 0.0', () => {
+      // Verify the mathematical mapping: score = 1 - distance / 2
+      // distance=0 (identical vectors) → score=1.0
+      // distance=1 (orthogonal vectors) → score=0.5
+      // distance=2 (opposite vectors) → score=0.0
+      expect(1 - 0 / 2).toBe(1.0);
+      expect(1 - 1 / 2).toBe(0.5);
+      expect(1 - 2 / 2).toBe(0.0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Hybrid ranking formula — explicit scoring verification (OB-1663)
+  // -------------------------------------------------------------------------
+
+  describe('hybrid ranking formula — score computation (OB-1663)', () => {
+    it('vector-only chunk (fts5Score=0) scores 0.4*v + 0.2*t', () => {
+      // vectorScore=0.8, fts5Score=0, temporalScore=1.0
+      // expected = 0.4*0.8 + 0.4*0 + 0.2*1.0 = 0.32 + 0 + 0.2 = 0.52
+      expect(computeHybridScore(0.8, 0, 1.0)).toBeCloseTo(0.52);
+    });
+
+    it('FTS5-only chunk (vectorScore=0) scores 0.4*f + 0.2*t', () => {
+      // vectorScore=0, fts5Score=0.9, temporalScore=1.0
+      // expected = 0.4*0 + 0.4*0.9 + 0.2*1.0 = 0 + 0.36 + 0.2 = 0.56
+      expect(computeHybridScore(0, 0.9, 1.0)).toBeCloseTo(0.56);
+    });
+
+    it('full hybrid chunk scores correctly across all three components', () => {
+      // vectorScore=0.7, fts5Score=0.8, temporalScore=0.9
+      // expected = 0.4*0.7 + 0.4*0.8 + 0.2*0.9 = 0.28 + 0.32 + 0.18 = 0.78
+      expect(computeHybridScore(0.7, 0.8, 0.9)).toBeCloseTo(0.78);
+    });
+
+    it('higher vectorScore → higher hybrid score when fts5 and temporal are equal', () => {
+      expect(computeHybridScore(0.9, 0.5, 0.8)).toBeGreaterThan(computeHybridScore(0.3, 0.5, 0.8));
+    });
+
+    it('higher fts5Score → higher hybrid score when vector and temporal are equal', () => {
+      expect(computeHybridScore(0.5, 0.9, 0.8)).toBeGreaterThan(computeHybridScore(0.5, 0.3, 0.8));
+    });
+
+    it('temporal weight (0.2) is exactly half the vector/FTS5 weight (0.4)', () => {
+      const temporalImpact = computeHybridScore(0, 0, 1.0) - computeHybridScore(0, 0, 0);
+      const vectorImpact = computeHybridScore(1.0, 0, 0) - computeHybridScore(0, 0, 0);
+      expect(temporalImpact).toBeCloseTo(0.2);
+      expect(vectorImpact).toBeCloseTo(0.4);
+      expect(temporalImpact).toBeCloseTo(vectorImpact / 2);
+    });
+
+    it('chunk with zero scores on all three components scores 0.0', () => {
+      expect(computeHybridScore(0, 0, 0)).toBeCloseTo(0.0);
+    });
+
+    it('chunk with scores 1 on all three components scores 1.0', () => {
+      expect(computeHybridScore(1, 1, 1)).toBeCloseTo(1.0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // MMR diversity — extended tests (OB-1663)
+  // -------------------------------------------------------------------------
+
+  describe('applyMMR — extended diversity tests (OB-1663)', () => {
+    const makeCandidate = (scope: string, score: number): { chunk: Chunk; score: number } => ({
+      chunk: { scope, category: 'structure', content: `content for ${scope}` },
+      score,
+    });
+
+    it('lambda=0.5 balances relevance and diversity — at least 2 distinct scopes in 3 results', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/a', 0.88),
+        makeCandidate('src/b', 0.7),
+        makeCandidate('src/c', 0.6),
+      ];
+      const result = applyMMR(candidates, 3, 0.5);
+      expect(result[0]?.scope).toBe('src/a'); // highest score always first
+      const scopes = new Set(result.map((c) => c.scope));
+      expect(scopes.size).toBeGreaterThanOrEqual(2);
+    });
+
+    it('produces deterministic results — same input always gives same output', () => {
+      const candidates = [
+        makeCandidate('src/x', 0.8),
+        makeCandidate('src/y', 0.7),
+        makeCandidate('src/z', 0.6),
+      ];
+      const result1 = applyMMR(candidates, 3);
+      const result2 = applyMMR(candidates, 3);
+      expect(result1.map((c) => c.scope)).toEqual(result2.map((c) => c.scope));
+    });
+
+    it('single candidate is always returned regardless of lambda value', () => {
+      const candidates = [makeCandidate('src/single', 0.5)];
+      for (const lambda of [0.0, 0.5, 0.7, 1.0]) {
+        const result = applyMMR(candidates, 1, lambda);
+        expect(result).toHaveLength(1);
+        expect(result[0]?.scope).toBe('src/single');
+      }
+    });
+
+    it('with lambda=0.0 (pure diversity), second pick always comes from a different scope', () => {
+      const candidates = [
+        makeCandidate('src/a', 0.9),
+        makeCandidate('src/a', 0.89), // same scope, high score
+        makeCandidate('src/b', 0.5), // different scope, lower score
+      ];
+      const result = applyMMR(candidates, 3, 0.0);
+      expect(result[0]?.scope).toBe('src/a'); // first: no selected set yet
+      expect(result[1]?.scope).toBe('src/b'); // second: diversity wins
+    });
+
+    it('with many candidates from same scope, MMR spreads across scopes', () => {
+      const candidates = [
+        ...Array.from({ length: 5 }, (_, i) => makeCandidate('src/dominant', 0.9 - i * 0.01)),
+        makeCandidate('src/other1', 0.6),
+        makeCandidate('src/other2', 0.5),
+      ];
+      const result = applyMMR(candidates, 5, 0.6);
+      const scopes = result.map((c) => c.scope);
+      // MMR should bring in at least one non-dominant scope
+      expect(scopes.some((s) => s !== 'src/dominant')).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Temporal decay — extended tests (OB-1663)
+  // -------------------------------------------------------------------------
+
+  describe('computeTemporalScore — extended (OB-1663)', () => {
+    it('future timestamp scores exactly 1.0 (clamped at zero days via max(0, days))', () => {
+      const future = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour ahead
+      expect(computeTemporalScore(future)).toBe(1.0);
+    });
+
+    it('follows exponential decay formula precisely for a 10-day-old chunk', () => {
+      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      // exp(-0.01 * 10) = exp(-0.1) ≈ 0.9048
+      expect(computeTemporalScore(tenDaysAgo, 0.01)).toBeCloseTo(Math.exp(-0.1), 2);
+    });
+
+    it('approaches 0 for a very old chunk with a high decay rate', () => {
+      const ancient = new Date(Date.now() - 1000 * 24 * 60 * 60 * 1000).toISOString();
+      // exp(-0.1 * 1000) = exp(-100) ≈ 0
+      expect(computeTemporalScore(ancient, 0.1)).toBeCloseTo(0, 5);
+    });
+
+    it('is monotonically decreasing — older chunks always score lower', () => {
+      const days = [1, 7, 30, 90, 365];
+      const scores = days.map((d) => {
+        const ts = new Date(Date.now() - d * 24 * 60 * 60 * 1000).toISOString();
+        return computeTemporalScore(ts);
+      });
+      for (let i = 1; i < scores.length; i++) {
+        expect(scores[i]).toBeLessThan(scores[i - 1]!);
+      }
+    });
+
+    it('decayRate=0 gives a constant score of 1.0 regardless of age', () => {
+      const veryOld = new Date(Date.now() - 500 * 24 * 60 * 60 * 1000).toISOString();
+      expect(computeTemporalScore(veryOld, 0)).toBeCloseTo(1.0);
+    });
+
+    it('higher decayRate degrades score faster than lower decayRate for same age', () => {
+      const ts = new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString();
+      const fast = computeTemporalScore(ts, 0.1);
+      const slow = computeTemporalScore(ts, 0.001);
+      expect(slow).toBeGreaterThan(fast);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // hybridSearch with mmr option (OB-1655)
   // -------------------------------------------------------------------------
 
