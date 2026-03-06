@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 17 | **Fixed:** 126 | **Last Audit:** 2026-03-06
+> **Open:** 16 | **Fixed:** 127 | **Last Audit:** 2026-03-06
 > **Current focus:** Sprint 5 + Sprint 6 — 176 tasks loaded in TASKS.md for automated execution (OB-1618 through OB-1793). Phase 97 data integrity fixes complete (7/7 findings fixed).
 > **Resolved findings:** [V0 archive](archive/v0/FINDINGS-v0.md) | [V2 archive](archive/v2/FINDINGS-v2.md) | [V4 archive](archive/v4/FINDINGS-v4.md) | [V5 archive](archive/v5/FINDINGS-v5.md) | [V6 archive](archive/v6/FINDINGS-v6.md) | [V7 archive](archive/v7/FINDINGS-v7.md) | [V8 archive](archive/v8/FINDINGS-v8.md) | [V15 archive](archive/v15/FINDINGS-v15.md) | [V16 archive](archive/v16/FINDINGS-v16.md) | [V17 archive](archive/v17/FINDINGS-v17.md) | [V18 archive](archive/v18/FINDINGS-v18.md) | [V19 archive](archive/v19/FINDINGS-v19.md) | [V20 archive](archive/v20/TASKS-v20-v009-v011-phases-74-86-deep1.md) | [V21 archive](archive/v21/FINDINGS-v21.md)
 
@@ -42,13 +42,13 @@ Smarter AI memory system, session management, role UX fix, and business document
 
 ### Open Findings — Sprint 5 Stretch (v0.0.13, if time allows)
 
-| #      | Finding                                                           | Severity  | Improvement Impact                                                              | Phase | Status |
-| ------ | ----------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------- | ----- | ------ |
-| OB-F79 | Memory has no vector search — FTS5 only                           | 🟠 High   | RAG returns keyword matches only, misses semantically similar content           | 94    | Open   |
-| OB-F81 | Memory retrieval returns full results — no progressive disclosure | 🟡 Medium | Every search loads full content, wastes tokens; no index → filter → detail flow | 94    | Open   |
-| OB-F85 | No self-diagnostic command (`openbridge doctor`)                  | 🟡 Medium | Users can't verify their setup — no health check for dependencies, configs, DB  | 96a   | Open   |
-| OB-F86 | No pairing-based auth for messaging channels                      | 🟡 Medium | Adding users requires config edits — no self-service approval flow via DM       | 96b   | Open   |
-| OB-F87 | No skills directory or SKILL.md pattern                           | 🟡 Medium | Master can't discover and use reusable capabilities — no plugin skill system    | 96c   | Open   |
+| #      | Finding                                                           | Severity  | Improvement Impact                                                              | Phase | Status   |
+| ------ | ----------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------- | ----- | -------- |
+| OB-F79 | Memory has no vector search — FTS5 only                           | 🟠 High   | RAG returns keyword matches only, misses semantically similar content           | 94    | Open     |
+| OB-F81 | Memory retrieval returns full results — no progressive disclosure | 🟡 Medium | Every search loads full content, wastes tokens; no index → filter → detail flow | 94    | Open     |
+| OB-F85 | No self-diagnostic command (`openbridge doctor`)                  | 🟡 Medium | Users can't verify their setup — no health check for dependencies, configs, DB  | 96a   | Open     |
+| OB-F86 | No pairing-based auth for messaging channels                      | 🟡 Medium | Adding users requires config edits — no self-service approval flow via DM       | 96b   | ✅ Fixed |
+| OB-F87 | No skills directory or SKILL.md pattern                           | 🟡 Medium | Master can't discover and use reusable capabilities — no plugin skill system    | 96c   | Open     |
 
 ### Open Findings — Sprint 6 (v0.0.14)
 

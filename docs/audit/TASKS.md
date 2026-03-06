@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 61 | **In Progress:** 0 | **Done:** 115 (1063 archived)
+> **Pending:** 60 | **In Progress:** 0 | **Done:** 116 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -296,7 +296,7 @@
 | OB-1700 | Pairing code expiry — 5-minute TTL, cleanup timer every 60s removes expired entries                                   | `src/core/auth.ts`           | ✅ Done |
 | OB-1701 | Rate limit pairing requests — max 3 requests per sender per hour (prevent code spam / brute force)                    | `src/core/auth.ts`           | ✅ Done |
 | OB-1702 | Coexist with phone whitelist — pairing is additive, not a replacement. Config `auth.pairingEnabled` (default: `true`) | `src/types/config.ts`        | ✅ Done |
-| OB-1703 | Tests: pairing flow (generate → approve → access granted), expiry, rate limiting, CLI approval, /approve command      | `tests/core/auth.test.ts`    | Pending |
+| OB-1703 | Tests: pairing flow (generate → approve → access granted), expiry, rate limiting, CLI approval, /approve command      | `tests/core/auth.test.ts`    | ✅ Done |
 
 **Phase 96b Total:** 10 tasks
 

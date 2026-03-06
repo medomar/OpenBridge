@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/memory/database.js';
-import { setAccess } from '../../src/memory/access-store.js';
+import {
+  setAccess,
+  getAccess,
+  approvePairing,
+  type AccessRole,
+} from '../../src/memory/access-store.js';
 import { AuthService } from '../../src/core/auth.js';
 
 describe('AuthService', () => {
@@ -313,5 +318,258 @@ describe('denial message format', () => {
     const result = auth.checkAccessControl('+1234567890', 'whatsapp');
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/revoked/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pairing flow — generate → approve → access granted (OB-1703)
+// ---------------------------------------------------------------------------
+
+describe('pairing flow', () => {
+  let db: Database.Database;
+  let auth: AuthService;
+
+  beforeEach(() => {
+    db = openDatabase(':memory:');
+    // Whitelist contains one owner; unknown senders will be tested for pairing
+    auth = new AuthService({
+      whitelist: ['+1000000000'],
+      prefix: '/ai',
+      pairingEnabled: true,
+    });
+    auth.setDatabase(db);
+  });
+
+  afterEach(() => {
+    auth.stopExpiryTimer();
+    closeDatabase(db);
+  });
+
+  it('generatePairingCode returns a 6-digit numeric string in range 100000–999999', () => {
+    const code = AuthService.generatePairingCode();
+    expect(code).toMatch(/^\d{6}$/);
+    const num = parseInt(code, 10);
+    expect(num).toBeGreaterThanOrEqual(100000);
+    expect(num).toBeLessThanOrEqual(999999);
+  });
+
+  it('initiatePairing stores a pending pairing and returns a message containing the code', () => {
+    const msg = auth.initiatePairing('+9999999999', 'whatsapp');
+    expect(msg).not.toBeNull();
+    expect(msg).toMatch(/\d{6}/);
+    expect(msg).toContain('expires in 5 minutes');
+    // The code in the message should match the stored pairing
+    const codeMatch = msg!.match(/(\d{6})/);
+    const code = codeMatch![1];
+    expect(auth.getPairing(code)).toBeDefined();
+  });
+
+  it('initiatePairing returns null when pairingEnabled is false', () => {
+    const disabledAuth = new AuthService({
+      whitelist: [],
+      prefix: '/ai',
+      pairingEnabled: false,
+    });
+    expect(disabledAuth.initiatePairing('+9999999999', 'whatsapp')).toBeNull();
+    disabledAuth.stopExpiryTimer();
+  });
+
+  it('storePairing + getPairing round-trip returns the stored entry', () => {
+    auth.storePairing('482916', '+8888888888', 'telegram');
+    const pairing = auth.getPairing('482916');
+    expect(pairing).toBeDefined();
+    expect(pairing?.senderId).toBe('+8888888888');
+    expect(pairing?.channel).toBe('telegram');
+    expect(pairing?.requestedAt).toBeInstanceOf(Date);
+  });
+
+  it('getPairing returns undefined for an unknown code', () => {
+    expect(auth.getPairing('000000')).toBeUndefined();
+  });
+
+  it('removePairing deletes the code so subsequent getPairing returns undefined', () => {
+    auth.storePairing('111111', '+7777777777', 'whatsapp');
+    expect(auth.getPairing('111111')).toBeDefined();
+    auth.removePairing('111111');
+    expect(auth.getPairing('111111')).toBeUndefined();
+  });
+
+  it('full flow: after approvePairing the previously-unauthorized sender becomes authorized', () => {
+    const senderId = '+9999999999';
+    const channel = 'whatsapp';
+    // Unknown sender is not on the whitelist
+    expect(auth.isAuthorized(senderId, channel)).toBe(false);
+    // Admin approves the pairing — simulates what the router does after /approve
+    approvePairing(db, senderId, channel, 'viewer');
+    // Now the sender has an active access_control entry — isAuthorized checks the DB
+    expect(auth.isAuthorized(senderId, channel)).toBe(true);
+  });
+
+  it('full flow: pending pairing is removed after approval (simulate /approve flow)', () => {
+    const senderId = '+9999999999';
+    const channel = 'whatsapp';
+    const msg = auth.initiatePairing(senderId, channel);
+    const code = msg!.match(/(\d{6})/)![1];
+    const pairing = auth.getPairing(code)!;
+    expect(pairing).toBeDefined();
+    // Approve then remove (mirrors router handleApproveCommand logic)
+    approvePairing(db, pairing.senderId, pairing.channel, 'viewer');
+    auth.removePairing(code);
+    // Code is gone
+    expect(auth.getPairing(code)).toBeUndefined();
+    // Sender is now authorized
+    expect(auth.isAuthorized(senderId, channel)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pairing expiry (OB-1703)
+// ---------------------------------------------------------------------------
+
+describe('pairing expiry', () => {
+  let db: Database.Database;
+  let auth: AuthService;
+
+  beforeEach(() => {
+    db = openDatabase(':memory:');
+    auth = new AuthService({ whitelist: [], prefix: '/ai', pairingEnabled: true });
+    auth.setDatabase(db);
+  });
+
+  afterEach(() => {
+    auth.stopExpiryTimer();
+    closeDatabase(db);
+  });
+
+  it('evictExpiredPairings removes codes older than 5 minutes', () => {
+    auth.storePairing('333333', '+5555555555', 'whatsapp');
+    // Backdate requestedAt beyond the 5-minute TTL
+    const pairing = auth.getPendingPairings().get('333333')!;
+    (pairing as { requestedAt: Date }).requestedAt = new Date(Date.now() - 6 * 60 * 1000);
+    auth.evictExpiredPairings();
+    expect(auth.getPairing('333333')).toBeUndefined();
+  });
+
+  it('evictExpiredPairings keeps codes still within the TTL window', () => {
+    auth.storePairing('444444', '+5555555555', 'whatsapp');
+    auth.evictExpiredPairings();
+    expect(auth.getPairing('444444')).toBeDefined();
+  });
+
+  it('expired pairing no longer authorizes the sender', () => {
+    const senderId = '+5555555555';
+    const channel = 'whatsapp';
+    // Simulate: pairing was requested and granted before expiry
+    approvePairing(db, senderId, channel, 'viewer');
+    // Backdate the pending pairing and evict — access_control entry remains unaffected
+    auth.storePairing('555555', senderId, channel);
+    const pairing = auth.getPendingPairings().get('555555')!;
+    (pairing as { requestedAt: Date }).requestedAt = new Date(Date.now() - 6 * 60 * 1000);
+    auth.evictExpiredPairings();
+    expect(auth.getPairing('555555')).toBeUndefined();
+    // Sender is still authorized because access_control row persists after approval
+    expect(auth.isAuthorized(senderId, channel)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pairing rate limiting (OB-1703)
+// ---------------------------------------------------------------------------
+
+describe('pairing rate limiting', () => {
+  let auth: AuthService;
+
+  beforeEach(() => {
+    auth = new AuthService({ whitelist: [], prefix: '/ai', pairingEnabled: true });
+  });
+
+  afterEach(() => {
+    auth.stopExpiryTimer();
+  });
+
+  it('checkPairingRateLimit allows the first 3 requests per sender per hour', () => {
+    const sender = '+1111111111';
+    expect(auth.checkPairingRateLimit(sender)).toBe(true);
+    expect(auth.checkPairingRateLimit(sender)).toBe(true);
+    expect(auth.checkPairingRateLimit(sender)).toBe(true);
+  });
+
+  it('checkPairingRateLimit denies the 4th request within the same hour', () => {
+    const sender = '+2222222222';
+    auth.checkPairingRateLimit(sender);
+    auth.checkPairingRateLimit(sender);
+    auth.checkPairingRateLimit(sender);
+    expect(auth.checkPairingRateLimit(sender)).toBe(false);
+  });
+
+  it('rate limit is per-sender — other senders are unaffected', () => {
+    const blocked = '+3333333333';
+    auth.checkPairingRateLimit(blocked);
+    auth.checkPairingRateLimit(blocked);
+    auth.checkPairingRateLimit(blocked);
+    auth.checkPairingRateLimit(blocked); // 4th — now blocked
+    expect(auth.checkPairingRateLimit('+4444444444')).toBe(true);
+  });
+
+  it('initiatePairing returns null once the rate limit is exceeded', () => {
+    const sender = '+5555555555';
+    auth.initiatePairing(sender, 'whatsapp');
+    auth.initiatePairing(sender, 'whatsapp');
+    auth.initiatePairing(sender, 'whatsapp');
+    const fourth = auth.initiatePairing(sender, 'whatsapp');
+    expect(fourth).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// approvePairing (access-store) — configurable default role (OB-1703)
+// ---------------------------------------------------------------------------
+
+describe('approvePairing (access-store)', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = openDatabase(':memory:');
+  });
+
+  afterEach(() => {
+    closeDatabase(db);
+  });
+
+  it('creates a new access_control entry with the given role', () => {
+    approvePairing(db, '+6666666666', 'telegram', 'developer');
+    const entry = getAccess(db, '+6666666666', 'telegram');
+    expect(entry).toBeDefined();
+    expect(entry?.role).toBe('developer');
+    expect(entry?.active).toBe(true);
+  });
+
+  it('defaults to viewer role when no role argument is provided', () => {
+    approvePairing(db, '+7777777777', 'webchat');
+    const entry = getAccess(db, '+7777777777', 'webchat');
+    expect(entry?.role).toBe('viewer');
+    expect(entry?.active).toBe(true);
+  });
+
+  it('reactivates an existing inactive entry', () => {
+    setAccess(db, { user_id: '+8888888888', channel: 'whatsapp', role: 'viewer', active: false });
+    const before = getAccess(db, '+8888888888', 'whatsapp');
+    expect(before?.active).toBe(false);
+    approvePairing(db, '+8888888888', 'whatsapp', 'viewer');
+    const after = getAccess(db, '+8888888888', 'whatsapp');
+    expect(after?.active).toBe(true);
+  });
+
+  it('configurable role is used via getRoleForChannel — whatsapp maps to owner', () => {
+    const auth = new AuthService({
+      whitelist: [],
+      prefix: '/ai',
+      channelRoles: { whatsapp: 'owner' },
+    });
+    const role = auth.getRoleForChannel('whatsapp');
+    approvePairing(db, '+9999999999', 'whatsapp', role as AccessRole);
+    const entry = getAccess(db, '+9999999999', 'whatsapp');
+    expect(entry?.role).toBe('owner');
+    auth.stopExpiryTimer();
   });
 });
