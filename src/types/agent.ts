@@ -486,6 +486,49 @@ export const BatchStateSchema = z.object({
   senderInfo: z.object({ sender: z.string(), source: z.string() }).optional(),
 });
 
+// ── Document Skill Packs ─────────────────────────────────────────
+
+/** Supported document output formats */
+export const DocumentFileFormatSchema = z.enum([
+  'docx', // Word document
+  'pptx', // PowerPoint presentation
+  'xlsx', // Excel spreadsheet
+  'pdf', // PDF document
+  'html', // HTML report
+  'md', // Markdown document
+]);
+
+/** Prompts associated with a document skill — template and formatting guidance */
+export const DocumentSkillPromptsSchema = z.object({
+  /** System-level instructions for the AI when generating this document type */
+  system: z.string().min(1),
+  /** Template or structure guidance (outline, sections, slide layouts) */
+  structure: z.string().min(1),
+  /** Formatting rules specific to this document type */
+  formatting: z.string().optional(),
+  /** Example or reference output to guide the AI */
+  example: z.string().optional(),
+});
+
+/**
+ * A document skill pack — defines everything needed to generate a specific
+ * type of document (Word, PPTX, XLSX, PDF, HTML) using a worker agent.
+ */
+export const DocumentSkillSchema = z.object({
+  /** Unique skill identifier (e.g., 'document-writer', 'presentation-maker') */
+  name: z.string().min(1),
+  /** Human-readable description of what this skill produces */
+  description: z.string().min(1),
+  /** Output file format this skill generates */
+  fileFormat: DocumentFileFormatSchema,
+  /** Tool profile the worker should use when running this skill */
+  toolProfile: z.string().min(1),
+  /** npm package required for document generation (e.g., 'docx', 'pptx', 'xlsx') */
+  npmDependency: z.string().optional(),
+  /** Prompts that guide the AI in producing this document type */
+  prompts: DocumentSkillPromptsSchema,
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -519,3 +562,6 @@ export type BatchState = z.infer<typeof BatchStateSchema>;
 export type ObservationType = z.infer<typeof ObservationTypeSchema>;
 export type Observation = z.infer<typeof ObservationSchema>;
 export type WorkerSummary = z.infer<typeof WorkerSummarySchema>;
+export type DocumentFileFormat = z.infer<typeof DocumentFileFormatSchema>;
+export type DocumentSkillPrompts = z.infer<typeof DocumentSkillPromptsSchema>;
+export type DocumentSkill = z.infer<typeof DocumentSkillSchema>;
