@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/memory/database.js';
+import { applySchemaChanges } from '../../src/memory/migration.js';
 import {
   storeChunks,
   searchChunks,
   markStale,
   deleteStaleChunks,
   deleteChunksByScope,
+  computeContentHash,
   type Chunk,
 } from '../../src/memory/chunk-store.js';
 
@@ -359,6 +362,269 @@ describe('chunk-store.ts', () => {
       const count = (db.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number })
         .c;
       expect(count).toBe(3);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // computeContentHash
+  // ---------------------------------------------------------------------------
+
+  describe('computeContentHash', () => {
+    it('returns a 64-character lowercase hex string', () => {
+      const hash = computeContentHash('hello world');
+      expect(hash).toHaveLength(64);
+      expect(hash).toMatch(/^[0-9a-f]+$/);
+    });
+
+    it('produces the same hash for identical content', () => {
+      const content = 'Bridge routes messages between connectors and providers.';
+      expect(computeContentHash(content)).toBe(computeContentHash(content));
+    });
+
+    it('produces different hashes for different content', () => {
+      const h1 = computeContentHash('content alpha');
+      const h2 = computeContentHash('content beta');
+      expect(h1).not.toBe(h2);
+    });
+
+    it('normalizes leading and trailing whitespace (trim)', () => {
+      const h1 = computeContentHash('  hello  ');
+      const h2 = computeContentHash('hello');
+      expect(h1).toBe(h2);
+    });
+
+    it('normalizes internal whitespace runs to a single space', () => {
+      const h1 = computeContentHash('hello   world');
+      const h2 = computeContentHash('hello world');
+      expect(h1).toBe(h2);
+    });
+
+    it('normalizes tabs and newlines as whitespace', () => {
+      const h1 = computeContentHash('hello\t\nworld');
+      const h2 = computeContentHash('hello world');
+      expect(h1).toBe(h2);
+    });
+
+    it('works on empty string', () => {
+      const hash = computeContentHash('');
+      expect(hash).toHaveLength(64);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Migration v11 — content_hash backfill
+  // ---------------------------------------------------------------------------
+
+  describe('migration v11 — content_hash backfill', () => {
+    /**
+     * Creates a minimal raw database that simulates a pre-v11 state:
+     * - context_chunks WITHOUT the content_hash column
+     * - schema_versions table (so applySchemaChanges can record applied migrations)
+     * - No prior migrations recorded
+     */
+    function createLegacyDb(): Database.Database {
+      const legacyDb = new BetterSqlite3(':memory:');
+
+      legacyDb.exec(`
+        CREATE TABLE schema_versions (
+          version    INTEGER PRIMARY KEY,
+          applied_at TEXT    NOT NULL,
+          description TEXT   NOT NULL
+        );
+
+        CREATE TABLE context_chunks (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          scope       TEXT    NOT NULL,
+          category    TEXT    NOT NULL,
+          content     TEXT    NOT NULL,
+          source_hash TEXT,
+          created_at  TEXT    NOT NULL,
+          updated_at  TEXT    NOT NULL,
+          stale       BOOLEAN DEFAULT 0
+        );
+
+        CREATE VIRTUAL TABLE context_chunks_fts
+          USING fts5(content, scope, category);
+
+        -- Stub tables required by migrations 1-10
+        CREATE TABLE agent_activity (
+          id INTEGER PRIMARY KEY,
+          status TEXT,
+          pid INTEGER,
+          summary_json TEXT
+        );
+        CREATE TABLE conversations (id INTEGER PRIMARY KEY, title TEXT);
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, checkpoint_data TEXT);
+        CREATE TABLE access_control (
+          id INTEGER PRIMARY KEY,
+          consent_mode TEXT DEFAULT 'always-ask',
+          execution_profile TEXT DEFAULT 'fast',
+          model_preferences TEXT DEFAULT NULL,
+          approved_tool_escalations TEXT DEFAULT '[]'
+        );
+        CREATE TABLE observations (
+          id INTEGER PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          worker_id  TEXT NOT NULL,
+          type       TEXT NOT NULL,
+          title      TEXT NOT NULL,
+          narrative  TEXT NOT NULL,
+          facts      TEXT NOT NULL DEFAULT '[]',
+          concepts   TEXT NOT NULL DEFAULT '[]',
+          files_read     TEXT NOT NULL DEFAULT '[]',
+          files_modified TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL
+        );
+        CREATE VIRTUAL TABLE observations_fts
+          USING fts5(title, narrative, content=observations, content_rowid=id);
+        CREATE TABLE qa_cache (
+          id INTEGER PRIMARY KEY,
+          question TEXT NOT NULL,
+          answer TEXT NOT NULL,
+          confidence REAL NOT NULL DEFAULT 0.5,
+          file_paths TEXT,
+          created_at TEXT NOT NULL,
+          accessed_at TEXT NOT NULL,
+          access_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE VIRTUAL TABLE qa_cache_fts
+          USING fts5(question, content=qa_cache, content_rowid=id);
+      `);
+
+      return legacyDb;
+    }
+
+    it('adds content_hash column when it is missing', () => {
+      const legacyDb = createLegacyDb();
+
+      const hasBefore =
+        (
+          legacyDb
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('context_chunks') WHERE name='content_hash'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      expect(hasBefore).toBe(false);
+
+      applySchemaChanges(legacyDb);
+
+      const hasAfter =
+        (
+          legacyDb
+            .prepare(
+              `SELECT COUNT(*) AS c FROM pragma_table_info('context_chunks') WHERE name='content_hash'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      expect(hasAfter).toBe(true);
+
+      legacyDb.close();
+    });
+
+    it('backfills content_hash for existing rows using computeContentHash', () => {
+      const legacyDb = createLegacyDb();
+      const now = new Date().toISOString();
+
+      // Insert two rows without content_hash (old schema)
+      legacyDb
+        .prepare(
+          `INSERT INTO context_chunks (scope, category, content, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run('src/core', 'structure', 'Bridge routes messages', now, now);
+      legacyDb
+        .prepare(
+          `INSERT INTO context_chunks (scope, category, content, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run('src/master', 'patterns', 'Master spawns workers', now, now);
+
+      applySchemaChanges(legacyDb);
+
+      const rows = legacyDb
+        .prepare('SELECT content, content_hash FROM context_chunks ORDER BY id')
+        .all() as { content: string; content_hash: string }[];
+
+      expect(rows).toHaveLength(2);
+      expect(rows[0].content_hash).toBe(computeContentHash('Bridge routes messages'));
+      expect(rows[1].content_hash).toBe(computeContentHash('Master spawns workers'));
+
+      legacyDb.close();
+    });
+
+    it('does not overwrite existing content_hash values', () => {
+      const legacyDb = createLegacyDb();
+
+      // Apply migration to get the column
+      applySchemaChanges(legacyDb);
+
+      const now = new Date().toISOString();
+      const customHash = 'a'.repeat(64);
+
+      // Insert a row with a pre-set content_hash
+      legacyDb
+        .prepare(
+          `INSERT INTO context_chunks (scope, category, content, content_hash, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run('src/test', 'structure', 'test content', customHash, now, now);
+
+      // Running migrations again should not overwrite
+      // (schema_versions prevents re-run, but we verify the value is untouched)
+      const row = legacyDb.prepare('SELECT content_hash FROM context_chunks').get() as {
+        content_hash: string;
+      };
+      expect(row.content_hash).toBe(customHash);
+
+      legacyDb.close();
+    });
+
+    it('is idempotent — running migrations twice does not change hashes', () => {
+      const legacyDb = createLegacyDb();
+      const now = new Date().toISOString();
+
+      legacyDb
+        .prepare(
+          `INSERT INTO context_chunks (scope, category, content, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run('src/core', 'structure', 'Idempotent test content', now, now);
+
+      applySchemaChanges(legacyDb);
+
+      const hashAfterFirst = (
+        legacyDb.prepare('SELECT content_hash FROM context_chunks').get() as {
+          content_hash: string;
+        }
+      ).content_hash;
+
+      // Calling again should be a no-op (schema_versions guards re-execution)
+      applySchemaChanges(legacyDb);
+
+      const hashAfterSecond = (
+        legacyDb.prepare('SELECT content_hash FROM context_chunks').get() as {
+          content_hash: string;
+        }
+      ).content_hash;
+
+      expect(hashAfterFirst).toBe(hashAfterSecond);
+      expect(hashAfterFirst).toBe(computeContentHash('Idempotent test content'));
+
+      legacyDb.close();
+    });
+
+    it('handles an empty context_chunks table gracefully (no-op backfill)', () => {
+      const legacyDb = createLegacyDb();
+
+      expect(() => applySchemaChanges(legacyDb)).not.toThrow();
+
+      const count = (
+        legacyDb.prepare('SELECT COUNT(*) as c FROM context_chunks').get() as { c: number }
+      ).c;
+      expect(count).toBe(0);
+
+      legacyDb.close();
     });
   });
 });

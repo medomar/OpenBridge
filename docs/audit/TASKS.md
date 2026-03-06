@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 150 | **In Progress:** 0 | **Done:** 26 (1063 archived)
+> **Pending:** 149 | **In Progress:** 0 | **Done:** 27 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -99,7 +99,7 @@
 | OB-1641 | Tests: observation CRUD — insert, getBySession, getByWorker, FTS5 search             | `tests/memory/observation-store.test.ts` (new)     | ✅ Done |
 | OB-1642 | Tests: observation extraction — file path detection, type classification, edge cases | `tests/master/observation-extractor.test.ts` (new) | ✅ Done |
 | OB-1643 | Tests: worker summary parsing — valid/invalid output, next_steps injection           | `tests/master/worker-result-formatter.test.ts`     | ✅ Done |
-| OB-1644 | Tests: content-hash dedup — duplicate detection, 30s window, hash backfill migration | `tests/memory/chunk-store.test.ts`                 | Pending |
+| OB-1644 | Tests: content-hash dedup — duplicate detection, 30s window, hash backfill migration | `tests/memory/chunk-store.test.ts`                 | ✅ Done |
 
 **Phase 93 Total:** 27 tasks
 
