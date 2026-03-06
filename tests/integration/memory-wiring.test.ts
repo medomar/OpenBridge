@@ -112,6 +112,8 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     deleteBatchState: vi.fn().mockResolvedValue(undefined),
     readPromptManifest: vi.fn().mockResolvedValue(null),
     writePromptTemplate: vi.fn().mockResolvedValue(undefined),
+    getMemoryFilePath: vi.fn().mockReturnValue('/test/.openbridge/context/memory.md'),
+    readMemoryFile: vi.fn().mockResolvedValue(null),
   })),
 }));
 

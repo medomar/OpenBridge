@@ -83,6 +83,8 @@ import { createLogger } from '../core/logger.js';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { SessionCompactor } from './session-compactor.js';
+import type { ConversationTurn } from './session-compactor.js';
 
 const logger = createLogger('master-manager');
 
@@ -611,6 +613,8 @@ export class MasterManager {
   private batchManager: BatchManager | null = null;
   /** Tracks active batch continuation timer handles for cleanup on shutdown (OB-1664). */
   private readonly batchTimers = new Set<NodeJS.Timeout>();
+  /** Session compactor — monitors turn count and triggers memory.md compaction (OB-1672). */
+  private compactor: SessionCompactor | null = null;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -645,6 +649,9 @@ export class MasterManager {
         this.masterTool,
       );
     }
+
+    // Initialise SessionCompactor — monitors Master turn count and triggers compaction (OB-1672)
+    this.compactor = new SessionCompactor({ maxTurns: MASTER_MAX_TURNS });
 
     // Store adapter registry for per-worker tool resolution
     if (options.adapterRegistry) {
@@ -2249,6 +2256,53 @@ export class MasterManager {
       await this.saveMasterSessionToStore(this.masterSession);
     } catch (error) {
       logger.warn({ error }, 'Failed to persist Master session update');
+    }
+  }
+
+  /**
+   * Check whether the current Master session needs compaction and trigger it
+   * if the threshold has been reached (OB-1672).
+   *
+   * Called after every Master turn via `updateMasterSession()`. Silently
+   * no-ops when the compactor, memory manager, or session are unavailable.
+   */
+  private async _checkCompaction(): Promise<void> {
+    if (!this.compactor || !this.memory || !this.masterSession) return;
+
+    try {
+      const db = this.memory.getDb();
+      if (!db) return;
+
+      const { sessionId } = this.masterSession;
+      const memoryPath = this.dotFolder.getMemoryFilePath();
+
+      await this.compactor.triggerIfNeeded(db, sessionId, async (snapshot) => {
+        // Fetch conversation history to build a structured summary.
+        let turns: ConversationTurn[] = [];
+        try {
+          const entries = await this.memory!.getSessionHistory(sessionId, 50);
+          turns = entries.map((e) => ({
+            role: e.role === 'user' ? 'user' : e.role === 'system' ? 'system' : 'assistant',
+            content: e.content,
+          }));
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Compaction: failed to load session history');
+        }
+
+        const summary = this.compactor!.compactTurns(turns);
+        logger.info(
+          {
+            sessionId,
+            totalTurns: snapshot.totalTurns,
+            thresholdTurns: snapshot.thresholdTurns,
+            turnCount: summary.turnCount,
+          },
+          'Compaction: writing summary to memory.md',
+        );
+        await this.compactor!.writeCompactionSummaryToMemory(summary, memoryPath);
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Compaction check failed — continuing session without compaction');
     }
   }
 
@@ -5399,6 +5453,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       }
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
+      void this._checkCompaction();
 
       // Detect dead session and restart transparently
       if (result.exitCode !== 0 && this.isSessionDead(result.exitCode, result.stderr)) {
@@ -5439,6 +5494,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         }
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
+        void this._checkCompaction();
       }
 
       if (result.exitCode !== 0) {
@@ -5540,6 +5596,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
           try {
             result = await this.agentRunner.spawn(feedbackOpts);
             await this.updateMasterSession();
+            void this._checkCompaction();
 
             if (result.exitCode !== 0) {
               logger.warn({ exitCode: result.exitCode }, 'Synthesis failed — returning fallback');
