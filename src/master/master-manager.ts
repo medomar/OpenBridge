@@ -1,5 +1,6 @@
 import { BatchManager } from './batch-manager.js';
 import { BUILT_IN_SKILLS } from './skills/index.js';
+import { BUILT_IN_SKILL_PACKS } from './skill-packs/index.js';
 import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
@@ -1884,6 +1885,7 @@ export class MasterManager {
       workspaceExclude: this.workspaceExclude.length > 0 ? this.workspaceExclude : undefined,
       workspaceInclude: this.workspaceInclude.length > 0 ? this.workspaceInclude : undefined,
       availableSkills: BUILT_IN_SKILLS,
+      availableSkillPacks: BUILT_IN_SKILL_PACKS,
     });
 
     try {
