@@ -251,6 +251,26 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_observations_type      ON observations(type);
     CREATE INDEX IF NOT EXISTS idx_observations_created   ON observations(created_at);
 
+    CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts
+      USING fts5(title, narrative, content=observations, content_rowid=id);
+
+    CREATE TRIGGER IF NOT EXISTS observations_fts_ai AFTER INSERT ON observations BEGIN
+      INSERT INTO observations_fts(rowid, title, narrative)
+        VALUES (new.id, new.title, new.narrative);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS observations_fts_ad AFTER DELETE ON observations BEGIN
+      INSERT INTO observations_fts(observations_fts, rowid, title, narrative)
+        VALUES ('delete', old.id, old.title, old.narrative);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS observations_fts_au AFTER UPDATE ON observations BEGIN
+      INSERT INTO observations_fts(observations_fts, rowid, title, narrative)
+        VALUES ('delete', old.id, old.title, old.narrative);
+      INSERT INTO observations_fts(rowid, title, narrative)
+        VALUES (new.id, new.title, new.narrative);
+    END;
+
     -- audit_log: structured audit trail (replaces flat-file JSONL)
     CREATE TABLE IF NOT EXISTS audit_log (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
