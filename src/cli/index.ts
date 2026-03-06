@@ -54,7 +54,7 @@ if (command === 'init') {
   console.log('  init      Generate a config.json interactively');
   console.log('  access    Manage per-user access control (add/remove/list)');
   console.log('  stats     Show exploration ROI: tokens spent vs tokens saved');
-  console.log('  doctor    Check document generation prerequisites');
+  console.log('  doctor    Run system health checks and diagnose your setup');
   process.exit(0);
 } else if (command === '--version' || command === '-v') {
   console.log(pkg.version);
@@ -65,6 +65,6 @@ if (command === 'init') {
   console.log('  init      Generate a config.json interactively');
   console.log('  access    Manage per-user access control (add/remove/list)');
   console.log('  stats     Show exploration ROI: tokens spent vs tokens saved');
-  console.log('  doctor    Check document generation prerequisites\n');
+  console.log('  doctor    Run system health checks and diagnose your setup\n');
   process.exit(command === undefined ? 0 : 1);
 }
