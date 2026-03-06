@@ -307,7 +307,26 @@ export class SessionCompactor {
     );
 
     if (handler) {
-      await handler(snapshot);
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+        try {
+          await handler(snapshot);
+          lastError = undefined;
+          break;
+        } catch (err) {
+          lastError = err;
+          logger.warn(
+            { err, sessionId, attempt, maxRetries: this.maxRetries },
+            'SessionCompactor: compaction handler failed — will retry if attempts remain',
+          );
+        }
+      }
+      if (lastError !== undefined) {
+        logger.warn(
+          { err: lastError, sessionId, maxRetries: this.maxRetries },
+          'SessionCompactor: compaction failed after all retries — continuing session without compaction',
+        );
+      }
     }
 
     return { triggered: true, snapshot };
