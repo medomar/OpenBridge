@@ -68,7 +68,7 @@ export const QueueConfigSchema = z.object({
 /** Schema for router configuration */
 export const RouterConfigSchema = z.object({
   progressIntervalMs: z.number().int().positive().default(15_000),
-  escalationTimeoutMs: z.number().int().positive().default(180_000),
+  escalationTimeoutMs: z.number().int().positive().default(300_000),
 });
 
 /** Schema for audit log configuration */

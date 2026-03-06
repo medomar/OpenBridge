@@ -3032,7 +3032,7 @@ describe('Router', () => {
     });
   });
 
-  describe('escalation timeout — auto-deny after 60s (OB-1590)', () => {
+  describe('escalation timeout — auto-deny (OB-1590)', () => {
     function createEscalMsg(content: string, sender = '+1234567890'): InboundMessage {
       return {
         id: 'escal-1',
@@ -3045,7 +3045,10 @@ describe('Router', () => {
     }
 
     it('sends timeout message after 60 seconds and removes the pending escalation', async () => {
-      const router = new Router('mock');
+      const router = new Router('mock', {
+        escalationTimeoutMs: 60_000,
+        progressIntervalMs: 15_000,
+      });
       const connector = new MockConnector();
       const provider = new MockProvider();
       provider.streamMessage = undefined;
@@ -3066,14 +3069,19 @@ describe('Router', () => {
 
       await vi.advanceTimersByTimeAsync(61_000);
 
-      expect(connector.sentMessages).toHaveLength(2);
-      expect(connector.sentMessages[1]?.content).toContain('timed out');
-      expect(connector.sentMessages[1]?.content).toContain('worker-timeout');
+      // 1 = escalation prompt, 2 = 50% reminder (at 30s), 3 = timeout (at 60s)
+      expect(connector.sentMessages).toHaveLength(3);
+      expect(connector.sentMessages[1]?.content).toContain('Reminder');
+      expect(connector.sentMessages[2]?.content).toContain('timed out');
+      expect(connector.sentMessages[2]?.content).toContain('worker-timeout');
       expect(router.hasPendingEscalation('+1234567890')).toBe(false);
     });
 
     it('timeout is cancelled when /allow is received within 60 seconds', async () => {
-      const router = new Router('mock');
+      const router = new Router('mock', {
+        escalationTimeoutMs: 60_000,
+        progressIntervalMs: 15_000,
+      });
       const connector = new MockConnector();
       const provider = new MockProvider();
       provider.streamMessage = undefined;
@@ -3100,7 +3108,10 @@ describe('Router', () => {
     });
 
     it('timeout is cancelled when /deny is received within 60 seconds', async () => {
-      const router = new Router('mock');
+      const router = new Router('mock', {
+        escalationTimeoutMs: 60_000,
+        progressIntervalMs: 15_000,
+      });
       const connector = new MockConnector();
       const provider = new MockProvider();
       provider.streamMessage = undefined;

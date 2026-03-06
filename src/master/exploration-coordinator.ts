@@ -537,10 +537,22 @@ export class ExplorationCoordinator {
       return this.buildSummary(state);
     }
 
-    // If exploration failed previously, reset to allow retry
+    // If exploration failed previously, resume from last completed phase (not full reset)
     if (state.status === 'failed') {
-      logger.info('Previous exploration failed, resetting to retry');
-      state = this.createInitialState();
+      const completedPhases = Object.entries(state.phases)
+        .filter(([, s]) => s === 'completed')
+        .map(([p]) => p);
+      logger.info(
+        { completedPhases },
+        'Previous exploration failed, resuming from last checkpoint (keeping completed phases)',
+      );
+      // Reset the failed/in_progress phase to pending so it retries
+      for (const [phase, phaseStatus] of Object.entries(state.phases)) {
+        if (phaseStatus === 'failed' || phaseStatus === 'in_progress') {
+          state.phases[phase as keyof typeof state.phases] = 'pending';
+        }
+      }
+      state.status = 'in_progress';
       await this.writeExplorationState(state);
     }
 
