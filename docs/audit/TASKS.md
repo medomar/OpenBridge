@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 102 | **In Progress:** 0 | **Done:** 74 (1063 archived)
+> **Pending:** 101 | **In Progress:** 0 | **Done:** 75 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -209,7 +209,7 @@
 | ------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------- |
 | OB-1741 | Add optional dependencies to `package.json` — `docx`, `pptxgenjs`, `exceljs` (opt-in, zero by default)            | `package.json`                         | ✅ Done |
 | OB-1742 | `openbridge doctor` checks for document generation prerequisites (Puppeteer, LibreOffice, npm packages installed) | `src/cli/doctor.ts`                    | ✅ Done |
-| OB-1743 | Tests: document skill pack selection, file generation mocks, output delivery, attachment sending                  | `tests/master/document-skills.test.ts` | Pending |
+| OB-1743 | Tests: document skill pack selection, file generation mocks, output delivery, attachment sending                  | `tests/master/document-skills.test.ts` | ✅ Done |
 
 **Phase 99 Total:** 18 tasks
 
