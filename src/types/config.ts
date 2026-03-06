@@ -127,6 +127,13 @@ export const V2AuthSchema = z.object({
    * Defaults to 'owner' so existing setups retain full access without config changes.
    */
   defaultRole: z.enum(['owner', 'admin', 'developer', 'viewer', 'custom']).default('owner'),
+  /**
+   * Per-channel role overrides — applied when creating new access_control entries.
+   * Keys are channel type names (e.g. "webchat", "telegram"); values are role names.
+   * Takes precedence over defaultRole for the matching channel.
+   * Example: `{ "webchat": "owner", "telegram": "developer" }`
+   */
+  channelRoles: z.record(z.enum(['owner', 'admin', 'developer', 'viewer', 'custom'])).optional(),
 });
 
 /** Schema for worker watchdog timeout configuration */
