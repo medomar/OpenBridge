@@ -1,5 +1,9 @@
 import { execSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { AppConfigSchema, V2ConfigSchema } from '../types/config.js';
+import { getConfigDir } from './utils.js';
 
 const require = createRequire(import.meta.url);
 
@@ -81,6 +85,64 @@ function checkAITools(): CheckResult {
 }
 
 // ---------------------------------------------------------------------------
+// Config file check (OB-1687)
+// ---------------------------------------------------------------------------
+
+function checkConfig(): CheckResult {
+  // Locate config.json — check config dir first, then cwd fallback
+  const configDir = getConfigDir();
+  const candidates = [join(configDir, 'config.json'), join(process.cwd(), 'config.json')];
+  const configPath = candidates.find((p) => existsSync(p));
+
+  if (!configPath) {
+    return {
+      pass: false,
+      message: `config.json not found (looked in: ${candidates.join(', ')}) — run: npx openbridge init`,
+    };
+  }
+
+  let raw: string;
+  try {
+    raw = readFileSync(configPath, 'utf-8');
+  } catch (err) {
+    return {
+      pass: false,
+      message: `config.json unreadable: ${(err as Error).message}`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      pass: false,
+      message: `config.json is not valid JSON: ${(err as Error).message}`,
+    };
+  }
+
+  // Detect V2 vs V0 by presence of workspacePath
+  const isV2 = typeof parsed === 'object' && parsed !== null && 'workspacePath' in parsed;
+
+  const schema = isV2 ? V2ConfigSchema : AppConfigSchema;
+  const result = schema.safeParse(parsed);
+
+  if (result.success) {
+    return { pass: true, message: `${configPath} — valid ${isV2 ? 'V2' : 'V0'} config` };
+  }
+
+  // Format per-field errors from ZodError
+  const errors = result.error.errors.map((e) => {
+    const path = e.path.length > 0 ? e.path.join('.') : '(root)';
+    return `${path}: ${e.message}`;
+  });
+  return {
+    pass: false,
+    message: `${configPath} — validation failed:\n    ${errors.join('\n    ')}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -140,6 +202,7 @@ function checkPuppeteer(): CheckResult {
 const CHECKS: Check[] = [
   { label: 'Node.js', run: checkNodeVersion },
   { label: 'AI tools', run: checkAITools },
+  { label: 'Config', run: checkConfig },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
