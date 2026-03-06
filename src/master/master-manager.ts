@@ -6,9 +6,11 @@ import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
 import {
   generateMasterSystemPrompt,
   formatLearnedPatternsSection,
+  formatWorkerNextStepsSection,
   formatPreFetchedKnowledgeSection,
   formatTargetedReaderSection,
 } from './master-system-prompt.js';
+import type { WorkerNextStepsEntry } from './master-system-prompt.js';
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
 import type { WorkspaceChanges } from './workspace-change-tracker.js';
 import {
@@ -1099,6 +1101,44 @@ export class MasterManager {
       return formatLearnedPatternsSection({ modelLearnings, effectivePrompts: promptPatterns });
     } catch (err) {
       logger.warn({ err }, 'Failed to build learned patterns context');
+      return null;
+    }
+  }
+
+  /**
+   * Read next_steps from the 5 most recent completed worker summaries and format them
+   * as a "## Pending Worker Next Steps" system prompt section (OB-1635).
+   * Returns null when no workers have a summary or none reported follow-up work.
+   */
+  private async buildWorkerNextStepsContext(): Promise<string | null> {
+    if (!this.memory) return null;
+    try {
+      const recentWorkers = await this.memory.getRecentWorkerSpawns(5);
+      const entries: WorkerNextStepsEntry[] = [];
+      for (const worker of recentWorkers) {
+        if (!worker.summary_json) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(worker.summary_json);
+        } catch {
+          continue;
+        }
+        const parsedRecord =
+          typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>)
+            : null;
+        const nextSteps =
+          parsedRecord !== null && typeof parsedRecord['next_steps'] === 'string'
+            ? parsedRecord['next_steps']
+            : '';
+        entries.push({
+          taskSummary: worker.task_summary ?? '',
+          nextSteps,
+        });
+      }
+      return formatWorkerNextStepsSection(entries);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to build worker next steps context');
       return null;
     }
   }
@@ -5138,10 +5178,12 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
-      const [conversationContext, learnedPatternsContext] = await Promise.all([
-        this.buildConversationContext(message.content, sessionId),
-        this.buildLearnedPatternsContext(),
-      ]);
+      const [conversationContext, learnedPatternsContext, workerNextStepsContext] =
+        await Promise.all([
+          this.buildConversationContext(message.content, sessionId),
+          this.buildLearnedPatternsContext(),
+          this.buildWorkerNextStepsContext(),
+        ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
@@ -5337,6 +5379,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
       if (learnedPatternsContext) {
         spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
       }
+      // Inject recent worker next_steps into the Master's system prompt (OB-1635)
+      if (workerNextStepsContext) {
+        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + workerNextStepsContext;
+      }
       // Inject pre-fetched knowledge context into the Master's system prompt (OB-1345, OB-1346)
       if (knowledgeContext) {
         spawnOpts.systemPrompt =
@@ -5372,6 +5418,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         // Re-inject learned patterns into retry opts as well
         if (learnedPatternsContext) {
           retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
+        }
+        // Re-inject worker next_steps into retry opts as well (OB-1635)
+        if (workerNextStepsContext) {
+          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + workerNextStepsContext;
         }
         // Re-inject knowledge context into retry opts as well (OB-1345, OB-1346)
         if (knowledgeContext) {
@@ -5857,9 +5907,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
-      const [streamConversationContext, streamLearnedPatternsContext] = await Promise.all([
+      const [
+        streamConversationContext,
+        streamLearnedPatternsContext,
+        streamWorkerNextStepsContext,
+      ] = await Promise.all([
         this.buildConversationContext(message.content, streamSessionId),
         this.buildLearnedPatternsContext(),
+        this.buildWorkerNextStepsContext(),
       ]);
 
       // (1) Emit classifying event — AI is analyzing the message
@@ -5905,6 +5960,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         spawnOpts.systemPrompt =
           (spawnOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
       }
+      // Inject recent worker next_steps into the Master's system prompt (OB-1635)
+      if (streamWorkerNextStepsContext) {
+        spawnOpts.systemPrompt =
+          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamWorkerNextStepsContext;
+      }
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
 
@@ -5945,6 +6005,11 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         if (streamLearnedPatternsContext) {
           retryOpts.systemPrompt =
             (retryOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
+        }
+        // Re-inject worker next_steps into retry opts as well (OB-1635)
+        if (streamWorkerNextStepsContext) {
+          retryOpts.systemPrompt =
+            (retryOpts.systemPrompt ?? '') + '\n\n' + streamWorkerNextStepsContext;
         }
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);

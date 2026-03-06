@@ -65,6 +65,42 @@ export interface LearnedPatternsData {
   }>;
 }
 
+/** A single worker's pending follow-up work extracted from its summary. */
+export interface WorkerNextStepsEntry {
+  /** Brief description of the task the worker was given (task_summary from activity record). */
+  taskSummary: string;
+  /** The next_steps text parsed from the worker's WorkerSummary JSON. */
+  nextSteps: string;
+}
+
+/**
+ * Format the "## Pending Worker Next Steps" section to append to the Master system prompt.
+ * Summarises what each of the 5 most recent workers said should be done next.
+ * Returns null when there are no meaningful next_steps entries.
+ * Kept concise — target < 400 tokens.
+ */
+export function formatWorkerNextStepsSection(entries: WorkerNextStepsEntry[]): string | null {
+  const meaningful = entries.filter((e) => e.nextSteps.trim().length > 0);
+  if (meaningful.length === 0) return null;
+
+  const lines: string[] = [
+    '## Pending Worker Next Steps',
+    '',
+    'The following items were flagged as follow-up work by recently completed workers.',
+    'Address them if they are relevant to the current task, or queue them for later.',
+    '',
+  ];
+
+  for (const entry of meaningful) {
+    const label = entry.taskSummary.trim() || 'Worker task';
+    lines.push(`**${label}**`);
+    lines.push(entry.nextSteps.trim());
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Format the "## Learned Patterns" section to append to the Master system prompt.
  * Returns null when there is nothing to include (no data yet).
