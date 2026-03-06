@@ -22,7 +22,7 @@ PHASE_FILTER: {{PHASE}}
 
 - If TASK_OVERRIDE is set (not "none"), execute that specific task ID.
 - If PHASE_FILTER is set (not "none"), only pick tasks from that phase.
-- Otherwise, find the first task with status "◻ Pending" in the task list, starting from Phase 1.
+- Otherwise, find the first task with status "Pending" in the task list, starting from the earliest phase.
 - If no pending tasks remain, write "DONE" to `{{POINTER_FILE}}` and stop.
 
 If the task ID has a matching finding in the findings file, read it for additional context.
@@ -65,7 +65,7 @@ npm run test 2>&1 | tail -80
 ## Step 5: Update Audit Documents
 
 ### 5a. Update `{{TASKS_FILE}}`
-- Change the task's status from `◻ Pending` to `✅ Done`
+- Change the task's status from `Pending` to `✅ Done`
 - Update the summary counters at the top:
   - Increment "Done" count, decrement "Pending" count
   - Update the phase row in the Task Summary table
@@ -74,7 +74,7 @@ npm run test 2>&1 | tail -80
 ### 5b. Update `{{FINDINGS_FILE}}` (only if a matching finding exists)
 - Find the matching finding by ID in the findings file
 - If a matching finding exists:
-  - Change its status from open (🟠/🟡/🟢) to `✅ Fixed`
+  - Change its status from `Open` (or 🟠/🟡/🟢) to `✅ Fixed`
   - Update the summary tables at the top
 - If no matching finding exists, skip this step
 
@@ -89,7 +89,7 @@ Create a single conventional commit for all changes:
 ## Step 7: Update Pointer
 
 Write the NEXT pending task ID to `{{POINTER_FILE}}`.
-- Look at `{{TASKS_FILE}}` to find the next task that is still `◻ Pending` (after your current task).
+- Look at `{{TASKS_FILE}}` to find the next task that is still `Pending` (after your current task).
 - If there are more pending tasks in the current phase, write the next one.
 - If the current phase is complete but more phases have pending tasks, write the first pending task of the next phase.
 - If ALL tasks are complete, write `DONE`.

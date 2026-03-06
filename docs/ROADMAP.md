@@ -1,8 +1,8 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-05 | **Current Version:** v0.0.12
-> **Current Focus:** Phase 97 data integrity fixes (18 tasks), then Sprint 5 (v0.0.13) + Sprint 6 (v0.0.14).
-> **24 open findings** — 7 data integrity (OB-F89–F95) + 10 community-inspired (OB-F79–F88) + 7 skill/agent patterns (OB-F96–F102). See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
+> **Last Updated:** 2026-03-06 | **Current Version:** v0.0.12
+> **Current Focus:** Sprint 5 + Sprint 6 — 176 tasks loaded in TASKS.md (OB-1618–OB-1793) for automated execution. Sprint 5 (126 tasks: Phases 93, 95, 96d, 99, 94, 96a-c) + Sprint 6 (50 tasks: Phases 98, 100, 101).
+> **18 open findings** — all have tasks assigned. See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -10,141 +10,136 @@ This document outlines what has shipped and the vision for future development. F
 
 ## Released (v0.0.1 — v0.0.12)
 
-Everything that shipped — 1045 tasks across 104+ phases.
+Everything that shipped — 1063 tasks across 104+ phases + Phase 97.
 
-| Feature                                                                                                                         | Phase   | Version | Status       |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | ------------ |
-| Bridge Core (router, auth, queue, config)                                                                                       | 1–5     | v0.0.1  | Shipped      |
-| WhatsApp + Console connectors                                                                                                   | 1–5     | v0.0.1  | Shipped      |
-| Claude Code provider                                                                                                            | 1–5     | v0.0.1  | Shipped      |
-| AI tool auto-discovery                                                                                                          | 6–10    | v0.0.1  | Shipped      |
-| Incremental workspace exploration (5-pass)                                                                                      | 11–14   | v0.0.1  | Shipped      |
-| MVP release                                                                                                                     | 15      | v0.0.1  | Shipped      |
-| Agent Runner (--allowedTools, --max-turns, --model, retries)                                                                    | 16–18   | v0.0.1  | Shipped      |
-| Self-governing Master AI                                                                                                        | 18–21   | v0.0.1  | Shipped      |
-| Tool profiles (read-only, code-edit, code-audit, full-access, master)                                                           | 16–17   | v0.0.1  | Shipped      |
-| Worker orchestration + SPAWN markers                                                                                            | 19–21   | v0.0.1  | Shipped      |
-| Self-improvement (prompt tracking, model selection learning)                                                                    | 20–21   | v0.0.1  | Shipped      |
-| WebChat, Telegram, Discord connectors                                                                                           | 22–24   | v0.0.1  | Shipped      |
-| AI-powered intent classification                                                                                                | 29      | v0.0.1  | Shipped      |
-| Live progress events across all connectors                                                                                      | 29      | v0.0.1  | Shipped      |
-| Production hardening + v0.0.1 tag                                                                                               | 30      | v0.0.1  | Shipped      |
-| Memory wiring (MemoryManager integration across all modules)                                                                    | 40      | v0.0.1  | Shipped      |
-| Memory & startup fixes (race condition, prompt guards)                                                                          | 41      | v0.0.1  | Shipped      |
-| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                                                                        | 42      | v0.0.1  | Shipped      |
-| Exploration reliability & change detection (throttling, markers)                                                                | 43      | v0.0.1  | Shipped      |
-| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)                                                             | 44      | v0.0.1  | Shipped      |
-| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)                                                   | 47      | v0.0.2  | Shipped      |
-| Worker resilience: max-turns detection, adaptive budgets, failure recovery                                                      | 48      | v0.0.2  | Shipped      |
-| Worker control: stop/stop-all commands, PID capture, WebChat buttons                                                            | 46      | v0.0.2  | Shipped      |
-| Responsive Master: priority queue, fast-path responder, queue depth visibility                                                  | 49      | v0.0.2  | Shipped      |
-| Prompt library (7 methods on DotFolderManager) + audit logger JSONL output                                                      | 51      | v0.0.3  | Shipped      |
-| Conversation continuity — memory.md cross-session pattern (read/write/inject)                                                   | 52      | v0.0.3  | Shipped      |
-| Conversation history — /history command, listSessions, searchSessions, REST                                                     | 53      | v0.0.3  | Shipped      |
-| Schema versioning — schema_versions table + transactional migrations                                                            | 54      | v0.0.3  | Shipped      |
-| Worker streaming progress + session checkpointing/resume + priority queue                                                       | 55      | v0.0.3  | Shipped      |
-| Documentation update (Phases 51–55)                                                                                             | 56      | v0.0.3  | Shipped      |
-| Codex adapter fixes: --skip-git-repo-check, sandbox, OPENAI_API_KEY, --json, -o                                                 | 57      | v0.0.4  | Shipped      |
-| Codex provider: CodexProvider, CodexConfig, session manager, provider registry                                                  | 58      | v0.0.4  | Shipped      |
-| Codex documentation: ARCHITECTURE, API_REFERENCE, CONFIGURATION, TROUBLESHOOTING, WRITING_A_PROVIDER                            | 59      | v0.0.4  | Shipped      |
-| MCP core pipeline: MCPServerSchema, SpawnOptions, TaskManifest, per-worker isolation, ClaudeAdapter flags, global config writer | 60      | v0.0.4  | Shipped      |
-| MCP UX polish: health checks, config.example.json, CLI init MCP step                                                            | 61      | v0.0.4  | Shipped      |
-| MCP documentation: ARCHITECTURE, CONFIGURATION, API_REFERENCE, CLAUDE.md, CHANGELOG, ROADMAP                                    | 62      | v0.0.4  | Shipped      |
-| FTS5 query sanitization (OB-F38)                                                                                                | 63      | v0.0.5  | Shipped      |
-| memory.md context injection (OB-F39)                                                                                            | 64      | v0.0.5  | Shipped      |
-| Graceful shutdown with 10s timeout (OB-F40)                                                                                     | 65      | v0.0.5  | Shipped      |
-| v0.0.5 documentation                                                                                                            | 66      | v0.0.5  | Shipped      |
-| WhatsApp/Telegram media handling + MCP dashboard fixes                                                                          | 67      | v0.0.6  | Shipped      |
-| Telegram/Discord message-too-long + live context fixes                                                                          | 68–69   | v0.0.7  | Shipped      |
-| Voice transcription API fallback — OpenAI Whisper API + local CLI + prerequisites docs (OB-F46)                                 | 70      | v0.0.8  | Shipped      |
-| Enhanced Setup Wizard CLI — OS detection, AI tool installer, API key walkthrough, health check (OB-F47 Phase 1)                 | 71      | v0.0.8  | Shipped      |
-| Standalone Binary Packaging — pkg cross-platform binaries, NSIS/create-dmg installers, auto-update (OB-F47 Phase 2)             | 72      | v0.0.8  | Scaffolded\* |
-| Electron Desktop App — React GUI, setup wizard, live dashboard, settings, system tray, native installers (OB-F47 Phase 3)       | 73      | v0.0.8  | Scaffolded\* |
-| Classification + SPAWN response fixes, code-audit profile (OB-F57, F76–F78)                                                     | 78a–78b | v0.0.9  | Shipped      |
-| Exploration bug fixes — 8 bugs (OB-F58–F65)                                                                                     | 79      | v0.0.9  | Shipped      |
-| .openbridge data cleanup (OB-F66, F67)                                                                                          | 80      | v0.0.9  | Shipped      |
-| RAG knowledge retrieval — FTS5 queries, workspace map, dir-dive, Q&A cache (OB-F48)                                             | 74–77   | v0.0.10 | Shipped      |
-| Environment variable protection — deny-list, allow-list, per-adapter sanitization (OB-F70)                                      | 85      | v0.0.10 | Shipped      |
-| Master output sharing — [SHARE:*] markers, file-server URL, routing guidelines (OB-F68)                                         | 81      | v0.0.11 | Shipped      |
-| User consent & execution transparency — risk classification, confirmation, cost estimation (OB-F71)                             | 86      | v0.0.11 | Shipped      |
-| Real-world testing fixes — Codex streaming, RAG zero results, tool compatibility, classifier (OB-F89–F92)                       | RWT     | v0.0.12 | Shipped      |
-| Deep Mode — 5-phase state machine, interactive commands, phase-aware workers (OB-F56)                                           | Deep    | v0.0.12 | Shipped      |
-| Tunnel integration — cloudflared/ngrok auto-detect, public URLs (OB-F69)                                                        | 82      | v0.0.12 | Shipped      |
-| Ephemeral app server — scaffold detection, port allocation, idle timeout (OB-F69)                                               | 83      | v0.0.12 | Shipped      |
-| Interaction relay — WebSocket bidirectional app↔Master communication (OB-F69)                                                   | 84      | v0.0.12 | Shipped      |
-| Document visibility controls — include/exclude, secret scanner, content redactor (OB-F72)                                       | 87      | v0.0.12 | Shipped      |
-| WebChat frontend extraction — modular JS/CSS, dark mode, markdown, syntax highlight (OB-F74)                                    | 88      | v0.0.12 | Shipped      |
-| WebChat authentication — token/password auth, sessions, rate limiting (OB-F73)                                                  | 89      | v0.0.12 | Shipped      |
-| Phone access + mobile PWA — LAN/tunnel, QR codes, responsive, service worker (OB-F75)                                           | 90      | v0.0.12 | Shipped      |
-| Conversation history + rich input — sidebar, file upload, voice, autocomplete (OB-F74)                                          | 91      | v0.0.12 | Shipped      |
-| Settings panel + Deep Mode UI — gear panel, stepper, phase cards, MCP restore (OB-F74)                                          | 92      | v0.0.12 | Shipped      |
-| Runtime permission escalation — escalation queue, /allow, /deny, persistent grants (OB-F93)                                     | 97      | v0.0.12 | Shipped      |
-| Batch task continuation — self-messaging loop, state machine, safety rails (OB-F94)                                             | 98      | v0.0.12 | Shipped      |
-| Docker sandbox — container isolation, resource limits, cleanup (OB-193)                                                         | Docker  | v0.0.12 | Shipped      |
-| Escalation queue & orphan fixes — multi-worker queue, watchdog, /workers (OB-F95–F97, F103)                                     | 99      | v0.0.12 | Shipped      |
-| Classification & RAG fixes — strategic keywords, FTS5 fix, menu-selection, SPAWN summary (OB-F98–F100, F102)                    | 100     | v0.0.12 | Shipped      |
-| Batch & shutdown safety — timer cleanup, .catch handlers, sender persistence (OB-F108–F114)                                     | 101     | v0.0.12 | Shipped      |
-| Worker & cost controls — per-profile cost caps, partial status, adaptive maxTurns (OB-F101, F104)                               | 102     | v0.0.12 | Shipped      |
-| Docker & startup polish — log consolidation, whitelist diagnostics, .env.example fix (OB-F105–F111)                             | 103     | v0.0.12 | Shipped      |
-| Test suite fixes — stale mock updates for batch continuation (OB-F113)                                                          | 104     | v0.0.12 | Shipped      |
+| Feature                                                                                                                         | Phase   | Version  | Status       |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ------------ |
+| Bridge Core (router, auth, queue, config)                                                                                       | 1–5     | v0.0.1   | Shipped      |
+| WhatsApp + Console connectors                                                                                                   | 1–5     | v0.0.1   | Shipped      |
+| Claude Code provider                                                                                                            | 1–5     | v0.0.1   | Shipped      |
+| AI tool auto-discovery                                                                                                          | 6–10    | v0.0.1   | Shipped      |
+| Incremental workspace exploration (5-pass)                                                                                      | 11–14   | v0.0.1   | Shipped      |
+| MVP release                                                                                                                     | 15      | v0.0.1   | Shipped      |
+| Agent Runner (--allowedTools, --max-turns, --model, retries)                                                                    | 16–18   | v0.0.1   | Shipped      |
+| Self-governing Master AI                                                                                                        | 18–21   | v0.0.1   | Shipped      |
+| Tool profiles (read-only, code-edit, code-audit, full-access, master)                                                           | 16–17   | v0.0.1   | Shipped      |
+| Worker orchestration + SPAWN markers                                                                                            | 19–21   | v0.0.1   | Shipped      |
+| Self-improvement (prompt tracking, model selection learning)                                                                    | 20–21   | v0.0.1   | Shipped      |
+| WebChat, Telegram, Discord connectors                                                                                           | 22–24   | v0.0.1   | Shipped      |
+| AI-powered intent classification                                                                                                | 29      | v0.0.1   | Shipped      |
+| Live progress events across all connectors                                                                                      | 29      | v0.0.1   | Shipped      |
+| Production hardening + v0.0.1 tag                                                                                               | 30      | v0.0.1   | Shipped      |
+| Memory wiring (MemoryManager integration across all modules)                                                                    | 40      | v0.0.1   | Shipped      |
+| Memory & startup fixes (race condition, prompt guards)                                                                          | 41      | v0.0.1   | Shipped      |
+| Exploration pipeline fixes (JSON fallbacks, chunk dedup)                                                                        | 42      | v0.0.1   | Shipped      |
+| Exploration reliability & change detection (throttling, markers)                                                                | 43      | v0.0.1   | Shipped      |
+| Schema cleanup & integration tests (WAL checkpoint, legacy cleanup)                                                             | 44      | v0.0.1   | Shipped      |
+| Exploration progress tracking fix (explorationId wired, all 5 phases tracked)                                                   | 47      | v0.0.2   | Shipped      |
+| Worker resilience: max-turns detection, adaptive budgets, failure recovery                                                      | 48      | v0.0.2   | Shipped      |
+| Worker control: stop/stop-all commands, PID capture, WebChat buttons                                                            | 46      | v0.0.2   | Shipped      |
+| Responsive Master: priority queue, fast-path responder, queue depth visibility                                                  | 49      | v0.0.2   | Shipped      |
+| Prompt library (7 methods on DotFolderManager) + audit logger JSONL output                                                      | 51      | v0.0.3   | Shipped      |
+| Conversation continuity — memory.md cross-session pattern (read/write/inject)                                                   | 52      | v0.0.3   | Shipped      |
+| Conversation history — /history command, listSessions, searchSessions, REST                                                     | 53      | v0.0.3   | Shipped      |
+| Schema versioning — schema_versions table + transactional migrations                                                            | 54      | v0.0.3   | Shipped      |
+| Worker streaming progress + session checkpointing/resume + priority queue                                                       | 55      | v0.0.3   | Shipped      |
+| Documentation update (Phases 51–55)                                                                                             | 56      | v0.0.3   | Shipped      |
+| Codex adapter fixes: --skip-git-repo-check, sandbox, OPENAI_API_KEY, --json, -o                                                 | 57      | v0.0.4   | Shipped      |
+| Codex provider: CodexProvider, CodexConfig, session manager, provider registry                                                  | 58      | v0.0.4   | Shipped      |
+| Codex documentation: ARCHITECTURE, API_REFERENCE, CONFIGURATION, TROUBLESHOOTING, WRITING_A_PROVIDER                            | 59      | v0.0.4   | Shipped      |
+| MCP core pipeline: MCPServerSchema, SpawnOptions, TaskManifest, per-worker isolation, ClaudeAdapter flags, global config writer | 60      | v0.0.4   | Shipped      |
+| MCP UX polish: health checks, config.example.json, CLI init MCP step                                                            | 61      | v0.0.4   | Shipped      |
+| MCP documentation: ARCHITECTURE, CONFIGURATION, API_REFERENCE, CLAUDE.md, CHANGELOG, ROADMAP                                    | 62      | v0.0.4   | Shipped      |
+| FTS5 query sanitization (OB-F38)                                                                                                | 63      | v0.0.5   | Shipped      |
+| memory.md context injection (OB-F39)                                                                                            | 64      | v0.0.5   | Shipped      |
+| Graceful shutdown with 10s timeout (OB-F40)                                                                                     | 65      | v0.0.5   | Shipped      |
+| v0.0.5 documentation                                                                                                            | 66      | v0.0.5   | Shipped      |
+| WhatsApp/Telegram media handling + MCP dashboard fixes                                                                          | 67      | v0.0.6   | Shipped      |
+| Telegram/Discord message-too-long + live context fixes                                                                          | 68–69   | v0.0.7   | Shipped      |
+| Voice transcription API fallback — OpenAI Whisper API + local CLI + prerequisites docs (OB-F46)                                 | 70      | v0.0.8   | Shipped      |
+| Enhanced Setup Wizard CLI — OS detection, AI tool installer, API key walkthrough, health check (OB-F47 Phase 1)                 | 71      | v0.0.8   | Shipped      |
+| Standalone Binary Packaging — pkg cross-platform binaries, NSIS/create-dmg installers, auto-update (OB-F47 Phase 2)             | 72      | v0.0.8   | Scaffolded\* |
+| Electron Desktop App — React GUI, setup wizard, live dashboard, settings, system tray, native installers (OB-F47 Phase 3)       | 73      | v0.0.8   | Scaffolded\* |
+| Classification + SPAWN response fixes, code-audit profile (OB-F57, F76–F78)                                                     | 78a–78b | v0.0.9   | Shipped      |
+| Exploration bug fixes — 8 bugs (OB-F58–F65)                                                                                     | 79      | v0.0.9   | Shipped      |
+| .openbridge data cleanup (OB-F66, F67)                                                                                          | 80      | v0.0.9   | Shipped      |
+| RAG knowledge retrieval — FTS5 queries, workspace map, dir-dive, Q&A cache (OB-F48)                                             | 74–77   | v0.0.10  | Shipped      |
+| Environment variable protection — deny-list, allow-list, per-adapter sanitization (OB-F70)                                      | 85      | v0.0.10  | Shipped      |
+| Master output sharing — [SHARE:*] markers, file-server URL, routing guidelines (OB-F68)                                         | 81      | v0.0.11  | Shipped      |
+| User consent & execution transparency — risk classification, confirmation, cost estimation (OB-F71)                             | 86      | v0.0.11  | Shipped      |
+| Real-world testing fixes — Codex streaming, RAG zero results, tool compatibility, classifier (OB-F89–F92)                       | RWT     | v0.0.12  | Shipped      |
+| Deep Mode — 5-phase state machine, interactive commands, phase-aware workers (OB-F56)                                           | Deep    | v0.0.12  | Shipped      |
+| Tunnel integration — cloudflared/ngrok auto-detect, public URLs (OB-F69)                                                        | 82      | v0.0.12  | Shipped      |
+| Ephemeral app server — scaffold detection, port allocation, idle timeout (OB-F69)                                               | 83      | v0.0.12  | Shipped      |
+| Interaction relay — WebSocket bidirectional app↔Master communication (OB-F69)                                                   | 84      | v0.0.12  | Shipped      |
+| Document visibility controls — include/exclude, secret scanner, content redactor (OB-F72)                                       | 87      | v0.0.12  | Shipped      |
+| WebChat frontend extraction — modular JS/CSS, dark mode, markdown, syntax highlight (OB-F74)                                    | 88      | v0.0.12  | Shipped      |
+| WebChat authentication — token/password auth, sessions, rate limiting (OB-F73)                                                  | 89      | v0.0.12  | Shipped      |
+| Phone access + mobile PWA — LAN/tunnel, QR codes, responsive, service worker (OB-F75)                                           | 90      | v0.0.12  | Shipped      |
+| Conversation history + rich input — sidebar, file upload, voice, autocomplete (OB-F74)                                          | 91      | v0.0.12  | Shipped      |
+| Settings panel + Deep Mode UI — gear panel, stepper, phase cards, MCP restore (OB-F74)                                          | 92      | v0.0.12  | Shipped      |
+| Runtime permission escalation — escalation queue, /allow, /deny, persistent grants (OB-F93)                                     | 97      | v0.0.12  | Shipped      |
+| Batch task continuation — self-messaging loop, state machine, safety rails (OB-F94)                                             | 98      | v0.0.12  | Shipped      |
+| Docker sandbox — container isolation, resource limits, cleanup (OB-193)                                                         | Docker  | v0.0.12  | Shipped      |
+| Escalation queue & orphan fixes — multi-worker queue, watchdog, /workers (OB-F95–F97, F103)                                     | 99      | v0.0.12  | Shipped      |
+| Classification & RAG fixes — strategic keywords, FTS5 fix, menu-selection, SPAWN summary (OB-F98–F100, F102)                    | 100     | v0.0.12  | Shipped      |
+| Batch & shutdown safety — timer cleanup, .catch handlers, sender persistence (OB-F108–F114)                                     | 101     | v0.0.12  | Shipped      |
+| Worker & cost controls — per-profile cost caps, partial status, adaptive maxTurns (OB-F101, F104)                               | 102     | v0.0.12  | Shipped      |
+| Docker & startup polish — log consolidation, whitelist diagnostics, .env.example fix (OB-F105–F111)                             | 103     | v0.0.12  | Shipped      |
+| Test suite fixes — stale mock updates for batch continuation (OB-F113)                                                          | 104     | v0.0.12  | Shipped      |
+| Data integrity fixes — audit log, QA cache, sessions, turns, prompts, sub-masters, memory.md (OB-F89–F95)                       | 97      | pre-0.13 | Shipped      |
 
-> \* **Phases 72–73 are scaffolded but not yet functional.** See [FUTURE.md — Deferred](docs/audit/FUTURE.md) for details.
-
----
-
-## Next: Phase 97 — Data Integrity Fixes (pre-v0.0.13)
-
-7 broken data pipelines discovered by auditing `.openbridge/openbridge.db`. Features are built but have wiring gaps.
-
-| Finding | Issue                               | Severity  | Tasks |
-| ------- | ----------------------------------- | --------- | ----- |
-| OB-F91  | Sessions never close                | 🟠 High   | 3     |
-| OB-F92  | Learnings turns always 0            | 🟠 High   | 3     |
-| OB-F90  | QA cache write path missing         | 🟠 High   | 3     |
-| OB-F95  | memory.md goes stale                | 🟠 High   | 3     |
-| OB-F93  | Prompt evolution never activates    | 🟡 Medium | 2     |
-| OB-F89  | Audit log disabled by default       | 🟡 Medium | 2     |
-| OB-F94  | Sub-master detection never triggers | 🟡 Medium | 2     |
-
-**18 tasks total.** All surgical fixes to existing code. See [docs/audit/TASKS.md](docs/audit/TASKS.md) for details.
+> \* **Phases 72–73 are scaffolded but not yet functional.** Desktop apps (Windows/macOS/App Store) remain a separate effort, deferred post-v0.0.14. See [FUTURE.md — Deferred](docs/audit/FUTURE.md) for details.
 
 ---
 
-## After Phase 97: Community-Inspired Improvements (v0.0.13)
+## Current: Sprint 5 — Smarter AI + Business Output (v0.0.13)
 
-**With data pipelines fixed**, OpenBridge levels up by adopting battle-tested patterns from the open-source community:
+**With Phase 97 data pipelines fixed (18 tasks, 7 findings)**, OpenBridge levels up with smarter memory, session management, role fixes, and document generation for business users:
 
-- **[openclaw/openclaw](https://github.com/openclaw/openclaw)** (242K stars) — Personal AI assistant with vector memory, 13+ channels, 60+ skills, session compaction, DM pairing, doctor command
-- **[thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)** (32K stars) — Memory compression plugin with structured observations, progressive disclosure, token economics, content-hash dedup
+- **[openclaw/openclaw](https://github.com/openclaw/openclaw)** (242K stars) — Session compaction, vector memory, doctor command, DM pairing, 60+ skills
+- **[thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)** (32K stars) — Structured observations, progressive disclosure, token economics, content-hash dedup
+- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Document generation skills (DOCX, PDF, PPTX, XLSX)
 
-| Phase     | Focus                                      | Findings               | Est. Tasks  |
-| --------- | ------------------------------------------ | ---------------------- | ----------- |
-| 93        | Structured Observations & Worker Summaries | OB-F80, OB-F82, OB-F88 | ~20–22      |
-| 94        | Vector Search & Hybrid Retrieval           | OB-F79, OB-F81         | ~18–20      |
-| 95        | Session Compaction & Token Economics       | OB-F83, OB-F84         | ~16–18      |
-| 96        | Doctor + Pairing + Skills                  | OB-F85, OB-F86, OB-F87 | ~28–32      |
-| **Total** |                                            | **10 findings**        | **~95–110** |
+### Core Phases (guaranteed delivery)
 
-See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
+| Phase     | Focus                                      | Findings               | Tasks  |
+| --------- | ------------------------------------------ | ---------------------- | ------ |
+| 93        | Structured Observations & Worker Summaries | OB-F80, OB-F82, OB-F88 | 27     |
+| 95        | Session Compaction & Token Economics       | OB-F83, OB-F84         | 18     |
+| 96d       | Channel Role Management UX                 | OB-F103                | 12     |
+| 99        | Document Generation Skills                 | OB-F98                 | 18     |
+| **Total** |                                            | **7 findings**         | **75** |
+
+### Stretch Phases (if time allows)
+
+| Phase     | Focus                            | Findings       | Tasks  |
+| --------- | -------------------------------- | -------------- | ------ |
+| 94        | Vector Search & Hybrid Retrieval | OB-F79, OB-F81 | 21     |
+| 96a       | `openbridge doctor`              | OB-F85         | 10     |
+| 96b       | Pairing-Based Auth               | OB-F86         | 10     |
+| 96c       | Skills Directory                 | OB-F87         | 10     |
+| **Total** |                                  | **5 findings** | **51** |
+
+See [docs/audit/TASKS.md](docs/audit/TASKS.md) for detailed task breakdowns.
 
 ---
 
-## After v0.0.13: Skill System, Business Output & Agent Patterns (v0.0.14)
+## After v0.0.13: Skill System, Creative Output & Agent Patterns (v0.0.14)
 
-**OpenBridge serves any user** — not just developers. Business owners, marketers, analysts, and designers need documents, presentations, visual assets, and reports from their AI assistant. v0.0.14 delivers this by adopting patterns from the broader AI ecosystem.
+**OpenBridge serves any user** — not just developers. v0.0.14 extends the skill pack system from Phase 99, adds creative/visual output, and adopts agent orchestration patterns from leading AI tools.
 
 **Inspired by:**
 
-- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Claude Skills ecosystem with document (docx/pdf/pptx/xlsx), design (algorithmic-art, canvas-design, D3.js), and security skills
+- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Security, design, testing, data analysis skill packs
 - **[x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools)** — 30+ AI tool architectures (Manus, Devin, Cursor) revealing production-grade agent patterns
 
-| Phase     | Focus                           | Findings                          | Est. Tasks  |
-| --------- | ------------------------------- | --------------------------------- | ----------- |
-| 98        | Skill Pack System               | OB-F96                            | ~18–22      |
-| 99        | Document Generation Skills      | OB-F98                            | ~16–20      |
-| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18      |
-| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22      |
-| **Total** |                                 | **7 findings**                    | **~85–105** |
+| Phase     | Focus                           | Findings                          | Est. Tasks |
+| --------- | ------------------------------- | --------------------------------- | ---------- |
+| 98        | Skill Pack System Extensions    | OB-F96                            | ~18–22     |
+| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18     |
+| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22     |
+| **Total** |                                 | **6 findings**                    | **~70–85** |
 
 See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
 
@@ -200,56 +195,54 @@ All future features beyond the skill/agent pattern track are tracked in [docs/au
                         ├──► ✅ Sprint 3 (v0.0.11): Phases 81 + 86
                         └──► ✅ Sprint 4 (v0.0.12): Phases RWT, Deep, 82–104, Docker
                                   │
-                                  │  ── Community-Inspired Improvements ──
-                                  │  (openclaw + claude-mem patterns)
+                                  ├──► ✅ Phase 97: Data Integrity Fixes (18 tasks, 7 findings)
                                   │
-                                  ├──► ⬜ Phase 97: Data Integrity Fixes (18 tasks)
-                                  │    ├── OB-F91: Session lifecycle
-                                  │    ├── OB-F92: Turns tracking
-                                  │    ├── OB-F90: QA cache writes
-                                  │    ├── OB-F95: memory.md reliability
-                                  │    ├── OB-F93: Prompt evolution
-                                  │    ├── OB-F89: Audit logging
-                                  │    └── OB-F94: Sub-master detection
+                                  │  ── Sprint 5: Smarter AI + Business Output ──
                                   │
-                                  └──► ⬜ Sprint 5 (v0.0.13): Phases 93–96
-                                       ├── Phase 93: Structured Observations + Worker Summaries + Chunk Dedup
-                                       ├── Phase 94: Vector Search + Hybrid Retrieval + Progressive Disclosure
-                                       ├── Phase 95: Session Compaction + Token Economics
-                                       └── Phase 96: Doctor + Pairing + Skills
+                                  └──► ⬜ Sprint 5 (v0.0.13): Core + Stretch
+                                       │
+                                       │  CORE (75 tasks, 7 findings):
+                                       ├── Phase 93: Structured Observations + Worker Summaries + Chunk Dedup (1st)
+                                       ├── Phase 95: Session Compaction + Token Economics (2nd, parallel)
+                                       ├── Phase 96d: Channel Role Management UX (2nd, parallel)
+                                       └── Phase 99: Document Generation Skills (3rd, after 93)
+                                       │
+                                       │  STRETCH (51 tasks, 5 findings):
+                                       ├── Phase 94: Vector Search + Hybrid Retrieval (after 93)
+                                       ├── Phase 96a: openbridge doctor (independent)
+                                       ├── Phase 96b: Pairing-Based Auth (independent)
+                                       └── Phase 96c: Skills Directory (independent)
                                             │
-                                            │  ── Skill System & Business Output ──
-                                            │  (awesome-claude-skills + AI tool architectures)
+                                            │  ── Sprint 6: Skill System + Creative + Orchestration ──
                                             │
-                                            └──► ⬜ Sprint 6 (v0.0.14): Phases 98–101
-                                                 ├── Phase 98: Skill Pack System (reusable domain knowledge)
-                                                 ├── Phase 99: Document Generation (DOCX, PDF, PPTX, XLSX)
-                                                 ├── Phase 100: Design & Creative Output (diagrams, charts, art, visuals)
-                                                 └── Phase 101: Agent Orchestration (planning gate, swarms, test protection, fix caps)
+                                            └──► ⬜ Sprint 6 (v0.0.14): Phases 98, 100–101
+                                                 ├── Phase 98: Skill Pack System Extensions
+                                                 ├── Phase 100: Design & Creative Output Skills
+                                                 └── Phase 101: Agent Orchestration Patterns
 ```
 
 ---
 
 ## Version Milestones
 
-| Version     | Status  | Key Features                                                                           | Tasks   |
-| ----------- | ------- | -------------------------------------------------------------------------------------- | ------- |
-| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system          | 310     |
-| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master             | 42      |
-| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing        | 50      |
-| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)            | 41      |
-| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                      | 21      |
-| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                           | 14      |
-| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                 | 18      |
-| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app  | 95      |
-| **v0.0.9**  | Done    | Classification fixes, code-audit profile, exploration bugs, data cleanup               | 34      |
-| **v0.0.10** | Done    | RAG knowledge retrieval, env var protection                                            | 43      |
-| **v0.0.11** | Done    | Master output sharing, user consent                                                    | 20      |
-| **v0.0.12** | Done    | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                   | 281     |
-| **v0.0.13** | Planned | Structured observations, vector search, session compaction, doctor/pairing/skills      | ~95–110 |
-| **v0.0.14** | Planned | Skill packs, document generation, design/creative output, agent orchestration patterns | ~85–105 |
+| Version     | Status  | Key Features                                                                          | Tasks  |
+| ----------- | ------- | ------------------------------------------------------------------------------------- | ------ |
+| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310    |
+| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master            | 42     |
+| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50     |
+| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41     |
+| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21     |
+| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14     |
+| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                | 18     |
+| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95     |
+| **v0.0.9**  | Done    | Classification fixes, code-audit profile, exploration bugs, data cleanup              | 34     |
+| **v0.0.10** | Done    | RAG knowledge retrieval, env var protection                                           | 43     |
+| **v0.0.11** | Done    | Master output sharing, user consent                                                   | 20     |
+| **v0.0.12** | Done    | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                  | 281    |
+| **v0.0.13** | Planned | Structured observations, session compaction, role UX, document generation             | 75–126 |
+| **v0.0.14** | Planned | Skill pack extensions, design/creative output, agent orchestration patterns           | ~70–85 |
 
-**Total shipped: 1045 tasks across 104+ phases. Planned: 18 tasks (Phase 97) + ~95–110 tasks (v0.0.13) + ~85–105 tasks (v0.0.14).**
+**Total shipped: 1063 tasks across 104+ phases. Planned: 75–126 tasks (v0.0.13) + ~70–85 tasks (v0.0.14).**
 
 ---
 

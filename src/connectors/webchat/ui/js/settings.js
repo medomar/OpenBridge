@@ -66,13 +66,20 @@ function applyTheme(theme) {
   if (_onThemeChange) _onThemeChange(theme);
 }
 
-function loadDiscoveredTools() {
+function loadDiscoveredTools(retryCount) {
   const select = document.getElementById('settings-tool-select');
   if (!select) return;
+  const attempt = retryCount || 0;
   fetch('/api/discovery')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !Array.isArray(data.tools)) return;
+      // If no tools yet and we haven't retried too many times, retry after a delay
+      // (tools may not be wired yet during startup)
+      if (data.tools.length === 0 && attempt < 3) {
+        setTimeout(function () { loadDiscoveredTools(attempt + 1); }, 2000);
+        return;
+      }
       // Clear existing options except the first placeholder
       while (select.options.length > 1) {
         select.remove(1);
@@ -88,7 +95,10 @@ function loadDiscoveredTools() {
       if (saved) select.value = saved;
     })
     .catch(function () {
-      // Discovery API unavailable — silently skip, keep placeholder
+      // Discovery API unavailable — retry after a delay if early in startup
+      if (attempt < 3) {
+        setTimeout(function () { loadDiscoveredTools(attempt + 1); }, 2000);
+      }
     });
 }
 
