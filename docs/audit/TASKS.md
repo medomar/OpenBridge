@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 115 | **In Progress:** 0 | **Done:** 61 (1063 archived)
+> **Pending:** 114 | **In Progress:** 0 | **Done:** 62 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -181,7 +181,7 @@
 | OB-1727 | Create `document-writer` skill pack — Word/DOCX generation prompts, structure templates, formatting rules                           | `src/master/skill-packs/document-writer.ts` (new)     | ✅ Done |
 | OB-1728 | Create `presentation-maker` skill pack — PPTX generation prompts, slide layouts, design principles                                  | `src/master/skill-packs/presentation-maker.ts` (new)  | ✅ Done |
 | OB-1729 | Create `spreadsheet-builder` skill pack — XLSX generation prompts, formula patterns, chart generation                               | `src/master/skill-packs/spreadsheet-builder.ts` (new) | ✅ Done |
-| OB-1730 | Create `report-generator` skill pack — PDF/HTML report generation, data formatting, executive summary style                         | `src/master/skill-packs/report-generator.ts` (new)    | Pending |
+| OB-1730 | Create `report-generator` skill pack — PDF/HTML report generation, data formatting, executive summary style                         | `src/master/skill-packs/report-generator.ts` (new)    | ✅ Done |
 
 #### 99b — Document Generation Pipeline
 
