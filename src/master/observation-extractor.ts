@@ -254,24 +254,57 @@ export function extractFilesRead(output: string): string[] {
 // File Path Extraction — files_modified (OB-1627)
 // ---------------------------------------------------------------------------
 
-/** Lines that indicate a file was WRITTEN / MODIFIED / CREATED */
+/**
+ * Lines that indicate a file was WRITTEN / MODIFIED / CREATED.
+ * Covers base, past, progressive, and third-person forms so that
+ * "edit", "write", "create", "update", "delete", "remove" (and variants)
+ * are all matched regardless of tense.
+ */
 const WRITE_CONTEXT_RE =
-  /\b(edit(?:ed|ing)?|wrote?|writ(?:ten|ing)|creat(?:ed|ing)?|modif(?:ied|ying)?|updat(?:ed|ing)?|creat(?:ed|ing)?|delet(?:ed|ing)?|remov(?:ed|ing)?|overwr(?:ote|itten|iting))\b/i;
+  /\b(edit(?:s?|ed|ing)?|writ(?:e[s]?|ten|ing)|wrote?|creat(?:e[s]?|ed|ing)|modif(?:y|ie[sd]|ying)|updat(?:e[s]?|ed|ing)|delet(?:e[s]?|ed|ing)|remov(?:e[s]?|ed|ing)|overwr(?:ote|itten|iting))\b/i;
 
-/** Claude Code tool call patterns that indicate file modification */
-const TOOL_WRITE_RE = /(?:Edit|Write|NotebookEdit)\s*\(\s*["'`]?([./]?[\w./-]+\.\w+)["'`]?/g;
+/**
+ * Claude Code / SDK tool invocation patterns that indicate file modification.
+ * Matches: Edit(...), Write(...), NotebookEdit(...), MultiEdit(...)
+ */
+const TOOL_WRITE_RE =
+  /(?:Edit|Write|NotebookEdit|MultiEdit)\s*\(\s*["'`]?([./]?[\w./-]+\.\w+)["'`]?/g;
+
+/**
+ * Explicit executor output lines — highest confidence signal.
+ * Matches patterns emitted by Claude Code and shell tool wrappers, e.g.:
+ *   "Written to src/foo/bar.ts"
+ *   "Wrote to src/foo/bar.ts"
+ *   "Created file src/foo/bar.ts"
+ *   "Saved to src/foo/bar.ts"
+ *   "Overwrote src/foo/bar.ts"
+ *   "Edit applied to src/foo/bar.ts"
+ */
+const TOOL_WRITE_OUTPUT_RE =
+  /(?:written\s+to|wrote\s+to|created\s+file|saved\s+to|overwrote?|edit\s+applied\s+to)\s*:?\s+([./]?[\w./-]+\.\w+)/gi;
 
 /**
  * Extract file paths that appear in a write/edit/create context.
+ *
+ * Strategy (in order of confidence):
+ *  1. Tool invocation patterns: Edit(...), Write(...), NotebookEdit(...), MultiEdit(...)
+ *  2. Explicit executor output lines: "Written to src/...", "Saved to src/...", etc.
+ *  3. Lines containing write-context keywords + a recognisable file path
  */
 export function extractFilesModified(output: string): string[] {
   const paths = new Set<string>();
 
-  // Tool call patterns first (most reliable)
+  // 1. Tool invocation patterns (most reliable)
   for (const m of output.matchAll(TOOL_WRITE_RE)) {
     if (m[1] && hasKnownExtension(m[1])) paths.add(m[1]);
   }
 
+  // 2. Explicit executor output lines (also very reliable)
+  for (const m of output.matchAll(TOOL_WRITE_OUTPUT_RE)) {
+    if (m[1] && hasKnownExtension(m[1])) paths.add(m[1]);
+  }
+
+  // 3. Lines with write-context keywords + file path
   for (const line of output.split('\n')) {
     const allPaths = matchFilePaths(line);
     if (allPaths.length === 0) continue;
