@@ -3553,10 +3553,17 @@ export class MasterManager {
     const deepModeKeywords = [
       'audit',
       'deep analysis',
+      'deep analyse',
+      'deep analy',
       'thorough review',
       'security review',
       'full review',
+      'full analysis',
+      'full analyse',
       'investigate',
+      'root cause',
+      'in-depth',
+      'in depth',
     ];
     if (deepModeKeywords.some((kw) => lower.includes(kw))) {
       return {

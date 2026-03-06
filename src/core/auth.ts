@@ -184,8 +184,15 @@ export class AuthService {
     if (this.whitelist.size === 0) {
       return true; // No whitelist = open access
     }
-    if (this.whitelist.has(AuthService.normalizeId(sender))) {
+    const normalizedSender = AuthService.normalizeId(sender);
+    if (this.whitelist.has(normalizedSender)) {
       return true; // Whitelisted — always authorized
+    }
+    // Prefix match: "webchat-user" in whitelist matches "webchat-user-<uuid>"
+    for (const entry of this.whitelist) {
+      if (normalizedSender.startsWith(entry + '-') || normalizedSender.startsWith(entry + '_')) {
+        return true;
+      }
     }
     // Pairing is additive: a user approved via pairing has an active access_control entry.
     // Check the DB when pairing is enabled so paired users coexist with the whitelist.

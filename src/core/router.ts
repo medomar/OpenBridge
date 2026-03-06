@@ -880,7 +880,7 @@ export class Router {
    * Sends: "Worker {id} needs {tools} access for: {reason}. Reply '/allow {tool}' or
    * '/allow {profile}' to grant, '/deny' to reject."
    *
-   * Registers an auto-deny timeout (default 180s, configurable via `router.escalationTimeoutMs`) —
+   * Registers an auto-deny timeout (default 300s, configurable via `router.escalationTimeoutMs`) —
    * cleared when the user replies with /allow or /deny via the respective command handlers (OB-1586, OB-1587).
    */
   public async requestToolEscalation(
@@ -933,7 +933,7 @@ export class Router {
     const pendingCount = existingQueue.length + 1; // includes the escalation being added
 
     // Scale timeout: base + 60s per additional pending escalation beyond the first, capped at 600s
-    const baseTimeoutMs = this.routerConfig?.escalationTimeoutMs ?? 180_000;
+    const baseTimeoutMs = this.routerConfig?.escalationTimeoutMs ?? 300_000;
     const scaledTimeoutMs = Math.min(baseTimeoutMs + (pendingCount - 1) * 60_000, 600_000);
     const scaledTimeoutSec = Math.round(scaledTimeoutMs / 1000);
 
@@ -1946,7 +1946,20 @@ export class Router {
     while ((match = regex.exec(content)) !== null) {
       const fullMatch = match[0];
       const channel = match[1] ?? '';
-      const filePath = (match[2] ?? '').trim();
+      let filePath = (match[2] ?? '').trim();
+
+      // Master AI sometimes emits a JSON object instead of a plain path
+      // e.g. {"path":"/Users/.../file.pdf"} — extract the actual path string
+      if (filePath.startsWith('{') && filePath.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(filePath) as Record<string, unknown>;
+          if (typeof parsed['path'] === 'string') {
+            filePath = parsed['path'].trim();
+          }
+        } catch {
+          // Not valid JSON — fall through and use the raw value
+        }
+      }
 
       if (!channel || !filePath) {
         cleaned = cleaned.replace(fullMatch, '');
