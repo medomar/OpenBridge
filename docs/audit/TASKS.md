@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 53 | **In Progress:** 0 | **Done:** 123 (1063 archived)
+> **Pending:** 52 | **In Progress:** 0 | **Done:** 124 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -313,7 +313,7 @@
 | OB-1708 | Create built-in skill definition: `dependency-audit` — outdated packages, vulnerability scan, tool profile: read-only | `src/master/skills/dependency-audit.ts` (new)   | ✅ Done |
 | OB-1709 | Create built-in skill definition: `api-docs-generator` — endpoint extraction, OpenAPI gen, tool profile: code-edit    | `src/master/skills/api-docs-generator.ts` (new) | ✅ Done |
 | OB-1710 | Master reads available skills on startup, includes skill directory summary in system prompt                           | `src/master/master-system-prompt.ts`            | ✅ Done |
-| OB-1711 | Master auto-creates new skills from successful task patterns — track success rate, extract reusable prompt patterns   | `src/master/skill-manager.ts`                   | Pending |
+| OB-1711 | Master auto-creates new skills from successful task patterns — track success rate, extract reusable prompt patterns   | `src/master/skill-manager.ts`                   | ✅ Done |
 | OB-1712 | Add `/skills` chat command — list available skills with descriptions and usage counts                                 | `src/core/router.ts`                            | Pending |
 | OB-1713 | Tests: skill discovery from filesystem, SKILL.md parsing, system prompt injection, auto-creation from patterns        | `tests/master/skill-manager.test.ts` (new)      | Pending |
 
