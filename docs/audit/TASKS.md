@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 46 | **In Progress:** 0 | **Done:** 130 (1063 archived)
+> **Pending:** 45 | **In Progress:** 0 | **Done:** 131 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -337,7 +337,7 @@
 | OB-1745 | Define `SKILLPACK.md` format — name, when to use, tools needed, prompt extension, example tasks, constraints     | `src/master/skill-pack-loader.ts`                | ✅ Done |
 | OB-1746 | Built-in skill pack: `security-audit` — CodeQL/Semgrep patterns, vulnerability detection prompts                 | `src/master/skill-packs/security-audit.ts` (new) | ✅ Done |
 | OB-1747 | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts                     | `src/master/skill-packs/code-review.ts` (new)    | ✅ Done |
-| OB-1748 | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts               | `src/master/skill-packs/test-writer.ts` (new)    | Pending |
+| OB-1748 | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts               | `src/master/skill-packs/test-writer.ts` (new)    | ✅ Done |
 | OB-1749 | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts         | `src/master/skill-packs/data-analysis.ts` (new)  | Pending |
 | OB-1750 | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  | Pending |
 | OB-1751 | Master reads available skill packs on startup, includes summary in system prompt                                 | `src/master/master-system-prompt.ts`             | Pending |
