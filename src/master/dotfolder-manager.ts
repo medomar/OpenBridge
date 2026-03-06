@@ -33,7 +33,7 @@ import {
   PromptManifestSchema,
   PromptTemplateSchema,
 } from '../types/master.js';
-import type { ToolProfile, ProfilesRegistry, BatchState } from '../types/agent.js';
+import type { ToolProfile, ProfilesRegistry, BatchState, WorkerSummary } from '../types/agent.js';
 import { ToolProfileSchema, ProfilesRegistrySchema, BatchStateSchema } from '../types/agent.js';
 import type { WorkersRegistry } from './worker-registry.js';
 import { WorkersRegistrySchema } from './worker-registry.js';
@@ -957,6 +957,69 @@ export class DotFolderManager {
 
     const content = lines.join('\n');
     await this.writeMemoryFile(content);
+  }
+
+  /**
+   * Append `learned` items from worker summaries to the `## Worker Learnings` section
+   * of `memory.md`. New items are deduplicated against existing content using
+   * normalized substring matching. Respects the 200-line file limit.
+   *
+   * Called after every worker batch completes (OB-1636).
+   */
+  public async appendLearnedToMemory(workerSummaries: WorkerSummary[]): Promise<void> {
+    // Collect non-empty learned strings from the batch
+    const newLearned = workerSummaries.map((s) => s.learned.trim()).filter((l) => l.length > 0);
+
+    if (newLearned.length === 0) return;
+
+    // Read existing memory content (create minimal stub if missing)
+    const existing = (await this.readMemoryFile()) ?? '# Memory\n';
+
+    // Normalize a string for dedup comparison (lowercase, collapse whitespace)
+    const normalize = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+    const existingNorm = normalize(existing);
+
+    // Filter out entries already present in memory
+    const toAdd = newLearned.filter((item) => !existingNorm.includes(normalize(item)));
+
+    if (toAdd.length === 0) return;
+
+    const lines = existing.split('\n');
+
+    // Find or insert the "## Worker Learnings" section
+    const sectionHeader = '## Worker Learnings';
+    let sectionIdx = lines.findIndex((l) => l.trim() === sectionHeader);
+
+    if (sectionIdx === -1) {
+      // Append new section at end of file
+      if (lines[lines.length - 1] !== '') lines.push('');
+      lines.push(sectionHeader);
+      lines.push('');
+      sectionIdx = lines.length - 2;
+    }
+
+    // Find the insertion point: just after the section header (and any blank line)
+    let insertAt = sectionIdx + 1;
+    if (insertAt < lines.length && lines[insertAt] === '') insertAt++;
+
+    // Insert new bullet items at the top of the section
+    const now = new Date().toISOString().slice(0, 10);
+    const bullets = toAdd.map((item) => `- [${now}] ${item}`);
+    lines.splice(insertAt, 0, ...bullets);
+
+    // Enforce 200-line limit: trim the oldest items from the Worker Learnings section
+    if (lines.length > 200) {
+      const excess = lines.length - 200;
+      // Find the end of the Worker Learnings section
+      let endIdx = sectionIdx + 1;
+      while (endIdx < lines.length && !/^#{1,3}\s/.test(lines[endIdx]!)) endIdx++;
+      // Remove the oldest items (those furthest from the header) first
+      const removeFrom = Math.max(sectionIdx + 1, endIdx - excess);
+      lines.splice(removeFrom, excess);
+    }
+
+    await this.writeMemoryFile(lines.join('\n'));
   }
 
   // ── Dir-Dive Enumeration ───────────────────────────────────────

@@ -7117,7 +7117,7 @@ ${currentContent}
     logger.info(stats, 'Worker batch stats');
 
     // Format all results with structured metadata and build the feedback prompt
-    const { feedbackPrompt, observations } = formatWorkerBatch(
+    const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       settled,
       markers,
       workerIds,
@@ -7129,6 +7129,13 @@ ${currentContent}
       Promise.all(observations.map((obs) => this.memory!.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
       );
+    }
+
+    // Append learned items from worker summaries to memory.md (OB-1636)
+    if (workerSummaries.length > 0) {
+      this.dotFolder
+        .appendLearnedToMemory(workerSummaries)
+        .catch((err) => logger.warn({ err }, 'Failed to append learned items to memory.md'));
     }
 
     return feedbackPrompt;
@@ -7224,7 +7231,7 @@ ${currentContent}
     await this.persistWorkerRegistry();
 
     // Format all results and build the feedback prompt
-    const { feedbackPrompt, observations } = formatWorkerBatch(
+    const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       finalSettled,
       markers,
       workerIds,
@@ -7236,6 +7243,13 @@ ${currentContent}
       Promise.all(observations.map((obs) => this.memory!.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
       );
+    }
+
+    // Append learned items from worker summaries to memory.md (OB-1636)
+    if (workerSummaries.length > 0) {
+      this.dotFolder
+        .appendLearnedToMemory(workerSummaries)
+        .catch((err) => logger.warn({ err }, 'Failed to append learned items to memory.md'));
     }
 
     return feedbackPrompt;
