@@ -46,6 +46,13 @@ export interface Connector {
   /** Send a voice reply (TTS) to the given chat — connector converts text to audio (optional) */
   sendVoiceReply?(chatId: string, text: string): Promise<void>;
 
+  /**
+   * Set to true when the connector supports sending native file attachments
+   * via sendMessage() with a media field (e.g. WhatsApp, Telegram).
+   * Used by the router to also deliver [SHARE:FILE] outputs as direct attachments.
+   */
+  readonly supportsFileAttachments?: true;
+
   /** Register event listeners */
   on<E extends keyof ConnectorEvents>(event: E, listener: ConnectorEvents[E]): void;
 
