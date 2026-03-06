@@ -379,6 +379,31 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 15,
+    description: 'Add pending_pairings table for cross-process pairing code persistence',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='pending_pairings'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE pending_pairings (
+            code         TEXT PRIMARY KEY,
+            sender_id    TEXT NOT NULL,
+            channel      TEXT NOT NULL,
+            requested_at TEXT NOT NULL,
+            attempts     INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+      }
+    },
+  },
 ];
 
 /**
@@ -622,7 +647,7 @@ function migrateWorkspaceMap(db: Database.Database, filePath: string): void {
     });
   }
 
-  storeChunks(db, chunks);
+  void storeChunks(db, chunks);
 }
 
 function migrateAgentsJson(db: Database.Database, filePath: string): void {

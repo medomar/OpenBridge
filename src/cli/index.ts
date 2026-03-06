@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { runAccess } from './access.js';
 import { runDoctor } from './doctor.js';
 import { runInit } from './init.js';
+import { runPairing } from './pairing.js';
 import { runStats } from './stats.js';
 
 const require = createRequire(import.meta.url);
@@ -44,6 +45,13 @@ if (command === 'init') {
     console.error('Error:', error instanceof Error ? error.message : error);
     process.exit(1);
   }
+} else if (command === 'pairing') {
+  try {
+    runPairing(process.argv.slice(3));
+  } catch (error: unknown) {
+    console.error('Error:', error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 } else if (command === '--help' || command === '-h') {
   console.log(`${pkg.name} v${pkg.version}`);
   console.log(pkg.description);
@@ -53,6 +61,7 @@ if (command === 'init') {
   console.log('Commands:');
   console.log('  init      Generate a config.json interactively');
   console.log('  access    Manage per-user access control (add/remove/list)');
+  console.log('  pairing   Approve pairing requests from unknown senders');
   console.log('  stats     Show exploration ROI: tokens spent vs tokens saved');
   console.log('  doctor    Run system health checks and diagnose your setup');
   process.exit(0);
@@ -64,6 +73,7 @@ if (command === 'init') {
   console.log('Commands:');
   console.log('  init      Generate a config.json interactively');
   console.log('  access    Manage per-user access control (add/remove/list)');
+  console.log('  pairing   Approve pairing requests from unknown senders');
   console.log('  stats     Show exploration ROI: tokens spent vs tokens saved');
   console.log('  doctor    Run system health checks and diagnose your setup\n');
   process.exit(command === undefined ? 0 : 1);
