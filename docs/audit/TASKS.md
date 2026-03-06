@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 118 | **In Progress:** 0 | **Done:** 58 (1063 archived)
+> **Pending:** 117 | **In Progress:** 0 | **Done:** 59 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -178,7 +178,7 @@
 | Task    | What                                                                                                                                | Key File                                              | Status  |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------- |
 | OB-1726 | Define `DocumentSkill` type extending skill system — `name`, `description`, `fileFormat`, `toolProfile`, `npmDependency`, `prompts` | `src/types/agent.ts`                                  | ✅ Done |
-| OB-1727 | Create `document-writer` skill pack — Word/DOCX generation prompts, structure templates, formatting rules                           | `src/master/skill-packs/document-writer.ts` (new)     | Pending |
+| OB-1727 | Create `document-writer` skill pack — Word/DOCX generation prompts, structure templates, formatting rules                           | `src/master/skill-packs/document-writer.ts` (new)     | ✅ Done |
 | OB-1728 | Create `presentation-maker` skill pack — PPTX generation prompts, slide layouts, design principles                                  | `src/master/skill-packs/presentation-maker.ts` (new)  | Pending |
 | OB-1729 | Create `spreadsheet-builder` skill pack — XLSX generation prompts, formula patterns, chart generation                               | `src/master/skill-packs/spreadsheet-builder.ts` (new) | Pending |
 | OB-1730 | Create `report-generator` skill pack — PDF/HTML report generation, data formatting, executive summary style                         | `src/master/skill-packs/report-generator.ts` (new)    | Pending |
