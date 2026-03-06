@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 89 | **In Progress:** 0 | **Done:** 87 (1063 archived)
+> **Pending:** 88 | **In Progress:** 0 | **Done:** 88 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -240,7 +240,7 @@
 | OB-1654 | Hybrid scoring function — weighted combination: `0.4 * vectorScore + 0.4 * fts5Score + 0.2 * temporalScore`                          | `src/memory/retrieval.ts` | ✅ Done |
 | OB-1655 | MMR (Maximal Marginal Relevance) — diversify results, prevent 5 chunks from same file, configurable `lambda` (default 0.7)           | `src/memory/retrieval.ts` | ✅ Done |
 | OB-1656 | Temporal decay scoring — recent chunks rank higher: `score * exp(-decay * daysSinceUpdate)`, configurable `decayRate` (default 0.01) | `src/memory/retrieval.ts` | ✅ Done |
-| OB-1657 | Graceful fallback — if no embedding provider configured (`provider: 'none'`), use FTS5-only (current behavior, zero degradation)     | `src/memory/retrieval.ts` | Pending |
+| OB-1657 | Graceful fallback — if no embedding provider configured (`provider: 'none'`), use FTS5-only (current behavior, zero degradation)     | `src/memory/retrieval.ts` | ✅ Done |
 
 #### 94c — Progressive Disclosure (OB-F81)
 
