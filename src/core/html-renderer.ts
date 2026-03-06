@@ -294,3 +294,221 @@ export async function renderSvgToImage(
   const renderer = new HTMLRenderer(workspacePath);
   return renderer.renderSvgString(svg, options);
 }
+
+// ---------------------------------------------------------------------------
+// Mermaid rendering support
+// ---------------------------------------------------------------------------
+
+export interface MermaidRenderOptions extends RenderOptions {
+  /** Mermaid theme. Default: 'default' */
+  theme?: 'default' | 'dark' | 'forest' | 'neutral';
+  /** Background color (CSS color string). Default: 'white' */
+  backgroundColor?: string;
+}
+
+export interface MermaidRenderResult extends RenderResult {
+  /** The Mermaid definition that was rendered */
+  definition: string;
+  /** Which backend produced the image */
+  backend: 'mermaid-ink' | 'puppeteer';
+}
+
+/**
+ * MermaidRenderer — converts Mermaid diagram definitions to PNG images.
+ *
+ * Rendering backends (tried in order):
+ *   1. mermaid.ink HTTP API  — no installation required, needs network access
+ *   2. Puppeteer + Mermaid CDN — requires Puppeteer, renders locally via browser
+ *
+ * Usage:
+ *   const renderer = new MermaidRenderer('/path/to/workspace');
+ *   const result = await renderer.renderDefinition('graph TD; A-->B;');
+ *   console.log(result.outputPath);
+ */
+export class MermaidRenderer {
+  private readonly workspacePath: string;
+  private readonly outputDir: string;
+
+  private static readonly MERMAID_INK_BASE = 'https://mermaid.ink';
+
+  constructor(workspacePath: string) {
+    this.workspacePath = workspacePath;
+    this.outputDir = path.join(workspacePath, '.openbridge', 'generated');
+  }
+
+  /**
+   * Check whether any Mermaid rendering backend is potentially available.
+   * Always returns true because mermaid.ink API requires no local installation.
+   * Puppeteer availability is checked separately via HTMLRenderer.isAvailable().
+   */
+  static isAvailable(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  /**
+   * Render a Mermaid diagram definition to an image file.
+   *
+   * Tries mermaid.ink API first; falls back to Puppeteer + Mermaid.js CDN.
+   *
+   * @param definition  Mermaid diagram definition string (e.g. "graph TD; A-->B;")
+   * @param options     Rendering options
+   * @returns           MermaidRenderResult with output path, metadata, and backend used
+   */
+  async renderDefinition(
+    definition: string,
+    options: MermaidRenderOptions = {},
+  ): Promise<MermaidRenderResult> {
+    await fs.mkdir(this.outputDir, { recursive: true });
+
+    // Backend 1: mermaid.ink HTTP API
+    try {
+      return await this.renderViaMermaidInk(definition, options);
+    } catch (inkErr) {
+      logger.warn({ err: inkErr }, 'mermaid.ink API unavailable, falling back to Puppeteer');
+    }
+
+    // Backend 2: Puppeteer + Mermaid.js CDN
+    try {
+      return await this.renderViaPuppeteer(definition, options);
+    } catch (puppeteerErr) {
+      throw new Error(
+        `Mermaid rendering failed. mermaid.ink is unreachable and Puppeteer is not available.\n` +
+          `Install Puppeteer with \`npm install puppeteer\` for local rendering.\n` +
+          `Puppeteer error: ${(puppeteerErr as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Render a Mermaid definition to an SVG string using the mermaid.ink API.
+   *
+   * @param definition  Mermaid diagram definition string
+   * @param theme       Mermaid theme. Default: 'default'
+   * @returns           SVG markup string
+   */
+  async renderToSvgString(
+    definition: string,
+    theme: MermaidRenderOptions['theme'] = 'default',
+  ): Promise<string> {
+    const payload = JSON.stringify({ code: definition, mermaid: { theme } });
+    const encoded = Buffer.from(payload).toString('base64url');
+    const url = `${MermaidRenderer.MERMAID_INK_BASE}/svg/${encoded}`;
+
+    const response = await fetch(url, {
+      headers: { Accept: 'image/svg+xml,*/*' },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`mermaid.ink SVG request failed: ${response.status} ${response.statusText}`);
+    }
+
+    return response.text();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private async renderViaMermaidInk(
+    definition: string,
+    options: MermaidRenderOptions,
+  ): Promise<MermaidRenderResult> {
+    const { theme = 'default', backgroundColor = 'white' } = options;
+
+    // mermaid.ink accepts a JSON payload base64url-encoded in the URL path.
+    // The `bgColor` param uses '!' instead of '#' for hex colors.
+    const payload = JSON.stringify({ code: definition, mermaid: { theme } });
+    const encoded = Buffer.from(payload).toString('base64url');
+    const bgParam = backgroundColor.startsWith('#')
+      ? `!${backgroundColor.slice(1)}`
+      : backgroundColor;
+    const url = `${MermaidRenderer.MERMAID_INK_BASE}/img/${encoded}?bgColor=${bgParam}`;
+
+    const response = await fetch(url, {
+      headers: { Accept: 'image/png,*/*' },
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`mermaid.ink request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const outputFilename = `mermaid-${randomUUID()}.png`;
+    const outputPath = path.join(this.outputDir, outputFilename);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fs.writeFile(outputPath, buffer);
+
+    const stat = await fs.stat(outputPath);
+
+    logger.info({ outputPath, sizeBytes: stat.size }, 'Mermaid diagram rendered via mermaid.ink');
+
+    return {
+      outputPath,
+      format: 'png',
+      sizeBytes: stat.size,
+      definition,
+      backend: 'mermaid-ink',
+    };
+  }
+
+  private async renderViaPuppeteer(
+    definition: string,
+    options: MermaidRenderOptions,
+  ): Promise<MermaidRenderResult> {
+    const { theme = 'default', format = 'png', width = 1280, height = 720, quality = 90 } = options;
+
+    // Escape the definition for safe injection into an HTML attribute/script context
+    const escaped = escapeHtmlAttribute(definition);
+
+    const html = `<!DOCTYPE html>
+<html><head>
+  <meta charset="utf-8">
+  <style>body{margin:0;padding:16px;background:white;}#diagram{display:inline-block;}</style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head><body>
+  <div id="diagram" class="mermaid">${escaped}</div>
+  <script>mermaid.initialize({ startOnLoad: true, theme: '${theme}' });</script>
+</body></html>`;
+
+    const htmlRenderer = new HTMLRenderer(this.workspacePath);
+    const result = await htmlRenderer.renderHtmlString(html, {
+      format,
+      width,
+      height,
+      quality,
+      waitForNetworkIdle: true,
+    });
+
+    logger.info({ outputPath: result.outputPath }, 'Mermaid diagram rendered via Puppeteer');
+
+    return { ...result, definition, backend: 'puppeteer' };
+  }
+}
+
+/** Escape a string for safe embedding as HTML text content (not attribute). */
+function escapeHtmlAttribute(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Convenience function — render a Mermaid diagram definition to a PNG image.
+ *
+ * @param workspacePath  Absolute path to the workspace (`.openbridge/generated/` is created inside)
+ * @param definition     Mermaid diagram definition string
+ * @param options        Rendering options (theme, backgroundColor, width, height)
+ * @returns              MermaidRenderResult with output file path and metadata
+ */
+export async function renderMermaidToImage(
+  workspacePath: string,
+  definition: string,
+  options: MermaidRenderOptions = {},
+): Promise<MermaidRenderResult> {
+  const renderer = new MermaidRenderer(workspacePath);
+  return renderer.renderDefinition(definition, options);
+}
