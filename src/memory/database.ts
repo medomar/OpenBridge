@@ -366,5 +366,14 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_audit_sender           ON audit_log(sender);
     CREATE INDEX IF NOT EXISTS idx_qa_cache_created       ON qa_cache(created_at);
     CREATE INDEX IF NOT EXISTS idx_qa_cache_confidence    ON qa_cache(confidence);
+
+    -- pending_pairings: temporary pairing codes for unknown senders (5-minute TTL)
+    CREATE TABLE IF NOT EXISTS pending_pairings (
+      code         TEXT PRIMARY KEY,
+      sender_id    TEXT NOT NULL,
+      channel      TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      attempts     INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }

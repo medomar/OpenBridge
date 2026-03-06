@@ -432,12 +432,28 @@ export class AuthService {
 
   /** Store a new pending pairing for an unknown sender. */
   storePairing(code: string, senderId: string, channel: string): void {
+    const requestedAt = new Date();
     this.pendingPairings.set(code, {
       senderId,
       channel,
-      requestedAt: new Date(),
+      requestedAt,
       attempts: 0,
     });
+    if (this.db) {
+      try {
+        this.db
+          .prepare(
+            `INSERT OR REPLACE INTO pending_pairings (code, sender_id, channel, requested_at, attempts)
+             VALUES (?, ?, ?, ?, 0)`,
+          )
+          .run(code, senderId, channel, requestedAt.toISOString());
+      } catch (err) {
+        logger.warn(
+          { err, code, senderId, channel },
+          'AuthService: failed to persist pending pairing to DB',
+        );
+      }
+    }
     logger.info({ code, senderId, channel }, 'Pending pairing stored');
   }
 
@@ -449,6 +465,13 @@ export class AuthService {
   /** Remove a pending pairing (after approval or expiry). */
   removePairing(code: string): void {
     this.pendingPairings.delete(code);
+    if (this.db) {
+      try {
+        this.db.prepare(`DELETE FROM pending_pairings WHERE code = ?`).run(code);
+      } catch (err) {
+        logger.warn({ err, code }, 'AuthService: failed to remove pending pairing from DB');
+      }
+    }
   }
 
   /** Increment the attempt counter for a pairing code. */
@@ -456,6 +479,15 @@ export class AuthService {
     const pairing = this.pendingPairings.get(code);
     if (pairing) {
       pairing.attempts += 1;
+    }
+    if (this.db) {
+      try {
+        this.db
+          .prepare(`UPDATE pending_pairings SET attempts = attempts + 1 WHERE code = ?`)
+          .run(code);
+      } catch (err) {
+        logger.warn({ err, code }, 'AuthService: failed to increment pairing attempts in DB');
+      }
     }
   }
 

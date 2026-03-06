@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 67 | **In Progress:** 0 | **Done:** 109 (1063 archived)
+> **Pending:** 66 | **In Progress:** 0 | **Done:** 110 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -290,7 +290,7 @@
 | OB-1694 | Generate cryptographically secure 6-digit pairing code for unknown senders (use `crypto.randomInt(100000, 999999)`)   | `src/core/auth.ts`           | ✅ Done |
 | OB-1695 | Store pending pairings in-memory Map: `code → { senderId, channel, requestedAt, attempts }`                           | `src/core/auth.ts`           | ✅ Done |
 | OB-1696 | Send pairing message to unknown sender: "To connect, ask the admin to approve code: XXXXXX (expires in 5 minutes)"    | `src/core/auth.ts`           | ✅ Done |
-| OB-1697 | Add `openbridge pairing approve <code>` CLI command — validates code, adds user to access_control with `viewer` role  | `src/cli/access.ts`          | Pending |
+| OB-1697 | Add `openbridge pairing approve <code>` CLI command — validates code, adds user to access_control with `viewer` role  | `src/cli/access.ts`          | ✅ Done |
 | OB-1698 | Add `/approve <code>` chat command for owner-role users — same approval flow via messaging                            | `src/core/router.ts`         | Pending |
 | OB-1699 | Store approved pairing in `access_control` table via `AccessStore.setAccess()` with configurable default role         | `src/memory/access-store.ts` | Pending |
 | OB-1700 | Pairing code expiry — 5-minute TTL, cleanup timer every 60s removes expired entries                                   | `src/core/auth.ts`           | Pending |
