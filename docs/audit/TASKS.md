@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 32 | **In Progress:** 0 | **Done:** 144 (1063 archived)
+> **Pending:** 31 | **In Progress:** 0 | **Done:** 145 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -362,7 +362,7 @@
 | Task    | What                                                                                                         | Key File                                               | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | ------- |
 | OB-1761 | Built-in skill pack: `diagram-maker` — Mermaid/PlantUML/D2 diagram generation, architecture diagrams, flows  | `src/master/skill-packs/diagram-maker.ts` (new)        | ✅ Done |
-| OB-1762 | Built-in skill pack: `chart-generator` — D3.js/Chart.js data visualization, bar/line/pie/scatter charts      | `src/master/skill-packs/chart-generator.ts` (new)      | Pending |
+| OB-1762 | Built-in skill pack: `chart-generator` — D3.js/Chart.js data visualization, bar/line/pie/scatter charts      | `src/master/skill-packs/chart-generator.ts` (new)      | ✅ Done |
 | OB-1763 | Built-in skill pack: `web-designer` — HTML/CSS/React landing pages, marketing materials, email templates     | `src/master/skill-packs/web-designer.ts` (new)         | Pending |
 | OB-1764 | Built-in skill pack: `slide-designer` — HTML-based presentation slides with animations, exportable to PDF    | `src/master/skill-packs/slide-designer.ts` (new)       | Pending |
 | OB-1765 | Built-in skill pack: `generative-art` — p5.js algorithmic art, SVG patterns, creative coding prompts         | `src/master/skill-packs/generative-art.ts` (new)       | Pending |
