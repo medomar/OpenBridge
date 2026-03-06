@@ -6,6 +6,7 @@ import { dataAnalysisSkillPack } from './data-analysis.js';
 import { documentationSkillPack } from './documentation.js';
 import { diagramMakerSkillPack } from './diagram-maker.js';
 import { chartGeneratorSkillPack } from './chart-generator.js';
+import { webDesignerSkillPack } from './web-designer.js';
 
 /**
  * All built-in skill packs shipped with OpenBridge.
@@ -19,4 +20,5 @@ export const BUILT_IN_SKILL_PACKS: SkillPack[] = [
   documentationSkillPack,
   diagramMakerSkillPack,
   chartGeneratorSkillPack,
+  webDesignerSkillPack,
 ];
