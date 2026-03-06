@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 34 | **In Progress:** 0 | **Done:** 142 (1063 archived)
+> **Pending:** 33 | **In Progress:** 0 | **Done:** 143 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -349,7 +349,7 @@
 | OB-1757 | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               | ✅ Done |
 | OB-1758 | Wire skill pack loader into MemoryManager facade                                                                 | `src/memory/index.ts`                            | ✅ Done |
 | OB-1759 | Tests: skill pack discovery, SKILLPACK.md parsing, prompt injection, tool profile override                       | `tests/master/skill-pack-loader.test.ts`         | ✅ Done |
-| OB-1760 | Tests: Master skill selection logic, user override precedence                                                    | `tests/master/master-manager.test.ts`            | Pending |
+| OB-1760 | Tests: Master skill selection logic, user override precedence                                                    | `tests/master/master-manager.test.ts`            | ✅ Done |
 
 **Phase 98 Total:** 17 tasks
 

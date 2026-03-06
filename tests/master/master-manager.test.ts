@@ -8,6 +8,7 @@ import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
 import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
+import type { SkillPack } from '../../src/types/agent.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -3124,6 +3125,195 @@ describe('MasterManager', () => {
 
       // retriever.query() must NOT be called for complex-task
       expect(mockRetriever.query).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Skill Pack Selection (OB-1760)
+  // ---------------------------------------------------------------------------
+
+  describe('Skill Pack Selection (OB-1760)', () => {
+    beforeEach(async () => {
+      mockSpawn.mockReset();
+      mockStream.mockReset();
+
+      masterManager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await masterManager.start();
+    });
+
+    /**
+     * Helper: set up three mock spawn responses (Master → Worker → Synthesis)
+     * where the Master responds with a single SPAWN marker containing the given
+     * worker prompt.  Returns the SpawnOptions captured for the worker call.
+     */
+    async function spawnWorkerForPrompt(
+      workerPrompt: string,
+      spawnProfile = 'read-only',
+    ): Promise<SpawnOptions | undefined> {
+      // Call 0: Master outputs a SPAWN marker
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: `[SPAWN:${spawnProfile}]{"prompt":"${workerPrompt}","model":"haiku","maxTurns":5}[/SPAWN]`,
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 1: Worker execution
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Worker result.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 200,
+      });
+
+      // Call 2: Synthesis
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Task complete.',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+      });
+
+      const message: InboundMessage = {
+        id: `msg-skill-${Date.now()}`,
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai list the files',
+        // 'list the files' → quick-answer (no planning phase); SPAWN markers in
+        // the Master response are still processed regardless of task class.
+        content: 'list the files',
+        timestamp: new Date(),
+      };
+
+      await masterManager.processMessage(message);
+
+      // Index 1 = worker spawn (index 0 = Master, index 2 = Synthesis)
+      return getSpawnCallOpts(1);
+    }
+
+    it('injects security-audit systemPromptExtension into worker prompt when keywords match', async () => {
+      const workerOpts = await spawnWorkerForPrompt(
+        'perform a security audit of src/auth.ts to find vulnerabilities',
+      );
+
+      // Original prompt must be present
+      expect(workerOpts?.prompt).toContain(
+        'perform a security audit of src/auth.ts to find vulnerabilities',
+      );
+      // Security-audit skill pack extension must be appended
+      expect(workerOpts?.prompt).toContain('## Security Audit Mode');
+    });
+
+    it('injects test-writer systemPromptExtension into worker prompt when test keywords match', async () => {
+      const workerOpts = await spawnWorkerForPrompt(
+        'write unit tests for the authentication module',
+      );
+
+      expect(workerOpts?.prompt).toContain('write unit tests for the authentication module');
+      expect(workerOpts?.prompt).toContain('## Test Writer Mode');
+    });
+
+    it('does NOT inject skill pack when worker task prompt has no keyword match', async () => {
+      const workerOpts = await spawnWorkerForPrompt('list all dependencies in package.json');
+
+      // Prompt must be unchanged — no separator or extension text appended
+      expect(workerOpts?.prompt).toBe('list all dependencies in package.json');
+    });
+
+    it('skill pack separator (---) is inserted between original prompt and extension', async () => {
+      const workerOpts = await spawnWorkerForPrompt('perform a security audit of src/auth.ts');
+
+      // Extension is appended with a markdown separator
+      expect(workerOpts?.prompt).toContain('\n\n---\n\n');
+    });
+
+    it('skill pack toolProfile overrides SPAWN marker profile when a matching pack is selected', async () => {
+      // Replace activeSkillPacks with a custom code-review pack that uses 'full-access'.
+      // The SPAWN marker uses 'read-only', so after override the worker should get
+      // 'full-access' tools (which include 'Write', absent from 'read-only').
+      const customPack: SkillPack = {
+        name: 'code-review',
+        description: 'Custom code review with full-access toolProfile.',
+        toolProfile: 'full-access',
+        systemPromptExtension: 'CUSTOM_CODE_REVIEW_FULL_ACCESS.',
+        requiredTools: [],
+        tags: ['review'],
+        isUserDefined: true,
+      };
+
+      // Directly set activeSkillPacks to isolate the profile-override logic
+      (masterManager as unknown as { activeSkillPacks: SkillPack[] }).activeSkillPacks = [
+        customPack,
+      ];
+
+      // SPAWN marker uses 'read-only'; keyword 'code review' should select the pack
+      const workerOpts = await spawnWorkerForPrompt(
+        'please do a code review of the PR diff',
+        'read-only',
+      );
+
+      // Profile override: 'full-access' allowedTools should include 'Write'
+      expect(workerOpts?.allowedTools).toContain('Write');
+      // Prompt extension from the custom pack should be injected
+      expect(workerOpts?.prompt).toContain('CUSTOM_CODE_REVIEW_FULL_ACCESS');
+    });
+
+    it('user-defined skill pack overrides built-in with the same name', async () => {
+      // Write a custom security-audit.md into the temp workspace's skill-packs dir
+      const skillPacksDir = path.join(testWorkspace, '.openbridge', 'skill-packs');
+      await fs.mkdir(skillPacksDir, { recursive: true });
+
+      const customMd = [
+        '# security-audit',
+        '',
+        'Custom security pack with unique marker.',
+        '',
+        '## Tool Profile',
+        'read-only',
+        '',
+        '## Prompt Extension',
+        'CUSTOM_SECURITY_MARKER_OB1760: Use custom security procedures.',
+        '',
+      ].join('\n');
+
+      await fs.writeFile(path.join(skillPacksDir, 'security-audit.md'), customMd, 'utf-8');
+
+      // Restart manager so start() calls loadAllSkillPacks() and picks up the file
+      await masterManager.shutdown();
+      masterManager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await masterManager.start();
+
+      const workerOpts = await spawnWorkerForPrompt('perform a security audit of the codebase');
+
+      // User-defined extension must be injected
+      expect(workerOpts?.prompt).toContain('CUSTOM_SECURITY_MARKER_OB1760');
+      // Built-in extension must NOT appear
+      expect(workerOpts?.prompt).not.toContain('## Security Audit Mode');
+    });
+
+    it('activeSkillPacks contains all five built-in packs after start()', () => {
+      const activePacks = (masterManager as unknown as { activeSkillPacks: SkillPack[] })
+        .activeSkillPacks;
+
+      const names = activePacks.map((p) => p.name);
+      expect(names).toContain('security-audit');
+      expect(names).toContain('code-review');
+      expect(names).toContain('test-writer');
+      expect(names).toContain('data-analysis');
+      expect(names).toContain('documentation');
     });
   });
 });
