@@ -396,6 +396,31 @@ export function removeApprovedEscalation(
 }
 
 /**
+ * Approve a pending pairing by storing the sender in the access_control table.
+ *
+ * - If an entry already exists for (senderId, channel), it is reactivated in-place
+ *   (preserving all existing fields).
+ * - If no entry exists, a new one is created with the given role (default: 'viewer').
+ *
+ * The `defaultRole` parameter makes the approval role configurable — callers can pass
+ * the role from config (e.g. `auth.getRoleForChannel(channel)`) rather than always
+ * hardcoding a fixed value.
+ */
+export function approvePairing(
+  db: Database.Database,
+  senderId: string,
+  channel: string,
+  defaultRole: AccessRole = 'viewer',
+): void {
+  const existing = getAccess(db, senderId, channel);
+  if (existing) {
+    setAccess(db, { ...existing, active: true });
+  } else {
+    setAccess(db, { user_id: senderId, channel, role: defaultRole, active: true });
+  }
+}
+
+/**
  * Reset daily_cost_used to 0 for all entries whose cost_reset_at is in the past
  * (or null). Updates cost_reset_at to the start of the next UTC day.
  */

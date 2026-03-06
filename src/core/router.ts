@@ -3058,24 +3058,15 @@ export class Router {
       return;
     }
 
-    // Grant access — default role: viewer
+    // Grant access — role is configurable via auth.channelRoles / auth.defaultRole
     if (!this.memory) {
       await send('Pairing approval unavailable: memory system not initialised.');
       return;
     }
 
     try {
-      const existing = await this.memory.getAccess(pairing.senderId, pairing.channel);
-      if (existing) {
-        await this.memory.setAccess({ ...existing, active: true });
-      } else {
-        await this.memory.setAccess({
-          user_id: pairing.senderId,
-          channel: pairing.channel,
-          role: 'viewer' as AccessRole,
-          active: true,
-        });
-      }
+      const role = (this.auth.getRoleForChannel(pairing.channel) as AccessRole) ?? 'viewer';
+      await this.memory.approvePairing(pairing.senderId, pairing.channel, role);
 
       this.auth.removePairing(code);
 
