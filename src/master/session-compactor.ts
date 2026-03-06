@@ -16,6 +16,8 @@
  * session segment can resume without re-reading the full history.
  */
 
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import type Database from 'better-sqlite3';
 import { createLogger } from '../core/logger.js';
 
@@ -510,5 +512,161 @@ export class SessionCompactor {
       }
     }
     return [...new Set(found)];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Memory Write (OB-1670)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Format a {@link CompactionSummary} as a Markdown section suitable for
+   * inclusion in `memory.md`.
+   *
+   * The resulting block is a `## Session Compaction` entry that captures:
+   * - timestamp + turn count
+   * - brief overview
+   * - files referenced, task IDs, finding IDs
+   * - completed and pending work items
+   *
+   * @param summary - The compaction summary to format.
+   */
+  formatSummaryAsMarkdown(summary: CompactionSummary): string {
+    const lines: string[] = [
+      `## Session Compaction — ${summary.compactedAt}`,
+      '',
+      `**Overview:** ${summary.overview}`,
+      `**Turns summarized:** ${summary.turnCount}`,
+    ];
+
+    if (summary.filePaths.length > 0) {
+      lines.push('', `**Files referenced:** ${summary.filePaths.join(', ')}`);
+    }
+
+    if (summary.taskIds.length > 0) {
+      lines.push(`**Tasks:** ${summary.taskIds.join(', ')}`);
+    }
+
+    if (summary.findingIds.length > 0) {
+      lines.push(`**Findings:** ${summary.findingIds.join(', ')}`);
+    }
+
+    if (summary.completedWork.length > 0) {
+      lines.push('', '**Completed:**');
+      for (const item of summary.completedWork.slice(0, 10)) {
+        lines.push(`- ${item}`);
+      }
+    }
+
+    if (summary.pendingWork.length > 0) {
+      lines.push('', '**Pending:**');
+      for (const item of summary.pendingWork.slice(0, 10)) {
+        lines.push(`- ${item}`);
+      }
+    }
+
+    lines.push('');
+    return lines.join('\n');
+  }
+
+  /**
+   * Write a {@link CompactionSummary} to `memory.md` at the given file path,
+   * ensuring cross-session continuity before starting a new session segment.
+   *
+   * Behaviour:
+   * - Reads existing `memory.md` if present (creates it if missing).
+   * - Finds or creates a `<!-- compaction-history -->` block at the top of the
+   *   file, immediately after the first `# Memory` heading (or at the very top
+   *   if no heading exists).
+   * - Prepends the new compaction entry inside that block so the most-recent
+   *   entry appears first.
+   * - Trims the oldest compaction entries when the total file would exceed 200
+   *   lines, keeping the rest of the file intact.
+   * - Writes the result back to disk.
+   *
+   * @param summary          - The compaction summary to persist.
+   * @param memoryFilePath   - Absolute path to `memory.md`.
+   */
+  async writeCompactionSummaryToMemory(
+    summary: CompactionSummary,
+    memoryFilePath: string,
+  ): Promise<void> {
+    const MAX_LINES = 200;
+    const BLOCK_START = '<!-- compaction-history -->';
+    const BLOCK_END = '<!-- /compaction-history -->';
+
+    // Read existing content (tolerate missing file).
+    let existing = '';
+    try {
+      existing = await fs.readFile(memoryFilePath, 'utf-8');
+    } catch {
+      // File does not exist yet — start with an empty string.
+    }
+
+    const newEntry = this.formatSummaryAsMarkdown(summary);
+
+    let updated: string;
+
+    if (existing.includes(BLOCK_START) && existing.includes(BLOCK_END)) {
+      // Inject new entry immediately after the opening marker.
+      updated = existing.replace(BLOCK_START, `${BLOCK_START}\n${newEntry}`);
+    } else {
+      // Insert a new block after the first `# ` heading, or at the top.
+      const headingMatch = /^# .+$/m.exec(existing);
+      if (headingMatch) {
+        const insertPos = headingMatch.index + headingMatch[0].length;
+        updated =
+          `${existing.slice(0, insertPos)}\n\n${BLOCK_START}\n${newEntry}${BLOCK_END}\n` +
+          existing.slice(insertPos);
+      } else {
+        updated = `${BLOCK_START}\n${newEntry}${BLOCK_END}\n\n${existing}`;
+      }
+    }
+
+    // Enforce 200-line limit by trimming oldest compaction entries.
+    let lines = updated.split('\n');
+    while (lines.length > MAX_LINES) {
+      // Find the last compaction entry boundary inside the block and remove it.
+      const blockStartIdx = lines.findIndex((l) => l.trim() === BLOCK_START);
+      const blockEndIdx = lines.findIndex((l) => l.trim() === BLOCK_END);
+
+      if (blockStartIdx === -1 || blockEndIdx === -1 || blockEndIdx <= blockStartIdx) {
+        // No managed block found — just hard-truncate.
+        lines = lines.slice(0, MAX_LINES);
+        break;
+      }
+
+      // Find the second `## Session Compaction` header inside the block —
+      // that marks the start of the oldest entry we can trim.
+      const blockLines = lines.slice(blockStartIdx + 1, blockEndIdx);
+      const compactionHeaders = blockLines.reduce<number[]>((acc, l, i) => {
+        if (/^## Session Compaction/.test(l)) acc.push(i);
+        return acc;
+      }, []);
+
+      if (compactionHeaders.length <= 1) {
+        // Only one entry in the block — hard-truncate instead of removing it.
+        lines = lines.slice(0, MAX_LINES);
+        break;
+      }
+
+      // Remove the last (oldest) compaction entry from inside the block.
+      const oldestRelIdx = compactionHeaders[compactionHeaders.length - 1] ?? 0;
+      const oldestStart = blockStartIdx + 1 + oldestRelIdx;
+      const secondLastRelIdx = compactionHeaders[compactionHeaders.length - 2] ?? 0;
+      const nextHeaderInBlock =
+        compactionHeaders.length >= 2 ? blockStartIdx + 1 + secondLastRelIdx : blockEndIdx;
+
+      lines.splice(oldestStart, nextHeaderInBlock - oldestStart);
+    }
+
+    const finalContent = lines.join('\n');
+
+    await fs.mkdir(path.dirname(memoryFilePath), { recursive: true });
+    await fs.writeFile(memoryFilePath, finalContent, 'utf-8');
+
+    logger.info(
+      { memoryFilePath, turnCount: summary.turnCount, lines: lines.length },
+      'SessionCompactor: wrote compaction summary to memory.md',
+    );
   }
 }
