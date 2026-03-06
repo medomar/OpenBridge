@@ -17,6 +17,22 @@ export interface Check {
 }
 
 // ---------------------------------------------------------------------------
+// System checks
+// ---------------------------------------------------------------------------
+
+function checkNodeVersion(): CheckResult {
+  const raw = process.version; // e.g. "v22.1.0"
+  const major = parseInt(raw.replace(/^v/, '').split('.')[0] ?? '0', 10);
+  if (major >= 22) {
+    return { pass: true, message: `${raw} (>= 22 required)` };
+  }
+  return {
+    pass: false,
+    message: `${raw} — Node.js >= 22 required (current major: ${major})`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Document generation prerequisite checks (Phase 99)
 // ---------------------------------------------------------------------------
 
@@ -74,6 +90,7 @@ function checkPuppeteer(): CheckResult {
 // ---------------------------------------------------------------------------
 
 const CHECKS: Check[] = [
+  { label: 'Node.js', run: checkNodeVersion },
   { label: 'docx', run: () => checkNpmPackage('docx') },
   { label: 'pptxgenjs', run: () => checkNpmPackage('pptxgenjs') },
   { label: 'exceljs', run: () => checkNpmPackage('exceljs') },
