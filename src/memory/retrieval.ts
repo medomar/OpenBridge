@@ -840,6 +840,44 @@ export async function searchIndex(
   });
 }
 
+/**
+ * Fetch full chunk content for a list of chunk IDs.
+ *
+ * Intended for use in the 2-step retrieval flow:
+ *   1. `searchIndex(query)` → compact results with scores
+ *   2. Filter by score threshold (e.g. score > 0.3)
+ *   3. `getDetails(topIds)` → full content only for relevant chunks
+ *
+ * Results are returned in the same order as the input IDs.
+ * IDs that do not correspond to existing chunks are silently omitted.
+ *
+ * @param db   SQLite database instance
+ * @param ids  Chunk IDs to fetch (from {@link IndexResult.id})
+ */
+export function getDetails(db: Database.Database, ids: number[]): Chunk[] {
+  if (ids.length === 0) return [];
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT id, scope, category, content, source_hash, created_at, updated_at, stale
+       FROM context_chunks
+       WHERE id IN (${placeholders})`,
+    )
+    .all(...ids) as ChunkRow[];
+
+  // Preserve the input order so callers receive chunks ranked as originally requested
+  const rowMap = new Map<number, Chunk>();
+  for (const row of rows) {
+    rowMap.set(row.id, rowToChunk(row));
+  }
+
+  return ids.flatMap((id) => {
+    const chunk = rowMap.get(id);
+    return chunk !== undefined ? [chunk] : [];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Combined observation + chunk search
 // ---------------------------------------------------------------------------
