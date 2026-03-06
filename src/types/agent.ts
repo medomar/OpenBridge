@@ -567,6 +567,34 @@ export const SkillSchema = z.object({
   isUserDefined: z.boolean().default(false),
 });
 
+// ── Skill Packs ──────────────────────────────────────────────────
+
+/**
+ * A skill pack — a domain-specific instruction bundle injected into worker
+ * system prompts to give them specialised knowledge for a task category
+ * (e.g. security auditing, code review, data analysis).
+ *
+ * Skill packs can be:
+ * - Built-in: shipped as TypeScript in `src/master/skill-packs/`
+ * - User-defined: discovered as `SKILLPACK.md` files in `.openbridge/skill-packs/`
+ */
+export const SkillPackSchema = z.object({
+  /** Unique identifier for this skill pack (e.g., 'security-audit', 'code-review') */
+  name: z.string().min(1),
+  /** Human-readable description of the domain expertise this pack provides */
+  description: z.string().min(1),
+  /** Named tool profile the worker should use when this pack is active */
+  toolProfile: z.string().min(1),
+  /** Text injected into the worker's system prompt when this pack is selected */
+  systemPromptExtension: z.string().min(1),
+  /** Additional tools required beyond the base profile (e.g., 'Bash(semgrep:*)') */
+  requiredTools: z.array(z.string().min(1)).default([]),
+  /** Classification tags for discovery and filtering (e.g., ['security', 'static-analysis']) */
+  tags: z.array(z.string().min(1)).default([]),
+  /** Whether this pack is user-defined (from .openbridge/skill-packs/) or built-in */
+  isUserDefined: z.boolean().default(false),
+});
+
 // ── Inferred Types ───────────────────────────────────────────────
 
 export type AgentStatus = z.infer<typeof AgentStatusSchema>;
@@ -604,3 +632,4 @@ export type DocumentFileFormat = z.infer<typeof DocumentFileFormatSchema>;
 export type DocumentSkillPrompts = z.infer<typeof DocumentSkillPromptsSchema>;
 export type DocumentSkill = z.infer<typeof DocumentSkillSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
+export type SkillPack = z.infer<typeof SkillPackSchema>;

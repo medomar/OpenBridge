@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 50 | **In Progress:** 0 | **Done:** 126 (1063 archived)
+> **Pending:** 49 | **In Progress:** 0 | **Done:** 127 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -333,7 +333,7 @@
 
 | Task    | What                                                                                                             | Key File                                         | Status  |
 | ------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------- |
-| OB-1744 | Define `SkillPack` type — `name`, `description`, `toolProfile`, `systemPromptExtension`, `requiredTools`, `tags` | `src/types/agent.ts`                             | Pending |
+| OB-1744 | Define `SkillPack` type — `name`, `description`, `toolProfile`, `systemPromptExtension`, `requiredTools`, `tags` | `src/types/agent.ts`                             | ✅ Done |
 | OB-1745 | Define `SKILLPACK.md` format — name, when to use, tools needed, prompt extension, example tasks, constraints     | `src/master/skill-pack-loader.ts`                | Pending |
 | OB-1746 | Built-in skill pack: `security-audit` — CodeQL/Semgrep patterns, vulnerability detection prompts                 | `src/master/skill-packs/security-audit.ts` (new) | Pending |
 | OB-1747 | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts                     | `src/master/skill-packs/code-review.ts` (new)    | Pending |
