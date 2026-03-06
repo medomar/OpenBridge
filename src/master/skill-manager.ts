@@ -11,7 +11,167 @@ const logger = createLogger('skill-manager');
 const SKILLS_DIR = 'skills';
 
 /** Supported user-defined skill file extensions */
-const SUPPORTED_EXTENSIONS = ['.json', '.js', '.cjs', '.mjs'];
+const SUPPORTED_EXTENSIONS = ['.json', '.js', '.cjs', '.mjs', '.md'];
+
+/**
+ * Parse a SKILL.md file into a `Skill` object.
+ *
+ * Expected format:
+ * ```markdown
+ * # skill-name
+ *
+ * One-line description of what this skill does.
+ *
+ * ## Tool Profile
+ * read-only
+ *
+ * ## Tools Needed
+ * - Read
+ * - Glob
+ *
+ * ## Example Prompts
+ * - "Review my code changes"
+ * - "Analyze this PR"
+ *
+ * ## Constraints
+ * - Do not modify any files
+ *
+ * ## Max Turns
+ * 10
+ *
+ * ## System Prompt
+ * You are a specialized code reviewer...
+ * ```
+ *
+ * Rules:
+ * - H1 (`#`) → `name`
+ * - First non-empty paragraph after H1 (before any H2) → `description`
+ * - `## Tool Profile` section → `toolProfile` (first non-empty line)
+ * - `## Tools Needed` section → bullet list → `toolsNeeded`
+ * - `## Example Prompts` section → bullet list → `examplePrompts` (quotes stripped)
+ * - `## Constraints` section → bullet list → `constraints`
+ * - `## Max Turns` section → integer → `maxTurns`
+ * - `## System Prompt` section → multi-line content → `systemPrompt`
+ */
+export function parseSkillMarkdown(content: string): Partial<Record<string, unknown>> {
+  const lines = content.split('\n');
+
+  let name = '';
+  let description = '';
+  let toolProfile = '';
+  const toolsNeeded: string[] = [];
+  const examplePrompts: string[] = [];
+  const constraints: string[] = [];
+  let maxTurns: number | undefined;
+  let systemPrompt = '';
+
+  type Section =
+    | 'preamble'
+    | 'tool-profile'
+    | 'tools-needed'
+    | 'example-prompts'
+    | 'constraints'
+    | 'max-turns'
+    | 'system-prompt';
+
+  let section: Section = 'preamble';
+  const descriptionLines: string[] = [];
+  const systemPromptLines: string[] = [];
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+
+    // H1 = skill name
+    if (/^#\s+/.test(line) && !/^##/.test(line)) {
+      name = line.replace(/^#\s+/, '').trim();
+      section = 'preamble';
+      continue;
+    }
+
+    // H2 = section switch
+    if (/^##\s+/.test(line)) {
+      const heading = line
+        .replace(/^##\s+/, '')
+        .trim()
+        .toLowerCase();
+      if (heading === 'tool profile') section = 'tool-profile';
+      else if (heading === 'tools needed') section = 'tools-needed';
+      else if (heading === 'example prompts') section = 'example-prompts';
+      else if (heading === 'constraints') section = 'constraints';
+      else if (heading === 'max turns') section = 'max-turns';
+      else if (heading === 'system prompt') section = 'system-prompt';
+      else section = 'preamble'; // unknown section — ignore content
+      continue;
+    }
+
+    switch (section) {
+      case 'preamble':
+        // Collect description lines (first content block after H1)
+        if (line.trim() || descriptionLines.length > 0) {
+          descriptionLines.push(line);
+        }
+        break;
+
+      case 'tool-profile':
+        if (!toolProfile && line.trim()) {
+          toolProfile = line.trim();
+        }
+        break;
+
+      case 'tools-needed': {
+        const item = parseBulletItem(line);
+        if (item) toolsNeeded.push(item);
+        break;
+      }
+
+      case 'example-prompts': {
+        const item = parseBulletItem(line);
+        if (item) examplePrompts.push(item.replace(/^["']|["']$/g, ''));
+        break;
+      }
+
+      case 'constraints': {
+        const item = parseBulletItem(line);
+        if (item) constraints.push(item);
+        break;
+      }
+
+      case 'max-turns': {
+        if (maxTurns === undefined && line.trim()) {
+          const n = parseInt(line.trim(), 10);
+          if (!isNaN(n) && n > 0) maxTurns = n;
+        }
+        break;
+      }
+
+      case 'system-prompt':
+        systemPromptLines.push(line);
+        break;
+    }
+  }
+
+  // Trim description to first non-empty paragraph
+  description = (descriptionLines.join('\n').trim().split(/\n\n+/)[0] ?? '').trim();
+
+  systemPrompt = systemPromptLines.join('\n').trim();
+
+  return {
+    name,
+    description,
+    toolProfile,
+    toolsNeeded,
+    examplePrompts,
+    constraints,
+    ...(maxTurns !== undefined ? { maxTurns } : {}),
+    ...(systemPrompt ? { systemPrompt } : {}),
+  };
+}
+
+/** Extract the text content of a markdown bullet list item (`- foo` or `* foo`). */
+function parseBulletItem(line: string): string | null {
+  const match = /^[*-]\s+(.+)$/.exec(line.trim());
+  return match?.[1]?.trim() ?? null;
+}
 
 /**
  * Manages skill definitions for OpenBridge.
@@ -23,7 +183,7 @@ const SUPPORTED_EXTENSIONS = ['.json', '.js', '.cjs', '.mjs'];
  * Skill definitions are loaded from two sources:
  * 1. **Built-in skills** — registered programmatically via `registerBuiltIn()`
  * 2. **User-defined skills** — discovered from `<workspacePath>/.openbridge/skills/`
- *    as `.json`, `.js`, `.cjs`, or `.mjs` files
+ *    as `.md`, `.json`, `.js`, `.cjs`, or `.mjs` files
  *
  * User-defined skills with the same `name` as a built-in skill override the
  * built-in, allowing workspace-specific customisation.
@@ -49,6 +209,7 @@ export class SkillManager {
    * Discover and load user-defined skill definitions from `.openbridge/skills/`.
    *
    * Supported formats:
+   * - `.md` — SKILL.md document parsed by `parseSkillMarkdown()`
    * - `.json` — plain JSON object validated against `SkillSchema`
    * - `.js` / `.cjs` / `.mjs` — ES/CJS module with a default export or any
    *   named export that validates against `SkillSchema`
@@ -151,11 +312,25 @@ export class SkillManager {
       if (fileName.endsWith('.json')) {
         return await this.loadJsonSkill(filePath);
       }
+      if (fileName.endsWith('.md')) {
+        return await this.loadMarkdownSkill(filePath);
+      }
       return await this.loadModuleSkill(filePath, fileName);
     } catch (err) {
       logger.warn({ file: fileName, err }, 'Failed to load skill file');
       return null;
     }
+  }
+
+  private async loadMarkdownSkill(filePath: string): Promise<Skill | null> {
+    const content = await fs.readFile(filePath, 'utf-8');
+    const data = parseSkillMarkdown(content);
+    const parsed = SkillSchema.safeParse(data);
+    if (!parsed.success) {
+      logger.warn({ filePath, errors: parsed.error.issues }, 'SKILL.md does not match SkillSchema');
+      return null;
+    }
+    return parsed.data;
   }
 
   private async loadJsonSkill(filePath: string): Promise<Skill | null> {
