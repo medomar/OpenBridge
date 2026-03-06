@@ -4,6 +4,10 @@ import fs from 'fs/promises';
 import { DocumentSkillSchema, SkillPackSchema } from '../types/agent.js';
 import type { DocumentSkill, SkillPack } from '../types/agent.js';
 import { createLogger } from '../core/logger.js';
+import type { AgentRunner } from '../core/agent-runner.js';
+import { TOOLS_READ_ONLY } from '../core/agent-runner.js';
+import type { MemoryManager } from '../memory/index.js';
+import type { LearningsSummary } from '../memory/task-store.js';
 
 import { documentWriterSkill } from './skill-packs/document-writer.js';
 import { presentationMakerSkill } from './skill-packs/presentation-maker.js';
@@ -576,4 +580,210 @@ export async function loadAllSkillPacks(workspacePath: string): Promise<AllSkill
   }
 
   return { packs: Array.from(merged.values()), userDefinedCount };
+}
+
+// ── Skill Pack Synthesis ──────────────────────────────────────────────────────
+
+/** Minimum number of successful tasks required to trigger skill pack synthesis. */
+const MIN_TASKS_FOR_SYNTHESIS = 5;
+
+/** Minimum success rate (0–1) for a task type to be eligible for synthesis. */
+const MIN_SUCCESS_RATE_FOR_SYNTHESIS = 0.8;
+
+/**
+ * Task types that are too generic to benefit from a dedicated skill pack.
+ * These are filtered out before synthesis is attempted.
+ */
+const GENERIC_TASK_TYPES = new Set(['task', 'exploration', 'classification']);
+
+/**
+ * Build the AI prompt asking a worker to synthesize a SKILLPACK.md for a task type.
+ */
+function buildSynthesisPrompt(taskType: string, totalTasks: number, successRate: number): string {
+  const pct = Math.round(successRate * 100);
+  return `You are a skill pack author for OpenBridge, an AI bridge system. Based on the task pattern described below, create a SKILLPACK.md that captures domain expertise and best practices for this type of work.
+
+Task pattern:
+- Type: "${taskType}"
+- Total successful completions: ${totalTasks} (${pct}% success rate)
+
+A SKILLPACK.md must follow this exact format:
+
+# <name>
+
+<one-paragraph description>
+
+## Tool Profile
+<one of: read-only, code-audit, code-edit, full-access>
+
+## When to Use
+<when to use this skill pack>
+
+## Required Tools
+- <tool1>
+- <tool2>
+
+## Tags
+- <tag1>
+- <tag2>
+
+## Prompt Extension
+<detailed, actionable instructions for workers performing this type of task — minimum 100 words>
+
+## Constraints
+- <constraint1>
+- <constraint2>
+
+Rules:
+- Name must be a lowercase slug (hyphens only, no spaces, no special characters)
+- Tool Profile must be exactly one of: read-only, code-audit, code-edit, full-access
+- Prompt Extension must be at least 100 words and actionable
+- Name must differ from built-ins: security-audit, code-review, test-writer, data-analysis, documentation
+
+Respond with ONLY the SKILLPACK.md content. No explanations, no code fences.`;
+}
+
+/**
+ * Synthesizes a single skill pack from a task type pattern using an AI worker.
+ * Returns the created SkillPack on success, null on failure.
+ */
+async function synthesizeOneSkillPack(
+  candidate: LearningsSummary,
+  workspacePath: string,
+  agentRunner: AgentRunner,
+): Promise<SkillPack | null> {
+  const { task_type: taskType, total_tasks: totalTasks, success_rate: successRate } = candidate;
+
+  logger.info({ taskType, totalTasks, successRate }, 'Synthesizing skill pack from task pattern');
+
+  const prompt = buildSynthesisPrompt(taskType, totalTasks, successRate);
+
+  let result;
+  try {
+    result = await agentRunner.spawn({
+      prompt,
+      workspacePath,
+      model: 'haiku',
+      allowedTools: [...TOOLS_READ_ONLY],
+      maxTurns: 3,
+      retries: 1,
+    });
+  } catch (err) {
+    logger.warn({ err, taskType }, 'Skill pack synthesis worker failed');
+    return null;
+  }
+
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    logger.warn(
+      { taskType, exitCode: result.exitCode },
+      'Skill pack synthesis worker returned empty or failed output',
+    );
+    return null;
+  }
+
+  // Strip markdown code fences if the worker wrapped the output
+  const rawContent = result.stdout.trim();
+  const fenceMatch = rawContent.match(/^```(?:\w+)?\n([\s\S]*?)\n```$/);
+  const content = fenceMatch?.[1] ?? rawContent;
+
+  const partial = parseSkillPackMd(content);
+  const parsed = SkillPackSchema.safeParse({ ...partial, isUserDefined: true });
+
+  if (!parsed.success) {
+    logger.warn(
+      { taskType, issues: parsed.error.issues },
+      'Synthesized skill pack failed Zod validation — skipping',
+    );
+    return null;
+  }
+
+  // Persist to .openbridge/skill-packs/<name>.md
+  const skillPacksDir = path.join(workspacePath, '.openbridge', 'skill-packs');
+  try {
+    await fs.mkdir(skillPacksDir, { recursive: true });
+    const filePath = path.join(skillPacksDir, `${parsed.data.name}.md`);
+    await fs.writeFile(filePath, skillPackToMarkdown(parsed.data), 'utf-8');
+    logger.info(
+      { name: parsed.data.name, taskType, file: filePath },
+      'Synthesized skill pack saved to disk',
+    );
+  } catch (err) {
+    logger.warn({ err, taskType }, 'Failed to save synthesized skill pack to disk');
+    return null;
+  }
+
+  return parsed.data;
+}
+
+/**
+ * Synthesizes new skill packs from successful task patterns stored in the learnings table.
+ *
+ * Scans learning records for task types that:
+ * 1. Have at least {@link MIN_TASKS_FOR_SYNTHESIS} total completed tasks
+ * 2. Have a success rate >= {@link MIN_SUCCESS_RATE_FOR_SYNTHESIS}
+ * 3. Are not already covered by an existing built-in or user-defined skill pack
+ * 4. Are not generic catch-all types (e.g., `'task'`, `'exploration'`, `'classification'`)
+ *
+ * For each eligible pattern, a Haiku worker is spawned to generate a SKILLPACK.md
+ * which is validated and saved to `<workspacePath>/.openbridge/skill-packs/`.
+ *
+ * This extends the prompt evolution system — call it alongside {@link evolvePrompts}
+ * every N task completions.
+ *
+ * @param memory        - MemoryManager for reading learning records.
+ * @param agentRunner   - AgentRunner for spawning the synthesis worker.
+ * @param workspacePath - Absolute path to the target workspace.
+ * @returns Number of skill packs successfully synthesized and saved.
+ */
+export async function synthesizeSkillPacksFromPatterns(
+  memory: MemoryManager,
+  agentRunner: AgentRunner,
+  workspacePath: string,
+): Promise<number> {
+  logger.info('Running skill pack synthesis cycle');
+
+  // Query task types with high success rates across all models
+  let candidates: LearningsSummary[];
+  try {
+    candidates = await memory.getHighSuccessLearnings(
+      MIN_SUCCESS_RATE_FOR_SYNTHESIS,
+      MIN_TASKS_FOR_SYNTHESIS,
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to query high-success learnings for skill pack synthesis');
+    return 0;
+  }
+
+  if (candidates.length === 0) {
+    logger.info('No task patterns eligible for skill pack synthesis');
+    return 0;
+  }
+
+  // Load existing skill pack names (built-in + user-defined) to avoid duplicates
+  const { packs: existingPacks } = await loadAllSkillPacks(workspacePath);
+  const existingNames = new Set(existingPacks.map((p) => p.name));
+
+  // Also map built-in pack names for fast lookup
+  const builtInNames = new Set(BUILT_IN_SKILL_PACKS.map((p) => p.name));
+
+  let synthesized = 0;
+
+  for (const candidate of candidates) {
+    const { task_type: taskType } = candidate;
+
+    // Skip generic types that don't benefit from a skill pack
+    if (GENERIC_TASK_TYPES.has(taskType)) continue;
+
+    // Skip if a skill pack with the same name already exists
+    if (builtInNames.has(taskType) || existingNames.has(taskType)) continue;
+
+    const pack = await synthesizeOneSkillPack(candidate, workspacePath, agentRunner);
+    if (pack) {
+      existingNames.add(pack.name);
+      synthesized++;
+    }
+  }
+
+  logger.info({ synthesized }, 'Skill pack synthesis cycle complete');
+  return synthesized;
 }

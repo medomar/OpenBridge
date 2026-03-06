@@ -21,7 +21,7 @@ import {
   searchConversations as _searchConversations,
   type SearchOptions,
 } from './retrieval.js';
-import type { TaskRecord, LearnedParams, ModelStats } from './task-store.js';
+import type { TaskRecord, LearnedParams, ModelStats, LearningsSummary } from './task-store.js';
 import {
   recordTask as _recordTask,
   getTasksByType as _getTasksByType,
@@ -29,6 +29,7 @@ import {
   getLearnedParams as _getLearnedParams,
   recordLearning as _recordLearning,
   getModelStatsForTask as _getModelStatsForTask,
+  getHighSuccessLearnings as _getHighSuccessLearnings,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
@@ -369,6 +370,15 @@ export class MemoryManager {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     _recordLearning(this.db, taskType, model, success, turns, durationMs);
     return Promise.resolve();
+  }
+
+  /** Return task types with sufficient total tasks and a high success rate. */
+  getHighSuccessLearnings(
+    minSuccessRate?: number,
+    minTotalTasks?: number,
+  ): Promise<LearningsSummary[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getHighSuccessLearnings(this.db, minSuccessRate, minTotalTasks));
   }
 
   /** Return aggregate stats for every task_type in the learnings table (OB-711). */

@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 39 | **In Progress:** 0 | **Done:** 137 (1063 archived)
+> **Pending:** 38 | **In Progress:** 0 | **Done:** 138 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -344,7 +344,7 @@
 | OB-1752 | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   | ✅ Done |
 | OB-1753 | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile            | `src/master/master-manager.ts`                   | ✅ Done |
 | OB-1754 | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                                | `src/master/skill-pack-loader.ts`                | ✅ Done |
-| OB-1755 | Master can create new skill packs from successful task patterns (extends prompt evolution)                       | `src/master/skill-pack-loader.ts`                | Pending |
+| OB-1755 | Master can create new skill packs from successful task patterns (extends prompt evolution)                       | `src/master/skill-pack-loader.ts`                | ✅ Done |
 | OB-1756 | Add `/skill-packs` chat command — list available packs with descriptions                                         | `src/core/router.ts`                             | Pending |
 | OB-1757 | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               | Pending |
 | OB-1758 | Wire skill pack loader into MemoryManager facade                                                                 | `src/memory/index.ts`                            | Pending |
