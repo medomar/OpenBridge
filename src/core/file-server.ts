@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createLogger } from './logger.js';
 import type MemoryManager from '../memory/index.js';
+import type { RenderOptions, RenderResult } from './html-renderer.js';
 
 const logger = createLogger('file-server');
 
@@ -71,6 +72,7 @@ type SharedLinksMap = Record<string, SharedLinkEntry>;
  *   await server.stop();
  */
 export class FileServer {
+  private readonly workspacePath: string;
   private readonly generatedDir: string;
   private readonly port: number;
   private server: Server | null = null;
@@ -92,6 +94,7 @@ export class FileServer {
     port: number = DEFAULT_PORT,
     memory: MemoryManager | null = null,
   ) {
+    this.workspacePath = workspacePath;
     this.generatedDir = path.join(workspacePath, '.openbridge', 'generated');
     this.port = port;
     this.memory = memory;
@@ -181,6 +184,74 @@ export class FileServer {
     const url = `${this.getFileUrl()}/shared/${uuid}/${encodeURIComponent(filename)}`;
     logger.info({ uuid, filename, expiresAt }, 'Shareable link created');
     return url;
+  }
+
+  /**
+   * Save raw SVG markup to the generated directory.
+   *
+   * @param svgContent  Full SVG markup string
+   * @param filename    Desired filename (must end in `.svg`). Auto-generated if omitted.
+   * @returns           Absolute path to the saved file
+   */
+  async saveSvgContent(svgContent: string, filename?: string): Promise<string> {
+    const resolvedFilename = filename ?? `svg-${randomUUID()}.svg`;
+    if (
+      resolvedFilename.includes('..') ||
+      resolvedFilename.includes('/') ||
+      resolvedFilename.includes('\\')
+    ) {
+      throw new Error('Invalid filename');
+    }
+
+    await fs.mkdir(this.generatedDir, { recursive: true });
+    const filePath = path.join(this.generatedDir, resolvedFilename);
+    await fs.writeFile(filePath, svgContent, 'utf-8');
+
+    logger.info(
+      { filePath, filename: resolvedFilename },
+      'SVG content saved to generated directory',
+    );
+    return filePath;
+  }
+
+  /**
+   * Convert a stored SVG file to a raster image (PNG/JPEG) using HTMLRenderer + Puppeteer.
+   *
+   * Returns null when Puppeteer is unavailable. Callers should check `HTMLRenderer.isAvailable()`
+   * first if they need a hard guarantee.
+   *
+   * @param svgFilename  Name of the SVG file already in `.openbridge/generated/`
+   * @param options      Rendering options passed to HTMLRenderer
+   * @returns            RenderResult (outputPath, format, sizeBytes) or null if Puppeteer unavailable
+   */
+  async renderSvgToImage(
+    svgFilename: string,
+    options: RenderOptions = {},
+  ): Promise<RenderResult | null> {
+    if (svgFilename.includes('..') || svgFilename.includes('/') || svgFilename.includes('\\')) {
+      throw new Error('Invalid filename');
+    }
+
+    const svgPath = path.join(this.generatedDir, svgFilename);
+    // Ensure the file exists
+    await fs.access(svgPath);
+
+    // Lazy-import to keep Puppeteer optional
+    const { HTMLRenderer } = await import('./html-renderer.js');
+
+    if (!(await HTMLRenderer.isAvailable())) {
+      logger.warn({ svgFilename }, 'Puppeteer not available — SVG-to-image conversion skipped');
+      return null;
+    }
+
+    const renderer = new HTMLRenderer(this.workspacePath);
+    const result = await renderer.renderSvgFile(svgPath, options);
+
+    logger.info(
+      { svgFilename, outputPath: result.outputPath, format: result.format },
+      'SVG rendered to raster image',
+    );
+    return result;
   }
 
   // ---------------------------------------------------------------------------
