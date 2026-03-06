@@ -1,5 +1,5 @@
 /**
- * Session Compactor (OB-1666)
+ * Session Compactor (OB-1666, OB-1667, OB-1668)
  *
  * Monitors the Master AI session's turn count via `agent_activity` tracking
  * and determines when compaction is needed to prevent context window overflow.
@@ -9,6 +9,11 @@
  *  - `agent_activity` (type='worker', parent_id=sessionId) — worker spawns
  *
  * Compaction is triggered when totalTurns >= maxTurns × threshold.
+ *
+ * When compaction fires, `compactTurns()` produces a structured
+ * {@link CompactionSummary} from the conversation history, preserving key
+ * identifiers (file paths, function names, task IDs, finding IDs) so the next
+ * session segment can resume without re-reading the full history.
  */
 
 import type Database from 'better-sqlite3';
@@ -19,6 +24,41 @@ const logger = createLogger('session-compactor');
 // ---------------------------------------------------------------------------
 // Public Types
 // ---------------------------------------------------------------------------
+
+/**
+ * A single conversation turn supplied to `compactTurns()`.
+ */
+export interface ConversationTurn {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/**
+ * Structured compaction summary produced by `compactTurns()`.
+ *
+ * Preserves identifiers extracted from the original turns so the next session
+ * segment can resume work without replaying the full conversation history.
+ */
+export interface CompactionSummary {
+  /** Brief text overview of the activity covered in the summarized turns. */
+  overview: string;
+  /** Deduplicated file paths referenced across all turns (e.g. `src/master/session-compactor.ts`). */
+  filePaths: string[];
+  /** Function/method names mentioned across all turns, with trailing `()`. */
+  functionNames: string[];
+  /** OpenBridge task IDs found in turns (e.g. `OB-1668`). */
+  taskIds: string[];
+  /** OpenBridge finding IDs found in turns (e.g. `OB-F84`). */
+  findingIds: string[];
+  /** Completed work items inferred from explicit completion markers in turn content. */
+  completedWork: string[];
+  /** Pending or in-progress work items inferred from explicit markers in turn content. */
+  pendingWork: string[];
+  /** Total number of turns summarized. */
+  turnCount: number;
+  /** ISO timestamp when this summary was produced. */
+  compactedAt: string;
+}
 
 export interface CompactorConfig {
   /** Max turns for the Master session (mirrors MASTER_MAX_TURNS). */
@@ -251,5 +291,177 @@ export class SessionCompactor {
     }
 
     return { triggered: true, snapshot };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compaction Strategy (OB-1668)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Summarize a sequence of conversation turns into a structured
+   * {@link CompactionSummary} that preserves key identifiers.
+   *
+   * The summary captures:
+   * - File paths (`src/...`, `tests/...`, `docs/...`, `./...`, absolute paths)
+   * - Function/method names (token followed by `()`)
+   * - OpenBridge task IDs (`OB-NNNN`)
+   * - OpenBridge finding IDs (`OB-FNNNN`)
+   * - Completed work items (from `✅`, `[x]`, `done:`, `completed:`, `fixed:`)
+   * - Pending work items (from `TODO:`, `NEXT:`, `pending:`, `[ ]`, `needs:`)
+   *
+   * @param turns - The conversation turns to compact.
+   */
+  compactTurns(turns: ConversationTurn[]): CompactionSummary {
+    if (turns.length === 0) {
+      return {
+        overview: 'No turns to compact.',
+        filePaths: [],
+        functionNames: [],
+        taskIds: [],
+        findingIds: [],
+        completedWork: [],
+        pendingWork: [],
+        turnCount: 0,
+        compactedAt: new Date().toISOString(),
+      };
+    }
+
+    const allContent = turns.map((t) => t.content).join('\n');
+
+    return {
+      overview: this._buildOverview(turns),
+      filePaths: this._extractFilePaths(allContent),
+      functionNames: this._extractFunctionNames(allContent),
+      taskIds: this._extractTaskIds(allContent),
+      findingIds: this._extractFindingIds(allContent),
+      completedWork: this._extractCompletedWork(allContent),
+      pendingWork: this._extractPendingWork(allContent),
+      turnCount: turns.length,
+      compactedAt: new Date().toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private extraction helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Build a one-sentence overview from the first user turn and the last
+   * assistant turn in the sequence.
+   */
+  private _buildOverview(turns: ConversationTurn[]): string {
+    const firstUser = turns.find((t) => t.role === 'user')?.content ?? '';
+    const lastAssistant = [...turns].reverse().find((t) => t.role === 'assistant')?.content ?? '';
+
+    const userPreview = firstUser.slice(0, 100).replace(/\n/g, ' ').trim();
+    const assistantPreview = lastAssistant.slice(0, 100).replace(/\n/g, ' ').trim();
+
+    if (userPreview && assistantPreview) {
+      return `Compacted ${turns.length} turns. First request: "${userPreview}". Last response: "${assistantPreview}".`;
+    }
+    if (userPreview) {
+      return `Compacted ${turns.length} turns. First request: "${userPreview}".`;
+    }
+    return `Compacted ${turns.length} turns.`;
+  }
+
+  /**
+   * Extract file paths from text.
+   * Matches `src/`, `tests/`, `docs/` relative paths and absolute paths.
+   */
+  private _extractFilePaths(text: string): string[] {
+    const found = new Set<string>();
+    const patterns: RegExp[] = [
+      /\bsrc\/[\w/\-.]+\.\w+\b/g,
+      /\btests\/[\w/\-.]+\.\w+\b/g,
+      /\bdocs\/[\w/\-.]+\.\w+\b/g,
+      /\bscripts\/[\w/\-.]+\.\w+\b/g,
+      /\.\/[\w/\-.]+\.\w+/g,
+      /\/(?:Users|home|var|tmp|opt|etc)\/[\w/\-.]+\.\w+/g,
+    ];
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        found.add(match[0]);
+      }
+    }
+    return Array.from(found).sort();
+  }
+
+  /**
+   * Extract function/method names (identifier immediately followed by `()`).
+   * Excludes very short or all-uppercase tokens (likely control-flow keywords).
+   */
+  private _extractFunctionNames(text: string): string[] {
+    const found = new Set<string>();
+    for (const match of text.matchAll(/\b([a-z_][a-zA-Z0-9_]{2,})\(\)/g)) {
+      found.add(`${match[1]}()`);
+    }
+    return Array.from(found).sort();
+  }
+
+  /**
+   * Extract OpenBridge task IDs of the form `OB-NNNN` (digits only, not finding IDs).
+   */
+  private _extractTaskIds(text: string): string[] {
+    const found = new Set<string>();
+    for (const match of text.matchAll(/\bOB-(\d{4,})\b/g)) {
+      found.add(`OB-${match[1]}`);
+    }
+    return Array.from(found).sort();
+  }
+
+  /**
+   * Extract OpenBridge finding IDs of the form `OB-FNNNN`.
+   */
+  private _extractFindingIds(text: string): string[] {
+    const found = new Set<string>();
+    for (const match of text.matchAll(/\bOB-F(\d+)\b/g)) {
+      found.add(`OB-F${match[1]}`);
+    }
+    return Array.from(found).sort();
+  }
+
+  /**
+   * Extract completed work items from explicit completion markers in text.
+   * Markers: `✅ ...`, `[x] ...`, `done: ...`, `completed: ...`, `fixed: ...`
+   */
+  private _extractCompletedWork(text: string): string[] {
+    const found: string[] = [];
+    const markers: RegExp[] = [
+      /✅\s+(.+)/g,
+      /\[x\]\s+(.+)/gi,
+      /\bdone:\s*(.+)/gi,
+      /\bcompleted:\s*(.+)/gi,
+      /\bfixed:\s*(.+)/gi,
+    ];
+    for (const pattern of markers) {
+      for (const match of text.matchAll(pattern)) {
+        const item = match[1]?.trim().slice(0, 120) ?? '';
+        if (item) found.push(item);
+      }
+    }
+    return [...new Set(found)];
+  }
+
+  /**
+   * Extract pending/in-progress work items from explicit markers in text.
+   * Markers: `TODO: ...`, `NEXT: ...`, `pending: ...`, `[ ] ...`, `needs: ...`
+   */
+  private _extractPendingWork(text: string): string[] {
+    const found: string[] = [];
+    const markers: RegExp[] = [
+      /\bTODO:\s*(.+)/gi,
+      /\bNEXT:\s*(.+)/gi,
+      /\bpending:\s*(.+)/gi,
+      /\[ \]\s+(.+)/g,
+      /\bneeds:\s*(.+)/gi,
+    ];
+    for (const pattern of markers) {
+      for (const match of text.matchAll(pattern)) {
+        const item = match[1]?.trim().slice(0, 120) ?? '';
+        if (item) found.push(item);
+      }
+    }
+    return [...new Set(found)];
   }
 }
