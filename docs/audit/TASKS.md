@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 120 | **In Progress:** 0 | **Done:** 56 (1063 archived)
+> **Pending:** 119 | **In Progress:** 0 | **Done:** 57 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -163,7 +163,7 @@
 | OB-1722 | Add role step to init wizard — after whitelist setup, ask "Default role for whitelisted users: owner / developer / viewer" with explanation of each                  | `src/cli/init.ts`            | ✅ Done |
 | OB-1723 | Update `config.example.json` — add `auth.defaultRole` and `auth.channelRoles` examples with comments                                                                 | `config.example.json`        | ✅ Done |
 | OB-1724 | Soften action classification — add `chat` action (default for messages without strong edit/deploy/stop keywords), allowed for all roles including `viewer`           | `src/core/auth.ts`           | ✅ Done |
-| OB-1725 | Tests: default role assignment, channelRoles config, /whoami output, /role command, improved denial messages, softened classification                                | `tests/core/auth.test.ts`    | Pending |
+| OB-1725 | Tests: default role assignment, channelRoles config, /whoami output, /role command, improved denial messages, softened classification                                | `tests/core/auth.test.ts`    | ✅ Done |
 
 **Phase 96d Total:** 12 tasks
 
