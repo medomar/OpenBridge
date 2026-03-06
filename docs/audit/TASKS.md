@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 76 | **In Progress:** 0 | **Done:** 100 (1063 archived)
+> **Pending:** 75 | **In Progress:** 0 | **Done:** 101 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -272,7 +272,7 @@
 | OB-1685 | Check: Node.js version >= 22 (parse `process.version`)                                                                          | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1686 | Check: AI tools detected (`which claude`, `which codex`, `which aider`) with version output                                     | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1687 | Check: Config file exists + valid (Zod parse with specific error messages per field)                                            | `src/cli/doctor.ts`       | ✅ Done |
-| OB-1688 | Check: SQLite database healthy (`PRAGMA integrity_check`, schema version, table row counts summary)                             | `src/cli/doctor.ts`       | Pending |
+| OB-1688 | Check: SQLite database healthy (`PRAGMA integrity_check`, schema version, table row counts summary)                             | `src/cli/doctor.ts`       | ✅ Done |
 | OB-1689 | Check: `.openbridge/` state — memory.md freshness, workspace-map existence, no corrupted JSON                                   | `src/cli/doctor.ts`       | Pending |
 | OB-1690 | Check: Channel prerequisites — WhatsApp session dir, Telegram BOT_TOKEN, Discord BOT_TOKEN, WebChat port                        | `src/cli/doctor.ts`       | Pending |
 | OB-1691 | Color-coded summary output (green ✓ / red ✗ / yellow ⚠) with fix suggestions per failing check                                  | `src/cli/doctor.ts`       | Pending |
