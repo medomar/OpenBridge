@@ -919,9 +919,12 @@ export class WebChatConnector implements Connector {
         const tools = this.discoveredTools
           .filter((t) => t.available)
           .map((t) => ({ name: t.name, version: t.version }));
+        // Only cache when tools have been wired — avoid caching empty results
+        // that would stick in the browser for 5 minutes during startup race.
+        const cacheControl = tools.length > 0 ? 'public, max-age=300' : 'no-cache, no-store';
         res.writeHead(200, {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=300',
+          'Cache-Control': cacheControl,
         });
         res.end(JSON.stringify({ tools }));
         return;

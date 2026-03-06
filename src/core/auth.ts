@@ -55,8 +55,19 @@ export class AuthService {
    * Normalize a phone number to digits-only for comparison.
    * Handles: "+33629539495", "33629539495@c.us", "33629539495"
    */
-  private static normalizeNumber(input: string): string {
-    return input.replace('@c.us', '').replace(/\D/g, '');
+  /**
+   * Normalize any sender identifier — phone numbers get digit-only treatment,
+   * non-numeric identifiers (webchat-user, console-user, usernames) are lowercased as-is.
+   */
+  private static normalizeId(input: string): string {
+    const withoutSuffix = input.replace(/@c\.us$/, '');
+    const withoutPrefix = withoutSuffix.replace(/^\+/, '');
+    // If it's all digits, treat as phone number
+    if (/^\d+$/.test(withoutPrefix)) {
+      return withoutPrefix;
+    }
+    // Non-numeric identifier — keep as-is (lowercased)
+    return input.toLowerCase();
   }
 
   /**
@@ -71,15 +82,13 @@ export class AuthService {
     const dropped: Array<{ entry: string; reason: string }> = [];
 
     for (const n of numbers) {
-      // Allow @c.us suffix (WhatsApp format) and leading +; flag anything else non-numeric
-      const withoutSuffix = n.replace(/@c\.us$/, '');
-      const withoutPrefix = withoutSuffix.replace(/^\+/, '');
-      if (/\D/.test(withoutPrefix)) {
-        dropped.push({ entry: n, reason: 'non-numeric characters' });
+      const trimmed = n.trim();
+      if (!trimmed) {
+        dropped.push({ entry: n, reason: 'empty entry' });
         continue;
       }
 
-      const normalized = AuthService.normalizeNumber(n);
+      const normalized = AuthService.normalizeId(trimmed);
       if (whitelist.has(normalized)) {
         dropped.push({ entry: n, reason: 'duplicate' });
         continue;
@@ -148,7 +157,7 @@ export class AuthService {
     if (this.whitelist.size === 0) {
       return true; // No whitelist = open access
     }
-    return this.whitelist.has(AuthService.normalizeNumber(sender));
+    return this.whitelist.has(AuthService.normalizeId(sender));
   }
 
   /**

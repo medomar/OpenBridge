@@ -333,7 +333,7 @@ get_pending_tasks() {
   # The last field is empty due to trailing "|", so status is $(NF-1).
   # This avoids false positives when task descriptions contain the word "pending".
   if [[ "$phase" != "none" ]]; then
-    raw_tasks=$(sed -nE "/^## Phase $phase/,/^## Phase |^## Status|^---$/p" "$tasks_file" \
+    raw_tasks=$(sed -nE "/^###? Phase $phase/,/^###? Phase |^## Status|^---$/p" "$tasks_file" \
       | awk -F'|' 'NF>=5 && tolower($(NF-1)) ~ /pending/' \
       | grep -oE 'OB-[0-9]+')
   else

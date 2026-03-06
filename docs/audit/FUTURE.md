@@ -1,8 +1,8 @@
 # OpenBridge — Future Work
 
 > **Purpose:** Planned features, deferred findings, finalization items, and backlog for future versions.
-> **Last Updated:** 2026-03-05 | **Current Release:** v0.0.12 (Phases 1–104 + Deep, 1045 tasks shipped)
-> **17 open findings** — 10 community-inspired (v0.0.13) + 7 skill/agent patterns (v0.0.14). See [FINDINGS.md](FINDINGS.md) for details.
+> **Last Updated:** 2026-03-06 | **Current Release:** v0.0.12 (Phases 1–104 + Deep + Phase 97, 1063 tasks shipped)
+> **18 open findings** — all 18 findings have tasks in [TASKS.md](TASKS.md) (176 tasks, OB-1618–OB-1793) for automated execution via `run-tasks.sh`. Sprint 5 (126 tasks) + Sprint 6 (50 tasks). See [FINDINGS.md](FINDINGS.md) for details.
 
 ---
 
@@ -17,7 +17,8 @@ All planned sprints through v0.0.12 are complete:
 | 2         | v0.0.10  | 43       | 74–77, 85                 | ✅ Shipped |
 | 3         | v0.0.11  | 20       | 81, 86                    | ✅ Shipped |
 | 4         | v0.0.12  | 281      | RWT, Deep, 82–104, Docker | ✅ Shipped |
-| **Total** |          | **1045** |                           |            |
+| Pre-5     | Phase 97 | 18       | 97                        | ✅ Shipped |
+| **Total** |          | **1063** |                           |            |
 
 Sprint 4 delivered: Real-world testing fixes (Codex streaming, RAG, classifier), Deep Mode (5-phase state machine), tunnel + app server + relay, WebChat modernization (extracted UI, auth, PWA, history, settings), runtime permission escalation, batch task continuation, Docker sandbox, and 67 runtime fix tasks from production testing.
 
@@ -25,33 +26,39 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ---
 
-## Pre-Sprint: Phase 97 — Data Integrity Fixes (18 tasks)
+## ✅ Completed: Phase 97 — Data Integrity Fixes (18 tasks)
 
-**Goal:** Fix 7 broken data pipelines discovered by auditing `.openbridge/openbridge.db`. Findings OB-F89 through OB-F95.
+**Status:** All 18 tasks done, 7 findings fixed. Archived in [v22](archive/v22/TASKS-v22-phase97-data-integrity.md).
 
-**Must complete before Sprint 5** — these are foundational fixes (session lifecycle, turns tracking, QA cache, prompt evolution, memory.md reliability) that Sprint 5 features depend on. See [TASKS.md](TASKS.md) for the full task breakdown.
-
-| Finding | Issue                               | Severity  | Tasks | Effort |
-| ------- | ----------------------------------- | --------- | ----- | ------ |
-| OB-F89  | Audit log disabled by default       | 🟡 Medium | 2     | Small  |
-| OB-F90  | QA cache write path missing         | 🟠 High   | 3     | Medium |
-| OB-F91  | Sessions never close                | 🟠 High   | 3     | Small  |
-| OB-F92  | Learnings turns always 0            | 🟠 High   | 3     | Small  |
-| OB-F93  | Prompt evolution never activates    | 🟡 Medium | 2     | Small  |
-| OB-F94  | Sub-master detection never triggers | 🟡 Medium | 2     | Medium |
-| OB-F95  | memory.md goes stale                | 🟠 High   | 3     | Medium |
+| Finding | Issue                               | Severity  | Tasks | Status   |
+| ------- | ----------------------------------- | --------- | ----- | -------- |
+| OB-F89  | Audit log disabled by default       | 🟡 Medium | 2     | ✅ Fixed |
+| OB-F90  | QA cache write path missing         | 🟠 High   | 3     | ✅ Fixed |
+| OB-F91  | Sessions never close                | 🟠 High   | 3     | ✅ Fixed |
+| OB-F92  | Learnings turns always 0            | 🟠 High   | 3     | ✅ Fixed |
+| OB-F93  | Prompt evolution never activates    | 🟡 Medium | 2     | ✅ Fixed |
+| OB-F94  | Sub-master detection never triggers | 🟡 Medium | 2     | ✅ Fixed |
+| OB-F95  | memory.md goes stale                | 🟠 High   | 3     | ✅ Fixed |
 
 ---
 
-## Next: Sprint 5 — Community-Inspired Improvements (v0.0.13) — ~95–110 tasks
+## Next: Sprint 5 — Smarter AI + Business Output (v0.0.13) — 126 tasks
 
-**Goal:** Level up OpenBridge's memory system, developer experience, and security by adopting battle-tested patterns from the open-source community. Inspired by analysis of [openclaw/openclaw](https://github.com/openclaw/openclaw) (242K stars, 13+ channels, vector memory, skills platform) and [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) (32K stars, structured observations, progressive disclosure, token economics).
+**Goal:** Make OpenBridge smarter (structured memory, session compaction) and useful for business users (document generation), while fixing the critical role management UX bug. Stretch goals add vector search and developer experience tools.
 
-**Why now (after v0.0.12):** v0.0.9–v0.0.12 makes OpenBridge functional and secure. v0.0.13 makes it _competitive_ — adopting patterns that successful community projects have validated at scale.
+**Strategy:** Smarter AI first (Phase 93 foundation), then session compaction (Phase 95) + role fix (Phase 96d) in parallel, then document generation (Phase 99) which builds on structured observations. Stretch goals: vector search (Phase 94), doctor (96a), pairing (96b), skills directory (96c).
 
-### Phase 93 — Structured Observations & Worker Summaries (~20–22 tasks)
+**Inspired by:** [openclaw/openclaw](https://github.com/openclaw/openclaw) (242K stars, vector memory, 60+ skills), [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) (32K stars, structured observations, token economics), [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (document generation skills).
 
-**Findings:** OB-F80, OB-F88, OB-F82
+**Why now (after v0.0.12):** v0.0.9–v0.0.12 makes OpenBridge functional and secure. v0.0.13 makes it _smarter_ and opens it to _business users_ — two gaps that limit adoption.
+
+---
+
+### Core Phases (75 tasks — guaranteed delivery)
+
+#### Phase 93 — Structured Observations & Worker Summaries (~27 tasks)
+
+**Findings:** OB-F80, OB-F88, OB-F82 | **Priority:** 1st — Foundation for everything else
 
 **Problem:** Worker outputs are unstructured text. No typed facts, concepts, files_touched, or next_steps. Duplicate chunks accumulate during overlapping reads. The Master loses track of incomplete work.
 
@@ -77,14 +84,109 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 | 16   | OB-F82  | Migration to backfill content hashes for existing chunks                                                                                                                                    | `src/memory/migration.ts`                      |
 | 17   | —       | Wire `observation-store.ts` into `MemoryManager` facade                                                                                                                                     | `src/memory/index.ts`                          |
 | 18   | —       | Add migration for observations table + FTS5                                                                                                                                                 | `src/memory/migration.ts`                      |
-| 19   | —       | Tests: observation extraction, deduplication, summary parsing                                                                                                                               | `tests/memory/observation-store.test.ts`       |
-| 20   | —       | Tests: worker summary schema, next_steps injection                                                                                                                                          | `tests/master/worker-result-formatter.test.ts` |
+| 19   | —       | Define `Observation` Zod schema with all fields + type validation                                                                                                                           | `src/types/agent.ts`                           |
+| 20   | —       | Tests: observation extraction, deduplication, summary parsing                                                                                                                               | `tests/memory/observation-store.test.ts`       |
+| 21   | —       | Tests: worker summary schema, next_steps injection                                                                                                                                          | `tests/master/worker-result-formatter.test.ts` |
 
 ---
 
-### Phase 94 — Vector Search & Hybrid Retrieval (~18–20 tasks)
+#### Phase 95 — Session Compaction & Token Economics (~18 tasks)
 
-**Findings:** OB-F79, OB-F81
+**Findings:** OB-F84, OB-F83 | **Priority:** 2nd — Parallel with Phase 96d
+
+**Problem:** Long Master sessions lose context silently when the window fills. No visibility into exploration cost vs retrieval savings.
+
+**Inspired by:** [openclaw's session compaction](https://github.com/openclaw/openclaw) — auto-summarizes when context window fills, preserves identifiers, retries on failure. [claude-mem's token economics](https://github.com/thedotmack/claude-mem) — tracks discovery vs read tokens, computes compression ROI.
+
+| Task | Finding | What                                                                                                                             | Key File                                 |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 1    | OB-F84  | Create `SessionCompactor` class — monitors Master session turn count                                                             | `src/master/session-compactor.ts` (new)  |
+| 2    | OB-F84  | Trigger compaction when Master session exceeds 80% of `--max-turns`                                                              | `src/master/session-compactor.ts`        |
+| 3    | OB-F84  | Compaction strategy: summarize old turns into structured summary (preserve identifiers: file paths, function names, finding IDs) | `src/master/session-compactor.ts`        |
+| 4    | OB-F84  | Write compaction summary to `memory.md` before starting new session segment                                                      | `src/master/session-compactor.ts`        |
+| 5    | OB-F84  | Identifier extraction — scan conversation for file paths, function names, finding IDs that must survive compaction               | `src/master/session-compactor.ts`        |
+| 6    | OB-F84  | Retry on compaction failure — don't lose the session silently                                                                    | `src/master/session-compactor.ts`        |
+| 7    | OB-F84  | Wire compactor into `master-manager.ts` — check after each Master turn                                                           | `src/master/master-manager.ts`           |
+| 8    | OB-F84  | Add `compaction_history` table — track when compactions happen, what was summarized                                              | `src/memory/database.ts`                 |
+| 9    | OB-F83  | Add `token_economics` table — `chunk_id`, `discovery_tokens`, `retrieval_count`, `total_read_tokens`                             | `src/memory/database.ts`                 |
+| 10   | OB-F83  | Track `discovery_tokens` per chunk — estimate from worker turn count × model token rate                                          | `src/memory/chunk-store.ts`              |
+| 11   | OB-F83  | Track `read_tokens` per retrieval — count tokens in returned content                                                             | `src/memory/retrieval.ts`                |
+| 12   | OB-F83  | Increment `retrieval_count` on each chunk access                                                                                 | `src/memory/retrieval.ts`                |
+| 13   | OB-F83  | Add `/stats` chat command — show exploration ROI: "Explored with ~50K tokens, saved ~200K tokens across 15 retrievals (4x ROI)"  | `src/core/router.ts`                     |
+| 14   | OB-F83  | Add `openbridge stats` CLI command (same output as `/stats`)                                                                     | `src/cli/index.ts`                       |
+| 15   | —       | Migration: compaction_history + token_economics tables                                                                           | `src/memory/migration.ts`                |
+| 16   | —       | Tests: compaction trigger, identifier preservation, token tracking, /stats output                                                | `tests/master/session-compactor.test.ts` |
+
+---
+
+#### Phase 96d — Channel Role Management UX (~12 tasks)
+
+**Finding:** OB-F103 | **Priority:** 2nd — Parallel with Phase 95. High priority bug fix.
+
+**Problem:** Users get auto-created as `viewer` (read-only). Any message with action words ("fix", "add", "create") is classified as `edit` and blocked with a cryptic _"That action is not permitted for your role."_ No way to set roles from config, no `/whoami` command, no in-chat role management.
+
+**Root causes:**
+
+1. `addApprovedEscalation()` defaults new entries to `viewer` instead of respecting config
+2. `classifyMessageAction()` is too aggressive — common words trigger `edit` for viewer-blocked users
+3. Denial message gives zero context (role, classified action, allowed actions)
+4. No `auth.defaultRole` or `auth.channelRoles` in config — roles only in SQLite via CLI
+5. No `/whoami` or `/role` chat commands
+6. Init wizard skips role configuration entirely
+
+| Task | Finding | What                                                                                                              | Key File                     |
+| ---- | ------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| 1    | OB-F103 | Change default role in `addApprovedEscalation()` from `viewer` to `owner` for whitelisted users                   | `src/memory/access-store.ts` |
+| 2    | OB-F103 | Add `auth.defaultRole` config field (default: `owner`)                                                            | `src/types/config.ts`        |
+| 3    | OB-F103 | Add `auth.channelRoles` config — per-channel role overrides (e.g., `{ webchat: "owner", telegram: "developer" }`) | `src/types/config.ts`        |
+| 4    | OB-F103 | Wire `defaultRole` + `channelRoles` into `AuthService` for auto-creating `access_control` entries                 | `src/core/auth.ts`           |
+| 5    | OB-F103 | Auto-create `access_control` entry on first authorized message with correct role                                  | `src/core/bridge.ts`         |
+| 6    | OB-F103 | Improve denial message — show role, classified action, and allowed actions                                        | `src/core/auth.ts`           |
+| 7    | OB-F103 | Add `/whoami` chat command — show user their role, allowed actions, cost usage                                    | `src/core/router.ts`         |
+| 8    | OB-F103 | Add `/role <user_id> <role>` chat command — owner/admin only                                                      | `src/core/router.ts`         |
+| 9    | OB-F103 | Add role step to init wizard — "Default role for whitelisted users: owner / developer / viewer"                   | `src/cli/init.ts`            |
+| 10   | OB-F103 | Update `config.example.json` with `auth.defaultRole` + `auth.channelRoles` examples                               | `config.example.json`        |
+| 11   | OB-F103 | Add `chat` action classification — default for conversational messages, allowed for all roles                     | `src/core/auth.ts`           |
+| 12   | OB-F103 | Tests: role assignment, channelRoles, /whoami, /role, improved denial messages, softened classification           | `tests/core/auth.test.ts`    |
+
+---
+
+#### Phase 99 — Document Generation Skills (~18 tasks)
+
+**Finding:** OB-F98 | **Priority:** 3rd — After Phase 93. Opens OpenBridge to business users.
+
+**Problem:** Business users can't generate documents, reports, presentations, or spreadsheets. OpenBridge is code-only — missing an entire use case category for non-developer users.
+
+**Inspired by:** [awesome-claude-skills official skills](https://github.com/travisvn/awesome-claude-skills) — `docx` (Word creation/editing), `pdf` (manipulation/extraction), `pptx` (PowerPoint generation), `xlsx` (Excel with formulas/charts).
+
+| Task | Finding | What                                                                                                          | Key File                                                  |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 1    | OB-F98  | Define `DocumentSkill` type — `name`, `fileFormat`, `toolProfile`, `npmDependency`, `prompts`                 | `src/types/agent.ts`                                      |
+| 2    | OB-F98  | Create `document-writer` skill pack — Word/DOCX generation prompts, structure templates, formatting rules     | `src/master/skill-packs/document-writer.ts` (new)         |
+| 3    | OB-F98  | Create `presentation-maker` skill pack — PPTX generation prompts, slide layouts, design principles            | `src/master/skill-packs/presentation-maker.ts` (new)      |
+| 4    | OB-F98  | Create `spreadsheet-builder` skill pack — XLSX generation prompts, formula patterns, chart generation         | `src/master/skill-packs/spreadsheet-builder.ts` (new)     |
+| 5    | OB-F98  | Create `report-generator` skill pack — PDF/HTML report generation, data formatting, executive summary style   | `src/master/skill-packs/report-generator.ts` (new)        |
+| 6    | OB-F98  | Add `docx` worker tooling — npm dependency (`docx` package), worker prompt with formatting instructions       | `src/master/skill-packs/document-writer.ts`               |
+| 7    | OB-F98  | Add `pptx` worker tooling — npm dependency (`pptxgenjs`), slide template system                               | `src/master/skill-packs/presentation-maker.ts`            |
+| 8    | OB-F98  | Add `xlsx` worker tooling — npm dependency (`exceljs`), formula + chart support                               | `src/master/skill-packs/spreadsheet-builder.ts`           |
+| 9    | OB-F98  | Add `pdf` worker tooling — HTML-to-PDF via Puppeteer or wkhtmltopdf, styled templates                         | `src/master/skill-packs/report-generator.ts`              |
+| 10   | OB-F98  | Create `skill-pack-loader.ts` — discovers and loads skill packs from built-in + `.openbridge/skill-packs/`    | `src/master/skill-pack-loader.ts` (new)                   |
+| 11   | OB-F98  | Master auto-detects document tasks — intent classification extended with document/report/presentation intents | `src/core/router.ts`                                      |
+| 12   | OB-F98  | Master selects skill pack per worker — inject prompt extension into worker system prompt                      | `src/master/master-manager.ts`                            |
+| 13   | OB-F98  | Output delivery — generated files served via file-server, shared via `[SHARE:FILE]` markers                   | `src/core/file-server.ts`, `src/master/master-manager.ts` |
+| 14   | OB-F98  | WhatsApp/Telegram file attachment — send generated documents as attachments                                   | `src/connectors/whatsapp/`, `src/connectors/telegram/`    |
+| 15   | OB-F98  | WebChat file download — generated documents available as download links                                       | `src/connectors/webchat/`                                 |
+| 16   | OB-F98  | Add optional dependencies to `package.json` — `docx`, `pptxgenjs`, `exceljs` (opt-in, zero by default)        | `package.json`                                            |
+| 17   | OB-F98  | `openbridge doctor` checks for document generation prerequisites                                              | `src/cli/doctor.ts`                                       |
+| 18   | —       | Tests: document skill pack selection, file generation mocks, output delivery, attachment sending              | `tests/master/document-skills.test.ts`                    |
+
+---
+
+### Stretch Phases (51 tasks — if time allows)
+
+#### Phase 94 — Vector Search & Hybrid Retrieval (~21 tasks)
+
+**Findings:** OB-F79, OB-F81 | **Prerequisite:** Phase 93
 
 **Problem:** FTS5 only returns keyword matches. No semantic search. Full results returned for every query — no token-efficient progressive disclosure.
 
@@ -115,44 +217,9 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ---
 
-### Phase 95 — Session Compaction & Token Economics (~16–18 tasks)
+#### Phase 96a — `openbridge doctor` (~10 tasks)
 
-**Findings:** OB-F84, OB-F83
-
-**Problem:** Long Master sessions lose context silently when the window fills. No visibility into exploration cost vs retrieval savings.
-
-**Inspired by:** [openclaw's session compaction](https://github.com/openclaw/openclaw) — auto-summarizes when context window fills, preserves identifiers, retries on failure. [claude-mem's token economics](https://github.com/thedotmack/claude-mem) — tracks discovery vs read tokens, computes compression ROI.
-
-| Task | Finding | What                                                                                                                             | Key File                                 |
-| ---- | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| 1    | OB-F84  | Create `SessionCompactor` class — monitors Master session turn count                                                             | `src/master/session-compactor.ts` (new)  |
-| 2    | OB-F84  | Trigger compaction when Master session exceeds 80% of `--max-turns`                                                              | `src/master/session-compactor.ts`        |
-| 3    | OB-F84  | Compaction strategy: summarize old turns into structured summary (preserve identifiers: file paths, function names, finding IDs) | `src/master/session-compactor.ts`        |
-| 4    | OB-F84  | Write compaction summary to `memory.md` before starting new session segment                                                      | `src/master/session-compactor.ts`        |
-| 5    | OB-F84  | Identifier extraction — scan conversation for file paths, function names, finding IDs that must survive compaction               | `src/master/session-compactor.ts`        |
-| 6    | OB-F84  | Retry on compaction failure — don't lose the session silently                                                                    | `src/master/session-compactor.ts`        |
-| 7    | OB-F84  | Wire compactor into `master-manager.ts` — check after each Master turn                                                           | `src/master/master-manager.ts`           |
-| 8    | OB-F84  | Add `compaction_history` table — track when compactions happen, what was summarized                                              | `src/memory/database.ts`                 |
-| 9    | OB-F83  | Add `token_economics` table — `chunk_id`, `discovery_tokens`, `retrieval_count`, `total_read_tokens`                             | `src/memory/database.ts`                 |
-| 10   | OB-F83  | Track `discovery_tokens` per chunk — estimate from worker turn count × model token rate                                          | `src/memory/chunk-store.ts`              |
-| 11   | OB-F83  | Track `read_tokens` per retrieval — count tokens in returned content                                                             | `src/memory/retrieval.ts`                |
-| 12   | OB-F83  | Increment `retrieval_count` on each chunk access                                                                                 | `src/memory/retrieval.ts`                |
-| 13   | OB-F83  | Add `/stats` chat command — show exploration ROI: "Explored with ~50K tokens, saved ~200K tokens across 15 retrievals (4x ROI)"  | `src/core/router.ts`                     |
-| 14   | OB-F83  | Add `openbridge stats` CLI command (same output as `/stats`)                                                                     | `src/cli/index.ts`                       |
-| 15   | —       | Migration: compaction_history + token_economics tables                                                                           | `src/memory/migration.ts`                |
-| 16   | —       | Tests: compaction trigger, identifier preservation, token tracking, /stats output                                                | `tests/master/session-compactor.test.ts` |
-
----
-
-### Phase 96 — Developer Experience: Doctor, Pairing, Skills (~28–32 tasks)
-
-**Findings:** OB-F85, OB-F86, OB-F87
-
-**Problem:** No self-diagnostic tool. No self-service auth for non-phone channels. No reusable skills directory.
-
-**Inspired by:** [openclaw's `doctor` command](https://github.com/openclaw/openclaw), [openclaw's DM pairing](https://github.com/openclaw/openclaw), [openclaw's skills platform](https://github.com/openclaw/openclaw) (60+ skills with `SKILL.md` files).
-
-#### Phase 96a — `openbridge doctor` (~8–10 tasks)
+**Finding:** OB-F85 | **Independent — can run anytime**
 
 | Task | Finding | What                                                                                    | Key File                  |
 | ---- | ------- | --------------------------------------------------------------------------------------- | ------------------------- |
@@ -167,7 +234,11 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 | 9    | OB-F85  | Color-coded summary output with fix suggestions per failing check                       | `src/cli/doctor.ts`       |
 | 10   | OB-F85  | Add `/doctor` chat command (runs same checks, sends via channel)                        | `src/core/router.ts`      |
 
-#### Phase 96b — Pairing-Based Auth (~8–10 tasks)
+---
+
+#### Phase 96b — Pairing-Based Auth (~10 tasks)
+
+**Finding:** OB-F86 | **Independent — can run anytime**
 
 | Task | Finding | What                                                                      | Key File                     |
 | ---- | ------- | ------------------------------------------------------------------------- | ---------------------------- |
@@ -182,7 +253,11 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 | 9    | OB-F86  | Add `auth.pairingEnabled` config option (default: true)                   | `src/types/config.ts`        |
 | 10   | OB-F86  | Tests: pairing flow, expiry, rate limiting, CLI approval                  | `tests/core/auth.test.ts`    |
 
-#### Phase 96c — Skills Directory (~10–12 tasks)
+---
+
+#### Phase 96c — Skills Directory (~10 tasks)
+
+**Finding:** OB-F87 | **Independent — can run anytime**
 
 | Task | Finding | What                                                                                    | Key File                                         |
 | ---- | ------- | --------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -202,21 +277,29 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ### Sprint 5 Summary
 
-| Phase     | Focus                                      | Findings               | Est. Tasks  | Key Community Reference                                                                                   |
-| --------- | ------------------------------------------ | ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
-| 93        | Structured Observations & Worker Summaries | OB-F80, OB-F82, OB-F88 | ~20–22      | [claude-mem](https://github.com/thedotmack/claude-mem)                                                    |
-| 94        | Vector Search & Hybrid Retrieval           | OB-F79, OB-F81         | ~18–20      | [openclaw](https://github.com/openclaw/openclaw) + [claude-mem](https://github.com/thedotmack/claude-mem) |
-| 95        | Session Compaction & Token Economics       | OB-F83, OB-F84         | ~16–18      | [openclaw](https://github.com/openclaw/openclaw) + [claude-mem](https://github.com/thedotmack/claude-mem) |
-| 96        | Doctor + Pairing + Skills                  | OB-F85, OB-F86, OB-F87 | ~28–32      | [openclaw](https://github.com/openclaw/openclaw)                                                          |
-| **Total** |                                            | **10 findings**        | **~95–110** |                                                                                                           |
+| Phase     | Focus                                      | Findings               | Tasks   | Priority   |
+| --------- | ------------------------------------------ | ---------------------- | ------- | ---------- |
+| **93**    | Structured Observations & Worker Summaries | OB-F80, OB-F82, OB-F88 | 27      | Core — 1st |
+| **95**    | Session Compaction & Token Economics       | OB-F83, OB-F84         | 18      | Core — 2nd |
+| **96d**   | Channel Role Management UX                 | OB-F103                | 12      | Core — 2nd |
+| **99**    | Document Generation Skills                 | OB-F98                 | 18      | Core — 3rd |
+| 94        | Vector Search & Hybrid Retrieval           | OB-F79, OB-F81         | 21      | Stretch    |
+| 96a       | `openbridge doctor`                        | OB-F85                 | 10      | Stretch    |
+| 96b       | Pairing-Based Auth                         | OB-F86                 | 10      | Stretch    |
+| 96c       | Skills Directory                           | OB-F87                 | 10      | Stretch    |
+| **Total** |                                            | **12 findings**        | **126** |            |
+
+**Core: 75 tasks | Stretch: 51 tasks**
 
 **Dependencies:**
 
-- **Phase 97 (data integrity) must complete first** — fixes session lifecycle, turns tracking, QA cache, and prompt evolution that Sprint 5 builds on
-- Phase 93 (observations) should come after Phase 97 — depends on working learnings + prompt tracking
-- Phase 94 (vector search) indexes observations from Phase 93
-- Phase 95 (compaction) is independent — can run in parallel with Phase 96
-- Phase 96 (doctor/pairing/skills) is independent — can run in any order
+- **Phase 97 (data integrity) ✅ complete** — session lifecycle, turns tracking, QA cache, and prompt evolution all fixed
+- Phase 93 (observations) is ready to start — Phase 97 prerequisites satisfied
+- Phase 95 (compaction) is independent — can run in parallel with Phase 96d
+- **Phase 96d (role UX) is independent** — can run in parallel with any phase, high priority (fixes real user-facing bug)
+- Phase 99 (document generation) — after Phase 93, benefits from structured worker outputs
+- Phase 94 (vector search) — stretch, requires Phase 93 completion
+- Phases 96a-c (doctor/pairing/skills) — stretch, independent
 
 ---
 
@@ -242,71 +325,36 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ---
 
-## Sprint 6 — Skill System, Agent Patterns & Business Output (v0.0.14) — ~85–105 tasks
+## Sprint 6 — Skill System, Agent Patterns & Creative Output (v0.0.14) — ~70–85 tasks
 
-**Goal:** Make OpenBridge useful for _any user_ — not just developers. Business owners, marketers, analysts, and designers should be able to generate documents, presentations, visual assets, and reports via messaging. Adopt battle-tested agent patterns from leading AI tools (Manus, Devin, Cursor).
+**Goal:** Extend the skill pack system from Phase 99, add creative/visual output, and adopt battle-tested agent orchestration patterns from leading AI tools (Manus, Devin, Cursor).
 
-**Inspired by:** [travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (Claude Skills ecosystem — document, design, security, testing skills) and [x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools) (30+ AI tool architectures).
+**Inspired by:** [travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (Claude Skills ecosystem — design, security, testing skills) and [x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools) (30+ AI tool architectures).
 
-**Why now (after v0.0.13):** v0.0.13 upgrades the memory and retrieval layer. v0.0.14 makes OpenBridge a _general-purpose AI assistant_ — any user, any task, any output format.
+**Why now (after v0.0.13):** v0.0.13 builds the skill pack loader and document generation foundation. v0.0.14 extends it with more skill packs, creative output, and smarter agent orchestration.
 
-### Phase 98 — Skill Pack System (~18–22 tasks)
+### Phase 98 — Skill Pack System Extensions (~18–22 tasks)
 
 **Finding:** OB-F96
 
-**Problem:** Workers receive generic prompts regardless of task type. A security audit worker gets the same instructions as a document generation worker. No reusable domain-specific instruction sets.
+**Problem:** Workers receive generic prompts regardless of task type. A security audit worker gets the same instructions as a document generation worker. No reusable domain-specific instruction sets beyond the document packs from Phase 99.
 
-**Inspired by:** [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) — progressive disclosure architecture, structured skill folders with instructions + scripts + resources. [obra/superpowers](https://github.com/obra/superpowers) — 20+ battle-tested skills including TDD, debugging, collaboration.
+**Inspired by:** [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) — progressive disclosure architecture, structured skill folders. [obra/superpowers](https://github.com/obra/superpowers) — 20+ battle-tested skills including TDD, debugging, collaboration.
 
-| Task | Finding | What                                                                                                             | Key File                                         |
-| ---- | ------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| 1    | OB-F96  | Define `SkillPack` type — `name`, `description`, `toolProfile`, `systemPromptExtension`, `requiredTools`, `tags` | `src/types/agent.ts`                             |
-| 2    | OB-F96  | Create `skill-pack-loader.ts` — discovers skill packs from `.openbridge/skill-packs/` and built-in defaults      | `src/master/skill-pack-loader.ts` (new)          |
-| 3    | OB-F96  | Define `SKILLPACK.md` format — name, when to use, tools needed, prompt extension, example tasks, constraints     | `src/master/skill-pack-loader.ts`                |
-| 4    | OB-F96  | Built-in skill pack: `security-audit` — CodeQL/Semgrep patterns, vulnerability detection prompts                 | `src/master/skill-packs/security-audit.ts` (new) |
-| 5    | OB-F96  | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts                     | `src/master/skill-packs/code-review.ts` (new)    |
-| 6    | OB-F96  | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts               | `src/master/skill-packs/test-writer.ts` (new)    |
-| 7    | OB-F96  | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts         | `src/master/skill-packs/data-analysis.ts` (new)  |
-| 8    | OB-F96  | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                            | `src/master/skill-packs/documentation.ts` (new)  |
-| 9    | OB-F96  | Master reads available skill packs on startup, includes summary in system prompt                                 | `src/master/master-system-prompt.ts`             |
-| 10   | OB-F96  | Master selects skill pack per worker based on task type — inject prompt extension into worker system prompt      | `src/master/master-manager.ts`                   |
-| 11   | OB-F96  | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile            | `src/master/master-manager.ts`                   |
-| 12   | OB-F96  | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                                | `src/master/skill-pack-loader.ts`                |
-| 13   | OB-F96  | Master can create new skill packs from successful task patterns (extends prompt evolution from OB-F93)           | `src/master/skill-pack-loader.ts`                |
-| 14   | OB-F96  | Add `/skill-packs` chat command — list available packs with descriptions                                         | `src/core/router.ts`                             |
-| 15   | OB-F96  | Add `openbridge skill-packs` CLI command                                                                         | `src/cli/index.ts`                               |
-| 16   | OB-F96  | Wire skill pack loader into MemoryManager facade                                                                 | `src/memory/index.ts`                            |
-| 17   | —       | Tests: skill pack discovery, SKILLPACK.md parsing, prompt injection, tool profile override                       | `tests/master/skill-pack-loader.test.ts`         |
-| 18   | —       | Tests: Master skill selection logic, user override precedence                                                    | `tests/master/master-manager.test.ts`            |
-
----
-
-### Phase 99 — Document Generation Skills (~16–20 tasks)
-
-**Finding:** OB-F98
-
-**Problem:** Business users can't generate documents, reports, presentations, or spreadsheets. OpenBridge is code-only — missing an entire use case category for non-developer users.
-
-**Inspired by:** [awesome-claude-skills official skills](https://github.com/travisvn/awesome-claude-skills) — `docx` (Word creation/editing), `pdf` (manipulation/extraction), `pptx` (PowerPoint generation), `xlsx` (Excel with formulas/charts).
-
-| Task | Finding | What                                                                                                           | Key File                                                  |
-| ---- | ------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 1    | OB-F98  | Built-in skill pack: `document-writer` — Word/DOCX generation prompts, structure templates, formatting rules   | `src/master/skill-packs/document-writer.ts` (new)         |
-| 2    | OB-F98  | Built-in skill pack: `presentation-maker` — PPTX generation prompts, slide layouts, design principles          | `src/master/skill-packs/presentation-maker.ts` (new)      |
-| 3    | OB-F98  | Built-in skill pack: `spreadsheet-builder` — XLSX generation prompts, formula patterns, chart generation       | `src/master/skill-packs/spreadsheet-builder.ts` (new)     |
-| 4    | OB-F98  | Built-in skill pack: `report-generator` — PDF/HTML report generation, data formatting, executive summary style | `src/master/skill-packs/report-generator.ts` (new)        |
-| 5    | OB-F98  | Add `docx` worker tooling — npm dependency selection (officegen, docx, or pandoc-based), worker prompt         | `src/master/skill-packs/document-writer.ts`               |
-| 6    | OB-F98  | Add `pptx` worker tooling — npm dependency (pptxgenjs or similar), slide template system                       | `src/master/skill-packs/presentation-maker.ts`            |
-| 7    | OB-F98  | Add `xlsx` worker tooling — npm dependency (exceljs or sheetjs), formula + chart support                       | `src/master/skill-packs/spreadsheet-builder.ts`           |
-| 8    | OB-F98  | Add `pdf` worker tooling — HTML-to-PDF via Puppeteer or wkhtmltopdf, styled templates                          | `src/master/skill-packs/report-generator.ts`              |
-| 9    | OB-F98  | Output delivery integration — generated files served via file-server (existing), shared via [SHARE:FILE]       | `src/core/file-server.ts`, `src/master/master-manager.ts` |
-| 10   | OB-F98  | WhatsApp/Telegram file attachment — send generated documents as attachments via connector                      | `src/connectors/whatsapp/`, `src/connectors/telegram/`    |
-| 11   | OB-F98  | WebChat file download — generated documents available as download links                                        | `src/connectors/webchat/`                                 |
-| 12   | OB-F98  | Master auto-detects document tasks — intent classification extended with document/report/presentation intents  | `src/core/router.ts`                                      |
-| 13   | OB-F98  | Add optional dependencies to `package.json` — `docx`, `pptxgenjs`, `exceljs` (opt-in, zero by default)         | `package.json`                                            |
-| 14   | OB-F98  | `openbridge doctor` checks for document generation prerequisites (Puppeteer, LibreOffice, etc.)                | `src/cli/doctor.ts`                                       |
-| 15   | —       | Tests: document skill pack selection, file generation, output delivery, attachment sending                     | `tests/master/document-skills.test.ts`                    |
-| 16   | —       | Documentation: document generation setup guide, supported formats, examples                                    | `docs/DOCUMENT_GENERATION.md` (new)                       |
+| Task | Finding | What                                                                                                     | Key File                                         |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1    | OB-F96  | Built-in skill pack: `security-audit` — CodeQL/Semgrep patterns, vulnerability detection prompts         | `src/master/skill-packs/security-audit.ts` (new) |
+| 2    | OB-F96  | Built-in skill pack: `code-review` — diff analysis, best practices, review checklist prompts             | `src/master/skill-packs/code-review.ts` (new)    |
+| 3    | OB-F96  | Built-in skill pack: `test-writer` — TDD patterns, coverage analysis, edge case generation prompts       | `src/master/skill-packs/test-writer.ts` (new)    |
+| 4    | OB-F96  | Built-in skill pack: `data-analysis` — CSV/JSON processing, statistics, visualization generation prompts | `src/master/skill-packs/data-analysis.ts` (new)  |
+| 5    | OB-F96  | Built-in skill pack: `documentation` — API docs, README generation, CHANGELOG prompts                    | `src/master/skill-packs/documentation.ts` (new)  |
+| 6    | OB-F96  | Master reads available skill packs on startup, includes summary in system prompt                         | `src/master/master-system-prompt.ts`             |
+| 7    | OB-F96  | Skill pack selection influences tool profile — `security-audit` pack defaults to `code-audit` profile    | `src/master/master-manager.ts`                   |
+| 8    | OB-F96  | User-defined skill packs in `.openbridge/skill-packs/` override built-in defaults                        | `src/master/skill-pack-loader.ts`                |
+| 9    | OB-F96  | Master can create new skill packs from successful task patterns                                          | `src/master/skill-pack-loader.ts`                |
+| 10   | OB-F96  | Add `/skill-packs` chat command — list available packs with descriptions                                 | `src/core/router.ts`                             |
+| 11   | OB-F96  | Add `openbridge skill-packs` CLI command                                                                 | `src/cli/index.ts`                               |
+| 12   | —       | Tests: skill pack discovery, SKILLPACK.md parsing, prompt injection, tool profile override               | `tests/master/skill-pack-loader.test.ts`         |
 
 ---
 
@@ -371,20 +419,18 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ### Sprint 6 Summary
 
-| Phase     | Focus                           | Findings                          | Est. Tasks  | Key Community Reference                                                                                                             |
-| --------- | ------------------------------- | --------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 98        | Skill Pack System               | OB-F96                            | ~18–22      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills), [obra/superpowers](https://github.com/obra/superpowers) |
-| 99        | Document Generation Skills      | OB-F98                            | ~16–20      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (docx, pdf, pptx, xlsx skills)                           |
-| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18      | [awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills) (algorithmic-art, canvas-design, d3js, frontend-slides)  |
-| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22      | [system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools) (Devin, Manus, Cursor)    |
-| **Total** |                                 | **7 findings**                    | **~85–105** |                                                                                                                                     |
+| Phase     | Focus                           | Findings                          | Est. Tasks |
+| --------- | ------------------------------- | --------------------------------- | ---------- |
+| 98        | Skill Pack System Extensions    | OB-F96                            | ~18–22     |
+| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18     |
+| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22     |
+| **Total** |                                 | **6 findings**                    | **~70–85** |
 
 **Dependencies:**
 
-- **Sprint 5 (v0.0.13) should complete first** — Phase 98 (skill packs) extends the skills directory from Phase 96c (OB-F87)
-- Phase 98 (skill packs) is foundational — Phases 99 and 100 are skill packs themselves
-- Phase 99 (documents) and Phase 100 (design) are independent — can run in parallel
-- Phase 101 (orchestration) is independent — can run in parallel with 99/100
+- **Sprint 5 (v0.0.13) should complete first** — Phase 98 extends the skill pack loader from Phase 99
+- Phase 100 (design/creative) is independent — can run in parallel with Phase 101
+- Phase 101 (orchestration) is independent — can run in parallel with Phase 100
 
 ---
 
@@ -392,7 +438,7 @@ All task archives: [docs/audit/archive/](archive/) (v0–v21).
 
 ### Finalization Required (Phases 72–73 + MCP UI)
 
-These features were scaffolded/built but have bugs and build issues. Not needed for the current development track (Console/WhatsApp/Telegram/WebChat channels work fine).
+These features were scaffolded/built but have bugs and build issues. Not needed for the current development track (Console/WhatsApp/Telegram/WebChat channels work fine). **Desktop apps (Windows/macOS/App Store) remain a separate effort** and are NOT part of Sprint 5 or Sprint 6.
 
 #### Standalone Binary Packaging (Phase 72) — Needs Testing & CI Fix
 
