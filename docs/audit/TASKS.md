@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 131 | **In Progress:** 0 | **Done:** 45 (1063 archived)
+> **Pending:** 130 | **In Progress:** 0 | **Done:** 46 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -152,7 +152,7 @@
 
 | Task    | What                                                                                                                                                                 | Key File                     | Status  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------- |
-| OB-1714 | Change default role in `addApprovedEscalation()` from `viewer` to `owner` for users already in `auth.whitelist`                                                      | `src/memory/access-store.ts` | Pending |
+| OB-1714 | Change default role in `addApprovedEscalation()` from `viewer` to `owner` for users already in `auth.whitelist`                                                      | `src/memory/access-store.ts` | ✅ Done |
 | OB-1715 | Add `auth.defaultRole` config field (default: `owner`) — controls what role new whitelisted users get when auto-created in `access_control`                          | `src/types/config.ts`        | Pending |
 | OB-1716 | Add per-channel role config in `config.json` — `auth.channelRoles: { webchat: "owner", telegram: "developer" }` — applied when creating new `access_control` entries | `src/types/config.ts`        | Pending |
 | OB-1717 | Wire `auth.defaultRole` and `auth.channelRoles` into `AuthService` — use when creating entries for whitelisted users with no existing `access_control` row           | `src/core/auth.ts`           | Pending |
