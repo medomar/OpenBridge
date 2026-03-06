@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 20 | **In Progress:** 0 | **Done:** 156 (1063 archived)
+> **Pending:** 19 | **In Progress:** 0 | **Done:** 157 (1063 archived)
 > **Last Updated:** 2026-03-06
 
 <details>
@@ -374,7 +374,7 @@
 | OB-1771 | Master auto-detects creative tasks — intent classification extended with design/visual/chart/diagram intents | `src/core/router.ts`                                   | ✅ Done |
 | OB-1772 | Image delivery via WhatsApp/Telegram — send rendered PNG/SVG as media messages                               | `src/connectors/whatsapp/`, `src/connectors/telegram/` | ✅ Done |
 | OB-1773 | Tests: diagram generation, chart rendering, HTML-to-image pipeline, creative skill selection                 | `tests/master/creative-skills.test.ts`                 | ✅ Done |
-| OB-1774 | Documentation: creative output guide, supported formats, rendering prerequisites                             | `docs/CREATIVE_OUTPUT.md` (new)                        | Pending |
+| OB-1774 | Documentation: creative output guide, supported formats, rendering prerequisites                             | `docs/CREATIVE_OUTPUT.md` (new)                        | ✅ Done |
 
 **Phase 100 Total:** 14 tasks
 
