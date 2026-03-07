@@ -393,7 +393,7 @@ export const ClassificationSchema = z.object({
       z.object({
         name: z.string(),
         version: z.string().optional(),
-        type: z.enum(['runtime', 'dev', 'peer']).optional(),
+        type: z.enum(['runtime', 'dev', 'peer', 'optional']).optional(),
       }),
     )
     .default([]),

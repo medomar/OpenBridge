@@ -253,23 +253,23 @@ describe('Exploration Prompts', () => {
     it('should provide style guidelines for code projects', () => {
       const prompt = generateSummaryPrompt(testWorkspace, partialMap);
 
-      expect(prompt).toContain('For Code Projects');
-      expect(prompt).toContain('Technical, concise, developer-focused');
+      expect(prompt).toContain('Code Projects');
+      expect(prompt).toContain('Technical, concise');
       expect(prompt).toContain('Node.js TypeScript project');
     });
 
     it('should provide style guidelines for business workspaces', () => {
       const prompt = generateSummaryPrompt(testWorkspace, partialMap);
 
-      expect(prompt).toContain('For Business Workspaces');
-      expect(prompt).toContain('Plain language, non-technical');
+      expect(prompt).toContain('Business Workspaces');
+      expect(prompt).toContain('Plain language');
       expect(prompt).toContain('Cafe business files');
     });
 
     it('should provide style guidelines for mixed workspaces', () => {
       const prompt = generateSummaryPrompt(testWorkspace, partialMap);
 
-      expect(prompt).toContain('For Mixed Workspaces');
+      expect(prompt).toContain('Mixed');
       expect(prompt).toContain('Balanced');
       expect(prompt).toContain('E-commerce platform');
     });
@@ -286,14 +286,12 @@ describe('Exploration Prompts', () => {
 
       expect(prompt).toContain('Keep it concise');
       expect(prompt).toContain('2-3 sentences maximum');
-      expect(prompt).toContain('Do NOT repeat information');
     });
 
     it('should request adaptive tone based on project type', () => {
       const prompt = generateSummaryPrompt(testWorkspace, partialMap);
 
       expect(prompt).toContain('Adapt tone based on project type');
-      expect(prompt).toContain('code vs business');
     });
   });
 

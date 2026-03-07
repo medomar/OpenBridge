@@ -104,18 +104,28 @@ const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
 
 /**
  * Per-turn wall-clock budget in milliseconds.
- * Used to compute per-class timeouts: timeout = maxTurns × PER_TURN_BUDGET_MS.
- * 30s/turn gives quick-answer(5) = 150s, tool-use(15) = 450s, complex-task(25) = 750s.
+ * Used to compute per-class timeouts: timeout = CLI_STARTUP_BUDGET_MS + maxTurns × PER_TURN_BUDGET_MS.
+ * 30s/turn gives quick-answer(5) = 60+150=210s, tool-use(15) = 60+450=510s, complex-task(25) = 60+750=810s.
  */
 const PER_TURN_BUDGET_MS = 30_000;
 
-/** Compute wall-clock timeout from a turn budget. */
+/**
+ * Fixed startup budget added to every timeout.
+ * Covers CLI cold-start overhead (model loading, API connection, MCP init).
+ * Without this, low-turn tasks (quick-answer=5 turns) can timeout before
+ * the CLI even starts generating output.
+ */
+const CLI_STARTUP_BUDGET_MS = 60_000;
+
+/** Compute wall-clock timeout from a turn budget (includes CLI startup overhead). */
 function turnsToTimeout(maxTurns: number): number {
-  return maxTurns * PER_TURN_BUDGET_MS;
+  return CLI_STARTUP_BUDGET_MS + maxTurns * PER_TURN_BUDGET_MS;
 }
 
-/** Idle time threshold (5 minutes) before triggering self-improvement cycle */
+/** Initial idle time threshold (5 minutes) before triggering self-improvement cycle */
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+/** Maximum idle threshold after exponential backoff (2 hours) */
+const IDLE_THRESHOLD_MAX_MS = 2 * 60 * 60 * 1000; // 2 hours
 /** How often to check for idle state (1 minute) */
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 
@@ -602,6 +612,8 @@ export class MasterManager {
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
   private isSelfImproving = false;
+  /** Consecutive idle cycles without a user message — drives exponential backoff */
+  private consecutiveIdleCycles = 0;
   /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
   private completedTaskCount = 0;
   /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
@@ -5098,6 +5110,7 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
    */
   private resetIdleTimer(): void {
     this.lastMessageTimestamp = Date.now();
+    this.consecutiveIdleCycles = 0;
   }
 
   /**
@@ -6579,6 +6592,10 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
   /**
    * Check if Master is idle and trigger self-improvement if needed.
    * Called periodically by the idle detection timer.
+   *
+   * Uses exponential backoff: first cycle fires after 5 min idle,
+   * subsequent cycles double the threshold (10m, 20m, 40m, ...) up to 2h.
+   * Resets to 5 min when a user message arrives (via resetIdleTimer).
    */
   private async checkIdleAndImprove(): Promise<void> {
     // Skip if:
@@ -6591,10 +6608,25 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
     const idleTime = Date.now() - this.lastMessageTimestamp;
 
+    // Exponential backoff: threshold doubles each cycle, capped at IDLE_THRESHOLD_MAX_MS
+    const currentThreshold = Math.min(
+      IDLE_THRESHOLD_MS * Math.pow(2, this.consecutiveIdleCycles),
+      IDLE_THRESHOLD_MAX_MS,
+    );
+
     // Check if idle threshold exceeded
-    if (idleTime >= IDLE_THRESHOLD_MS) {
+    if (idleTime >= currentThreshold) {
+      this.consecutiveIdleCycles++;
+
       logger.info(
-        { idleTimeMs: idleTime },
+        {
+          idleTimeMs: idleTime,
+          cycle: this.consecutiveIdleCycles,
+          nextThresholdMs: Math.min(
+            IDLE_THRESHOLD_MS * Math.pow(2, this.consecutiveIdleCycles),
+            IDLE_THRESHOLD_MAX_MS,
+          ),
+        },
         'Idle threshold exceeded, starting self-improvement cycle',
       );
 

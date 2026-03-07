@@ -291,6 +291,13 @@ Return ONLY valid JSON matching this schema:
  * @param partialMap - Mechanically assembled partial workspace map (missing summary)
  * @returns Prompt for summary generation
  */
+/**
+ * Maximum character budget for the exploration data payload.
+ * Leaves room for the prompt instructions (~2KB) within the 32KB agent-runner limit.
+ * If the serialized data exceeds this, key files are trimmed (most numerous source of bloat).
+ */
+const SUMMARY_DATA_BUDGET = 28_000;
+
 export function generateSummaryPrompt(
   workspacePath: string,
   partialMap: {
@@ -302,46 +309,30 @@ export function generateSummaryPrompt(
     commands: Record<string, string>;
   },
 ): string {
+  // Trim key files if the payload would exceed the budget.
+  // Key files are the biggest source of bloat in large projects.
+  let dataPayload = JSON.stringify(partialMap, null, 2);
+  if (dataPayload.length > SUMMARY_DATA_BUDGET) {
+    const trimmedMap = {
+      ...partialMap,
+      keyFiles: partialMap.keyFiles.slice(0, 50),
+      _note:
+        partialMap.keyFiles.length > 50
+          ? `Showing 50 of ${partialMap.keyFiles.length} key files (trimmed for prompt size)`
+          : undefined,
+    };
+    dataPayload = JSON.stringify(trimmedMap, null, 2);
+    // If still too large, compress JSON (no indentation)
+    if (dataPayload.length > SUMMARY_DATA_BUDGET) {
+      dataPayload = JSON.stringify(trimmedMap);
+    }
+  }
+
+  // IMPORTANT: Output format instructions come FIRST so they survive
+  // any prompt truncation by the agent-runner (MAX_PROMPT_LENGTH = 32KB).
   return `# Task: Generate Workspace Summary
 
-Create a concise, human-readable summary of this workspace based on the exploration results below.
-
-## Workspace Path
-
-${workspacePath}
-
-## Exploration Results
-
-\`\`\`json
-${JSON.stringify(partialMap, null, 2)}
-\`\`\`
-
-## Instructions
-
-Write a **2-3 sentence summary** that describes:
-1. What this workspace is (the project's main purpose)
-2. Key technologies/frameworks used
-3. Any notable characteristics (architecture, deployment, special features, or significant asset directories)
-
-## Summary Style Guidelines
-
-**For Code Projects:**
-- Technical, concise, developer-focused
-- Example: "Node.js TypeScript project using Express and Prisma for a REST API. Configured with ESLint, Vitest, and Docker for containerized deployment."
-
-**For Business Workspaces:**
-- Plain language, non-technical
-- Example: "Cafe business files including daily sales reports, supplier invoices, inventory spreadsheets, and staff schedules. Data stored primarily in Excel and CSV format."
-
-**For Mixed Workspaces:**
-- Balanced — technical for code, plain language for business data
-- Example: "E-commerce platform codebase (Node.js + React) with attached business data folders containing product catalogs, customer lists, and order CSVs."
-
-**For Asset-Heavy Workspaces:**
-- Note major asset directories and file type breakdown
-- Example: "Game project (Unity/C#) with 450 sprite assets in images/, 120 audio files in sounds/, and custom fonts in fonts/. Source code in Assets/Scripts/ handles game logic."
-
-## Output Format
+## Output Format (CRITICAL — read this first)
 
 Return ONLY a JSON object with a single "summary" field:
 
@@ -353,9 +344,32 @@ Return ONLY a JSON object with a single "summary" field:
 
 **IMPORTANT:**
 - Return ONLY the JSON object with the summary field
-- Do NOT repeat information already in the exploration results
+- Do NOT include any other text, explanation, or markdown outside the JSON
 - Keep it concise (2-3 sentences maximum)
 - Adapt tone based on project type (code vs business)
+
+## Instructions
+
+Write a **2-3 sentence summary** that describes:
+1. What this workspace is (the project's main purpose)
+2. Key technologies/frameworks used
+3. Any notable characteristics (architecture, deployment, special features)
+
+## Summary Style Guidelines
+
+**Code Projects:** Technical, concise — e.g. "Node.js TypeScript project using Express and Prisma for a REST API."
+**Business Workspaces:** Plain language — e.g. "Cafe business files including sales reports and inventory spreadsheets."
+**Mixed:** Balanced — e.g. "E-commerce platform (Node.js + React) with product catalogs and order CSVs."
+
+## Workspace Path
+
+${workspacePath}
+
+## Exploration Results
+
+\`\`\`json
+${dataPayload}
+\`\`\`
 `;
 }
 
