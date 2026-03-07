@@ -1196,10 +1196,27 @@ export class ExplorationCoordinator {
       );
     }
 
-    const parsed = parseAIResult<{ summary: string }>(result.stdout, 'summary generation');
+    let parsed = parseAIResult<{ summary: string }>(result.stdout, 'summary generation');
     if (!parsed.success) {
-      await this.failPhaseRow(phase4RowId);
-      throw new Error(`Failed to parse summary result: ${parsed.error}`);
+      // Fallback: if the AI returned prose/markdown instead of JSON (e.g. due to
+      // prompt truncation), use the raw output as the summary rather than failing.
+      const rawText = result.stdout.trim();
+      if (rawText.length > 20) {
+        logger.warn(
+          { outputLength: rawText.length },
+          'Phase 4: JSON parse failed — using raw AI output as summary (markdown fallback)',
+        );
+        // Take the first ~500 chars as summary to keep it concise
+        const summaryText = rawText.length > 500 ? rawText.slice(0, 497) + '...' : rawText;
+        parsed = {
+          success: true,
+          data: { summary: summaryText },
+          method: 'markdown-fallback',
+        };
+      } else {
+        await this.failPhaseRow(phase4RowId);
+        throw new Error(`Failed to parse summary result: ${parsed.error}`);
+      }
     }
 
     // Assemble final workspace map

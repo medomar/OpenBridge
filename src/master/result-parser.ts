@@ -17,7 +17,7 @@ const logger = createLogger('result-parser');
 export interface ParseResult<T> {
   success: true;
   data: T;
-  method: 'direct' | 'markdown' | 'regex';
+  method: 'direct' | 'markdown' | 'regex' | 'markdown-fallback';
 }
 
 export interface ParseError {

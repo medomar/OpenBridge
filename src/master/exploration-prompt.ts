@@ -91,7 +91,7 @@ Your \`workspace-map.json\` must conform to this structure:
   "dependencies": Array<{             // From package.json, requirements.txt, etc.
     "name": string,
     "version"?: string,
-    "type"?: "runtime" | "dev" | "peer"
+    "type"?: "runtime" | "dev" | "peer" | "optional"
   }>,
   "summary": string,                  // High-level description of the workspace
   "generatedAt": string,              // ISO timestamp

@@ -178,7 +178,7 @@ describe('MasterManager', () => {
           return {
             class: 'complex-task' as const,
             maxTurns: 5,
-            timeout: 5 * 30_000,
+            timeout: 60_000 + 5 * 30_000,
             reason: 'test mock: complex-task',
           };
         if (
@@ -189,13 +189,13 @@ describe('MasterManager', () => {
           return {
             class: 'tool-use' as const,
             maxTurns: 10,
-            timeout: 10 * 30_000,
+            timeout: 60_000 + 10 * 30_000,
             reason: 'test mock: tool-use',
           };
         return {
           class: 'quick-answer' as const,
           maxTurns: 3,
-          timeout: 3 * 30_000,
+          timeout: 60_000 + 3 * 30_000,
           reason: 'test mock: quick-answer',
         };
       },
@@ -1813,7 +1813,7 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a full-stack web app');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(20);
-        expect(result.timeout).toBe(20 * 30_000); // 600_000ms = 10 min
+        expect(result.timeout).toBe(60_000 + 20 * 30_000); // 660_000ms (startup + turns)
         expect(result.reason).toBe('full-stack app requires multi-step planning');
       });
 
@@ -1829,7 +1829,7 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a HTML Preview');
         expect(result.class).toBe('tool-use');
         expect(result.maxTurns).toBe(15);
-        expect(result.timeout).toBe(15 * 30_000); // 450_000ms
+        expect(result.timeout).toBe(60_000 + 15 * 30_000); // 510_000ms (startup + turns)
       });
 
       it('result has a reason field', async () => {
@@ -1838,17 +1838,18 @@ describe('MasterManager', () => {
       });
 
       it('returns per-class timeout derived from maxTurns (keyword heuristics)', async () => {
+        // Timeout formula: CLI_STARTUP_BUDGET_MS (60s) + maxTurns × PER_TURN_BUDGET_MS (30s)
         const quick = await masterManager.classifyTask('what is this project?');
         expect(quick.class).toBe('quick-answer');
-        expect(quick.timeout).toBe(5 * 30_000); // 150_000ms
+        expect(quick.timeout).toBe(60_000 + 5 * 30_000); // 210_000ms
 
         const toolUse = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(toolUse.class).toBe('tool-use');
-        expect(toolUse.timeout).toBe(15 * 30_000); // 450_000ms
+        expect(toolUse.timeout).toBe(60_000 + 15 * 30_000); // 510_000ms
 
         const complex = await masterManager.classifyTask('implement user authentication');
         expect(complex.class).toBe('complex-task');
-        expect(complex.timeout).toBe(25 * 30_000); // 750_000ms
+        expect(complex.timeout).toBe(60_000 + 25 * 30_000); // 810_000ms
       });
 
       // OB-1302: execution / delegation keyword and phrase tests
@@ -1971,7 +1972,7 @@ describe('MasterManager', () => {
         mockSpawn.mockReset();
         const updated = await masterManager.classifyTask(msg);
         expect(updated.maxTurns).toBe(originalMaxTurns);
-        expect(updated.timeout).toBe(updated.maxTurns * 30_000);
+        expect(updated.timeout).toBe(60_000 + updated.maxTurns * 30_000);
       });
     });
 
@@ -2027,8 +2028,8 @@ describe('MasterManager', () => {
         // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(12);
-        // Timeout is derived from AI-classified maxTurns: 12 × 30s = 360s
-        expect(taskCall?.timeout).toBe(12 * 30_000);
+        // Timeout is derived from AI-classified maxTurns: 60s startup + 12 × 30s = 420s
+        expect(taskCall?.timeout).toBe(60_000 + 12 * 30_000);
 
         expect(response).toBe('preview.html has been created.');
       });
@@ -2101,8 +2102,8 @@ describe('MasterManager', () => {
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
         expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
-        // Timeout derived from planning turns: 25 × 30s = 750s
-        expect(planningCall?.timeout).toBe(25 * 30_000);
+        // Timeout derived from planning turns: 60s startup + 25 × 30s = 810s
+        expect(planningCall?.timeout).toBe(60_000 + 25 * 30_000);
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -2146,8 +2147,8 @@ describe('MasterManager', () => {
         // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(15);
-        // Timeout derived from keyword-fallback turns: 15 × 30s = 450s
-        expect(taskCall?.timeout).toBe(15 * 30_000);
+        // Timeout derived from keyword-fallback turns: 60s startup + 15 × 30s = 510s
+        expect(taskCall?.timeout).toBe(60_000 + 15 * 30_000);
 
         expect(response).toBe('queue.ts fixed.');
       });
@@ -2187,7 +2188,7 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('what is this project?');
         expect(result.class).toBe('quick-answer');
         expect(result.maxTurns).toBe(5);
-        expect(result.timeout).toBe(5 * 30_000);
+        expect(result.timeout).toBe(60_000 + 5 * 30_000);
       });
 
       it('still escalates tool-use to complex-task when learned data supports it', async () => {
@@ -2203,7 +2204,7 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(25);
-        expect(result.timeout).toBe(25 * 30_000);
+        expect(result.timeout).toBe(60_000 + 25 * 30_000);
         expect(result.reason).toContain('escalated');
       });
     });
