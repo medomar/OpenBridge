@@ -7,9 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Discovered
+_No pending changes._
 
-- **7 data integrity findings (OB-F89–F95)** — DB audit revealed broken data pipelines: audit log disabled by default, QA cache write path missing, sessions never close, learnings turns always 0, prompt evolution dead, sub-master detection never triggered, memory.md stale. Phase 97 planned (18 tasks).
+## [0.0.14] — 2026-03-07
+
+### Added
+
+#### Skill Pack System Extensions (Phase 98)
+
+- **SkillPack type + SKILLPACK.md format** — reusable domain-specific instruction sets for workers
+- **5 built-in skill packs** — `security-audit`, `code-review`, `test-writer`, `data-analysis`, `documentation`
+- **Master auto-selects skill packs** — task type determines which pack injects into worker system prompt
+- **User-defined skill packs** — `.openbridge/skill-packs/` overrides built-in defaults
+- **`/skill-packs` chat + CLI command** — list available packs with descriptions
+
+#### Design & Creative Output (Phase 100)
+
+- **6 creative skill packs** — `diagram-maker`, `chart-generator`, `web-designer`, `slide-designer`, `generative-art`, `brand-assets`
+- **HTML-to-image pipeline** — Puppeteer rendering for sending visual outputs via messaging
+- **SVG + Mermaid rendering** — diagram-to-image conversion via mermaid-cli
+- **Creative task auto-detection** — intent classification extended with design/visual/chart intents
+- **Image delivery** — rendered PNG/SVG sent as media via WhatsApp/Telegram
+
+#### Agent Orchestration Patterns (Phase 101)
+
+- **PlanningGate** — Master enters read-only analysis phase before code-edit execution phase
+- **WorkerSwarm** — named worker groups (research, implement, review, test) with handoff protocol
+- **Test protection** — workers cannot modify test files unless explicitly authorized by Master
+- **Iteration cap** — max 3 lint/test fix attempts before escalating to Master (configurable)
+- **Parallel spawning within swarms** — independent workers in same swarm run concurrently
+
+## [0.0.13] — 2026-03-07
+
+### Added
+
+#### Structured Observations & Worker Summaries (Phase 93)
+
+- **Observations table + FTS5** — typed facts, concepts, files_read, files_modified from every worker
+- **Observation extractor** — auto-parses worker output into structured observations
+- **WorkerSummary schema** — `request/investigated/completed/learned/next_steps` per worker
+- **Content-hash deduplication** — SHA-256 dedup for workspace chunks with 30s write window
+- **Master context injection** — `next_steps` from recent workers fed into system prompt
+
+#### Session Compaction & Token Economics (Phase 95)
+
+- **SessionCompactor** — auto-summarizes when Master session exceeds 80% of max-turns
+- **Identifier preservation** — file paths, function names, finding IDs survive compaction
+- **Token economics tracking** — discovery vs retrieval token costs, ROI calculation
+- **`/stats` chat + CLI command** — exploration ROI visibility
+
+#### Channel Role Management UX Fix (Phase 96d)
+
+- **`auth.defaultRole` config** — whitelisted users default to `owner` (was `viewer`)
+- **`auth.channelRoles`** — per-channel role overrides
+- **`/whoami` + `/role` commands** — in-chat role visibility and management
+- **Softened classification** — `chat` action default for conversational messages, allowed for all roles
+- **Improved denial messages** — show role, classified action, and allowed actions
+
+#### Document Generation Skills (Phase 99)
+
+- **4 document skill packs** — `document-writer` (DOCX), `presentation-maker` (PPTX), `spreadsheet-builder` (XLSX), `report-generator` (PDF/HTML)
+- **Skill pack loader** — discovers built-in + `.openbridge/skill-packs/` custom packs
+- **Document task auto-detection** — intent classification extended with document/report/presentation intents
+- **File attachment delivery** — generated documents sent via WhatsApp/Telegram/WebChat
+
+#### Vector Search & Hybrid Retrieval (Phase 94)
+
+- **sqlite-vec integration** — vector similarity search with cosine distance
+- **Hybrid scoring** — 0.4 vector + 0.4 FTS5 + 0.2 temporal decay
+- **MMR diversity** — prevents result clustering from same file
+- **Progressive disclosure** — `searchIndex()` returns compact results, `getDetails()` loads full content
+- **Graceful fallback** — FTS5-only when no embedding provider configured
+
+#### Developer Experience (Phases 96a–96c)
+
+- **`openbridge doctor`** — self-diagnostic command checking Node.js, AI tools, config, DB, channels
+- **Pairing-based auth** — 6-digit codes for self-service user onboarding via DM
+- **Skills directory** — `SkillManager` discovers SKILL.md files, Master auto-creates skills from patterns
+- **`/doctor`, `/approve`, `/skills` chat commands**
+
+### Fixed
+
+- 7 data integrity findings (OB-F89–F95) — audit log, QA cache, sessions, turns, prompts, sub-masters, memory.md
 
 ## [0.0.12] — 2026-03-05
 

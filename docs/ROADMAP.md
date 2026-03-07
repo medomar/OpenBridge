@@ -1,16 +1,16 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-06 | **Current Version:** v0.0.12
-> **Current Focus:** Sprint 5 + Sprint 6 — 176 tasks loaded in TASKS.md (OB-1618–OB-1793) for automated execution. Sprint 5 (126 tasks: Phases 93, 95, 96d, 99, 94, 96a-c) + Sprint 6 (50 tasks: Phases 98, 100, 101).
-> **18 open findings** — all have tasks assigned. See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
+> **Last Updated:** 2026-03-07 | **Current Version:** v0.0.14
+> **All findings resolved** — 143 findings fixed across v0.0.1–v0.0.14. 1239 tasks completed.
+> **0 open findings.** See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 ---
 
-## Released (v0.0.1 — v0.0.12)
+## Released (v0.0.1 — v0.0.14)
 
-Everything that shipped — 1063 tasks across 104+ phases + Phase 97.
+Everything that shipped — 1239 tasks across 104+ phases + Phase 97 + Sprints 5–6.
 
 | Feature                                                                                                                         | Phase   | Version  | Status       |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ------------ |
@@ -88,60 +88,19 @@ Everything that shipped — 1063 tasks across 104+ phases + Phase 97.
 | Docker & startup polish — log consolidation, whitelist diagnostics, .env.example fix (OB-F105–F111)                             | 103     | v0.0.12  | Shipped      |
 | Test suite fixes — stale mock updates for batch continuation (OB-F113)                                                          | 104     | v0.0.12  | Shipped      |
 | Data integrity fixes — audit log, QA cache, sessions, turns, prompts, sub-masters, memory.md (OB-F89–F95)                       | 97      | pre-0.13 | Shipped      |
+| Structured observations, worker summaries, content-hash dedup (OB-F80, F82, F88)                                                | 93      | v0.0.13  | Shipped      |
+| Session compaction & token economics (OB-F83, F84)                                                                              | 95      | v0.0.13  | Shipped      |
+| Channel role management UX fix (OB-F103)                                                                                        | 96d     | v0.0.13  | Shipped      |
+| Document generation skills — DOCX, PPTX, XLSX, PDF (OB-F98)                                                                     | 99      | v0.0.13  | Shipped      |
+| Vector search & hybrid retrieval — sqlite-vec, MMR, progressive disclosure (OB-F79, F81)                                        | 94      | v0.0.13  | Shipped      |
+| `openbridge doctor` — self-diagnostic command (OB-F85)                                                                          | 96a     | v0.0.13  | Shipped      |
+| Pairing-based auth — 6-digit code onboarding (OB-F86)                                                                           | 96b     | v0.0.13  | Shipped      |
+| Skills directory — SKILL.md pattern, auto-creation (OB-F87)                                                                     | 96c     | v0.0.13  | Shipped      |
+| Skill pack system extensions — 5 domain packs (OB-F96)                                                                          | 98      | v0.0.14  | Shipped      |
+| Design & creative output — diagrams, charts, generative art (OB-F99)                                                            | 100     | v0.0.14  | Shipped      |
+| Agent orchestration patterns — planning gate, swarms, test protection, iteration caps (OB-F97, F100–F102)                       | 101     | v0.0.14  | Shipped      |
 
-> \* **Phases 72–73 are scaffolded but not yet functional.** Desktop apps (Windows/macOS/App Store) remain a separate effort, deferred post-v0.0.14. See [FUTURE.md — Deferred](docs/audit/FUTURE.md) for details.
-
----
-
-## Current: Sprint 5 — Smarter AI + Business Output (v0.0.13)
-
-**With Phase 97 data pipelines fixed (18 tasks, 7 findings)**, OpenBridge levels up with smarter memory, session management, role fixes, and document generation for business users:
-
-- **[openclaw/openclaw](https://github.com/openclaw/openclaw)** (242K stars) — Session compaction, vector memory, doctor command, DM pairing, 60+ skills
-- **[thedotmack/claude-mem](https://github.com/thedotmack/claude-mem)** (32K stars) — Structured observations, progressive disclosure, token economics, content-hash dedup
-- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Document generation skills (DOCX, PDF, PPTX, XLSX)
-
-### Core Phases (guaranteed delivery)
-
-| Phase     | Focus                                      | Findings               | Tasks  |
-| --------- | ------------------------------------------ | ---------------------- | ------ |
-| 93        | Structured Observations & Worker Summaries | OB-F80, OB-F82, OB-F88 | 27     |
-| 95        | Session Compaction & Token Economics       | OB-F83, OB-F84         | 18     |
-| 96d       | Channel Role Management UX                 | OB-F103                | 12     |
-| 99        | Document Generation Skills                 | OB-F98                 | 18     |
-| **Total** |                                            | **7 findings**         | **75** |
-
-### Stretch Phases (if time allows)
-
-| Phase     | Focus                            | Findings       | Tasks  |
-| --------- | -------------------------------- | -------------- | ------ |
-| 94        | Vector Search & Hybrid Retrieval | OB-F79, OB-F81 | 21     |
-| 96a       | `openbridge doctor`              | OB-F85         | 10     |
-| 96b       | Pairing-Based Auth               | OB-F86         | 10     |
-| 96c       | Skills Directory                 | OB-F87         | 10     |
-| **Total** |                                  | **5 findings** | **51** |
-
-See [docs/audit/TASKS.md](docs/audit/TASKS.md) for detailed task breakdowns.
-
----
-
-## After v0.0.13: Skill System, Creative Output & Agent Patterns (v0.0.14)
-
-**OpenBridge serves any user** — not just developers. v0.0.14 extends the skill pack system from Phase 99, adds creative/visual output, and adopts agent orchestration patterns from leading AI tools.
-
-**Inspired by:**
-
-- **[travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)** — Security, design, testing, data analysis skill packs
-- **[x1xhlol/system-prompts-and-models-of-ai-tools](https://github.com/x1xhlol/system-prompts-and-models-of-ai-tools)** — 30+ AI tool architectures (Manus, Devin, Cursor) revealing production-grade agent patterns
-
-| Phase     | Focus                           | Findings                          | Est. Tasks |
-| --------- | ------------------------------- | --------------------------------- | ---------- |
-| 98        | Skill Pack System Extensions    | OB-F96                            | ~18–22     |
-| 100       | Design & Creative Output Skills | OB-F99                            | ~14–18     |
-| 101       | Agent Orchestration Patterns    | OB-F97, OB-F100, OB-F101, OB-F102 | ~18–22     |
-| **Total** |                                 | **6 findings**                    | **~70–85** |
-
-See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for detailed task breakdowns.
+> \* **Phases 72–73 are scaffolded but not yet functional.** Desktop apps (Windows/macOS/App Store) remain a separate effort. See [FUTURE.md — Deferred](docs/audit/FUTURE.md) for details.
 
 ---
 
@@ -159,11 +118,10 @@ All future features beyond the skill/agent pattern track are tracked in [docs/au
 
 ### Deferred features:
 
-| Feature                  | Description                                                                    | Est. Phases |
-| ------------------------ | ------------------------------------------------------------------------------ | ----------- |
-| Access Control Dashboard | Web-based role/permission management UI                                        | TBD         |
-| Server Deployment Mode   | Docker container + headless mode for VPS/cloud                                 | TBD         |
-| Agent Orchestration      | Role-based workers (Architect, Coder, Tester, Reviewer) with dependency chains | TBD         |
+| Feature                  | Description                                    | Est. Phases |
+| ------------------------ | ---------------------------------------------- | ----------- |
+| Access Control Dashboard | Web-based role/permission management UI        | TBD         |
+| Server Deployment Mode   | Docker container + headless mode for VPS/cloud | TBD         |
 
 ---
 
@@ -199,50 +157,46 @@ All future features beyond the skill/agent pattern track are tracked in [docs/au
                                   │
                                   │  ── Sprint 5: Smarter AI + Business Output ──
                                   │
-                                  └──► ⬜ Sprint 5 (v0.0.13): Core + Stretch
-                                       │
-                                       │  CORE (75 tasks, 7 findings):
-                                       ├── Phase 93: Structured Observations + Worker Summaries + Chunk Dedup (1st)
-                                       ├── Phase 95: Session Compaction + Token Economics (2nd, parallel)
-                                       ├── Phase 96d: Channel Role Management UX (2nd, parallel)
-                                       └── Phase 99: Document Generation Skills (3rd, after 93)
-                                       │
-                                       │  STRETCH (51 tasks, 5 findings):
-                                       ├── Phase 94: Vector Search + Hybrid Retrieval (after 93)
-                                       ├── Phase 96a: openbridge doctor (independent)
-                                       ├── Phase 96b: Pairing-Based Auth (independent)
-                                       └── Phase 96c: Skills Directory (independent)
-                                            │
-                                            │  ── Sprint 6: Skill System + Creative + Orchestration ──
-                                            │
-                                            └──► ⬜ Sprint 6 (v0.0.14): Phases 98, 100–101
-                                                 ├── Phase 98: Skill Pack System Extensions
-                                                 ├── Phase 100: Design & Creative Output Skills
-                                                 └── Phase 101: Agent Orchestration Patterns
+                                  ├──► ✅ Sprint 5 (v0.0.13): 126 tasks, 12 findings
+                                  │    ├── Phase 93: Structured Observations + Worker Summaries + Chunk Dedup
+                                  │    ├── Phase 95: Session Compaction + Token Economics
+                                  │    ├── Phase 96d: Channel Role Management UX
+                                  │    ├── Phase 99: Document Generation Skills
+                                  │    ├── Phase 94: Vector Search + Hybrid Retrieval
+                                  │    ├── Phase 96a: openbridge doctor
+                                  │    ├── Phase 96b: Pairing-Based Auth
+                                  │    └── Phase 96c: Skills Directory
+                                  │
+                                  │  ── Sprint 6: Skill System + Creative + Orchestration ──
+                                  │
+                                  └──► ✅ Sprint 6 (v0.0.14): 50 tasks, 6 findings
+                                       ├── Phase 98: Skill Pack System Extensions
+                                       ├── Phase 100: Design & Creative Output Skills
+                                       └── Phase 101: Agent Orchestration Patterns
 ```
 
 ---
 
 ## Version Milestones
 
-| Version     | Status  | Key Features                                                                          | Tasks  |
-| ----------- | ------- | ------------------------------------------------------------------------------------- | ------ |
-| **v0.0.1**  | Done    | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310    |
-| **v0.0.2**  | Done    | Exploration progress, worker resilience, worker control, responsive Master            | 42     |
-| **v0.0.3**  | Done    | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50     |
-| **v0.0.4**  | Done    | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41     |
-| **v0.0.5**  | Done    | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21     |
-| **v0.0.6**  | Done    | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14     |
-| **v0.0.7**  | Done    | Telegram/Discord message splitting, live context fixes                                | 18     |
-| **v0.0.8**  | Done    | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95     |
-| **v0.0.9**  | Done    | Classification fixes, code-audit profile, exploration bugs, data cleanup              | 34     |
-| **v0.0.10** | Done    | RAG knowledge retrieval, env var protection                                           | 43     |
-| **v0.0.11** | Done    | Master output sharing, user consent                                                   | 20     |
-| **v0.0.12** | Done    | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                  | 281    |
-| **v0.0.13** | Planned | Structured observations, session compaction, role UX, document generation             | 75–126 |
-| **v0.0.14** | Planned | Skill pack extensions, design/creative output, agent orchestration patterns           | ~70–85 |
+| Version     | Status | Key Features                                                                          | Tasks |
+| ----------- | ------ | ------------------------------------------------------------------------------------- | ----- |
+| **v0.0.1**  | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310   |
+| **v0.0.2**  | Done   | Exploration progress, worker resilience, worker control, responsive Master            | 42    |
+| **v0.0.3**  | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50    |
+| **v0.0.4**  | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41    |
+| **v0.0.5**  | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21    |
+| **v0.0.6**  | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14    |
+| **v0.0.7**  | Done   | Telegram/Discord message splitting, live context fixes                                | 18    |
+| **v0.0.8**  | Done   | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95    |
+| **v0.0.9**  | Done   | Classification fixes, code-audit profile, exploration bugs, data cleanup              | 34    |
+| **v0.0.10** | Done   | RAG knowledge retrieval, env var protection                                           | 43    |
+| **v0.0.11** | Done   | Master output sharing, user consent                                                   | 20    |
+| **v0.0.12** | Done   | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                  | 281   |
+| **v0.0.13** | Done   | Structured observations, session compaction, role UX, document gen, vector search     | 126   |
+| **v0.0.14** | Done   | Skill pack extensions, design/creative output, agent orchestration patterns           | 50    |
 
-**Total shipped: 1063 tasks across 104+ phases. Planned: 75–126 tasks (v0.0.13) + ~70–85 tasks (v0.0.14).**
+**Total shipped: 1239 tasks across 104+ phases + Sprints 5–6.**
 
 ---
 
