@@ -370,12 +370,15 @@ scripts/                        Task runner utilities
 
 ## Current Version
 
-**v0.0.5** — All findings resolved. Phases 63–66 shipped:
+**v0.0.14** — All 143 findings resolved. 1239 tasks shipped across Phases 1–101.
 
-- Phase 63: FTS5 query sanitization (`sanitizeFts5Query()` in `retrieval.ts`) — fixes `SqliteError` on special characters (OB-F38)
-- Phase 64: memory.md context-aware updates — recent conversation history injected into memory-update prompt (OB-F39)
-- Phase 65: Graceful shutdown — 10s timeout, session state saved before memory update, user-facing shutdown message (OB-F40)
-- Phase 66: Documentation — API_REFERENCE, ARCHITECTURE, TROUBLESHOOTING, CONTRIBUTING, CHANGELOG, ROADMAP
+Key additions since v0.0.5:
+
+- v0.0.6–v0.0.8: Media handling, message splitting, voice transcription, CLI wizard
+- v0.0.9–v0.0.11: Classification fixes, RAG knowledge retrieval, output sharing, user consent
+- v0.0.12: Deep Mode, WebChat modernization, tunnel/relay, Docker sandbox, batch continuation
+- v0.0.13: Structured observations, session compaction, vector search, document generation, role UX fix, doctor, pairing auth, skills directory
+- v0.0.14: Skill pack extensions, creative output (diagrams/charts/art), agent orchestration (planning gate, swarms, test protection, iteration caps)
 
 ## Conventions
 

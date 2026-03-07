@@ -45,9 +45,21 @@ Three access levels keep you in control: **read-only** (browse files), **code-ed
 
 On startup, OpenBridge explores your workspace and builds a knowledge base inside your project. It detects git commits and file changes, then re-explores incrementally — so the AI's understanding is always current. Multi-turn conversations maintain context across messages: ask a question, get an answer, follow up — the AI remembers. Across sessions, persistent `memory.md` ensures key decisions, findings, and preferences survive restarts without bloating the context window.
 
-### Connect to External Services via MCP _(coming soon)_
+### Connect to External Services via MCP
 
-> **Note:** MCP integration is scaffolded in the codebase but not yet fully validated. Full support — including per-worker isolation, health checks, and Master-driven assignment — is planned for a future release. See [ROADMAP.md](docs/ROADMAP.md) for details.
+Workers connect to external services (Gmail, Slack, Canva, databases) via the Model Context Protocol. Each worker gets an isolated MCP config with only the servers it needs — no cross-contamination of API keys. The Master AI autonomously decides which workers get which MCP servers.
+
+### Document & Creative Output
+
+Generate Word documents, PowerPoint presentations, Excel spreadsheets, and PDF reports from a chat message. Create diagrams (Mermaid/PlantUML), charts (D3.js/Chart.js), landing pages, slide decks, generative art, and brand assets. Generated files are delivered as attachments via WhatsApp/Telegram or download links in WebChat.
+
+### Smart Agent Orchestration
+
+The Master AI plans before it acts — spawning read-only analysis workers before committing to code changes. Workers are grouped into coordinated swarms (research → implement → review → test) with automatic handoff. Test files are protected from unauthorized modification. Fix loops are capped at 3 iterations before escalating.
+
+### Skill Packs
+
+Domain-specific instruction sets that make workers experts at their task. Built-in packs for security audits, code review, test writing, data analysis, and documentation. Create custom skill packs in `.openbridge/skill-packs/` or let the Master auto-create them from successful task patterns.
 
 ### Zero Extra Cost
 
