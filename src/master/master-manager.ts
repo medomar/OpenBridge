@@ -2495,6 +2495,10 @@ export class MasterManager {
     const contextSummary = await this.buildContextSummary();
     const spawnOpts = this.buildMasterSpawnOptions(contextSummary, this.messageTimeout);
 
+    // Clear pending cancellation notifications after they've been injected into the spawn options.
+    // This prevents duplicate injection on subsequent session restarts (OB-F173).
+    this.pendingCancellationNotifications.length = 0;
+
     try {
       const result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
