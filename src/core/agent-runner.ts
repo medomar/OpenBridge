@@ -1077,6 +1077,17 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
     promise,
     pid: child.pid ?? -1,
     kill: (): void => {
+      // Guard: process already exited — skip kill, clear any lingering timers
+      if (child.exitCode !== null) {
+        clearTimeout(gracePeriodTimer);
+        gracePeriodTimer = undefined;
+        logger.debug(
+          { pid: child.pid, exitCode: child.exitCode },
+          'kill() called on already-exited process — skipping',
+        );
+        return;
+      }
+
       killed = true;
       // Clear both timers atomically to prevent any pending timeout/grace-period from firing
       clearTimeout(timeoutTimer);
