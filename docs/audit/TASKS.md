@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 40 | **In Progress:** 0 | **Done:** 53 (1239 archived)
+> **Pending:** 39 | **In Progress:** 0 | **Done:** 54 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -169,7 +169,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                | Finding | Model  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1304 | Refactor `processNextForUser()` in `src/core/queue.ts` to use a `while` loop instead of recursion. Replace the recursive `await this.processNextForUser(sender)` call at the end with a loop that continues while there are pending messages for the sender. This prevents stack overflow with large queues.                                                        | OB-F165 | sonnet | Pending |
+| OB-1304 | Refactor `processNextForUser()` in `src/core/queue.ts` to use a `while` loop instead of recursion. Replace the recursive `await this.processNextForUser(sender)` call at the end with a loop that continues while there are pending messages for the sender. This prevents stack overflow with large queues.                                                        | OB-F165 | sonnet | ✅ Done |
 | OB-1305 | Add unit test: enqueue 500 messages for the same sender, process them all, verify no stack overflow and all messages are processed. File: `tests/core/queue-recursion.test.ts`.                                                                                                                                                                                     | OB-F165 | sonnet | Pending |
 | OB-1306 | Add periodic cleanup to `RateLimiter` in `src/core/rate-limiter.ts`. Add a `cleanupInterval` timer (5 min) that iterates `windows` Map and deletes entries where all timestamps are older than `2 * windowMs`. Store the interval handle and clear it in a `dispose()` method. Call `dispose()` from `Bridge.stop()`.                                               | OB-F166 | sonnet | Pending |
 | OB-1307 | Add `MAX_CLASSIFICATION_CACHE_SIZE = 10_000` constant in `src/master/master-manager.ts`. After each `classificationCache.set()`, check `if (this.classificationCache.size > MAX_CLASSIFICATION_CACHE_SIZE)`. If exceeded, delete the oldest 20% of entries. Add a `cachedAt: number` field to cache entries (use `Date.now()`) and sort by `cachedAt` for eviction. | OB-F169 | sonnet | Pending |

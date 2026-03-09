@@ -163,107 +163,111 @@ export class MessageQueue {
 
   /** Process the next message for a specific user */
   private async processNextForUser(sender: string): Promise<void> {
-    const queue = this.userQueues.get(sender);
-    if (!queue || queue.length === 0 || !this.handler) {
-      this.activeUsers.delete(sender);
-      if (queue?.length === 0) {
-        this.userQueues.delete(sender);
-      }
-      this.resolveDrainIfIdle();
-      return;
-    }
-
     this.activeUsers.add(sender);
-    const item = queue.shift()!;
-    const processingStart = Date.now();
 
-    logger.info({ messageId: item.message.id, sender }, 'Processing message');
-
-    let lastError: unknown;
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
-      if (attempt > 0) {
-        this.metrics?.recordRetry();
-        const delay = this.config.retryDelayMs * attempt;
-        logger.warn({ messageId: item.message.id, attempt, delay }, 'Retrying message after delay');
-        await new Promise((resolve) => setTimeout(resolve, delay));
+    while (true) {
+      const queue = this.userQueues.get(sender);
+      if (!queue || queue.length === 0 || !this.handler) {
+        this.activeUsers.delete(sender);
+        if (queue?.length === 0) {
+          this.userQueues.delete(sender);
+        }
+        this.resolveDrainIfIdle();
+        return;
       }
 
-      try {
-        await this.handler(item.message);
-        lastError = undefined;
-        break;
-      } catch (error) {
-        lastError = error;
-        item.attempts = attempt + 1;
+      const item = queue.shift()!;
+      const processingStart = Date.now();
 
-        // Classify the error kind for logging and retry decisions.
-        // AgentExhaustedError carries attempt records with exit codes and stderr
-        // that classifyError() can inspect (timeout, rate-limit, auth, etc.).
-        // ProviderError has its own kind. Everything else is 'unknown'.
-        let errorKind: string;
-        if (error instanceof AgentExhaustedError) {
-          const lastAttempt = error.attempts[error.attempts.length - 1];
-          errorKind = lastAttempt
-            ? classifyError(lastAttempt.stderr, lastAttempt.exitCode)
-            : 'unknown';
-        } else if (error instanceof ProviderError) {
-          errorKind = error.kind;
-        } else {
-          errorKind = 'unknown';
+      logger.info({ messageId: item.message.id, sender }, 'Processing message');
+
+      let lastError: unknown;
+      for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+        if (attempt > 0) {
+          this.metrics?.recordRetry();
+          const delay = this.config.retryDelayMs * attempt;
+          logger.warn(
+            { messageId: item.message.id, attempt, delay },
+            'Retrying message after delay',
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
 
-        const isPermanent = error instanceof ProviderError && error.kind === 'permanent';
-        // Timeout errors are non-retryable — retrying a 180s timeout will just
-        // produce another 180s timeout, wasting compute and blocking the user.
-        const isTimeout = errorKind === 'timeout';
-        logger.error(
-          {
-            messageId: item.message.id,
-            attempt: attempt + 1,
-            maxRetries: this.config.maxRetries,
-            errorKind,
-            error,
-          },
-          isPermanent
-            ? 'Permanent error — skipping retries'
-            : isTimeout
-              ? 'Timeout error — skipping retries (retrying would timeout again)'
-              : 'Failed to process message',
-        );
+        try {
+          await this.handler(item.message);
+          lastError = undefined;
+          break;
+        } catch (error) {
+          lastError = error;
+          item.attempts = attempt + 1;
 
-        if (isPermanent || isTimeout) break;
+          // Classify the error kind for logging and retry decisions.
+          // AgentExhaustedError carries attempt records with exit codes and stderr
+          // that classifyError() can inspect (timeout, rate-limit, auth, etc.).
+          // ProviderError has its own kind. Everything else is 'unknown'.
+          let errorKind: string;
+          if (error instanceof AgentExhaustedError) {
+            const lastAttempt = error.attempts[error.attempts.length - 1];
+            errorKind = lastAttempt
+              ? classifyError(lastAttempt.stderr, lastAttempt.exitCode)
+              : 'unknown';
+          } else if (error instanceof ProviderError) {
+            errorKind = error.kind;
+          } else {
+            errorKind = 'unknown';
+          }
+
+          const isPermanent = error instanceof ProviderError && error.kind === 'permanent';
+          // Timeout errors are non-retryable — retrying a 180s timeout will just
+          // produce another 180s timeout, wasting compute and blocking the user.
+          const isTimeout = errorKind === 'timeout';
+          logger.error(
+            {
+              messageId: item.message.id,
+              attempt: attempt + 1,
+              maxRetries: this.config.maxRetries,
+              errorKind,
+              error,
+            },
+            isPermanent
+              ? 'Permanent error — skipping retries'
+              : isTimeout
+                ? 'Timeout error — skipping retries (retrying would timeout again)'
+                : 'Failed to process message',
+          );
+
+          if (isPermanent || isTimeout) break;
+        }
+      }
+
+      // Record elapsed time (including any retries) for rolling average used by onQueued.
+      const elapsed = Date.now() - processingStart;
+      this.recentProcessingTimes.push(elapsed);
+      if (this.recentProcessingTimes.length > 10) {
+        this.recentProcessingTimes.shift();
+      }
+
+      if (lastError !== undefined) {
+        const deadLetterItem: DeadLetterItem = {
+          message: item.message,
+          error:
+            lastError instanceof Error
+              ? lastError.message
+              : typeof lastError === 'string'
+                ? lastError
+                : 'Unknown error',
+          attempts: item.attempts,
+          failedAt: new Date(),
+        };
+        this.dlq.push(deadLetterItem);
+        this.metrics?.recordDeadLettered();
+
+        logger.error(
+          { messageId: item.message.id, attempts: item.attempts, dlqSize: this.dlq.length },
+          'Message permanently failed — moved to dead letter queue',
+        );
       }
     }
-
-    // Record elapsed time (including any retries) for rolling average used by onQueued.
-    const elapsed = Date.now() - processingStart;
-    this.recentProcessingTimes.push(elapsed);
-    if (this.recentProcessingTimes.length > 10) {
-      this.recentProcessingTimes.shift();
-    }
-
-    if (lastError !== undefined) {
-      const deadLetterItem: DeadLetterItem = {
-        message: item.message,
-        error:
-          lastError instanceof Error
-            ? lastError.message
-            : typeof lastError === 'string'
-              ? lastError
-              : 'Unknown error',
-        attempts: item.attempts,
-        failedAt: new Date(),
-      };
-      this.dlq.push(deadLetterItem);
-      this.metrics?.recordDeadLettered();
-
-      logger.error(
-        { messageId: item.message.id, attempts: item.attempts, dlqSize: this.dlq.length },
-        'Message permanently failed — moved to dead letter queue',
-      );
-    }
-
-    await this.processNextForUser(sender);
   }
 
   private resolveDrainIfIdle(): void {
