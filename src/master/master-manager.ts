@@ -2084,6 +2084,7 @@ export class MasterManager {
     timeout?: number,
     maxTurns?: number,
     contextSections?: MasterContextSections,
+    skipWorkspaceContext?: boolean,
   ): SpawnOptions {
     if (!this.masterSession) {
       throw new Error('Master session not initialized — call initMasterSession() first');
@@ -2145,7 +2146,8 @@ export class MasterManager {
     }
 
     // Workspace knowledge — project type, frameworks, structure
-    if (this.explorationSummary?.status === 'completed') {
+    // Skipped when the prompt already contains the workspace map (e.g. incremental exploration).
+    if (!skipWorkspaceContext && this.explorationSummary?.status === 'completed') {
       const mapContext = this.getWorkspaceContextSummary();
       if (mapContext) {
         let contextText = mapContext;
