@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 77 | **In Progress:** 0 | **Done:** 16 (1239 archived)
+> **Pending:** 76 | **In Progress:** 0 | **Done:** 17 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -41,7 +41,7 @@
 | Pri | Phase | Title                          | Tasks | Findings                    | Status |
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
-| P0  | 112   | Process & Timer Safety         | 9/14  | OB-F162/163/164/167/168/170 | ◻      |
+| P0  | 112   | Process & Timer Safety         | 10/14 | OB-F162/163/164/167/168/170 | ◻      |
 | P1  | 114   | Data Safety & Error Visibility | 12    | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
@@ -88,7 +88,7 @@
 | OB-1296 | In `scheduleReload()` (`src/core/config-watcher.ts`), replace `void this.reload()` with `this.reload().catch((err) => { logger.error({ err }, 'Unhandled config reload error'); })`. This ensures no unhandled promise rejections escape.                                                                                                                                                                                                                             | OB-F167 | sonnet | ✅ Done |
 | OB-1297 | In `requestSpawnConfirmation()` (`src/core/router.ts`), before creating a new `setTimeout`, check if `pendingSpawnConfirmations` already has an entry for the sender. If so, call `clearTimeout()` on the existing `timeoutHandle` before overwriting. Add a debug log when clearing a superseded confirmation.                                                                                                                                                       | OB-F168 | sonnet | ✅ Done |
 | OB-1298 | In `MasterManager` shutdown/cleanup path (`src/master/master-manager.ts`), iterate through `batchTimers` Set and call `clearTimeout()` on each handle, then `this.batchTimers.clear()`. Also clear `idleCheckTimer` if set: `if (this.idleCheckTimer) { clearInterval(this.idleCheckTimer); this.idleCheckTimer = null; }`.                                                                                                                                           | OB-F170 | sonnet | ✅ Done |
-| OB-1299 | Add unit test: verify that after `MasterManager.shutdown()` (or equivalent cleanup method), `batchTimers` is empty and `idleCheckTimer` is null. File: `tests/master/master-shutdown-cleanup.test.ts`.                                                                                                                                                                                                                                                                | OB-F170 | sonnet | Pending |
+| OB-1299 | Add unit test: verify that after `MasterManager.shutdown()` (or equivalent cleanup method), `batchTimers` is empty and `idleCheckTimer` is null. File: `tests/master/master-shutdown-cleanup.test.ts`.                                                                                                                                                                                                                                                                | OB-F170 | sonnet | ✅ Done |
 | OB-1300 | In `Bridge.start()`, deduplicate process signal handler registration. Store handler references as instance properties (`tunnelExitHandler`, `tunnelSigintHandler`). Use `process.once('exit', ...)` instead of `process.on('exit', ...)` for cleanup handlers. In `clearTunnelShutdownHandlers()`, remove exactly the stored handler references.                                                                                                                      | OB-F164 | sonnet | Pending |
 | OB-1301 | Add unit test: verify that calling `Bridge.start()` twice (e.g., after a restart) does not register duplicate signal handlers. File: `tests/core/bridge-signal-handlers.test.ts`.                                                                                                                                                                                                                                                                                     | OB-F164 | sonnet | Pending |
 | OB-1302 | In `execOnce()` (`src/core/agent-runner.ts`), add a guard in the returned `kill()` function: check `child.exitCode !== null` (process already exited) before calling `child.kill()`. If already exited, skip the kill and clear any pending grace period timer.                                                                                                                                                                                                       | OB-F162 | sonnet | Pending |
