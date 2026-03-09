@@ -154,6 +154,53 @@ describe('MasterManager — file-reference keyword detection (OB-1261)', () => {
   });
 });
 
+// ── Suite: No false positives from file-reference keyword group (OB-1262) ──
+
+describe('MasterManager — no false positives from file-reference keywords (OB-1262)', () => {
+  let testWorkspace: string;
+  let manager: MasterManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockSpawn.mockReset();
+    mockStream.mockReset();
+    mockSpawnWithHandle.mockReset();
+
+    testWorkspace = path.join(os.tmpdir(), 'test-no-fp-' + Date.now());
+    await fs.mkdir(testWorkspace, { recursive: true });
+
+    const dotFolderManager = new DotFolderManager(testWorkspace);
+    await dotFolderManager.initialize();
+
+    manager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    await manager.start();
+  });
+
+  afterEach(async () => {
+    await manager.shutdown();
+    try {
+      await fs.rm(testWorkspace, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  it('classifies "what is TypeScript?" as quick-answer with no false positives from file-reference keywords (OB-1262)', async () => {
+    // Make the AI classifier fail so classifyTask() falls back to keyword heuristics.
+    mockSpawn.mockRejectedValue(new Error('AI classifier unavailable'));
+
+    const result = await manager.classifyTask('what is TypeScript?');
+
+    expect(result.class).toBe('quick-answer');
+  });
+});
+
 // ── Suite: Attachment escalation (OB-1257, OB-1260) ─────────────────
 
 describe('MasterManager — attachment escalation (OB-1257, OB-1260)', () => {
