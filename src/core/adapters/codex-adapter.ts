@@ -259,7 +259,7 @@ export class CodexAdapter implements CLIAdapter {
     //   1. Sandbox constraint — behavioral guidance when tool restrictions were specified
     //   2. User system prompt — caller-supplied context or instructions
     //   3. Task prompt        — the actual task description
-    let prompt = sanitizePrompt(opts.prompt);
+    let prompt = sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars);
     const systemParts: string[] = [];
 
     // Inject behavioral constraint based on sandbox mode — always applied so Codex
