@@ -324,8 +324,10 @@ export class Bridge {
     // Schedule periodic DB eviction — run once on startup, then every 24 hours
     if (this.memory) {
       const runEviction = (): void => {
+        if (!this.memory) return;
         logger.info('Running scheduled DB eviction');
-        void this.memory!.evictOldData()
+        void this.memory
+          .evictOldData()
           .then(() => {
             logger.info('DB eviction complete');
           })
@@ -699,6 +701,7 @@ export class Bridge {
       } catch (error) {
         logger.error({ err: error }, 'Error closing MemoryManager');
       }
+      this.memory = null;
     }
 
     logger.info('OpenBridge stopped');
