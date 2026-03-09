@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 31 | **Fixed:** 3 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 30 | **Fixed:** 4 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 146 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -193,11 +193,11 @@
 ### OB-F163 — Session checkpoint/resume race — checkpoint never resumed on error
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/router.ts` (~lines 1707-1814)
 - **Root Cause / Impact:**
   In Router's message processing, when `isUrgentCycle` is true, `checkpointSession()` is called before `processMessage()`. If `processMessage()` throws, the catch block rethrows without calling `resumeSession()`. The session stays in "checkpointed" state. Next message processing inherits corrupted session state, causing unpredictable Master behavior.
-- **Fix:** Add `finally` block that calls `resumeSession()` if `sessionCheckpointed` flag is true.
+- **Fix:** Added `sessionCheckpointed` flag; set to `true` after `checkpointSession()` succeeds. `resumeSession()` moved to a `finally` block (guarded by flag) with try-catch and error logging.
 
 ---
 
