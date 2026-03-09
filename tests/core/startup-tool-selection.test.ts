@@ -116,16 +116,13 @@ describe('AuthService whitelist dropped entry logging (OB-1681)', () => {
     mockWarn.mockClear();
   });
 
-  it('logs a warning for non-numeric whitelist entries', () => {
-    new AuthService({ whitelist: ['+1-abc-invalid'], prefix: '/ai' });
+  it('logs a warning for empty whitelist entries', () => {
+    new AuthService({ whitelist: ['', '+12345678901'], prefix: '/ai' });
 
-    // Should have warned about the bad entry
+    // Should have warned about the empty entry
     const calls = mockWarn.mock.calls as unknown[][];
     const warnedAboutEntry = calls.some(
-      (args) =>
-        typeof args[1] === 'string' &&
-        args[1].includes('+1-abc-invalid') &&
-        args[1].includes('non-numeric characters'),
+      (args) => typeof args[1] === 'string' && args[1].includes('empty entry'),
     );
     expect(warnedAboutEntry).toBe(true);
   });
@@ -142,13 +139,13 @@ describe('AuthService whitelist dropped entry logging (OB-1681)', () => {
 
   it('still builds valid whitelist entries despite dropped ones', () => {
     const auth = new AuthService({
-      whitelist: ['+12345678901', 'bad-entry', '+12345678901'],
+      whitelist: ['+12345678901', '', '+12345678901'],
       prefix: '/ai',
     });
 
-    // Only the valid unique entry should be whitelisted
+    // Valid unique entry is whitelisted; empty entry and duplicate are dropped
     expect(auth.isAuthorized('+12345678901')).toBe(true);
-    expect(auth.isAuthorized('bad-entry')).toBe(false);
+    expect(auth.isAuthorized('')).toBe(false);
   });
 
   it('does not log dropped-entry warnings for valid unique entries', () => {
