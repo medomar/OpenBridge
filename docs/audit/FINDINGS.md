@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 30 | **Fixed:** 4 (143 prior findings archived) | **Last Audit:** 2026-03-09
-> **History:** 146 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
+> **Open:** 29 | **Fixed:** 5 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **History:** 147 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
 
@@ -237,7 +237,7 @@
 ### OB-F167 — Config watcher `reload()` — unhandled promise rejection
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/config-watcher.ts` (~lines 58-82)
 - **Root Cause / Impact:**
   `scheduleReload()` calls `void this.reload()` (fire-and-forget). If `reload()` rejects before reaching its catch handler (e.g., synchronous throw from `loadConfig()`), the promise rejection goes unhandled. Node.js may terminate on unhandled rejections depending on `--unhandled-rejections` flag.
