@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 26 | **In Progress:** 0 | **Done:** 67 (1239 archived)
+> **Pending:** 25 | **In Progress:** 0 | **Done:** 68 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -194,7 +194,7 @@
 | OB-1258 | Add a file-reference keyword group in `classifyTaskByKeywords()` (`src/master/master-manager.ts`): patterns like `/\b(the file\|xl\|xls\|xlsx\|pdf\|csv\|document\|attachment\|spreadsheet\|image\|photo\|picture)\b/i`. When matched, classify as `tool-use` instead of `quick-answer`.  | OB-F154 | sonnet | ✅ Done |
 | OB-1259 | Update the AI classifier prompt (in `classifyTask()`) to include guidance about file attachments: "If the message references files, documents, spreadsheets, or has attachments, classify as tool-use or higher — never quick-answer."                                                    | OB-F152 | sonnet | ✅ Done |
 | OB-1260 | Add unit test: message with `attachments: [{ name: 'data.xlsx', type: 'file' }]` and text "explore this" should NOT be classified as `quick-answer`. File: `tests/master/classification.test.ts`.                                                                                         | OB-F152 | sonnet | ✅ Done |
-| OB-1261 | Add unit test: message with text "explore the xl file I sent" (no attachment object) should be classified as `tool-use` via keyword detection. File: `tests/master/classification.test.ts`.                                                                                               | OB-F154 | sonnet | Pending |
+| OB-1261 | Add unit test: message with text "explore the xl file I sent" (no attachment object) should be classified as `tool-use` via keyword detection. File: `tests/master/classification.test.ts`.                                                                                               | OB-F154 | sonnet | ✅ Done |
 | OB-1262 | Add unit test: message with text "what is TypeScript?" (no file references, no attachments) should still be classified as `quick-answer` — verify no false positives from the new keyword group.                                                                                          | OB-F154 | sonnet | Pending |
 
 ---

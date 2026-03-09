@@ -106,6 +106,54 @@ function getSpawnCallOpts(callIndex: number): SpawnOptions | undefined {
   return mockSpawn.mock.calls[callIndex]?.[0] as SpawnOptions | undefined;
 }
 
+// ── Suite: Keyword detection — file-reference group (OB-1261) ────────
+
+describe('MasterManager — file-reference keyword detection (OB-1261)', () => {
+  let testWorkspace: string;
+  let manager: MasterManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockSpawn.mockReset();
+    mockStream.mockReset();
+    mockSpawnWithHandle.mockReset();
+
+    testWorkspace = path.join(os.tmpdir(), 'test-keyword-' + Date.now());
+    await fs.mkdir(testWorkspace, { recursive: true });
+
+    const dotFolderManager = new DotFolderManager(testWorkspace);
+    await dotFolderManager.initialize();
+
+    manager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    await manager.start();
+  });
+
+  afterEach(async () => {
+    await manager.shutdown();
+    try {
+      await fs.rm(testWorkspace, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  it('classifies "explore the xl file I sent" as tool-use via keyword detection (OB-1261)', async () => {
+    // Make the AI classifier fail so classifyTask() falls back to keyword heuristics.
+    mockSpawn.mockRejectedValue(new Error('AI classifier unavailable'));
+
+    const result = await manager.classifyTask('explore the xl file I sent');
+
+    expect(result.class).toBe('tool-use');
+    expect(result.reason).toMatch(/file-reference/i);
+  });
+});
+
 // ── Suite: Attachment escalation (OB-1257, OB-1260) ─────────────────
 
 describe('MasterManager — attachment escalation (OB-1257, OB-1260)', () => {
