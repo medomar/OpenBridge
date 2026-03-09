@@ -274,6 +274,22 @@ export function getDailyCost(db: Database.Database, date?: string): number {
   return row.total;
 }
 
+/**
+ * Delete stale exploration_progress rows from previous failed explorations.
+ * Removes rows with status 'pending' or 'in_progress' whose exploration_id differs
+ * from the current one, preventing orphaned rows from accumulating on retry.
+ */
+export function deleteStaleExplorationProgress(
+  db: Database.Database,
+  currentExplorationId: string,
+): void {
+  db.prepare(
+    `DELETE FROM exploration_progress
+     WHERE status IN ('pending', 'in_progress')
+       AND exploration_id != ?`,
+  ).run(currentExplorationId);
+}
+
 /** Return all exploration_progress rows for a given exploration_id, ordered by id. */
 export function getExplorationProgressByExplorationId(
   db: Database.Database,

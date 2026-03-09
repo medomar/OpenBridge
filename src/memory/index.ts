@@ -74,6 +74,7 @@ import {
   insertExplorationProgress as _insertExplorationProgress,
   updateExplorationProgressById as _updateExplorationProgressById,
   getExplorationProgressByExplorationId as _getExplorationProgressByExplorationId,
+  deleteStaleExplorationProgress as _deleteStaleExplorationProgress,
   type ActivityRecord,
   type ActivityUpdate,
   type ExplorationProgressRecord,
@@ -791,6 +792,16 @@ export class MemoryManager {
   ): Promise<ExplorationProgressRecord[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
     return Promise.resolve(_getExplorationProgressByExplorationId(this.db, explorationId));
+  }
+
+  /**
+   * Delete stale exploration_progress rows from previous failed explorations.
+   * Removes pending/in_progress rows whose exploration_id differs from the current one.
+   */
+  deleteStaleExplorationProgress(currentExplorationId: string): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _deleteStaleExplorationProgress(this.db, currentExplorationId);
+    return Promise.resolve();
   }
 
   /** Return pending or in-progress rows from the exploration_progress table. */
