@@ -1,5 +1,12 @@
 import type Database from 'better-sqlite3';
 import type { DeepPhase, ExecutionProfile } from '../types/agent.js';
+import { createLogger } from '../core/logger.js';
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+
+const logger = createLogger('access-store');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,14 +118,51 @@ function parseApprovedToolEscalations(raw: string | null): string[] {
 }
 
 function rowToEntry(row: AccessControlRow): AccessControlEntry {
+  let scopes: string[] | null = null;
+  let allowed_actions: string[] | null = null;
+  let blocked_actions: string[] | null = null;
+
+  if (row.scopes) {
+    try {
+      scopes = JSON.parse(row.scopes) as string[];
+    } catch (err) {
+      logger.warn(
+        { err, id: row.id, field: 'scopes' },
+        'Failed to parse access control scopes JSON',
+      );
+    }
+  }
+
+  if (row.allowed_actions) {
+    try {
+      allowed_actions = JSON.parse(row.allowed_actions) as string[];
+    } catch (err) {
+      logger.warn(
+        { err, id: row.id, field: 'allowed_actions' },
+        'Failed to parse access control allowed_actions JSON',
+      );
+    }
+  }
+
+  if (row.blocked_actions) {
+    try {
+      blocked_actions = JSON.parse(row.blocked_actions) as string[];
+    } catch (err) {
+      logger.warn(
+        { err, id: row.id, field: 'blocked_actions' },
+        'Failed to parse access control blocked_actions JSON',
+      );
+    }
+  }
+
   return {
     id: row.id,
     user_id: row.user_id,
     channel: row.channel,
     role: row.role,
-    scopes: row.scopes ? (JSON.parse(row.scopes) as string[]) : null,
-    allowed_actions: row.allowed_actions ? (JSON.parse(row.allowed_actions) as string[]) : null,
-    blocked_actions: row.blocked_actions ? (JSON.parse(row.blocked_actions) as string[]) : null,
+    scopes,
+    allowed_actions,
+    blocked_actions,
     max_cost_per_day_usd: row.max_cost_per_day_usd,
     daily_cost_used: row.daily_cost_used,
     cost_reset_at: row.cost_reset_at,
