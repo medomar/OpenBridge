@@ -27,6 +27,16 @@ import {
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { getRecommendedModel, avoidHighFailureModel } from '../core/model-selector.js';
+import {
+  PromptAssembler,
+  PRIORITY_IDENTITY,
+  PRIORITY_WORKSPACE,
+  PRIORITY_MEMORY,
+  PRIORITY_RAG,
+  PRIORITY_LEARNINGS,
+  PRIORITY_WORKER_NEXT,
+  PRIORITY_ANALYSIS,
+} from '../core/prompt-assembler.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import { AdapterRegistry } from '../core/adapter-registry.js';
 import type { Router } from '../core/router.js';
@@ -489,6 +499,19 @@ export interface ClassificationResult {
  * Created per-message via makeProgressReporter(). No-op when no router is set.
  */
 export type ProgressReporter = (event: ProgressEvent) => Promise<void>;
+
+/**
+ * Optional pre-formatted context sections to inject into the Master system prompt.
+ * Passed to buildMasterSpawnOptions() so PromptAssembler can budget-rank them.
+ */
+interface MasterContextSections {
+  conversationContext?: string | null;
+  learnedPatternsContext?: string | null;
+  workerNextStepsContext?: string | null;
+  knowledgeContext?: string | null;
+  targetedReaderContext?: string | null;
+  analysisContext?: string | null;
+}
 
 /**
  * Options for creating a MasterManager
@@ -1947,11 +1970,16 @@ export class MasterManager {
    * Build spawn options for a Master session call.
    * Uses --session-id on first call, --resume on subsequent calls.
    * Injects the system prompt via --append-system-prompt.
+   *
+   * Uses PromptAssembler for budget-aware system prompt construction (OB-1246).
+   * Each context section is prioritized so lower-priority content is truncated
+   * or dropped when the total budget is exceeded, instead of silent truncation.
    */
   private buildMasterSpawnOptions(
     prompt: string,
     timeout?: number,
     maxTurns?: number,
+    contextSections?: MasterContextSections,
   ): SpawnOptions {
     if (!this.masterSession) {
       throw new Error('Master session not initialized — call initMasterSession() first');
@@ -1966,16 +1994,53 @@ export class MasterManager {
       retries: 0, // Master session calls don't auto-retry (caller handles)
     };
 
-    // Inject the system prompt if available
-    if (this.systemPrompt) {
-      opts.systemPrompt = this.systemPrompt;
-    }
-
     // Use --print mode (non-interactive). Interactive sessions (--session-id)
     // hang as headless child processes — no TTY for permission prompts.
     // No sessionId/resumeSessionId set → buildArgs() defaults to --print.
 
-    // Inject workspace context for non-exploration calls
+    // Retrieve adapter-aware system prompt budget (OB-F147/OB-F148)
+    const budget = this.adapter?.getPromptBudget?.() ?? { maxSystemPromptChars: 100_000 };
+    const assembler = new PromptAssembler();
+
+    // Base system prompt — identity and rules (highest priority)
+    if (this.systemPrompt) {
+      assembler.addSection('System Prompt', this.systemPrompt, PRIORITY_IDENTITY);
+    }
+
+    // Drain pending cancellation notifications (OB-884).
+    // Urgent — Master must know about killed workers to avoid re-spawning them.
+    if (this.pendingCancellationNotifications.length > 0) {
+      const notifications = this.pendingCancellationNotifications.splice(0);
+      assembler.addSection(
+        'Worker Cancellations',
+        '## IMPORTANT — Worker Cancellation Events\n\n' + notifications.join('\n'),
+        95,
+      );
+    }
+
+    // Drain pending Deep Mode resume offers (OB-1405).
+    // Urgent — Master must know about incomplete sessions from prior runs.
+    if (this.pendingDeepModeResumeOffers.length > 0) {
+      const offers = this.pendingDeepModeResumeOffers.splice(0);
+      assembler.addSection(
+        'Deep Mode Resume',
+        '## IMPORTANT — Incomplete Deep Mode Sessions\n\n' + offers.join('\n\n'),
+        93,
+      );
+    }
+
+    // Batch context — important for task continuity (OB-1617)
+    if (this.batchManager) {
+      const activeBatchId = this.batchManager.getCurrentBatchId();
+      if (activeBatchId) {
+        const batchContext = this.batchManager.buildBatchContextSection(activeBatchId);
+        if (batchContext) {
+          assembler.addSection('Batch Context', batchContext, 85);
+        }
+      }
+    }
+
+    // Workspace knowledge — project type, frameworks, structure
     if (this.explorationSummary?.status === 'completed') {
       const mapContext = this.getWorkspaceContextSummary();
       if (mapContext) {
@@ -1983,47 +2048,76 @@ export class MasterManager {
         if (this.mapLastVerifiedAt) {
           contextText += `\n\nMap last verified: ${formatTimeAgo(this.mapLastVerifiedAt)}`;
         }
-        opts.systemPrompt =
-          (opts.systemPrompt ?? '') + '\n\n## Current Workspace Knowledge\n\n' + contextText;
+        assembler.addSection(
+          'Workspace Knowledge',
+          '## Current Workspace Knowledge\n\n' + contextText,
+          PRIORITY_WORKSPACE,
+        );
       }
     }
 
-    // Inject learnings summary so Master can learn from past task outcomes
+    // Conversation context — memory.md + session history + cross-session FTS5
+    if (contextSections?.conversationContext) {
+      assembler.addSection(
+        'Conversation Context',
+        contextSections.conversationContext,
+        PRIORITY_MEMORY,
+      );
+    }
+
+    // Pre-fetched knowledge (RAG)
+    if (contextSections?.knowledgeContext) {
+      assembler.addSection(
+        'Knowledge Context',
+        formatPreFetchedKnowledgeSection(contextSections.knowledgeContext),
+        PRIORITY_RAG,
+      );
+    }
+
+    // Targeted reader results
+    if (contextSections?.targetedReaderContext) {
+      assembler.addSection(
+        'Targeted Reader',
+        formatTargetedReaderSection(contextSections.targetedReaderContext),
+        55,
+      );
+    }
+
+    // Learned patterns — model success rates, effective prompt templates
+    if (contextSections?.learnedPatternsContext) {
+      assembler.addSection(
+        'Learned Patterns',
+        contextSections.learnedPatternsContext,
+        PRIORITY_LEARNINGS + 5,
+      );
+    }
+
+    // Learnings summary — past task outcomes
     if (this.learningsSummary) {
-      opts.systemPrompt =
-        (opts.systemPrompt ?? '') + '\n\n## Learnings from Past Tasks\n\n' + this.learningsSummary;
+      assembler.addSection(
+        'Learnings',
+        '## Learnings from Past Tasks\n\n' + this.learningsSummary,
+        PRIORITY_LEARNINGS,
+      );
     }
 
-    // Drain pending cancellation notifications (OB-884).
-    // These are queued by killWorker() so the Master learns about cancelled workers
-    // on its next call and does not attempt to re-spawn them.
-    if (this.pendingCancellationNotifications.length > 0) {
-      const notifications = this.pendingCancellationNotifications.splice(0);
-      opts.systemPrompt =
-        (opts.systemPrompt ?? '') +
-        '\n\n## IMPORTANT — Worker Cancellation Events\n\n' +
-        notifications.join('\n');
+    // Worker next steps — follow-up work from recent workers
+    if (contextSections?.workerNextStepsContext) {
+      assembler.addSection(
+        'Worker Next Steps',
+        contextSections.workerNextStepsContext,
+        PRIORITY_WORKER_NEXT,
+      );
     }
 
-    // Drain pending Deep Mode resume offers (OB-1405).
-    // These are queued during startup when incomplete sessions from a prior run are found.
-    if (this.pendingDeepModeResumeOffers.length > 0) {
-      const offers = this.pendingDeepModeResumeOffers.splice(0);
-      opts.systemPrompt =
-        (opts.systemPrompt ?? '') +
-        '\n\n## IMPORTANT — Incomplete Deep Mode Sessions\n\n' +
-        offers.join('\n\n');
+    // Analysis context — planning gate output
+    if (contextSections?.analysisContext) {
+      assembler.addSection('Analysis Context', contextSections.analysisContext, PRIORITY_ANALYSIS);
     }
 
-    // Inject active batch context so Master never loses track of batch progress (OB-1617).
-    if (this.batchManager) {
-      const activeBatchId = this.batchManager.getCurrentBatchId();
-      if (activeBatchId) {
-        const batchContext = this.batchManager.buildBatchContextSection(activeBatchId);
-        if (batchContext) {
-          opts.systemPrompt = (opts.systemPrompt ?? '') + '\n\n' + batchContext;
-        }
-      }
+    const assembled = assembler.assemble(budget.maxSystemPromptChars);
+    if (assembled) {
+      opts.systemPrompt = assembled;
     }
 
     return opts;
@@ -5573,38 +5667,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         }
       }
 
-      // Execute message through the persistent Master session
-      const spawnOpts = this.buildMasterSpawnOptions(promptToSend, timeoutToUse, maxTurnsToUse);
-      // Inject relevant conversation history into the Master's system prompt (OB-731)
-      if (conversationContext) {
-        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
-      }
-      // Inject learned patterns into the Master's system prompt (OB-735)
-      if (learnedPatternsContext) {
-        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
-      }
-      // Inject recent worker next_steps into the Master's system prompt (OB-1635)
-      if (workerNextStepsContext) {
-        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + workerNextStepsContext;
-      }
-      // Inject pre-fetched knowledge context into the Master's system prompt (OB-1345, OB-1346)
-      if (knowledgeContext) {
-        spawnOpts.systemPrompt =
-          (spawnOpts.systemPrompt ?? '') +
-          '\n\n' +
-          formatPreFetchedKnowledgeSection(knowledgeContext);
-      }
-      // Inject targeted reader result into the Master's system prompt (OB-1354)
-      if (targetedReaderContext) {
-        spawnOpts.systemPrompt =
-          (spawnOpts.systemPrompt ?? '') +
-          '\n\n' +
-          formatTargetedReaderSection(targetedReaderContext);
-      }
-      // Inject planning gate analysis output into the Master's system prompt (OB-1779)
-      if (analysisContext) {
-        spawnOpts.systemPrompt = (spawnOpts.systemPrompt ?? '') + '\n\n' + analysisContext;
-      }
+      // Execute message through the persistent Master session (OB-1246: budget-aware assembly)
+      const masterContext: MasterContextSections = {
+        conversationContext,
+        learnedPatternsContext,
+        workerNextStepsContext,
+        knowledgeContext,
+        targetedReaderContext,
+        analysisContext,
+      };
+      const spawnOpts = this.buildMasterSpawnOptions(
+        promptToSend,
+        timeoutToUse,
+        maxTurnsToUse,
+        masterContext,
+      );
       let result = await this.agentRunner.spawn(spawnOpts);
       await this.updateMasterSession();
       void this._checkCompaction();
@@ -5618,34 +5695,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
         await this.restartMasterSession();
 
-        // Retry with the same prompt (planning or raw) and the new session
-        const retryOpts = this.buildMasterSpawnOptions(promptToSend, timeoutToUse, maxTurnsToUse);
-        // Re-inject conversation history into retry opts as well
-        if (conversationContext) {
-          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + conversationContext;
-        }
-        // Re-inject learned patterns into retry opts as well
-        if (learnedPatternsContext) {
-          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + learnedPatternsContext;
-        }
-        // Re-inject worker next_steps into retry opts as well (OB-1635)
-        if (workerNextStepsContext) {
-          retryOpts.systemPrompt = (retryOpts.systemPrompt ?? '') + '\n\n' + workerNextStepsContext;
-        }
-        // Re-inject knowledge context into retry opts as well (OB-1345, OB-1346)
-        if (knowledgeContext) {
-          retryOpts.systemPrompt =
-            (retryOpts.systemPrompt ?? '') +
-            '\n\n' +
-            formatPreFetchedKnowledgeSection(knowledgeContext);
-        }
-        // Re-inject targeted reader result into retry opts as well (OB-1354)
-        if (targetedReaderContext) {
-          retryOpts.systemPrompt =
-            (retryOpts.systemPrompt ?? '') +
-            '\n\n' +
-            formatTargetedReaderSection(targetedReaderContext);
-        }
+        // Retry with the same prompt and context sections (OB-1246: budget-aware assembly)
+        const retryOpts = this.buildMasterSpawnOptions(
+          promptToSend,
+          timeoutToUse,
+          maxTurnsToUse,
+          masterContext,
+        );
         result = await this.agentRunner.spawn(retryOpts);
         await this.updateMasterSession();
         void this._checkCompaction();
@@ -6164,27 +6220,18 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
         await streamProgress?.({ type: 'planning' });
       }
 
-      // Stream message through the persistent Master session
+      // Stream message through the persistent Master session (OB-1246: budget-aware assembly)
+      const streamContext: MasterContextSections = {
+        conversationContext: streamConversationContext,
+        learnedPatternsContext: streamLearnedPatternsContext,
+        workerNextStepsContext: streamWorkerNextStepsContext,
+      };
       const spawnOpts = this.buildMasterSpawnOptions(
         streamPromptToSend,
         streamTimeoutToUse,
         streamMaxTurns,
+        streamContext,
       );
-      // Inject relevant conversation history into the Master's system prompt (OB-731)
-      if (streamConversationContext) {
-        spawnOpts.systemPrompt =
-          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
-      }
-      // Inject learned patterns into the Master's system prompt (OB-735)
-      if (streamLearnedPatternsContext) {
-        spawnOpts.systemPrompt =
-          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
-      }
-      // Inject recent worker next_steps into the Master's system prompt (OB-1635)
-      if (streamWorkerNextStepsContext) {
-        spawnOpts.systemPrompt =
-          (spawnOpts.systemPrompt ?? '') + '\n\n' + streamWorkerNextStepsContext;
-      }
       let fullResponse = '';
       const stream = this.agentRunner.stream(spawnOpts);
 
@@ -6210,27 +6257,13 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
         await this.restartMasterSession();
 
-        // Retry with the same prompt (planning or raw) and the new session (streamed)
+        // Retry with the same prompt and context sections (OB-1246: budget-aware assembly)
         const retryOpts = this.buildMasterSpawnOptions(
           streamPromptToSend,
           streamTimeoutToUse,
           streamMaxTurns,
+          streamContext,
         );
-        // Re-inject conversation history into retry opts as well
-        if (streamConversationContext) {
-          retryOpts.systemPrompt =
-            (retryOpts.systemPrompt ?? '') + '\n\n' + streamConversationContext;
-        }
-        // Re-inject learned patterns into retry opts as well
-        if (streamLearnedPatternsContext) {
-          retryOpts.systemPrompt =
-            (retryOpts.systemPrompt ?? '') + '\n\n' + streamLearnedPatternsContext;
-        }
-        // Re-inject worker next_steps into retry opts as well (OB-1635)
-        if (streamWorkerNextStepsContext) {
-          retryOpts.systemPrompt =
-            (retryOpts.systemPrompt ?? '') + '\n\n' + streamWorkerNextStepsContext;
-        }
         fullResponse = '';
         const retryStream = this.agentRunner.stream(retryOpts);
 
