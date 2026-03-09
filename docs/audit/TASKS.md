@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 70 | **In Progress:** 0 | **Done:** 23 (1239 archived)
+> **Pending:** 69 | **In Progress:** 0 | **Done:** 24 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -42,7 +42,7 @@
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
-| P1  | 114   | Data Safety & Error Visibility | 12    | OB-F172/173/174/175/177     | ◻      |
+| P1  | 114   | Data Safety & Error Visibility | 3/12  | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
@@ -106,7 +106,7 @@
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
 | OB-1314 | In `observation-store.ts` (`src/memory/observation-store.ts`), wrap all `JSON.parse()` calls in `rowToObservation()` with try-catch. On parse failure, return empty arrays (`[]`) for `facts`, `concepts`, `files_read`, `files_modified`. Log a warning with the observation ID and the field that failed to parse.                                                                                                          | OB-F175 | haiku  | ✅ Done |
 | OB-1315 | In `access-store.ts` (`src/memory/access-store.ts`), wrap all `JSON.parse()` calls in `rowToEntry()` with try-catch. On parse failure, return `null` for `scopes`, `allowed_actions`, `blocked_actions`. Log a warning with the entry ID and the field that failed.                                                                                                                                                           | OB-F175 | haiku  | ✅ Done |
-| OB-1316 | In `memory/index.ts` (`src/memory/index.ts`), wrap the `JSON.parse()` calls in `getSessionObservations()` (~lines 1147-1150) with try-catch. On parse failure, return empty arrays. Log a warning.                                                                                                                                                                                                                            | OB-F175 | haiku  | Pending |
+| OB-1316 | In `memory/index.ts` (`src/memory/index.ts`), wrap the `JSON.parse()` calls in `getRecentObservations()` (~lines 1147-1150) with try-catch. On parse failure, return empty arrays. Log a warning.                                                                                                                                                                                                                             | OB-F175 | haiku  | ✅ Done |
 | OB-1317 | Add unit test: create an observation row with malformed JSON in the `facts` column. Verify `rowToObservation()` returns an empty array instead of throwing. File: `tests/memory/json-parse-safety.test.ts`.                                                                                                                                                                                                                   | OB-F175 | sonnet | Pending |
 | OB-1318 | In `drainPendingMessages()` (or equivalent in `src/master/master-manager.ts`), wrap each `processMessage()` call in try-catch. On error, log the error with the message content, but continue processing remaining messages. After the loop, if any errors occurred, notify the user: "X of Y queued messages failed to process during exploration drain."                                                                    | OB-F172 | sonnet | Pending |
 | OB-1319 | In `restartMasterSession()` (`src/master/master-manager.ts`), after injecting `pendingCancellationNotifications` into the system prompt, clear the array: `this.pendingCancellationNotifications.length = 0;`. Add a comment explaining why (prevent duplicate injection on subsequent restarts).                                                                                                                             | OB-F173 | haiku  | Pending |
