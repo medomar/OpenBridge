@@ -30,7 +30,14 @@ TASKS_FILE="docs/audit/TASKS.md"
 FINDINGS_FILE="docs/audit/FINDINGS.md"
 POINTER_FILE="docs/audit/.current_task"
 PROMPT_FILE="$SCRIPT_DIR/prompts/execute-task.md"
-TASK_MODELS_FILE="$SCRIPT_DIR/task-models.json"
+# Model-to-budget mapping (function, compatible with bash 3.x on macOS)
+model_budget() {
+  case "$1" in
+    haiku)  echo 3 ;;
+    opus)   echo 8 ;;
+    *)      echo 5 ;;  # sonnet or unknown
+  esac
+}
 LOG_DIR="logs/task-runs"
 
 # Execution
@@ -75,17 +82,17 @@ Paths:
 
 Execution:
   --phase N             Only run tasks from Phase N
-  --model MODEL         Force model for ALL tasks (overrides task-models.json)
-  --budget N            Force budget for ALL tasks in USD (overrides task-models.json)
+  --model MODEL         Force model for ALL tasks (overrides TASKS.md Model column)
+  --budget N            Force budget for ALL tasks in USD (overrides auto budget)
   --max-task-failures N Skip task after N failures (default: $MAX_TASK_FAILURES)
   --retries N           Stop after N consecutive failures (default: $MAX_CONSECUTIVE_FAILURES)
 
 Model Selection:
-  By default, each task's model + budget is resolved from scripts/task-models.json:
-    1. task_overrides[TASK_ID]   — per-task model + budget
-    2. phase_overrides[PHASE]   — per-phase model + budget
-    3. defaults                 — fallback (sonnet, \$5)
+  Each task's model is read from the Model column in the TASKS.md table:
+    | # | Task | Finding | Model | Status |
+  Budget auto-derives from model: haiku=\$3, sonnet=\$5, opus=\$8.
   Use --model to override all tasks with a single model (e.g., --model opus).
+  Use --budget to override the auto-derived budget for all tasks.
 
 Other:
   --caffeinate          Prevent macOS sleep (must be first argument)
@@ -93,10 +100,10 @@ Other:
   --help                Show this message
 
 Examples:
-  ./scripts/run-tasks.sh                          # Run all — auto model per task
-  ./scripts/run-tasks.sh OB-1244                  # Run one task (auto model)
-  ./scripts/run-tasks.sh --phase 110 --caffeinate # Phase 110 (opus auto-selected)
-  ./scripts/run-tasks.sh --model opus             # Force opus for all tasks
+  ./scripts/run-tasks.sh                          # Run all — model per task from TASKS.md
+  ./scripts/run-tasks.sh OB-1244                  # Run one task (reads model from TASKS.md)
+  ./scripts/run-tasks.sh --phase 110 --caffeinate # Phase 110 only, overnight
+  ./scripts/run-tasks.sh --model opus             # Force opus for ALL tasks
   ./scripts/run-tasks.sh --caffeinate             # Overnight run, auto models
   ./scripts/run-tasks.sh --reset-failures         # Clear skip list
 EOF
@@ -308,6 +315,8 @@ is_task_skipped() {
 
 ITERATION=0
 CONSECUTIVE_FAILURES=0
+TASK_MODEL=""
+TASK_BUDGET=""
 RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 write_state() {
@@ -400,12 +409,13 @@ print('unknown')
 " 2>/dev/null || echo "unknown"
 }
 
-# Resolve model + budget for a task from task-models.json.
-# Priority: CLI --model flag > task_overrides > phase_overrides > defaults.
+# Resolve model + budget for a task from the TASKS.md Model column.
+# Priority: CLI --model flag > Model column in TASKS.md > default (sonnet).
+# Budget auto-derives from model: haiku=$3, sonnet=$5, opus=$8.
 # Sets TASK_MODEL and TASK_BUDGET variables.
 resolve_task_config() {
   local task_id="$1"
-  local phase="$2"
+  local phase="$2"  # unused but kept for API compatibility
 
   # If user explicitly set --model on CLI, that wins for all tasks
   if [[ -n "$MODEL_OVERRIDE" ]]; then
@@ -414,57 +424,35 @@ resolve_task_config() {
     return
   fi
 
-  # If no task-models.json, use defaults
-  if [[ ! -f "$TASK_MODELS_FILE" ]]; then
-    TASK_MODEL="$MODEL"
+  # Read model from the TASKS.md Model column.
+  # Uses $(NF-2) to count from the RIGHT side of the row, which is robust
+  # even when task descriptions contain escaped pipe characters (\|).
+  # Table format: | # | Task | Finding | Model | Status |
+  #   → NF=7 normally, but pipes in Task text increase NF.
+  #   → $(NF-1) = Status, $(NF-2) = Model (always correct).
+  local task_model
+  task_model=$(awk -F'|' -v tid="$task_id" '
+    $0 ~ tid {
+      model = $(NF-2)
+      gsub(/^[ \t]+|[ \t]+$/, "", model)
+      model = tolower(model)
+      if (model == "opus" || model == "sonnet" || model == "haiku") {
+        print model
+        exit
+      }
+    }
+  ' "$TASKS_PATH")
+
+  # Default to sonnet if not found or unrecognized
+  TASK_MODEL="${task_model:-sonnet}"
+
+  # Budget from model-to-budget mapping, or CLI --budget override
+  if [[ "$MAX_BUDGET" != "5" ]]; then
+    # User set --budget explicitly
     TASK_BUDGET="$MAX_BUDGET"
-    return
+  else
+    TASK_BUDGET=$(model_budget "$TASK_MODEL")
   fi
-
-  # Look up in task-models.json: task_overrides > phase_overrides > defaults
-  local result
-  result=$(TASK_ID="$task_id" PHASE="$phase" \
-    DEFAULT_MODEL="$MODEL" DEFAULT_BUDGET="$MAX_BUDGET" \
-    MODELS_FILE="$TASK_MODELS_FILE" \
-    python3 -c "
-import json, os
-task_id = os.environ['TASK_ID']
-phase = os.environ['PHASE']
-default_model = os.environ['DEFAULT_MODEL']
-default_budget = os.environ['DEFAULT_BUDGET']
-models_file = os.environ['MODELS_FILE']
-
-try:
-    with open(models_file, 'r') as f:
-        cfg = json.load(f)
-except:
-    print(f'{default_model}|{default_budget}')
-    exit()
-
-defaults = cfg.get('defaults', {})
-base_model = defaults.get('model', default_model)
-base_budget = defaults.get('budget', int(default_budget))
-
-# Check task-level override first
-task_overrides = cfg.get('task_overrides', {})
-if task_id in task_overrides:
-    t = task_overrides[task_id]
-    print(f'{t.get(\"model\", base_model)}|{t.get(\"budget\", base_budget)}')
-    exit()
-
-# Check phase-level override
-phase_overrides = cfg.get('phase_overrides', {})
-if phase in phase_overrides:
-    p = phase_overrides[phase]
-    print(f'{p.get(\"model\", base_model)}|{p.get(\"budget\", base_budget)}')
-    exit()
-
-# Defaults
-print(f'{base_model}|{base_budget}')
-" 2>/dev/null || echo "$MODEL|$MAX_BUDGET")
-
-  TASK_MODEL="${result%%|*}"
-  TASK_BUDGET="${result##*|}"
 }
 
 # ── Agent Execution ──────────────────────────────────────────────
@@ -552,11 +540,11 @@ echo "════════════════════════�
 echo "  Project:  $PROJECT_DIR"
 echo "  Tasks:    $TASKS_FILE"
 echo "  Phase:    $PHASE_FILTER"
-echo "  Model:    $([[ -n "$MODEL_OVERRIDE" ]] && echo "$MODEL_OVERRIDE (CLI override — all tasks)" || echo "auto (per-task from task-models.json)")"
-echo "  Budget:   $([[ -n "$MODEL_OVERRIDE" ]] && echo "\$$MAX_BUDGET/agent (fixed)" || echo "auto (per-task from task-models.json)")"
+echo "  Model:    $([[ -n "$MODEL_OVERRIDE" ]] && echo "$MODEL_OVERRIDE (CLI override — all tasks)" || echo "auto (per-task from TASKS.md Model column)")"
+echo "  Budget:   $([[ -n "$MODEL_OVERRIDE" ]] && echo "\$$MAX_BUDGET/agent (fixed)" || echo "auto (haiku=\$3, sonnet=\$5, opus=\$8)")"
 echo "  Retries:  $MAX_CONSECUTIVE_FAILURES consecutive"
 echo "  Skip at:  $MAX_TASK_FAILURES failures/task"
-echo "  Config:   $([[ -f "$TASK_MODELS_FILE" ]] && echo "$TASK_MODELS_FILE" || echo "not found — using defaults")"
+echo "  Source:   TASKS.md Model column (single source of truth)"
 echo "════════════════════════════════════════════════════════════"
 echo ""
 
