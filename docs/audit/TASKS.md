@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 73 | **In Progress:** 0 | **Done:** 20 (1239 archived)
+> **Pending:** 72 | **In Progress:** 0 | **Done:** 21 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -41,7 +41,7 @@
 | Pri | Phase | Title                          | Tasks | Findings                    | Status |
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
-| P0  | 112   | Process & Timer Safety         | 13/14 | OB-F162/163/164/167/168/170 | ◻      |
+| P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
 | P1  | 114   | Data Safety & Error Visibility | 12    | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
@@ -92,7 +92,7 @@
 | OB-1300 | In `Bridge.start()`, deduplicate process signal handler registration. Store handler references as instance properties (`tunnelExitHandler`, `tunnelSigintHandler`). Use `process.once('exit', ...)` instead of `process.on('exit', ...)` for cleanup handlers. In `clearTunnelShutdownHandlers()`, remove exactly the stored handler references.                                                                                                                      | OB-F164 | sonnet | ✅ Done |
 | OB-1301 | Add unit test: verify that calling `Bridge.start()` twice (e.g., after a restart) does not register duplicate signal handlers. File: `tests/core/bridge-signal-handlers.test.ts`.                                                                                                                                                                                                                                                                                     | OB-F164 | sonnet | ✅ Done |
 | OB-1302 | In `execOnce()` (`src/core/agent-runner.ts`), add a guard in the returned `kill()` function: check `child.exitCode !== null` (process already exited) before calling `child.kill()`. If already exited, skip the kill and clear any pending grace period timer.                                                                                                                                                                                                       | OB-F162 | sonnet | ✅ Done |
-| OB-1303 | Add integration test: spawn a real `echo "hello"` process via `execOnce()`, wait for it to complete, then call the returned `kill()` function. Verify no errors thrown and no timers left running. File: `tests/core/agent-runner-post-exit-kill.test.ts`.                                                                                                                                                                                                            | OB-F162 | sonnet | Pending |
+| OB-1303 | Add integration test: spawn a real `echo "hello"` process via `execOnce()`, wait for it to complete, then call the returned `kill()` function. Verify no errors thrown and no timers left running. File: `tests/core/agent-runner-post-exit-kill.test.ts`.                                                                                                                                                                                                            | OB-F162 | sonnet | ✅ Done |
 
 ---
 
