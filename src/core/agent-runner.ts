@@ -977,6 +977,7 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
   let stdout = '';
   let stderr = '';
   let timedOut = false;
+  let killed = false;
   let timeoutTimer: NodeJS.Timeout | undefined;
   let gracePeriodTimer: NodeJS.Timeout | undefined;
 
@@ -985,6 +986,7 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
       // Manual timeout handling with SIGTERM → SIGKILL progression
       if (timeout && timeout > 0) {
         timeoutTimer = setTimeout(() => {
+          if (killed) return;
           timedOut = true;
           logger.warn(
             { timeout, pid: child.pid },
@@ -1007,6 +1009,8 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
 
           // Set up grace period timer for SIGKILL
           gracePeriodTimer = setTimeout(() => {
+            if (killed) return;
+            killed = true;
             logger.warn({ timeout, pid: child.pid }, 'Grace period expired — sending SIGKILL');
             child.kill('SIGKILL');
           }, SIGTERM_GRACE_PERIOD_MS);
@@ -1073,9 +1077,12 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
     promise,
     pid: child.pid ?? -1,
     kill: (): void => {
-      // Clear timers if kill is called manually
-      if (timeoutTimer) clearTimeout(timeoutTimer);
-      if (gracePeriodTimer) clearTimeout(gracePeriodTimer);
+      killed = true;
+      // Clear both timers atomically to prevent any pending timeout/grace-period from firing
+      clearTimeout(timeoutTimer);
+      clearTimeout(gracePeriodTimer);
+      timeoutTimer = undefined;
+      gracePeriodTimer = undefined;
 
       // Graceful shutdown with SIGTERM
       const terminated = child.kill('SIGTERM');
