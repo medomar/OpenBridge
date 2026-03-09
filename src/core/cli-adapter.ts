@@ -90,4 +90,14 @@ export interface CLIAdapter {
    * native profile enforcement (all profiles emulated via other mechanisms).
    */
   supportedProfiles?(): readonly CapabilityLevel[];
+
+  /**
+   * Declare the prompt size budget for this adapter (and optionally a specific model).
+   * Returns conservative char-based estimates of token limits so that
+   * PromptAssembler can fit content within provider constraints.
+   *
+   * Optional — adapters that don't implement this fall back to the defaults:
+   *   { maxPromptChars: 32_768, maxSystemPromptChars: 100_000 }
+   */
+  getPromptBudget?(model?: string): { maxPromptChars: number; maxSystemPromptChars: number };
 }

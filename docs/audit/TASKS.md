@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 60 | **In Progress:** 0 | **Done:** 33 (1239 archived)
+> **Pending:** 59 | **In Progress:** 0 | **Done:** 34 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -127,7 +127,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                               | Finding | Model  | Status  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1240 | Add `getPromptBudget(model?: string): { maxPromptChars: number; maxSystemPromptChars: number }` to the `CLIAdapter` interface in `src/core/cli-adapter.ts`. Default implementation returns `{ maxPromptChars: 32_768, maxSystemPromptChars: 100_000 }`.                                                                                                                                            | OB-F148 | sonnet | Pending |
+| OB-1240 | Add `getPromptBudget(model?: string): { maxPromptChars: number; maxSystemPromptChars: number }` to the `CLIAdapter` interface in `src/core/cli-adapter.ts`. Default implementation returns `{ maxPromptChars: 32_768, maxSystemPromptChars: 100_000 }`.                                                                                                                                            | OB-F148 | sonnet | ✅ Done |
 | OB-1241 | Implement `getPromptBudget()` in `ClaudeAdapter` (`src/core/adapters/claude-adapter.ts`). Return model-aware limits: opus/sonnet → 180K chars system + 32K prompt; haiku → 180K system + 32K prompt. These are conservative char-based estimates of token limits.                                                                                                                                  | OB-F148 | sonnet | Pending |
 | OB-1242 | Implement `getPromptBudget()` in `CodexAdapter` (`src/core/adapters/codex-adapter.ts`). Account for the fact that Codex merges systemPrompt INTO the prompt field — return combined budget.                                                                                                                                                                                                        | OB-F148 | sonnet | Pending |
 | OB-1243 | Implement `getPromptBudget()` in `AiderAdapter` (`src/core/adapters/aider-adapter.ts`) if it exists, or the relevant adapter file. Return conservative limits for Aider's `--message` approach.                                                                                                                                                                                                    | OB-F148 | sonnet | Pending |
