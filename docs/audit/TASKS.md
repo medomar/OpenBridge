@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 89 | **In Progress:** 0 | **Done:** 4 (1239 archived)
+> **Pending:** 88 | **In Progress:** 0 | **Done:** 5 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -40,7 +40,7 @@
 
 | Pri | Phase | Title                          | Tasks | Findings                    | Status |
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
-| P0  | 115   | Test Suite Regression Fixes    | 7     | —                           | ◻      |
+| P0  | 115   | Test Suite Regression Fixes    | 5/7   | —                           | ◻      |
 | P0  | 112   | Process & Timer Safety         | 14    | OB-F162/163/164/167/168/170 | ◻      |
 | P1  | 114   | Data Safety & Error Visibility | 12    | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
@@ -65,7 +65,7 @@
 | OB-1327 | Fix `tests/core/auth-access-control.test.ts` — 1 failing test (`blocked_actions denies action in blocked list`). Root cause: `blocked_actions` logic in `auth.ts` changed. Read the implementation, verify the blocking logic is correct, then update the test expectation.                                                                                                             | —       | sonnet | ✅ Done |
 | OB-1328 | Fix `tests/core/startup-tool-selection.test.ts` — 2 failing tests (`whitelist dropped entry logging`). Root cause: whitelist validation/logging changed. Read `auth.ts` whitelist initialization, update tests to match current logging behavior.                                                                                                                                       | —       | sonnet | ✅ Done |
 | OB-1329 | Fix `tests/master/master-manager.test.ts` — 1 failing test (worker spawn prompt mismatch at line 2292). Root cause: spawn prompt truncation changed. Read the `spawnWorker()` output and update the test expectation string.                                                                                                                                                            | —       | sonnet | ✅ Done |
-| OB-1330 | Fix `tests/master/memory-context.test.ts` — 1 failing test (`injects memory.md content into Master systemPrompt`). Root cause: `spawnOpts.systemPrompt` is `undefined`. Read `buildMasterSpawnOptions()` to understand how systemPrompt is now assembled, update test mocking/expectations.                                                                                             | —       | opus   | Pending |
+| OB-1330 | Fix `tests/master/memory-context.test.ts` — 1 failing test (`injects memory.md content into Master systemPrompt`). Root cause: `spawnOpts.systemPrompt` is `undefined`. Read `buildMasterSpawnOptions()` to understand how systemPrompt is now assembled, update test mocking/expectations.                                                                                             | —       | opus   | ✅ Done |
 | OB-1331 | Fix `tests/master/prompt-effectiveness.test.ts` — 2 failing tests (low-performing prompt detection + EINVAL file error). Root cause: `writePromptManifest()` fails with EINVAL on temp path + threshold logic changed. Fix temp directory setup and update threshold assertion.                                                                                                         | —       | sonnet | Pending |
 | OB-1332 | Fix `tests/connectors/webchat/webchat-discovery.test.ts` — 1 failing test (`Cache-Control header`). Root cause: implementation changed header from `public, max-age=300` to `no-cache, no-store`. Update test expectation to match current behavior. Verify the header change was intentional.                                                                                          | —       | sonnet | Pending |
 
