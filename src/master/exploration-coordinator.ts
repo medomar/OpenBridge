@@ -522,6 +522,16 @@ export class ExplorationCoordinator {
       }
     }
 
+    // Delete stale exploration_progress rows from previous failed explorations so
+    // orphaned pending/in_progress rows don't accumulate across retries.
+    if (this.memory && this.explorationId) {
+      try {
+        await this.memory.deleteStaleExplorationProgress(this.explorationId);
+      } catch {
+        // best-effort — continue without cleanup
+      }
+    }
+
     // Load or create exploration state
     let state = await this.readExplorationStateFromStore();
 
