@@ -192,7 +192,7 @@ export class Bridge {
       this.tunnelManager?.stop();
       this.tunnelPublicUrl = null;
     };
-    process.on('exit', this.tunnelExitHandler);
+    process.once('exit', this.tunnelExitHandler);
     process.on('SIGINT', this.tunnelSigintHandler);
   }
 
