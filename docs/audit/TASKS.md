@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 50 | **In Progress:** 0 | **Done:** 43 (1239 archived)
+> **Pending:** 49 | **In Progress:** 0 | **Done:** 44 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -148,7 +148,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                     | Finding | Model  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ------ | ------- |
-| OB-1263 | In `runWatchdogCheck()` (`src/master/worker-registry.ts`), extend the watchdog to also check workers in `pending` status. If a worker has been `pending` for more than 5 minutes (`PENDING_WORKER_TIMEOUT_MS = 300_000`), auto-cancel it: set status to `failed`, log a warning, and call `removeWorker()`.                                                              | OB-F153 | sonnet | Pending |
+| OB-1263 | In `runWatchdogCheck()` (`src/master/worker-registry.ts`), extend the watchdog to also check workers in `pending` status. If a worker has been `pending` for more than 5 minutes (`PENDING_WORKER_TIMEOUT_MS = 300_000`), auto-cancel it: set status to `failed`, log a warning, and call `removeWorker()`.                                                              | OB-F153 | sonnet | ✅ Done |
 | OB-1264 | In `spawnWorker()` (or the equivalent method in `master-manager.ts` that calls `addWorker()` then spawns), wrap the spawn logic in a try-catch. On spawn failure, call `removeWorker(workerId)` to prevent the worker from remaining in `pending` state.                                                                                                                 | OB-F153 | sonnet | Pending |
 | OB-1265 | In `getAggregatedStats()` (`src/master/worker-registry.ts`), when orphaned pending workers are detected, auto-cancel them instead of only logging warnings. Call `removeWorker()` for each orphan.                                                                                                                                                                       | OB-F153 | sonnet | Pending |
 | OB-1266 | Add unit tests for pending-worker timeout: verify that a worker stuck in `pending` for >5 min is cleaned up by the watchdog. Verify that `spawnWorker()` failure removes the worker. File: `tests/master/worker-registry.test.ts`.                                                                                                                                       | OB-F153 | sonnet | Pending |
