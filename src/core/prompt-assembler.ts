@@ -2,6 +2,16 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('prompt-assembler');
 
+/** Priority constants for PromptAssembler sections (higher = kept first). */
+export const PRIORITY_IDENTITY = 100; // role / rules
+export const PRIORITY_WORKSPACE = 80; // workspace map
+export const PRIORITY_MEMORY = 70; // memory.md
+export const PRIORITY_RAG = 60; // RAG context
+export const PRIORITY_HISTORY = 50; // conversation history
+export const PRIORITY_LEARNINGS = 40; // learnings
+export const PRIORITY_WORKER_NEXT = 30; // worker next steps
+export const PRIORITY_ANALYSIS = 20; // analysis context
+
 interface PromptSection {
   name: string;
   content: string;
