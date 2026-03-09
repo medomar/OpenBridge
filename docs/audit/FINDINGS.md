@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 27 | **Fixed:** 7 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 26 | **Fixed:** 8 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -204,11 +204,11 @@
 ### OB-F164 — Memory init failure leaves eviction interval running against null
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/bridge.ts` (~lines 302-337)
 - **Root Cause / Impact:**
   If `MemoryManager.init()` or `migrate()` fails in `Bridge.start()`, memory is set to null. But the eviction interval may still be set from a previous partial state or if the failure happens between init and interval setup. The interval callback calls `evictOldData()` on a null memory reference, causing unhandled errors.
-- **Fix:** Only set eviction interval inside a `if (this.memory)` guard. Add null check inside the interval callback itself.
+- **Fix:** Only set eviction interval inside a `if (this.memory)` guard. Add null check inside the interval callback itself. Also deduplicated process signal handler registration via `tunnelExitHandler`/`tunnelSigintHandler` instance properties and `process.once()`. Tests added in `tests/core/bridge-memory-init.test.ts` and `tests/core/bridge-signal-handlers.test.ts`.
 
 ---
 
