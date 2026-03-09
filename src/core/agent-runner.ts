@@ -730,6 +730,12 @@ export interface SpawnOptions {
    * Defaults to DEFAULT_MAX_FIX_ITERATIONS (3). Set to 0 to disable the cap.
    */
   maxFixIterations?: number;
+  /**
+   * When true, `buildMasterSpawnOptions()` skips injecting the workspace context summary
+   * into the system prompt. Use when the prompt already contains the workspace map
+   * (e.g. incremental exploration prompts that embed `JSON.stringify(currentMap)`).
+   */
+  skipWorkspaceContext?: boolean;
 }
 
 /**
