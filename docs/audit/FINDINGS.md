@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 26 | **Fixed:** 8 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 25 | **Fixed:** 9 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -325,7 +325,7 @@
 ### OB-F175 — JSON.parse without try-catch in memory stores — crash on corrupt data
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/memory/observation-store.ts:44-47`, `src/memory/access-store.ts:119-121`, `src/memory/index.ts:1147-1150`
 - **Root Cause / Impact:**
   Multiple memory store modules call `JSON.parse()` on database fields without error handling: `observation-store.ts` (facts, concepts, files_read, files_modified), `access-store.ts` (scopes, allowed_actions, blocked_actions), `memory/index.ts` (session observations). If any JSON field is malformed (DB corruption, manual editing), the application crashes with an unhandled error.
