@@ -323,6 +323,19 @@ export const ExplorationStateSchema = z.object({
 
   /** Error message if exploration failed */
   error: z.string().optional(),
+
+  /** Sub-projects detected during Phase 2 (populated when isMonorepo is true) */
+  subProjects: z
+    .array(
+      z.object({
+        /** Relative path from workspace root (e.g. `packages/ui`) */
+        path: z.string(),
+        /** Project type inferred from the detected manifest (e.g. `node`, `go`) */
+        type: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 export type ExplorationState = z.infer<typeof ExplorationStateSchema>;
