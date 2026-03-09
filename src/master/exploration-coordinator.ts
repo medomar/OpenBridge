@@ -413,14 +413,69 @@ export class ExplorationCoordinator {
    * of parent → sub-paths.  The sub-paths replace the parent in the dive list
    * so each gets its own worker with a manageable scope.
    *
+   * When `subProjects` are provided (monorepo detected during Phase 2):
+   * - Directories that are themselves sub-projects are kept as atomic units
+   *   and never split further, regardless of file count.
+   * - Directories that are parents of sub-projects are split at sub-project
+   *   boundaries instead of generic file-count boundaries.
+   * - All other directories use the existing file-count threshold logic.
+   *
    * Mutates `structureScan.splitDirs` with the mapping and updates
    * `structureScan.directoryCounts` with estimated file counts for subdirs.
    */
-  async expandLargeDirectories(structureScan: StructureScan): Promise<string[]> {
+  async expandLargeDirectories(
+    structureScan: StructureScan,
+    subProjects: Array<{ path: string; type: string }> = [],
+  ): Promise<string[]> {
     const expandedDirs: string[] = [];
+
+    // Build a set of known sub-project paths for O(1) lookup.
+    const subProjectPathSet = new Set(subProjects.map((sp) => sp.path));
+
+    // Build a map of top-level parent dir → child sub-project paths.
+    // Only depth-2 sub-projects have a parent component (e.g. "packages/auth" → parent "packages").
+    const subProjectsByParent = new Map<string, string[]>();
+    for (const sp of subProjects) {
+      const slashIndex = sp.path.indexOf('/');
+      if (slashIndex !== -1) {
+        const parentDir = sp.path.slice(0, slashIndex);
+        const siblings = subProjectsByParent.get(parentDir) ?? [];
+        siblings.push(sp.path);
+        subProjectsByParent.set(parentDir, siblings);
+      }
+    }
 
     for (const dir of structureScan.topLevelDirs) {
       const fileCount = structureScan.directoryCounts[dir] ?? 0;
+
+      // Sub-project directories are project boundaries — never split further,
+      // even when they contain many files. Each is explored as an atomic unit.
+      if (subProjectPathSet.has(dir)) {
+        expandedDirs.push(dir);
+        logger.debug(
+          { dir, fileCount },
+          'Sub-project directory kept as single exploration target (project boundary)',
+        );
+        continue;
+      }
+
+      // If this directory is the parent of known sub-projects, split at
+      // sub-project boundaries rather than by raw file count.
+      const childSubProjects = subProjectsByParent.get(dir);
+      if (childSubProjects && childSubProjects.length > 0) {
+        structureScan.splitDirs[dir] = childSubProjects;
+        for (const spPath of childSubProjects) {
+          expandedDirs.push(spPath);
+          if (!(spPath in structureScan.directoryCounts)) {
+            structureScan.directoryCounts[spPath] = 10;
+          }
+        }
+        logger.info(
+          { dir, subProjects: childSubProjects },
+          'Directory split at sub-project boundaries for monorepo exploration',
+        );
+        continue;
+      }
 
       if (fileCount <= FILE_COUNT_THRESHOLD) {
         // Small enough — keep as single dive target
@@ -916,8 +971,12 @@ export class ExplorationCoordinator {
     }
 
     // Identify significant directories (exclude root, include dirs with files > 0)
-    // Then expand large directories into subdirectories to avoid timeout (OB-F26)
-    const significantDirs = await this.expandLargeDirectories(structureScan);
+    // Then expand large directories into subdirectories to avoid timeout (OB-F26).
+    // Pass sub-projects so boundaries are respected before file-count splitting.
+    const significantDirs = await this.expandLargeDirectories(
+      structureScan,
+      state.subProjects ?? [],
+    );
 
     // Persist splitDirs so incremental explore can use 2-level scopes
     if (Object.keys(structureScan.splitDirs).length > 0) {

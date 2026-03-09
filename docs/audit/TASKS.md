@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 | **In Progress:** 0 | **Done:** 87 (1239 archived)
+> **Pending:** 5 | **In Progress:** 0 | **Done:** 88 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -49,7 +49,7 @@
 | P2  | 107   | Classification Fixes           | 6/6   | OB-F152/154                 | ✅     |
 | P2  | 106   | Prompt Growth & Dedup          | 7/7   | OB-F149/150/151             | ✅     |
 | P3  | 110   | God-Class Refactoring          | 7/8   | OB-F158/159/160             | ◻      |
-| P3  | 109   | Monorepo Awareness             | 4/6   | OB-F157                     | ◻      |
+| P3  | 109   | Monorepo Awareness             | 5/6   | OB-F157                     | ◻      |
 | P3  | 111   | Documentation Sync             | 3     | OB-F161                     | ◻      |
 
 ---
@@ -249,7 +249,7 @@
 | OB-1274 | Call `detectMonorepoPattern()` during Phase 2 (Classification) in the exploration coordinator. If a monorepo is detected, store the sub-project list in the exploration state.                                                                                                                           | OB-F157 | sonnet | ✅ Done |
 | OB-1275 | Modify Phase 3 (Directory Dives) to treat each detected sub-project as an independent exploration target with its own classification prompt. Each sub-project gets its own dive result stored under `dirs/{sub-project-name}.json`.                                                                      | OB-F157 | opus   | ✅ Done |
 | OB-1276 | Modify Phase 4 (Assembly) to merge sub-project results into a top-level monorepo map structure: `{ type: "monorepo", subProjects: [{ name, path, type, frameworks, summary }], sharedDirs: [...] }`.                                                                                                     | OB-F157 | opus   | ✅ Done |
-| OB-1277 | Update `expandLargeDirectories()` to use project boundaries (detected via `detectMonorepoPattern()`) instead of splitting purely by file count threshold (1000 files).                                                                                                                                   | OB-F157 | sonnet | Pending |
+| OB-1277 | Update `expandLargeDirectories()` to use project boundaries (detected via `detectMonorepoPattern()`) instead of splitting purely by file count threshold (1000 files).                                                                                                                                   | OB-F157 | sonnet | ✅ Done |
 | OB-1278 | Add unit test: verify monorepo detection for a workspace with 3 sub-projects each having their own `package.json`. Verify that Phase 4 assembly produces a monorepo map. File: `tests/master/monorepo-detection.test.ts`.                                                                                | OB-F157 | sonnet | Pending |
 
 ---
