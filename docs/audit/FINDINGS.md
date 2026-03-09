@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 23 | **Fixed:** 11 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 22 | **Fixed:** 12 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -314,7 +314,7 @@
 ### OB-F174 — DotFolderManager silently swallows all file I/O errors
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/dotfolder-manager.ts` (all read methods)
 - **Root Cause / Impact:**
   All read methods in `DotFolderManager` catch errors and return `null` without logging. If a file exists but is corrupt or unreadable (permissions, disk error), the error is completely invisible. Makes debugging extremely difficult — users don't know their exploration state, memory.md, or prompts are missing due to I/O errors.

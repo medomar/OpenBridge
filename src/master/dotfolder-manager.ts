@@ -37,6 +37,9 @@ import type { ToolProfile, ProfilesRegistry, BatchState, WorkerSummary } from '.
 import { ToolProfileSchema, ProfilesRegistrySchema, BatchStateSchema } from '../types/agent.js';
 import type { WorkersRegistry } from './worker-registry.js';
 import { WorkersRegistrySchema } from './worker-registry.js';
+import { createLogger } from '../core/logger.js';
+
+const logger = createLogger('dotfolder-manager');
 
 /**
  * Manages the .openbridge/ folder inside the target workspace.
@@ -87,7 +90,8 @@ export class DotFolderManager {
       const content = await fs.readFile(this.getMapPath(), 'utf-8');
       const data = JSON.parse(content) as unknown;
       return WorkspaceMapSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: this.getMapPath() }, 'Failed to read workspace-map.json');
       return null;
     }
   }
@@ -155,7 +159,8 @@ export class DotFolderManager {
       const content = await fs.readFile(markerPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return WorkspaceAnalysisMarkerSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: markerPath }, 'Failed to read analysis-marker.json');
       return null;
     }
   }
@@ -180,7 +185,8 @@ export class DotFolderManager {
       const content = await fs.readFile(agentsPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return AgentsRegistrySchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: agentsPath }, 'Failed to read agents.json');
       return null;
     }
   }
@@ -245,7 +251,8 @@ export class DotFolderManager {
       const content = await fs.readFile(statePath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return ExplorationStateSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: statePath }, 'Failed to read exploration-state.json');
       return null;
     }
   }
@@ -272,7 +279,8 @@ export class DotFolderManager {
       const content = await fs.readFile(scanPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return StructureScanSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: scanPath }, 'Failed to read structure-scan.json');
       return null;
     }
   }
@@ -299,7 +307,8 @@ export class DotFolderManager {
       const content = await fs.readFile(classificationPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return ClassificationSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: classificationPath }, 'Failed to read classification.json');
       return null;
     }
   }
@@ -326,7 +335,8 @@ export class DotFolderManager {
       const content = await fs.readFile(divePath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return DirectoryDiveResultSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: divePath }, 'Failed to read directory dive result');
       return null;
     }
   }
@@ -360,7 +370,8 @@ export class DotFolderManager {
       const content = await fs.readFile(profilesPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return ProfilesRegistrySchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: profilesPath }, 'Failed to read profiles.json');
       return null;
     }
   }
@@ -437,7 +448,8 @@ export class DotFolderManager {
       const content = await fs.readFile(sessionPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return MasterSessionSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: sessionPath }, 'Failed to read master-session.json');
       return null;
     }
   }
@@ -471,7 +483,8 @@ export class DotFolderManager {
   public async readSystemPrompt(): Promise<string | null> {
     try {
       return await fs.readFile(this.getSystemPromptPath(), 'utf-8');
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: this.getSystemPromptPath() }, 'Failed to read master-system.md');
       return null;
     }
   }
@@ -502,7 +515,8 @@ export class DotFolderManager {
       const content = await fs.readFile(workersPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return WorkersRegistrySchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: workersPath }, 'Failed to read workers.json');
       return null;
     }
   }
@@ -540,7 +554,8 @@ export class DotFolderManager {
       const content = await fs.readFile(learningsPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return LearningsRegistrySchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: learningsPath }, 'Failed to read learnings.json');
       return null;
     }
   }
@@ -713,7 +728,8 @@ export class DotFolderManager {
     try {
       const content = await fs.readFile(classificationsPath, 'utf-8');
       return ClassificationCacheSchema.parse(JSON.parse(content));
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: classificationsPath }, 'Failed to read classifications.json');
       return null;
     }
   }
@@ -745,7 +761,8 @@ export class DotFolderManager {
       const content = await fs.readFile(this.getPromptManifestPath(), 'utf-8');
       const data = JSON.parse(content) as unknown;
       return PromptManifestSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: this.getPromptManifestPath() }, 'Failed to read manifest.json');
       return null;
     }
   }
@@ -906,7 +923,8 @@ export class DotFolderManager {
   public async readMemoryFile(): Promise<string | null> {
     try {
       return await fs.readFile(this.getMemoryFilePath(), 'utf-8');
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: this.getMemoryFilePath() }, 'Failed to read memory.md');
       return null;
     }
   }
@@ -1063,7 +1081,8 @@ export class DotFolderManager {
       const content = await fs.readFile(this.getBatchStatePath(), 'utf-8');
       const data = JSON.parse(content) as unknown;
       return BatchStateSchema.parse(data);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, path: this.getBatchStatePath() }, 'Failed to read batch-state.json');
       return null;
     }
   }
