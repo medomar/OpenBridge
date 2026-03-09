@@ -1,6 +1,17 @@
 import { BatchManager } from './batch-manager.js';
 import { BUILT_IN_SKILLS } from './skills/index.js';
 import { BUILT_IN_SKILL_PACKS } from './skill-packs/index.js';
+import {
+  ClassificationEngine,
+  classifyTaskType,
+  turnsToTimeout,
+  MESSAGE_MAX_TURNS_QUICK,
+  MESSAGE_MAX_TURNS_TOOL_USE,
+  MESSAGE_MAX_TURNS_PLANNING,
+} from './classification-engine.js';
+import type { ClassificationResult } from './classification-engine.js';
+// Re-export for backward compatibility — consumers import from master-manager.ts (OB-1279)
+export type { ClassificationResult } from './classification-engine.js';
 import { DotFolderManager } from './dotfolder-manager.js';
 import { ExplorationCoordinator } from './exploration-coordinator.js';
 import { generateReExplorationPrompt } from './exploration-prompt.js';
@@ -75,8 +86,6 @@ import type {
   WorkspaceMap,
   MasterSession,
   PromptTemplate,
-  ClassificationCacheEntry,
-  ClassificationCache,
   ExplorationState,
   WorkspaceAnalysisMarker,
   LearningEntry,
@@ -86,7 +95,6 @@ import {
   WorkspaceMapSchema,
   ExplorationStateSchema,
   AgentsRegistrySchema,
-  ClassificationCacheSchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import type { MCPServer, DeepConfig } from '../types/config.js';
@@ -113,25 +121,7 @@ const logger = createLogger('master-manager');
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
 
-/**
- * Per-turn wall-clock budget in milliseconds.
- * Used to compute per-class timeouts: timeout = CLI_STARTUP_BUDGET_MS + maxTurns × PER_TURN_BUDGET_MS.
- * 30s/turn gives quick-answer(5) = 60+150=210s, tool-use(15) = 60+450=510s, complex-task(25) = 60+750=810s.
- */
-const PER_TURN_BUDGET_MS = 30_000;
-
-/**
- * Fixed startup budget added to every timeout.
- * Covers CLI cold-start overhead (model loading, API connection, MCP init).
- * Without this, low-turn tasks (quick-answer=5 turns) can timeout before
- * the CLI even starts generating output.
- */
-const CLI_STARTUP_BUDGET_MS = 60_000;
-
-/** Compute wall-clock timeout from a turn budget (includes CLI startup overhead). */
-function turnsToTimeout(maxTurns: number): number {
-  return CLI_STARTUP_BUDGET_MS + maxTurns * PER_TURN_BUDGET_MS;
-}
+// turnsToTimeout imported from classification-engine.ts (OB-1279)
 
 /** Initial idle time threshold (5 minutes) before triggering self-improvement cycle */
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -165,9 +155,6 @@ const SESSION_DEAD_PATTERNS = [
 
 /** Maximum number of recent tasks to include in a context summary on restart */
 const RESTART_CONTEXT_TASK_LIMIT = 10;
-
-/** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
-const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
 
 /**
  * Format an ISO timestamp as a human-readable "X ago" string.
@@ -356,29 +343,13 @@ const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
  */
 const MASTER_MAX_TURNS = 50;
 
-/**
- * Max turns for message processing — varies by task classification.
- * quick-answer: questions, lookups, explanations → 5 turns
- * text-generation: articles, strategies, long-form content → 10 turns
- * tool-use: file generation, single edits, targeted fixes → 15 turns
- * complex-task (planning): forces Master to output SPAWN markers → 25 turns
- */
-const MESSAGE_MAX_TURNS_QUICK = 5;
-const MESSAGE_MAX_TURNS_MENU_SELECTION = 2;
-const MESSAGE_MAX_TURNS_TEXT_GEN = 10;
-const MESSAGE_MAX_TURNS_TOOL_USE = 15;
-const MESSAGE_MAX_TURNS_PLANNING = 25;
+// MESSAGE_MAX_TURNS_* imported from classification-engine.ts (OB-1279)
 /** Synthesis call — feeds worker results back to Master for a final user-facing response. */
 const MESSAGE_MAX_TURNS_SYNTHESIS = 5;
 /** Memory update call — Master writes memory.md; small budget, file write only. */
 const MEMORY_UPDATE_MAX_TURNS = 5;
 /** Trigger a memory.md update after this many completed tasks. */
 const MEMORY_UPDATE_INTERVAL = 10;
-/**
- * Classifier logic version — bump this when keyword/compound rules change.
- * Cache entries with a different version are treated as stale and re-classified.
- */
-const CLASSIFIER_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Memory ↔ DotFolderManager type conversion helpers (OB-711)
@@ -468,35 +439,7 @@ function masterTaskToMemoryTask(
   };
 }
 
-/**
- * Result returned by classifyTask() — includes class, suggested turn budget, and reasoning.
- * The maxTurns value is AI-suggested based on message content and workspace context,
- * replacing the fixed MESSAGE_MAX_TURNS_QUICK / MESSAGE_MAX_TURNS_TOOL_USE constants.
- */
-export interface ClassificationResult {
-  /** One of quick-answer, tool-use, complex-task, or menu-selection */
-  class: 'quick-answer' | 'tool-use' | 'complex-task' | 'menu-selection';
-  /** AI-suggested turn budget for this specific message */
-  maxTurns: number;
-  /** Computed wall-clock timeout in milliseconds (maxTurns × PER_TURN_BUDGET_MS) */
-  timeout: number;
-  /** Brief reason for the classification (for logging/debugging) */
-  reason: string;
-  /** When true, the task matches deep-mode keywords (audit, thorough review, etc.)
-   *  and the Master should offer or activate Deep Mode analysis (OB-1404). */
-  suggestDeepMode?: boolean;
-  /** When true, the message matches batch-mode keywords (implement all, for each, etc.)
-   *  and the Master should activate Batch Task Continuation (OB-1605). */
-  batchMode?: boolean;
-  /** When true, the message includes "commit after each" — BatchManager sets commitAfterEach (OB-1615). */
-  commitAfterEach?: boolean;
-  /** When true, RAG retrieval is skipped for this message (e.g. menu-selection, very short inputs). */
-  skipRag?: boolean;
-  /** When true, the message is a numeric menu selection from a previous numbered list (OB-1658). */
-  menuSelection?: boolean;
-  /** The option text extracted from the previous bot response for this menu selection (OB-1658). */
-  selectedOptionText?: string;
-}
+// ClassificationResult re-exported from classification-engine.ts (see bottom of file)
 
 /**
  * Callback for emitting progress events — decouples MasterManager from Router.
@@ -599,6 +542,10 @@ export class MasterManager {
     if (!value) {
       this.subMasterManager = null;
     }
+    // Keep ClassificationEngine in sync with memory changes
+    if (this.classificationEngine) {
+      this.classificationEngine.updateDeps({ memory: value });
+    }
   }
   /** Sub-master manager — null when no root DB is available (OB-755) */
   private subMasterManager: SubMasterManager | null = null;
@@ -649,10 +596,8 @@ export class MasterManager {
   private mapLastVerifiedAt: string | null = null;
   /** Cached summary of past learnings for injection into Master system prompt */
   private learningsSummary: string | null = null;
-  /** In-memory classification cache — normalized key → cached result + feedback */
-  private readonly classificationCache = new Map<string, ClassificationCacheEntry>();
-  /** Whether the classification cache has been loaded from disk */
-  private cacheLoaded = false;
+  /** Classification engine — extracted from MasterManager (OB-1279, OB-F158). */
+  private readonly classificationEngine: ClassificationEngine;
   /** Abort handles for running worker processes — keyed by workerId (OB-873). Used by killWorker(). */
   private readonly workerAbortHandles: Map<string, () => void> = new Map();
   /** Cancellation notifications queued for injection into the next Master call (OB-884). */
@@ -726,6 +671,17 @@ export class MasterManager {
         this.adapterRegistry.register(options.masterTool.name, options.adapter);
       }
     }
+
+    // Initialise ClassificationEngine — extracted from MasterManager (OB-1279)
+    this.classificationEngine = new ClassificationEngine({
+      memory: this.memory,
+      dotFolder: this.dotFolder,
+      agentRunner: this.agentRunner,
+      modelRegistry: this.modelRegistry,
+      workspacePath: this.workspacePath,
+      adapter: this.adapter,
+      getWorkspaceContext: () => this.getWorkspaceContextSummary(),
+    });
 
     logger.info(
       {
@@ -3445,7 +3401,7 @@ export class MasterManager {
   ): Promise<void> {
     try {
       // Classify task type based on the prompt content
-      const taskType = this.classifyTaskType(taskRecord.userMessage);
+      const taskType = classifyTaskType(taskRecord.userMessage);
 
       // Determine success based on exit code and task status
       const success = result.exitCode === 0 && taskRecord.status === 'completed';
@@ -3502,876 +3458,42 @@ export class MasterManager {
     }
   }
 
-  /**
-   * Classify task type based on prompt content.
-   * Uses heuristics to categorize tasks for learning analysis.
-   */
-  private classifyTaskType(prompt: string): string {
-    const lower = prompt.toLowerCase();
-
-    // Check for common task patterns
-    if (
-      lower.includes('refactor') ||
-      lower.includes('restructure') ||
-      lower.includes('reorganize')
-    ) {
-      return 'refactoring';
-    }
-    if (
-      lower.includes('bug') ||
-      lower.includes('fix') ||
-      lower.includes('error') ||
-      lower.includes('issue')
-    ) {
-      return 'bug-fix';
-    }
-    if (lower.includes('test') || lower.includes('spec') || lower.includes('verify')) {
-      return 'testing';
-    }
-    if (
-      lower.includes('add') ||
-      lower.includes('implement') ||
-      lower.includes('create') ||
-      lower.includes('feature')
-    ) {
-      return 'feature';
-    }
-    if (
-      lower.includes('explore') ||
-      lower.includes('analyze') ||
-      lower.includes('investigate') ||
-      lower.includes('find')
-    ) {
-      return 'exploration';
-    }
-    if (lower.includes('document') || lower.includes('explain') || lower.includes('describe')) {
-      return 'documentation';
-    }
-    if (lower.includes('optimize') || lower.includes('improve') || lower.includes('performance')) {
-      return 'optimization';
-    }
-
-    // Default to generic task type
-    return 'task';
-  }
-
-  /**
-   * Normalize a message for cache lookup.
-   * Converts to lowercase, strips punctuation, and collapses whitespace.
-   * This ensures "Create a README" and "create a readme" share the same cache entry.
-   */
+  /** Delegate to ClassificationEngine (OB-1279). */
   public normalizeForCache(content: string): string {
-    return content
-      .toLowerCase()
-      .replace(/[^\w\s]/g, ' ') // strip punctuation
-      .replace(/\s+/g, ' ') // collapse whitespace
-      .trim();
+    return this.classificationEngine.normalizeForCache(content);
   }
 
-  /**
-   * Load the classification cache from disk into the in-memory map.
-   * Called lazily on the first classifyTask() call. Non-blocking on failure.
-   * Reads from DB first (system_config 'classifications'), falls back to JSON.
-   */
-  private async loadClassificationCache(): Promise<void> {
-    if (this.cacheLoaded) return;
-    this.cacheLoaded = true;
-    try {
-      let stored = null;
-
-      // DB-first read
-      if (this.memory) {
-        try {
-          const raw = await this.memory.getSystemConfig('classifications');
-          if (raw) {
-            stored = ClassificationCacheSchema.parse(JSON.parse(raw));
-          }
-        } catch {
-          // DB read failed — fall through to JSON
-        }
-      }
-
-      // JSON fallback (migration path)
-      if (!stored) {
-        stored = await this.dotFolder.readClassifications();
-      }
-
-      if (stored) {
-        for (const [key, entry] of Object.entries(stored.entries)) {
-          this.classificationCache.set(key, entry);
-        }
-        logger.debug({ size: this.classificationCache.size }, 'Classification cache loaded');
-      }
-    } catch {
-      // Cache load failure is non-fatal — we'll just re-classify
-    }
-  }
-
-  /**
-   * Persist the in-memory classification cache to system_config (DB) and
-   * classifications.json (fallback). Called non-blockingly after cache updates.
-   * Failures are logged but not thrown.
-   */
-  private async persistClassificationCache(): Promise<void> {
-    try {
-      const entries: Record<string, ClassificationCacheEntry> = {};
-      for (const [key, entry] of this.classificationCache) {
-        entries[key] = entry;
-      }
-      const cache: ClassificationCache = {
-        entries,
-        updatedAt: new Date().toISOString(),
-        schemaVersion: '1.0.0',
-      };
-
-      if (this.memory) {
-        await this.memory.setSystemConfig('classifications', JSON.stringify(cache));
-      } else {
-        await this.dotFolder.writeClassifications(cache);
-      }
-    } catch (err) {
-      logger.warn({ err }, 'Failed to persist classification cache — non-fatal');
-    }
-  }
-
-  /**
-   * Evict the oldest 20% of classification cache entries when the cache exceeds
-   * MAX_CLASSIFICATION_CACHE_SIZE. Entries are sorted by `cachedAt` (oldest first);
-   * entries without `cachedAt` are treated as oldest and evicted first.
-   */
-  private evictClassificationCacheIfNeeded(): void {
-    if (this.classificationCache.size <= MAX_CLASSIFICATION_CACHE_SIZE) return;
-
-    const evictCount = Math.ceil(MAX_CLASSIFICATION_CACHE_SIZE * 0.2);
-    const entries = Array.from(this.classificationCache.entries()).sort(([, a], [, b]) => {
-      const aTime = a.cachedAt ?? 0;
-      const bTime = b.cachedAt ?? 0;
-      return aTime - bTime;
-    });
-
-    let deleted = 0;
-    for (const [key] of entries) {
-      if (deleted >= evictCount) break;
-      this.classificationCache.delete(key);
-      deleted++;
-    }
-
-    logger.warn(
-      { evicted: deleted, remaining: this.classificationCache.size },
-      'Classification cache eviction: removed oldest entries',
-    );
-  }
-
-  /**
-   * Record feedback for a classification after the task completes.
-   * Updates the cached entry's feedback array and adjusts maxTurns if the
-   * budget consistently proves insufficient.
-   *
-   * @param normalizedKey - The normalized message key (from normalizeForCache)
-   * @param turnBudgetSufficient - Whether the task completed without timeout/error
-   * @param timedOut - Whether the Master session timed out (exit code 143/137)
-   */
+  /** Delegate to ClassificationEngine (OB-1279). */
   public async recordClassificationFeedback(
     normalizedKey: string,
     turnBudgetSufficient: boolean,
     timedOut: boolean,
     turnsUsed?: number,
   ): Promise<void> {
-    const entry = this.classificationCache.get(normalizedKey);
-    if (!entry) return;
-
-    entry.feedback.push({
-      recordedAt: new Date().toISOString(),
+    return this.classificationEngine.recordClassificationFeedback(
+      normalizedKey,
       turnBudgetSufficient,
       timedOut,
-    });
-
-    // If 2+ of the last 3 executions timed out, log a warning.
-    // Note: bumping maxTurns does NOT help timeout errors — the bottleneck is the
-    // wall-clock timeout, not the turn budget. The per-class timeout map (Issue #5)
-    // is the proper fix. We only log here so operators can identify patterns.
-    const recent = entry.feedback.slice(-3);
-    const timeoutCount = recent.filter((f) => f.timedOut).length;
-    if (recent.length >= 2 && timeoutCount >= 2) {
-      logger.warn(
-        {
-          normalizedKey,
-          taskClass: entry.result.class,
-          maxTurns: entry.result.maxTurns,
-          timeoutCount,
-          recentFeedback: recent.length,
-        },
-        'Classification cache: repeated timeouts detected — task may need a higher wall-clock timeout',
-      );
-    }
-
-    await this.persistClassificationCache();
-
-    // Persist classification feedback to SQLite learnings table for aggregate learning (OB-732)
-    if (this.memory) {
-      void (async (): Promise<void> => {
-        try {
-          await this.memory!.recordLearning(
-            'classification',
-            entry.result.class,
-            turnBudgetSufficient,
-            turnsUsed ?? 0,
-            0,
-          );
-        } catch (err) {
-          logger.warn({ err }, 'Failed to record classification learning to DB — non-fatal');
-        }
-      })();
-    }
+      turnsUsed,
+    );
   }
 
-  /**
-   * Keyword-based task classifier — instant fallback when the AI classifier
-   * is unavailable or times out. Returns 'quick-answer' as the default so that
-   * unrecognized conversational messages don't waste turns on tools (OB-1581).
-   *
-   * @param recentUserMessages - Last few user messages from the current session.
-   *   When provided, the classifier checks conversation context: if the previous
-   *   messages were text-generation tasks, short follow-up messages ("shorter",
-   *   "better hook", "mix of 1 and 3") are also classified as text-generation
-   *   instead of the default quick-answer or tool-use (OB-1582).
-   */
+  /** Delegate to ClassificationEngine (OB-1279). */
+  public async classifyTask(content: string, sessionId?: string): Promise<ClassificationResult> {
+    return this.classificationEngine.classifyTask(content, sessionId);
+  }
+
+  /** @deprecated — delegate to ClassificationEngine. Remove once all internal callers use engine directly. */
   private classifyTaskByKeywords(
     content: string,
     recentUserMessages?: string[],
     lastBotResponse?: string,
   ): ClassificationResult {
-    const lower = content.toLowerCase();
-
-    // Menu-selection: single numeric digit (1–9) — user is selecting from a numbered list (OB-1658).
-    // Set maxTurns: 2 (just relay the choice) and skip RAG (no context retrieval needed).
-    // If a previous bot response is available, check it contains a numbered list to confirm intent,
-    // and extract the matching option text for use in the Master prompt (OB-1659).
-    const trimmedContent = content.trim();
-    if (/^\d$/.test(trimmedContent) && trimmedContent >= '1' && trimmedContent <= '9') {
-      const digitValue = parseInt(trimmedContent, 10);
-      let selectedOptionText: string | undefined;
-      // Confirm the previous bot response contained a numbered list
-      const hasNumberedList = lastBotResponse ? /^\s*\d+[.)]\s+\S/m.test(lastBotResponse) : false;
-      if (hasNumberedList && lastBotResponse) {
-        // Extract the line matching the selected option number
-        const lines = lastBotResponse.split('\n');
-        const optionPattern = new RegExp(`^\\s*${digitValue}[.)]\\s+(.+)`);
-        const matchedLine = lines.find((l) => optionPattern.test(l));
-        if (matchedLine) {
-          const match = optionPattern.exec(matchedLine);
-          selectedOptionText = match && match[1] ? match[1].trim() : undefined;
-        }
-      }
-      return {
-        class: 'menu-selection',
-        maxTurns: MESSAGE_MAX_TURNS_MENU_SELECTION,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_MENU_SELECTION),
-        skipRag: true,
-        menuSelection: true,
-        selectedOptionText,
-        reason: hasNumberedList
-          ? `menu-selection: digit ${trimmedContent} from numbered list`
-          : `menu-selection: single digit ${trimmedContent}`,
-      };
-    }
-
-    // Batch Mode keywords — multi-task iteration requests that trigger Batch Task Continuation (OB-1605)
-    // e.g. "implement all tasks", "go through each one", "for each pending item"
-    const batchKeywords = [
-      'one by one',
-      'all tasks',
-      'each one',
-      'implement all',
-      'go through all',
-      'for each',
-      'iterate through',
-      'all pending',
-    ];
-    if (batchKeywords.some((kw) => lower.includes(kw))) {
-      // Detect "commit after each" modifier — when present, BatchManager should set commitAfterEach (OB-1615)
-      const commitAfterEachKeywords = ['commit after each', 'commit each', 'commit after every'];
-      const commitAfterEach = commitAfterEachKeywords.some((kw) => lower.includes(kw));
-      return {
-        class: 'complex-task',
-        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-        reason: 'keyword match: batch-mode',
-        batchMode: true,
-        commitAfterEach: commitAfterEach || undefined,
-      };
-    }
-
-    // Deep Mode keywords — thorough analysis tasks that benefit from multi-phase investigation
-    // These are a specialised subset of complex tasks (OB-1404)
-    const deepModeKeywords = [
-      'audit',
-      'deep analysis',
-      'deep analyse',
-      'deep analy',
-      'thorough review',
-      'security review',
-      'full review',
-      'full analysis',
-      'full analyse',
-      'investigate',
-      'root cause',
-      'in-depth',
-      'in depth',
-    ];
-    if (deepModeKeywords.some((kw) => lower.includes(kw))) {
-      return {
-        class: 'complex-task',
-        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-        reason: 'keyword match: complex-task (deep-mode candidate)',
-        suggestDeepMode: true,
-      };
-    }
-
-    // Length-based heuristic for complex-task — messages > 200 chars with planning/strategy
-    // language patterns are promoted to complex-task (25 turns) regardless of keyword matches
-    // (OB-1651). These are typically detailed briefs, multi-paragraph requests, or scoped
-    // planning documents that clearly require multi-step orchestration.
-    const planningPatterns = [
-      'plan',
-      'planning',
-      'strategy',
-      'strategic',
-      'vision',
-      'goals',
-      'objective',
-      'approach',
-      'framework',
-      'roadmap',
-      'milestone',
-      'proposal',
-      'initiative',
-      'project',
-      'scope',
-      'phase',
-      'timeline',
-      'deliverable',
-      'outcome',
-      'model',
-    ];
-    if (lower.length > 200 && planningPatterns.some((kw) => lower.includes(kw))) {
-      return {
-        class: 'complex-task',
-        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-        reason: 'length heuristic: long message with planning/strategy language → complex-task',
-      };
-    }
-
-    // Complex task keywords — multi-step work requiring planning and delegation
-    const complexKeywords = [
-      'implement',
-      'build',
-      'refactor',
-      'develop',
-      'set up',
-      'setup',
-      'redesign',
-      'migrate',
-      'overhaul',
-      // Execution / delegation keywords — trigger complex-task instead of tool-use
-      'execute',
-      'start',
-      'proceed',
-      'begin',
-      'launch',
-      'run tasks',
-      'start execution',
-      'execute group',
-      'start group',
-      // Strategic / brainstorming keywords (OB-1648)
-      'brainstorm',
-      'strategy',
-      'business model',
-      'commercialise',
-      'commercialize',
-      'roadmap review',
-      'strategic plan',
-      'market analysis',
-      'go-to-market',
-    ];
-    // Word-boundary keywords — must match as whole words (e.g. "architect" not "architecture")
-    const complexWordBoundary = [/\barchitect\b/];
-    // Delegation phrase patterns — multi-word phrases common in delegation requests
-    // e.g. "start the execution", "execute group A", "begin task 5", "run the workers"
-    const delegationPhrases = [
-      /\bstart\s+the\s+\w+/,
-      /\bexecute\s+\w+/,
-      /\bbegin\s+\w+/,
-      /\blaunch\s+\w+/,
-      /\brun\s+the\s+\w+/,
-    ];
-    if (
-      complexKeywords.some((kw) => lower.includes(kw)) ||
-      complexWordBoundary.some((re) => re.test(lower)) ||
-      delegationPhrases.some((re) => re.test(lower))
-    ) {
-      return {
-        class: 'complex-task',
-        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-        reason: 'keyword match: complex-task',
-      };
-    }
-
-    // Compound action pattern — two verbs joined by "and" signal multi-step work
-    // e.g. "review X and add Y", "analyze tests and fix the failures"
-    const actionVerbs = [
-      'review',
-      'analyze',
-      'audit',
-      'check',
-      'fix',
-      'add',
-      'update',
-      'create',
-      'remove',
-      'test',
-      'write',
-      'optimize',
-      'improve',
-    ];
-    const matchedVerbs = actionVerbs.filter((v) => lower.includes(v));
-    if (matchedVerbs.length >= 2 && lower.includes(' and ')) {
-      return {
-        class: 'complex-task',
-        maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-        reason: `keyword match: complex-task (compound: ${matchedVerbs.join('+')})`,
-      };
-    }
-
-    // File-reference keywords — messages that mention files, documents, or attachments
-    // should be classified as tool-use even if they contain text-gen language like "draft"
-    // or "write" (OB-1258). Pattern matches common file types and file-reference phrases.
-    const fileReferencePattern =
-      /\b(the file|xl|xls|xlsx|pdf|csv|document|attachment|spreadsheet|image|photo|picture)\b/i;
-    if (fileReferencePattern.test(content)) {
-      return {
-        class: 'tool-use',
-        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-        reason: 'keyword match: file-reference → tool-use',
-      };
-    }
-
-    // Text-generation keywords — content creation tasks that require no file tools.
-    // e.g. "write a tweet", "draft a LinkedIn post", "rephrase this shorter"
-    // These are quick-answer (5 turns, no tools) not tool-use (OB-1580).
-    const textGenKeywords = [
-      'create post',
-      'linkedin',
-      'tweet',
-      'rewrite',
-      'rephrase',
-      'reformulate',
-      'draft',
-      'compose',
-      'shorter',
-      'longer',
-      'attractive',
-      'generate',
-      'write',
-    ];
-    if (textGenKeywords.some((kw) => lower.includes(kw))) {
-      return {
-        class: 'quick-answer',
-        maxTurns: MESSAGE_MAX_TURNS_TEXT_GEN,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TEXT_GEN),
-        reason: 'keyword match: text-generation',
-      };
-    }
-
-    // Conversation context — if the last 3 user messages were text-generation tasks,
-    // classify short follow-up messages as text-generation too (OB-1582).
-    // e.g. after writing a LinkedIn post, "better hook", "mix of 1 and 3", "try option 2"
-    // are continuation requests, not new tool-use or complex-task invocations.
-    if (recentUserMessages && recentUserMessages.length > 0) {
-      const recentTextGenCount = recentUserMessages
-        .slice(-3)
-        .filter((msg) => textGenKeywords.some((kw) => msg.toLowerCase().includes(kw))).length;
-      if (recentTextGenCount >= 1 && lower.length <= 120) {
-        return {
-          class: 'quick-answer',
-          maxTurns: MESSAGE_MAX_TURNS_TEXT_GEN,
-          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TEXT_GEN),
-          reason: 'conversation context: text-generation follow-up',
-        };
-      }
-    }
-
-    // Tool-use keywords — single-action file generation or targeted edits
-    const toolUseKeywords = ['create', 'fix', 'update file', 'add to', 'make a'];
-    if (toolUseKeywords.some((kw) => lower.includes(kw))) {
-      return {
-        class: 'tool-use',
-        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-        reason: 'keyword match: tool-use',
-      };
-    }
-
-    // Question/lookup patterns — no file changes needed
-    // Only short messages ending with '?' are treated as quick questions.
-    // Long messages (>80 chars) with '?' are usually complex action requests
-    // phrased as questions (e.g. "can you reorganize the folder structure?").
-    const questionPatterns = [
-      'what is',
-      'what are',
-      'how does',
-      'how do',
-      'explain',
-      'describe',
-      'show me',
-      'list all',
-      'list the',
-      'tell me',
-    ];
-    const trimmed = lower.trim();
-    const isShortQuestion = trimmed.endsWith('?') && trimmed.length <= 80;
-    const hasQuestionKeyword = questionPatterns.some((qp) => lower.includes(qp));
-    if (isShortQuestion || (hasQuestionKeyword && trimmed.length <= 120)) {
-      return {
-        class: 'quick-answer',
-        maxTurns: MESSAGE_MAX_TURNS_QUICK,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-        reason: 'keyword match: quick-answer',
-      };
-    }
-
-    // Length-based fallback — long messages with question marks or multiple sentences
-    // are likely multi-step requests, not simple conversational messages (OB-1650).
-    // If message > 100 chars AND contains a '?' or multiple sentences (2+ sentence-ending
-    // punctuation marks), upgrade to tool-use (15 turns) instead of quick-answer (5 turns).
-    const hasQuestionMark = lower.includes('?');
-    const sentenceEndCount = (lower.match(/[.!?]/g) || []).length;
-    const hasMultipleSentences = sentenceEndCount >= 2;
-    if (lower.length > 100 && (hasQuestionMark || hasMultipleSentences)) {
-      return {
-        class: 'tool-use',
-        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-        reason: 'length heuristic: long message with question/multi-sentence → tool-use',
-      };
-    }
-
-    // Default: quick-answer for unrecognized conversational messages — most messages
-    // that don't match any keyword are simple conversational requests that don't need
-    // file tools. If the AI classifier is available it will override this for tool-heavy
-    // requests (OB-1581).
-    return {
-      class: 'quick-answer',
-      maxTurns: MESSAGE_MAX_TURNS_QUICK,
-      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-      reason: 'keyword fallback: quick-answer',
-    };
-  }
-
-  /**
-   * AI-powered task classifier using a 1-turn haiku call.
-   * Returns a ClassificationResult with class, AI-suggested maxTurns, and reason.
-   * Falls back to keyword heuristics if the AI call fails or takes >3s.
-   * Falls back to 'tool-use' with default turns if the JSON cannot be parsed.
-   *
-   * The AI is given the workspace context (project type, frameworks) so it can
-   * calibrate the turn budget based on scope (e.g. "full-stack app" → more turns
-   * than "simple HTML page").
-   *
-   * @param sessionId - When provided, fetches the last few user messages from the
-   *   session so the keyword classifier can apply conversation context (OB-1582).
-   */
-  public async classifyTask(content: string, sessionId?: string): Promise<ClassificationResult> {
-    const CLASSIFIER_TIMEOUT_MS = 5000;
-
-    // Check in-memory cache first (0ms, avoids AI call for repeated patterns)
-    await this.loadClassificationCache();
-    const cacheKey = this.normalizeForCache(content);
-    const cached = this.classificationCache.get(cacheKey);
-    if (cached && (cached as Record<string, unknown>)['classifierVersion'] === CLASSIFIER_VERSION) {
-      cached.hitCount++;
-      logger.debug(
-        { cacheKey, class: cached.result.class, hitCount: cached.hitCount },
-        'Classification cache hit',
-      );
-      void this.persistClassificationCache();
-      return { ...cached.result };
-    }
-    // Stale cache entry (missing or old classifierVersion) — re-classify
-    if (cached) {
-      this.classificationCache.delete(cacheKey);
-    }
-
-    // Fetch recent user messages from session history for conversation context (OB-1582).
-    // Also fetch last bot response for menu-selection detection (OB-1658).
-    let recentUserMessages: string[] | undefined;
-    let lastBotResponse: string | undefined;
-    if (sessionId && this.memory) {
-      try {
-        const sessionMessages = await this.memory.getSessionHistory(sessionId, 6);
-        const userMessages = sessionMessages
-          .filter((e) => e.role === 'user')
-          .slice(-3)
-          .map((e) => e.content);
-        if (userMessages.length > 0) {
-          recentUserMessages = userMessages;
-        }
-        const botMessages = sessionMessages
-          .filter((e) => e.role === 'master')
-          .slice(-1)
-          .map((e) => e.content);
-        if (botMessages.length > 0) {
-          lastBotResponse = botMessages[0];
-        }
-      } catch {
-        // Non-fatal: conversation context is a best-effort enhancement
-      }
-    }
-
-    // Skip AI classifier for non-Claude adapters — the fast-tier AI call is
-    // designed for Claude's haiku model. Other adapters (Codex, Aider) don't
-    // handle short single-turn classifier prompts well (e.g. Codex returns
-    // empty output with exit code 1). Keyword heuristics work fine for all providers.
-    if (this.adapter && this.adapter.name !== 'claude') {
-      logger.debug(
-        { adapter: this.adapter.name },
-        'Skipping AI classifier for non-Claude adapter, using keyword heuristics',
-      );
-      const keywordResult = this.classifyTaskByKeywords(
-        content,
-        recentUserMessages,
-        lastBotResponse,
-      );
-      this.classificationCache.set(cacheKey, {
-        normalizedKey: cacheKey,
-        result: keywordResult,
-        recordedAt: new Date().toISOString(),
-        hitCount: 0,
-        feedback: [],
-        classifierVersion: CLASSIFIER_VERSION,
-        cachedAt: Date.now(),
-      } as ClassificationCacheEntry);
-      this.evictClassificationCacheIfNeeded();
-      void this.persistClassificationCache();
-      return keywordResult;
-    }
-
-    // Include workspace context so the AI can calibrate scope
-    const workspaceCtx = this.getWorkspaceContextSummary();
-    const contextSection = workspaceCtx ? `Workspace context:\n${workspaceCtx}\n\n` : '';
-
-    const prompt =
-      `You are a task classifier for an AI assistant. Analyze the user message and suggest how to handle it.\n\n` +
-      contextSection +
-      `User message: "${content}"\n\n` +
-      `Classify the message and suggest a turn budget. Reply with ONLY a JSON object — no markdown, no explanation:\n` +
-      `{"class":"<category>","maxTurns":<number>,"reason":"<brief reason>"}\n\n` +
-      `Important rule: If the message references files, documents, spreadsheets, or has attachments, classify as tool-use or higher — never quick-answer.\n\n` +
-      `Categories and turn guidance:\n` +
-      `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
-      `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
-      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30`;
-
-    let classificationResult: ClassificationResult;
-
-    try {
-      const result = await Promise.race([
-        this.agentRunner.spawn({
-          prompt,
-          workspacePath: this.workspacePath,
-          model: this.modelRegistry.resolveModelOrTier('fast'),
-          maxTurns: 1,
-          retries: 0,
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('classifier timeout')), CLASSIFIER_TIMEOUT_MS),
-        ),
-      ]);
-
-      const raw = result.stdout.trim();
-
-      // Extract JSON from the response (handle cases where AI wraps in markdown)
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-          const cls = parsed['class'];
-          const turns = parsed['maxTurns'];
-          const reason = typeof parsed['reason'] === 'string' ? parsed['reason'] : '';
-
-          if (cls === 'quick-answer' || cls === 'tool-use' || cls === 'complex-task') {
-            const maxTurns =
-              typeof turns === 'number' && turns > 0 && turns <= 50
-                ? turns
-                : cls === 'quick-answer'
-                  ? MESSAGE_MAX_TURNS_QUICK
-                  : cls === 'tool-use'
-                    ? MESSAGE_MAX_TURNS_TOOL_USE
-                    : MESSAGE_MAX_TURNS_PLANNING;
-            logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
-            classificationResult = {
-              class: cls,
-              maxTurns,
-              timeout: turnsToTimeout(maxTurns),
-              reason,
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
-            };
-          }
-        } catch {
-          // JSON parse error — fall through to text scan
-          const lower = raw.toLowerCase();
-          if (lower.includes('quick-answer')) {
-            classificationResult = {
-              class: 'quick-answer',
-              maxTurns: MESSAGE_MAX_TURNS_QUICK,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-              reason: 'text scan fallback',
-            };
-          } else if (lower.includes('complex-task')) {
-            classificationResult = {
-              class: 'complex-task',
-              maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-              reason: 'text scan fallback',
-            };
-          } else if (lower.includes('tool-use')) {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'text scan fallback',
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
-            };
-          }
-        }
-      } else {
-        // Last-chance text scan — response may contain the category without valid JSON
-        const lower = raw.toLowerCase();
-        if (lower.includes('quick-answer')) {
-          classificationResult = {
-            class: 'quick-answer',
-            maxTurns: MESSAGE_MAX_TURNS_QUICK,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-            reason: 'text scan fallback',
-          };
-        } else if (lower.includes('complex-task')) {
-          classificationResult = {
-            class: 'complex-task',
-            maxTurns: MESSAGE_MAX_TURNS_PLANNING,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-            reason: 'text scan fallback',
-          };
-        } else if (lower.includes('tool-use')) {
-          classificationResult = {
-            class: 'tool-use',
-            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'text scan fallback',
-          };
-        } else {
-          // Parse failure → safe default (tool-use: enough turns without over-committing)
-          logger.warn(
-            { response: raw },
-            'AI classifier returned unexpected response, defaulting to tool-use',
-          );
-          classificationResult = {
-            class: 'tool-use',
-            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'parse failure default',
-          };
-        }
-      }
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      classificationResult = this.classifyTaskByKeywords(
-        content,
-        recentUserMessages,
-        lastBotResponse,
-      );
-    }
-
-    // Apply classification learning: if aggregate data shows this class underperforms,
-    // escalate to the best-performing class seen in the learnings table (OB-732)
-    if (this.memory) {
-      try {
-        const learned = await this.memory.getLearnedParams('classification');
-        if (learned) {
-          const classRank: Record<string, number> = {
-            'quick-answer': 0,
-            'tool-use': 1,
-            'complex-task': 2,
-          };
-          const validClasses = new Set(['quick-answer', 'tool-use', 'complex-task']);
-          const currentRank = classRank[classificationResult.class] ?? 0;
-          const learnedRank = classRank[learned.model] ?? 0;
-          if (
-            validClasses.has(learned.model) &&
-            learnedRank > currentRank &&
-            learned.success_rate > 0.5 &&
-            currentRank > 0 // Never escalate quick-answer (rank 0) — trivial queries should stay cheap
-          ) {
-            const escalatedClass = learned.model as ClassificationResult['class'];
-            const escalatedMaxTurns =
-              escalatedClass === 'quick-answer'
-                ? MESSAGE_MAX_TURNS_QUICK
-                : escalatedClass === 'tool-use'
-                  ? MESSAGE_MAX_TURNS_TOOL_USE
-                  : MESSAGE_MAX_TURNS_PLANNING;
-            logger.info(
-              {
-                original: classificationResult.class,
-                escalated: escalatedClass,
-                successRate: learned.success_rate,
-                totalTasks: learned.total_tasks,
-              },
-              'Classification escalated based on learning data',
-            );
-            classificationResult = {
-              class: escalatedClass,
-              maxTurns: escalatedMaxTurns,
-              timeout: turnsToTimeout(escalatedMaxTurns),
-              reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
-            };
-          }
-        }
-      } catch (err) {
-        logger.warn({ err }, 'Failed to query classification learning — using original result');
-      }
-    }
-
-    // Store result in cache for future lookups (with classifier version for staleness detection)
-    this.classificationCache.set(cacheKey, {
-      normalizedKey: cacheKey,
-      result: { ...classificationResult },
-      recordedAt: new Date().toISOString(),
-      hitCount: 0,
-      feedback: [],
-      classifierVersion: CLASSIFIER_VERSION,
-      cachedAt: Date.now(),
-    } as ClassificationCacheEntry);
-    this.evictClassificationCacheIfNeeded();
-    void this.persistClassificationCache();
-
-    return classificationResult;
+    return this.classificationEngine.classifyTaskByKeywords(
+      content,
+      recentUserMessages,
+      lastBotResponse,
+    );
   }
 
   /**
@@ -7976,7 +7098,7 @@ ${currentContent}
 
     // Adaptive model selection (OB-724): marker override → learned best model → heuristics
     if (!resolvedModel && this.memory) {
-      const taskType = this.classifyTaskType(body.prompt);
+      const taskType = classifyTaskType(body.prompt);
       const learned = await getRecommendedModel(this.memory, taskType);
       if (learned) {
         resolvedModel = learned.model;
@@ -8001,7 +7123,7 @@ ${currentContent}
     // Avoid high-failure-rate models (OB-907): if the resolved model has >50% failure rate
     // for this task type (with ≥3 data points), prefer a better-performing alternative.
     if (resolvedModel && this.memory) {
-      const taskTypeForAvoidance = this.classifyTaskType(body.prompt);
+      const taskTypeForAvoidance = classifyTaskType(body.prompt);
       const alternative = await avoidHighFailureModel(
         this.memory,
         taskTypeForAvoidance,

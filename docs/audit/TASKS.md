@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 | **In Progress:** 0 | **Done:** 76 (1239 archived)
+> **Pending:** 16 | **In Progress:** 0 | **Done:** 77 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -48,7 +48,7 @@
 | P1  | 113   | Memory Leak Fixes              | 10/10 | OB-F165/166/169/171/176     | ✅     |
 | P2  | 107   | Classification Fixes           | 6/6   | OB-F152/154                 | ✅     |
 | P2  | 106   | Prompt Growth & Dedup          | 7/7   | OB-F149/150/151             | ✅     |
-| P3  | 110   | God-Class Refactoring          | 8     | OB-F158/159/160             | ◻      |
+| P3  | 110   | God-Class Refactoring          | 1/8   | OB-F158/159/160             | ◻      |
 | P3  | 109   | Monorepo Awareness             | 6     | OB-F157                     | ◻      |
 | P3  | 111   | Documentation Sync             | 3     | OB-F161                     | ◻      |
 
@@ -226,7 +226,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                      | Finding | Model  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1279 | Extract `classifyTask()`, `classifyTaskByKeywords()`, and all classification-related private helpers from `master-manager.ts` into `src/master/classification-engine.ts`. Re-export from `master-manager.ts` to maintain backward compatibility. Update internal calls.   | OB-F158 | opus   | Pending |
+| OB-1279 | Extract `classifyTask()`, `classifyTaskByKeywords()`, and all classification-related private helpers from `master-manager.ts` into `src/master/classification-engine.ts`. Re-export from `master-manager.ts` to maintain backward compatibility. Update internal calls.   | OB-F158 | opus   | ✅ Done |
 | OB-1280 | Extract exploration-related methods (`masterDrivenExplore()`, `checkExplorationStatus()`, `handleExplorationResult()`, and related helpers) from `master-manager.ts` into `src/master/exploration-manager.ts`. Re-export and update internal calls.                       | OB-F158 | opus   | Pending |
 | OB-1281 | Extract worker orchestration methods (`spawnWorker()`, `handleWorkerResult()`, `buildWorkerPrompt()`, batch processing helpers) from `master-manager.ts` into `src/master/worker-orchestrator.ts`. Re-export and update internal calls.                                   | OB-F158 | opus   | Pending |
 | OB-1282 | Extract prompt/context assembly methods (`buildMasterSpawnOptions()`, `buildConversationContext()`, `getWorkspaceContextSummary()`, context injection helpers) from `master-manager.ts` into `src/master/prompt-context-builder.ts`. Re-export and update internal calls. | OB-F158 | opus   | Pending |
