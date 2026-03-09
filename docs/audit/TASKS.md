@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 13 | **In Progress:** 0 | **Done:** 80 (1239 archived)
+> **Pending:** 12 | **In Progress:** 0 | **Done:** 81 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -48,7 +48,7 @@
 | P1  | 113   | Memory Leak Fixes              | 10/10 | OB-F165/166/169/171/176     | ✅     |
 | P2  | 107   | Classification Fixes           | 6/6   | OB-F152/154                 | ✅     |
 | P2  | 106   | Prompt Growth & Dedup          | 7/7   | OB-F149/150/151             | ✅     |
-| P3  | 110   | God-Class Refactoring          | 3/8   | OB-F158/159/160             | ◻      |
+| P3  | 110   | God-Class Refactoring          | 5/8   | OB-F158/159/160             | ◻      |
 | P3  | 109   | Monorepo Awareness             | 6     | OB-F157                     | ◻      |
 | P3  | 111   | Documentation Sync             | 3     | OB-F161                     | ◻      |
 
@@ -230,8 +230,8 @@
 | OB-1280 | Extract exploration-related methods (`masterDrivenExplore()`, `checkExplorationStatus()`, `handleExplorationResult()`, and related helpers) from `master-manager.ts` into `src/master/exploration-manager.ts`. Re-export and update internal calls.                       | OB-F158 | opus   | ✅ Done |
 | OB-1281 | Extract worker orchestration methods (`spawnWorker()`, `handleWorkerResult()`, `buildWorkerPrompt()`, batch processing helpers) from `master-manager.ts` into `src/master/worker-orchestrator.ts`. Re-export and update internal calls.                                   | OB-F158 | opus   | ✅ Done |
 | OB-1282 | Extract prompt/context assembly methods (`buildMasterSpawnOptions()`, `buildConversationContext()`, `getWorkspaceContextSummary()`, context injection helpers) from `master-manager.ts` into `src/master/prompt-context-builder.ts`. Re-export and update internal calls. | OB-F158 | opus   | ✅ Done |
-| OB-1283 | Extract command handler methods (40+ `/command` handlers) from `router.ts` into `src/core/command-handlers.ts`. The router keeps the dispatch logic; handlers move to the new file. Re-export and update internal calls.                                                  | OB-F159 | opus   | Pending |
-| OB-1284 | Extract output marker processing (SHARE/VOICE/APP detection and handling) from `router.ts` into `src/core/output-marker-processor.ts`. Re-export and update internal calls.                                                                                               | OB-F159 | opus   | Pending |
+| OB-1283 | Extract command handler methods (40+ `/command` handlers) from `router.ts` into `src/core/command-handlers.ts`. The router keeps the dispatch logic; handlers move to the new file. Re-export and update internal calls.                                                  | OB-F159 | opus   | ✅ Done |
+| OB-1284 | Extract output marker processing (SHARE/VOICE/APP detection and handling) from `router.ts` into `src/core/output-marker-processor.ts`. Re-export and update internal calls.                                                                                               | OB-F159 | opus   | ✅ Done |
 | OB-1285 | Extract error classification functions (`classifyError()`, `isRetryableError()`, and related helpers) from `agent-runner.ts` into `src/core/error-classifier.ts`. Re-export and update internal calls.                                                                    | OB-F160 | sonnet | Pending |
 | OB-1286 | Extract cost management functions (`trackCost()`, `getCostSummary()`, budget-related helpers) from `agent-runner.ts` into `src/core/cost-manager.ts`. Re-export and update internal calls.                                                                                | OB-F160 | sonnet | Pending |
 
