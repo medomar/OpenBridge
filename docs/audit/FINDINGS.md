@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 19 | **Fixed:** 15 (143 prior findings archived) | **Last Audit:** 2026-03-09
-> **History:** 149 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
+> **Open:** 18 | **Fixed:** 16 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
 
@@ -78,7 +78,7 @@
 ### OB-F153 — Orphaned workers persist in pending state — never cleaned up
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/worker-registry.ts` (lines 410–439, 534–636), `src/master/master-manager.ts`
 - **Root Cause / Impact:**
   Workers registered via `addWorker()` that fail before `markRunning()` (spawn error, escalation timeout, slot wait timeout) remain in `pending` state indefinitely. `getAggregatedStats()` detects and logs them as warnings but does NOT remove or cancel them. The watchdog (lines 534–636) only monitors `running` workers, not `pending`. Orphans accumulate across message cycles, consuming concurrency slots and polluting batch stats. Observed: 2 workers stayed orphaned across 3+ message cycles.

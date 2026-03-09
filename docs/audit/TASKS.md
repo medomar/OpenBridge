@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 47 | **In Progress:** 0 | **Done:** 46 (1239 archived)
+> **Pending:** 46 | **In Progress:** 0 | **Done:** 47 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -44,7 +44,7 @@
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
 | P1  | 114   | Data Safety & Error Visibility | 12/12 | OB-F172/173/174/175/177     | ✅     |
 | P1  | 105   | Prompt Budget & Assembly       | 10/10 | OB-F147/148                 | ✅     |
-| P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
+| P1  | 108   | Worker & Exploration Cleanup   | 4/10  | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
 | P2  | 107   | Classification Fixes           | 6     | OB-F152/154                 | ◻      |
 | P2  | 106   | Prompt Growth & Dedup          | 7     | OB-F149/150/151             | ◻      |
@@ -151,7 +151,7 @@
 | OB-1263 | In `runWatchdogCheck()` (`src/master/worker-registry.ts`), extend the watchdog to also check workers in `pending` status. If a worker has been `pending` for more than 5 minutes (`PENDING_WORKER_TIMEOUT_MS = 300_000`), auto-cancel it: set status to `failed`, log a warning, and call `removeWorker()`.                                                              | OB-F153 | sonnet | ✅ Done |
 | OB-1264 | In `spawnWorker()` (or the equivalent method in `master-manager.ts` that calls `addWorker()` then spawns), wrap the spawn logic in a try-catch. On spawn failure, call `removeWorker(workerId)` to prevent the worker from remaining in `pending` state.                                                                                                                 | OB-F153 | sonnet | ✅ Done |
 | OB-1265 | In `getAggregatedStats()` (`src/master/worker-registry.ts`), when orphaned pending workers are detected, auto-cancel them instead of only logging warnings. Call `removeWorker()` for each orphan.                                                                                                                                                                       | OB-F153 | sonnet | ✅ Done |
-| OB-1266 | Add unit tests for pending-worker timeout: verify that a worker stuck in `pending` for >5 min is cleaned up by the watchdog. Verify that `spawnWorker()` failure removes the worker. File: `tests/master/worker-registry.test.ts`.                                                                                                                                       | OB-F153 | sonnet | Pending |
+| OB-1266 | Add unit tests for pending-worker timeout: verify that a worker stuck in `pending` for >5 min is cleaned up by the watchdog. Verify that `spawnWorker()` failure removes the worker. File: `tests/master/worker-registry.test.ts`.                                                                                                                                       | OB-F153 | sonnet | ✅ Done |
 | OB-1267 | In `explore()` (`src/master/exploration-coordinator.ts`), before creating a new `explorationId`, delete stale `exploration_progress` rows from previous failed explorations: `DELETE FROM exploration_progress WHERE status IN ('pending', 'in_progress') AND exploration_id != ?` (current ID).                                                                         | OB-F155 | sonnet | Pending |
 | OB-1268 | Extend `cleanupOldActivity()` in `src/memory/activity-store.ts` to also clean up stale `exploration_progress` rows older than 24 hours with status `pending` or `in_progress`.                                                                                                                                                                                           | OB-F155 | sonnet | Pending |
 | OB-1269 | Add unit test: verify that starting a new exploration cleans up stale `exploration_progress` rows from previous failed attempts. File: `tests/master/exploration-coordinator.test.ts`.                                                                                                                                                                                   | OB-F155 | sonnet | Pending |
