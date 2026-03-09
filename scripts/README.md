@@ -34,17 +34,17 @@ Plus a task list file following the audit format (see `docs/audit/TASKS.md`).
 ### With Claude Code
 
 ```bash
-# Run all pending tasks sequentially
+# Run all pending tasks — model auto-selected per task from task-models.json
 ./scripts/run-tasks.sh
 
-# Run a single specific task
-./scripts/run-tasks.sh OB-302
+# Run a single specific task (auto model)
+./scripts/run-tasks.sh OB-1244
 
-# Run Phase 22 tasks with Opus model
-./scripts/run-tasks.sh --phase 22 --model opus
-
-# Overnight run, prevent macOS sleep
+# Overnight run — auto models, prevent macOS sleep
 ./scripts/run-tasks.sh --caffeinate
+
+# Force opus for all tasks (overrides task-models.json)
+./scripts/run-tasks.sh --model opus
 ```
 
 ### With Codex
@@ -164,14 +164,14 @@ This prevents the runner from looping forever on a task that keeps failing.
 
 #### Execution options
 
-| Option                  | Default  | Description                              |
-| ----------------------- | -------- | ---------------------------------------- |
-| `TASK_ID` (positional)  | —        | Run a specific task (e.g., `OB-302`)     |
-| `--phase N`             | all      | Limit to Phase N                         |
-| `--model MODEL`         | `sonnet` | Claude model (`opus`, `sonnet`, `haiku`) |
-| `--budget N`            | `5`      | Per-agent budget in USD                  |
-| `--max-task-failures N` | `3`      | Skip a task after N total failures       |
-| `--retries N`           | `3`      | Max consecutive failures before stopping |
+| Option                  | Default | Description                                                    |
+| ----------------------- | ------- | -------------------------------------------------------------- |
+| `TASK_ID` (positional)  | —       | Run a specific task (e.g., `OB-302`)                           |
+| `--phase N`             | all     | Limit to Phase N                                               |
+| `--model MODEL`         | auto    | Force model for ALL tasks (overrides task-models.json)         |
+| `--budget N`            | auto    | Force budget for ALL tasks in USD (overrides task-models.json) |
+| `--max-task-failures N` | `3`     | Skip a task after N total failures                             |
+| `--retries N`           | `3`     | Max consecutive failures before stopping                       |
 
 #### Other options
 
@@ -180,6 +180,37 @@ This prevents the runner from looping forever on a task that keeps failing.
 | `--caffeinate`     | Prevent macOS sleep (must be first arg) |
 | `--reset-failures` | Clear failure tracking and skip list    |
 | `--help`           | Show all options                        |
+
+#### Per-task model configuration: `task-models.json`
+
+By default, each task's model and budget is resolved automatically from `scripts/task-models.json`:
+
+```
+Priority: CLI --model flag > task_overrides[TASK_ID] > phase_overrides[PHASE] > defaults
+```
+
+```json
+{
+  "defaults": { "model": "sonnet", "budget": 5 },
+  "phase_overrides": {
+    "110": { "model": "opus", "budget": 10 }
+  },
+  "task_overrides": {
+    "OB-1244": { "model": "opus", "budget": 8, "reason": "Complex new module" }
+  }
+}
+```
+
+- **defaults** — fallback for any task not matched by overrides
+- **phase_overrides** — applies to all tasks in a phase (unless task has its own override)
+- **task_overrides** — per-task model + budget (highest priority after CLI flag)
+- **reason** — optional, for documentation only (ignored by the script)
+
+To override all tasks with a single model, use `--model`:
+
+```bash
+./scripts/run-tasks.sh --model opus    # Force opus for every task
+```
 
 ### `run-tasks-codex.sh` (Codex)
 
