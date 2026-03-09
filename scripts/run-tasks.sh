@@ -30,10 +30,12 @@ TASKS_FILE="docs/audit/TASKS.md"
 FINDINGS_FILE="docs/audit/FINDINGS.md"
 POINTER_FILE="docs/audit/.current_task"
 PROMPT_FILE="$SCRIPT_DIR/prompts/execute-task.md"
+TASK_MODELS_FILE="$SCRIPT_DIR/task-models.json"
 LOG_DIR="logs/task-runs"
 
 # Execution
 MODEL="sonnet"
+MODEL_OVERRIDE=""                 # Empty = auto (from task-models.json), set via --model
 MAX_BUDGET=5                      # USD per agent
 MAX_CONSECUTIVE_FAILURES=3        # Stop after N consecutive failures
 MAX_TASK_FAILURES=3               # Skip a task after N total failures
@@ -73,10 +75,17 @@ Paths:
 
 Execution:
   --phase N             Only run tasks from Phase N
-  --model MODEL         Claude model (default: $MODEL)
-  --budget N            Per-agent budget in USD (default: $MAX_BUDGET)
+  --model MODEL         Force model for ALL tasks (overrides task-models.json)
+  --budget N            Force budget for ALL tasks in USD (overrides task-models.json)
   --max-task-failures N Skip task after N failures (default: $MAX_TASK_FAILURES)
   --retries N           Stop after N consecutive failures (default: $MAX_CONSECUTIVE_FAILURES)
+
+Model Selection:
+  By default, each task's model + budget is resolved from scripts/task-models.json:
+    1. task_overrides[TASK_ID]   — per-task model + budget
+    2. phase_overrides[PHASE]   — per-phase model + budget
+    3. defaults                 — fallback (sonnet, \$5)
+  Use --model to override all tasks with a single model (e.g., --model opus).
 
 Other:
   --caffeinate          Prevent macOS sleep (must be first argument)
@@ -84,10 +93,11 @@ Other:
   --help                Show this message
 
 Examples:
-  ./scripts/run-tasks.sh                          # Run all pending
-  ./scripts/run-tasks.sh OB-302                   # Run one task
-  ./scripts/run-tasks.sh --phase 22 --model opus  # Phase 22, Opus
-  ./scripts/run-tasks.sh --caffeinate             # Overnight run
+  ./scripts/run-tasks.sh                          # Run all — auto model per task
+  ./scripts/run-tasks.sh OB-1244                  # Run one task (auto model)
+  ./scripts/run-tasks.sh --phase 110 --caffeinate # Phase 110 (opus auto-selected)
+  ./scripts/run-tasks.sh --model opus             # Force opus for all tasks
+  ./scripts/run-tasks.sh --caffeinate             # Overnight run, auto models
   ./scripts/run-tasks.sh --reset-failures         # Clear skip list
 EOF
   exit 0
@@ -106,7 +116,7 @@ while [[ $# -gt 0 ]]; do
     --log-dir)            LOG_DIR="$2"; shift 2 ;;
     --project)            PROJECT_DIR="$2"; shift 2 ;;
     --phase)              PHASE_FILTER="$2"; shift 2 ;;
-    --model)              MODEL="$2"; shift 2 ;;
+    --model)              MODEL="$2"; MODEL_OVERRIDE="$2"; shift 2 ;;
     --budget)             MAX_BUDGET="$2"; shift 2 ;;
     --max-task-failures)  MAX_TASK_FAILURES="$2"; shift 2 ;;
     --retries)            MAX_CONSECUTIVE_FAILURES="$2"; shift 2 ;;
@@ -313,8 +323,8 @@ write_state() {
   "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "iteration": $ITERATION,
   "phase": "$PHASE_FILTER",
-  "model": "$MODEL",
-  "budget": "$MAX_BUDGET",
+  "model": "${TASK_MODEL:-$MODEL}",
+  "budget": "${TASK_BUDGET:-$MAX_BUDGET}",
   "consecutive_failures": $CONSECUTIVE_FAILURES,
   "skipped_tasks": $skipped_count,
   "max_task_failures": $MAX_TASK_FAILURES,
@@ -366,16 +376,109 @@ build_prompt() {
   printf '%s' "$PROMPT_TEMPLATE" | sed "s|{{TASK_ID}}|${task_id}|g"
 }
 
+# ── Per-Task Model Resolution ────────────────────────────────────
+
+# Detect which phase a task belongs to by scanning TASKS.md.
+# Returns the phase number or "unknown".
+get_task_phase() {
+  local task_id="$1"
+  # Walk TASKS.md: track the current phase header, return it when task_id is found.
+  TASK_ID="$task_id" TASKS_PATH="$TASKS_PATH" python3 -c "
+import os, re
+task_id = os.environ['TASK_ID']
+tasks_path = os.environ['TASKS_PATH']
+phase = 'unknown'
+with open(tasks_path, 'r') as f:
+    for line in f:
+        m = re.match(r'^###?\s+Phase\s+(\S+)', line)
+        if m:
+            phase = m.group(1)
+        if task_id in line:
+            print(phase)
+            exit()
+print('unknown')
+" 2>/dev/null || echo "unknown"
+}
+
+# Resolve model + budget for a task from task-models.json.
+# Priority: CLI --model flag > task_overrides > phase_overrides > defaults.
+# Sets TASK_MODEL and TASK_BUDGET variables.
+resolve_task_config() {
+  local task_id="$1"
+  local phase="$2"
+
+  # If user explicitly set --model on CLI, that wins for all tasks
+  if [[ -n "$MODEL_OVERRIDE" ]]; then
+    TASK_MODEL="$MODEL_OVERRIDE"
+    TASK_BUDGET="$MAX_BUDGET"
+    return
+  fi
+
+  # If no task-models.json, use defaults
+  if [[ ! -f "$TASK_MODELS_FILE" ]]; then
+    TASK_MODEL="$MODEL"
+    TASK_BUDGET="$MAX_BUDGET"
+    return
+  fi
+
+  # Look up in task-models.json: task_overrides > phase_overrides > defaults
+  local result
+  result=$(TASK_ID="$task_id" PHASE="$phase" \
+    DEFAULT_MODEL="$MODEL" DEFAULT_BUDGET="$MAX_BUDGET" \
+    MODELS_FILE="$TASK_MODELS_FILE" \
+    python3 -c "
+import json, os
+task_id = os.environ['TASK_ID']
+phase = os.environ['PHASE']
+default_model = os.environ['DEFAULT_MODEL']
+default_budget = os.environ['DEFAULT_BUDGET']
+models_file = os.environ['MODELS_FILE']
+
+try:
+    with open(models_file, 'r') as f:
+        cfg = json.load(f)
+except:
+    print(f'{default_model}|{default_budget}')
+    exit()
+
+defaults = cfg.get('defaults', {})
+base_model = defaults.get('model', default_model)
+base_budget = defaults.get('budget', int(default_budget))
+
+# Check task-level override first
+task_overrides = cfg.get('task_overrides', {})
+if task_id in task_overrides:
+    t = task_overrides[task_id]
+    print(f'{t.get(\"model\", base_model)}|{t.get(\"budget\", base_budget)}')
+    exit()
+
+# Check phase-level override
+phase_overrides = cfg.get('phase_overrides', {})
+if phase in phase_overrides:
+    p = phase_overrides[phase]
+    print(f'{p.get(\"model\", base_model)}|{p.get(\"budget\", base_budget)}')
+    exit()
+
+# Defaults
+print(f'{base_model}|{base_budget}')
+" 2>/dev/null || echo "$MODEL|$MAX_BUDGET")
+
+  TASK_MODEL="${result%%|*}"
+  TASK_BUDGET="${result##*|}"
+}
+
 # ── Agent Execution ──────────────────────────────────────────────
 
 run_agent() {
   local task_id="$1"
   local log_file="$2"
+  local agent_model="$3"
+  local agent_budget="$4"
 
   local prompt
   prompt=$(build_prompt "$task_id")
 
-  local flags=(--print --model "$MODEL" --max-budget-usd "$MAX_BUDGET")
+  local flags=(--print --model "$agent_model" --max-budget-usd "$agent_budget")
 
   # Disable MCP servers — task agents don't need them and they add
   # significant startup latency + memory overhead per iteration.
@@ -403,19 +506,24 @@ if [[ -n "$TASK_OVERRIDE" ]]; then
   TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
   LOG_FILE="$LOG_PATH/single_${TASK_OVERRIDE}_${TIMESTAMP}.log"
 
+  # Resolve per-task model + budget
+  TASK_PHASE=$(get_task_phase "$TASK_OVERRIDE")
+  resolve_task_config "$TASK_OVERRIDE" "$TASK_PHASE"
+
   echo ""
   echo "════════════════════════════════════════════════════════════"
   echo "  Task Runner — Single Task"
   echo "════════════════════════════════════════════════════════════"
   echo "  Task:    $TASK_OVERRIDE"
-  echo "  Model:   $MODEL"
-  echo "  Budget:  \$$MAX_BUDGET"
+  echo "  Phase:   $TASK_PHASE"
+  echo "  Model:   $TASK_MODEL$([[ -n "$MODEL_OVERRIDE" ]] && echo ' (CLI override)' || echo ' (auto)')"
+  echo "  Budget:  \$$TASK_BUDGET"
   echo "  Log:     $LOG_FILE"
   echo "════════════════════════════════════════════════════════════"
   echo ""
 
   write_state "running"
-  run_agent "$TASK_OVERRIDE" "$LOG_FILE"
+  run_agent "$TASK_OVERRIDE" "$LOG_FILE" "$TASK_MODEL" "$TASK_BUDGET"
   EXIT_CODE=$?
 
   echo ""
@@ -444,10 +552,11 @@ echo "════════════════════════�
 echo "  Project:  $PROJECT_DIR"
 echo "  Tasks:    $TASKS_FILE"
 echo "  Phase:    $PHASE_FILTER"
-echo "  Model:    $MODEL"
-echo "  Budget:   \$$MAX_BUDGET/agent"
+echo "  Model:    $([[ -n "$MODEL_OVERRIDE" ]] && echo "$MODEL_OVERRIDE (CLI override — all tasks)" || echo "auto (per-task from task-models.json)")"
+echo "  Budget:   $([[ -n "$MODEL_OVERRIDE" ]] && echo "\$$MAX_BUDGET/agent (fixed)" || echo "auto (per-task from task-models.json)")"
 echo "  Retries:  $MAX_CONSECUTIVE_FAILURES consecutive"
 echo "  Skip at:  $MAX_TASK_FAILURES failures/task"
+echo "  Config:   $([[ -f "$TASK_MODELS_FILE" ]] && echo "$TASK_MODELS_FILE" || echo "not found — using defaults")"
 echo "════════════════════════════════════════════════════════════"
 echo ""
 
@@ -496,7 +605,15 @@ while true; do
 
   # Pick the first pending task
   TASK_ID=$(echo "$PENDING_TASKS" | head -1)
+
+  # Resolve per-task model + budget
+  TASK_PHASE=$(get_task_phase "$TASK_ID")
+  resolve_task_config "$TASK_ID" "$TASK_PHASE"
+
   echo "  Task:    $TASK_ID"
+  echo "  Phase:   $TASK_PHASE"
+  echo "  Model:   $TASK_MODEL$([[ -n "$MODEL_OVERRIDE" ]] && echo ' (CLI)' || echo ' (auto)')"
+  echo "  Budget:  \$$TASK_BUDGET"
   echo "  Pending: $PENDING_COUNT total"
 
   # Show per-task failure history
@@ -510,7 +627,7 @@ while true; do
   echo "───────────────────────────────────────────────────────────"
 
   # Run the agent
-  run_agent "$TASK_ID" "$LOG_FILE"
+  run_agent "$TASK_ID" "$LOG_FILE" "$TASK_MODEL" "$TASK_BUDGET"
   EXIT_CODE=$?
 
   echo ""
