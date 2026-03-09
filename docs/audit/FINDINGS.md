@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Fixed:** 26 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 7 | **Fixed:** 27 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 151 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -166,7 +166,7 @@
 ### OB-F161 — Stale LOC references in CLAUDE.md files
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `CLAUDE.md`, `OpenBridge/CLAUDE.md`
 - **Root Cause / Impact:**
   Both `CLAUDE.md` (root) and `OpenBridge/CLAUDE.md` list outdated LOC counts: `master-manager.ts` 6,155 (actual: 8,869), `router.ts` 1,554 (actual: 5,086), `dotfolder-manager.ts` 903 (actual: 1,090). Misleads contributors about file complexity.
