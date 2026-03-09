@@ -1,8 +1,8 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-07 | **Current Version:** v0.0.14
-> **All findings resolved** — 143 findings fixed across v0.0.1–v0.0.14. 1239 tasks completed.
-> **0 open findings.** See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md).
+> **Last Updated:** 2026-03-09 | **Current Version:** v0.0.14
+> **1239 tasks shipped, 143 findings fixed** across v0.0.1–v0.0.14. Clean slate for next cycle.
+> See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md) | [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
@@ -104,24 +104,9 @@ Everything that shipped — 1239 tasks across 104+ phases + Phase 97 + Sprints 5
 
 ---
 
-## Future Work (Post v0.0.14)
+## Next (v0.0.15+)
 
-All future features beyond the skill/agent pattern track are tracked in [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
-
-### Deferred finalization:
-
-| Feature                         | What's Needed                                                      | Est. Tasks |
-| ------------------------------- | ------------------------------------------------------------------ | ---------- |
-| Binary Packaging (Phase 72)     | Run pkg, test binaries, fix CI (.nvmrc), test native addons        | ~8–12      |
-| Electron Desktop App (Phase 73) | Fix TS compile, wire setup wizard, fix Vite paths, test end-to-end | ~10–15     |
-| MCP UI (Electron layer)         | Blocked by Electron fix — verify once app runs                     | ~3–5       |
-
-### Deferred features:
-
-| Feature                  | Description                                    | Est. Phases |
-| ------------------------ | ---------------------------------------------- | ----------- |
-| Access Control Dashboard | Web-based role/permission management UI        | TBD         |
-| Server Deployment Mode   | Docker container + headless mode for VPS/cloud | TBD         |
+Clean slate — ready for new planning and implementation. See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for deferred items and backlog ideas.
 
 ---
 
