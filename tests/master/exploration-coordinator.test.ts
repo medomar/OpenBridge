@@ -1358,6 +1358,147 @@ describe('ExplorationCoordinator', () => {
     });
   });
 
+  describe('Stale exploration_progress cleanup on new exploration start (OB-1269)', () => {
+    it('deletes pending/in_progress rows from a previous failed exploration when a new one starts', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      // Register the stale (previous failed) exploration activity
+      const staleExplorationId = randomUUID();
+      await memory.insertActivity({
+        id: staleExplorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Insert stale exploration_progress rows for the previous exploration
+      await memory.insertExplorationProgress({
+        exploration_id: staleExplorationId,
+        phase: 'structure',
+        target: null,
+        status: 'pending',
+        progress_pct: 0,
+        files_processed: null,
+        files_total: null,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+      await memory.insertExplorationProgress({
+        exploration_id: staleExplorationId,
+        phase: 'classification',
+        target: null,
+        status: 'in_progress',
+        progress_pct: 50,
+        files_processed: null,
+        files_total: null,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+
+      // Verify stale rows exist before the new exploration
+      const staleRowsBefore =
+        await memory.getExplorationProgressByExplorationId(staleExplorationId);
+      expect(staleRowsBefore).toHaveLength(2);
+
+      // Register the new exploration activity
+      const newExplorationId = randomUUID();
+      await memory.insertActivity({
+        id: newExplorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Create a new coordinator and run exploration
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId: newExplorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      // Stale rows (pending/in_progress from the old exploration) must be gone
+      const staleRowsAfter = await memory.getExplorationProgressByExplorationId(staleExplorationId);
+      expect(staleRowsAfter).toHaveLength(0);
+
+      // The new exploration's rows should still be present
+      const newRows = await memory.getExplorationProgressByExplorationId(newExplorationId);
+      expect(newRows.length).toBeGreaterThan(0);
+    });
+
+    it('does not delete completed rows from a previous exploration (only pending/in_progress)', async () => {
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      // Register the previous exploration activity
+      const prevExplorationId = randomUUID();
+      await memory.insertActivity({
+        id: prevExplorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Insert a completed row (should survive cleanup) and a pending row (should be deleted)
+      await memory.insertExplorationProgress({
+        exploration_id: prevExplorationId,
+        phase: 'structure',
+        target: null,
+        status: 'completed',
+        progress_pct: 100,
+        files_processed: null,
+        files_total: null,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      });
+      await memory.insertExplorationProgress({
+        exploration_id: prevExplorationId,
+        phase: 'classification',
+        target: null,
+        status: 'pending',
+        progress_pct: 0,
+        files_processed: null,
+        files_total: null,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
+
+      // Register the new exploration activity
+      const newExplorationId = randomUUID();
+      await memory.insertActivity({
+        id: newExplorationId,
+        type: 'explorer',
+        status: 'running',
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      const coordinatorWithMemory = new ExplorationCoordinator({
+        workspacePath: testWorkspace,
+        masterTool: mockMasterTool,
+        discoveredTools: mockDiscoveredTools,
+        memory,
+        explorationId: newExplorationId,
+      });
+
+      setupCompleteExploration();
+      await coordinatorWithMemory.explore();
+
+      // Only the pending row should be deleted; completed row should survive
+      const prevRows = await memory.getExplorationProgressByExplorationId(prevExplorationId);
+      expect(prevRows).toHaveLength(1);
+      expect(prevRows[0]?.status).toBe('completed');
+    });
+  });
+
   describe('Regression guard: insertExplorationProgress called (OB-896)', () => {
     it('calls insertExplorationProgress for each phase when memory and explorationId are provided', async () => {
       const memory = new MemoryManager(':memory:');
