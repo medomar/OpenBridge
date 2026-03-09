@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 36 | **In Progress:** 0 | **Done:** 57 (1239 archived)
+> **Pending:** 35 | **In Progress:** 0 | **Done:** 58 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -45,7 +45,7 @@
 | P1  | 114   | Data Safety & Error Visibility | 12/12 | OB-F172/173/174/175/177     | ✅     |
 | P1  | 105   | Prompt Budget & Assembly       | 10/10 | OB-F147/148                 | ✅     |
 | P1  | 108   | Worker & Exploration Cleanup   | 10/10 | OB-F153/155/156             | ✅     |
-| P1  | 113   | Memory Leak Fixes              | 3/10  | OB-F165/166/169/171/176     | ◻      |
+| P1  | 113   | Memory Leak Fixes              | 5/10  | OB-F165/166/169/171/176     | ◻      |
 | P2  | 107   | Classification Fixes           | 6     | OB-F152/154                 | ◻      |
 | P2  | 106   | Prompt Growth & Dedup          | 7     | OB-F149/150/151             | ◻      |
 | P3  | 110   | God-Class Refactoring          | 8     | OB-F158/159/160             | ◻      |
@@ -173,7 +173,7 @@
 | OB-1305 | Add unit test: enqueue 500 messages for the same sender, process them all, verify no stack overflow and all messages are processed. File: `tests/core/queue-recursion.test.ts`.                                                                                                                                                                                     | OB-F165 | sonnet | ✅ Done |
 | OB-1306 | Add periodic cleanup to `RateLimiter` in `src/core/rate-limiter.ts`. Add a `cleanupInterval` timer (5 min) that iterates `windows` Map and deletes entries where all timestamps are older than `2 * windowMs`. Store the interval handle and clear it in a `dispose()` method. Call `dispose()` from `Bridge.stop()`.                                               | OB-F166 | sonnet | ✅ Done |
 | OB-1307 | Add `MAX_CLASSIFICATION_CACHE_SIZE = 10_000` constant in `src/master/master-manager.ts`. After each `classificationCache.set()`, check `if (this.classificationCache.size > MAX_CLASSIFICATION_CACHE_SIZE)`. If exceeded, delete the oldest 20% of entries. Add a `cachedAt: number` field to cache entries (use `Date.now()`) and sort by `cachedAt` for eviction. | OB-F169 | sonnet | ✅ Done |
-| OB-1308 | Add unit test: verify that `classificationCache` does not exceed `MAX_CLASSIFICATION_CACHE_SIZE` after inserting 15,000 entries. Verify oldest entries are evicted first. File: `tests/master/classification-cache-eviction.test.ts`.                                                                                                                               | OB-F169 | sonnet | Pending |
+| OB-1308 | Add unit test: verify that `classificationCache` does not exceed `MAX_CLASSIFICATION_CACHE_SIZE` after inserting 15,000 entries. Verify oldest entries are evicted first. File: `tests/master/classification-cache-eviction.test.ts`.                                                                                                                               | OB-F169 | sonnet | ✅ Done |
 | OB-1309 | In `spawnWorker()` (`src/master/master-manager.ts`), wrap the entire spawn logic in `try { ... } finally { this.workerAbortHandles.delete(workerId); }`. This ensures the abort handle is always cleaned up, even on exceptions before the worker spawns.                                                                                                           | OB-F171 | sonnet | Pending |
 | OB-1310 | Add periodic session cleanup to WebChat connector (`src/connectors/webchat/webchat-connector.ts`). Add a 5-minute interval that iterates the `sessions` Map and deletes entries with expired timestamps (`expiry < Date.now()`). Store the interval handle and clear in `shutdown()`.                                                                               | OB-F176 | sonnet | Pending |
 | OB-1311 | Add TTL-based cleanup to Discord connector's `progressMessages` Map (`src/connectors/discord/discord-connector.ts`). Add a `createdAt` timestamp to each entry. Add a 10-minute cleanup interval that removes entries older than 30 minutes. Clear interval in `shutdown()`.                                                                                        | OB-F176 | sonnet | Pending |
