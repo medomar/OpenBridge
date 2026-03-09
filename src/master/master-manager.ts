@@ -4159,6 +4159,7 @@ export class MasterManager {
       `User message: "${content}"\n\n` +
       `Classify the message and suggest a turn budget. Reply with ONLY a JSON object — no markdown, no explanation:\n` +
       `{"class":"<category>","maxTurns":<number>,"reason":"<brief reason>"}\n\n` +
+      `Important rule: If the message references files, documents, spreadsheets, or has attachments, classify as tool-use or higher — never quick-answer.\n\n` +
       `Categories and turn guidance:\n` +
       `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
       `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
