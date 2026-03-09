@@ -1,4 +1,11 @@
 import type Database from 'better-sqlite3';
+import { createLogger } from '../core/logger.js';
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+
+const logger = createLogger('observation-store');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +41,44 @@ interface ObservationRow {
 }
 
 function rowToObservation(row: ObservationRow): Observation {
+  let facts: string[] = [];
+  let concepts: string[] = [];
+  let files_read: string[] = [];
+  let files_modified: string[] = [];
+
+  try {
+    facts = JSON.parse(row.facts) as string[];
+  } catch (err) {
+    logger.warn({ err, id: row.id, field: 'facts' }, 'Failed to parse observation facts JSON');
+  }
+
+  try {
+    concepts = JSON.parse(row.concepts) as string[];
+  } catch (err) {
+    logger.warn(
+      { err, id: row.id, field: 'concepts' },
+      'Failed to parse observation concepts JSON',
+    );
+  }
+
+  try {
+    files_read = JSON.parse(row.files_read) as string[];
+  } catch (err) {
+    logger.warn(
+      { err, id: row.id, field: 'files_read' },
+      'Failed to parse observation files_read JSON',
+    );
+  }
+
+  try {
+    files_modified = JSON.parse(row.files_modified) as string[];
+  } catch (err) {
+    logger.warn(
+      { err, id: row.id, field: 'files_modified' },
+      'Failed to parse observation files_modified JSON',
+    );
+  }
+
   return {
     id: row.id,
     session_id: row.session_id,
@@ -41,10 +86,10 @@ function rowToObservation(row: ObservationRow): Observation {
     type: row.type,
     title: row.title,
     narrative: row.narrative,
-    facts: JSON.parse(row.facts) as string[],
-    concepts: JSON.parse(row.concepts) as string[],
-    files_read: JSON.parse(row.files_read) as string[],
-    files_modified: JSON.parse(row.files_modified) as string[],
+    facts,
+    concepts,
+    files_read,
+    files_modified,
     created_at: row.created_at,
   };
 }
