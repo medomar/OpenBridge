@@ -129,7 +129,7 @@ The bridge will:
 | `config.json`                            | Your runtime config (gitignored)                                                                   |
 | `src/index.ts`                           | Entry point — V0 + V2 startup flows                                                                |
 | `src/core/bridge.ts`                     | Orchestrator — wires connectors, auth, queue, Master AI                                            |
-| `src/core/router.ts`                     | Message routing + `/history` + stop/status/confirm commands (1554 LOC)                             |
+| `src/core/router.ts`                     | Message routing + `/history` + stop/status/confirm commands (2069 LOC)                             |
 | `src/core/auth.ts`                       | Phone whitelist + prefix + command allow/deny filters                                              |
 | `src/core/queue.ts`                      | Per-user sequential processing, retry, DLQ                                                         |
 | `src/core/registry.ts`                   | Plugin registry — auto-discovers connectors                                                        |
@@ -175,9 +175,9 @@ The bridge will:
 | `src/memory/eviction.ts`                 | LRU eviction policy for workspace chunk cache                                                      |
 | `src/memory/sub-master-store.ts`         | Sub-master session state persistence                                                               |
 | `src/memory/index.ts`                    | MemoryManager facade — unified API over all store modules                                          |
-| `src/master/master-manager.ts`           | Master AI lifecycle + self-governing session + worker spawning + checkpoint/resume (6155 LOC)      |
+| `src/master/master-manager.ts`           | Master AI lifecycle + self-governing session + worker spawning + checkpoint/resume (6677 LOC)      |
 | `src/master/master-system-prompt.ts`     | Master AI system prompt builder — includes "Available MCP Servers" section when configured         |
-| `src/master/dotfolder-manager.ts`        | `.openbridge/` CRUD + exploration state + context/memory.md + prompt library (903 LOC)             |
+| `src/master/dotfolder-manager.ts`        | `.openbridge/` CRUD + exploration state + context/memory.md + prompt library (1109 LOC)            |
 | `src/master/worker-registry.ts`          | Active worker tracking + concurrency limits                                                        |
 | `src/master/exploration-coordinator.ts`  | 5-phase incremental exploration orchestrator with checkpointing + resumability                     |
 | `src/master/exploration-prompts.ts`      | Focused prompts (structure scan, classification, directory dive, assembly)                         |
@@ -277,7 +277,7 @@ src/
 │   └── master.ts               MasterState, ExplorationSummary schemas
 ├── core/                       Bridge engine
 │   ├── bridge.ts               Main orchestrator (setMaster + lifecycle)
-│   ├── router.ts               Message routing + /history + stop/status/confirm commands (1554 LOC)
+│   ├── router.ts               Message routing + /history + stop/status/confirm commands (2069 LOC)
 │   ├── auth.ts                 Authentication + role-based access control
 │   ├── queue.ts                Message queues (priority queue, fast-path classification)
 │   ├── registry.ts             Plugin registry
@@ -335,10 +335,10 @@ src/
 │   └── script-coordinator.ts   Multi-step script execution with step tracking
 └── master/                     Master AI management
     ├── index.ts                Module exports
-    ├── master-manager.ts       Master AI lifecycle + self-governing + worker spawning + checkpoint/resume (6155 LOC)
+    ├── master-manager.ts       Master AI lifecycle + self-governing + worker spawning + checkpoint/resume (6677 LOC)
     ├── master-system-prompt.ts Master AI system prompt builder
     ├── worker-registry.ts      Active worker tracking + concurrency limits
-    ├── dotfolder-manager.ts    .openbridge/ CRUD + exploration state + context/memory.md + prompt library (903 LOC)
+    ├── dotfolder-manager.ts    .openbridge/ CRUD + exploration state + context/memory.md + prompt library (1109 LOC)
     ├── exploration-coordinator.ts  5-phase incremental exploration orchestrator
     ├── exploration-prompts.ts      Focused prompts (structure, classification, dive, assembly)
     ├── result-parser.ts            Robust JSON extraction from AI output
