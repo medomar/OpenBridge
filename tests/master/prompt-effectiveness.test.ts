@@ -14,7 +14,7 @@ describe('Prompt Effectiveness Tracking', () => {
   let dotFolder: DotFolderManager;
 
   beforeEach(async () => {
-    testWorkspacePath = await fs.mkdtemp(path.join(os.tmpdir(), 'test-workspace-effectiveness-'));
+    testWorkspacePath = await fs.mkdtemp(path.join(os.tmpdir(), 'ob-prompt-effectiveness-'));
     dotFolder = new DotFolderManager(testWorkspacePath);
     await dotFolder.initialize();
     await seedPromptLibrary(dotFolder);
