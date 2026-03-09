@@ -5564,9 +5564,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       // Classify message to determine appropriate turn budget
       const classification = await this.classifyTask(message.content, sessionId);
-      const taskClass = classification.class;
-      const taskMaxTurns = classification.maxTurns;
+      let taskClass = classification.class;
+      let taskMaxTurns = classification.maxTurns;
       logger.info({ taskClass, taskMaxTurns, reason: classification.reason }, 'Message classified');
+
+      // Attachment escalation — OB-1257
+      // If the message has file attachments and was classified as quick-answer,
+      // escalate to tool-use: file analysis needs tool access and a larger turn budget.
+      if (taskClass === 'quick-answer' && message.attachments && message.attachments.length > 0) {
+        logger.info(
+          { attachmentCount: message.attachments.length, from: 'quick-answer', to: 'tool-use' },
+          'Attachment detected — escalating quick-answer to tool-use (15 turns, 510s)',
+        );
+        taskClass = 'tool-use';
+        taskMaxTurns = MESSAGE_MAX_TURNS_TOOL_USE;
+      }
 
       // Deep Mode activation — OB-1403
       // If the configured default profile is 'thorough' or 'manual' and the task class is
