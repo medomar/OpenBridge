@@ -8480,6 +8480,10 @@ ${currentContent}
 
       this.workerRegistry.markFailed(workerId, failedResult, errorMessage);
 
+      // Remove worker from registry to free the concurrency slot and prevent orphaned
+      // pending workers from accumulating (OB-1264 / OB-F153)
+      this.workerRegistry.removeWorker(workerId);
+
       // Persist registry after exception
       await this.persistWorkerRegistry();
 
