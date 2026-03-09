@@ -183,12 +183,21 @@ export function markStaleActivityDone(db: Database.Database): number {
 /**
  * Delete agent_activity rows whose completed_at is older than cutoffHours.
  * Rows with no completed_at (still running) are never deleted.
+ * Also deletes stale exploration_progress rows (status 'pending' or 'in_progress')
+ * whose parent exploration started more than cutoffHours ago.
  */
 export function cleanupOldActivity(db: Database.Database, cutoffHours = 24): void {
   const cutoff = new Date(Date.now() - cutoffHours * 60 * 60 * 1000).toISOString();
   db.prepare(
     `DELETE FROM agent_activity
      WHERE completed_at IS NOT NULL AND completed_at < ?`,
+  ).run(cutoff);
+  db.prepare(
+    `DELETE FROM exploration_progress
+     WHERE status IN ('pending', 'in_progress')
+       AND exploration_id IN (
+         SELECT id FROM agent_activity WHERE started_at < ?
+       )`,
   ).run(cutoff);
 }
 
