@@ -158,6 +158,8 @@ export class WebChatConnector implements Connector {
   private tunnelUrl: string | null = null;
   /** In-memory session store: sessionId → expiry timestamp (ms since epoch) */
   private readonly sessions: Map<string, number> = new Map();
+  /** Periodic cleanup interval handle for expired session eviction */
+  private sessionCleanupInterval: ReturnType<typeof setInterval> | null = null;
   /** Per-IP login failure tracker for rate limiting */
   private readonly loginRateLimiter: Map<string, IpRateEntry> = new Map();
   /** Server-side execution profile preference — synced from client settings panel */
@@ -1246,6 +1248,12 @@ export class WebChatConnector implements Connector {
       });
     });
 
+    // Start periodic cleanup of expired sessions (every 5 minutes)
+    const SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+    this.sessionCleanupInterval = setInterval(() => {
+      this.evictExpiredSessions();
+    }, SESSION_CLEANUP_INTERVAL_MS);
+
     await new Promise<void>((resolve) => {
       server.listen(this.config.port, this.config.host, () => {
         this.connected = true;
@@ -1402,6 +1410,11 @@ export class WebChatConnector implements Connector {
   async shutdown(): Promise<void> {
     this.connected = false;
     this.clients.clear();
+
+    if (this.sessionCleanupInterval !== null) {
+      clearInterval(this.sessionCleanupInterval);
+      this.sessionCleanupInterval = null;
+    }
 
     for (const entry of this.pendingDownloads.values()) {
       clearTimeout(entry.timer);
