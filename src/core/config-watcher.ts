@@ -61,7 +61,9 @@ export class ConfigWatcher {
     }
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
-      void this.reload();
+      this.reload().catch((err) => {
+        logger.error({ err }, 'Unhandled config reload error');
+      });
     }, this.debounceMs);
   }
 
