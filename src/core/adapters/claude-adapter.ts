@@ -141,4 +141,22 @@ export class ClaudeAdapter implements CLIAdapter {
     // Claude enforces all profiles natively via --allowedTools named tool lists.
     return ['read-only', 'code-edit', 'full-access'];
   }
+
+  getPromptBudget(model?: string): { maxPromptChars: number; maxSystemPromptChars: number } {
+    // Conservative char-based estimates for Claude models.
+    // All current Claude models (opus, sonnet, haiku) share the same limits:
+    //   - System prompt: 180K chars (~45K tokens at ~4 chars/token)
+    //   - User prompt: 32K chars (~8K tokens)
+    // These are intentionally conservative to leave room for tool outputs and responses.
+    const isHaiku = model != null && /haiku/i.test(model);
+    const isSonnet = model != null && /sonnet/i.test(model);
+    const isOpus = model != null && /opus/i.test(model);
+
+    if (isHaiku || isSonnet || isOpus) {
+      return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
+    }
+
+    // Default for unrecognized or unspecified model — use same conservative limits.
+    return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
+  }
 }
