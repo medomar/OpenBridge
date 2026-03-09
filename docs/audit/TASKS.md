@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 30 | **In Progress:** 0 | **Done:** 63 (1239 archived)
+> **Pending:** 29 | **In Progress:** 0 | **Done:** 64 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -190,7 +190,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                      | Finding | Model  | Status  |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1257 | In `processMessage()` (`src/master/master-manager.ts`), after `classifyTask()` returns, check `message.attachments` (or equivalent field). If attachments are non-empty AND classification is `quick-answer`, escalate to `tool-use` (15 turns, 510s timeout). Log the escalation reason. | OB-F152 | sonnet | Pending |
+| OB-1257 | In `processMessage()` (`src/master/master-manager.ts`), after `classifyTask()` returns, check `message.attachments` (or equivalent field). If attachments are non-empty AND classification is `quick-answer`, escalate to `tool-use` (15 turns, 510s timeout). Log the escalation reason. | OB-F152 | sonnet | ✅ Done |
 | OB-1258 | Add a file-reference keyword group in `classifyTaskByKeywords()` (`src/master/master-manager.ts`): patterns like `/\b(the file\|xl\|xls\|xlsx\|pdf\|csv\|document\|attachment\|spreadsheet\|image\|photo\|picture)\b/i`. When matched, classify as `tool-use` instead of `quick-answer`.  | OB-F154 | sonnet | Pending |
 | OB-1259 | Update the AI classifier prompt (in `classifyTask()`) to include guidance about file attachments: "If the message references files, documents, spreadsheets, or has attachments, classify as tool-use or higher — never quick-answer."                                                    | OB-F152 | sonnet | Pending |
 | OB-1260 | Add unit test: message with `attachments: [{ name: 'data.xlsx', type: 'file' }]` and text "explore this" should NOT be classified as `quick-answer`. File: `tests/master/classification.test.ts`.                                                                                         | OB-F152 | sonnet | Pending |
