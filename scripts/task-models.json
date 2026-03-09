@@ -1,7 +1,7 @@
 {
   "_comment": "Per-task model + budget overrides. Tasks not listed use the defaults (sonnet, $5).",
   "_format": "{ \"TASK_ID\": { \"model\": \"model_name\", \"budget\": N } }",
-  "_models": "sonnet (default, fast, cheap) | opus (complex refactoring, large extractions)",
+  "_models": "sonnet (default, fast, cheap) | opus (complex refactoring, large extractions) | haiku (trivial one-liner fixes)",
 
   "defaults": {
     "model": "sonnet",
@@ -14,6 +14,58 @@
   },
 
   "task_overrides": {
+    "_comment_115": "Phase 115 — Test Suite Regression Fixes (P0)",
+    "OB-1326": {
+      "model": "opus",
+      "budget": 8,
+      "reason": "10 failing tests in permission-escalation — complex test/impl alignment"
+    },
+    "OB-1330": {
+      "model": "opus",
+      "budget": 8,
+      "reason": "memory-context test — needs understanding of buildMasterSpawnOptions refactoring"
+    },
+
+    "_comment_112": "Phase 112 — Process & Timer Safety (P0)",
+    "OB-1291": {
+      "model": "opus",
+      "budget": 8,
+      "reason": "Kill race condition test — needs precise timer mocking"
+    },
+    "OB-1293": {
+      "model": "opus",
+      "budget": 8,
+      "reason": "Checkpoint/resume race test — complex mock setup"
+    },
+
+    "_comment_114": "Phase 114 — Data Safety & Error Visibility (P1)",
+    "OB-1314": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Wrap JSON.parse in try-catch — trivial"
+    },
+    "OB-1315": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Wrap JSON.parse in try-catch — trivial"
+    },
+    "OB-1316": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Wrap JSON.parse in try-catch — trivial"
+    },
+    "OB-1319": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Clear array after injection — one-liner"
+    },
+    "OB-1322": { "model": "haiku", "budget": 3, "reason": "Clear timer in shutdown — one-liner" },
+    "OB-1324": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Change exit code classification — one-liner"
+    },
+
     "_comment_105": "Phase 105 — Prompt Budget & Assembly (OB-F147 Critical, OB-F148 High)",
     "OB-1244": {
       "model": "opus",
@@ -25,37 +77,26 @@
       "budget": 10,
       "reason": "Refactor buildMasterSpawnOptions — touches 8869-LOC god class, multiple context sections"
     },
-    "OB-1247": {
-      "model": "opus",
-      "budget": 8,
-      "reason": "Refactor sanitizePrompt — adapter-aware budget wiring"
-    },
-
-    "_comment_107": "Phase 107 — Classification Fixes (OB-F152 High, OB-F154 Medium)",
-    "OB-1257": {
-      "model": "opus",
-      "budget": 8,
-      "reason": "Attachment-aware classification — touches processMessage in god class"
-    },
 
     "_comment_108": "Phase 108 — Worker & Exploration Cleanup (OB-F153 High, OB-F155, OB-F156 High)",
-    "OB-1264": {
-      "model": "opus",
-      "budget": 8,
-      "reason": "Worker spawn failure cleanup — touches spawnWorker in god class"
-    },
     "OB-1270": {
       "model": "opus",
       "budget": 8,
       "reason": "Post-exploration memory seeding — touches masterDrivenExplore in god class"
     },
-    "OB-1271": {
-      "model": "opus",
-      "budget": 8,
-      "reason": "writeExplorationSummaryToMemory — new method in large file"
+
+    "_comment_113": "Phase 113 — Memory Leak Fixes (P1) — all sonnet default except none",
+
+    "_comment_106": "Phase 106 — Prompt Growth & Dedup (P2)",
+    "OB-1253": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Set skipWorkspaceContext flag — one-liner"
     },
 
-    "_comment_109": "Phase 109 — Monorepo Awareness (OB-F157 Medium)",
+    "_comment_107": "Phase 107 — Classification Fixes (P2) — all sonnet default",
+
+    "_comment_109": "Phase 109 — Monorepo Awareness (P3)",
     "OB-1275": {
       "model": "opus",
       "budget": 8,
@@ -68,8 +109,17 @@
     },
 
     "_comment_110": "Phase 110 — God-Class Refactoring (all opus via phase_overrides)",
-    "_note_110": "All 8 tasks use opus+$10 from phase_overrides. Individual overrides below only if different.",
 
-    "_comment_111": "Phase 111 — Documentation Sync (OB-F161 Low) — all sonnet, default budget"
+    "_comment_111": "Phase 111 — Documentation Sync (P3)",
+    "OB-1287": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Update LOC numbers — trivial find-replace"
+    },
+    "OB-1288": {
+      "model": "haiku",
+      "budget": 3,
+      "reason": "Update LOC numbers — trivial find-replace"
+    }
   }
 }
