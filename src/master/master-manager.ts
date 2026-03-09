@@ -3935,6 +3935,20 @@ export class MasterManager {
       };
     }
 
+    // File-reference keywords — messages that mention files, documents, or attachments
+    // should be classified as tool-use even if they contain text-gen language like "draft"
+    // or "write" (OB-1258). Pattern matches common file types and file-reference phrases.
+    const fileReferencePattern =
+      /\b(the file|xl|xls|xlsx|pdf|csv|document|attachment|spreadsheet|image|photo|picture)\b/i;
+    if (fileReferencePattern.test(content)) {
+      return {
+        class: 'tool-use',
+        maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
+        reason: 'keyword match: file-reference → tool-use',
+      };
+    }
+
     // Text-generation keywords — content creation tasks that require no file tools.
     // e.g. "write a tweet", "draft a LinkedIn post", "rephrase this shorter"
     // These are quick-answer (5 turns, no tools) not tool-use (OB-1580).
