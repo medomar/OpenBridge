@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 14 | **Fixed:** 20 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 13 | **Fixed:** 21 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -336,7 +336,7 @@
 ### OB-F176 — Connector Maps/Sets grow unbounded — memory leaks in long-running instances
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/connectors/webchat/webchat-connector.ts`, `src/connectors/discord/discord-connector.ts`, `src/connectors/whatsapp/whatsapp-connector.ts`
 - **Root Cause / Impact:**
   Multiple connectors maintain in-memory Maps/Sets with no cleanup: WebChat `sessions` Map (no expiry purge), Discord `progressMessages` Map (stale message refs), WhatsApp `progressSent` Set (never cleared after session). Over hours/days of runtime, these accumulate entries from disconnected/completed sessions.
