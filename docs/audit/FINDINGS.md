@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 13 | **Fixed:** 21 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 12 | **Fixed:** 22 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -89,7 +89,7 @@
 ### OB-F154 — File-reference keywords missing from classifier
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (classifyTaskByKeywords)
 - **Root Cause / Impact:**
   The keyword classifier has no detection for file-reference phrases. Messages like "explore the xl file I sent" or "what's in the pdf" contain clear signals that file analysis is needed, but none of these terms ("the file", "xl", "pdf", "document", "attachment", "spreadsheet") appear in any keyword list. Combined with OB-F152 (no attachment awareness), these messages get the minimum 5-turn/210s budget. Should escalate to at least `tool-use` (15 turns, 510s).
