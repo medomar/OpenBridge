@@ -1702,10 +1702,12 @@ export class Router {
     //   1. A crash during urgent handling is recoverable from the checkpoint.
     //   2. After the urgent message completes, we can restore pre-interruption context.
     const isUrgentCycle = this.urgentCycleMessageIds.has(message.id);
+    let sessionCheckpointed = false;
     if (isUrgentCycle) {
       this.urgentCycleMessageIds.delete(message.id);
       if (this.master) {
         await this.master.checkpointSession();
+        sessionCheckpointed = true;
       }
     }
 
@@ -1769,12 +1771,6 @@ export class Router {
         // Route through Master AI
         const response = await this.master.processMessage(message);
         result = { content: response };
-        // Resume from checkpoint after urgent message is fully handled — restores the
-        // pre-interruption Master context (worker history, pending messages) so that
-        // subsequent messages continue with the correct session state.
-        if (isUrgentCycle) {
-          await this.master.resumeSession();
-        }
       } else if (this.orchestrator) {
         const orchestratorResult = await this.orchestrator.process(message);
         result = orchestratorResult.result;
@@ -1812,6 +1808,16 @@ export class Router {
         error instanceof Error ? error.message : 'Unknown error',
       );
       throw error;
+    } finally {
+      // Resume from checkpoint after urgent message handling (success or failure) — restores
+      // the pre-interruption Master context so subsequent messages continue with correct state.
+      if (sessionCheckpointed && this.master) {
+        try {
+          await this.master.resumeSession();
+        } catch (resumeErr) {
+          logger.error({ err: resumeErr }, 'Failed to resume session after urgent cycle');
+        }
+      }
     }
 
     this.metrics?.recordProcessed(Date.now() - startTime);
