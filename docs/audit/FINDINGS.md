@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 20 | **Fixed:** 14 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 19 | **Fixed:** 15 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 149 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -23,7 +23,7 @@
 ### OB-F148 — Adapter-inconsistent prompt size handling
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/adapters/claude-adapter.ts:66-68`, `src/core/adapters/codex-adapter.ts:274-279`, `src/core/cli-adapter.ts`
 - **Root Cause / Impact:**
   Each CLIAdapter handles `systemPrompt` differently: ClaudeAdapter passes it raw via `--append-system-prompt` (no cap), CodexAdapter merges it INTO the `prompt` field (line 279, doubling size before the 32K truncation), AiderAdapter merges it into `--message`. No adapter declares its model's context window or budget. Adding future providers (Google, local models with 4K-32K context) will silently lose critical prompt content.
