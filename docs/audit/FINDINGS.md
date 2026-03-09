@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 25 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 8 | **Fixed:** 26 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 151 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -122,7 +122,7 @@
 ### OB-F157 — No monorepo/sub-project awareness during exploration
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/exploration-coordinator.ts` (expandLargeDirectories), `src/master/exploration-prompts.ts`, `src/master/sub-master-detector.ts`
 - **Root Cause / Impact:**
   Exploration treats multi-project workspaces (monorepos with independent sub-projects each having their own `package.json` + `.git`) as a flat directory structure. Structure scan and classification see sub-projects as sibling directories — not as independent projects. `expandLargeDirectories()` splits by file count only (threshold: 1000 files), not by project boundaries. Sub-project detection (`detectSubProjects()` in `sub-master-detector.ts`) runs AFTER exploration completes but doesn't feed back into the workspace map or memory.md. Real-world evidence: `/Desktop/API` with 3 sub-projects got shallow directory-level coverage instead of per-project understanding.
