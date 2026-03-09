@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 18 | **Fixed:** 16 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 17 | **Fixed:** 17 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -111,7 +111,7 @@
 ### OB-F156 — memory.md stays empty after exploration completes
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (triggerMemoryUpdate, masterDrivenExplore), `src/master/dotfolder-manager.ts`
 - **Root Cause / Impact:**
   `memory.md` is only populated via `triggerMemoryUpdate()` which fires after every 50 completed user tasks (`MEMORY_UPDATE_INTERVAL`). During initial startup, exploration completes and the Master enters `ready` state, but `completedTaskCount` is still 0 — so `triggerMemoryUpdate()` is never called. `memory.md` remains a fallback stub (`"No recent messages."`). The Master loses all exploration knowledge on session restart because `memory.md` is the primary cross-session context source. Real-world evidence: `/Desktop/API` had 58 chunks in DB + 19 completed directory dives, but `memory.md` was empty.
