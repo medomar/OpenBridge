@@ -443,6 +443,24 @@ export class WorkerRegistry {
         },
         `Worker state audit: ${orphaned.length} orphaned worker(s) detected [${orphanDetails}]`,
       );
+
+      // Auto-cancel orphaned pending workers — they never started, so they cannot recover
+      for (const orphan of orphaned) {
+        if (orphan.status === 'pending') {
+          try {
+            this.markCancelled(
+              orphan.id,
+              'auto-cancelled: orphaned pending worker detected in stats audit',
+            );
+          } catch (err) {
+            logger.warn(
+              { workerId: orphan.id, err },
+              'Worker state audit: failed to cancel orphaned pending worker',
+            );
+          }
+          this.removeWorker(orphan.id);
+        }
+      }
     }
 
     // Average duration across completed + failed (those with results)
