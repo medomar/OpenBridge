@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 25 | **Fixed:** 9 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 24 | **Fixed:** 10 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -292,7 +292,7 @@
 ### OB-F172 — Pending messages silently dropped when exploration drain fails
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (~lines 2195-2220)
 - **Root Cause / Impact:**
   In `explore()`, after exploration completes, `drainPendingMessages()` processes queued user messages. If `processMessage()` throws during drain, remaining messages in `pendingMessages` are silently lost — no retry, no notification to the user.
