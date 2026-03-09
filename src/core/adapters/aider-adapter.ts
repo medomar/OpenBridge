@@ -115,4 +115,21 @@ export class AiderAdapter implements CLIAdapter {
     // Access control is applied via --no-auto-commits for read-only tasks.
     return [];
   }
+
+  getPromptBudget(_model?: string): { maxPromptChars: number; maxSystemPromptChars: number } {
+    // Aider prepends systemPrompt to the --message text in buildSpawnConfig(), so both
+    // fields share the same underlying `--message` argument. There is no separate
+    // system-prompt channel in the Aider CLI.
+    //
+    // Aider uses litellm and supports a wide range of models (GPT-4o, Claude, Gemini, etc.).
+    // Since the model-in-use is unknown at adapter level (user picks at runtime), we use a
+    // conservative combined budget of 100K chars (~25K tokens at ~4 chars/token) — safe for
+    // the smallest commonly used models (GPT-3.5 has 16K token context, larger models much more).
+    //
+    // Both fields are set to the same value to signal that they share a single pool
+    // (system + user prompt merged into one --message string). PromptAssembler should
+    // treat these as a combined budget when targeting AiderAdapter.
+    const combined = 100_000;
+    return { maxPromptChars: combined, maxSystemPromptChars: combined };
+  }
 }
