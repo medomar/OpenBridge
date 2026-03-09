@@ -1289,11 +1289,13 @@ export class ExplorationCoordinator {
       }
     }
 
-    // Assemble final workspace map
+    // Assemble final workspace map — monorepo-aware when sub-projects detected
+    const isMonorepo = (state.subProjects?.length ?? 0) >= 2;
+
     const workspaceMap: WorkspaceMap = {
       workspacePath: this.workspacePath,
       projectName: classification.projectName,
-      projectType: classification.projectType,
+      projectType: isMonorepo ? 'monorepo' : classification.projectType,
       frameworks: classification.frameworks,
       structure,
       keyFiles,
@@ -1304,6 +1306,53 @@ export class ExplorationCoordinator {
       generatedAt: new Date().toISOString(),
       schemaVersion: '1.0.0',
     };
+
+    // Enrich workspace map with monorepo sub-project and shared-dir metadata.
+    // WorkspaceMapSchema uses .passthrough() so extra fields are preserved.
+    if (isMonorepo && state.subProjects) {
+      const subProjectPaths = new Set(state.subProjects.map((sp) => sp.path));
+
+      // Build sub-project entries from dive results
+      const subProjectEntries: Array<{
+        name: string;
+        path: string;
+        type: string;
+        frameworks: string[];
+        summary: string;
+      }> = [];
+
+      for (const sp of state.subProjects) {
+        const dive = diveResults.find((d) => d.path === sp.path);
+        const name = sp.path.split('/').pop() ?? sp.path;
+        // Extract frameworks from dive insights (lines mentioning "Uses <X>")
+        const frameworks: string[] = [];
+        if (dive) {
+          for (const insight of dive.insights) {
+            const match = insight.match(/\bUses?\s+(.+)/i);
+            if (match?.[1]) frameworks.push(match[1].trim());
+          }
+        }
+        subProjectEntries.push({
+          name,
+          path: sp.path,
+          type: sp.type,
+          frameworks,
+          summary: dive?.purpose ?? '',
+        });
+      }
+
+      // Shared dirs = explored directories that aren't sub-projects
+      const sharedDirs = Object.keys(structure).filter((dir) => !subProjectPaths.has(dir));
+
+      // Attach monorepo metadata via passthrough fields
+      (workspaceMap as Record<string, unknown>)['subProjects'] = subProjectEntries;
+      (workspaceMap as Record<string, unknown>)['sharedDirs'] = sharedDirs;
+
+      logger.info(
+        { subProjectCount: subProjectEntries.length, sharedDirCount: sharedDirs.length },
+        'Phase 4: assembled monorepo map with sub-project metadata',
+      );
+    }
 
     // Write workspace map to DB (primary) and JSON file (safety net fallback).
     if (this.memory) {
