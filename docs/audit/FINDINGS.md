@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 11 | **Fixed:** 23 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 10 | **Fixed:** 24 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 151 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -56,11 +56,11 @@
 ### OB-F151 — Prompt version table has duplicate seed rows
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (seedPromptLibrary), `src/memory/prompt-store.ts`
 - **Root Cause / Impact:**
   The `prompt_versions` table contains 14 repeated sets of identical prompt content (378 total rows for 14 unique prompts). Each startup re-seeds all prompt versions without checking if they already exist, wasting ~200KB of DB space.
-- **Fix:** Guard `seedPromptLibrary()` with an existence check before inserting.
+- **Fix:** Added existence check before inserting (OB-1254), one-time dedup migration (OB-1255), and idempotency test verifying `seedPromptLibrary()` called twice produces no duplicate rows (OB-1256).
 
 ---
 
