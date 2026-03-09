@@ -121,6 +121,13 @@ export type WorkerStats = z.infer<typeof WorkerStatsSchema>;
 export const DEFAULT_MAX_CONCURRENT_WORKERS = 5;
 
 /**
+ * Timeout for workers stuck in pending status (5 minutes).
+ * If a worker has not transitioned out of 'pending' within this window,
+ * the watchdog auto-cancels it and removes it from the registry.
+ */
+export const PENDING_WORKER_TIMEOUT_MS = 300_000;
+
+/**
  * WorkerRegistry tracks active and completed worker agents.
  *
  * Features:
@@ -581,6 +588,8 @@ export class WorkerRegistry {
    * Internal watchdog check — runs on each interval tick.
    * Finds running workers whose progress has stalled beyond their timeout,
    * force-kills them, and marks them as failed.
+   * Also finds pending workers stuck beyond PENDING_WORKER_TIMEOUT_MS,
+   * marks them as failed, and removes them from the registry.
    */
   private runWatchdogCheck(): void {
     const now = Date.now();
@@ -632,6 +641,45 @@ export class WorkerRegistry {
       } catch (err) {
         logger.warn({ workerId: worker.id, err }, 'Watchdog: failed to mark worker as failed');
       }
+    }
+
+    // Check pending workers — auto-cancel those stuck beyond PENDING_WORKER_TIMEOUT_MS
+    const pendingWorkers = this.getPendingWorkers();
+
+    for (const worker of pendingWorkers) {
+      const elapsed = now - new Date(worker.startedAt).getTime();
+
+      if (elapsed <= PENDING_WORKER_TIMEOUT_MS) continue;
+
+      const elapsedMinutes = Math.round(elapsed / 60_000);
+      logger.warn(
+        { workerId: worker.id, elapsedMinutes },
+        `Watchdog: pending worker exceeded ${elapsedMinutes}m without starting — auto-cancelling`,
+      );
+
+      // Mark as failed with pending-timeout reason
+      try {
+        this.markFailed(
+          worker.id,
+          {
+            stdout: '',
+            stderr: `Pending worker timed out after ${elapsedMinutes} minutes without starting`,
+            exitCode: -1,
+            durationMs: elapsed,
+            retryCount: 0,
+            status: 'completed',
+          },
+          'pending-timeout',
+        );
+      } catch (err) {
+        logger.warn(
+          { workerId: worker.id, err },
+          'Watchdog: failed to mark pending worker as failed',
+        );
+      }
+
+      // Remove from registry to free the slot
+      this.removeWorker(worker.id);
     }
   }
 
