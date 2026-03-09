@@ -51,16 +51,19 @@ const PERMANENT_PATTERNS = [
  * Classify a CLI execution failure as transient or permanent.
  *
  * Heuristics (in priority order):
- * 1. Exit code 124 or signal-based timeout → transient
- * 2. stderr matches a known transient pattern → transient
- * 3. stderr matches a known permanent pattern → permanent
- * 4. ENOENT spawn error (CLI missing) → permanent
- * 5. Default for unrecognised non-zero exit → transient (safer to retry)
+ * 1. Exit code 124 (timeout command) → permanent (hard limit reached)
+ * 2. Exit code 143 (SIGTERM) → transient (process killed, may succeed on retry with longer timeout)
+ * 3. stderr matches a known transient pattern → transient
+ * 4. stderr matches a known permanent pattern → permanent
+ * 5. ENOENT spawn error (CLI missing) → permanent
+ * 6. Default for unrecognised non-zero exit → transient (safer to retry)
  */
 export function classifyError(exitCode: number, stderr: string): ErrorKind {
-  // Timeout exit codes — 124 (timeout command) or 143 (SIGTERM from child_process timeout).
-  // These are permanent: retrying will just timeout again.
-  if (exitCode === 124 || exitCode === 143) return 'permanent';
+  // Exit code 124: timeout command reached its time limit — permanent failure.
+  // Exit code 143: SIGTERM signal (often from graceful kill on timeout). Unlike 124, this may
+  // succeed on retry with a longer timeout or less concurrent work. Treat as transient.
+  if (exitCode === 124) return 'permanent';
+  if (exitCode === 143) return 'transient';
 
   // Check stderr against known patterns — transient first
   for (const pattern of TRANSIENT_PATTERNS) {

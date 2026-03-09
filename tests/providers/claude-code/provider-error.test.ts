@@ -23,8 +23,8 @@ describe('classifyError()', () => {
     expect(classifyError(124, '')).toBe('permanent');
   });
 
-  it('classifies exit code 143 as permanent (SIGTERM from timeout)', () => {
-    expect(classifyError(143, '')).toBe('permanent');
+  it('classifies exit code 143 as transient (SIGTERM — retryable with longer timeout)', () => {
+    expect(classifyError(143, '')).toBe('transient');
   });
 
   it('classifies "timeout" in stderr as transient', () => {

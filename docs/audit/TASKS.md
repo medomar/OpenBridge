@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 62 | **In Progress:** 0 | **Done:** 31 (1239 archived)
+> **Pending:** 61 | **In Progress:** 0 | **Done:** 32 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -42,7 +42,7 @@
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
-| P1  | 114   | Data Safety & Error Visibility | 8/12  | OB-F172/173/174/175/177     | ◻      |
+| P1  | 114   | Data Safety & Error Visibility | 9/12  | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
@@ -114,7 +114,7 @@
 | OB-1321 | Add unit test: mock `fs.readFile` to throw `EACCES` (permission denied). Verify `DotFolderManager.readWorkspaceMap()` returns `null` AND logs a warning (spy on logger). File: `tests/master/dotfolder-error-logging.test.ts`.                                                                                                                                                                                                | OB-F174 | sonnet | ✅ Done |
 | OB-1322 | In WhatsApp connector `shutdown()` (`src/connectors/whatsapp/whatsapp-connector.ts`), add: `if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }` at the top of the method, before any other cleanup.                                                                                                                                                                                  | OB-F177 | haiku  | ✅ Done |
 | OB-1323 | Add unit test: verify that after calling WhatsApp connector's `shutdown()`, the `reconnectTimer` is null and no reconnection attempts are scheduled. File: `tests/connectors/whatsapp/whatsapp-shutdown.test.ts`.                                                                                                                                                                                                             | OB-F177 | sonnet | ✅ Done |
-| OB-1324 | In `classifyError()` (`src/providers/claude-code/provider-error.ts` or `src/core/agent-runner.ts`), change exit code 143 (SIGTERM) from `'permanent'` to `'transient'`. Exit code 143 indicates the process was killed by SIGTERM (often from timeouts), which is a transient condition that may succeed on retry with a longer timeout. Keep exit code 124 as `'permanent'`. Add a comment explaining the distinction.       | OB-F162 | haiku  | Pending |
+| OB-1324 | In `classifyError()` (`src/providers/claude-code/provider-error.ts` or `src/core/agent-runner.ts`), change exit code 143 (SIGTERM) from `'permanent'` to `'transient'`. Exit code 143 indicates the process was killed by SIGTERM (often from timeouts), which is a transient condition that may succeed on retry with a longer timeout. Keep exit code 124 as `'permanent'`. Add a comment explaining the distinction.       | OB-F162 | haiku  | ✅ Done |
 | OB-1325 | Add unit test: verify `classifyError()` returns `'transient'` for exit code 143 and `'permanent'` for exit code 124. File: `tests/core/error-classification.test.ts` (or add to existing).                                                                                                                                                                                                                                    | OB-F162 | sonnet | Pending |
 
 ---
