@@ -404,6 +404,32 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 16,
+    description: 'Deduplicate prompt_versions: keep only latest id per (name, content) pair',
+    apply: (db): void => {
+      // Skip if the prompts table does not exist (e.g. minimal test databases)
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='prompts'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) return;
+
+      // Delete all rows that are not the latest (highest id) for their (name, content) pair.
+      db.exec(`
+        DELETE FROM prompts
+        WHERE id NOT IN (
+          SELECT MAX(id)
+          FROM prompts
+          GROUP BY name, content
+        )
+      `);
+    },
+  },
 ];
 
 /**
