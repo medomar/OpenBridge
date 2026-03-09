@@ -18,6 +18,18 @@
 | 07  | [WebChat Dashboard][07]         | Product / Design teams  | 10 min   | Beginner     |
 | 08  | [Security & Access Control][08] | CISOs / Compliance      | 10 min   | Intermediate |
 
+### Business Vertical Demos
+
+| #   | Demo                     | Audience                              | Duration | Difficulty   |
+| --- | ------------------------ | ------------------------------------- | -------- | ------------ |
+| 09  | Cafe & Restaurant        | Restaurant owners, cafe managers      | 15 min   | Beginner     |
+| 10  | Law Firm                 | Law firm partners, legal ops          | 20 min   | Intermediate |
+| 11  | Real Estate              | Real estate agents, property managers | 15 min   | Beginner     |
+| 12  | Accounting & Bookkeeping | Accountants, small business owners    | 20 min   | Intermediate |
+| 13  | Marketing Agency         | Marketing managers, agency owners     | 15 min   | Beginner     |
+| 14  | Healthcare Clinic        | Clinic admins, healthcare providers   | 20 min   | Intermediate |
+| 15  | Business Development     | BD managers, sales teams, founders    | 15 min   | Intermediate |
+
 [01]: ./01-quick-start/
 [02]: ./02-whatsapp-mobile/
 [03]: ./03-multi-ai-orchestration/

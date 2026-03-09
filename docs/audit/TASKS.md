@@ -1,10 +1,10 @@
 # OpenBridge — Task List
 
 > **Pending:** 0 | **In Progress:** 0 | **Done:** 0 (1239 archived)
-> **Last Updated:** 2026-03-07
+> **Last Updated:** 2026-03-09
 
 <details>
-<summary>Archive (1239 tasks completed across Phases 1–104 + Deep + Phase 97 + Sprints 5–6)</summary>
+<summary>Archive (1239 tasks completed across v0.0.1–v0.0.14)</summary>
 
 - [V0 — Phases 1–5](archive/v0/TASKS-v0.md)
 - [V1 — Phases 6–10](archive/v1/TASKS-v1.md)
@@ -34,4 +34,4 @@
 
 ---
 
-No pending tasks. All 1239 tasks archived. See [ROADMAP.md](../ROADMAP.md) for future plans.
+No pending tasks. Ready for new planning cycle.
