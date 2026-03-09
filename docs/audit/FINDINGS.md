@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 16 | **Fixed:** 18 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 15 | **Fixed:** 19 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -259,7 +259,7 @@
 ### OB-F169 — Master `classificationCache` unbounded memory growth
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (~lines 625-626)
 - **Root Cause / Impact:**
   The `classificationCache` Map in `master-manager.ts` grows without any eviction policy. Every unique user message (normalized) adds an entry. Over weeks/months of usage, thousands of entries accumulate, consuming unbounded memory. No periodic cleanup, no max-size cap, no LRU eviction.

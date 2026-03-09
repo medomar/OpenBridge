@@ -166,6 +166,9 @@ const SESSION_DEAD_PATTERNS = [
 /** Maximum number of recent tasks to include in a context summary on restart */
 const RESTART_CONTEXT_TASK_LIMIT = 10;
 
+/** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
+const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
+
 /**
  * Format an ISO timestamp as a human-readable "X ago" string.
  * Used to show the Master how fresh its workspace knowledge is.
@@ -3620,6 +3623,34 @@ export class MasterManager {
   }
 
   /**
+   * Evict the oldest 20% of classification cache entries when the cache exceeds
+   * MAX_CLASSIFICATION_CACHE_SIZE. Entries are sorted by `cachedAt` (oldest first);
+   * entries without `cachedAt` are treated as oldest and evicted first.
+   */
+  private evictClassificationCacheIfNeeded(): void {
+    if (this.classificationCache.size <= MAX_CLASSIFICATION_CACHE_SIZE) return;
+
+    const evictCount = Math.ceil(MAX_CLASSIFICATION_CACHE_SIZE * 0.2);
+    const entries = Array.from(this.classificationCache.entries()).sort(([, a], [, b]) => {
+      const aTime = a.cachedAt ?? 0;
+      const bTime = b.cachedAt ?? 0;
+      return aTime - bTime;
+    });
+
+    let deleted = 0;
+    for (const [key] of entries) {
+      if (deleted >= evictCount) break;
+      this.classificationCache.delete(key);
+      deleted++;
+    }
+
+    logger.warn(
+      { evicted: deleted, remaining: this.classificationCache.size },
+      'Classification cache eviction: removed oldest entries',
+    );
+  }
+
+  /**
    * Record feedback for a classification after the task completes.
    * Updates the cached entry's feedback array and adjusts maxTurns if the
    * budget consistently proves insufficient.
@@ -4097,7 +4128,9 @@ export class MasterManager {
         hitCount: 0,
         feedback: [],
         classifierVersion: CLASSIFIER_VERSION,
+        cachedAt: Date.now(),
       } as ClassificationCacheEntry);
+      this.evictClassificationCacheIfNeeded();
       void this.persistClassificationCache();
       return keywordResult;
     }
@@ -4306,7 +4339,9 @@ export class MasterManager {
       hitCount: 0,
       feedback: [],
       classifierVersion: CLASSIFIER_VERSION,
+      cachedAt: Date.now(),
     } as ClassificationCacheEntry);
+    this.evictClassificationCacheIfNeeded();
     void this.persistClassificationCache();
 
     return classificationResult;
