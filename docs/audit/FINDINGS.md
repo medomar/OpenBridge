@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 10 | **Fixed:** 24 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 9 | **Fixed:** 25 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 151 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -155,7 +155,7 @@
 ### OB-F160 — `agent-runner.ts` oversized — 2,336 LOC, 39+ functions
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`
 - **Root Cause / Impact:**
   Mixes error classification, cost management, process execution, and profile resolution in one file. 2,336 LOC = 3.3% of total source. Less critical than F158/F159 but growing.
