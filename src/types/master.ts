@@ -695,6 +695,9 @@ export const ClassificationCacheEntrySchema = z.object({
 
   /** Feedback from completed tasks classified with this entry */
   feedback: z.array(ClassificationFeedbackSchema).default([]),
+
+  /** Unix timestamp (ms) when this entry was inserted — used for LRU eviction */
+  cachedAt: z.number().optional(),
 });
 
 export type ClassificationCacheEntry = z.infer<typeof ClassificationCacheEntrySchema>;
