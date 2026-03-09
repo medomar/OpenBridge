@@ -83,7 +83,6 @@ async function main() {
 
   // 10. Write TypeScript constants
   const ts = `// AUTO-GENERATED — do not edit manually. Run: npm run build:webchat
-// Generated: ${new Date().toISOString()}
 export const WEBCHAT_HTML = \`${escaped}\`;
 
 export const WEBCHAT_LOGIN_HTML = \`${escapedLogin}\`;
