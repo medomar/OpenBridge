@@ -1,6 +1,6 @@
 {
   "name": "openbridge",
-  "version": "0.0.8",
+  "version": "0.0.15",
   "description": "Autonomous AI bridge — connects messaging platforms to your installed AI tools (Claude Code, Codex, Aider). Self-governing Master AI explores your workspace and executes tasks. Zero API keys. Zero extra cost.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

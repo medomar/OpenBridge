@@ -9,6 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No pending changes._
 
+## [0.0.15] — 2026-03-09
+
+### Added
+
+#### Prompt Budget & Assembly (Phase 105)
+
+- **PromptAssembler** — priority-ranked section assembly with per-section `maxChars` caps and provider-aware total budget
+- **`getPromptBudget()`** on CLIAdapter — each adapter declares model-aware prompt/systemPrompt limits
+- **Budget-aware Master prompts** — `buildMasterSpawnOptions()` uses PromptAssembler instead of raw concatenation
+- **Adapter-specific limits** — ClaudeAdapter (180K system), CodexAdapter (merged budget), AiderAdapter (conservative)
+
+#### Classification Fixes (Phase 107)
+
+- **Attachment-aware classification** — messages with file attachments auto-escalate from `quick-answer` to `tool-use`
+- **File-reference keywords** — "xl", "pdf", "csv", "spreadsheet", "attachment" trigger `tool-use` classification
+
+#### Worker & Exploration Cleanup (Phase 108)
+
+- **Pending-worker watchdog** — workers stuck in `pending` for >5 min auto-cancelled
+- **Stale exploration cleanup** — old `exploration_progress` rows deleted on new exploration start
+- **Post-exploration memory.md** — `memory.md` seeded immediately after exploration completes
+
+#### Monorepo Awareness (Phase 109)
+
+- **`detectMonorepoPattern()`** — scans for multiple `package.json`/`.git`/`pom.xml`/`go.mod` at depth 1-2
+- **Per-sub-project exploration** — each sub-project gets independent classification and directory dive
+- **Monorepo workspace map** — Phase 4 assembly produces `{ type: "monorepo", subProjects: [...] }` structure
+
+#### God-Class Refactoring (Phase 110)
+
+- **8 new focused modules** extracted from 3 god-class files (16,291 LOC → manageable modules):
+  - `classification-engine.ts` (942 LOC) — from master-manager.ts
+  - `exploration-manager.ts` (1539 LOC) — from master-manager.ts
+  - `worker-orchestrator.ts` (2065 LOC) — from master-manager.ts
+  - `prompt-context-builder.ts` (560 LOC) — from master-manager.ts
+  - `command-handlers.ts` (2936 LOC) — from router.ts
+  - `output-marker-processor.ts` — from router.ts
+  - `error-classifier.ts` — from agent-runner.ts
+  - `cost-manager.ts` — from agent-runner.ts
+
+#### Memory Leak Fixes (Phase 113)
+
+- **Queue recursion → while loop** — prevents stack overflow with large queues
+- **Rate limiter cleanup** — periodic 5-min sweep removes stale sender entries
+- **Classification cache eviction** — LRU eviction at 10,000 entries (oldest 20% removed)
+- **Connector session cleanup** — WebChat, Discord, WhatsApp Maps/Sets with TTL-based purge
+
+### Fixed
+
+- Process kill race condition — `killed` flag prevents double SIGKILL (OB-F162)
+- Session checkpoint/resume race — `finally` block ensures `resumeSession()` always called (OB-F163)
+- Memory init null pointer — eviction interval guarded by `if (this.memory)` (OB-F164)
+- Config watcher unhandled rejection — `.catch()` on fire-and-forget reload (OB-F167)
+- Spawn confirmation timer leak — clear existing timer before overwriting (OB-F168)
+- Batch timers not cleaned on shutdown — iterate and clear all handles (OB-F170)
+- Worker abort handle leak — `try/finally` ensures cleanup on pre-spawn failure (OB-F171)
+- Pending messages dropped on drain failure — try-catch per message with user notification (OB-F172)
+- Cancellation notifications re-injected — clear array after injection (OB-F173)
+- DotFolderManager silent I/O errors — `logger.warn()` in all catch blocks (OB-F174)
+- JSON.parse crashes on corrupt data — try-catch in observation-store, access-store, memory index (OB-F175)
+- Connector Maps/Sets unbounded growth — periodic cleanup intervals with TTL (OB-F176)
+- WhatsApp reconnect timer not cleared on shutdown (OB-F177)
+- Self-improvement prompt growth unbounded — 45K char cap on `createPromptVersion()` (OB-F149)
+- Workspace map duplicated in exploration prompts — `skipWorkspaceContext` flag (OB-F150)
+- Prompt version seed duplicates — existence check + dedup migration (OB-F151)
+- Quick-answer timeout too tight — 60s CLI startup budget floor (OB-F144)
+- Idle self-improvement runs every 5 min — exponential backoff up to 2h (OB-F145)
+- Phase 4 Assembly fails on large workspaces — budget-capped data + markdown fallback (OB-F146)
+- Exit code 143 (SIGTERM) now classified as transient (retryable) instead of permanent
+- 29 test regressions across 12 files restored to green (Phase 115)
+
 ## [0.0.14] — 2026-03-07
 
 ### Added

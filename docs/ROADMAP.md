@@ -1,16 +1,16 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-09 | **Current Version:** v0.0.14
-> **1239 tasks shipped, 143 findings fixed** across v0.0.1–v0.0.14. Clean slate for next cycle.
+> **Last Updated:** 2026-03-09 | **Current Version:** v0.0.15
+> **1332 tasks shipped, 177 findings fixed** across v0.0.1–v0.0.15. Clean slate for next cycle.
 > See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md) | [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 ---
 
-## Released (v0.0.1 — v0.0.14)
+## Released (v0.0.1 — v0.0.15)
 
-Everything that shipped — 1239 tasks across 104+ phases + Phase 97 + Sprints 5–6.
+Everything that shipped — 1332 tasks across 115+ phases.
 
 | Feature                                                                                                                         | Phase   | Version  | Status       |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ------------ |
@@ -99,12 +99,23 @@ Everything that shipped — 1239 tasks across 104+ phases + Phase 97 + Sprints 5
 | Skill pack system extensions — 5 domain packs (OB-F96)                                                                          | 98      | v0.0.14  | Shipped      |
 | Design & creative output — diagrams, charts, generative art (OB-F99)                                                            | 100     | v0.0.14  | Shipped      |
 | Agent orchestration patterns — planning gate, swarms, test protection, iteration caps (OB-F97, F100–F102)                       | 101     | v0.0.14  | Shipped      |
+| Prompt budget & assembly — PromptAssembler, adapter-aware limits, priority sections (OB-F147, F148)                             | 105     | v0.0.15  | Shipped      |
+| Prompt growth & dedup — size cap, skipWorkspaceContext, seed idempotency (OB-F149, F150, F151)                                  | 106     | v0.0.15  | Shipped      |
+| Classification fixes — attachment awareness, file-reference keywords (OB-F152, F154)                                            | 107     | v0.0.15  | Shipped      |
+| Worker & exploration cleanup — orphan timeout, stale rows, memory.md seeding (OB-F153, F155, F156)                              | 108     | v0.0.15  | Shipped      |
+| Monorepo awareness — sub-project detection, per-project exploration (OB-F157)                                                   | 109     | v0.0.15  | Shipped      |
+| God-class refactoring — 8 modules extracted from 3 god-class files (OB-F158, F159, F160)                                        | 110     | v0.0.15  | Shipped      |
+| Documentation sync — LOC references, new module listings (OB-F161)                                                              | 111     | v0.0.15  | Shipped      |
+| Process & timer safety — kill race, checkpoint resume, eviction guard, timer cleanup (OB-F162, F163, F164, F167, F168, F170)    | 112     | v0.0.15  | Shipped      |
+| Memory leak fixes — queue recursion, rate limiter cleanup, cache eviction, connector Maps (OB-F165, F166, F169, F171, F176)     | 113     | v0.0.15  | Shipped      |
+| Data safety & error visibility — JSON.parse safety, drain error handling, I/O logging (OB-F172, F173, F174, F175, F177)         | 114     | v0.0.15  | Shipped      |
+| Test suite regression fixes — 29 failing tests across 12 files restored to green                                                | 115     | v0.0.15  | Shipped      |
 
 > \* **Phases 72–73 are scaffolded but not yet functional.** Desktop apps (Windows/macOS/App Store) remain a separate effort. See [FUTURE.md — Deferred](docs/audit/FUTURE.md) for details.
 
 ---
 
-## Next (v0.0.15+)
+## Next (v0.0.16+)
 
 Clean slate — ready for new planning and implementation. See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for deferred items and backlog ideas.
 
@@ -158,30 +169,46 @@ Clean slate — ready for new planning and implementation. See [docs/audit/FUTUR
                                        ├── Phase 98: Skill Pack System Extensions
                                        ├── Phase 100: Design & Creative Output Skills
                                        └── Phase 101: Agent Orchestration Patterns
+                                             │
+                                             │  ── v0.0.15: Deep Stability Audit ──
+                                             │
+                                             └──► ✅ v0.0.15: 93 tasks, 34 findings (OB-F144–F177)
+                                                  ├── Phase 105: Prompt Budget & Assembly
+                                                  ├── Phase 106: Prompt Growth & Dedup
+                                                  ├── Phase 107: Classification Fixes
+                                                  ├── Phase 108: Worker & Exploration Cleanup
+                                                  ├── Phase 109: Monorepo Awareness
+                                                  ├── Phase 110: God-Class Refactoring
+                                                  ├── Phase 111: Documentation Sync
+                                                  ├── Phase 112: Process & Timer Safety
+                                                  ├── Phase 113: Memory Leak Fixes
+                                                  ├── Phase 114: Data Safety & Error Visibility
+                                                  └── Phase 115: Test Suite Regression Fixes
 ```
 
 ---
 
 ## Version Milestones
 
-| Version     | Status | Key Features                                                                          | Tasks |
-| ----------- | ------ | ------------------------------------------------------------------------------------- | ----- |
-| **v0.0.1**  | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system         | 310   |
-| **v0.0.2**  | Done   | Exploration progress, worker resilience, worker control, responsive Master            | 42    |
-| **v0.0.3**  | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing       | 50    |
-| **v0.0.4**  | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)           | 41    |
-| **v0.0.5**  | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                     | 21    |
-| **v0.0.6**  | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                          | 14    |
-| **v0.0.7**  | Done   | Telegram/Discord message splitting, live context fixes                                | 18    |
-| **v0.0.8**  | Done   | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app | 95    |
-| **v0.0.9**  | Done   | Classification fixes, code-audit profile, exploration bugs, data cleanup              | 34    |
-| **v0.0.10** | Done   | RAG knowledge retrieval, env var protection                                           | 43    |
-| **v0.0.11** | Done   | Master output sharing, user consent                                                   | 20    |
-| **v0.0.12** | Done   | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                  | 281   |
-| **v0.0.13** | Done   | Structured observations, session compaction, role UX, document gen, vector search     | 126   |
-| **v0.0.14** | Done   | Skill pack extensions, design/creative output, agent orchestration patterns           | 50    |
+| Version     | Status | Key Features                                                                                              | Tasks |
+| ----------- | ------ | --------------------------------------------------------------------------------------------------------- | ----- |
+| **v0.0.1**  | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system                             | 310   |
+| **v0.0.2**  | Done   | Exploration progress, worker resilience, worker control, responsive Master                                | 42    |
+| **v0.0.3**  | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing                           | 50    |
+| **v0.0.4**  | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)                               | 41    |
+| **v0.0.5**  | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                                         | 21    |
+| **v0.0.6**  | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                                              | 14    |
+| **v0.0.7**  | Done   | Telegram/Discord message splitting, live context fixes                                                    | 18    |
+| **v0.0.8**  | Done   | Voice transcription API, enhanced CLI wizard, standalone binary, Electron desktop app                     | 95    |
+| **v0.0.9**  | Done   | Classification fixes, code-audit profile, exploration bugs, data cleanup                                  | 34    |
+| **v0.0.10** | Done   | RAG knowledge retrieval, env var protection                                                               | 43    |
+| **v0.0.11** | Done   | Master output sharing, user consent                                                                       | 20    |
+| **v0.0.12** | Done   | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                                      | 281   |
+| **v0.0.13** | Done   | Structured observations, session compaction, role UX, document gen, vector search                         | 126   |
+| **v0.0.14** | Done   | Skill pack extensions, design/creative output, agent orchestration patterns                               | 50    |
+| **v0.0.15** | Done   | Deep stability audit — prompt budget, classification, god-class refactoring, memory leaks, process safety | 93    |
 
-**Total shipped: 1239 tasks across 104+ phases + Sprints 5–6.**
+**Total shipped: 1332 tasks across 115+ phases.**
 
 ---
 
