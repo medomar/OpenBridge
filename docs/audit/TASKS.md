@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 4 | **In Progress:** 0 | **Done:** 89 (1239 archived)
+> **Pending:** 3 | **In Progress:** 0 | **Done:** 90 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -262,7 +262,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Finding | Model  | Status  |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1287 | Update `CLAUDE.md` (workspace root) — fix stale LOC references: `master-manager.ts` from "6,155 LOC" to actual size, `router.ts` from "1,554 LOC" to actual size, `dotfolder-manager.ts` from "903 LOC" to actual size. Count actual lines with `wc -l` and update all references.                                                                                                                                                                                                        | OB-F161 | haiku  | Pending |
+| OB-1287 | Update `CLAUDE.md` (workspace root) — fix stale LOC references: `master-manager.ts` from "6,155 LOC" to actual size, `router.ts` from "1,554 LOC" to actual size, `dotfolder-manager.ts` from "903 LOC" to actual size. Count actual lines with `wc -l` and update all references.                                                                                                                                                                                                        | OB-F161 | haiku  | ✅ Done |
 | OB-1288 | Update `OpenBridge/CLAUDE.md` — fix the same stale LOC references as OB-1287. Both files reference the same outdated numbers.                                                                                                                                                                                                                                                                                                                                                             | OB-F161 | haiku  | Pending |
 | OB-1289 | After Phase 110 refactoring is complete, update both CLAUDE.md files to list the new extracted modules (`classification-engine.ts`, `exploration-manager.ts`, `worker-orchestrator.ts`, `prompt-context-builder.ts`, `command-handlers.ts`, `output-marker-processor.ts`, `error-classifier.ts`, `cost-manager.ts`) in the project structure sections. Note: if Phase 110 is not yet done when this task runs, update LOC for existing files only and add a TODO comment for new modules. | OB-F161 | sonnet | Pending |
 
