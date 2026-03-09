@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 28 | **Fixed:** 6 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 27 | **Fixed:** 7 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -270,7 +270,7 @@
 ### OB-F170 — Master batch timers not cleaned up on shutdown
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (~lines 643-644, 2769-2782)
 - **Root Cause / Impact:**
   The `batchTimers` Set in `master-manager.ts` holds `setTimeout` handles for batch task resumption. These timers are added to the Set but never cleared during shutdown. Timers prevent Node.js process from exiting cleanly and accumulate if batches are repeatedly paused/resumed.
