@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 52 | **In Progress:** 0 | **Done:** 41 (1239 archived)
+> **Pending:** 51 | **In Progress:** 0 | **Done:** 42 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -43,7 +43,7 @@
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
 | P1  | 114   | Data Safety & Error Visibility | 12/12 | OB-F172/173/174/175/177     | ✅     |
-| P1  | 105   | Prompt Budget & Assembly       | 8/10  | OB-F147/148                 | ◻      |
+| P1  | 105   | Prompt Budget & Assembly       | 9/10  | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
 | P2  | 107   | Classification Fixes           | 6     | OB-F152/154                 | ◻      |
@@ -135,7 +135,7 @@
 | OB-1245 | Define priority constants in `prompt-assembler.ts`: `PRIORITY_IDENTITY = 100` (role/rules), `PRIORITY_WORKSPACE = 80` (workspace map), `PRIORITY_MEMORY = 70` (memory.md), `PRIORITY_RAG = 60` (RAG context), `PRIORITY_HISTORY = 50` (conversation history), `PRIORITY_LEARNINGS = 40` (learnings), `PRIORITY_WORKER_NEXT = 30` (worker next steps), `PRIORITY_ANALYSIS = 20` (analysis context). | OB-F147 | sonnet | ✅ Done |
 | OB-1246 | Refactor `buildMasterSpawnOptions()` in `src/master/master-manager.ts` to use `PromptAssembler` for `opts.systemPrompt`. Retrieve budget from the active adapter's `getPromptBudget()`. Add each context section (workspace, memory, RAG, history, learnings, worker next steps, analysis) as a prioritized section instead of raw concatenation.                                                  | OB-F147 | opus   | ✅ Done |
 | OB-1247 | Refactor `sanitizePrompt()` in `src/core/agent-runner.ts` to accept an optional `maxLength` parameter (defaulting to `MAX_PROMPT_LENGTH`). When called for Master prompts, pass the adapter-aware budget instead of the hardcoded 32K. Log a warning with section-level detail when truncation occurs.                                                                                             | OB-F147 | sonnet | ✅ Done |
-| OB-1248 | Add unit tests for `PromptAssembler`: test priority ordering, budget enforcement, section dropping with warnings, and edge cases (empty sections, single section exceeding budget). File: `tests/core/prompt-assembler.test.ts`.                                                                                                                                                                   | OB-F147 | sonnet | Pending |
+| OB-1248 | Add unit tests for `PromptAssembler`: test priority ordering, budget enforcement, section dropping with warnings, and edge cases (empty sections, single section exceeding budget). File: `tests/core/prompt-assembler.test.ts`.                                                                                                                                                                   | OB-F147 | sonnet | ✅ Done |
 | OB-1249 | Add unit tests for `getPromptBudget()` on each adapter. Verify ClaudeAdapter returns model-aware values, CodexAdapter accounts for merged prompt, default returns sane fallbacks. File: `tests/core/adapters/prompt-budget.test.ts`.                                                                                                                                                               | OB-F148 | sonnet | Pending |
 
 ---
