@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 24 | **Fixed:** 10 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 23 | **Fixed:** 11 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -303,7 +303,7 @@
 ### OB-F173 — Cancellation notifications re-injected on every session restart
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (~lines 2447-2517)
 - **Root Cause / Impact:**
   `restartMasterSession()` re-injects `pendingCancellationNotifications` into the system prompt but never clears them after injection. On subsequent session restarts, the same stale cancellation messages are injected again and again, confusing the Master AI.
