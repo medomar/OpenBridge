@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   WorkerRegistry,
   DEFAULT_MAX_CONCURRENT_WORKERS,
+  PENDING_WORKER_TIMEOUT_MS,
   type WorkersRegistry,
 } from '../../src/master/worker-registry.js';
 import type { TaskManifest } from '../../src/types/agent.js';
@@ -909,6 +910,113 @@ describe('WorkerRegistry', () => {
       expect(orphaned).toHaveLength(1);
       expect(orphaned[0]!.id).toBe(w3);
       expect(orphaned[0]!.status).toBe('running');
+    });
+  });
+
+  // ── Pending-worker timeout + spawn failure (OB-1266) ───────────
+
+  describe('Pending-worker timeout and spawn failure (OB-1266)', () => {
+    it('watchdog auto-cancels and removes a pending worker stuck beyond PENDING_WORKER_TIMEOUT_MS', () => {
+      vi.useFakeTimers();
+      try {
+        const reg = new WorkerRegistry();
+        const wId = reg.addWorker(sampleManifest);
+        expect(reg.getWorker(wId)?.status).toBe('pending');
+
+        // Start watchdog with 60s interval; pending timeout is PENDING_WORKER_TIMEOUT_MS (5 min)
+        reg.startWatchdog({ readOnlyMs: 600_000, codeEditMs: 600_000, intervalMs: 60_000 });
+
+        // Advance just past PENDING_WORKER_TIMEOUT_MS + one interval tick so the check fires
+        vi.advanceTimersByTime(PENDING_WORKER_TIMEOUT_MS + 60_001);
+
+        // Worker should be marked failed and then removed from the registry
+        expect(reg.getWorker(wId)).toBeUndefined();
+        expect(reg.getPendingWorkers()).toHaveLength(0);
+        expect(reg.getAllWorkers()).toHaveLength(0);
+
+        reg.stopWatchdog();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('watchdog does NOT cancel a pending worker before PENDING_WORKER_TIMEOUT_MS elapses', () => {
+      vi.useFakeTimers();
+      try {
+        const reg = new WorkerRegistry();
+        const wId = reg.addWorker(sampleManifest);
+        expect(reg.getWorker(wId)?.status).toBe('pending');
+
+        reg.startWatchdog({ readOnlyMs: 600_000, codeEditMs: 600_000, intervalMs: 60_000 });
+
+        // Advance to just before the pending timeout threshold
+        vi.advanceTimersByTime(PENDING_WORKER_TIMEOUT_MS - 1);
+
+        // Worker should still be in the registry with pending status
+        expect(reg.getWorker(wId)?.status).toBe('pending');
+        expect(reg.getPendingWorkers()).toHaveLength(1);
+
+        reg.stopWatchdog();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('watchdog only removes pending worker, not running worker, when pending times out', () => {
+      vi.useFakeTimers();
+      try {
+        const reg = new WorkerRegistry();
+
+        // A running worker (should not be affected by pending timeout logic)
+        const runningId = reg.addWorker(sampleManifest);
+        reg.markRunning(runningId, 9999);
+
+        // A pending worker that will time out
+        const pendingId = reg.addWorker(sampleManifest);
+
+        reg.startWatchdog({ readOnlyMs: 600_000, codeEditMs: 600_000, intervalMs: 60_000 });
+
+        vi.advanceTimersByTime(PENDING_WORKER_TIMEOUT_MS + 60_001);
+
+        // Pending worker removed; running worker still present
+        expect(reg.getWorker(pendingId)).toBeUndefined();
+        expect(reg.getWorker(runningId)).toBeDefined();
+        expect(reg.getWorker(runningId)?.status).toBe('running');
+
+        reg.stopWatchdog();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('removeWorker() on spawn failure removes the pending worker from the registry', () => {
+      const reg = new WorkerRegistry();
+      const wId = reg.addWorker(sampleManifest);
+      expect(reg.getWorker(wId)?.status).toBe('pending');
+      expect(reg.getPendingWorkers()).toHaveLength(1);
+
+      // Simulate spawn failure: master-manager calls removeWorker() in the catch block
+      const removed = reg.removeWorker(wId);
+
+      expect(removed).toBe(true);
+      expect(reg.getWorker(wId)).toBeUndefined();
+      expect(reg.getPendingWorkers()).toHaveLength(0);
+      expect(reg.getAllWorkers()).toHaveLength(0);
+    });
+
+    it('removeWorker() on spawn failure leaves other pending workers intact', () => {
+      const reg = new WorkerRegistry();
+      const failedId = reg.addWorker(sampleManifest);
+      const otherId = reg.addWorker(sampleManifest);
+
+      expect(reg.getPendingWorkers()).toHaveLength(2);
+
+      // Only the failed worker is removed
+      reg.removeWorker(failedId);
+
+      expect(reg.getWorker(failedId)).toBeUndefined();
+      expect(reg.getWorker(otherId)?.status).toBe('pending');
+      expect(reg.getPendingWorkers()).toHaveLength(1);
     });
   });
 
