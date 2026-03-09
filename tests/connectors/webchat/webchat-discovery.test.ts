@@ -181,7 +181,18 @@ describe('WebChat /api/discovery endpoint (OB-1534)', () => {
     expect(body.tools[0]?.name).toBe('claude');
   });
 
-  it('includes Cache-Control header', async () => {
+  it('includes Cache-Control: no-cache, no-store when no tools are available', async () => {
+    await connector.initialize();
+
+    const req = makeReq('/api/discovery');
+    const res = makeRes();
+    callHandler(req, res);
+
+    expect(res.headers['Cache-Control']).toBe('no-cache, no-store');
+  });
+
+  it('includes Cache-Control: public, max-age=300 when tools are available', async () => {
+    connector.setDiscoveryResult([makeTool({ name: 'claude', available: true })]);
     await connector.initialize();
 
     const req = makeReq('/api/discovery');
