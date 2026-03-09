@@ -374,6 +374,98 @@ ${dataPayload}
 }
 
 /**
+ * Pass 3b: Sub-Project Dive (Monorepo)
+ *
+ * Generates a prompt that instructs the AI to explore a detected sub-project
+ * as an independent project — performing both classification and directory
+ * exploration in a single pass. This is used instead of the regular directory
+ * dive prompt when the workspace is a monorepo and the directory has been
+ * identified as an independent sub-project with its own manifest file.
+ *
+ * Expected duration: 90-120s per sub-project
+ * Output: dirs/<sub-project-name>.json
+ *
+ * @param workspacePath - Absolute path to the workspace root
+ * @param subProjectPath - Relative path to the sub-project (e.g. "packages/ui")
+ * @param subProjectType - Project type inferred from manifest (e.g. "node", "go")
+ * @returns Prompt for sub-project dive
+ */
+export function generateSubProjectDivePrompt(
+  workspacePath: string,
+  subProjectPath: string,
+  subProjectType: string,
+): string {
+  return `# Task: Sub-Project Exploration — ${subProjectPath}
+
+Explore the sub-project at **${workspacePath}/${subProjectPath}** as an **independent project** within a monorepo workspace.
+
+## Context
+
+This directory has been identified as an independent sub-project (type: **${subProjectType}**) based on the presence of its own project manifest file. Treat it as a self-contained project — not just a directory within a larger project.
+
+## Instructions
+
+1. **Read the project manifest** (package.json, Cargo.toml, go.mod, etc.) to determine:
+   - The sub-project's name
+   - Its dependencies and dev dependencies
+   - Its build/test/dev commands
+   - Its frameworks and tools
+2. **Determine the purpose** of this sub-project (what does it do? what role does it play in the monorepo?)
+3. **Identify key files** (entry points, configs, main modules)
+4. **List subdirectories** and their purposes
+5. **Count files** in this sub-project (excluding node_modules, dist, build, etc.)
+6. **Extract insights** specific to this sub-project (architecture, patterns, conventions)
+
+## What to Look For
+
+- Entry points (index files, main modules, bin scripts)
+- Configuration files (tsconfig.json, .eslintrc, jest.config, etc.)
+- README or documentation
+- Test files and test configuration
+- Relationship to other sub-projects in the monorepo (shared dependencies, cross-references)
+- Build output directories
+
+## Output Format
+
+Return ONLY valid JSON matching this schema:
+
+\`\`\`json
+{
+  "path": "${subProjectPath}",
+  "purpose": "Independent ${subProjectType} sub-project — <describe what it does>",
+  "keyFiles": [
+    {
+      "path": "${subProjectPath}/package.json",
+      "type": "config",
+      "purpose": "Project manifest with dependencies and scripts"
+    }
+  ],
+  "subdirectories": [
+    {
+      "path": "${subProjectPath}/src",
+      "purpose": "Source code"
+    }
+  ],
+  "fileCount": 42,
+  "insights": [
+    "Independent ${subProjectType} project within the monorepo",
+    "Uses <frameworks/tools detected>",
+    "Depends on <shared packages if any>"
+  ],
+  "exploredAt": "2026-02-21T...",
+  "durationMs": 1200
+}
+\`\`\`
+
+**IMPORTANT:**
+- Return ONLY the JSON object, no explanations
+- Treat this as a standalone project — classify its frameworks and purpose independently
+- Note any cross-references to sibling sub-projects in the monorepo
+- Use ISO 8601 format for exploredAt
+`;
+}
+
+/**
  * Incremental Exploration Prompt
  *
  * Instructs the Master AI to update the existing workspace-map.json

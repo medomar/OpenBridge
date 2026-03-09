@@ -29,6 +29,7 @@ import {
   generateStructureScanPrompt,
   generateClassificationPrompt,
   generateDirectoryDivePrompt,
+  generateSubProjectDivePrompt,
   generateSummaryPrompt,
 } from './exploration-prompts.js';
 import { parseAIResult } from './result-parser.js';
@@ -927,6 +928,34 @@ export class ExplorationCoordinator {
       );
     }
 
+    // Build a lookup of sub-project paths for use during directory dives.
+    // When a monorepo is detected, sub-project directories get a specialized
+    // classification-aware prompt instead of the regular directory dive prompt.
+    const subProjectMap = new Map<string, string>();
+    if (state.subProjects && state.subProjects.length > 0) {
+      for (const sp of state.subProjects) {
+        subProjectMap.set(sp.path, sp.type);
+      }
+
+      // Ensure every sub-project path is in the dive list.
+      // Sub-projects at depth 2 (e.g. "packages/ui") may not be in the
+      // top-level dirs returned by expandLargeDirectories.
+      for (const sp of state.subProjects) {
+        if (!significantDirs.includes(sp.path)) {
+          significantDirs.push(sp.path);
+          // Provide a default file count estimate if not already tracked
+          if (!(sp.path in structureScan.directoryCounts)) {
+            structureScan.directoryCounts[sp.path] = 10;
+          }
+        }
+      }
+
+      logger.info(
+        { subProjectCount: subProjectMap.size, subProjects: [...subProjectMap.keys()] },
+        'Monorepo sub-projects will use independent classification prompts',
+      );
+    }
+
     // Initialize directory dive tracking if not already present
     if (state.directoryDives.length === 0) {
       state.directoryDives = significantDirs.map((dir) => ({
@@ -986,7 +1015,9 @@ export class ExplorationCoordinator {
       logger.info({ batchSize: batch.length, totalDirs }, 'Processing directory batch');
 
       const results = await Promise.allSettled(
-        batch.map((dive) => this.executeSingleDirectoryDive(dive.path, context, state)),
+        batch.map((dive) =>
+          this.executeSingleDirectoryDive(dive.path, context, state, subProjectMap),
+        ),
       );
 
       // Update state based on results
@@ -1068,6 +1099,7 @@ export class ExplorationCoordinator {
     dirPath: string,
     context: { projectType: string; frameworks: string[] },
     state: ExplorationState,
+    subProjectMap?: Map<string, string>,
   ): Promise<void> {
     // Mark this directory as in_progress in exploration_progress
     const progressRowId = this.dirProgressIds.get(dirPath) ?? 0;
@@ -1082,7 +1114,12 @@ export class ExplorationCoordinator {
       }
     }
 
-    const prompt = generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
+    // Use the sub-project classification prompt when this directory is a
+    // detected monorepo sub-project; otherwise use the regular dive prompt.
+    const subProjectType = subProjectMap?.get(dirPath);
+    const prompt = subProjectType
+      ? generateSubProjectDivePrompt(this.workspacePath, dirPath, subProjectType)
+      : generateDirectoryDivePrompt(this.workspacePath, dirPath, context);
     const startTime = Date.now();
 
     // Scale timeout based on directory file count (OB-F26 / OB-943)
