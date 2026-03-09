@@ -80,6 +80,7 @@ import type {
   ExplorationState,
   WorkspaceAnalysisMarker,
   LearningEntry,
+  Classification,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -1225,6 +1226,106 @@ export class MasterManager {
       void this.triggerMemoryUpdate().catch((err) => {
         logger.warn({ err }, 'Periodic memory update failed');
       });
+    }
+  }
+
+  /**
+   * Write a structured exploration summary directly to memory.md after exploration completes
+   * (OB-F156, OB-1271). At completedTaskCount=0 there is no conversation history yet, so
+   * triggerMemoryUpdate() would produce an empty/stub file. This method reads the workspace
+   * map and classification results and writes a meaningful seed instead.
+   */
+  private async writeExplorationSummaryToMemory(): Promise<void> {
+    const memoryPath = this.dotFolder.getMemoryFilePath();
+    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    try {
+      const map = await this.readWorkspaceMapFromStore();
+      const classification: Classification | null = await this.dotFolder.readClassification();
+
+      if (!map && !classification) {
+        logger.warn('writeExplorationSummaryToMemory: no exploration data — skipping');
+        return;
+      }
+
+      const lines: string[] = ['# Memory', `> Generated: ${now} (post-exploration seed)`, ''];
+
+      // Project overview from workspace map
+      if (map) {
+        lines.push('## Project Overview', '');
+        if (map.projectName) lines.push(`**Project:** ${map.projectName}`);
+        if (map.projectType) lines.push(`**Type:** ${map.projectType}`);
+        const mapAny = map as Record<string, unknown>;
+        if (typeof mapAny['projectPhase'] === 'string') {
+          lines.push(`**Phase:** ${mapAny['projectPhase']}`);
+        }
+        if (typeof mapAny['summary'] === 'string') {
+          lines.push('', mapAny['summary']);
+        }
+        lines.push('');
+      } else if (classification) {
+        lines.push('## Project Overview', '');
+        lines.push(`**Project:** ${classification.projectName}`);
+        lines.push(`**Type:** ${classification.projectType}`);
+        lines.push('');
+      }
+
+      // Frameworks — prefer map, fall back to classification
+      const frameworks: string[] = map?.frameworks?.length
+        ? map.frameworks
+        : (classification?.frameworks ?? []);
+      if (frameworks.length > 0) {
+        lines.push('## Frameworks & Tech Stack', '');
+        for (const f of frameworks) lines.push(`- ${f}`);
+        lines.push('');
+      }
+
+      // Directory structure
+      if (map?.structure && Object.keys(map.structure).length > 0) {
+        lines.push('## Directory Structure', '');
+        for (const [dir, info] of Object.entries(map.structure)) {
+          lines.push(`- **${dir}/**: ${info.purpose}`);
+          if (lines.length >= 160) {
+            lines.push('- _(truncated — see workspace-map.json for full list)_');
+            break;
+          }
+        }
+        lines.push('');
+      }
+
+      // Key commands
+      const commands: Record<string, string> =
+        ((map as Record<string, unknown> | null)?.['commands'] as
+          | Record<string, string>
+          | undefined) ??
+        classification?.commands ??
+        {};
+      const cmdEntries = Object.entries(commands);
+      if (cmdEntries.length > 0) {
+        lines.push('## Key Commands', '');
+        for (const [name, cmd] of cmdEntries) lines.push(`- **${name}:** \`${cmd}\``);
+        lines.push('');
+      }
+
+      // Exploration metadata
+      if (this.explorationSummary) {
+        lines.push('## Exploration Status', '');
+        lines.push(`- Status: ${this.explorationSummary.status}`);
+        lines.push(`- Directories explored: ${this.explorationSummary.directoriesExplored}`);
+        lines.push('');
+      }
+
+      lines.push('---');
+      lines.push('_Seeded from exploration results. Updated each session._');
+
+      const content = lines.join('\n');
+      await this.dotFolder.writeMemoryFile(content);
+      logger.info(
+        { memoryPath, lineCount: lines.length },
+        'Exploration summary written to memory.md',
+      );
+    } catch (err) {
+      logger.warn({ err, memoryPath }, 'writeExplorationSummaryToMemory failed');
     }
   }
 
@@ -4313,14 +4414,11 @@ export class MasterManager {
       // Master-driven exploration via the persistent session
       await this.masterDrivenExplore();
 
-      // Seed memory.md with exploration results before entering ready state (OB-F156, OB-1270).
-      // triggerMemoryUpdate() normally fires every MEMORY_UPDATE_INTERVAL tasks, but
-      // completedTaskCount is 0 at this point — call it explicitly so memory.md is not empty.
-      try {
-        await this.triggerMemoryUpdate();
-      } catch (err) {
-        logger.warn({ err }, 'Post-exploration memory update failed');
-      }
+      // Seed memory.md with exploration results before entering ready state (OB-F156, OB-1271).
+      // triggerMemoryUpdate() relies on conversation history; completedTaskCount=0 here so
+      // there are no messages yet. writeExplorationSummaryToMemory() reads workspace-map.json
+      // and classification.json directly, producing a meaningful seed on first startup.
+      await this.writeExplorationSummaryToMemory();
 
       this.state = 'ready';
 
