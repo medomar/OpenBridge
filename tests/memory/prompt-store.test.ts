@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type Database from 'better-sqlite3';
 import { openDatabase, closeDatabase } from '../../src/memory/database.js';
 import {
@@ -6,12 +6,25 @@ import {
   createPromptVersion,
   recordPromptOutcome,
   getUnderperformingPrompts,
+  MAX_PROMPT_VERSION_LENGTH,
 } from '../../src/memory/prompt-store.js';
+
+const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
+
+vi.mock('../../src/core/logger.js', () => ({
+  createLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: mockWarn,
+    error: vi.fn(),
+    debug: vi.fn(),
+  })),
+}));
 
 describe('prompt-store.ts', () => {
   let db: Database.Database;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     db = openDatabase(':memory:');
   });
 
@@ -80,6 +93,33 @@ describe('prompt-store.ts', () => {
       createPromptVersion(db, 'eff-test', 'content');
       const result = getActivePrompt(db, 'eff-test');
       expect(result!.effectiveness).toBe(0.5);
+    });
+
+    it('rejects content exceeding the size cap and does not insert', () => {
+      const oversizedContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH + 1);
+      createPromptVersion(db, 'oversized-prompt', oversizedContent);
+
+      const result = getActivePrompt(db, 'oversized-prompt');
+      expect(result).toBeNull();
+    });
+
+    it('logs a warning when content exceeds the size cap', () => {
+      const oversizedContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH + 1);
+      createPromptVersion(db, 'oversized-prompt', oversizedContent);
+
+      expect(mockWarn).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'oversized-prompt', size: oversizedContent.length }),
+        expect.stringContaining('size cap'),
+      );
+    });
+
+    it('accepts content exactly at the size cap', () => {
+      const exactContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH);
+      createPromptVersion(db, 'exact-size-prompt', exactContent);
+
+      const result = getActivePrompt(db, 'exact-size-prompt');
+      expect(result).not.toBeNull();
+      expect(result!.content).toBe(exactContent);
     });
   });
 

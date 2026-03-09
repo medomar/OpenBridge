@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 23 | **In Progress:** 0 | **Done:** 70 (1239 archived)
+> **Pending:** 22 | **In Progress:** 0 | **Done:** 71 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -208,7 +208,7 @@
 | #       | Task                                                                                                                                                                                                                                                                                   | Finding | Model  | Status  |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
 | OB-1250 | Add a `MAX_PROMPT_VERSION_LENGTH = 45_000` constant in `src/memory/prompt-store.ts`. In `createPromptVersion()`, reject updates where `content.length > MAX_PROMPT_VERSION_LENGTH` — log a warning with the prompt name and size, and return without inserting.                        | OB-F149 | sonnet | ✅ Done |
-| OB-1251 | Add unit test for the prompt version size cap: verify that `createPromptVersion()` with content > 45K chars does not insert and logs a warning. File: `tests/memory/prompt-store.test.ts` (add to existing or create).                                                                 | OB-F149 | sonnet | Pending |
+| OB-1251 | Add unit test for the prompt version size cap: verify that `createPromptVersion()` with content > 45K chars does not insert and logs a warning. File: `tests/memory/prompt-store.test.ts` (add to existing or create).                                                                 | OB-F149 | sonnet | ✅ Done |
 | OB-1252 | Add a `skipWorkspaceContext?: boolean` flag to the `SpawnOptions` type in `src/types/agent.ts` (or wherever SpawnOptions is defined). When true, `buildMasterSpawnOptions()` in `master-manager.ts` should skip the `getWorkspaceContextSummary()` injection into `opts.systemPrompt`. | OB-F150 | sonnet | Pending |
 | OB-1253 | In `generateIncrementalExplorationPrompt()` (`src/master/exploration-prompts.ts`), set `skipWorkspaceContext: true` on the returned spawn options since the prompt already contains the workspace map via `JSON.stringify(currentMap)`.                                                | OB-F150 | haiku  | Pending |
 | OB-1254 | In `seedPromptLibrary()` (`src/master/master-manager.ts`), add an existence check before inserting: query `SELECT COUNT(*) FROM prompt_versions WHERE name = ?` for each seed prompt. Skip insertion if rows already exist.                                                            | OB-F151 | sonnet | Pending |
