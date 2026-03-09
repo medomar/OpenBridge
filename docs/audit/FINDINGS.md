@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 15 | **Fixed:** 19 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 14 | **Fixed:** 20 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -281,7 +281,7 @@
 ### OB-F171 — Worker abort handles leak on pre-spawn failure
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts` (~lines 7597-8409)
 - **Root Cause / Impact:**
   In `spawnWorker()`, the abort handle is stored in `workerAbortHandles` Map. If an exception occurs before the worker actually spawns (escalation timeout, slot wait timeout, spawn error), the catch block may not always clean up the abort handle. Stale handles accumulate, holding references to streams/sockets.

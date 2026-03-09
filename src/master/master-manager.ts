@@ -8445,9 +8445,6 @@ ${currentContent}
         }
       }
 
-      // Clean up abort handle — worker has finished (OB-873)
-      this.workerAbortHandles.delete(workerId);
-
       // Update registry based on final result
       if (result.exitCode === 0) {
         this.workerRegistry.markCompleted(workerId, result);
@@ -8607,9 +8604,6 @@ ${currentContent}
       return result;
     } catch (error) {
       // Worker threw an exception (spawn error, exhausted retries, etc.)
-      // Clean up abort handle — worker has finished with exception (OB-873)
-      this.workerAbortHandles.delete(workerId);
-
       const errorMessage = error instanceof Error ? error.message : String(error);
       const failedResult: AgentResult = {
         exitCode: -1,
@@ -8687,6 +8681,10 @@ ${currentContent}
 
       // Re-throw so Promise.allSettled captures it as rejected
       throw error;
+    } finally {
+      // Always clean up abort handle — ensures no stale handles even on pre-spawn
+      // exceptions (escalation timeout, slot wait timeout, spawn error). (OB-F171)
+      this.workerAbortHandles.delete(workerId);
     }
   }
 
