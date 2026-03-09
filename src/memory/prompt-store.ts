@@ -1,5 +1,10 @@
 import type Database from 'better-sqlite3';
+import { createLogger } from '../core/logger.js';
 import type { PromptRecord } from './index.js';
+
+const logger = createLogger('prompt-store');
+
+export const MAX_PROMPT_VERSION_LENGTH = 45_000;
 
 // ---------------------------------------------------------------------------
 // Raw row shape returned by better-sqlite3
@@ -59,6 +64,14 @@ export function getActivePrompt(db: Database.Database, name: string): PromptReco
  * Runs inside a transaction.
  */
 export function createPromptVersion(db: Database.Database, name: string, content: string): void {
+  if (content.length > MAX_PROMPT_VERSION_LENGTH) {
+    logger.warn(
+      { name, size: content.length, max: MAX_PROMPT_VERSION_LENGTH },
+      'Prompt version rejected: content exceeds size cap',
+    );
+    return;
+  }
+
   const now = new Date().toISOString();
 
   const maxVersionRow = db
