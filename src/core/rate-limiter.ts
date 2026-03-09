@@ -3,12 +3,15 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('rate-limiter');
 
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 export class RateLimiter {
   private windowMs: number;
   private maxMessages: number;
   private enabled: boolean;
   /** sender → timestamps of recent messages */
   private readonly windows = new Map<string, number[]>();
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: RateLimitConfig) {
     this.enabled = config.enabled;
@@ -20,6 +23,30 @@ export class RateLimiter {
         { maxMessages: this.maxMessages, windowMs: this.windowMs },
         'Rate limiter initialized',
       );
+    }
+
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, CLEANUP_INTERVAL_MS);
+    // Allow the process to exit even if this interval is still active
+    this.cleanupInterval.unref?.();
+  }
+
+  /** Remove stale window entries to prevent unbounded Map growth */
+  private cleanup(): void {
+    const cutoff = Date.now() - 2 * this.windowMs;
+    for (const [sender, timestamps] of this.windows) {
+      if (timestamps.every((t) => t < cutoff)) {
+        this.windows.delete(sender);
+      }
+    }
+  }
+
+  /** Stop the background cleanup timer. Call from Bridge.stop(). */
+  dispose(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
   }
 

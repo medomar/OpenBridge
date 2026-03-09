@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 17 | **Fixed:** 17 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 16 | **Fixed:** 18 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -226,7 +226,7 @@
 ### OB-F166 — Rate limiter `windows` Map leaks stale entries forever
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/rate-limiter.ts` (~lines 36-38)
 - **Root Cause / Impact:**
   The `windows` Map stores per-sender timestamp arrays. While old timestamps within a window are filtered on each `isAllowed()` call, if a sender never sends another message, their entry stays in the Map permanently. With thousands of unique senders over time, memory grows linearly.
