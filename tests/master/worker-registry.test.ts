@@ -879,7 +879,7 @@ describe('WorkerRegistry', () => {
       expect(orphaned.map((w) => w.id)).not.toContain(completedId);
     });
 
-    it('batch stats audit: getAggregatedStats detects orphaned workers', () => {
+    it('batch stats audit: getAggregatedStats detects orphaned workers and auto-cancels pending ones', () => {
       // Terminal workers
       const w1 = registry.addWorker(sampleManifest);
       registry.markRunning(w1, 1001);
@@ -893,21 +893,22 @@ describe('WorkerRegistry', () => {
       const w3 = registry.addWorker(sampleManifest);
       registry.markRunning(w3, 1003); // stuck in running
 
-      registry.addWorker(sampleManifest); // stuck in pending
+      registry.addWorker(sampleManifest); // stuck in pending — will be auto-cancelled
 
       const stats = registry.getAggregatedStats();
       const terminalCount = stats.completed + stats.failed + stats.cancelled;
 
-      // total (4) != terminal (2) → audit detects 2 orphans
+      // Snapshot at call time: total (4) != terminal (2) → audit detects 2 orphans
       expect(stats.totalWorkers).toBe(4);
       expect(terminalCount).toBe(2);
       expect(stats.totalWorkers).toBeGreaterThan(terminalCount);
 
+      // After getAggregatedStats(), the pending orphan is auto-cancelled and removed.
+      // Only the running orphan (w3) remains in a non-terminal state.
       const orphaned = registry.getOrphanedWorkers();
-      expect(orphaned).toHaveLength(2);
-      for (const orphan of orphaned) {
-        expect(['pending', 'running']).toContain(orphan.status);
-      }
+      expect(orphaned).toHaveLength(1);
+      expect(orphaned[0]!.id).toBe(w3);
+      expect(orphaned[0]!.status).toBe('running');
     });
   });
 
