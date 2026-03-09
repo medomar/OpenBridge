@@ -26,6 +26,11 @@ interface DiscordProgressMessage {
   delete: () => Promise<unknown>;
 }
 
+interface DiscordProgressEntry {
+  message: DiscordProgressMessage;
+  createdAt: number;
+}
+
 interface DiscordTextChannel {
   send: (content: string) => Promise<DiscordProgressMessage>;
   isTextBased: () => boolean;
@@ -99,7 +104,8 @@ export class DiscordConnector implements Connector {
   private connected = false;
   private client: DiscordClient | null = null;
   /** Maps channelId → in-flight progress message for edit-in-place updates. */
-  private readonly progressMessages = new Map<string, DiscordProgressMessage>();
+  private readonly progressMessages = new Map<string, DiscordProgressEntry>();
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private readonly listeners: EventListeners = {
     message: [],
     ready: [],
@@ -163,6 +169,18 @@ export class DiscordConnector implements Connector {
       this.emit('error', err);
       this.emit('disconnected', err.message);
     });
+
+    const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+    const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+    this.cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [chatId, entry] of this.progressMessages) {
+        if (now - entry.createdAt > MAX_AGE_MS) {
+          this.progressMessages.delete(chatId);
+        }
+      }
+    }, CLEANUP_INTERVAL_MS);
+    this.cleanupInterval.unref?.();
   }
 
   async sendMessage(message: OutboundMessage): Promise<void> {
@@ -193,7 +211,7 @@ export class DiscordConnector implements Connector {
     try {
       if (event.type === 'complete') {
         if (existing) {
-          await existing.delete();
+          await existing.message.delete();
           this.progressMessages.delete(chatId);
         }
         return;
@@ -201,12 +219,12 @@ export class DiscordConnector implements Connector {
 
       const text = formatProgressEvent(event);
       if (existing) {
-        await existing.edit(text);
+        await existing.message.edit(text);
       } else {
         const channel = await this.client.channels.fetch(chatId);
         if (channel) {
           const msg = await channel.send(text);
-          this.progressMessages.set(chatId, msg);
+          this.progressMessages.set(chatId, { message: msg, createdAt: Date.now() });
         }
       }
     } catch (err: unknown) {
@@ -219,6 +237,10 @@ export class DiscordConnector implements Connector {
   }
 
   shutdown(): Promise<void> {
+    if (this.cleanupInterval !== null) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
     this.progressMessages.clear();
     if (this.client) {
       this.client.destroy();

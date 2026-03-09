@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 33 | **In Progress:** 0 | **Done:** 60 (1239 archived)
+> **Pending:** 32 | **In Progress:** 0 | **Done:** 61 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -45,7 +45,7 @@
 | P1  | 114   | Data Safety & Error Visibility | 12/12 | OB-F172/173/174/175/177     | ✅     |
 | P1  | 105   | Prompt Budget & Assembly       | 10/10 | OB-F147/148                 | ✅     |
 | P1  | 108   | Worker & Exploration Cleanup   | 10/10 | OB-F153/155/156             | ✅     |
-| P1  | 113   | Memory Leak Fixes              | 6/10  | OB-F165/166/169/171/176     | ◻      |
+| P1  | 113   | Memory Leak Fixes              | 7/10  | OB-F165/166/169/171/176     | ◻      |
 | P2  | 107   | Classification Fixes           | 6     | OB-F152/154                 | ◻      |
 | P2  | 106   | Prompt Growth & Dedup          | 7     | OB-F149/150/151             | ◻      |
 | P3  | 110   | God-Class Refactoring          | 8     | OB-F158/159/160             | ◻      |
@@ -176,7 +176,7 @@
 | OB-1308 | Add unit test: verify that `classificationCache` does not exceed `MAX_CLASSIFICATION_CACHE_SIZE` after inserting 15,000 entries. Verify oldest entries are evicted first. File: `tests/master/classification-cache-eviction.test.ts`.                                                                                                                               | OB-F169 | sonnet | ✅ Done |
 | OB-1309 | In `spawnWorker()` (`src/master/master-manager.ts`), wrap the entire spawn logic in `try { ... } finally { this.workerAbortHandles.delete(workerId); }`. This ensures the abort handle is always cleaned up, even on exceptions before the worker spawns.                                                                                                           | OB-F171 | sonnet | ✅ Done |
 | OB-1310 | Add periodic session cleanup to WebChat connector (`src/connectors/webchat/webchat-connector.ts`). Add a 5-minute interval that iterates the `sessions` Map and deletes entries with expired timestamps (`expiry < Date.now()`). Store the interval handle and clear in `shutdown()`.                                                                               | OB-F176 | sonnet | ✅ Done |
-| OB-1311 | Add TTL-based cleanup to Discord connector's `progressMessages` Map (`src/connectors/discord/discord-connector.ts`). Add a `createdAt` timestamp to each entry. Add a 10-minute cleanup interval that removes entries older than 30 minutes. Clear interval in `shutdown()`.                                                                                        | OB-F176 | sonnet | Pending |
+| OB-1311 | Add TTL-based cleanup to Discord connector's `progressMessages` Map (`src/connectors/discord/discord-connector.ts`). Add a `createdAt` timestamp to each entry. Add a 10-minute cleanup interval that removes entries older than 30 minutes. Clear interval in `shutdown()`.                                                                                        | OB-F176 | sonnet | ✅ Done |
 | OB-1312 | Add periodic cleanup to WhatsApp connector's `progressSent` Set (`src/connectors/whatsapp/whatsapp-connector.ts`). Clear the entire Set every 10 minutes (progress messages are ephemeral). Store the interval handle and clear in `shutdown()`.                                                                                                                    | OB-F176 | sonnet | Pending |
 | OB-1313 | Add unit test: verify WebChat session cleanup removes expired sessions but keeps valid ones. Verify Discord progress message cleanup removes old entries. File: `tests/connectors/connector-cleanup.test.ts`.                                                                                                                                                       | OB-F176 | sonnet | Pending |
 
