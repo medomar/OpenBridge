@@ -77,6 +77,10 @@ export type { SubMasterRecord, SubMasterStatus } from './sub-master-manager.js';
 // Export SkillManager for skills directory discovery and loading (OB-1704)
 export { SkillManager } from './skill-manager.js';
 
+// Export PromptContextBuilder for prompt/context assembly (OB-1282)
+export { PromptContextBuilder } from './prompt-context-builder.js';
+export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-context-builder.js';
+
 // Export PlanningGate for two-phase execution control (OB-1775)
 export { PlanningGate } from './planning-gate.js';
 export type {

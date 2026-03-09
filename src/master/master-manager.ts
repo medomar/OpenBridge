@@ -5,7 +5,7 @@ import {
   ClassificationEngine,
   classifyTaskType,
   turnsToTimeout,
-  MESSAGE_MAX_TURNS_QUICK,
+  // MESSAGE_MAX_TURNS_QUICK moved to prompt-context-builder.ts (OB-1282)
   MESSAGE_MAX_TURNS_TOOL_USE,
   MESSAGE_MAX_TURNS_PLANNING,
 } from './classification-engine.js';
@@ -13,19 +13,25 @@ import type { ClassificationResult } from './classification-engine.js';
 // Re-export for backward compatibility — consumers import from master-manager.ts (OB-1279)
 export type { ClassificationResult } from './classification-engine.js';
 import { DotFolderManager } from './dotfolder-manager.js';
-import { ExplorationCoordinator } from './exploration-coordinator.js';
-import { generateReExplorationPrompt } from './exploration-prompt.js';
-import { generateIncrementalExplorationPrompt } from './exploration-prompts.js';
-import {
-  generateMasterSystemPrompt,
-  formatLearnedPatternsSection,
-  formatWorkerNextStepsSection,
-  formatPreFetchedKnowledgeSection,
-  formatTargetedReaderSection,
-} from './master-system-prompt.js';
-import type { WorkerNextStepsEntry } from './master-system-prompt.js';
+import { ExplorationManager } from './exploration-manager.js';
+// Re-export for backward compatibility (OB-1280)
+export type { ExplorationManagerDeps } from './exploration-manager.js';
+import { WorkerOrchestrator } from './worker-orchestrator.js';
+// Re-export for backward compatibility (OB-1281)
+export type { WorkerOrchestratorDeps } from './worker-orchestrator.js';
+import { PromptContextBuilder } from './prompt-context-builder.js';
+// Re-export for backward compatibility (OB-1282)
+export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-context-builder.js';
+// predictToolRequirements, detectToolAccessFailure, ToolAccessFailure, ToolPrediction
+// moved to worker-orchestrator.ts (OB-1281)
+// ExplorationCoordinator, generateReExplorationPrompt, generateIncrementalExplorationPrompt
+// moved to exploration-manager.ts (OB-1280)
+import { generateMasterSystemPrompt } from './master-system-prompt.js';
+// formatLearnedPatternsSection, formatWorkerNextStepsSection,
+// formatPreFetchedKnowledgeSection, formatTargetedReaderSection, WorkerNextStepsEntry
+// moved to prompt-context-builder.ts (OB-1282)
 import { WorkspaceChangeTracker } from './workspace-change-tracker.js';
-import type { WorkspaceChanges } from './workspace-change-tracker.js';
+// WorkspaceChanges type moved to exploration-manager.ts (OB-1280)
 import {
   AgentRunner,
   TOOLS_READ_ONLY,
@@ -38,16 +44,7 @@ import {
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { manifestToSpawnOptions } from '../core/agent-runner.js';
 import { getRecommendedModel, avoidHighFailureModel } from '../core/model-selector.js';
-import {
-  PromptAssembler,
-  PRIORITY_IDENTITY,
-  PRIORITY_WORKSPACE,
-  PRIORITY_MEMORY,
-  PRIORITY_RAG,
-  PRIORITY_LEARNINGS,
-  PRIORITY_WORKER_NEXT,
-  PRIORITY_ANALYSIS,
-} from '../core/prompt-assembler.js';
+// PromptAssembler and PRIORITY_* constants moved to prompt-context-builder.ts (OB-1282)
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import { AdapterRegistry } from '../core/adapter-registry.js';
 import type { Router } from '../core/router.js';
@@ -65,12 +62,12 @@ import { ProfilesRegistrySchema } from '../types/agent.js';
 import { DelegationCoordinator } from './delegation.js';
 import { SubMasterManager } from './sub-master-manager.js';
 import type { SubMasterRecord } from './sub-master-manager.js';
-import { detectSubProjects } from './sub-master-detector.js';
+// detectSubProjects moved to exploration-manager.ts (OB-1280)
 import { openDatabase, closeDatabase } from '../memory/database.js';
 import { buildBriefing } from '../memory/worker-briefing.js';
 import { parseSpawnMarkers, hasSpawnMarkers, extractTaskSummaries } from './spawn-parser.js';
 import type { ParsedSpawnMarker } from './spawn-parser.js';
-import { parseAIResult } from './result-parser.js';
+// parseAIResult moved to exploration-manager.ts (OB-1280)
 import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
@@ -89,7 +86,6 @@ import type {
   ExplorationState,
   WorkspaceAnalysisMarker,
   LearningEntry,
-  Classification,
 } from '../types/master.js';
 import {
   WorkspaceMapSchema,
@@ -153,24 +149,7 @@ const SESSION_DEAD_PATTERNS = [
   'conversation too long',
 ];
 
-/** Maximum number of recent tasks to include in a context summary on restart */
-const RESTART_CONTEXT_TASK_LIMIT = 10;
-
-/**
- * Format an ISO timestamp as a human-readable "X ago" string.
- * Used to show the Master how fresh its workspace knowledge is.
- */
-function formatTimeAgo(isoTimestamp: string): string {
-  const ms = Date.now() - new Date(isoTimestamp).getTime();
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  if (days > 0) return `${days} day${days !== 1 ? 's' : ''} ago`;
-  if (hours > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-  if (minutes > 0) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-  return 'just now';
-}
+// RESTART_CONTEXT_TASK_LIMIT and formatTimeAgo moved to prompt-context-builder.ts (OB-1282)
 
 /** Result of a tool-access failure scan on a worker result. */
 export interface ToolAccessFailure {
@@ -447,18 +426,8 @@ function masterTaskToMemoryTask(
  */
 export type ProgressReporter = (event: ProgressEvent) => Promise<void>;
 
-/**
- * Optional pre-formatted context sections to inject into the Master system prompt.
- * Passed to buildMasterSpawnOptions() so PromptAssembler can budget-rank them.
- */
-interface MasterContextSections {
-  conversationContext?: string | null;
-  learnedPatternsContext?: string | null;
-  workerNextStepsContext?: string | null;
-  knowledgeContext?: string | null;
-  targetedReaderContext?: string | null;
-  analysisContext?: string | null;
-}
+// MasterContextSections moved to prompt-context-builder.ts (OB-1282)
+import type { MasterContextSections } from './prompt-context-builder.js';
 
 /**
  * Options for creating a MasterManager
@@ -561,10 +530,22 @@ export class MasterManager {
   private tunnelUrl: string | null = null;
 
   private state: MasterState = 'idle';
-  private explorationSummary: ExplorationSummary | null = null;
 
-  /** Messages queued while exploration is in progress — drained after exploration completes */
-  private pendingMessages: InboundMessage[] = [];
+  /** Exploration summary — delegated to ExplorationManager (OB-1280). */
+  private get explorationSummary(): ExplorationSummary | null {
+    return this.explorationManager?.explorationSummary ?? null;
+  }
+  private set explorationSummary(value: ExplorationSummary | null) {
+    if (this.explorationManager) this.explorationManager.explorationSummary = value;
+  }
+
+  /** Messages queued while exploration is in progress — delegated to ExplorationManager (OB-1280). */
+  private get pendingMessages(): InboundMessage[] {
+    return this.explorationManager?.pendingMessages ?? [];
+  }
+  private set pendingMessages(value: InboundMessage[]) {
+    if (this.explorationManager) this.explorationManager.pendingMessages = value;
+  }
   /** Router reference for sending pending message responses after exploration completes */
   private router: Router | null = null;
   /** The InboundMessage currently being processed — set for the duration of processMessage/streamMessage so spawnWorker can escalate tool failures (OB-1593). */
@@ -580,8 +561,7 @@ export class MasterManager {
   private restartCount = 0;
   /** Timestamp of last user message (for idle detection) */
   private lastMessageTimestamp: number | null = null;
-  /** Timestamp of the last exploration run (incremental or full) — used to throttle re-exploration (OB-849) */
-  private lastExplorationAt: number | null = null;
+  // lastExplorationAt moved to ExplorationManager (OB-1280)
   /** Idle detection timer (runs self-improvement when idle for >5 min) */
   private idleCheckTimer: NodeJS.Timeout | null = null;
   /** Whether self-improvement is currently running */
@@ -590,16 +570,34 @@ export class MasterManager {
   private consecutiveIdleCycles = 0;
   /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
   private completedTaskCount = 0;
-  /** Cached workspace map summary (from workspace-map.json) for system prompt injection */
-  private workspaceMapSummary: string | null = null;
-  /** ISO timestamp of the most recent startup verification — for freshness indicator in system prompt */
-  private mapLastVerifiedAt: string | null = null;
+  /** Cached workspace map summary — delegated to ExplorationManager (OB-1280). */
+  private get workspaceMapSummary(): string | null {
+    return this.explorationManager?.workspaceMapSummary ?? null;
+  }
+  private set workspaceMapSummary(value: string | null) {
+    if (this.explorationManager) this.explorationManager.workspaceMapSummary = value;
+  }
+  /** ISO timestamp of latest startup verification — delegated to ExplorationManager (OB-1280). */
+  private get mapLastVerifiedAt(): string | null {
+    return this.explorationManager?.mapLastVerifiedAt ?? null;
+  }
+  private set mapLastVerifiedAt(value: string | null) {
+    if (this.explorationManager) this.explorationManager.mapLastVerifiedAt = value;
+  }
   /** Cached summary of past learnings for injection into Master system prompt */
   private learningsSummary: string | null = null;
   /** Classification engine — extracted from MasterManager (OB-1279, OB-F158). */
   private readonly classificationEngine: ClassificationEngine;
-  /** Abort handles for running worker processes — keyed by workerId (OB-873). Used by killWorker(). */
-  private readonly workerAbortHandles: Map<string, () => void> = new Map();
+  /** Exploration manager — extracted from MasterManager (OB-1280, OB-F158). */
+  private readonly explorationManager: ExplorationManager;
+  /** Worker orchestrator — extracted from MasterManager (OB-1281, OB-F158). */
+  private readonly workerOrchestrator: WorkerOrchestrator;
+  /** Prompt/context builder — extracted from MasterManager (OB-1282, OB-F158). */
+  private readonly promptContextBuilder: PromptContextBuilder;
+  /** Abort handles for running worker processes — delegated to WorkerOrchestrator (OB-1281). */
+  private get workerAbortHandles(): Map<string, () => void> {
+    return this.workerOrchestrator.workerAbortHandles;
+  }
   /** Cancellation notifications queued for injection into the next Master call (OB-884). */
   private readonly pendingCancellationNotifications: string[] = [];
   /** Deep Mode resume offers queued for injection into the next Master call (OB-1405). */
@@ -681,6 +679,89 @@ export class MasterManager {
       workspacePath: this.workspacePath,
       adapter: this.adapter,
       getWorkspaceContext: () => this.getWorkspaceContextSummary(),
+    });
+
+    // Initialise ExplorationManager — extracted from MasterManager (OB-1280)
+    this.explorationManager = new ExplorationManager({
+      workspacePath: this.workspacePath,
+      masterTool: this.masterTool,
+      discoveredTools: this.discoveredTools,
+      dotFolder: this.dotFolder,
+      changeTracker: this.changeTracker,
+      agentRunner: this.agentRunner,
+      explorationTimeout: this.explorationTimeout,
+      adapter: this.adapter,
+      getMemory: () => this.memory,
+      getRouter: () => this.router,
+      getSubMasterManager: () => this.subMasterManager,
+      getMasterSession: () => this.masterSession,
+      getState: () => this.state,
+      setState: (s) => {
+        this.state = s;
+      },
+      buildMasterSpawnOptions: (prompt, timeout, maxTurns, sections, skip) =>
+        this.buildMasterSpawnOptions(prompt, timeout, maxTurns, sections, skip),
+      updateMasterSession: () => this.updateMasterSession(),
+      processMessage: (msg) => this.processMessage(msg),
+      readWorkspaceMapFromStore: () => this.readWorkspaceMapFromStore(),
+      writeWorkspaceMapToStore: (map) => this.writeWorkspaceMapToStore(map),
+      readAnalysisMarkerFromStore: () => this.readAnalysisMarkerFromStore(),
+      writeAnalysisMarkerToStore: (marker) => this.writeAnalysisMarkerToStore(marker),
+      readExplorationStateFromStore: () => this.readExplorationStateFromStore(),
+    });
+
+    // Initialise WorkerOrchestrator — extracted from MasterManager (OB-1281)
+    this.workerOrchestrator = new WorkerOrchestrator({
+      workspacePath: this.workspacePath,
+      masterTool: this.masterTool,
+      discoveredTools: this.discoveredTools,
+      dotFolder: this.dotFolder,
+      agentRunner: this.agentRunner,
+      workerRegistry: this.workerRegistry,
+      adapterRegistry: this.adapterRegistry,
+      modelRegistry: this.modelRegistry,
+      workerRetryDelayMs: this.workerRetryDelayMs,
+      workerMaxFixIterations: this.workerMaxFixIterations,
+      getMemory: () => this.memory,
+      getRouter: () => this.router,
+      getMasterSession: () => this.masterSession,
+      getActiveMessage: () => this.activeMessage,
+      getState: () => this.state,
+      setState: (s) => {
+        this.state = s;
+      },
+      getActiveSkillPacks: () => this.activeSkillPacks,
+      getKnowledgeRetriever: () => this.knowledgeRetriever,
+      getBatchManager: () => this.batchManager,
+      getBatchTimers: () => this.batchTimers,
+      getDelegationCoordinator: () => this.delegationCoordinator,
+      readProfilesFromStore: () => this.readProfilesFromStore(),
+      persistWorkerRegistry: () => this.persistWorkerRegistry(),
+      recordWorkerLearning: (task, result, profile, model) =>
+        this.recordWorkerLearning(task, result, profile, model),
+      recordPromptEffectiveness: (task, result) => this.recordPromptEffectiveness(task, result),
+      recordConversationMessage: (sessionId, role, content) =>
+        this.recordConversationMessage(sessionId, role, content),
+    });
+
+    // Initialise PromptContextBuilder — extracted from MasterManager (OB-1282)
+    this.promptContextBuilder = new PromptContextBuilder({
+      workspacePath: this.workspacePath,
+      dotFolder: this.dotFolder,
+      adapter: this.adapter,
+      messageTimeout: this.messageTimeout,
+      getMemory: () => this.memory,
+      getSystemPrompt: () => this.systemPrompt,
+      getMasterSession: () => this.masterSession,
+      getMapLastVerifiedAt: () => this.mapLastVerifiedAt,
+      getLearningsSummary: () => this.learningsSummary,
+      getExplorationSummary: () => this.explorationSummary,
+      getWorkspaceContextSummary: () => this.getWorkspaceContextSummary(),
+      getBatchManager: () => this.batchManager,
+      drainCancellationNotifications: () => this.pendingCancellationNotifications.splice(0),
+      drainDeepModeResumeOffers: () => this.pendingDeepModeResumeOffers.splice(0),
+      readWorkspaceMapFromStore: () => this.readWorkspaceMapFromStore(),
+      readAllTasksFromStore: () => this.readAllTasksFromStore(),
     });
 
     logger.info(
@@ -1018,155 +1099,22 @@ export class MasterManager {
     }
   }
 
-  /**
-   * Retrieve conversation context for the Master's system prompt (OB-731, OB-1022, OB-1025).
-   *
-   * Three layers (in order):
-   *   1. Recent session messages — last 10 user+master turns from the current session.
-   *      Gives the Master conversational continuity across stateless --print calls.
-   *   2. memory.md — Master's curated brain (always small, always relevant).
-   *   3. Cross-session FTS5 — BM25-ranked hits from past sessions for supplementary context.
-   */
+  /** Retrieve conversation context. Delegated to PromptContextBuilder (OB-1282). */
   private async buildConversationContext(
     userMessage: string,
     sessionId?: string,
   ): Promise<string | null> {
-    const sections: string[] = [];
-
-    // Layer 1: Recent conversation messages from the CURRENT session
-    if (sessionId && this.memory) {
-      try {
-        const sessionMessages = await this.memory.getSessionHistory(sessionId, 20);
-        // Filter to user and master roles only, take last 10
-        const relevant = sessionMessages
-          .filter((e) => e.role === 'user' || e.role === 'master')
-          .slice(-10);
-        if (relevant.length > 0) {
-          const lines = relevant.map((e) => {
-            const label = e.role === 'user' ? 'User' : 'You';
-            // Truncate individual messages to prevent context bloat
-            const content = e.content.length > 400 ? e.content.slice(0, 400) + '…' : e.content;
-            return `${label}: ${content}`;
-          });
-          sections.push('## Recent conversation (this session):\n' + lines.join('\n'));
-        }
-      } catch (err) {
-        logger.warn({ err }, 'Failed to load session history for context injection');
-      }
-    }
-
-    // Layer 2: load memory.md (OB-1022)
-    try {
-      const memoryContent = await this.dotFolder.readMemoryFile();
-      if (memoryContent && memoryContent.trim().length > 0) {
-        sections.push('## Memory:\n' + memoryContent.trim());
-      }
-    } catch (err) {
-      logger.warn({ err }, 'Failed to read memory.md for context injection');
-    }
-
-    // Layer 3: cross-session FTS5 search via searchConversations() (OB-1025).
-    // Supplements topics not yet captured in memory.md or current session.
-    if (this.memory) {
-      try {
-        const crossSession = await this.memory.searchConversations(userMessage, 5);
-        // Only include user and master turns — skip worker/system noise
-        const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
-        if (relevant.length > 0) {
-          const lines = relevant.map((e) => {
-            const dateStr = e.created_at
-              ? new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16)
-              : '';
-            const label = e.role === 'user' ? 'User' : 'Master';
-            const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
-            return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
-          });
-          sections.push('## Related past conversations:\n' + lines.join('\n'));
-        }
-      } catch (err) {
-        logger.warn(
-          { err },
-          'Failed to retrieve cross-session conversation history for context injection',
-        );
-      }
-    }
-
-    return sections.length > 0 ? sections.join('\n\n') : null;
+    return this.promptContextBuilder.buildConversationContext(userMessage, sessionId);
   }
 
-  /**
-   * Build the "## Learned Patterns" section for injection into the Master system prompt.
-   * Pulls from the learnings table (best model per task type with > 5 data points) and the
-   * prompts table (high-effectiveness prompt templates with > 5 uses). Returns null when
-   * there is insufficient data or when MemoryManager is unavailable (OB-735).
-   */
+  /** Build learned patterns context. Delegated to PromptContextBuilder (OB-1282). */
   private async buildLearnedPatternsContext(): Promise<string | null> {
-    if (!this.memory) return null;
-    try {
-      const [allLearnings, effectivePrompts] = await Promise.all([
-        this.memory.getLearnedTaskTypes(),
-        this.memory.getHighEffectivenessPrompts(0.7, 5),
-      ]);
-
-      // Only include task types with > 5 total data points
-      const modelLearnings = allLearnings
-        .filter((l) => l.successCount + l.failureCount > 5)
-        .map((l) => ({
-          taskType: l.taskType,
-          bestModel: l.bestModel,
-          successRate: l.successRate,
-          totalTasks: l.successCount + l.failureCount,
-        }));
-
-      const promptPatterns = effectivePrompts.map((p) => ({
-        name: p.name,
-        effectiveness: p.effectiveness,
-        usageCount: p.usage_count,
-      }));
-
-      return formatLearnedPatternsSection({ modelLearnings, effectivePrompts: promptPatterns });
-    } catch (err) {
-      logger.warn({ err }, 'Failed to build learned patterns context');
-      return null;
-    }
+    return this.promptContextBuilder.buildLearnedPatternsContext();
   }
 
-  /**
-   * Read next_steps from the 5 most recent completed worker summaries and format them
-   * as a "## Pending Worker Next Steps" system prompt section (OB-1635).
-   * Returns null when no workers have a summary or none reported follow-up work.
-   */
+  /** Build worker next steps context. Delegated to PromptContextBuilder (OB-1282). */
   private async buildWorkerNextStepsContext(): Promise<string | null> {
-    if (!this.memory) return null;
-    try {
-      const recentWorkers = await this.memory.getRecentWorkerSpawns(5);
-      const entries: WorkerNextStepsEntry[] = [];
-      for (const worker of recentWorkers) {
-        if (!worker.summary_json) continue;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(worker.summary_json);
-        } catch {
-          continue;
-        }
-        const parsedRecord =
-          typeof parsed === 'object' && parsed !== null
-            ? (parsed as Record<string, unknown>)
-            : null;
-        const nextSteps =
-          parsedRecord !== null && typeof parsedRecord['next_steps'] === 'string'
-            ? parsedRecord['next_steps']
-            : '';
-        entries.push({
-          taskSummary: worker.task_summary ?? '',
-          nextSteps,
-        });
-      }
-      return formatWorkerNextStepsSection(entries);
-    } catch (err) {
-      logger.warn({ err }, 'Failed to build worker next steps context');
-      return null;
-    }
+    return this.promptContextBuilder.buildWorkerNextStepsContext();
   }
 
   /**
@@ -1188,104 +1136,9 @@ export class MasterManager {
     }
   }
 
-  /**
-   * Write a structured exploration summary directly to memory.md after exploration completes
-   * (OB-F156, OB-1271). At completedTaskCount=0 there is no conversation history yet, so
-   * triggerMemoryUpdate() would produce an empty/stub file. This method reads the workspace
-   * map and classification results and writes a meaningful seed instead.
-   */
+  /** Write exploration summary to memory.md. Delegated to ExplorationManager (OB-1280). */
   private async writeExplorationSummaryToMemory(): Promise<void> {
-    const memoryPath = this.dotFolder.getMemoryFilePath();
-    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-
-    try {
-      const map = await this.readWorkspaceMapFromStore();
-      const classification: Classification | null = await this.dotFolder.readClassification();
-
-      if (!map && !classification) {
-        logger.warn('writeExplorationSummaryToMemory: no exploration data — skipping');
-        return;
-      }
-
-      const lines: string[] = ['# Memory', `> Generated: ${now} (post-exploration seed)`, ''];
-
-      // Project overview from workspace map
-      if (map) {
-        lines.push('## Project Overview', '');
-        if (map.projectName) lines.push(`**Project:** ${map.projectName}`);
-        if (map.projectType) lines.push(`**Type:** ${map.projectType}`);
-        const mapAny = map as Record<string, unknown>;
-        if (typeof mapAny['projectPhase'] === 'string') {
-          lines.push(`**Phase:** ${mapAny['projectPhase']}`);
-        }
-        if (typeof mapAny['summary'] === 'string') {
-          lines.push('', mapAny['summary']);
-        }
-        lines.push('');
-      } else if (classification) {
-        lines.push('## Project Overview', '');
-        lines.push(`**Project:** ${classification.projectName}`);
-        lines.push(`**Type:** ${classification.projectType}`);
-        lines.push('');
-      }
-
-      // Frameworks — prefer map, fall back to classification
-      const frameworks: string[] = map?.frameworks?.length
-        ? map.frameworks
-        : (classification?.frameworks ?? []);
-      if (frameworks.length > 0) {
-        lines.push('## Frameworks & Tech Stack', '');
-        for (const f of frameworks) lines.push(`- ${f}`);
-        lines.push('');
-      }
-
-      // Directory structure
-      if (map?.structure && Object.keys(map.structure).length > 0) {
-        lines.push('## Directory Structure', '');
-        for (const [dir, info] of Object.entries(map.structure)) {
-          lines.push(`- **${dir}/**: ${info.purpose}`);
-          if (lines.length >= 160) {
-            lines.push('- _(truncated — see workspace-map.json for full list)_');
-            break;
-          }
-        }
-        lines.push('');
-      }
-
-      // Key commands
-      const commands: Record<string, string> =
-        ((map as Record<string, unknown> | null)?.['commands'] as
-          | Record<string, string>
-          | undefined) ??
-        classification?.commands ??
-        {};
-      const cmdEntries = Object.entries(commands);
-      if (cmdEntries.length > 0) {
-        lines.push('## Key Commands', '');
-        for (const [name, cmd] of cmdEntries) lines.push(`- **${name}:** \`${cmd}\``);
-        lines.push('');
-      }
-
-      // Exploration metadata
-      if (this.explorationSummary) {
-        lines.push('## Exploration Status', '');
-        lines.push(`- Status: ${this.explorationSummary.status}`);
-        lines.push(`- Directories explored: ${this.explorationSummary.directoriesExplored}`);
-        lines.push('');
-      }
-
-      lines.push('---');
-      lines.push('_Seeded from exploration results. Updated each session._');
-
-      const content = lines.join('\n');
-      await this.dotFolder.writeMemoryFile(content);
-      logger.info(
-        { memoryPath, lineCount: lines.length },
-        'Exploration summary written to memory.md',
-      );
-    } catch (err) {
-      logger.warn({ err, memoryPath }, 'writeExplorationSummaryToMemory failed');
-    }
+    return this.explorationManager.writeExplorationSummaryToMemory();
   }
 
   /**
@@ -2036,15 +1889,7 @@ export class MasterManager {
     }
   }
 
-  /**
-   * Build spawn options for a Master session call.
-   * Uses --session-id on first call, --resume on subsequent calls.
-   * Injects the system prompt via --append-system-prompt.
-   *
-   * Uses PromptAssembler for budget-aware system prompt construction (OB-1246).
-   * Each context section is prioritized so lower-priority content is truncated
-   * or dropped when the total budget is exceeded, instead of silent truncation.
-   */
+  /** Assemble SpawnOptions for a Master AI call. Delegated to PromptContextBuilder (OB-1282). */
   private buildMasterSpawnOptions(
     prompt: string,
     timeout?: number,
@@ -2052,409 +1897,33 @@ export class MasterManager {
     contextSections?: MasterContextSections,
     skipWorkspaceContext?: boolean,
   ): SpawnOptions {
-    if (!this.masterSession) {
-      throw new Error('Master session not initialized — call initMasterSession() first');
-    }
-    const session = this.masterSession;
-    const opts: SpawnOptions = {
+    return this.promptContextBuilder.buildMasterSpawnOptions(
       prompt,
-      workspacePath: this.workspacePath,
-      allowedTools: [...session.allowedTools],
-      maxTurns: maxTurns ?? MESSAGE_MAX_TURNS_QUICK,
-      timeout: timeout ?? this.messageTimeout,
-      retries: 0, // Master session calls don't auto-retry (caller handles)
-    };
-
-    // Use --print mode (non-interactive). Interactive sessions (--session-id)
-    // hang as headless child processes — no TTY for permission prompts.
-    // No sessionId/resumeSessionId set → buildArgs() defaults to --print.
-
-    // Retrieve adapter-aware system prompt budget (OB-F147/OB-F148)
-    const budget = this.adapter?.getPromptBudget?.() ?? { maxSystemPromptChars: 100_000 };
-    const assembler = new PromptAssembler();
-
-    // Base system prompt — identity and rules (highest priority)
-    if (this.systemPrompt) {
-      assembler.addSection('System Prompt', this.systemPrompt, PRIORITY_IDENTITY);
-    }
-
-    // Drain pending cancellation notifications (OB-884).
-    // Urgent — Master must know about killed workers to avoid re-spawning them.
-    if (this.pendingCancellationNotifications.length > 0) {
-      const notifications = this.pendingCancellationNotifications.splice(0);
-      assembler.addSection(
-        'Worker Cancellations',
-        '## IMPORTANT — Worker Cancellation Events\n\n' + notifications.join('\n'),
-        95,
-      );
-    }
-
-    // Drain pending Deep Mode resume offers (OB-1405).
-    // Urgent — Master must know about incomplete sessions from prior runs.
-    if (this.pendingDeepModeResumeOffers.length > 0) {
-      const offers = this.pendingDeepModeResumeOffers.splice(0);
-      assembler.addSection(
-        'Deep Mode Resume',
-        '## IMPORTANT — Incomplete Deep Mode Sessions\n\n' + offers.join('\n\n'),
-        93,
-      );
-    }
-
-    // Batch context — important for task continuity (OB-1617)
-    if (this.batchManager) {
-      const activeBatchId = this.batchManager.getCurrentBatchId();
-      if (activeBatchId) {
-        const batchContext = this.batchManager.buildBatchContextSection(activeBatchId);
-        if (batchContext) {
-          assembler.addSection('Batch Context', batchContext, 85);
-        }
-      }
-    }
-
-    // Workspace knowledge — project type, frameworks, structure
-    // Skipped when the prompt already contains the workspace map (e.g. incremental exploration).
-    if (!skipWorkspaceContext && this.explorationSummary?.status === 'completed') {
-      const mapContext = this.getWorkspaceContextSummary();
-      if (mapContext) {
-        let contextText = mapContext;
-        if (this.mapLastVerifiedAt) {
-          contextText += `\n\nMap last verified: ${formatTimeAgo(this.mapLastVerifiedAt)}`;
-        }
-        assembler.addSection(
-          'Workspace Knowledge',
-          '## Current Workspace Knowledge\n\n' + contextText,
-          PRIORITY_WORKSPACE,
-        );
-      }
-    }
-
-    // Conversation context — memory.md + session history + cross-session FTS5
-    if (contextSections?.conversationContext) {
-      assembler.addSection(
-        'Conversation Context',
-        contextSections.conversationContext,
-        PRIORITY_MEMORY,
-      );
-    }
-
-    // Pre-fetched knowledge (RAG)
-    if (contextSections?.knowledgeContext) {
-      assembler.addSection(
-        'Knowledge Context',
-        formatPreFetchedKnowledgeSection(contextSections.knowledgeContext),
-        PRIORITY_RAG,
-      );
-    }
-
-    // Targeted reader results
-    if (contextSections?.targetedReaderContext) {
-      assembler.addSection(
-        'Targeted Reader',
-        formatTargetedReaderSection(contextSections.targetedReaderContext),
-        55,
-      );
-    }
-
-    // Learned patterns — model success rates, effective prompt templates
-    if (contextSections?.learnedPatternsContext) {
-      assembler.addSection(
-        'Learned Patterns',
-        contextSections.learnedPatternsContext,
-        PRIORITY_LEARNINGS + 5,
-      );
-    }
-
-    // Learnings summary — past task outcomes
-    if (this.learningsSummary) {
-      assembler.addSection(
-        'Learnings',
-        '## Learnings from Past Tasks\n\n' + this.learningsSummary,
-        PRIORITY_LEARNINGS,
-      );
-    }
-
-    // Worker next steps — follow-up work from recent workers
-    if (contextSections?.workerNextStepsContext) {
-      assembler.addSection(
-        'Worker Next Steps',
-        contextSections.workerNextStepsContext,
-        PRIORITY_WORKER_NEXT,
-      );
-    }
-
-    // Analysis context — planning gate output
-    if (contextSections?.analysisContext) {
-      assembler.addSection('Analysis Context', contextSections.analysisContext, PRIORITY_ANALYSIS);
-    }
-
-    const assembled = assembler.assemble(budget.maxSystemPromptChars);
-    if (assembled) {
-      opts.systemPrompt = assembled;
-    }
-
-    return opts;
+      timeout,
+      maxTurns,
+      contextSections,
+      skipWorkspaceContext,
+    );
   }
 
-  /**
-   * Build a concise workspace context string from the loaded workspace map.
-   * Uses the cached map summary if available (much richer than exploration metadata).
-   */
+  /** Get workspace context summary. Delegated to ExplorationManager (OB-1280). */
   private getWorkspaceContextSummary(): string | null {
-    // Prefer the cached full map summary — it contains everything the AI needs
-    if (this.workspaceMapSummary) {
-      return this.workspaceMapSummary;
-    }
-
-    // Fallback to exploration metadata
-    if (!this.explorationSummary) return null;
-    const parts: string[] = [];
-    if (this.explorationSummary.projectType) {
-      parts.push(`Project type: ${this.explorationSummary.projectType}`);
-    }
-    if (this.explorationSummary.frameworks && this.explorationSummary.frameworks.length > 0) {
-      parts.push(`Frameworks: ${this.explorationSummary.frameworks.join(', ')}`);
-    }
-    if (this.explorationSummary.insights && this.explorationSummary.insights.length > 0) {
-      parts.push(
-        `Key insights:\n${this.explorationSummary.insights.map((i) => `- ${i}`).join('\n')}`,
-      );
-    }
-    if (this.explorationSummary.mapPath) {
-      parts.push(`Full workspace map available at: ${this.explorationSummary.mapPath}`);
-    }
-    return parts.length > 0 ? parts.join('\n') : null;
+    return this.explorationManager.getWorkspaceContextSummary();
   }
 
-  /**
-   * Build a concise summary of past learnings for system prompt injection.
-   * Groups the most recent entries by task type and computes stats:
-   * success rate, best model, best profile, avg duration.
-   * Capped at ~2000 chars to avoid prompt bloat.
-   */
+  /** Build learnings summary. Delegated to PromptContextBuilder (OB-1282). */
   private buildLearningsSummary(entries: LearningEntry[]): string | null {
-    // Use only the most recent 50 entries to avoid stale data
-    const recent = entries.slice(-50);
-    if (recent.length === 0) return null;
-
-    // Group by task type
-    const byType = new Map<string, LearningEntry[]>();
-    for (const entry of recent) {
-      const group = byType.get(entry.taskType) ?? [];
-      group.push(entry);
-      byType.set(entry.taskType, group);
-    }
-
-    const lines: string[] = [`Based on ${recent.length} recent task executions:`, ''];
-
-    for (const [taskType, group] of byType) {
-      if (group.length < 3) continue; // Not enough data to summarize
-
-      const successes = group.filter((e) => e.success);
-      const successRate = ((successes.length / group.length) * 100).toFixed(0);
-      const avgDuration = Math.round(
-        group.reduce((sum, e) => sum + e.durationMs, 0) / group.length,
-      );
-
-      // Find best model (highest success rate with 2+ uses)
-      const modelStats = new Map<string, { total: number; success: number }>();
-      for (const e of group) {
-        const model = e.modelUsed ?? 'unknown';
-        const stats = modelStats.get(model) ?? { total: 0, success: 0 };
-        stats.total++;
-        if (e.success) stats.success++;
-        modelStats.set(model, stats);
-      }
-      const bestModel = [...modelStats.entries()]
-        .filter(([, s]) => s.total >= 2)
-        .sort((a, b) => b[1].success / b[1].total - a[1].success / a[1].total)[0];
-
-      // Find best profile
-      const profileStats = new Map<string, { total: number; success: number }>();
-      for (const e of group) {
-        const profile = e.profileUsed ?? 'unknown';
-        const stats = profileStats.get(profile) ?? { total: 0, success: 0 };
-        stats.total++;
-        if (e.success) stats.success++;
-        profileStats.set(profile, stats);
-      }
-      const bestProfile = [...profileStats.entries()]
-        .filter(([, s]) => s.total >= 2)
-        .sort((a, b) => b[1].success / b[1].total - a[1].success / a[1].total)[0];
-
-      let line = `- **${taskType}**: ${successRate}% success (${group.length} tasks, avg ${avgDuration}ms)`;
-      if (bestModel) {
-        const modelRate = ((bestModel[1].success / bestModel[1].total) * 100).toFixed(0);
-        line += ` — best model: ${bestModel[0]} (${modelRate}%)`;
-      }
-      if (bestProfile) {
-        line += ` — best profile: ${bestProfile[0]}`;
-      }
-      lines.push(line);
-    }
-
-    // If no task types had enough data, return null
-    if (lines.length <= 2) return null;
-
-    const summary = lines.join('\n');
-    // Cap at ~2000 chars
-    if (summary.length > 2000) {
-      return summary.slice(0, 1997) + '...';
-    }
-    return summary;
+    return this.promptContextBuilder.buildLearningsSummary(entries);
   }
 
-  /**
-   * Build a rich text summary from the workspace map for system prompt injection.
-   * Includes project name, type, summary, frameworks, structure, and key files —
-   * enough for the AI to answer most questions without needing tool calls.
-   */
+  /** Build map summary. Delegated to ExplorationManager (OB-1280). */
   private buildMapSummary(map: Record<string, unknown>): string {
-    const parts: string[] = [];
-    const str = (key: string): string | undefined => {
-      const v = map[key];
-      return typeof v === 'string' ? v : undefined;
-    };
-
-    const name = str('projectName');
-    if (name) parts.push(`Project: ${name}`);
-    const ptype = str('projectType');
-    if (ptype) parts.push(`Type: ${ptype}`);
-    const phase = str('projectPhase');
-    if (phase) parts.push(`Phase: ${phase}`);
-    const summary = str('summary');
-    if (summary) parts.push(`\nSummary: ${summary}`);
-
-    const frameworks = map['frameworks'];
-    if (Array.isArray(frameworks) && frameworks.length > 0) {
-      parts.push(`\nFrameworks: ${frameworks.map(String).join(', ')}`);
-    }
-
-    const structure = map['structure'];
-    if (structure && typeof structure === 'object' && !Array.isArray(structure)) {
-      const dirs = Object.entries(structure as Record<string, unknown>)
-        .map(([dirName, info]) => {
-          const purpose =
-            info && typeof info === 'object' && 'purpose' in info
-              ? String((info as Record<string, unknown>)['purpose'])
-              : 'unknown';
-          return `- ${dirName}/: ${purpose}`;
-        })
-        .join('\n');
-      if (dirs) parts.push(`\nDirectory structure:\n${dirs}`);
-    }
-
-    const commands = map['commands'];
-    if (commands && typeof commands === 'object' && !Array.isArray(commands)) {
-      const cmds = Object.entries(commands as Record<string, unknown>)
-        .map(([cmdName, cmd]) => `- ${cmdName}: ${String(cmd)}`)
-        .join('\n');
-      if (cmds) parts.push(`\nAvailable commands:\n${cmds}`);
-    }
-
-    const dependencies = map['dependencies'];
-    if (Array.isArray(dependencies) && dependencies.length > 0) {
-      const deps = dependencies
-        .map((d: unknown) => {
-          if (d && typeof d === 'object') {
-            const dep = d as Record<string, unknown>;
-            const depName = typeof dep['name'] === 'string' ? dep['name'] : '';
-            const depPurpose = typeof dep['purpose'] === 'string' ? dep['purpose'] : '';
-            return `- ${depName}${depPurpose ? `: ${depPurpose}` : ''}`;
-          }
-          return `- ${String(d)}`;
-        })
-        .join('\n');
-      parts.push(`\nDependencies:\n${deps}`);
-    }
-
-    if (this.explorationSummary?.mapPath) {
-      parts.push(`\nFull workspace map: ${this.explorationSummary.mapPath}`);
-    }
-
-    return parts.join('\n');
+    return this.explorationManager.buildMapSummary(map);
   }
 
-  /**
-   * Index workspace map content as individual searchable FTS5 chunks (OB-1569).
-   * Called when the workspace map is reused from cache but the chunk store is
-   * empty — ensures FTS5 has something to search on first query.
-   */
+  /** Index workspace map as FTS5 chunks. Delegated to ExplorationManager (OB-1280). */
   private async indexWorkspaceMapAsChunks(map: WorkspaceMap): Promise<void> {
-    if (!this.memory) return;
-
-    const chunks: Array<{
-      scope: string;
-      category: 'structure' | 'patterns' | 'dependencies' | 'api' | 'config';
-      content: string;
-      source_hash: string;
-    }> = [];
-
-    // Summary chunk — project overview (always useful for general queries)
-    const summaryParts: string[] = [`Project: ${map.projectName}`, `Type: ${map.projectType}`];
-    if (map.frameworks.length > 0) summaryParts.push(`Frameworks: ${map.frameworks.join(', ')}`);
-    if (map.summary) summaryParts.push(`Summary: ${map.summary}`);
-    if (map.entryPoints.length > 0)
-      summaryParts.push(`Entry points: ${map.entryPoints.join(', ')}`);
-    chunks.push({
-      scope: '_workspace_summary',
-      category: 'structure',
-      content: summaryParts.join('\n'),
-      source_hash: 'workspace-map-index',
-    });
-
-    // Key files chunk — what each important file does
-    if (map.keyFiles.length > 0) {
-      const fileLines = map.keyFiles.map((f) => `${f.path} (${f.type}): ${f.purpose}`).join('\n');
-      chunks.push({
-        scope: '_workspace_key_files',
-        category: 'structure',
-        content: `Key files:\n${fileLines}`,
-        source_hash: 'workspace-map-index',
-      });
-    }
-
-    // Directory structure chunk
-    const structureEntries = Object.entries(map.structure);
-    if (structureEntries.length > 0) {
-      const structureLines = structureEntries
-        .map(([dir, info]) => `${info.path ?? dir}/: ${info.purpose}`)
-        .join('\n');
-      chunks.push({
-        scope: '_workspace_structure',
-        category: 'structure',
-        content: `Directory structure:\n${structureLines}`,
-        source_hash: 'workspace-map-index',
-      });
-    }
-
-    // Commands chunk
-    const commandEntries = Object.entries(map.commands);
-    if (commandEntries.length > 0) {
-      const commandLines = commandEntries.map(([name, cmd]) => `${name}: ${cmd}`).join('\n');
-      chunks.push({
-        scope: '_workspace_commands',
-        category: 'config',
-        content: `Available commands:\n${commandLines}`,
-        source_hash: 'workspace-map-index',
-      });
-    }
-
-    // Dependencies chunk (first 50 to avoid oversized chunks)
-    if (map.dependencies.length > 0) {
-      const depLines = map.dependencies
-        .slice(0, 50)
-        .map((d) => `${d.name}${d.version ? `@${d.version}` : ''}${d.type ? ` (${d.type})` : ''}`)
-        .join('\n');
-      chunks.push({
-        scope: '_workspace_deps',
-        category: 'dependencies',
-        content: `Dependencies:\n${depLines}`,
-        source_hash: 'workspace-map-index',
-      });
-    }
-
-    await this.memory.storeChunks(chunks);
-    logger.info({ chunkCount: chunks.length }, 'Indexed workspace map into FTS5 chunks (OB-1569)');
+    return this.explorationManager.indexWorkspaceMapAsChunks(map);
   }
 
   /**
@@ -2541,56 +2010,9 @@ export class MasterManager {
     return SESSION_DEAD_PATTERNS.some((pattern) => lower.includes(pattern));
   }
 
-  /**
-   * Build a context summary for a restarted Master session.
-   * Loads workspace-map.json and recent task history to seed the new session
-   * with accumulated knowledge so the user sees no interruption.
-   */
+  /** Build context summary for session restart. Delegated to PromptContextBuilder (OB-1282). */
   private async buildContextSummary(): Promise<string> {
-    const parts: string[] = [];
-
-    parts.push(
-      '# Session Context Recovery',
-      '',
-      'Your previous session ended unexpectedly. Here is the accumulated context to resume from:',
-      '',
-    );
-
-    // Load workspace map
-    const map = await this.readWorkspaceMapFromStore();
-    if (map) {
-      parts.push('## Workspace Summary');
-      parts.push(`- **Project:** ${map.projectName} (${map.projectType})`);
-      parts.push(`- **Path:** ${map.workspacePath}`);
-      if (map.frameworks.length > 0) {
-        parts.push(`- **Frameworks:** ${map.frameworks.join(', ')}`);
-      }
-      parts.push(`- **Summary:** ${map.summary}`);
-      parts.push('');
-    }
-
-    // Load recent task history
-    const tasks = await this.readAllTasksFromStore();
-    if (tasks.length > 0) {
-      // Sort by createdAt descending, take most recent
-      const recentTasks = tasks
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, RESTART_CONTEXT_TASK_LIMIT);
-
-      parts.push('## Recent Task History');
-      for (const task of recentTasks) {
-        const status = task.status === 'completed' ? 'completed' : task.status;
-        parts.push(`- [${status}] "${task.description.slice(0, 100)}" (from ${task.sender})`);
-        if (task.result) {
-          parts.push(`  Result: ${task.result.slice(0, 200)}`);
-        }
-      }
-      parts.push('');
-    }
-
-    parts.push('Continue operating normally. Respond to the next user message as usual.');
-
-    return parts.join('\n');
+    return this.promptContextBuilder.buildContextSummary();
   }
 
   /**
@@ -3549,954 +2971,48 @@ export class MasterManager {
 
   /**
    * Autonomously explore the workspace and create .openbridge/ folder.
-   * This is the Master AI's initialization step.
-   *
-   * The Master AI session drives exploration — it decides how many passes,
-   * which directories to explore, and what to record. The Master uses its
-   * own tools (Read, Glob, Grep, Write, Edit) to explore and write the
-   * workspace map directly to `.openbridge/`.
-   *
-   * The Master session is always initialized before explore() is called
-   * (initMasterSession runs during start()). The Master decides its own
-   * exploration strategy — no hardcoded phases.
+   * Delegated to ExplorationManager (OB-1280).
    */
   public async explore(): Promise<void> {
-    if (this.state === 'exploring') {
-      logger.warn('Exploration already in progress');
-      return;
-    }
-
-    this.state = 'exploring';
-
-    logger.info(
-      { workspacePath: this.workspacePath },
-      'Starting Master-driven workspace exploration',
-    );
-
-    try {
-      // Initialize .openbridge folder
-      await this.dotFolder.initialize();
-
-      // Log exploration start
-      const startedAt = new Date().toISOString();
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: startedAt,
-          level: 'info',
-          message: 'Master-driven workspace exploration started',
-          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: startedAt,
-          level: 'info',
-          message: 'Master-driven workspace exploration started',
-          data: { masterTool: this.masterTool.name, version: this.masterTool.version },
-        });
-      }
-
-      // Master-driven exploration via the persistent session
-      await this.masterDrivenExplore();
-
-      // Seed memory.md with exploration results before entering ready state (OB-F156, OB-1271).
-      // triggerMemoryUpdate() relies on conversation history; completedTaskCount=0 here so
-      // there are no messages yet. writeExplorationSummaryToMemory() reads workspace-map.json
-      // and classification.json directly, producing a meaningful seed on first startup.
-      await this.writeExplorationSummaryToMemory();
-
-      this.state = 'ready';
-
-      // Detect sub-projects after successful exploration (OB-1613)
-      // Spawn a sub-master for each detected sub-project and store in sub_masters table (OB-1614)
-      try {
-        const subProjects = await detectSubProjects(this.workspacePath);
-        if (subProjects.length > 0) {
-          logger.info(
-            { count: subProjects.length, paths: subProjects.map((p) => p.path) },
-            'Sub-projects detected after exploration',
-          );
-          if (this.subMasterManager) {
-            for (const subProject of subProjects) {
-              try {
-                const id = await this.subMasterManager.spawnSubMaster(subProject);
-                logger.info(
-                  { id, path: subProject.relativePath, name: subProject.name },
-                  'Sub-master spawned for detected sub-project',
-                );
-              } catch (spawnErr) {
-                logger.warn(
-                  { err: spawnErr, path: subProject.relativePath },
-                  'Failed to spawn sub-master for sub-project — skipping',
-                );
-              }
-            }
-          } else {
-            logger.warn(
-              { count: subProjects.length },
-              'Sub-projects detected but SubMasterManager not available — skipping spawn',
-            );
-          }
-        }
-      } catch (err) {
-        logger.warn({ err }, 'Sub-project detection failed — skipping');
-      }
-
-      // Drain any messages queued while exploration was running
-      await this.drainPendingMessages();
-
-      logger.info(
-        {
-          projectType: this.explorationSummary?.projectType,
-          frameworks: this.explorationSummary?.frameworks,
-          directoriesExplored: this.explorationSummary?.directoriesExplored,
-          status: this.explorationSummary?.status,
-        },
-        'Workspace exploration completed',
-      );
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      this.explorationSummary = {
-        startedAt: this.explorationSummary?.startedAt ?? new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        status: 'failed',
-        filesScanned: 0,
-        directoriesExplored: 0,
-        frameworks: [],
-        insights: [],
-        gitInitialized: false,
-        error: errorMessage,
-      };
-
-      // Log exploration failure
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'error',
-          message: 'Workspace exploration failed',
-          data: { error: errorMessage },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'error',
-          message: 'Workspace exploration failed',
-          data: { error: errorMessage },
-        });
-      }
-
-      this.state = 'error';
-
-      logger.error(
-        { err: error, workspacePath: this.workspacePath },
-        'Workspace exploration failed',
-      );
-
-      throw error;
-    }
+    return this.explorationManager.explore();
   }
 
   /**
    * Check for workspace changes since the last analysis and decide which
-   * exploration path to take.
-   * Returns 'no-changes', 'incremental', or 'full-reexplore'.
+   * exploration path to take. Delegated to ExplorationManager (OB-1280).
    */
   private async checkWorkspaceChanges(
     existingMap: WorkspaceMap,
   ): Promise<'no-changes' | 'incremental' | 'full-reexplore'> {
-    const MIN_EXPLORATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-    if (this.lastExplorationAt !== null) {
-      const elapsed = Math.floor((Date.now() - this.lastExplorationAt) / 1000);
-      if (Date.now() - this.lastExplorationAt < MIN_EXPLORATION_INTERVAL_MS) {
-        logger.info(`Skipping re-exploration — last run was ${elapsed}s ago`);
-        return 'no-changes';
-      }
-    }
-
-    const marker = await this.readAnalysisMarkerFromStore();
-
-    // No marker but valid map exists = upgrade from before incremental tracking.
-    // Write a marker now and treat as no-changes (skip re-exploration).
-    if (!marker) {
-      logger.info('No analysis marker found — writing initial marker for existing map');
-      const initialMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.writeAnalysisMarkerToStore(initialMarker);
-      this.mapLastVerifiedAt = initialMarker.lastVerifiedAt ?? initialMarker.analyzedAt;
-      return 'no-changes';
-    }
-
-    const changes = await this.changeTracker.detectChanges(marker);
-
-    logger.info(
-      {
-        method: changes.method,
-        hasChanges: changes.hasChanges,
-        changedCount: changes.changedFiles.length,
-        deletedCount: changes.deletedFiles.length,
-        tooLarge: changes.tooLargeForIncremental,
-      },
-      `Workspace change detection: ${changes.summary}`,
-    );
-
-    if (!changes.hasChanges) {
-      // Update lastVerifiedAt to record this startup even if no changes detected
-      const now = new Date().toISOString();
-      await this.writeAnalysisMarkerToStore({ ...marker, lastVerifiedAt: now });
-      this.mapLastVerifiedAt = now;
-      return 'no-changes';
-    }
-
-    if (changes.tooLargeForIncremental) {
-      this.lastExplorationAt = Date.now();
-      return 'full-reexplore';
-    }
-
-    // Perform incremental exploration
-    this.lastExplorationAt = Date.now();
-    await this.incrementalExplore(existingMap, changes);
-    return 'incremental';
+    return this.explorationManager.checkWorkspaceChanges(existingMap);
   }
 
-  /**
-   * Perform an incremental exploration: send only the changed files to
-   * the Master AI for a targeted map update.
-   */
-  private async incrementalExplore(
-    existingMap: WorkspaceMap,
-    changes: WorkspaceChanges,
-  ): Promise<void> {
-    this.state = 'exploring';
+  // incrementalExplore() moved to ExplorationManager (OB-1280)
 
-    const startedAt = new Date().toISOString();
+  // masterDrivenExplore() moved to ExplorationManager (OB-1280)
 
-    logger.info(
-      {
-        changedFiles: changes.changedFiles.length,
-        deletedFiles: changes.deletedFiles.length,
-      },
-      'Starting incremental workspace exploration',
-    );
+  // emitExplorationProgress() moved to ExplorationManager (OB-1280)
 
-    // Create an agent_activity row for this incremental exploration
-    let incrementalExplorationId: string | undefined;
-    if (this.memory) {
-      try {
-        incrementalExplorationId = randomUUID();
-        await this.memory.insertActivity({
-          id: incrementalExplorationId,
-          type: 'explorer',
-          status: 'running',
-          task_summary: 'Incremental exploration',
-          started_at: startedAt,
-          updated_at: startedAt,
-        });
-      } catch {
-        incrementalExplorationId = undefined;
-        // activity tracking is best-effort — continue without it
-      }
-    }
+  // monolithicExplore() moved to ExplorationManager (OB-1280)
 
-    if (this.memory) {
-      await this.memory.logExploration({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Incremental workspace exploration started',
-        data: {
-          method: changes.method,
-          changedCount: changes.changedFiles.length,
-          deletedCount: changes.deletedFiles.length,
-          summary: changes.summary,
-        },
-      });
-    } else {
-      await this.dotFolder.appendLog({
-        timestamp: startedAt,
-        level: 'info',
-        message: 'Incremental workspace exploration started',
-        data: {
-          method: changes.method,
-          changedCount: changes.changedFiles.length,
-          deletedCount: changes.deletedFiles.length,
-          summary: changes.summary,
-        },
-      });
-    }
-
-    try {
-      // Mark affected memory chunks as stale so the search index reflects
-      // that these directory scopes need refreshed data.
-      if (this.memory) {
-        // Load splitDirs from stored structure scan for 2-level scope matching
-        let splitDirs: Record<string, string[]> | undefined;
-        try {
-          const rawScan = await this.memory.getStructureScan();
-          if (rawScan) {
-            const parsed = JSON.parse(rawScan) as { splitDirs?: Record<string, string[]> };
-            if (parsed.splitDirs && Object.keys(parsed.splitDirs).length > 0) {
-              splitDirs = parsed.splitDirs;
-            }
-          }
-        } catch {
-          // ignore — fall back to 1-level scopes
-        }
-
-        const changedScopes = this.changeTracker.extractChangedScopes(
-          changes.changedFiles,
-          changes.deletedFiles,
-          splitDirs,
-        );
-        if (changedScopes.length > 0) {
-          try {
-            await this.memory.markStale(changedScopes);
-            logger.info({ changedScopes }, 'Marked stale memory scopes for incremental refresh');
-          } catch (err) {
-            logger.warn({ err }, 'Failed to mark stale scopes — continuing');
-          }
-        }
-      }
-
-      const prompt = generateIncrementalExplorationPrompt(
-        this.workspacePath,
-        existingMap,
-        changes.changedFiles,
-        changes.deletedFiles,
-        changes.summary,
-      );
-
-      const spawnOpts = this.buildMasterSpawnOptions(
-        prompt,
-        this.explorationTimeout,
-        undefined,
-        undefined,
-        true, // skipWorkspaceContext — the prompt already contains the workspace map
-      );
-      // Scale maxTurns to change size — incremental is smaller scope
-      spawnOpts.maxTurns = Math.min(
-        MASTER_MAX_TURNS,
-        Math.max(10, changes.changedFiles.length + 5),
-      );
-
-      const result = await this.agentRunner.spawn(spawnOpts);
-      await this.updateMasterSession();
-
-      if (result.exitCode !== 0) {
-        throw new Error(
-          `Incremental exploration failed (exit ${result.exitCode}): ${result.stderr}`,
-        );
-      }
-
-      // Save the analysis marker with the current workspace state
-      const totalChanged = changes.changedFiles.length + changes.deletedFiles.length;
-      const newMarker = await this.changeTracker.buildCurrentMarker('incremental', totalChanged);
-      await this.writeAnalysisMarkerToStore(newMarker);
-      this.mapLastVerifiedAt = newMarker.lastVerifiedAt ?? newMarker.analyzedAt;
-
-      // Reload the map into memory
-      await this.loadExplorationSummary();
-
-      // Update cached map summary
-      const updatedMap = await this.readWorkspaceMapFromStore();
-      if (updatedMap) {
-        this.workspaceMapSummary = this.buildMapSummary(updatedMap);
-      }
-
-      // Re-explore any directories that were marked stale and store fresh chunks.
-      // This replaces the stale memory data with up-to-date content without
-      // triggering a full 5-phase re-exploration.
-      if (this.memory) {
-        const staleExplorationId = randomUUID();
-        const staleNow = new Date().toISOString();
-        await this.memory.insertActivity({
-          id: staleExplorationId,
-          type: 'explorer',
-          status: 'running',
-          task_summary: 'Stale directory re-exploration',
-          started_at: staleNow,
-          updated_at: staleNow,
-        });
-        const coordinator = new ExplorationCoordinator({
-          workspacePath: this.workspacePath,
-          masterTool: this.masterTool,
-          discoveredTools: this.discoveredTools,
-          memory: this.memory,
-          explorationId: staleExplorationId,
-        });
-        try {
-          await coordinator.reexploreStaleDirs();
-          await this.memory.updateActivity(staleExplorationId, {
-            status: 'done',
-            progress_pct: 100,
-            completed_at: new Date().toISOString(),
-          });
-        } catch (err) {
-          logger.warn({ err }, 'Stale dir re-exploration failed — continuing');
-          await this.memory.updateActivity(staleExplorationId, {
-            status: 'failed',
-            completed_at: new Date().toISOString(),
-          });
-        }
-      }
-
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Incremental exploration completed',
-          data: { filesChanged: totalChanged, durationMs: result.durationMs },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Incremental exploration completed',
-          data: { filesChanged: totalChanged, durationMs: result.durationMs },
-        });
-      }
-
-      logger.info(
-        { filesChanged: totalChanged, durationMs: result.durationMs },
-        'Incremental exploration completed',
-      );
-
-      // Mark the incremental exploration activity as done
-      if (this.memory && incrementalExplorationId) {
-        try {
-          await this.memory.updateActivity(incrementalExplorationId, {
-            status: 'done',
-            progress_pct: 100,
-            completed_at: new Date().toISOString(),
-          });
-        } catch {
-          // activity tracking is best-effort
-        }
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Mark the incremental exploration activity as failed
-      if (this.memory && incrementalExplorationId) {
-        try {
-          await this.memory.updateActivity(incrementalExplorationId, {
-            status: 'failed',
-            completed_at: new Date().toISOString(),
-          });
-        } catch {
-          // activity tracking is best-effort
-        }
-      }
-
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'error',
-          message: 'Incremental exploration failed — falling back to full re-explore',
-          data: { error: errorMessage },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'error',
-          message: 'Incremental exploration failed — falling back to full re-explore',
-          data: { error: errorMessage },
-        });
-      }
-
-      logger.warn(
-        { error: errorMessage },
-        'Incremental exploration failed, falling back to full re-exploration',
-      );
-
-      // Fall back to full exploration
-      await this.explore();
-    }
-  }
-
-  /**
-   * Multi-agent exploration: delegates to ExplorationCoordinator which runs
-   * a 5-phase pipeline with parallel directory dives. Falls back to a
-   * single-agent monolithic approach if the coordinator fails.
-   */
-  private async masterDrivenExplore(): Promise<void> {
-    logger.info('Starting multi-agent workspace exploration via ExplorationCoordinator');
-
-    if (this.memory) {
-      await this.memory.logExploration({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Starting multi-agent workspace exploration',
-        data: { workspacePath: this.workspacePath },
-      });
-    } else {
-      await this.dotFolder.appendLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        message: 'Starting multi-agent workspace exploration',
-        data: { workspacePath: this.workspacePath },
-      });
-    }
-
-    let explorationId: string | undefined;
-    try {
-      if (this.memory) {
-        explorationId = randomUUID();
-        const now = new Date().toISOString();
-        await this.memory.insertActivity({
-          id: explorationId,
-          type: 'explorer',
-          status: 'running',
-          task_summary: 'Workspace exploration',
-          started_at: now,
-          updated_at: now,
-        });
-      }
-
-      const coordinator = new ExplorationCoordinator({
-        workspacePath: this.workspacePath,
-        masterTool: this.masterTool,
-        discoveredTools: this.discoveredTools,
-        adapter: this.adapter,
-        onProgress: async (event): Promise<void> => {
-          await this.emitExplorationProgress(event);
-        },
-        memory: this.memory ?? undefined,
-        explorationId,
-      });
-
-      const summary = await coordinator.explore();
-
-      // Write agents.json (coordinator writes its own, but ensure consistency)
-      await this.writeAgentsRegistry();
-
-      // Load the workspace map into memory for system prompt injection
-      await this.loadExplorationSummary();
-
-      // Cache the map summary
-      const map = await this.readWorkspaceMapFromStore();
-      if (map) {
-        this.workspaceMapSummary = this.buildMapSummary(map);
-      }
-
-      // Write analysis marker only if exploration produced a valid workspace map
-      if (this.explorationSummary?.status === 'completed' && map) {
-        const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-        await this.writeAnalysisMarkerToStore(fullMarker);
-        this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
-      } else {
-        logger.warn(
-          'Skipping analysis marker update — exploration did not produce a valid workspace map',
-        );
-      }
-
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Multi-agent exploration completed',
-          data: {
-            directoriesExplored: summary.directoriesExplored,
-            projectType: summary.projectType,
-            frameworks: summary.frameworks,
-          },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Multi-agent exploration completed',
-          data: {
-            directoriesExplored: summary.directoriesExplored,
-            projectType: summary.projectType,
-            frameworks: summary.frameworks,
-          },
-        });
-      }
-
-      logger.info(
-        {
-          directoriesExplored: summary.directoriesExplored,
-          projectType: summary.projectType,
-        },
-        'Multi-agent exploration completed successfully',
-      );
-
-      if (this.memory && explorationId) {
-        const completedAt = new Date().toISOString();
-        await this.memory.updateActivity(explorationId, {
-          status: 'done',
-          progress_pct: 100,
-          completed_at: completedAt,
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.warn(
-        { error: errorMessage },
-        'Multi-agent exploration failed, falling back to monolithic exploration',
-      );
-
-      if (this.memory && explorationId) {
-        const failedAt = new Date().toISOString();
-        await this.memory.updateActivity(explorationId, {
-          status: 'failed',
-          completed_at: failedAt,
-        });
-      }
-
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'warn',
-          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
-          data: { error: errorMessage },
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'warn',
-          message: 'Multi-agent exploration failed, falling back to monolithic exploration',
-          data: { error: errorMessage },
-        });
-      }
-
-      await this.monolithicExplore();
-    }
-  }
-
-  /**
-   * Translate ExplorationCoordinator progress callbacks into ProgressEvents
-   * and broadcast them to all connected connectors.
-   */
-  private async emitExplorationProgress(event: {
-    phase: string;
-    status: string;
-    detail?: string;
-    directoryProgress?: { completed: number; total: number; currentDir?: string };
-  }): Promise<void> {
-    const phaseLabels: Record<string, string> = {
-      structure_scan: 'Scanning workspace structure',
-      classification: 'Classifying project type',
-      directory_dives: 'Exploring directories',
-      assembly: 'Assembling workspace map',
-      finalization: 'Finalizing exploration',
-    };
-
-    const phaseLabel = phaseLabels[event.phase] ?? event.phase;
-    const statusSuffix = event.status === 'completed' ? ' (done)' : '...';
-
-    logger.info(`${phaseLabel}${statusSuffix}`);
-
-    // Broadcast to connectors if router is available
-    if (this.router) {
-      if (event.directoryProgress) {
-        await this.router.broadcastProgress({
-          type: 'exploring-directory',
-          directory: event.directoryProgress.currentDir ?? '',
-          completed: event.directoryProgress.completed,
-          total: event.directoryProgress.total,
-        });
-      } else {
-        await this.router.broadcastProgress({
-          type: 'exploring',
-          phase: phaseLabel,
-          detail: event.detail,
-        });
-      }
-    }
-  }
-
-  /**
-   * Fallback: single-agent monolithic exploration via streaming.
-   * Used when the multi-agent ExplorationCoordinator fails.
-   */
-  private async monolithicExplore(): Promise<void> {
-    logger.info('Executing monolithic exploration via single agent');
-
-    const explorationPrompt = `Explore the workspace at \`${this.workspacePath}\` and create a comprehensive understanding.
-
-You are in charge of the exploration strategy. Use your tools (Read, Glob, Grep) to understand the project.
-
-Follow the "Workspace Exploration" section in your system prompt for the schema and recommended strategy. Adapt the depth of exploration to the project's size and complexity.
-
-When done, output ONLY the workspace map as a JSON object to stdout — no other text, no markdown fences, just the raw JSON. Do NOT write any files.`;
-
-    const spawnOpts = this.buildMasterSpawnOptions(
-      explorationPrompt,
-      this.explorationTimeout,
-      MASTER_MAX_TURNS,
-    );
-
-    const stream = this.agentRunner.stream(spawnOpts);
-
-    // Consume the stream
-    let iterResult = await stream.next();
-    while (!iterResult.done) {
-      iterResult = await stream.next();
-    }
-
-    const result = iterResult.value;
-    await this.updateMasterSession();
-
-    if (!result || result.exitCode !== 0) {
-      const errorMessage = `Monolithic exploration failed with exit code ${result?.exitCode ?? 'unknown'}: ${result?.stderr ?? 'no error details'}`;
-      throw new Error(errorMessage);
-    }
-
-    // Parse workspace map from stdout and store in memory + JSON fallback (OB-838)
-    const parsed = parseAIResult<unknown>(result.stdout, 'monolithic workspace map');
-    if (parsed.success) {
-      try {
-        const map = WorkspaceMapSchema.parse(parsed.data);
-        await this.writeWorkspaceMapToStore(map);
-        await this.dotFolder.writeWorkspaceMap(map); // JSON safety net
-        logger.info({ method: parsed.method }, 'Monolithic workspace map stored in memory');
-      } catch (err) {
-        logger.warn({ error: String(err) }, 'Monolithic workspace map schema validation failed');
-      }
-    } else {
-      logger.warn(
-        { rawOutput: result.stdout.slice(0, 200) },
-        'Monolithic exploration: could not extract workspace map from stdout',
-      );
-    }
-
-    // Write agents.json
-    await this.writeAgentsRegistry();
-
-    logger.info('Monolithic exploration completed successfully');
-
-    await this.loadExplorationSummary();
-
-    // Write analysis marker only if exploration produced a valid workspace map
-    const monoMap = await this.readWorkspaceMapFromStore();
-    if (this.explorationSummary?.status === 'completed' && monoMap) {
-      const fullMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.writeAnalysisMarkerToStore(fullMarker);
-      this.mapLastVerifiedAt = fullMarker.lastVerifiedAt ?? fullMarker.analyzedAt;
-    } else {
-      logger.warn(
-        'Skipping analysis marker update — monolithic exploration did not produce a valid workspace map',
-      );
-    }
-  }
-
-  /**
-   * Write the agents registry to system_config (DB) and agents.json (fallback).
-   */
+  /** Write the agents registry — delegates to ExplorationManager (OB-1280). */
   private async writeAgentsRegistry(): Promise<void> {
-    const registry = this.createAgentsRegistry();
-    if (this.memory) {
-      await this.memory.setSystemConfig('agents', JSON.stringify(registry));
-    } else {
-      await this.dotFolder.writeAgents(registry);
-    }
+    return this.explorationManager.writeAgentsRegistry();
   }
 
-  /**
-   * Load exploration summary from the workspace map written by the Master.
-   */
+  /** Load exploration summary — delegates to ExplorationManager (OB-1280). */
   private async loadExplorationSummary(): Promise<void> {
-    const map = await this.readWorkspaceMapFromStore();
-
-    if (map) {
-      this.explorationSummary = {
-        startedAt: map.generatedAt,
-        completedAt: new Date().toISOString(),
-        status: 'completed',
-        filesScanned: 0,
-        directoriesExplored: Object.keys(map.structure).length,
-        projectType: map.projectType,
-        frameworks: map.frameworks,
-        insights: [],
-        mapPath: this.dotFolder.getMapPath(),
-        gitInitialized: true,
-      };
-    } else {
-      // Master didn't write a map — mark as failed so next startup triggers re-exploration
-      logger.warn(
-        'Exploration completed but workspace map is empty — will re-explore on next startup',
-      );
-      this.explorationSummary = {
-        startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        status: 'failed',
-        filesScanned: 0,
-        directoriesExplored: 0,
-        frameworks: [],
-        insights: [],
-        gitInitialized: true,
-      };
-    }
+    return this.explorationManager.loadExplorationSummary();
   }
 
-  /**
-   * Re-explore the workspace (e.g., after significant changes).
-   * Uses the Master session to drive re-exploration, with a fallback to
-   * a standalone AgentRunner call if no session is available.
-   */
+  /** Re-explore the workspace. Delegated to ExplorationManager (OB-1280). */
   public async reExplore(): Promise<void> {
-    if (this.state !== 'ready') {
-      logger.warn({ currentState: this.state }, 'Cannot re-explore: Master not in ready state');
-      return;
-    }
-
-    const startedAt = new Date().toISOString();
-    this.state = 'exploring';
-
-    logger.info({ workspacePath: this.workspacePath }, 'Starting workspace re-exploration');
-
-    try {
-      // Log re-exploration start
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: startedAt,
-          level: 'info',
-          message: 'Workspace re-exploration started',
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: startedAt,
-          level: 'info',
-          message: 'Workspace re-exploration started',
-        });
-      }
-
-      if (this.masterSession) {
-        // Master-driven re-exploration via session
-        const prompt = generateReExplorationPrompt(this.workspacePath);
-        const spawnOpts = this.buildMasterSpawnOptions(prompt, this.explorationTimeout);
-        const result = await this.agentRunner.spawn(spawnOpts);
-        await this.updateMasterSession();
-
-        if (result.exitCode !== 0) {
-          throw new Error(
-            `Re-exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
-          );
-        }
-      } else {
-        // Fallback: standalone re-exploration with read-only tools
-        const prompt = generateReExplorationPrompt(this.workspacePath);
-        const result = await this.agentRunner.spawn({
-          prompt,
-          workspacePath: this.workspacePath,
-          timeout: this.explorationTimeout,
-          allowedTools: [...TOOLS_READ_ONLY],
-          retries: 1,
-        });
-
-        if (result.exitCode !== 0) {
-          throw new Error(
-            `Re-exploration failed with exit code ${result.exitCode}: ${result.stderr}`,
-          );
-        }
-      }
-
-      // Update exploration summary from the map
-      await this.loadExplorationSummary();
-
-      // Cache the map summary for context injection
-      const reExploreMap = await this.readWorkspaceMapFromStore();
-      if (reExploreMap) {
-        this.workspaceMapSummary = this.buildMapSummary(reExploreMap);
-      }
-
-      // Write analysis marker so next startup skips unnecessary re-exploration
-      const reExploreMarker = await this.changeTracker.buildCurrentMarker('full', 0);
-      await this.writeAnalysisMarkerToStore(reExploreMarker);
-      this.mapLastVerifiedAt = reExploreMarker.lastVerifiedAt ?? reExploreMarker.analyzedAt;
-
-      // Log re-exploration completion
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Workspace re-exploration completed',
-        });
-      } else {
-        await this.dotFolder.appendLog({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Workspace re-exploration completed',
-        });
-      }
-
-      this.state = 'ready';
-
-      logger.info('Workspace re-exploration completed');
-    } catch (error) {
-      logger.error({ err: error }, 'Workspace re-exploration failed');
-      this.state = 'ready'; // Return to ready state even on failure
-      throw error;
-    }
+    return this.explorationManager.reExplore();
   }
 
-  /**
-   * Full re-exploration of the workspace using the 5-phase ExplorationCoordinator.
-   * Unlike reExplore() which sends a lightweight prompt to the Master session,
-   * this method runs the complete structure scan → classification → directory dives
-   * → assembly → finalization pipeline with progress tracking in exploration_progress.
-   *
-   * State guard: Must be in 'ready' state. Sets state to 'exploring' for the duration.
-   * Returns to 'ready' even on failure.
-   */
+  /** Full re-exploration. Delegated to ExplorationManager (OB-1280). */
   public async fullReExplore(): Promise<void> {
-    if (this.state !== 'ready') {
-      logger.warn(
-        { currentState: this.state },
-        'Cannot full re-explore: Master not in ready state',
-      );
-      return;
-    }
-
-    this.state = 'exploring';
-    const startedAt = new Date().toISOString();
-
-    logger.info(
-      { workspacePath: this.workspacePath },
-      'Starting full workspace re-exploration (user-triggered)',
-    );
-
-    try {
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: startedAt,
-          level: 'info',
-          message: 'Full workspace re-exploration started (user-triggered)',
-        });
-
-        // Clear exploration state so ExplorationCoordinator doesn't skip completed phases
-        await this.memory.upsertExplorationState(null);
-      }
-
-      // Clear dotfolder exploration state as well
-      try {
-        await this.dotFolder.writeExplorationState(null as unknown as ExplorationState);
-      } catch {
-        // ignore — dotfolder may not exist yet, or null fails Zod validation
-      }
-
-      // Run the full 5-phase exploration pipeline
-      await this.masterDrivenExplore();
-
-      // Refresh in-memory state
-      await this.loadExplorationSummary();
-      await this.writeAgentsRegistry();
-
-      this.state = 'ready';
-
-      if (this.memory) {
-        await this.memory.logExploration({
-          timestamp: new Date().toISOString(),
-          level: 'info',
-          message: 'Full workspace re-exploration completed (user-triggered)',
-        });
-      }
-
-      logger.info('Full workspace re-exploration completed');
-    } catch (error) {
-      logger.error({ err: error }, 'Full workspace re-exploration failed');
-      this.state = 'ready';
-      throw error;
-    }
+    return this.explorationManager.fullReExplore();
   }
 
   /**
@@ -4508,66 +3024,9 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     this.consecutiveIdleCycles = 0;
   }
 
-  /**
-   * Drain messages that were queued during exploration.
-   * Called after state transitions to 'ready'. Routes each queued message through
-   * the Router (which sends the response back to the user's connector) if a router
-   * is set, or processes silently and logs a warning if no router is available.
-   */
+  /** Drain pending messages. Delegated to ExplorationManager (OB-1280). */
   private async drainPendingMessages(): Promise<void> {
-    if (this.pendingMessages.length === 0) return;
-
-    const messages = [...this.pendingMessages];
-    this.pendingMessages = [];
-
-    const total = messages.length;
-    logger.info({ count: total }, 'Draining pending messages after exploration');
-
-    let errorCount = 0;
-    // Track which (source, sender) pairs had failures so we can notify each once
-    const failedSenders = new Map<string, string>(); // sender -> source
-
-    for (const message of messages) {
-      if (this.router) {
-        try {
-          await this.router.route(message);
-        } catch (error) {
-          errorCount++;
-          failedSenders.set(message.sender, message.source);
-          logger.error(
-            { error, sender: message.sender, content: message.content },
-            'Failed to route pending message during exploration drain',
-          );
-        }
-      } else {
-        logger.warn(
-          { sender: message.sender },
-          'No router set — pending message processed but response not delivered',
-        );
-        try {
-          const response = await this.processMessage(message);
-          logger.info(
-            { sender: message.sender, responseLength: response.length },
-            'Pending message processed (no router)',
-          );
-        } catch (error) {
-          errorCount++;
-          logger.error(
-            { error, sender: message.sender, content: message.content },
-            'Failed to process pending message during exploration drain',
-          );
-        }
-      }
-    }
-
-    // Notify affected senders if any messages failed to process
-    if (errorCount > 0 && this.router) {
-      const notice = `⚠️ ${errorCount} of ${total} queued message${total === 1 ? '' : 's'} failed to process during exploration drain. Please resend your request.`;
-      for (const [sender, source] of failedSenders) {
-        void this.router.sendDirect(source, sender, notice);
-      }
-      logger.warn({ errorCount, total }, 'Notified senders of drain failures');
-    }
+    return this.explorationManager.drainPendingMessages();
   }
 
   /**
@@ -8047,31 +6506,9 @@ ${currentContent}
     );
   }
 
-  /**
-   * Create agents registry from discovered tools
-   */
+  /** Create agents registry. Delegated to ExplorationManager (OB-1280). */
   private createAgentsRegistry(): AgentsRegistry {
-    const master = this.masterTool;
-    const specialists = this.discoveredTools
-      .filter((tool) => tool.role === 'specialist' || tool.role === 'backup')
-      .map((tool) => ({
-        name: tool.name,
-        path: tool.path,
-        version: tool.version,
-        role: tool.role as 'specialist' | 'backup',
-        capabilities: tool.capabilities,
-      }));
-
-    return {
-      master: {
-        name: master.name,
-        path: master.path,
-        version: master.version,
-        role: 'master',
-      },
-      specialists,
-      updatedAt: new Date().toISOString(),
-    };
+    return this.explorationManager.createAgentsRegistry();
   }
 
   // ---------------------------------------------------------------------------
