@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 22 | **Fixed:** 12 (143 prior findings archived) | **Last Audit:** 2026-03-09
-> **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
+> **Open:** 21 | **Fixed:** 13 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **History:** 149 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
 
@@ -347,7 +347,7 @@
 ### OB-F177 — WhatsApp reconnect timer not cleared on shutdown
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/connectors/whatsapp/whatsapp-connector.ts` (~lines 114, 549-560)
 - **Root Cause / Impact:**
   The WhatsApp connector's `reconnectTimer` schedules reconnection attempts but `shutdown()` does not clear this timer. After graceful shutdown, the connector still attempts reconnection, causing potential race conditions and resource leaks.
