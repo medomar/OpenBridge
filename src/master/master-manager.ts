@@ -5125,14 +5125,24 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
     const messages = [...this.pendingMessages];
     this.pendingMessages = [];
 
-    logger.info({ count: messages.length }, 'Draining pending messages after exploration');
+    const total = messages.length;
+    logger.info({ count: total }, 'Draining pending messages after exploration');
+
+    let errorCount = 0;
+    // Track which (source, sender) pairs had failures so we can notify each once
+    const failedSenders = new Map<string, string>(); // sender -> source
 
     for (const message of messages) {
       if (this.router) {
         try {
           await this.router.route(message);
         } catch (error) {
-          logger.error({ error, sender: message.sender }, 'Failed to route pending message');
+          errorCount++;
+          failedSenders.set(message.sender, message.source);
+          logger.error(
+            { error, sender: message.sender, content: message.content },
+            'Failed to route pending message during exploration drain',
+          );
         }
       } else {
         logger.warn(
@@ -5146,9 +5156,22 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
             'Pending message processed (no router)',
           );
         } catch (error) {
-          logger.error({ error, sender: message.sender }, 'Failed to process pending message');
+          errorCount++;
+          logger.error(
+            { error, sender: message.sender, content: message.content },
+            'Failed to process pending message during exploration drain',
+          );
         }
       }
+    }
+
+    // Notify affected senders if any messages failed to process
+    if (errorCount > 0 && this.router) {
+      const notice = `⚠️ ${errorCount} of ${total} queued message${total === 1 ? '' : 's'} failed to process during exploration drain. Please resend your request.`;
+      for (const [sender, source] of failedSenders) {
+        void this.router.sendDirect(source, sender, notice);
+      }
+      logger.warn({ errorCount, total }, 'Notified senders of drain failures');
     }
   }
 
