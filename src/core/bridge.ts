@@ -661,6 +661,8 @@ export class Bridge {
       this.evictionInterval = null;
     }
 
+    this.rateLimiter.dispose();
+
     this.dockerHealthMonitor?.stop();
 
     // Force-remove any Docker containers that are still tracked (OB-F111).
