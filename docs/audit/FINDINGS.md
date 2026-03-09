@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 12 | **Fixed:** 22 (143 prior findings archived) | **Last Audit:** 2026-03-09
-> **History:** 150 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
+> **Open:** 11 | **Fixed:** 23 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **History:** 151 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
 
@@ -45,11 +45,11 @@
 ### OB-F150 — Workspace map duplicated in exploration prompts
 
 - **Severity:** 🟢 Low
-- **Status:** Open
-- **Key Files:** `src/master/exploration-prompts.ts:414`, `src/master/master-manager.ts:1979-1988`
+- **Status:** ✅ Fixed
+- **Key Files:** `src/master/exploration-prompts.ts:414`, `src/master/master-manager.ts:4734-4740`
 - **Root Cause / Impact:**
   During incremental exploration, the workspace map appears in both: (1) `opts.prompt` via `generateIncrementalExplorationPrompt()` which embeds `JSON.stringify(currentMap, null, 2)` (~11K), and (2) `opts.systemPrompt` via `buildMasterSpawnOptions()` → `getWorkspaceContextSummary()` (~3K summary). The AI receives redundant workspace context.
-- **Fix:** Add a `skipWorkspaceContext` flag to `SpawnOptions`; set it when the prompt already contains the workspace map.
+- **Fix:** Added a `skipWorkspaceContext` flag to `SpawnOptions` (OB-1252); set it to true when calling `buildMasterSpawnOptions()` for incremental exploration (OB-1253) since the prompt already contains the workspace map.
 
 ---
 

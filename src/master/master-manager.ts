@@ -4731,7 +4731,13 @@ export class MasterManager {
         changes.summary,
       );
 
-      const spawnOpts = this.buildMasterSpawnOptions(prompt, this.explorationTimeout);
+      const spawnOpts = this.buildMasterSpawnOptions(
+        prompt,
+        this.explorationTimeout,
+        undefined,
+        undefined,
+        true, // skipWorkspaceContext — the prompt already contains the workspace map
+      );
       // Scale maxTurns to change size — incremental is smaller scope
       spawnOpts.maxTurns = Math.min(
         MASTER_MAX_TURNS,
