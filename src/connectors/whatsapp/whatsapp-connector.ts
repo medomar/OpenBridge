@@ -112,6 +112,7 @@ export class WhatsAppConnector implements Connector {
   private client: WAClient | null = null;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private progressSentCleanupInterval: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
   private mediaManager: MediaManager | null = null;
   /** Tracks chat IDs that have received a progress status message (to avoid repeat sends). */
@@ -151,6 +152,14 @@ export class WhatsAppConnector implements Connector {
       'Initializing WhatsApp connector — session will persist across restarts',
     );
     this.shuttingDown = false;
+    // Clear progressSent every 10 minutes — entries are ephemeral and accumulate over time.
+    this.progressSentCleanupInterval = setInterval(
+      () => {
+        this.progressSent.clear();
+        logger.debug('Cleared progressSent Set (periodic cleanup)');
+      },
+      10 * 60 * 1000,
+    );
     await this.createAndStartClient();
   }
 
@@ -722,6 +731,11 @@ export class WhatsAppConnector implements Connector {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+
+    if (this.progressSentCleanupInterval) {
+      clearInterval(this.progressSentCleanupInterval);
+      this.progressSentCleanupInterval = null;
     }
 
     this.shuttingDown = true;
