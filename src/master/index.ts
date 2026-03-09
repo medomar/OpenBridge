@@ -74,6 +74,10 @@ export type { SubProjectInfo, ProjectType } from './sub-master-detector.js';
 export { SubMasterManager } from './sub-master-manager.js';
 export type { SubMasterRecord, SubMasterStatus } from './sub-master-manager.js';
 
+// Export monorepo detector for multi-project workspace awareness (OB-1273)
+export { detectMonorepoPattern } from './monorepo-detector.js';
+export type { MonorepoDetectionResult, MonorepoSubProject } from './monorepo-detector.js';
+
 // Export SkillManager for skills directory discovery and loading (OB-1704)
 export { SkillManager } from './skill-manager.js';
 
