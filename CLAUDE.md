@@ -151,6 +151,10 @@ The bridge will:
 | `src/discovery/vscode-scanner.ts`        | VS Code AI extension detection                                                                     |
 | `src/discovery/index.ts`                 | `scanForAITools()` export — combines CLI + VS Code scans                                           |
 | `src/core/agent-runner.ts`               | Unified CLI executor (--allowedTools, --max-turns, --model, retries, error classification)         |
+| `src/core/command-handlers.ts`           | 40+ `/command` handler functions extracted from router.ts (2936 LOC)                               |
+| `src/core/output-marker-processor.ts`    | SHARE/VOICE/APP output marker detection and routing extracted from router.ts                       |
+| `src/core/error-classifier.ts`           | Error classification and retry detection extracted from agent-runner.ts                            |
+| `src/core/cost-manager.ts`               | Cost tracking and budget management extracted from agent-runner.ts                                 |
 | `src/core/model-selector.ts`             | Model recommendation per task type                                                                 |
 | `src/core/model-registry.ts`             | Provider-agnostic model tier resolution (fast/balanced/powerful → concrete model IDs)              |
 | `src/core/cli-adapter.ts`                | CLIAdapter interface — translates SpawnOptions to tool-specific binary + args + env                |
@@ -189,6 +193,10 @@ The bridge will:
 | `src/master/sub-master-detector.ts`      | Sub-master capability detection and selection                                                      |
 | `src/master/sub-master-manager.ts`       | Sub-master session pool management                                                                 |
 | `src/master/delegation.ts`               | Multi-AI task delegation coordinator                                                               |
+| `src/master/classification-engine.ts`    | Message/intent classification engine extracted from master-manager.ts (942 LOC)                    |
+| `src/master/exploration-manager.ts`      | Exploration lifecycle management extracted from master-manager.ts (1539 LOC)                       |
+| `src/master/worker-orchestrator.ts`      | Worker spawn and result handling extracted from master-manager.ts (2065 LOC)                       |
+| `src/master/prompt-context-builder.ts`   | Prompt and conversation context assembly extracted from master-manager.ts (560 LOC)                |
 | `src/connectors/whatsapp/`               | WhatsApp connector — auto-reconnect, sessions, typing                                              |
 | `src/connectors/console/`                | Console connector (reference implementation)                                                       |
 | `src/connectors/webchat/`                | WebChat connector — HTTP + WebSocket, browser UI                                                   |
@@ -284,6 +292,10 @@ src/
 │   ├── config.ts               Config loader (V2 detection + V0 fallback) + MCP config writer
 │   ├── config-watcher.ts       Hot-reload
 │   ├── agent-runner.ts         Unified CLI executor (retries, error classification, adaptive turns, per-worker MCP isolation)
+│   ├── command-handlers.ts     40+ /command handler functions (2936 LOC)
+│   ├── output-marker-processor.ts  SHARE/VOICE/APP output marker routing
+│   ├── error-classifier.ts     Error classification + retry detection
+│   ├── cost-manager.ts         Cost tracking + budget management
 │   ├── model-selector.ts       Model recommendation per task type
 │   ├── model-registry.ts       Provider-agnostic model tiers (fast/balanced/powerful)
 │   ├── cli-adapter.ts          CLIAdapter interface (SpawnOptions → binary + args + env)
@@ -350,7 +362,11 @@ src/
     ├── prompt-evolver.ts           Prompt effectiveness tracking + refinement
     ├── sub-master-detector.ts      Sub-master capability detection
     ├── sub-master-manager.ts       Sub-master session pool management
-    └── delegation.ts               Multi-AI task delegation
+    ├── delegation.ts               Multi-AI task delegation
+    ├── classification-engine.ts    Message/intent classification engine (942 LOC)
+    ├── exploration-manager.ts      Exploration lifecycle management (1539 LOC)
+    ├── worker-orchestrator.ts      Worker spawn + result handling (2065 LOC)
+    └── prompt-context-builder.ts   Prompt + conversation context assembly (560 LOC)
 
 tests/                          Vitest test suite
 ├── core/                       Unit tests for each core module
