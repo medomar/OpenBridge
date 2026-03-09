@@ -22,6 +22,7 @@ export default tseslint.config(
       'ob-smoke-test/',
       'scripts/**',
       'desktop/**',
+      '_parse_xls.mjs',
     ],
   },
 
