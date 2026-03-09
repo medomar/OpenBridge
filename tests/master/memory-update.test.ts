@@ -7,13 +7,20 @@
  * (c) content is truncated to 300 chars with "…" for long messages
  * (d) when no messages exist, prompt is sent without the history section (no crash)
  * (e) when this.memory is null, prompt is sent without history (graceful fallback)
+ *
+ * Also verifies (OB-1272):
+ * After exploration completes, writeExplorationSummaryToMemory() populates memory.md
+ * with meaningful project content — not the fallback stub.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { MasterManager } from '../../src/master/master-manager.js';
+import type { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
+import type { WorkspaceMap, Classification } from '../../src/types/master.js';
 import { MemoryManager, type ConversationEntry } from '../../src/memory/index.js';
 
 // ---------------------------------------------------------------------------
@@ -552,5 +559,198 @@ describe('MemoryManager integration — getRecentMessages pipeline (OB-1121)', (
     } finally {
       await manager.close();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Post-exploration memory.md population test (OB-1272)
+// ---------------------------------------------------------------------------
+
+describe('MasterManager — writeExplorationSummaryToMemory() (OB-1272)', () => {
+  let testWorkspace: string;
+  let masterManager: MasterManager;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    mockSpawnWithHandle.mockImplementation((opts: SpawnOptions) => ({
+      promise: mockSpawn(opts) as Promise<unknown>,
+      pid: 99999,
+      abort: vi.fn(),
+    }));
+
+    mockSpawn.mockResolvedValue({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      retryCount: 0,
+      durationMs: 50,
+    });
+
+    testWorkspace = path.join(
+      os.tmpdir(),
+      'test-exploration-memory-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    );
+    await fs.mkdir(testWorkspace, { recursive: true });
+  });
+
+  afterEach(async () => {
+    if (masterManager) {
+      try {
+        await masterManager.shutdown();
+      } catch {
+        // Ignore shutdown errors in tests
+      }
+    }
+    try {
+      await fs.rm(testWorkspace, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
+
+  /** Get the DotFolderManager from MasterManager's private field */
+  function getDotFolder(mm: MasterManager): DotFolderManager {
+    return (mm as unknown as Record<string, unknown>).dotFolder as DotFolderManager;
+  }
+
+  /** Call the private writeExplorationSummaryToMemory() method */
+  async function callWriteExplorationSummaryToMemory(mm: MasterManager): Promise<void> {
+    return (
+      mm as unknown as { writeExplorationSummaryToMemory(): Promise<void> }
+    ).writeExplorationSummaryToMemory();
+  }
+
+  it('populates memory.md with project overview — not the fallback stub', async () => {
+    masterManager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    const dotFolder = getDotFolder(masterManager);
+    await dotFolder.createFolder();
+
+    const workspaceMap: WorkspaceMap = {
+      workspacePath: testWorkspace,
+      projectName: 'my-test-project',
+      projectType: 'node',
+      frameworks: ['TypeScript', 'Vitest'],
+      structure: {
+        src: { path: 'src', purpose: 'Source code' },
+        tests: { path: 'tests', purpose: 'Test files' },
+      },
+      keyFiles: [],
+      entryPoints: ['src/index.ts'],
+      commands: { build: 'npm run build', test: 'npm test' },
+      dependencies: [],
+      summary: 'A test Node.js project',
+      generatedAt: new Date().toISOString(),
+      schemaVersion: '1.0.0',
+    };
+    await dotFolder.writeWorkspaceMap(workspaceMap);
+
+    await callWriteExplorationSummaryToMemory(masterManager);
+
+    const content = await dotFolder.readMemoryFile();
+
+    expect(content).not.toBeNull();
+    expect(content).toContain('# Memory');
+    expect(content).toContain('(post-exploration seed)');
+    expect(content).toContain('## Project Overview');
+    expect(content).toContain('my-test-project');
+    expect(content).toContain('node');
+    // Must NOT be the fallback stub produced by writeMemoryFromConversation()
+    expect(content).not.toContain('_No recent messages._');
+  });
+
+  it('includes frameworks section when workspace map has frameworks', async () => {
+    masterManager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    const dotFolder = getDotFolder(masterManager);
+    await dotFolder.createFolder();
+
+    const workspaceMap: WorkspaceMap = {
+      workspacePath: testWorkspace,
+      projectName: 'framework-project',
+      projectType: 'node',
+      frameworks: ['React', 'TypeScript', 'Vite'],
+      structure: {},
+      keyFiles: [],
+      entryPoints: [],
+      commands: {},
+      dependencies: [],
+      summary: 'A React project',
+      generatedAt: new Date().toISOString(),
+      schemaVersion: '1.0.0',
+    };
+    await dotFolder.writeWorkspaceMap(workspaceMap);
+
+    await callWriteExplorationSummaryToMemory(masterManager);
+
+    const content = await dotFolder.readMemoryFile();
+
+    expect(content).toContain('## Frameworks & Tech Stack');
+    expect(content).toContain('React');
+    expect(content).toContain('TypeScript');
+    expect(content).toContain('Vite');
+  });
+
+  it('falls back to classification.json when workspace map is missing', async () => {
+    masterManager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    const dotFolder = getDotFolder(masterManager);
+
+    // Write ONLY classification (no workspace map)
+    const classification: Classification = {
+      projectType: 'python',
+      projectName: 'my-python-app',
+      frameworks: ['FastAPI', 'SQLAlchemy'],
+      commands: { run: 'python main.py', test: 'pytest' },
+      dependencies: [],
+      insights: ['Uses async patterns'],
+      classifiedAt: new Date().toISOString(),
+      durationMs: 150,
+    };
+    await dotFolder.writeClassification(classification);
+
+    await callWriteExplorationSummaryToMemory(masterManager);
+
+    const content = await dotFolder.readMemoryFile();
+
+    expect(content).not.toBeNull();
+    expect(content).toContain('# Memory');
+    expect(content).toContain('my-python-app');
+    expect(content).toContain('python');
+    expect(content).not.toContain('_No recent messages._');
+  });
+
+  it('does not write memory.md when neither workspace map nor classification exists', async () => {
+    masterManager = new MasterManager({
+      workspacePath: testWorkspace,
+      masterTool,
+      discoveredTools: [masterTool],
+      skipAutoExploration: true,
+    });
+
+    const dotFolder = getDotFolder(masterManager);
+
+    // No exploration data — method should skip silently
+    await callWriteExplorationSummaryToMemory(masterManager);
+
+    const content = await dotFolder.readMemoryFile();
+    // memory.md should not have been created
+    expect(content).toBeNull();
   });
 });
