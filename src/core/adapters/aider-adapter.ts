@@ -56,7 +56,7 @@ export class AiderAdapter implements CLIAdapter {
     }
 
     // systemPrompt: prepend to message (aider has no --append-system-prompt)
-    let message = sanitizePrompt(opts.prompt);
+    let message = sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars);
     if (opts.systemPrompt) {
       message = opts.systemPrompt + '\n\n' + message;
     }

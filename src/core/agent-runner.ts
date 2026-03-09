@@ -624,20 +624,30 @@ export async function manifestToSpawnOptions(
  * Sanitize a user-supplied prompt before passing it to the CLI.
  *
  * Removes null bytes and ASCII control characters (except tab, newline, and
- * carriage return). Truncates to MAX_PROMPT_LENGTH to prevent resource
- * exhaustion. spawn() is used without shell: true, so shell metacharacters
- * are already safe.
+ * carriage return). Truncates to `maxLength` (default: `MAX_PROMPT_LENGTH`)
+ * to prevent resource exhaustion. spawn() is used without shell: true, so
+ * shell metacharacters are already safe.
+ *
+ * Pass the adapter-aware budget via `maxLength` so Master prompts use the
+ * correct provider limit instead of the hardcoded 32 K default.
  */
-export function sanitizePrompt(prompt: string): string {
+export function sanitizePrompt(prompt: string, maxLength: number = MAX_PROMPT_LENGTH): string {
   // eslint-disable-next-line no-control-regex
   const cleaned = prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
 
-  if (cleaned.length > MAX_PROMPT_LENGTH) {
+  if (cleaned.length > maxLength) {
+    const bytesLost = cleaned.length - maxLength;
+    const percentLost = Math.round((bytesLost / cleaned.length) * 100);
     logger.warn(
-      { original: prompt.length, truncated: MAX_PROMPT_LENGTH },
-      'Prompt truncated to maximum allowed length',
+      {
+        originalChars: cleaned.length,
+        maxLength,
+        bytesLost,
+        percentLost,
+      },
+      `Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
     );
-    return cleaned.slice(0, MAX_PROMPT_LENGTH);
+    return cleaned.slice(0, maxLength);
   }
 
   return cleaned;
