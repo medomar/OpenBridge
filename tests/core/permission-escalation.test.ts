@@ -120,7 +120,7 @@ describe('permission escalation — requestToolEscalation()', () => {
     expect(text).toContain('Bash');
     expect(text).toContain('/allow');
     expect(text).toContain('/deny');
-    expect(text).toContain('180 seconds');
+    expect(text).toContain('300 seconds');
   });
 
   it('registers the escalation as pending after requestToolEscalation()', async () => {
@@ -241,7 +241,7 @@ describe('permission escalation — timeout auto-deny', () => {
     vi.useRealTimers();
   });
 
-  it('sends a timeout notification and clears the escalation after 180 seconds (single entry)', async () => {
+  it('sends a timeout notification and clears the escalation after 300 seconds (single entry)', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -257,11 +257,11 @@ describe('permission escalation — timeout auto-deny', () => {
 
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
 
-    // Should NOT fire before 180s
-    await vi.advanceTimersByTimeAsync(179_000);
+    // Should NOT fire before 300s
+    await vi.advanceTimersByTimeAsync(299_000);
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
 
-    // Advance past the 180-second timeout
+    // Advance past the 300-second timeout
     await vi.advanceTimersByTimeAsync(2_000);
 
     // Escalation should be cleared
@@ -352,7 +352,7 @@ describe('access-store — approved tool escalations DB persistence', () => {
     addApprovedEscalation(db, '+9999999999', 'console', 'Write');
     const entry = getAccess(db, '+9999999999', 'console');
     expect(entry).not.toBeNull();
-    expect(entry!.role).toBe('viewer');
+    expect(entry!.role).toBe('owner');
     expect(entry!.approvedToolEscalations).toContain('Write');
   });
 });
@@ -966,7 +966,7 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
     vi.useRealTimers();
   });
 
-  it('uses base timeout (180s) for a single pending escalation', async () => {
+  it('uses base timeout (300s) for a single pending escalation', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -980,20 +980,20 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
       connector,
     );
 
-    // The escalation prompt should show 180 seconds
+    // The escalation prompt should show 300 seconds (default base timeout)
     const promptMsg = connector.sentMessages.at(-1)!;
-    expect(promptMsg.content).toContain('180 seconds');
+    expect(promptMsg.content).toContain('300 seconds');
 
-    // Should NOT fire before 180s
-    await vi.advanceTimersByTimeAsync(179_000);
+    // Should NOT fire before 300s
+    await vi.advanceTimersByTimeAsync(299_000);
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
 
-    // Fire after 180s
+    // Fire after 300s
     await vi.advanceTimersByTimeAsync(2_000);
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
   });
 
-  it('adds 60s per additional pending escalation — 2 pending = 240s', async () => {
+  it('adds 60s per additional pending escalation — 2 pending = 360s', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -1016,12 +1016,12 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
       connector,
     );
 
-    // Second escalation prompt should show 240 seconds (180 + 60)
+    // Second escalation prompt should show 360 seconds (300 + 60)
     const promptMsg = connector.sentMessages.at(-1)!;
-    expect(promptMsg.content).toContain('240 seconds');
+    expect(promptMsg.content).toContain('360 seconds');
 
-    // First entry timeout fires at 180s, second at 240s
-    await vi.advanceTimersByTimeAsync(181_000);
+    // First entry timeout fires at 300s, second at 360s
+    await vi.advanceTimersByTimeAsync(301_000);
     // First should be gone; second still pending
     expect(router.pendingEscalationCount('+1234567890')).toBe(1);
 
@@ -1029,7 +1029,7 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
   });
 
-  it('adds 60s per additional pending escalation — 3 pending = 300s', async () => {
+  it('adds 60s per additional pending escalation — 3 pending = 420s', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -1059,9 +1059,9 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
       connector,
     );
 
-    // Third escalation prompt should show 300 seconds (180 + 2×60)
+    // Third escalation prompt should show 420 seconds (300 + 2×60)
     const promptMsg = connector.sentMessages.at(-1)!;
-    expect(promptMsg.content).toContain('300 seconds');
+    expect(promptMsg.content).toContain('420 seconds');
 
     expect(router.pendingEscalationCount('+1234567890')).toBe(3);
   });
@@ -1071,7 +1071,7 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
     await connector.initialize();
 
     const msg = makeMsg('task');
-    // Add 8 escalations: 180 + 7×60 = 600s exactly (at or above cap)
+    // Add 8 escalations: 300 + 7×60 = 720s, capped at 600s
     for (let i = 1; i <= 8; i++) {
       await router.requestToolEscalation(
         `worker-c${i}`,
@@ -1083,7 +1083,7 @@ describe('permission escalation — timeout scales with queue size (OB-1639)', (
       );
     }
 
-    // 8 pending = 180 + 7×60 = 600s — should show 600
+    // 8 pending = 300 + 7×60 = 720s, capped at 600 — should show 600
     const eighthPrompt = connector.sentMessages.at(-1)!;
     expect(eighthPrompt.content).toContain('600 seconds');
 
@@ -1114,7 +1114,7 @@ describe('permission escalation — 50% reminder (OB-1640 / OB-1641)', () => {
     vi.useRealTimers();
   });
 
-  it('sends a reminder message at 50% of the timeout (90s for 180s base)', async () => {
+  it('sends a reminder message at 50% of the timeout (150s for 300s base)', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -1132,11 +1132,11 @@ describe('permission escalation — 50% reminder (OB-1640 / OB-1641)', () => {
     const initialCount = connector.sentMessages.length;
     expect(initialCount).toBeGreaterThanOrEqual(1);
 
-    // Advance to just before 50% (89s) — no reminder yet
-    await vi.advanceTimersByTimeAsync(89_000);
+    // Advance to just before 50% (149s) — no reminder yet
+    await vi.advanceTimersByTimeAsync(149_000);
     expect(connector.sentMessages.length).toBe(initialCount);
 
-    // Advance past 50% (90s total) — reminder should fire
+    // Advance past 50% (150s total) — reminder should fire
     await vi.advanceTimersByTimeAsync(2_000);
 
     const reminderMsg = connector.sentMessages.find((m) =>
@@ -1181,8 +1181,8 @@ describe('permission escalation — 50% reminder (OB-1640 / OB-1641)', () => {
 
     const msgsBefore = connector.sentMessages.length;
 
-    // Advance 91s — reminder fires once for the batch (based on first escalation's 180s timeout)
-    await vi.advanceTimersByTimeAsync(91_000);
+    // Advance 151s — reminder fires once for the batch (based on first escalation's 300s timeout, 50% = 150s)
+    await vi.advanceTimersByTimeAsync(151_000);
 
     const reminderMsgs = connector.sentMessages
       .slice(msgsBefore)
@@ -1215,14 +1215,14 @@ describe('permission escalation — 50% reminder (OB-1640 / OB-1641)', () => {
       connector,
     );
 
-    // Advance past 50% — reminder fires
-    await vi.advanceTimersByTimeAsync(91_000);
+    // Advance past 50% (150s for 300s base) — reminder fires
+    await vi.advanceTimersByTimeAsync(151_000);
 
     const reminderMsg = connector.sentMessages.find((m) =>
       m.content.includes('pending escalation request'),
     );
     expect(reminderMsg).toBeDefined();
-    // At 91s the queue still has 2 entries (neither has timed out yet)
+    // At 151s the queue still has 2 entries (neither has timed out yet — first at 300s, second at 360s)
     expect(reminderMsg!.content).toMatch(/2 pending escalation request/);
   });
 });
@@ -1236,7 +1236,7 @@ describe('permission escalation — auto-deny after full timeout (OB-1638 / OB-1
     vi.useRealTimers();
   });
 
-  it('auto-denies and sends timeout message after the full 180s elapses', async () => {
+  it('auto-denies and sends timeout message after the full 300s elapses', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -1254,13 +1254,13 @@ describe('permission escalation — auto-deny after full timeout (OB-1638 / OB-1
 
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
 
-    // Advance to just before full timeout
-    await vi.advanceTimersByTimeAsync(179_000);
+    // Advance to just before full timeout (300s)
+    await vi.advanceTimersByTimeAsync(299_000);
     expect(router.hasPendingEscalation('+1234567890')).toBe(true);
     // respawn must NOT have been called
     expect(respawn).not.toHaveBeenCalled();
 
-    // Advance past 180s — auto-deny fires
+    // Advance past 300s — auto-deny fires
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
@@ -1273,7 +1273,7 @@ describe('permission escalation — auto-deny after full timeout (OB-1638 / OB-1
     expect(timeoutMsg!.content).toContain('worker-ad1');
   });
 
-  it('scaled timeout auto-denies at 240s for 2 pending escalations', async () => {
+  it('scaled timeout auto-denies at 360s for 2 pending escalations', async () => {
     const { router, connector } = makeRouter();
     await connector.initialize();
 
@@ -1295,11 +1295,11 @@ describe('permission escalation — auto-deny after full timeout (OB-1638 / OB-1
       connector,
     );
 
-    // After 181s the first entry auto-denies; second still pending (240s timeout)
-    await vi.advanceTimersByTimeAsync(181_000);
+    // After 301s the first entry auto-denies (300s timeout); second still pending (360s timeout)
+    await vi.advanceTimersByTimeAsync(301_000);
     expect(router.pendingEscalationCount('+1234567890')).toBe(1);
 
-    // After another 60s (241s total) the second also auto-denies
+    // After another 60s (361s total) the second also auto-denies
     await vi.advanceTimersByTimeAsync(60_000);
     expect(router.hasPendingEscalation('+1234567890')).toBe(false);
 
