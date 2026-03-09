@@ -807,6 +807,20 @@ export class Router {
       `⚠️ Confirmation required — ${highRiskMarkers.length} worker(s) with ${riskDisplay} risk` +
       ` profile (${profileDisplay}):\n\n${taskList}\n\n${estimateText}\n\nReply "go" to proceed or "skip" to cancel.`;
 
+    // Clear any superseded pending confirmation for this sender before creating a new one.
+    const existingConfirmation = this.pendingSpawnConfirmations.get(sender);
+    if (existingConfirmation) {
+      clearTimeout(existingConfirmation.timeoutHandle);
+      logger.debug(
+        {
+          sender,
+          profile: existingConfirmation.profile,
+          riskLevel: existingConfirmation.riskLevel,
+        },
+        'Cleared superseded spawn confirmation timer — new request overwrites pending one',
+      );
+    }
+
     // Set a 60-second auto-cancel timeout. Stored in the entry so it can be cleared on reply.
     const timeoutHandle = setTimeout(() => {
       const stillPending = this.pendingSpawnConfirmations.get(sender);

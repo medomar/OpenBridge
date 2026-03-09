@@ -2,8 +2,8 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 29 | **Fixed:** 5 (143 prior findings archived) | **Last Audit:** 2026-03-09
-> **History:** 147 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
+> **Open:** 28 | **Fixed:** 6 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **History:** 148 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
 
@@ -248,7 +248,7 @@
 ### OB-F168 — Spawn confirmation timer leak on duplicate requests
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/router.ts` (~lines 811-831)
 - **Root Cause / Impact:**
   In Router, `requestSpawnConfirmation()` stores a `setTimeout()` handle in `pendingSpawnConfirmations[sender]`. If called twice for the same sender before the first timeout fires, the first timer is orphaned — the new entry overwrites the old one, leaving the old timer running but unreachable. After 60s, the old timer fires and tries to access already-deleted state.
