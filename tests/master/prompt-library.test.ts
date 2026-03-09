@@ -371,6 +371,21 @@ describe('Prompt Library', () => {
       expect(content).toContain('{{taskDescription}}');
       expect(content).toContain('"verified"');
     });
+
+    it('should be idempotent — calling twice does not create duplicate rows (OB-F151)', async () => {
+      await seedPromptLibrary(dotFolder);
+      await seedPromptLibrary(dotFolder);
+
+      const manifest = await dotFolder.readPromptManifest();
+      expect(manifest).not.toBeNull();
+      // Exactly SEED_PROMPTS.length entries — no duplicates
+      expect(Object.keys(manifest!.prompts)).toHaveLength(SEED_PROMPTS.length);
+
+      // Each prompt ID appears exactly once
+      const ids = Object.keys(manifest!.prompts);
+      const uniqueIds = new Set(ids);
+      expect(uniqueIds.size).toBe(SEED_PROMPTS.length);
+    });
   });
 
   describe('Prompt Template previousVersion (OB-F63)', () => {
