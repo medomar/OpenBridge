@@ -24,6 +24,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { DotFolderManager } from './dotfolder-manager.js';
+import { detectMonorepoPattern } from './monorepo-detector.js';
 import {
   generateStructureScanPrompt,
   generateClassificationPrompt,
@@ -862,6 +863,28 @@ export class ExplorationCoordinator {
 
     await this.writeClassificationToStore(parsed.data);
     await this.storeExplorationChunks('.', 'config', parsed.data);
+
+    // Detect monorepo pattern and store sub-projects in exploration state
+    try {
+      const monorepoResult = await detectMonorepoPattern(this.workspacePath);
+      if (monorepoResult.isMonorepo) {
+        state.subProjects = monorepoResult.subProjects;
+        logger.info(
+          {
+            subProjectCount: monorepoResult.subProjects.length,
+            subProjects: monorepoResult.subProjects,
+          },
+          'Monorepo detected during Phase 2 — sub-projects stored in exploration state',
+        );
+      } else {
+        state.subProjects = [];
+        logger.debug('No monorepo pattern detected during Phase 2');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Monorepo detection failed — continuing without sub-project data');
+      state.subProjects = [];
+    }
+
     state.phases.classification = 'completed';
     await this.writeExplorationState(state);
     await this.completePhaseRow(phase2RowId);
@@ -1367,6 +1390,7 @@ export class ExplorationCoordinator {
       directoryDives: [],
       totalCalls: 0,
       totalAITimeMs: 0,
+      subProjects: [],
     };
   }
 
