@@ -4313,6 +4313,15 @@ export class MasterManager {
       // Master-driven exploration via the persistent session
       await this.masterDrivenExplore();
 
+      // Seed memory.md with exploration results before entering ready state (OB-F156, OB-1270).
+      // triggerMemoryUpdate() normally fires every MEMORY_UPDATE_INTERVAL tasks, but
+      // completedTaskCount is 0 at this point — call it explicitly so memory.md is not empty.
+      try {
+        await this.triggerMemoryUpdate();
+      } catch (err) {
+        logger.warn({ err }, 'Post-exploration memory update failed');
+      }
+
       this.state = 'ready';
 
       // Detect sub-projects after successful exploration (OB-1613)

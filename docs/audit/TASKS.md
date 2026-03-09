@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 43 | **In Progress:** 0 | **Done:** 50 (1239 archived)
+> **Pending:** 42 | **In Progress:** 0 | **Done:** 51 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -44,7 +44,7 @@
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
 | P1  | 114   | Data Safety & Error Visibility | 12/12 | OB-F172/173/174/175/177     | ✅     |
 | P1  | 105   | Prompt Budget & Assembly       | 10/10 | OB-F147/148                 | ✅     |
-| P1  | 108   | Worker & Exploration Cleanup   | 7/10  | OB-F153/155/156             | ◻      |
+| P1  | 108   | Worker & Exploration Cleanup   | 8/10  | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
 | P2  | 107   | Classification Fixes           | 6     | OB-F152/154                 | ◻      |
 | P2  | 106   | Prompt Growth & Dedup          | 7     | OB-F149/150/151             | ◻      |
@@ -155,7 +155,7 @@
 | OB-1267 | In `explore()` (`src/master/exploration-coordinator.ts`), before creating a new `explorationId`, delete stale `exploration_progress` rows from previous failed explorations: `DELETE FROM exploration_progress WHERE status IN ('pending', 'in_progress') AND exploration_id != ?` (current ID).                                                                         | OB-F155 | sonnet | ✅ Done |
 | OB-1268 | Extend `cleanupOldActivity()` in `src/memory/activity-store.ts` to also clean up stale `exploration_progress` rows older than 24 hours with status `pending` or `in_progress`.                                                                                                                                                                                           | OB-F155 | sonnet | ✅ Done |
 | OB-1269 | Add unit test: verify that starting a new exploration cleans up stale `exploration_progress` rows from previous failed attempts. File: `tests/master/exploration-coordinator.test.ts`.                                                                                                                                                                                   | OB-F155 | sonnet | ✅ Done |
-| OB-1270 | In `masterDrivenExplore()` or the exploration completion handler in `master-manager.ts`, call `triggerMemoryUpdate()` (or a new `writeExplorationSummaryToMemory()`) immediately after exploration completes and before the Master enters `ready` state. The memory update should include: project type, frameworks, structure overview, key findings from exploration.  | OB-F156 | opus   | Pending |
+| OB-1270 | In `masterDrivenExplore()` or the exploration completion handler in `master-manager.ts`, call `triggerMemoryUpdate()` (or a new `writeExplorationSummaryToMemory()`) immediately after exploration completes and before the Master enters `ready` state. The memory update should include: project type, frameworks, structure overview, key findings from exploration.  | OB-F156 | opus   | ✅ Done |
 | OB-1271 | Add a `writeExplorationSummaryToMemory()` method to `master-manager.ts` (or `dotfolder-manager.ts`). It should read the exploration results (workspace-map.json, classification.json) and write a concise summary to `.openbridge/context/memory.md`. If `triggerMemoryUpdate()` already handles this, just call it — but verify it works with `completedTaskCount = 0`. | OB-F156 | sonnet | Pending |
 | OB-1272 | Add unit test: verify that after exploration completes, `memory.md` is populated (not the fallback stub). File: `tests/master/memory-update.test.ts`.                                                                                                                                                                                                                    | OB-F156 | sonnet | Pending |
 
