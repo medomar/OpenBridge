@@ -292,7 +292,7 @@ describe('AuthService — access control', () => {
       });
       const result = auth.checkAccessControl('+1234567890', 'whatsapp', 'deploy to production');
       expect(result.allowed).toBe(false);
-      expect(result.reason).toMatch(/not permitted/i);
+      expect(result.reason).toMatch(/blocked/i);
     });
 
     it('allows action not in blocked list', () => {
