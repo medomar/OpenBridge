@@ -719,13 +719,13 @@ export class WhatsAppConnector implements Connector {
   }
 
   async shutdown(): Promise<void> {
-    this.shuttingDown = true;
-    this.progressSent.clear();
-
-    if (this.reconnectTimer !== null) {
+    if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+
+    this.shuttingDown = true;
+    this.progressSent.clear();
 
     if (this.client) {
       await this.client.destroy();

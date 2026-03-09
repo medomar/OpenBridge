@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 64 | **In Progress:** 0 | **Done:** 29 (1239 archived)
+> **Pending:** 63 | **In Progress:** 0 | **Done:** 30 (1239 archived)
 > **Last Updated:** 2026-03-09
 
 <details>
@@ -42,7 +42,7 @@
 | --- | ----- | ------------------------------ | ----- | --------------------------- | ------ |
 | P0  | 115   | Test Suite Regression Fixes    | 7/7   | —                           | ✅     |
 | P0  | 112   | Process & Timer Safety         | 14/14 | OB-F162/163/164/167/168/170 | ✅     |
-| P1  | 114   | Data Safety & Error Visibility | 6/12  | OB-F172/173/174/175/177     | ◻      |
+| P1  | 114   | Data Safety & Error Visibility | 7/12  | OB-F172/173/174/175/177     | ◻      |
 | P1  | 105   | Prompt Budget & Assembly       | 10    | OB-F147/148                 | ◻      |
 | P1  | 108   | Worker & Exploration Cleanup   | 10    | OB-F153/155/156             | ◻      |
 | P1  | 113   | Memory Leak Fixes              | 10    | OB-F165/166/169/171/176     | ◻      |
@@ -112,7 +112,7 @@
 | OB-1319 | In `restartMasterSession()` (`src/master/master-manager.ts`), after injecting `pendingCancellationNotifications` into the system prompt, clear the array: `this.pendingCancellationNotifications.length = 0;`. Add a comment explaining why (prevent duplicate injection on subsequent restarts).                                                                                                                             | OB-F173 | haiku  | ✅ Done |
 | OB-1320 | In `DotFolderManager` (`src/master/dotfolder-manager.ts`), add `logger.warn({ err, path: <filePath> }, 'Failed to read <filename>')` to all catch blocks in read methods: `readWorkspaceMap()`, `readAgents()`, `readExplorationLog()`, `readExplorationState()`, `readMemoryMd()`, `readPromptManifest()`, and any other `readXxx()` methods that currently return `null` silently. Import logger from `src/core/logger.ts`. | OB-F174 | sonnet | ✅ Done |
 | OB-1321 | Add unit test: mock `fs.readFile` to throw `EACCES` (permission denied). Verify `DotFolderManager.readWorkspaceMap()` returns `null` AND logs a warning (spy on logger). File: `tests/master/dotfolder-error-logging.test.ts`.                                                                                                                                                                                                | OB-F174 | sonnet | ✅ Done |
-| OB-1322 | In WhatsApp connector `shutdown()` (`src/connectors/whatsapp/whatsapp-connector.ts`), add: `if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }` at the top of the method, before any other cleanup.                                                                                                                                                                                  | OB-F177 | haiku  | Pending |
+| OB-1322 | In WhatsApp connector `shutdown()` (`src/connectors/whatsapp/whatsapp-connector.ts`), add: `if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }` at the top of the method, before any other cleanup.                                                                                                                                                                                  | OB-F177 | haiku  | ✅ Done |
 | OB-1323 | Add unit test: verify that after calling WhatsApp connector's `shutdown()`, the `reconnectTimer` is null and no reconnection attempts are scheduled. File: `tests/connectors/whatsapp/whatsapp-shutdown.test.ts`.                                                                                                                                                                                                             | OB-F177 | sonnet | Pending |
 | OB-1324 | In `classifyError()` (`src/providers/claude-code/provider-error.ts` or `src/core/agent-runner.ts`), change exit code 143 (SIGTERM) from `'permanent'` to `'transient'`. Exit code 143 indicates the process was killed by SIGTERM (often from timeouts), which is a transient condition that may succeed on retry with a longer timeout. Keep exit code 124 as `'permanent'`. Add a comment explaining the distinction.       | OB-F162 | haiku  | Pending |
 | OB-1325 | Add unit test: verify `classifyError()` returns `'transient'` for exit code 143 and `'permanent'` for exit code 124. File: `tests/core/error-classification.test.ts` (or add to existing).                                                                                                                                                                                                                                    | OB-F162 | sonnet | Pending |
