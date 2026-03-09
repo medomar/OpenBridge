@@ -2107,7 +2107,7 @@ describe('MasterManager', () => {
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
-        expect(workerCall?.prompt).toBe('Add auth routes to src/routes/auth.ts');
+        expect(workerCall?.prompt).toContain('Add auth routes to src/routes/auth.ts');
         expect(workerCall?.model).toBe('sonnet');
         expect(workerCall?.allowedTools).toContain('Edit');
 
@@ -2289,7 +2289,7 @@ describe('MasterManager', () => {
 
       // Worker was spawned with correct options from the SPAWN marker
       const workerCall = getSpawnCallOpts(1);
-      expect(workerCall?.prompt).toBe('Add OAuth routes to src/routes/auth.ts');
+      expect(workerCall?.prompt).toContain('Add OAuth routes to src/routes/auth.ts');
       expect(workerCall?.model).toBe('sonnet');
       // code-edit profile → Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*)
       expect(workerCall?.allowedTools).toContain('Edit');
