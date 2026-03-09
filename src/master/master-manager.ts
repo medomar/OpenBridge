@@ -1885,7 +1885,17 @@ export class MasterManager {
         if (this.memory) {
           for (const prompt of SEED_PROMPTS) {
             try {
-              await this.memory.createPromptVersion(prompt.id, prompt.content);
+              // Skip insertion if this prompt already exists in the DB (OB-1254)
+              let alreadyExists = false;
+              try {
+                await this.memory.getActivePrompt(prompt.id);
+                alreadyExists = true;
+              } catch {
+                // getActivePrompt rejects when no active prompt exists — proceed with insert
+              }
+              if (!alreadyExists) {
+                await this.memory.createPromptVersion(prompt.id, prompt.content);
+              }
             } catch (dbErr) {
               logger.warn(
                 { error: dbErr, promptId: prompt.id },
