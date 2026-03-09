@@ -373,6 +373,25 @@ export class CodexAdapter implements CLIAdapter {
     return /^(gpt-|o[0-9]|codex)/.test(model);
   }
 
+  getPromptBudget(_model?: string): { maxPromptChars: number; maxSystemPromptChars: number } {
+    // Codex merges systemPrompt INTO the prompt positional argument — there is no
+    // separate system-prompt channel (no --append-system-prompt flag). Both system
+    // context and task description are concatenated into a single string before
+    // being passed to `codex exec` as one positional arg.
+    //
+    // Because of this merger the two fields share the same underlying budget.
+    // We return a conservative combined limit based on OpenAI model context windows:
+    //   - gpt-5.2-codex (default): estimated ~128K token context window (~512K chars)
+    //   - We use 100K chars total as a conservative combined budget to leave
+    //     ample room for tool call outputs and model response tokens.
+    //
+    // Both fields are set to the same value to signal that they share a single pool
+    // rather than having independent channels. The PromptAssembler should treat these
+    // as a combined budget when targeting CodexAdapter.
+    const combined = 100_000;
+    return { maxPromptChars: combined, maxSystemPromptChars: combined };
+  }
+
   /**
    * Infer codex sandbox mode from Claude-style allowedTools list.
    *
