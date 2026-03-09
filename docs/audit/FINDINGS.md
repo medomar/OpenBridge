@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 21 | **Fixed:** 13 (143 prior findings archived) | **Last Audit:** 2026-03-09
+> **Open:** 20 | **Fixed:** 14 (143 prior findings archived) | **Last Audit:** 2026-03-09
 > **History:** 149 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -182,7 +182,7 @@
 ### OB-F162 — Agent-runner timeout/kill race condition — double SIGKILL
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts` (execOnce, ~lines 987-1090)
 - **Root Cause / Impact:**
   In `execOnce()`, timeout and grace-period timers are cleared by multiple code paths (child 'close', child 'error', manual `kill()`) without synchronization. If `kill()` is called while a timeout handler is mid-execution, the grace period timer can fire after the process is already killed, attempting a second SIGKILL. The `killed` flag is not atomic across the timeout handler and kill function.
