@@ -116,6 +116,7 @@ const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
 const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
+const DEFAULT_WORKER_TIMEOUT = 300_000; // 5 minutes for worker tasks
 
 // turnsToTimeout imported from classification-engine.ts (OB-1279)
 
@@ -5085,7 +5086,7 @@ ${currentContent}
       profile: marker.profile,
       model: marker.body.model,
       maxTurns: marker.body.maxTurns ?? this.defaultMaxTurnsForProfile(marker.profile),
-      timeout: marker.body.timeout,
+      timeout: marker.body.timeout ?? DEFAULT_WORKER_TIMEOUT,
       retries: marker.body.retries,
       maxBudgetUsd: marker.body.maxBudgetUsd,
     }));
@@ -5210,7 +5211,7 @@ ${currentContent}
       profile: marker.profile,
       model: marker.body.model,
       maxTurns: marker.body.maxTurns ?? this.defaultMaxTurnsForProfile(marker.profile),
-      timeout: marker.body.timeout,
+      timeout: marker.body.timeout ?? DEFAULT_WORKER_TIMEOUT,
       retries: marker.body.retries,
       maxBudgetUsd: marker.body.maxBudgetUsd,
     }));
@@ -5776,7 +5777,7 @@ ${currentContent}
         profile,
         model: resolvedModel,
         maxTurns: resolvedMaxTurns,
-        timeout: body.timeout,
+        timeout: body.timeout ?? DEFAULT_WORKER_TIMEOUT,
         retries: body.retries,
         maxBudgetUsd: body.maxBudgetUsd,
       },

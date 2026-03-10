@@ -168,6 +168,14 @@ export class SessionCompactor {
   private readonly threshold: number;
   readonly maxRetries: number;
 
+  /**
+   * Track the totalTurns value at which we last triggered compaction.
+   * Prevents re-triggering on every subsequent message once the cumulative
+   * count exceeds the threshold (since message_count never resets).
+   * Next compaction fires when totalTurns >= lastCompactedAtTurns + thresholdTurns.
+   */
+  private lastCompactedAtTurns = 0;
+
   constructor(config: CompactorConfig) {
     this.maxTurns = config.maxTurns;
     this.threshold = config.threshold ?? 0.8;
@@ -223,7 +231,11 @@ export class SessionCompactor {
     }
 
     const totalTurns = messageCount + workerSpawnCount;
-    const needsCompaction = totalTurns >= this.thresholdTurns;
+    // Compare turns accumulated *since last compaction*, not the absolute total.
+    // This prevents compaction from re-triggering on every message once the
+    // cumulative count first exceeds the threshold.
+    const turnsSinceLastCompaction = totalTurns - this.lastCompactedAtTurns;
+    const needsCompaction = turnsSinceLastCompaction >= this.thresholdTurns;
 
     logger.debug(
       {
@@ -231,6 +243,8 @@ export class SessionCompactor {
         messageCount,
         workerSpawnCount,
         totalTurns,
+        turnsSinceLastCompaction,
+        lastCompactedAtTurns: this.lastCompactedAtTurns,
         thresholdTurns: this.thresholdTurns,
         needsCompaction,
       },
@@ -326,7 +340,19 @@ export class SessionCompactor {
           { err: lastError, sessionId, maxRetries: this.maxRetries },
           'SessionCompactor: compaction failed after all retries — continuing session without compaction',
         );
+      } else {
+        // Record the turn count at which compaction succeeded so we don't
+        // re-trigger on every subsequent message.
+        this.lastCompactedAtTurns = snapshot.totalTurns;
+        logger.info(
+          { sessionId, lastCompactedAtTurns: this.lastCompactedAtTurns },
+          'SessionCompactor: recorded compaction point — next compaction after %d more turns',
+          this.thresholdTurns,
+        );
       }
+    } else {
+      // No handler but compaction was triggered — still record the point
+      this.lastCompactedAtTurns = snapshot.totalTurns;
     }
 
     return { triggered: true, snapshot };
@@ -669,13 +695,20 @@ export class SessionCompactor {
       }
 
       // Remove the last (oldest) compaction entry from inside the block.
+      // compactionHeaders[] indices are relative to blockLines (blockStartIdx+1).
+      // The LAST entry in the array is the oldest (at the bottom of the block).
       const oldestRelIdx = compactionHeaders[compactionHeaders.length - 1] ?? 0;
       const oldestStart = blockStartIdx + 1 + oldestRelIdx;
-      const secondLastRelIdx = compactionHeaders[compactionHeaders.length - 2] ?? 0;
-      const nextHeaderInBlock =
-        compactionHeaders.length >= 2 ? blockStartIdx + 1 + secondLastRelIdx : blockEndIdx;
+      // The oldest entry extends from oldestStart to blockEndIdx (end of block).
+      const removeCount = blockEndIdx - oldestStart;
 
-      lines.splice(oldestStart, nextHeaderInBlock - oldestStart);
+      if (removeCount <= 0) {
+        // Safety: cannot trim further — hard-truncate to prevent infinite loop.
+        lines = lines.slice(0, MAX_LINES);
+        break;
+      }
+
+      lines.splice(oldestStart, removeCount);
     }
 
     const finalContent = lines.join('\n');

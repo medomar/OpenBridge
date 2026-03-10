@@ -209,7 +209,7 @@ function createSchema(db: Database.Database): void {
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id              TEXT    NOT NULL,
       channel              TEXT    NOT NULL,
-      role                 TEXT    NOT NULL DEFAULT 'viewer',
+      role                 TEXT    NOT NULL DEFAULT 'owner',
       scopes               TEXT,
       allowed_actions      TEXT,
       blocked_actions      TEXT,

@@ -57,7 +57,7 @@ export const MESSAGE_MAX_TURNS_PLANNING = 25;
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
  */
-export const CLASSIFIER_VERSION = 3;
+export const CLASSIFIER_VERSION = 4;
 
 /** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
 const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
@@ -257,7 +257,7 @@ export class ClassificationEngine {
    *   session so the keyword classifier can apply conversation context (OB-1582).
    */
   async classifyTask(content: string, sessionId?: string): Promise<ClassificationResult> {
-    const CLASSIFIER_TIMEOUT_MS = 5000;
+    const CLASSIFIER_TIMEOUT_MS = 15_000;
 
     await this.loadClassificationCache();
     const cacheKey = this.normalizeForCache(content);
@@ -540,8 +540,8 @@ export class ClassificationEngine {
 
   /**
    * Keyword-based task classifier — instant fallback when the AI classifier
-   * is unavailable or times out. Returns 'quick-answer' as the default so that
-   * unrecognized conversational messages don't waste turns on tools (OB-1581).
+   * is unavailable or times out. Returns 'tool-use' as the default so that
+   * unrecognized action messages don't get under-classified (OB-1581, OB-F178).
    */
   classifyTaskByKeywords(
     content: string,
@@ -790,7 +790,30 @@ export class ClassificationEngine {
     }
 
     // Tool-use keywords
-    const toolUseKeywords = ['create', 'fix', 'update file', 'add to', 'make a'];
+    const toolUseKeywords = [
+      'create',
+      'fix',
+      'update file',
+      'add to',
+      'make a',
+      'publish',
+      'deploy',
+      'push to',
+      'ship',
+      'launch',
+      'release',
+      'install',
+      'remove',
+      'delete',
+      'rename',
+      'move',
+      'run',
+      'execute',
+      'build',
+      'set up',
+      'setup',
+      'configure',
+    ];
     if (toolUseKeywords.some((kw) => lower.includes(kw))) {
       return {
         class: 'tool-use',
@@ -838,12 +861,12 @@ export class ClassificationEngine {
       };
     }
 
-    // Default: quick-answer (OB-1581)
+    // Default: tool-use — safer than quick-answer for unrecognized actions (OB-F178)
     return {
-      class: 'quick-answer',
-      maxTurns: MESSAGE_MAX_TURNS_QUICK,
-      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-      reason: 'keyword fallback: quick-answer',
+      class: 'tool-use',
+      maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
+      reason: 'keyword fallback: tool-use (default)',
     };
   }
 

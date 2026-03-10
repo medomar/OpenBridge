@@ -319,6 +319,31 @@ export function getConsentMode(
 }
 
 /**
+ * Set the consent mode for a specific user+channel pair.
+ * Creates a default access_control entry (role 'viewer') if none exists.
+ */
+export function setConsentMode(
+  db: Database.Database,
+  userId: string,
+  channel: string,
+  mode: ConsentMode,
+): void {
+  const existing = getAccess(db, userId, channel);
+  if (existing) {
+    db.prepare(
+      `UPDATE access_control SET consent_mode = ?, updated_at = ? WHERE user_id = ? AND channel = ?`,
+    ).run(mode, new Date().toISOString(), userId, channel);
+  } else {
+    setAccess(db, {
+      user_id: userId,
+      channel,
+      role: 'viewer',
+      consentMode: mode,
+    });
+  }
+}
+
+/**
  * Return the execution profile preference for a specific user+channel pair.
  * Falls back to 'fast' when no entry exists.
  */

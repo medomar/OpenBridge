@@ -727,6 +727,123 @@ export class CommandHandlers {
   }
 
   // -------------------------------------------------------------------------
+  // handleTrustCommand
+  // -------------------------------------------------------------------------
+
+  /**
+   * Handle the built-in "/trust" command — change the user's consent mode.
+   *
+   * Usage:
+   *   /trust          — show current trust level
+   *   /trust auto     — auto-approve all escalations (no prompts)
+   *   /trust edit     — auto-approve up to code-edit (prompt for full-access)
+   *   /trust ask      — always ask (default, safest)
+   *
+   * Inspired by OpenClaw's "identity first" security model: establish trust
+   * level once at the identity layer, then let operations flow without
+   * per-action confirmation friction.
+   */
+  async handleTrustCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const memory = this.deps.getMemory();
+    const sender = message.sender;
+    const channel = message.source;
+
+    const arg = message.content
+      .trim()
+      .replace(/^\/trust\s*/i, '')
+      .trim()
+      .toLowerCase();
+
+    // Map shorthand aliases to ConsentMode values
+    const TRUST_ALIASES: Record<
+      string,
+      'always-ask' | 'auto-approve-up-to-edit' | 'auto-approve-all'
+    > = {
+      auto: 'auto-approve-all',
+      all: 'auto-approve-all',
+      edit: 'auto-approve-up-to-edit',
+      'code-edit': 'auto-approve-up-to-edit',
+      ask: 'always-ask',
+      default: 'always-ask',
+      off: 'always-ask',
+      // Full names also accepted
+      'auto-approve-all': 'auto-approve-all',
+      'auto-approve-up-to-edit': 'auto-approve-up-to-edit',
+      'always-ask': 'always-ask',
+    };
+
+    // No argument — show current trust level
+    if (!arg) {
+      let current = 'always-ask';
+      if (memory) {
+        try {
+          current = await memory.getConsentMode(sender, channel);
+        } catch {
+          current = 'always-ask';
+        }
+      }
+      const levelLabel =
+        current === 'auto-approve-all'
+          ? 'auto (approve everything)'
+          : current === 'auto-approve-up-to-edit'
+            ? 'edit (approve up to code-edit)'
+            : 'ask (always ask)';
+
+      await connector.sendMessage({
+        target: channel,
+        recipient: sender,
+        content:
+          `*Trust level:* ${levelLabel}\n\n` +
+          'Change with:\n' +
+          '• `/trust auto` — approve all escalations automatically\n' +
+          '• `/trust edit` — auto-approve up to code-edit, prompt for full-access\n' +
+          '• `/trust ask` — always ask before granting tools (safest)',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const newMode = TRUST_ALIASES[arg];
+    if (!newMode) {
+      await connector.sendMessage({
+        target: channel,
+        recipient: sender,
+        content: `Unknown trust level: *${arg}*\n\n` + 'Valid options: `auto`, `edit`, `ask`',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (!memory) {
+      await connector.sendMessage({
+        target: channel,
+        recipient: sender,
+        content: 'Cannot update trust level — memory system not initialised.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    await memory.setConsentMode(sender, channel, newMode);
+
+    const confirmLabel =
+      newMode === 'auto-approve-all'
+        ? 'auto — all escalations will be approved automatically'
+        : newMode === 'auto-approve-up-to-edit'
+          ? 'edit — code-edit and below auto-approved, full-access still prompts'
+          : 'ask — you will be prompted for every escalation';
+
+    await connector.sendMessage({
+      target: channel,
+      recipient: sender,
+      content: `✅ Trust level set to *${confirmLabel}*`,
+      replyTo: message.id,
+    });
+
+    logger.info({ sender, channel, newMode }, 'Trust level updated via /trust command');
+  }
+
+  // -------------------------------------------------------------------------
   // handleWhoamiCommand
   // -------------------------------------------------------------------------
 
@@ -2733,6 +2850,7 @@ export class CommandHandlers {
       '• /role <user_id> <role> — (owner/admin) set role for another user on this channel',
       '• /approve <code> — (owner/admin) approve a pairing request using the 6-digit code',
       '• /permissions — show your consent mode, session grants, and permanent grants',
+      '• /trust [auto|edit|ask] — set trust level (auto = no prompts, edit = prompt for full-access only, ask = always prompt)',
       '',
       '*Batch Control*',
       '• /batch — show batch status: current item, progress, cost, elapsed time, failed items',
