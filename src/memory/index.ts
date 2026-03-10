@@ -88,6 +88,7 @@ import {
   resetDailyCosts as _resetDailyCosts,
   incrementDailyCost as _incrementDailyCost,
   getConsentMode as _getConsentMode,
+  setConsentMode as _setConsentMode,
   getApprovedEscalations as _getApprovedEscalations,
   addApprovedEscalation as _addApprovedEscalation,
   approvePairing as _approvePairing,
@@ -829,6 +830,12 @@ export class MemoryManager {
   getConsentMode(userId: string, channel: string): Promise<ConsentMode> {
     if (!this.db) return Promise.resolve('always-ask');
     return Promise.resolve(_getConsentMode(this.db, userId, channel));
+  }
+
+  setConsentMode(userId: string, channel: string, mode: ConsentMode): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _setConsentMode(this.db, userId, channel, mode);
+    return Promise.resolve();
   }
 
   setAccess(entry: AccessControlEntry): Promise<void> {

@@ -177,6 +177,39 @@ export class AuthService {
   setDatabase(db: Database.Database): void {
     this.db = db;
     logger.info('AuthService: access_control database attached');
+
+    // Sync existing access_control entries with the configured defaultRole.
+    // This fixes stale entries created under the old schema default ('viewer')
+    // that don't match the config's defaultRole (typically 'owner').
+    this.syncDefaultRoles(db);
+  }
+
+  /**
+   * Update any whitelisted user whose DB role still reflects the old schema
+   * default ('viewer') but whose config defaultRole is different (e.g. 'owner').
+   * Only touches entries that have no explicit allowed_actions override — those
+   * are assumed to be auto-created entries that should track the config default.
+   */
+  private syncDefaultRoles(db: Database.Database): void {
+    if (this.defaultRole === 'viewer') return; // nothing to sync
+    try {
+      const result = db
+        .prepare(
+          `UPDATE access_control
+             SET role = ?, updated_at = datetime('now')
+           WHERE role = 'viewer'
+             AND (allowed_actions IS NULL OR allowed_actions = '[]' OR allowed_actions = '')`,
+        )
+        .run(this.defaultRole);
+      if (result.changes > 0) {
+        logger.info(
+          { updatedCount: result.changes, newRole: this.defaultRole },
+          'AuthService: synced stale viewer roles to config defaultRole',
+        );
+      }
+    } catch (err) {
+      logger.warn({ err }, 'AuthService: syncDefaultRoles failed — continuing');
+    }
   }
 
   /** Check if a sender is allowed to use the bridge */

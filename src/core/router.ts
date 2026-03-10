@@ -825,10 +825,27 @@ export class Router {
     const sender = message.sender;
     const toolsList = requestedTools.join(', ');
 
-    // Check consent mode for auto-approve-up-to-edit — auto-approve escalations to code-edit
-    // or lower risk without prompting the user (OB-1601).
+    // Check consent mode — auto-approve escalations based on user trust level (OB-1601).
     if (this.memory) {
       const consentMode = await this.memory.getConsentMode(sender, message.source);
+
+      // auto-approve-all: skip all escalation prompts — user trusts the system fully.
+      if (consentMode === 'auto-approve-all') {
+        logger.info(
+          { sender, workerId, requestedTools },
+          'Auto-approving tool escalation — auto-approve-all mode',
+        );
+        await connector.sendMessage({
+          target: message.source,
+          recipient: sender,
+          content: `✅ Auto-approved: *${toolsList}* for worker ${workerId}`,
+        });
+        if (respawn) {
+          await respawn(requestedTools);
+        }
+        return;
+      }
+
       if (consentMode === 'auto-approve-up-to-edit') {
         const allWithinEditLevel = requestedTools.every((tool) => {
           const parsed = BuiltInProfileNameSchema.safeParse(tool);
@@ -1525,6 +1542,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/trust" command — change consent mode (auto/edit/ask)
+    if (/^\/trust(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleTrustCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/whoami" command — show user's role, channel, allowed actions, daily cost, consent mode (OB-1720)
     if (/^\/whoami$/i.test(message.content.trim())) {
       await this.handleWhoamiCommand(message, connector);
@@ -1940,6 +1963,10 @@ export class Router {
     connector: Connector,
   ): Promise<void> {
     return this.commandHandlers.handlePermissionsCommand(message, connector);
+  }
+
+  private async handleTrustCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleTrustCommand(message, connector);
   }
 
   private async handleWhoamiCommand(message: InboundMessage, connector: Connector): Promise<void> {
