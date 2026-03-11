@@ -6,49 +6,6 @@
 
 ---
 
-## Deferred — Finalization Required
-
-These features were scaffolded but have build issues. Not blocking current development.
-
-### Standalone Binary Packaging (Phase 72)
-
-**Current state:** Scripts and config fully scaffolded. Never actually built or tested.
-
-**Known issues:**
-
-1. `release/` directory is empty — no binaries have ever been built
-2. `.nvmrc` file missing — all CI workflows reference it and will fail
-3. `better-sqlite3` native addon bundling untested
-4. DMG script assumes `create-dmg` or `hdiutil` — needs testing on clean macOS
-5. Windows NSIS installer not implemented
-
-**Est. tasks:** ~8–12
-
----
-
-### Electron Desktop App (Phase 73)
-
-**Current state:** Substantially built (main process, preload, React UI, settings, dashboard). Cannot run due to build configuration issues.
-
-**Known issues (build-breaking):**
-
-1. No Electron TS compile step — entry point `electron/main.js` will not exist
-2. Setup wizard not wired — stub `<div>` on `/setup` instead of importing `Setup.tsx`
-3. Vite output path mismatch — `vite.config.ts` outputs to `dist/ui/` but `electron-builder.yml` expects `ui/dist/`
-4. `.nvmrc` missing
-
-**Est. tasks:** ~10–15
-
----
-
-### MCP Management UI (Electron layer)
-
-Backend is intact (`mcp-registry.ts`, `mcp-catalog.ts`). WebChat MCP UI was removed. Electron MCP UI (`McpSettings.tsx`, 827 lines) is coded but blocked by Electron build issues.
-
-**Est. tasks:** ~8–12 (after Electron is fixed)
-
----
-
 ## Backlog (Unscoped Ideas)
 
 | Feature                      | Description                                                                                                    | Notes                     | Inspired By                         |
