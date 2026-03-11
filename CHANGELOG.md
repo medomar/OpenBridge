@@ -240,8 +240,6 @@ _No pending changes._
 ### Scaffolded (not yet validated)
 
 - **Enhanced CLI Setup Wizard (Phase 71)** — guided `npx openbridge init` flow (needs testing)
-- **Standalone Binary Packaging (Phase 72)** — `pkg`-based build scripts for macOS/Linux/Windows (never run)
-- **Electron Desktop App (Phase 73)** — React GUI with setup wizard, dashboard, settings (has build issues)
 
 ### Changed
 
