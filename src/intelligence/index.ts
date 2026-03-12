@@ -26,3 +26,4 @@ export * from './knowledge-graph.js';
 export * from './state-machine.js';
 export * from './hook-executor.js';
 export * from './audit-log.js';
+export * from './pdf-generator.js';
