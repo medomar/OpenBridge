@@ -11,5 +11,5 @@ export { createWorkflowScheduler } from './scheduler.js';
 // Trigger implementations
 export * from './triggers/index.js';
 
-// TODO: Export step implementations once implemented
-// export * from './steps/index.js';
+// Step implementations
+export * from './steps/query-step.js';
