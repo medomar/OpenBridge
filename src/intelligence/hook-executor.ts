@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { mkdir, readFile, stat } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { DocType, DocTypeHook, HookActionType } from '../types/doctype.js';
 import { createLogger } from '../core/logger.js';
@@ -62,6 +63,21 @@ export function registerNotificationSenders(senders: {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace path registry (used by generate_pdf)
+// ---------------------------------------------------------------------------
+
+let registeredWorkspacePath: string | undefined;
+
+/**
+ * Register the workspace path so the generate_pdf hook knows where to save files.
+ * Call this during bridge startup (same place as registerNotificationSenders).
+ */
+export function registerWorkspacePath(workspacePath: string): void {
+  registeredWorkspacePath = workspacePath;
+  logger.debug({ workspacePath }, 'Workspace path registered for hook-executor');
+}
+
+// ---------------------------------------------------------------------------
 // Hook row type for SQLite reads
 // ---------------------------------------------------------------------------
 
@@ -118,7 +134,7 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   send_notification: handleSendNotification,
 
   // OB-1380: generate_pdf — renders a PDF and stores the file path
-  generate_pdf: handleNotImplemented('generate_pdf'),
+  generate_pdf: handleGeneratePdf,
 
   // OB-1381: create_payment_link — calls Stripe to generate a payment URL
   create_payment_link: handleNotImplemented('create_payment_link'),
@@ -493,6 +509,180 @@ async function handleSendNotification(
   logger.warn(
     { hookId: hook.id, channel },
     'send_notification: unknown channel — no delivery performed',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Minimal Puppeteer page type for PDF generation
+// ---------------------------------------------------------------------------
+
+interface PuppeteerPdfPage {
+  setViewport(opts: { width: number; height: number }): Promise<void>;
+  setContent(html: string, opts: { waitUntil: string }): Promise<void>;
+  pdf(opts: { path: string; format: string; printBackground: boolean }): Promise<unknown>;
+}
+
+interface PuppeteerPdfBrowser {
+  newPage(): Promise<PuppeteerPdfPage>;
+  close(): Promise<void>;
+}
+
+interface PuppeteerModule {
+  launch(opts: { headless: boolean; args: string[] }): Promise<PuppeteerPdfBrowser>;
+}
+
+/**
+ * Build a simple HTML document for a record, using an optional HTML template.
+ *
+ * If `.openbridge/templates/{templateName}.html` exists in the workspace, it is
+ * loaded and Mustache-style `{{field}}` placeholders are substituted with record
+ * values. Otherwise, a generic HTML table listing all record fields is generated.
+ */
+async function buildPdfHtml(
+  workspacePath: string,
+  templateName: string,
+  record: Record<string, unknown>,
+): Promise<string> {
+  const templatePath = join(workspacePath, '.openbridge', 'templates', `${templateName}.html`);
+
+  try {
+    const raw = await readFile(templatePath, 'utf-8');
+    return formatTemplate(raw, record);
+  } catch {
+    // Template file not found — generate a generic HTML table
+    const rows = Object.entries(record)
+      .map(([k, v]) => {
+        const display =
+          v === null || v === undefined
+            ? ''
+            : typeof v === 'object'
+              ? JSON.stringify(v)
+              : String(v as string | number | boolean);
+        return `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(display)}</td></tr>`;
+      })
+      .join('\n');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(templateName)}</title>
+  <style>
+    body { font-family: sans-serif; margin: 32px; color: #222; }
+    h1 { font-size: 1.4em; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th { text-align: left; width: 35%; padding: 6px 10px; background: #f5f5f5; border: 1px solid #ddd; font-weight: 600; }
+    td { padding: 6px 10px; border: 1px solid #ddd; }
+    tr:nth-child(even) td { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(templateName)}</h1>
+  <table>
+    ${rows}
+  </table>
+</body>
+</html>`;
+  }
+}
+
+/** Minimal HTML entity escaping for text content. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Handler for `generate_pdf` hook action type.
+ *
+ * On transition events (after timing): loads the record data, renders an HTML
+ * template as a PDF using Puppeteer, saves the file to `.openbridge/generated/`,
+ * and updates `action_config.output_field` on the record with the absolute file path.
+ *
+ * action_config fields:
+ *   - `template`      (required) — template name; looks for `.openbridge/templates/{name}.html`,
+ *                                  falls back to a generated HTML table if not found
+ *   - `output_field`  (required) — record field to set with the generated PDF path
+ *
+ * When pdfmake (Phase 122) ships, replace this implementation with the pdfmake renderer
+ * and keep this Puppeteer path as the fallback.
+ */
+async function handleGeneratePdf(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  _db: Database.Database,
+): Promise<void> {
+  const config = hook.action_config;
+  const templateName = config['template'] as string | undefined;
+  const outputField = config['output_field'] as string | undefined;
+
+  if (!templateName) {
+    logger.warn({ hookId: hook.id }, 'generate_pdf hook missing "template" in action_config');
+    return;
+  }
+
+  if (!outputField) {
+    logger.warn({ hookId: hook.id }, 'generate_pdf hook missing "output_field" in action_config');
+    return;
+  }
+
+  const workspacePath = registeredWorkspacePath;
+  if (!workspacePath) {
+    logger.warn(
+      { hookId: hook.id },
+      'generate_pdf hook: no workspace path registered — call registerWorkspacePath() on startup',
+    );
+    return;
+  }
+
+  const outputDir = join(workspacePath, '.openbridge', 'generated');
+  await mkdir(outputDir, { recursive: true });
+
+  const html = await buildPdfHtml(workspacePath, templateName, record);
+
+  const outputFilename = `${templateName}-${randomUUID()}.pdf`;
+  const outputPath = join(outputDir, outputFilename);
+
+  // Try Puppeteer HTML→PDF
+  let puppeteer: PuppeteerModule;
+  try {
+    const mod = (await import('puppeteer')) as { default?: PuppeteerModule } & PuppeteerModule;
+    puppeteer = mod.default ?? mod;
+  } catch {
+    throw new Error(
+      'Puppeteer is not installed. Run `npm install puppeteer` to enable PDF generation.',
+    );
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1240, height: 1754 }); // A4-ish at 150 dpi
+    await page.setContent(html, { waitUntil: 'load' });
+    await page.pdf({ path: outputPath, format: 'A4', printBackground: true });
+  } finally {
+    await browser.close();
+  }
+
+  const fileStat = await stat(outputPath);
+  logger.info(
+    { hookId: hook.id, outputPath, sizeBytes: fileStat.size },
+    'generate_pdf hook: PDF written',
+  );
+
+  // Update the record field with the generated file path
+  record[outputField] = outputPath;
+
+  logger.debug(
+    { hookId: hook.id, outputField, outputPath },
+    'generate_pdf hook executed successfully',
   );
 }
 
