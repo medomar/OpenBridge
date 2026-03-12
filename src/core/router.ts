@@ -16,6 +16,7 @@ import type { MessageQueue } from './queue.js';
 import type { RiskLevel, DeepPhase, DocumentFileFormat } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
+import type { IntegrationHub } from '../integrations/hub.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
 import type { FileServer } from './file-server.js';
@@ -347,6 +348,7 @@ export class Router {
   private appServer?: AppServer;
   private relay?: InteractionRelay;
   private skillManager?: SkillManager;
+  private integrationHub?: IntegrationHub;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -442,6 +444,12 @@ export class Router {
   setSkillManager(skillManager: SkillManager): void {
     this.skillManager = skillManager;
     logger.info('Router configured with SkillManager (/skills command enabled)');
+  }
+
+  /** Set the IntegrationHub — exposes connected integrations to command handlers */
+  setIntegrationHub(hub: IntegrationHub): void {
+    this.integrationHub = hub;
+    logger.info('Router configured with IntegrationHub');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */

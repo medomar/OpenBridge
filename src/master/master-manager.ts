@@ -74,6 +74,7 @@ import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
 import { applyToolPromptPrefix, seedPromptLibrary, SEED_PROMPTS } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
+import type { IntegrationHub } from '../integrations/hub.js';
 import { DeepModeManager } from './deep-mode.js';
 import type {
   MasterState,
@@ -605,6 +606,8 @@ export class MasterManager {
   private readonly pendingDeepModeResumeOffers: string[] = [];
   /** KnowledgeRetriever for RAG-based context injection (OB-1344). Null until set via setKnowledgeRetriever(). */
   private knowledgeRetriever: KnowledgeRetriever | null = null;
+  /** IntegrationHub for business integrations — null until set via setIntegrationHub(). */
+  private integrationHub: IntegrationHub | null = null;
   /** Deep Mode manager — tracks multi-phase session state (OB-1403). */
   private readonly deepMode: DeepModeManager;
   /** Deep Mode configuration — controls default profile and per-phase model overrides (OB-1403). */
@@ -2504,6 +2507,14 @@ export class MasterManager {
    */
   public setKnowledgeRetriever(retriever: KnowledgeRetriever): void {
     this.knowledgeRetriever = retriever;
+  }
+
+  /**
+   * Set the IntegrationHub — exposes connected integrations to the Master AI.
+   * Called by Bridge.start() after the hub is created.
+   */
+  public setIntegrationHub(hub: IntegrationHub): void {
+    this.integrationHub = hub;
   }
 
   /**

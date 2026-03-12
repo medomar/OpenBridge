@@ -36,6 +36,7 @@ import type { InteractionRelay } from './interaction-relay.js';
 import { SecretScanner } from './secret-scanner.js';
 import type { SecretMatch } from './secret-scanner.js';
 import { DockerSandbox, DockerHealthMonitor, cleanupSandboxContainers } from './docker-sandbox.js';
+import { IntegrationHub } from '../integrations/hub.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -98,6 +99,7 @@ export class Bridge {
   private tunnelExitHandler: (() => void) | null = null;
   private tunnelSigintHandler: (() => void) | null = null;
   private dockerHealthMonitor: DockerHealthMonitor | null = null;
+  private readonly integrationHub: IntegrationHub;
   private readonly detectedSecrets: SecretMatch[] = [];
   private readonly sessionExcludePatterns: string[] = [];
   private readonly workspaceInclude: readonly string[];
@@ -140,6 +142,7 @@ export class Bridge {
     }
 
     this.securityConfig = options?.securityConfig;
+    this.integrationHub = new IntegrationHub();
   }
 
   /** Register built-in and external plugins before starting */
@@ -215,6 +218,11 @@ export class Bridge {
   /** Returns the McpRegistry instance (null if no mcpRegistry was provided) */
   getMcpRegistry(): McpRegistry | null {
     return this.mcpRegistry;
+  }
+
+  /** Returns the IntegrationHub instance */
+  getIntegrationHub(): IntegrationHub {
+    return this.integrationHub;
   }
 
   /**
@@ -368,6 +376,13 @@ export class Bridge {
       this.workspaceInclude,
       this.workspaceExclude,
     );
+
+    // Wire IntegrationHub into Router and MasterManager
+    this.router.setIntegrationHub(this.integrationHub);
+
+    if (this.master) {
+      this.master.setIntegrationHub(this.integrationHub);
+    }
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
@@ -617,6 +632,14 @@ export class Bridge {
     if (this.master) {
       await this.master.shutdown();
       logger.info('Master AI shut down');
+    }
+
+    // Shut down IntegrationHub — gracefully tears down all registered integrations
+    try {
+      await this.integrationHub.shutdown();
+      logger.info('IntegrationHub shut down');
+    } catch (error) {
+      logger.warn({ err: error }, 'IntegrationHub shutdown failed — continuing');
     }
 
     // Stop all running apps before tearing down connectors
