@@ -17,6 +17,7 @@ import type { RiskLevel, DeepPhase, DocumentFileFormat } from '../types/agent.js
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
 import type { IntegrationHub } from '../integrations/hub.js';
+import type { CredentialStore } from '../integrations/credential-store.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
 import type { FileServer } from './file-server.js';
@@ -349,6 +350,7 @@ export class Router {
   private relay?: InteractionRelay;
   private skillManager?: SkillManager;
   private integrationHub?: IntegrationHub;
+  private credentialStore?: CredentialStore;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -411,6 +413,8 @@ export class Router {
       getAppServer: () => this.appServer,
       getSkillManager: () => this.skillManager,
       getWorkspacePath: () => this.workspacePath,
+      getIntegrationHub: () => this.integrationHub,
+      getCredentialStore: () => this.credentialStore,
       getConnectors: () => this.connectors,
       getProviders: () => this.providers,
       getPendingStopConfirmations: () => this.pendingStopConfirmations,
@@ -450,6 +454,12 @@ export class Router {
   setIntegrationHub(hub: IntegrationHub): void {
     this.integrationHub = hub;
     logger.info('Router configured with IntegrationHub');
+  }
+
+  /** Set the CredentialStore — used by /connect to encrypt and persist integration credentials */
+  setCredentialStore(store: CredentialStore): void {
+    this.credentialStore = store;
+    logger.info('Router configured with CredentialStore');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */
@@ -1610,6 +1620,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/connect <integration> [<credential>]" command — credential collection (OB-1397)
+    if (/^\/connect(\s.*)?$/i.test(message.content.trim())) {
+      await this.handleConnectCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/process <file>" command — extract document entities (OB-1349)
     if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleProcessCommand(message, connector);
@@ -2106,6 +2122,10 @@ export class Router {
 
   private async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleProcessCommand(message, connector);
+  }
+
+  private async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleConnectCommand(message, connector);
   }
 
   private async handleDoctypesCommand(
