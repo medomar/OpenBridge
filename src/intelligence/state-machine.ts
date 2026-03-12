@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { DocType, DocTypeHook, DocTypeTransition } from '../types/doctype.js';
 import { createLogger } from '../core/logger.js';
+import { ensureAuditLogTable, insertAuditEntry } from './audit-log.js';
 
 const logger = createLogger('state-machine');
 
@@ -411,6 +412,9 @@ export async function executeTransition(
   const beforeHooks = allHooks.filter((h) => h.event === 'before_transition' && h.enabled);
   const afterHooks = allHooks.filter((h) => h.event === 'after_transition' && h.enabled);
 
+  // Ensure audit log table exists before entering the transaction (exec not allowed inside transactions)
+  ensureAuditLogTable(db);
+
   // Steps 3–5 in a transaction
   const runTransaction = db.transaction(() => {
     // Step 3: Fire before-hooks (synchronous within transaction)
@@ -447,13 +451,24 @@ export async function executeTransition(
       recordId,
     );
 
-    // Write audit log entry
+    // Write transition-specific audit table
     ensureTransitionAuditTable(db);
     db.prepare(
       `INSERT INTO doctype_transition_audit
         (doctype_id, record_id, from_state, to_state, action, user_role, transitioned_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(doctype.id, recordId, fromState, toState, action, userRole ?? null, now);
+
+    // Write to the shared dt_audit_log
+    insertAuditEntry(db, {
+      doctype: doctype.name,
+      record_id: recordId,
+      event: 'transition',
+      old_value: fromState,
+      new_value: toState,
+      changed_by: userRole ?? null,
+      changed_at: now,
+    });
 
     // Step 5: Fire after-hooks (synchronous within transaction)
     // Re-read record with updated status for after-hooks
