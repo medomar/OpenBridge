@@ -238,6 +238,63 @@ END;`;
   return [insertTrigger, updateTrigger, deleteTrigger];
 }
 
+/**
+ * Generates a `CREATE VIRTUAL TABLE` DDL statement for an FTS5 full-text search index
+ * plus INSERT, UPDATE, and DELETE triggers to keep the FTS5 index in sync with the
+ * content table.
+ *
+ * The generated FTS5 table is a content table (`content=`) backed by the data table,
+ * using `content_rowid=rowid`.  Callers should pass only the field names where
+ * `searchable = true` in the DocType metadata.
+ *
+ * @param tableName        — fully-qualified data table name (e.g. `dt_invoice`)
+ * @param searchableFields — column names to include in the FTS5 index
+ * @returns an array of DDL/trigger strings: [CREATE VIRTUAL TABLE, INSERT trigger,
+ *          UPDATE trigger, DELETE trigger]
+ */
+export function buildFTS5DDL(tableName: string, searchableFields: string[]): string[] {
+  if (searchableFields.length === 0) {
+    throw new Error(
+      `buildFTS5DDL: at least one searchable field is required for table "${tableName}".`,
+    );
+  }
+
+  const ftsTable = `${tableName}_fts`;
+  const qFts = quoteIdentifier(ftsTable);
+  const qTable = quoteIdentifier(tableName);
+
+  // Field list for the FTS5 declaration — identifiers must be unquoted inside fts5(...)
+  const fieldList = searchableFields.map((f) => quoteIdentifier(f)).join(', ');
+
+  const createVTable = `CREATE VIRTUAL TABLE IF NOT EXISTS ${qFts} USING fts5(${fieldList}, content=${qTable}, content_rowid=rowid);`;
+
+  // NEW.rowid / OLD.rowid must be bare column references inside trigger body
+  const newFieldValues = searchableFields.map((f) => `NEW.${quoteIdentifier(f)}`).join(', ');
+  const oldFieldValues = searchableFields.map((f) => `OLD.${quoteIdentifier(f)}`).join(', ');
+  const fieldListForDelete = searchableFields.map((f) => quoteIdentifier(f)).join(', ');
+
+  const insertTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${tableName}_fts_insert"
+AFTER INSERT ON ${qTable}
+BEGIN
+  INSERT INTO ${qFts}(rowid, ${fieldList}) VALUES (NEW.rowid, ${newFieldValues});
+END;`;
+
+  const updateTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${tableName}_fts_update"
+AFTER UPDATE ON ${qTable}
+BEGIN
+  INSERT INTO ${qFts}(${qFts}, rowid, ${fieldList}) VALUES ('delete', OLD.rowid, ${oldFieldValues});
+  INSERT INTO ${qFts}(rowid, ${fieldList}) VALUES (NEW.rowid, ${newFieldValues});
+END;`;
+
+  const deleteTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${tableName}_fts_delete"
+AFTER DELETE ON ${qTable}
+BEGIN
+  INSERT INTO ${qFts}(${qFts}, rowid, ${fieldListForDelete}) VALUES ('delete', OLD.rowid, ${oldFieldValues});
+END;`;
+
+  return [createVTable, insertTrigger, updateTrigger, deleteTrigger];
+}
+
 /** Wraps a SQLite identifier in double-quotes, escaping any embedded double-quotes. */
 function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
