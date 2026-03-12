@@ -1,0 +1,2 @@
+# Placeholder to ensure adapters/ directory is tracked by git
+# Adapter implementations (Stripe, Google Drive, OpenAPI, Email, Database, etc.) go here.
