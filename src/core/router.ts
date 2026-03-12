@@ -17,6 +17,9 @@ import type { RiskLevel, DeepPhase, DocumentFileFormat } from '../types/agent.js
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
 import type { IntegrationHub } from '../integrations/hub.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
+import type { WorkflowScheduler } from '../workflows/scheduler.js';
 import type { CredentialStore } from '../integrations/credential-store.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
@@ -351,6 +354,9 @@ export class Router {
   private skillManager?: SkillManager;
   private integrationHub?: IntegrationHub;
   private credentialStore?: CredentialStore;
+  private workflowStore?: WorkflowStore;
+  private workflowEngine?: WorkflowEngine;
+  private workflowScheduler?: WorkflowScheduler;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -402,6 +408,9 @@ export class Router {
       getRelay: () => this.relay,
       getConnectors: () => this.connectors,
       getAuth: () => this.auth,
+      getWorkflowStore: () => this.workflowStore,
+      getWorkflowEngine: () => this.workflowEngine,
+      getWorkflowScheduler: () => this.workflowScheduler,
     });
 
     // Initialize command handlers with deps that reference Router's mutable state
@@ -460,6 +469,18 @@ export class Router {
   setCredentialStore(store: CredentialStore): void {
     this.credentialStore = store;
     logger.info('Router configured with CredentialStore');
+  }
+
+  /** Set workflow components — enables [WORKFLOW:create] marker support */
+  setWorkflowComponents(
+    store: WorkflowStore,
+    engine: WorkflowEngine,
+    scheduler: WorkflowScheduler,
+  ): void {
+    this.workflowStore = store;
+    this.workflowEngine = engine;
+    this.workflowScheduler = scheduler;
+    logger.info('Router configured with workflow engine (WORKFLOW markers enabled)');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */

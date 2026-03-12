@@ -12,6 +12,10 @@ import type { FileServer } from './file-server.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { createLogger } from './logger.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
+import type { WorkflowScheduler } from '../workflows/scheduler.js';
+import { WorkflowSchema } from '../types/workflow.js';
 
 const logger = createLogger('output-marker-processor');
 
@@ -36,6 +40,9 @@ export const APP_STOP_MARKER_RE = /\[APP:stop\]([^[]*)\[\/APP\]/g;
 
 /** Pattern matching [APP:update:appId]jsonData[/APP] markers in AI output */
 export const APP_UPDATE_MARKER_RE = /\[APP:update:([^\]]+)\]([^[]*)\[\/APP\]/g;
+
+/** Pattern matching [WORKFLOW:create]{...json...}[/WORKFLOW] markers in AI output */
+export const WORKFLOW_CREATE_MARKER_RE = /\[WORKFLOW:create\]([\s\S]*?)\[\/WORKFLOW\]/g;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,6 +102,9 @@ export interface OutputMarkerDeps {
   getRelay: () => InteractionRelay | undefined;
   getConnectors: () => Map<string, Connector>;
   getAuth: () => AuthService | undefined;
+  getWorkflowStore: () => WorkflowStore | undefined;
+  getWorkflowEngine: () => WorkflowEngine | undefined;
+  getWorkflowScheduler: () => WorkflowScheduler | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +115,7 @@ export class OutputMarkerProcessor {
   constructor(private readonly deps: OutputMarkerDeps) {}
 
   /**
-   * Process all output markers in sequence: SHARE → APP → SEND → VOICE.
+   * Process all output markers in sequence: WORKFLOW → SHARE → APP → SEND → VOICE.
    * Returns the cleaned content with all markers stripped or replaced.
    */
   async processAll(
@@ -114,10 +124,79 @@ export class OutputMarkerProcessor {
     recipient: string,
     replyTo?: string,
   ): Promise<string> {
-    const afterShare = await this.processShareMarkers(content, connector, recipient, replyTo);
+    const afterWorkflow = await this.processWorkflowMarkers(content);
+    const afterShare = await this.processShareMarkers(afterWorkflow, connector, recipient, replyTo);
     const afterApp = await this.processAppMarkers(afterShare);
     const afterSend = await this.processSendMarkers(afterApp);
     return this.processVoiceMarkers(afterSend, connector, recipient);
+  }
+
+  /**
+   * Parse [WORKFLOW:create]{...json...}[/WORKFLOW] markers from AI output.
+   * Creates workflow definitions via WorkflowStore and schedules them if they
+   * have a schedule trigger. Replaces markers with confirmation text.
+   */
+  async processWorkflowMarkers(content: string): Promise<string> {
+    const store = this.deps.getWorkflowStore();
+    if (!store) return content.replace(new RegExp(WORKFLOW_CREATE_MARKER_RE.source, 'g'), '');
+
+    let cleaned = content;
+    const regex = new RegExp(WORKFLOW_CREATE_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const jsonBody = (match[1] ?? '').trim();
+
+      if (!jsonBody) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      try {
+        const raw = JSON.parse(jsonBody) as Record<string, unknown>;
+
+        // Generate an ID if not provided
+        if (!raw['id']) {
+          const { randomUUID } = await import('node:crypto');
+          raw['id'] = randomUUID();
+        }
+
+        // Default status to active
+        if (!raw['status']) {
+          raw['status'] = 'active';
+        }
+
+        const workflow = WorkflowSchema.parse(raw);
+        store.createWorkflow(workflow);
+
+        // Reload engine so the new workflow is available for execution
+        const engine = this.deps.getWorkflowEngine();
+        if (engine) {
+          await engine.loadWorkflows();
+        }
+
+        // Schedule if it's a schedule trigger
+        const scheduler = this.deps.getWorkflowScheduler();
+        if (scheduler && workflow.trigger.type === 'schedule' && workflow.trigger.cron) {
+          await scheduler.scheduleWorkflow(workflow);
+        }
+
+        const replacement = `\u2705 Workflow **${workflow.name}** created (${workflow.trigger.type} trigger, ${workflow.steps.length} steps).`;
+        cleaned = cleaned.replace(fullMatch, replacement);
+
+        logger.info(
+          { workflowId: workflow.id, name: workflow.name, trigger: workflow.trigger.type },
+          'Workflow created via WORKFLOW:create marker',
+        );
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logger.warn({ error: errorMsg, jsonBody }, 'Failed to parse WORKFLOW:create marker');
+        cleaned = cleaned.replace(fullMatch, `\u26a0\ufe0f Failed to create workflow: ${errorMsg}`);
+      }
+    }
+
+    return cleaned;
   }
 
   /**
