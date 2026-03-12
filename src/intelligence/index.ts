@@ -23,3 +23,4 @@ export * from './relation-manager.js';
 export * from './doctype-importer.js';
 export * from './doctype-exporter.js';
 export * from './knowledge-graph.js';
+export * from './state-machine.js';
