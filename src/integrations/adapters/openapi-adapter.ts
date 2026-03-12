@@ -8,6 +8,7 @@ import type {
   IntegrationCapability,
   IntegrationConfig,
 } from '../../types/integration.js';
+import { postmanToOpenAPI, type PostmanCollection } from '../parsers/postman-parser.js';
 
 const logger = createLogger('openapi-adapter');
 
@@ -138,10 +139,12 @@ export async function parseInputToOpenAPI(input: string): Promise<OpenAPI.Docume
       return await SwaggerParser.validate(input.trim());
     }
 
-    case 'postman':
-      throw new Error(
-        'Postman collection input detected. postman-parser (OB-1446) is not yet implemented.',
-      );
+    case 'postman': {
+      const parsed: unknown = JSON.parse(input.trim());
+      const collection = parsed as PostmanCollection;
+      const openApiDoc = postmanToOpenAPI(collection);
+      return await SwaggerParser.validate(openApiDoc as OpenAPI.Document);
+    }
 
     case 'curl':
       throw new Error('cURL input detected. curl-parser (OB-1447) is not yet implemented.');
