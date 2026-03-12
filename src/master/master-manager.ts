@@ -27,6 +27,7 @@ export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-c
 // ExplorationCoordinator, generateReExplorationPrompt, generateIncrementalExplorationPrompt
 // moved to exploration-manager.ts (OB-1280)
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
+import type { ConnectedIntegrationEntry } from './master-system-prompt.js';
 // formatLearnedPatternsSection, formatWorkerNextStepsSection,
 // formatPreFetchedKnowledgeSection, formatTargetedReaderSection, WorkerNextStepsEntry
 // moved to prompt-context-builder.ts (OB-1282)
@@ -1879,6 +1880,7 @@ export class MasterManager {
       workspaceInclude: this.workspaceInclude.length > 0 ? this.workspaceInclude : undefined,
       availableSkills: BUILT_IN_SKILLS,
       availableSkillPacks: this.activeSkillPacks,
+      connectedIntegrations: this.buildConnectedIntegrations(),
     });
 
     try {
@@ -2515,6 +2517,25 @@ export class MasterManager {
    */
   public setIntegrationHub(hub: IntegrationHub): void {
     this.integrationHub = hub;
+  }
+
+  /**
+   * Build the list of connected integrations for the Master system prompt.
+   * Only returns integrations that have been successfully initialized (connected=true).
+   */
+  private buildConnectedIntegrations(): ConnectedIntegrationEntry[] | undefined {
+    if (!this.integrationHub) return undefined;
+    const all = this.integrationHub.list();
+    const connected = all.filter((info) => info.connected);
+    if (connected.length === 0) return undefined;
+    return connected.map((info) => {
+      const integration = this.integrationHub!.get(info.name);
+      return {
+        name: info.name,
+        type: info.type,
+        capabilities: integration.describeCapabilities(),
+      };
+    });
   }
 
   /**
