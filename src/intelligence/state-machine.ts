@@ -320,6 +320,10 @@ export type WorkflowTrigger = (
   fromState: string,
   toState: string,
   action: string,
+  /** Record state before the transition (used by data triggers). */
+  oldRecord: Record<string, unknown>,
+  /** Record state after the transition (used by data triggers). */
+  newRecord: Record<string, unknown>,
 ) => Promise<void> | void;
 
 /** Options for executeTransition */
@@ -512,7 +516,15 @@ export async function executeTransition(
       'Step 6: Triggering dependent workflows',
     );
     try {
-      await workflowTrigger(doctype.id, recordId, fromState, toState, action);
+      await workflowTrigger(
+        doctype.id,
+        recordId,
+        fromState,
+        toState,
+        action,
+        record,
+        updatedRecord,
+      );
     } catch (err) {
       // Workflow failures are non-fatal — log but don't fail the transition
       logger.error(
