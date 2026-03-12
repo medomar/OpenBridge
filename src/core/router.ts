@@ -1626,6 +1626,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/integrations" command — list all registered integrations (OB-1398)
+    if (/^\/integrations\b/i.test(message.content.trim())) {
+      await this.handleIntegrationsCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/process <file>" command — extract document entities (OB-1349)
     if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleProcessCommand(message, connector);
@@ -2126,6 +2132,13 @@ export class Router {
 
   private async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleConnectCommand(message, connector);
+  }
+
+  private async handleIntegrationsCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleIntegrationsCommand(message, connector);
   }
 
   private async handleDoctypesCommand(
