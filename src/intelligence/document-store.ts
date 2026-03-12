@@ -1,83 +1,188 @@
-/**
- * Document Store — Storage and retrieval of processed documents and entities
- *
- * Manages:
- * - Document metadata (file source, processing timestamp, status)
- * - Extracted entities and relationships
- * - FTS5 full-text search indexing
- * - Vector search embeddings (if configured)
- *
- * TODO: Create database schema for documents and entities
- * TODO: Implement CRUD operations
- * TODO: Implement FTS5 indexing
- * TODO: Wire into MemoryManager facade
- */
+import type Database from 'better-sqlite3';
+import type { ProcessedDocument } from '../types/intelligence.js';
 
-export interface DocumentRecord {
+// ---------------------------------------------------------------------------
+// FTS5 query sanitization (same approach as chunk-store.ts)
+// ---------------------------------------------------------------------------
+
+function sanitizeFts5Query(raw: string): string {
+  const cleaned = raw.replace(/["*(){}[\]:^~?@#$%&\\|<>=!+,;]/g, ' ');
+  const tokens = cleaned.split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return '';
+  return tokens.map((t) => `"${t}"`).join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Row types
+// ---------------------------------------------------------------------------
+
+interface ProcessedDocumentRow {
   id: string;
-  filePath: string;
-  fileName: string;
-  mimeType: string;
-  fileSize: number;
-  processedAt: string;
-  documentType?: string;
-  rawText?: string;
-  [key: string]: unknown;
+  filename: string;
+  mime_type: string;
+  file_path: string;
+  doc_type: string;
+  raw_text: string;
+  entities: string;
+  relations: string;
+  tables: string;
+  metadata: string;
+  processed_at: string;
+  source: string | null;
 }
 
-export interface EntityRecord {
-  id: string;
-  documentId: string;
-  type: string;
-  name: string;
-  attributes?: Record<string, unknown>;
-  [key: string]: unknown;
+function rowToDocument(row: ProcessedDocumentRow): ProcessedDocument {
+  return {
+    id: row.id,
+    filename: row.filename,
+    mimeType: row.mime_type,
+    filePath: row.file_path,
+    docType: row.doc_type as ProcessedDocument['docType'],
+    rawText: row.raw_text,
+    entities: JSON.parse(row.entities) as ProcessedDocument['entities'],
+    relations: JSON.parse(row.relations) as ProcessedDocument['relations'],
+    tables: JSON.parse(row.tables) as ProcessedDocument['tables'],
+    images: [],
+    metadata: JSON.parse(row.metadata) as ProcessedDocument['metadata'],
+    processedAt: row.processed_at,
+    source: row.source ?? undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Schema creation
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure the `processed_documents` and `processed_documents_fts` tables exist.
+ * Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
+ */
+export function ensureDocumentStoreSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS processed_documents (
+      id           TEXT PRIMARY KEY,
+      filename     TEXT NOT NULL,
+      mime_type    TEXT NOT NULL,
+      file_path    TEXT NOT NULL,
+      doc_type     TEXT NOT NULL DEFAULT 'unknown',
+      raw_text     TEXT NOT NULL DEFAULT '',
+      entities     TEXT NOT NULL DEFAULT '[]',
+      relations    TEXT NOT NULL DEFAULT '[]',
+      tables       TEXT NOT NULL DEFAULT '[]',
+      metadata     TEXT NOT NULL DEFAULT '{}',
+      processed_at TEXT NOT NULL,
+      source       TEXT
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS processed_documents_fts
+      USING fts5(raw_text, filename, content='processed_documents', content_rowid='rowid');
+  `);
+}
+
+// ---------------------------------------------------------------------------
+// CRUD
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist a fully processed document to SQLite and index it in FTS5.
+ * If a document with the same `id` already exists it is replaced.
+ *
+ * @param db  - Open better-sqlite3 database instance
+ * @param doc - The processed document to store
+ * @returns   The document ID
+ */
+export function storeDocument(db: Database.Database, doc: ProcessedDocument): string {
+  ensureDocumentStoreSchema(db);
+
+  const upsert = db.prepare(`
+    INSERT OR REPLACE INTO processed_documents
+      (id, filename, mime_type, file_path, doc_type, raw_text, entities, relations, tables, metadata, processed_at, source)
+    VALUES
+      (@id, @filename, @mime_type, @file_path, @doc_type, @raw_text, @entities, @relations, @tables, @metadata, @processed_at, @source)
+  `);
+
+  const rebuildFts = db.prepare(`
+    INSERT OR REPLACE INTO processed_documents_fts (rowid, raw_text, filename)
+    SELECT rowid, raw_text, filename FROM processed_documents WHERE id = ?
+  `);
+
+  db.transaction(() => {
+    upsert.run({
+      id: doc.id,
+      filename: doc.filename,
+      mime_type: doc.mimeType,
+      file_path: doc.filePath,
+      doc_type: doc.docType ?? 'unknown',
+      raw_text: doc.rawText,
+      entities: JSON.stringify(doc.entities ?? []),
+      relations: JSON.stringify(doc.relations ?? []),
+      tables: JSON.stringify(doc.tables ?? []),
+      metadata: JSON.stringify(doc.metadata ?? {}),
+      processed_at: doc.processedAt,
+      source: doc.source ?? null,
+    });
+
+    rebuildFts.run(doc.id);
+  })();
+
+  return doc.id;
 }
 
 /**
- * Store a processed document
+ * Retrieve a stored document by its ID.
  *
- * @param _document - Document record to store
- * @returns ID of stored document
+ * @param db         - Open better-sqlite3 database instance
+ * @param documentId - UUID of the document
+ * @returns The document record, or `null` if not found
  */
-// eslint-disable-next-line @typescript-eslint/require-await
-export async function storeDocument(_document: DocumentRecord): Promise<string> {
-  // TODO: Implement document storage
-  // 1. Validate document structure
-  // 2. Insert into documents table
-  // 3. Index in FTS5
-  // 4. Generate embeddings if configured
-  // 5. Return document ID
-  throw new Error('storeDocument not yet implemented');
+export function getDocument(db: Database.Database, documentId: string): ProcessedDocument | null {
+  ensureDocumentStoreSchema(db);
+
+  const row = db.prepare(`SELECT * FROM processed_documents WHERE id = ?`).get(documentId) as
+    | ProcessedDocumentRow
+    | undefined;
+
+  return row ? rowToDocument(row) : null;
 }
 
 /**
- * Retrieve a stored document
+ * Full-text search over processed documents using the FTS5 index.
+ * Searches both `raw_text` and `filename` columns.
  *
- * @param _documentId - ID of document to retrieve
- * @returns Document record
+ * @param db    - Open better-sqlite3 database instance
+ * @param query - Search query string
+ * @param limit - Maximum number of results (default 10)
+ * @returns Array of matching documents ordered by relevance
  */
-// eslint-disable-next-line @typescript-eslint/require-await
-export async function getDocument(_documentId: string): Promise<DocumentRecord | null> {
-  // TODO: Implement document retrieval
-  // 1. Query documents table
-  // 2. Load associated entities
-  // 3. Return full document
-  throw new Error('getDocument not yet implemented');
-}
+export function searchDocuments(
+  db: Database.Database,
+  query: string,
+  limit = 10,
+): ProcessedDocument[] {
+  ensureDocumentStoreSchema(db);
 
-/**
- * Search documents by full-text query
- *
- * @param _query - FTS5 query string
- * @param _limit - Maximum results to return
- * @returns Array of matching documents
- */
-// eslint-disable-next-line @typescript-eslint/require-await
-export async function searchDocuments(_query: string, _limit?: number): Promise<DocumentRecord[]> {
-  // TODO: Implement FTS5 search
-  // 1. Sanitize query using FTS5 rules
-  // 2. Execute FTS5 search
-  // 3. Return paginated results
-  throw new Error('searchDocuments not yet implemented');
+  if (!query.trim()) return [];
+
+  const sanitized = sanitizeFts5Query(query);
+  if (!sanitized) return [];
+
+  try {
+    const rows = db
+      .prepare(
+        `SELECT d.*
+         FROM processed_documents d
+         JOIN (
+           SELECT rowid
+           FROM processed_documents_fts
+           WHERE processed_documents_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?
+         ) AS ranked ON d.rowid = ranked.rowid`,
+      )
+      .all(sanitized, limit) as ProcessedDocumentRow[];
+
+    return rows.map(rowToDocument);
+  } catch {
+    return [];
+  }
 }
