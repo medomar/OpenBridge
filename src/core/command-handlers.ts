@@ -3649,6 +3649,86 @@ export class CommandHandlers {
     logger.info({ sender: message.sender, integrationName }, '/connect command handled');
   }
 
+  // -------------------------------------------------------------------------
+  // handleIntegrationsCommand — /integrations (list all registered integrations)
+  // -------------------------------------------------------------------------
+
+  async handleIntegrationsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const hub = this.deps.getIntegrationHub();
+
+    if (!hub) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Integration system not available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    try {
+      const integrations = hub.list();
+
+      if (integrations.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            'No integrations registered.\n\nUse `/connect <integration-name>` to connect a service.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      // Build formatted list of integrations
+      const lines: string[] = ['*Connected Integrations*', ''];
+
+      for (const integration of integrations) {
+        const status = integration.connected ? '✅ Connected' : '❌ Disconnected';
+        const healthEmoji =
+          integration.healthStatus === 'healthy'
+            ? '💚'
+            : integration.healthStatus === 'degraded'
+              ? '🟡'
+              : integration.healthStatus === 'unhealthy'
+                ? '❌'
+                : '❓';
+        const healthLabel = `${healthEmoji} ${integration.healthStatus}`;
+        const capCount = integration.capabilityCount;
+        const capLabel = capCount === 1 ? 'capability' : 'capabilities';
+
+        lines.push(`• *${integration.name}* (${integration.type})`);
+        lines.push(`  Status: ${status}`);
+        lines.push(`  Health: ${healthLabel}`);
+        lines.push(`  Capabilities: ${capCount} ${capLabel}`);
+        lines.push('');
+      }
+
+      lines.push(`Use \`/connect <name>\` to connect a new integration.`);
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+
+      logger.info(
+        { sender: message.sender, count: integrations.length },
+        '/integrations command handled',
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err }, '/integrations: failed to list integrations');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to list integrations: ${msg}`,
+        replyTo: message.id,
+      });
+    }
+  }
+
   /**
    * Format a session transcript for the given channel.
    *   webchat   -> HTML message bubbles
