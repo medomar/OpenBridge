@@ -601,6 +601,73 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 20,
+    description:
+      'Add workflow engine tables (workflows, workflow_runs, workflow_approvals) and indexes',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='workflows'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE workflows (
+            id             TEXT    PRIMARY KEY,
+            name           TEXT    NOT NULL,
+            description    TEXT,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            trigger_type   TEXT    NOT NULL,
+            trigger_config TEXT    NOT NULL,
+            steps          TEXT    NOT NULL,
+            created_by     TEXT    NOT NULL DEFAULT 'system',
+            created_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at     TEXT,
+            last_run       TEXT,
+            run_count      INTEGER NOT NULL DEFAULT 0,
+            failure_count  INTEGER NOT NULL DEFAULT 0,
+            success_count  INTEGER NOT NULL DEFAULT 0
+          );
+
+          CREATE TABLE workflow_runs (
+            id           TEXT    PRIMARY KEY,
+            workflow_id  TEXT    NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            started_at   TEXT    NOT NULL,
+            completed_at TEXT,
+            status       TEXT    NOT NULL,
+            trigger_data TEXT,
+            step_results TEXT,
+            error        TEXT,
+            duration_ms  INTEGER
+          );
+
+          CREATE TABLE workflow_approvals (
+            id              TEXT    PRIMARY KEY,
+            workflow_run_id TEXT    NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            step_index      INTEGER NOT NULL,
+            message         TEXT    NOT NULL,
+            options         TEXT    NOT NULL,
+            sent_to         TEXT    NOT NULL,
+            sent_at         TEXT    NOT NULL,
+            responded_at    TEXT,
+            response        TEXT,
+            timeout_at      TEXT    NOT NULL
+          );
+
+          CREATE INDEX idx_workflows_enabled     ON workflows(enabled);
+          CREATE INDEX idx_workflows_trigger_type ON workflows(trigger_type);
+          CREATE INDEX idx_workflow_runs_workflow ON workflow_runs(workflow_id);
+          CREATE INDEX idx_workflow_runs_status   ON workflow_runs(status);
+          CREATE INDEX idx_workflow_runs_started  ON workflow_runs(started_at);
+          CREATE INDEX idx_workflow_approvals_run ON workflow_approvals(workflow_run_id);
+        `);
+      }
+    },
+  },
 ];
 
 /**
