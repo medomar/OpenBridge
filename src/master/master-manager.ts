@@ -3195,6 +3195,17 @@ export class MasterManager {
         taskMaxTurns = MESSAGE_MAX_TURNS_TOOL_USE;
       }
 
+      // DocType creation intent — OB-1384
+      // When the classifier detects doctype-creation phrases, override the prompt so the Master
+      // spawns a worker to design and register a DocType with appropriate fields, states, and hooks.
+      if (classification.doctypeCreation && classification.doctypeEntity) {
+        const entity = classification.doctypeEntity;
+        logger.info({ entity }, 'DocType creation intent detected — injecting design prompt');
+        // Escalate to complex-task if not already
+        taskClass = 'complex-task';
+        taskMaxTurns = MESSAGE_MAX_TURNS_PLANNING;
+      }
+
       // Deep Mode activation — OB-1403
       // If the configured default profile is 'thorough' or 'manual' and the task class is
       // 'complex-task', start a multi-phase Deep Mode session beginning with investigate phase.
@@ -3313,6 +3324,16 @@ export class MasterManager {
         promptToSend = classification.selectedOptionText
           ? `User selected option ${digit}: '${classification.selectedOptionText}'`
           : `User selected option ${digit}`;
+      }
+      // DocType creation — inject a design prompt so Master spawns a worker to build the DocType (OB-1384)
+      if (classification.doctypeCreation && classification.doctypeEntity) {
+        const entity = classification.doctypeEntity;
+        promptToSend =
+          `The user wants to track "${entity}". ` +
+          `Design a "${entity}" DocType with appropriate fields (name, status, dates, amounts, references), ` +
+          `states (e.g. draft → active → completed), computed fields where useful, and lifecycle hooks. ` +
+          `Use the DocType system in src/intelligence/ to register it. ` +
+          `Original request: ${message.content}`;
       }
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =

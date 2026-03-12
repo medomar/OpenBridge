@@ -94,6 +94,10 @@ export interface ClassificationResult {
   menuSelection?: boolean;
   /** The option text extracted from the previous bot response for this menu selection (OB-1658). */
   selectedOptionText?: string;
+  /** When true, the message matches doctype-creation phrases ("I need to track...", "manage my ...") (OB-1384). */
+  doctypeCreation?: boolean;
+  /** The extracted entity name from the doctype-creation phrase (e.g. "invoices", "customers") (OB-1384). */
+  doctypeEntity?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +604,37 @@ export class ClassificationEngine {
         batchMode: true,
         commitAfterEach: commitAfterEach || undefined,
       };
+    }
+
+    // DocType creation intent detection (OB-1384)
+    const doctypePatterns: { pattern: RegExp; entityGroup: number }[] = [
+      {
+        pattern:
+          /\bi (?:need|want) to (?:track|manage|organize|keep track of)(?: my| our| the)?\s+(.+?)(?:\.|$)/i,
+        entityGroup: 1,
+      },
+      {
+        pattern: /\bcreate (?:a|an)\s+(.+?)\s+(?:entity|doctype|tracker|record|table|system)\b/i,
+        entityGroup: 1,
+      },
+      { pattern: /\bset up\s+(.+?)\s+tracking\b/i, entityGroup: 1 },
+      { pattern: /\bsetup\s+(.+?)\s+tracking\b/i, entityGroup: 1 },
+      { pattern: /\btrack (?:my|our|the)\s+(.+?)(?:\.|$)/i, entityGroup: 1 },
+      { pattern: /\bmanage (?:my|our|the)\s+(.+?)(?:\.|$)/i, entityGroup: 1 },
+    ];
+    for (const { pattern, entityGroup } of doctypePatterns) {
+      const match = pattern.exec(content);
+      if (match) {
+        const entity = match[entityGroup]?.trim().replace(/\s+/g, ' ') ?? 'entity';
+        return {
+          class: 'complex-task',
+          maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
+          reason: `keyword match: doctype-creation (entity: ${entity})`,
+          doctypeCreation: true,
+          doctypeEntity: entity,
+        };
+      }
     }
 
     // Deep Mode keywords (OB-1404)
