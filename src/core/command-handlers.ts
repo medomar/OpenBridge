@@ -20,6 +20,8 @@ import type { RiskLevel, ExecutionProfile, DeepPhase } from '../types/agent.js';
 import { BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
+import type { IntegrationHub } from '../integrations/hub.js';
+import type { CredentialStore } from '../integrations/credential-store.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
@@ -123,6 +125,8 @@ export interface CommandHandlerDeps {
   getAppServer: () => AppServer | undefined;
   getSkillManager: () => SkillManager | undefined;
   getWorkspacePath: () => string | undefined;
+  getIntegrationHub: () => IntegrationHub | undefined;
+  getCredentialStore: () => CredentialStore | undefined;
   getConnectors: () => Map<string, Connector>;
   getProviders: () => Map<string, AIProvider>;
 
@@ -3508,6 +3512,141 @@ export class CommandHandlers {
       return `${i + 1}. ${title} — ${s.message_count} ${msgWord} — ${formatDate(s.last_message_at)}`;
     });
     return ['*Conversation History*', '', ...rowLines].join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleConnectCommand — /connect <integration> [<credential>]
+  // -------------------------------------------------------------------------
+
+  async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trimmed = message.content.trim();
+    // Parse: /connect [<integration> [<credential>]]
+    const match = /^\/connect(?:\s+(\S+)(?:\s+(.+))?)?$/i.exec(trimmed);
+
+    const sendHelp = async (): Promise<void> => {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          '*Connect an Integration*\n\n' +
+          'Usage:\n' +
+          '  /connect stripe <api-key>        — Stripe payments\n' +
+          '  /connect google-drive <api-key>  — Google Drive storage\n' +
+          '  /connect api <swagger-url>        — Any OpenAPI/REST service\n\n' +
+          'To get started, send the command without a credential to see what is required:\n' +
+          '  /connect stripe',
+        replyTo: message.id,
+      });
+    };
+
+    if (!match || !match[1]) {
+      await sendHelp();
+      return;
+    }
+
+    const integrationName = match[1].toLowerCase();
+    const credential = match[2]?.trim() ?? '';
+
+    // If no credential provided, show integration-specific instructions
+    if (!credential) {
+      const instructions: Record<string, string> = {
+        stripe:
+          '*Connect Stripe*\n\nProvide your Stripe secret API key:\n  /connect stripe <sk_live_...or sk_test_...>\n\nFind it at: https://dashboard.stripe.com/apikeys',
+        'google-drive':
+          '*Connect Google Drive*\n\nProvide your Google service account JSON key or OAuth2 token:\n  /connect google-drive <api-key-or-token>\n\nSee Google Cloud Console for credentials.',
+        api: '*Connect OpenAPI Service*\n\nProvide the Swagger/OpenAPI spec URL:\n  /connect api <https://api.example.com/openapi.json>',
+      };
+
+      const msg =
+        instructions[integrationName] ??
+        `*Connect ${integrationName}*\n\nProvide your API key or credential:\n  /connect ${integrationName} <credential>`;
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: msg,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Credential provided — encrypt and store
+    const workspacePath = this.deps.getWorkspacePath();
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+
+    if (!workspacePath || !db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          'Integration credentials cannot be stored — workspace not initialized. Start the bridge first.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Use credential store from deps if available, otherwise create a temporary one
+    let credStore = this.deps.getCredentialStore();
+    if (!credStore) {
+      const { CredentialStore: CS } = await import('../integrations/credential-store.js');
+      credStore = new CS(workspacePath);
+    }
+
+    const credData: Record<string, unknown> =
+      integrationName === 'api' ? { swaggerUrl: credential } : { apiKey: credential };
+
+    try {
+      credStore.storeCredential(db, integrationName, credData);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ integrationName, err }, '/connect: failed to store credential');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to store credential for "${integrationName}": ${msg}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    logger.info({ integrationName, sender: message.sender }, '/connect: credential stored');
+
+    // Attempt to initialize via IntegrationHub if the integration is registered
+    const hub = this.deps.getIntegrationHub();
+    let connectionStatus = 'Credential stored and encrypted.';
+
+    if (hub) {
+      try {
+        const config = {
+          name: integrationName,
+          credentialKey: integrationName,
+          options: credData,
+        };
+        await hub.initialize(integrationName, config);
+        connectionStatus = 'Connected and verified successfully.';
+        logger.info({ integrationName }, '/connect: integration initialized via hub');
+      } catch (err) {
+        // Integration may not be registered yet (adapters ship in Phase 120)
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('not found')) {
+          connectionStatus =
+            'Credential stored and encrypted. (Adapter not yet installed — will activate when available.)';
+        } else {
+          connectionStatus = `Credential stored, but connection test failed: ${errMsg}`;
+          logger.warn({ integrationName, err }, '/connect: hub initialization failed');
+        }
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `*${integrationName}* integration: ${connectionStatus}`,
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, integrationName }, '/connect command handled');
   }
 
   /**
