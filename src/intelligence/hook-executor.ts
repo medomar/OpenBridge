@@ -1,9 +1,65 @@
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import type Database from 'better-sqlite3';
 import type { DocType, DocTypeHook, HookActionType } from '../types/doctype.js';
 import { createLogger } from '../core/logger.js';
 import { generateNextNumber } from './naming-series.js';
 
 const logger = createLogger('hook-executor');
+
+// ---------------------------------------------------------------------------
+// Notification sender registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Sender function for a messaging channel (WhatsApp, etc.).
+ * `to` is the channel-specific recipient identifier (phone number, chat ID, etc.).
+ */
+export type ChannelSenderFn = (
+  to: string,
+  message: string,
+  attachments?: AttachmentPayload[],
+) => Promise<void>;
+
+/** Email sender function — sends a formatted email. */
+export type EmailSenderFn = (
+  to: string,
+  subject: string,
+  body: string,
+  attachments?: AttachmentPayload[],
+) => Promise<void>;
+
+/** A resolved attachment ready to send. */
+export interface AttachmentPayload {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
+/**
+ * Registry of notification sender functions.
+ * Wire up by calling `registerNotificationSenders()` from bridge.ts.
+ */
+const notificationSenders: {
+  whatsapp?: ChannelSenderFn;
+  telegram?: ChannelSenderFn;
+  email?: EmailSenderFn;
+} = {};
+
+/**
+ * Register sender functions so the send_notification hook can deliver messages.
+ * Call this during bridge startup before any hooks execute.
+ */
+export function registerNotificationSenders(senders: {
+  whatsapp?: ChannelSenderFn;
+  telegram?: ChannelSenderFn;
+  email?: EmailSenderFn;
+}): void {
+  if (senders.whatsapp) notificationSenders.whatsapp = senders.whatsapp;
+  if (senders.telegram) notificationSenders.telegram = senders.telegram;
+  if (senders.email) notificationSenders.email = senders.email;
+  logger.debug({ channels: Object.keys(senders) }, 'Notification senders registered');
+}
 
 // ---------------------------------------------------------------------------
 // Hook row type for SQLite reads
@@ -59,7 +115,7 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   update_field: handleUpdateField,
 
   // OB-1379: send_notification — sends a formatted message via a channel
-  send_notification: handleNotImplemented('send_notification'),
+  send_notification: handleSendNotification,
 
   // OB-1380: generate_pdf — renders a PDF and stores the file path
   generate_pdf: handleNotImplemented('generate_pdf'),
@@ -214,6 +270,230 @@ function evaluateValueExpression(expression: string, record: Record<string, unkn
 
   // Default: return as-is (bare string)
   return trimmed;
+}
+
+/**
+ * Format a Mustache-style template string with field values from a record.
+ *
+ * Replaces every `{{field}}` occurrence with the corresponding value from
+ * the record. Unknown field references are left as empty strings.
+ *
+ * @param template - Template string, e.g. `"Hello {{name}}, your total is {{total}}"`
+ * @param record   - Record data to substitute into the template
+ * @returns Formatted string
+ */
+function formatTemplate(template: string, record: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_match, field: string) => {
+    const value = record[field];
+    if (value === undefined || value === null) {
+      return '';
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+    return String(value as string | number | boolean);
+  });
+}
+
+/**
+ * Resolve a list of file paths to in-memory AttachmentPayload objects.
+ * Files that cannot be read are skipped with a warning.
+ */
+async function resolveAttachments(paths: string[]): Promise<AttachmentPayload[]> {
+  const attachments: AttachmentPayload[] = [];
+
+  for (const filePath of paths) {
+    try {
+      const content = await readFile(filePath);
+      const ext = extname(filePath).toLowerCase();
+
+      // Derive a reasonable MIME type from extension
+      const mimeTypes: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.txt': 'text/plain',
+        '.csv': 'text/csv',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      };
+
+      attachments.push({
+        filename: filePath.split('/').pop() ?? filePath,
+        content,
+        contentType: mimeTypes[ext] ?? 'application/octet-stream',
+      });
+    } catch (err) {
+      logger.warn({ filePath, err }, 'send_notification: could not read attachment — skipping');
+    }
+  }
+
+  return attachments;
+}
+
+/**
+ * Handler for `send_notification` hook action type.
+ *
+ * Formats `action_config.template` using Mustache-style `{{field}}` substitution
+ * from the record, then delivers the message via the specified channel.
+ *
+ * Supported channels:
+ *   - `whatsapp` — sends via registered WhatsApp connector sender
+ *   - `telegram` — sends via registered Telegram connector sender
+ *   - `email`    — sends via registered email-sender (requires `subject` config)
+ *   - `webhook`  — sends JSON POST to `action_config.url` via HTTP fetch
+ *
+ * action_config fields:
+ *   - `channel`      (required) — delivery channel: `whatsapp` | `telegram` | `email` | `webhook`
+ *   - `to`           (required for whatsapp/telegram/email) — recipient identifier
+ *   - `template`     (required) — message body template with `{{field}}` placeholders
+ *   - `subject`      (optional, used by email channel) — email subject line
+ *   - `url`          (required for webhook) — URL to POST to
+ *   - `attachments`  (optional) — array of file paths to attach
+ */
+async function handleSendNotification(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  _db: Database.Database,
+): Promise<void> {
+  const config = hook.action_config;
+
+  const channel = config['channel'] as string | undefined;
+  const template = config['template'] as string | undefined;
+  const to = config['to'] as string | undefined;
+  const subject = config['subject'] as string | undefined;
+  const webhookUrl = config['url'] as string | undefined;
+  const attachmentPaths = Array.isArray(config['attachments'])
+    ? (config['attachments'] as string[])
+    : [];
+
+  if (!channel) {
+    logger.warn({ hookId: hook.id }, 'send_notification hook missing "channel" in action_config');
+    return;
+  }
+
+  if (!template) {
+    logger.warn({ hookId: hook.id }, 'send_notification hook missing "template" in action_config');
+    return;
+  }
+
+  // Format the message template with record field values
+  const message = formatTemplate(template, record);
+
+  // Resolve attachments
+  const attachments = attachmentPaths.length > 0 ? await resolveAttachments(attachmentPaths) : [];
+
+  logger.debug(
+    { hookId: hook.id, channel, to, attachmentCount: attachments.length },
+    'send_notification: delivering message',
+  );
+
+  if (channel === 'webhook') {
+    // Webhook delivery — HTTP POST with JSON body
+    if (!webhookUrl) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification webhook channel missing "url" in action_config',
+      );
+      return;
+    }
+
+    const payload = {
+      message,
+      record,
+      attachments: attachmentPaths,
+      hook_id: hook.id,
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Webhook delivery failed: HTTP ${response.status.toString()} ${response.statusText}`,
+      );
+    }
+
+    logger.info({ hookId: hook.id, url: webhookUrl }, 'send_notification: webhook delivered');
+    return;
+  }
+
+  if (channel === 'email') {
+    if (!to) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification email channel missing "to" in action_config',
+      );
+      return;
+    }
+
+    const emailSender = notificationSenders.email;
+    if (!emailSender) {
+      logger.warn({ hookId: hook.id }, 'send_notification: no email sender registered — skipping');
+      return;
+    }
+
+    await emailSender(to, subject ?? 'Notification', message, attachments);
+    logger.info({ hookId: hook.id, to }, 'send_notification: email delivered');
+    return;
+  }
+
+  if (channel === 'whatsapp') {
+    if (!to) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification whatsapp channel missing "to" in action_config',
+      );
+      return;
+    }
+
+    const whatsappSender = notificationSenders.whatsapp;
+    if (!whatsappSender) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification: no whatsapp sender registered — skipping',
+      );
+      return;
+    }
+
+    await whatsappSender(to, message, attachments);
+    logger.info({ hookId: hook.id, to }, 'send_notification: whatsapp message delivered');
+    return;
+  }
+
+  if (channel === 'telegram') {
+    if (!to) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification telegram channel missing "to" in action_config',
+      );
+      return;
+    }
+
+    const telegramSender = notificationSenders.telegram;
+    if (!telegramSender) {
+      logger.warn(
+        { hookId: hook.id },
+        'send_notification: no telegram sender registered — skipping',
+      );
+      return;
+    }
+
+    await telegramSender(to, message, attachments);
+    logger.info({ hookId: hook.id, to }, 'send_notification: telegram message delivered');
+    return;
+  }
+
+  logger.warn(
+    { hookId: hook.id, channel },
+    'send_notification: unknown channel — no delivery performed',
+  );
 }
 
 /**
