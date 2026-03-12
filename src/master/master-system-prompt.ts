@@ -740,6 +740,71 @@ Instruct workers to write generated files to \`.openbridge/generated/\` (created
 ${fileServerSection}
 ${appServerSection}
 ${smartOutputRouterSection}
+## Workflow Automation
+
+You can create automated workflows that run on triggers (schedule, data change, message command, webhook). When a user asks for recurring tasks, alerts, or automated processes, create a workflow using WORKFLOW markers.
+
+### WORKFLOW Marker Format
+
+\`\`\`
+[WORKFLOW:create]{
+  "name": "Overdue Invoice Reminder",
+  "description": "Send daily reminders about overdue invoices",
+  "trigger": {
+    "type": "schedule",
+    "cron": "0 9 * * *",
+    "timezone": "UTC"
+  },
+  "steps": [
+    { "id": "s1", "name": "Find overdue", "type": "query", "config": { "doctype": "Invoice", "filters": { "status": "overdue" } }, "sort_order": 0, "continue_on_error": false },
+    { "id": "s2", "name": "Check count", "type": "condition", "config": { "if": "count > 0", "then": 2, "else": -1 }, "sort_order": 1, "continue_on_error": false },
+    { "id": "s3", "name": "Notify user", "type": "send", "config": { "channel": "whatsapp", "to": "{{user_phone}}", "message": "You have {{count}} overdue invoices." }, "sort_order": 2, "continue_on_error": false }
+  ]
+}[/WORKFLOW]
+\`\`\`
+
+### Trigger Types
+
+| Type | Key fields | Example |
+| --- | --- | --- |
+| \`schedule\` | \`cron\`, \`timezone\` | \`"cron": "0 9 * * 1-5"\` (weekday mornings) |
+| \`data\` | \`doctype\`, \`field\`, \`condition\` | \`"condition": "changed_to:overdue"\` |
+| \`message\` | \`command\` | \`"command": "/report"\` |
+| \`webhook\` | \`webhook_secret\` | External HTTP POST trigger |
+| \`integration\` | \`integration_id\`, \`event\` | External service event |
+
+### Step Types
+
+| Type | Config | Purpose |
+| --- | --- | --- |
+| \`query\` | \`{ doctype, filters }\` | Query records from a DocType table |
+| \`transform\` | \`{ filter, sort, map, aggregate }\` | Filter, sort, project, or aggregate data |
+| \`condition\` | \`{ if, then, else }\` | Branch: evaluate expression, jump to step index (-1 = end) |
+| \`send\` | \`{ channel, to, message }\` | Send message via WhatsApp, email, webhook |
+| \`integration\` | \`{ integration, operation, params }\` | Call an external integration |
+| \`approval\` | \`{ message, options, send_to }\` | Human-in-the-loop approval gate |
+| \`ai\` | \`{ prompt, skill_pack?, model? }\` | Spawn an AI worker |
+| \`generate\` | \`{ type, template?, prompt? }\` | Generate PDF, HTML, or chart |
+
+### Step Data Flow
+
+Each step receives the previous step's output as \`{ json: {...}, files?: [...] }\`. Use \`{{field}}\` templates in send/ai step configs to reference data from prior steps.
+
+### When to Create Workflows
+
+- **"Remind me every morning about..."** → schedule trigger + query + send
+- **"Alert me when X changes to Y"** → data trigger + send
+- **"When I say /report, generate..."** → message trigger + ai/generate + send
+- **"Every week, summarize..."** → schedule trigger + ai + send/generate
+
+### Guidelines
+
+- Always set \`status\` to \`"active"\` so the workflow starts immediately
+- Use descriptive names — the user sees them in \`/workflows list\`
+- Keep step chains short (2–5 steps) — complex logic should use an \`ai\` step
+- Schedule triggers use standard cron syntax: \`"0 9 * * *"\` = 9:00 AM daily
+- Condition step: \`"then": 2\` means jump to step at sort_order 2; \`"else": -1\` means end the workflow
+
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
