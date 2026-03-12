@@ -9,6 +9,7 @@ import type {
   IntegrationConfig,
 } from '../../types/integration.js';
 import { postmanToOpenAPI, type PostmanCollection } from '../parsers/postman-parser.js';
+import { curlsToOpenAPI, splitCurlCommands } from '../parsers/curl-parser.js';
 
 const logger = createLogger('openapi-adapter');
 
@@ -146,8 +147,14 @@ export async function parseInputToOpenAPI(input: string): Promise<OpenAPI.Docume
       return await SwaggerParser.validate(openApiDoc as OpenAPI.Document);
     }
 
-    case 'curl':
-      throw new Error('cURL input detected. curl-parser (OB-1447) is not yet implemented.');
+    case 'curl': {
+      const commands = splitCurlCommands(input);
+      if (commands.length === 0) {
+        throw new Error('No valid cURL commands found in the input.');
+      }
+      const curlSpec = curlsToOpenAPI(commands);
+      return await SwaggerParser.validate(curlSpec as OpenAPI.Document);
+    }
 
     default:
       throw new Error(
