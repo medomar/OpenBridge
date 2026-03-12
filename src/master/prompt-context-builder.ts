@@ -10,6 +10,7 @@ import {
   PRIORITY_WORKER_NEXT,
   PRIORITY_ANALYSIS,
 } from '../core/prompt-assembler.js';
+import { listDocTypes, getDocType } from '../intelligence/doctype-store.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
 import {
@@ -209,6 +210,12 @@ export class PromptContextBuilder {
       }
     }
 
+    // Available DocTypes — registered business data entities
+    const docTypesSection = this.buildDocTypesSection();
+    if (docTypesSection) {
+      assembler.addSection('Available DocTypes', docTypesSection, 75);
+    }
+
     // Conversation context — memory.md + session history + cross-session FTS5
     if (contextSections?.conversationContext) {
       assembler.addSection(
@@ -275,6 +282,86 @@ export class PromptContextBuilder {
     }
 
     return opts;
+  }
+
+  // -------------------------------------------------------------------------
+  // buildDocTypesSection (OB-1385)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Available Business Data (DocTypes)" section for injection into
+   * the Master system prompt. Lists all registered DocTypes with their fields and
+   * available state-machine actions. Returns null when no DocTypes are registered
+   * or the database is unavailable.
+   */
+  private buildDocTypesSection(): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let doctypes: ReturnType<typeof listDocTypes>;
+    try {
+      doctypes = listDocTypes(db);
+    } catch {
+      return null;
+    }
+    if (doctypes.length === 0) return null;
+
+    const lines: string[] = ['## Available Business Data (DocTypes)', ''];
+
+    for (const dt of doctypes) {
+      lines.push(`### ${dt.label_plural} (\`${dt.name}\`)`);
+
+      let full: ReturnType<typeof getDocType> | null = null;
+      try {
+        full = getDocType(db, dt.id);
+      } catch {
+        // If full detail fails, show minimal info
+      }
+
+      if (full) {
+        // Fields
+        const visibleFields = full.fields.sort((a, b) => a.sort_order - b.sort_order).slice(0, 8); // cap at 8 fields to avoid prompt bloat
+        if (visibleFields.length > 0) {
+          const fieldList = visibleFields
+            .map((f) => {
+              const req = f.required ? '*' : '';
+              return `  - \`${f.name}\` (${f.field_type})${req}`;
+            })
+            .join('\n');
+          lines.push('**Fields:**');
+          lines.push(fieldList);
+        }
+
+        // Available actions (transitions)
+        const uniqueActions = [
+          ...new Map(full.transitions.map((t) => [t.action_name, t.action_label])).entries(),
+        ];
+        if (uniqueActions.length > 0) {
+          const actionList = uniqueActions.map(([, label]) => `  - ${label}`).join('\n');
+          lines.push('**Actions:**');
+          lines.push(actionList);
+        }
+      }
+
+      // Example commands
+      const singular = dt.label_singular.toLowerCase();
+      const plural = dt.label_plural.toLowerCase();
+      lines.push('**Example commands:**');
+      lines.push(`  - "list ${plural}"`);
+      lines.push(`  - "create ${singular} for X"`);
+      if (full && full.transitions.length > 0) {
+        const firstAction = full.transitions[0];
+        if (firstAction) {
+          lines.push(`  - "${firstAction.action_label} ${singular} #42"`);
+        }
+      }
+
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   // -------------------------------------------------------------------------
