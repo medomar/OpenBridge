@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 153 | **In Progress:** 0 | **Done:** 20 (1332 archived)
+> **Pending:** 152 | **In Progress:** 0 | **Done:** 21 (1332 archived)
 > **Last Updated:** 2026-03-12
 
 <details>
@@ -41,7 +41,7 @@
 
 | Pri | Phase | Title                                            | Tasks | Findings               | Status  |
 | --- | ----- | ------------------------------------------------ | ----- | ---------------------- | ------- |
-| P0  | 116   | Document Intelligence Layer                      | 21    | OB-F184                | Pending |
+| P0  | 116   | Document Intelligence Layer                      | 21    | OB-F184                | ✅      |
 | P0  | 117   | DocType Engine — Schema & Storage                | 19    | OB-F185                | Pending |
 | P0  | 118   | DocType Engine — Lifecycle & Hooks               | 16    | OB-F185                | Pending |
 | P1  | 119   | Integration Hub — Core & Credentials             | 12    | OB-F186/F189           | Pending |
@@ -84,7 +84,7 @@
 | OB-1350 | Unit test: PDF processor. File: `tests/intelligence/pdf-processor.test.ts`. Create a minimal test PDF buffer (use `pdfmake` or embed a base64 fixture). Verify `processPdf()` extracts text and metadata. Mock `tesseract.js` for OCR fallback test (empty PDF text → triggers OCR path).                                                                                                                                                                                | OB-F184 | sonnet | ✅ Done |
 | OB-1351 | Unit test: Excel processor. File: `tests/intelligence/excel-processor.test.ts`. Create a test XLSX buffer using `xlsx` package (`XLSX.utils.aoa_to_sheet()` → `XLSX.write()`). Verify `processExcel()` extracts sheet names, headers, and row data correctly. Test multi-sheet workbook.                                                                                                                                                                                 | OB-F184 | sonnet | ✅ Done |
 | OB-1352 | Unit test: Image processor. File: `tests/intelligence/image-processor.test.ts`. Mock `AgentRunner.run()` to return structured entity JSON. Verify `processImage()` returns combined AI vision + OCR results. Test with a small PNG fixture (1x1 pixel or simple text image).                                                                                                                                                                                             | OB-F184 | sonnet | ✅ Done |
-| OB-1353 | Integration test: full pipeline. File: `tests/intelligence/pipeline.test.ts`. Test the complete flow: create a test CSV file → `processDocument()` → `extractEntities()` → `storeDocument()` → `searchDocuments()`. Verify data flows correctly through each stage. Mock AI worker calls.                                                                                                                                                                                | OB-F184 | opus   | Pending |
+| OB-1353 | Integration test: full pipeline. File: `tests/intelligence/pipeline.test.ts`. Test the complete flow: create a test CSV file → `processDocument()` → `extractEntities()` → `storeDocument()` → `searchDocuments()`. Verify data flows correctly through each stage. Mock AI worker calls.                                                                                                                                                                                | OB-F184 | opus   | ✅ Done |
 
 ---
 

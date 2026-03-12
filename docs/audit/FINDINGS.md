@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 13 | **Fixed:** 0 (177 prior findings archived) | **Last Audit:** 2026-03-12
+> **Open:** 12 | **Fixed:** 1 (177 prior findings archived) | **Last Audit:** 2026-03-12
 > **History:** 177 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -145,7 +145,7 @@
 ### OB-F184 — No document intelligence layer — OpenBridge cannot read business files (PDF, Excel, DOCX, images)
 
 - **Severity:** 🔴 Critical
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/connectors/whatsapp/`, `src/connectors/telegram/`, `src/master/classification-engine.ts`
 - **Root Cause / Impact:**
   When a business user sends a PDF invoice, Excel spreadsheet, or scanned receipt via WhatsApp/Telegram, OpenBridge has no processing pipeline to extract structured data from these files. Connectors receive the file as an attachment but the Master AI can only see the filename — it cannot read the contents. This is the #1 blocker for business adoption: every business runs on documents, and an AI bridge that cannot read them is unusable for non-developer users.
