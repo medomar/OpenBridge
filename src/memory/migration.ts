@@ -572,6 +572,35 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 19,
+    description: 'Add integration_credentials table for AES-256-GCM encrypted credential storage',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_credentials'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_credentials (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL UNIQUE,
+            encrypted        TEXT    NOT NULL,
+            iv               TEXT    NOT NULL,
+            auth_tag         TEXT    NOT NULL,
+            health_status    TEXT    NOT NULL DEFAULT 'unknown',
+            created_at       TEXT    NOT NULL,
+            updated_at       TEXT    NOT NULL
+          );
+          CREATE INDEX idx_integration_credentials_name ON integration_credentials(integration_name);
+        `);
+      }
+    },
+  },
 ];
 
 /**
