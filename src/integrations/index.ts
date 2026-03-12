@@ -21,4 +21,5 @@
 export { IntegrationHub } from './hub.js';
 export { CredentialStore } from './credential-store.js';
 export type { EncryptedCredential } from './credential-store.js';
-// TODO: Export webhook-router functions and types
+export { WebhookRouter } from './webhook-router.js';
+export type { WebhookHandler } from './webhook-router.js';
