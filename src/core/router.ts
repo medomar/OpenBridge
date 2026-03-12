@@ -424,6 +424,8 @@ export class Router {
       getWorkspacePath: () => this.workspacePath,
       getIntegrationHub: () => this.integrationHub,
       getCredentialStore: () => this.credentialStore,
+      getWorkflowStore: () => this.workflowStore,
+      getWorkflowEngine: () => this.workflowEngine,
       getConnectors: () => this.connectors,
       getProviders: () => this.providers,
       getPendingStopConfirmations: () => this.pendingStopConfirmations,
@@ -1653,6 +1655,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/workflows" command — list/enable/disable/runs/delete (OB-1431)
+    if (/^\/workflows(\b.*)?$/i.test(message.content.trim())) {
+      await this.handleWorkflowsCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/process <file>" command — extract document entities (OB-1349)
     if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleProcessCommand(message, connector);
@@ -2160,6 +2168,13 @@ export class Router {
     connector: Connector,
   ): Promise<void> {
     return this.commandHandlers.handleIntegrationsCommand(message, connector);
+  }
+
+  private async handleWorkflowsCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleWorkflowsCommand(message, connector);
   }
 
   private async handleDoctypesCommand(
