@@ -467,6 +467,111 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 18,
+    description:
+      'Add DocType metadata tables (doctypes, doctype_fields, doctype_states, doctype_transitions, doctype_hooks, doctype_relations, dt_series) and indexes',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='doctypes'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE doctypes (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL UNIQUE,
+            label_singular  TEXT NOT NULL,
+            label_plural    TEXT NOT NULL,
+            icon            TEXT,
+            table_name      TEXT NOT NULL UNIQUE,
+            source          TEXT NOT NULL,
+            template_id     TEXT,
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE doctype_fields (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            label           TEXT NOT NULL,
+            field_type      TEXT NOT NULL,
+            required        INTEGER DEFAULT 0,
+            default_value   TEXT,
+            options         TEXT,
+            formula         TEXT,
+            depends_on      TEXT,
+            searchable      INTEGER DEFAULT 0,
+            sort_order      INTEGER NOT NULL,
+            link_doctype    TEXT,
+            child_doctype   TEXT,
+            UNIQUE(doctype_id, name)
+          );
+
+          CREATE TABLE doctype_states (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            label           TEXT NOT NULL,
+            color           TEXT DEFAULT 'gray',
+            is_initial      INTEGER DEFAULT 0,
+            is_terminal     INTEGER DEFAULT 0,
+            sort_order      INTEGER NOT NULL,
+            UNIQUE(doctype_id, name)
+          );
+
+          CREATE TABLE doctype_transitions (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            from_state      TEXT NOT NULL,
+            to_state        TEXT NOT NULL,
+            action_name     TEXT NOT NULL,
+            action_label    TEXT NOT NULL,
+            allowed_roles   TEXT,
+            condition       TEXT,
+            UNIQUE(doctype_id, from_state, action_name)
+          );
+
+          CREATE TABLE doctype_hooks (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            event           TEXT NOT NULL,
+            action_type     TEXT NOT NULL,
+            action_config   TEXT NOT NULL,
+            sort_order      INTEGER DEFAULT 0,
+            enabled         INTEGER DEFAULT 1
+          );
+
+          CREATE TABLE doctype_relations (
+            id              TEXT PRIMARY KEY,
+            from_doctype    TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            to_doctype      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            relation_type   TEXT NOT NULL,
+            from_field      TEXT NOT NULL,
+            to_field        TEXT DEFAULT 'id',
+            label           TEXT
+          );
+
+          CREATE TABLE dt_series (
+            prefix          TEXT PRIMARY KEY,
+            current_value   INTEGER DEFAULT 0
+          );
+
+          CREATE INDEX idx_doctype_fields_doctype
+            ON doctype_fields(doctype_id);
+          CREATE INDEX idx_doctype_states_doctype
+            ON doctype_states(doctype_id);
+          CREATE INDEX idx_doctype_transitions_doctype
+            ON doctype_transitions(doctype_id);
+        `);
+      }
+    },
+  },
 ];
 
 /**
