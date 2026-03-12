@@ -19,6 +19,17 @@ import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MCPServer } from '../types/config.js';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
+import type { IntegrationCapability } from '../types/integration.js';
+
+/** A single initialized integration to expose to the Master AI. */
+export interface ConnectedIntegrationEntry {
+  /** Integration identifier (e.g., "stripe", "google-drive") */
+  name: string;
+  /** High-level category (e.g., "payment", "storage") */
+  type: string;
+  /** Capabilities this integration exposes */
+  capabilities: IntegrationCapability[];
+}
 
 export interface MasterSystemPromptContext {
   /** Absolute path to the target workspace */
@@ -47,6 +58,8 @@ export interface MasterSystemPromptContext {
   availableSkills?: Skill[];
   /** Available skill packs (built-in + user-defined) to include as a summary in the system prompt. */
   availableSkillPacks?: SkillPack[];
+  /** Initialized integrations to list in the ## Connected Integrations section. Only connected integrations are included. */
+  connectedIntegrations?: ConnectedIntegrationEntry[];
 }
 
 /**
@@ -217,6 +230,40 @@ export function formatSkillPacksSection(skillPacks: SkillPack[]): string | null 
 }
 
 /**
+ * Format the "## Connected Integrations" section for the Master system prompt.
+ * Lists each initialized integration with its type and available capabilities.
+ * Returns empty string when no integrations are provided.
+ */
+export function formatConnectedIntegrationsSection(
+  integrations?: ConnectedIntegrationEntry[],
+): string {
+  if (!integrations || integrations.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '## Connected Integrations',
+    '',
+    'The following integrations are initialized and ready to use. You can call their capabilities by delegating to an appropriate worker.',
+    '',
+  ];
+
+  for (const integration of integrations) {
+    lines.push(`### ${integration.name} (${integration.type})`);
+    if (integration.capabilities.length > 0) {
+      for (const cap of integration.capabilities) {
+        const approval = cap.requiresApproval ? ' ⚠ requires approval' : '';
+        lines.push(`- **${cap.name}** [${cap.category}]${approval}: ${cap.description}`);
+      }
+    } else {
+      lines.push('- No capabilities defined');
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Generate the default Master system prompt content.
  *
  * This is seeded once into `.openbridge/prompts/master-system.md` and can be
@@ -226,6 +273,9 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const profilesSection = formatProfiles(context.customProfiles);
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
+  const connectedIntegrationsSection = formatConnectedIntegrationsSection(
+    context.connectedIntegrations,
+  );
   const skillsSection = formatSkillsSection(context.availableSkills ?? []);
   const skillPacksSection = formatSkillPacksSection(context.availableSkillPacks ?? []);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
@@ -284,7 +334,7 @@ ${profilesSection}
 ## Discovered AI Tools
 
 ${toolsSection}
-${mcpSection}${skillsSection ? `${skillsSection}\n` : ''}${skillPacksSection ? `${skillPacksSection}\n` : ''}## Workspace Exploration
+${mcpSection}${connectedIntegrationsSection}${skillsSection ? `${skillsSection}\n` : ''}${skillPacksSection ? `${skillPacksSection}\n` : ''}## Workspace Exploration
 
 **You are the sole driver of exploration.** When you receive an exploration prompt (e.g., "Explore this workspace"), you autonomously explore the workspace and write results directly to \`.openbridge/\`. There are no hardcoded phases — you decide the strategy.
 
