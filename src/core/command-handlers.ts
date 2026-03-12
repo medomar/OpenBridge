@@ -23,6 +23,7 @@ import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
+import type { ProcessedDocument, ExtractedEntity } from '../types/intelligence.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('command-handlers');
@@ -2817,6 +2818,117 @@ export class CommandHandlers {
   }
 
   // -------------------------------------------------------------------------
+  // handleProcessCommand
+  // -------------------------------------------------------------------------
+
+  async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    // Parse file path from "/process <path>"
+    const match = /^\/process\s+(.+)$/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /process <file-path>\nExample: /process /path/to/invoice.pdf',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const filePath = (match[1] ?? '').trim();
+
+    // Send processing acknowledgement
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Processing document: ${filePath}...`,
+      replyTo: message.id,
+    });
+
+    let doc: ProcessedDocument;
+    try {
+      const { processDocument } = await import('../intelligence/document-processor.js');
+      doc = await processDocument(filePath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ filePath, err }, '/process command: document processing failed');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to process document: ${msg}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Run entity extraction to get docType + entities
+    let docType = doc.docType;
+    let entities: ExtractedEntity[] = [];
+    try {
+      const { extractEntities } = await import('../intelligence/entity-extractor.js');
+      const extraction = await extractEntities(
+        {
+          rawText: doc.rawText,
+          tables: doc.tables,
+          images: doc.images,
+          metadata: doc.metadata,
+        },
+        `File: ${doc.filename}`,
+      );
+      docType = extraction.docType;
+      entities = extraction.entities;
+    } catch (err) {
+      logger.warn(
+        { filePath, err },
+        '/process command: entity extraction failed, using raw result',
+      );
+    }
+
+    // Format user-friendly summary
+    const lines: string[] = [`*Document: ${doc.filename}*`, ''];
+    lines.push(`Type: ${docType}`);
+    lines.push(`Format: ${doc.mimeType}`);
+
+    if (doc.tables.length > 0) {
+      lines.push(`Tables: ${doc.tables.length}`);
+    }
+
+    if (entities.length > 0) {
+      // Group entities by type
+      const byType = new Map<string, string[]>();
+      for (const e of entities) {
+        const group = byType.get(e.type) ?? [];
+        group.push(e.name);
+        byType.set(e.type, group);
+      }
+
+      lines.push('');
+      lines.push('*Extracted Entities*');
+      for (const [type, names] of byType) {
+        const label = type.charAt(0).toUpperCase() + type.slice(1);
+        lines.push(`• ${label}: ${names.join(', ')}`);
+      }
+    } else if (doc.rawText.trim().length > 0) {
+      // No entities — show a short text excerpt
+      const excerpt = doc.rawText.trim().slice(0, 200);
+      lines.push('');
+      lines.push('*Preview*');
+      lines.push(excerpt + (doc.rawText.length > 200 ? '…' : ''));
+    } else {
+      lines.push('');
+      lines.push('No text content extracted.');
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, filePath, docType }, '/process command handled');
+  }
+
+  // -------------------------------------------------------------------------
   // handleHelpCommand
   // -------------------------------------------------------------------------
 
@@ -2836,6 +2948,7 @@ export class CommandHandlers {
       '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
+      '• /process <file> — process a document file (PDF, DOCX, XLSX, image, etc.) and extract key entities, amounts, and dates',
       '• /skills — list available skills with descriptions and usage counts',
       '• /skill-packs — list available skill packs (built-in + workspace custom)',
       '',
