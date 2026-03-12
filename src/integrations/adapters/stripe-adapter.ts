@@ -7,8 +7,39 @@ import type {
   IntegrationCapability,
   IntegrationConfig,
 } from '../../types/integration.js';
+import type { WebhookRouter } from '../webhook-router.js';
 
 const logger = createLogger('stripe-adapter');
+
+/**
+ * Details extracted from a `payment_intent.succeeded` event.
+ * Passed to the registered `PaymentSucceededHandler` so that external
+ * code can update DocType records and notify owners without coupling
+ * the adapter to the intelligence layer.
+ */
+export interface PaymentSucceededDetails {
+  /** Stripe PaymentIntent ID (e.g. "pi_xxx") */
+  paymentIntentId: string;
+  /** Stripe PaymentLink ID if the intent originated from a payment link, else null */
+  paymentLinkId: string | null;
+  /** Amount charged in the smallest currency unit (e.g. cents for USD) */
+  amount: number;
+  /** ISO currency code in lowercase (e.g. "usd") */
+  currency: string;
+  /** PaymentIntent metadata attached at creation time */
+  metadata: Record<string, string>;
+}
+
+/**
+ * Callback invoked when a `payment_intent.succeeded` webhook event is received
+ * and its signature has been verified.
+ *
+ * Implementors should:
+ *   1. Find the matching DocType record via `paymentLinkId` or `metadata`
+ *   2. Execute the "paid" state transition
+ *   3. Notify the record owner via the messaging channel
+ */
+export type PaymentSucceededHandler = (details: PaymentSucceededDetails) => Promise<void>;
 
 /**
  * Stripe payment integration adapter.
@@ -30,6 +61,9 @@ export class StripeAdapter implements BusinessIntegration {
   private client: Stripe | null = null;
   private webhookSecret: string | null = null;
   private eventHandlers = new Map<string, EventHandler[]>();
+  private webhookEndpointId: string | null = null;
+  private webhookRouter: WebhookRouter | null = null;
+  private paymentSucceededHandler: PaymentSucceededHandler | null = null;
 
   async initialize(config: IntegrationConfig): Promise<void> {
     const opts = config.options;
@@ -84,8 +118,104 @@ export class StripeAdapter implements BusinessIntegration {
   async shutdown(): Promise<void> {
     this.client = null;
     this.webhookSecret = null;
+    this.webhookEndpointId = null;
     this.eventHandlers.clear();
     logger.info('Stripe adapter shut down');
+  }
+
+  // ── Webhook registration ────────────────────────────────────────
+
+  /**
+   * Inject a WebhookRouter so that `registerWebhook()` can create a route
+   * for `payment_intent.succeeded` events.
+   */
+  setWebhookRouter(router: WebhookRouter): void {
+    this.webhookRouter = router;
+  }
+
+  /**
+   * Register a callback that is invoked after a `payment_intent.succeeded`
+   * event has been verified.  External callers should use this to update
+   * DocType records and notify owners.
+   */
+  setPaymentSucceededHandler(fn: PaymentSucceededHandler): void {
+    this.paymentSucceededHandler = fn;
+  }
+
+  /**
+   * Create a Stripe webhook endpoint pointing at `endpointUrl` and register
+   * the `payment_intent.succeeded` handler in the WebhookRouter.
+   *
+   * The Stripe-assigned endpoint ID is stored so that `unregisterWebhook()`
+   * can delete it later.
+   *
+   * @param endpointUrl - Publicly reachable URL Stripe should POST to,
+   *   e.g. "https://example.com/webhook/stripe/payment_intent.succeeded"
+   */
+  async registerWebhook(endpointUrl: string): Promise<void> {
+    if (!this.client) {
+      throw new Error('Stripe adapter not initialized — call initialize() first');
+    }
+
+    // Create the webhook endpoint on Stripe's side
+    const endpoint = await this.client.webhookEndpoints.create({
+      url: endpointUrl,
+      enabled_events: ['payment_intent.succeeded'],
+    });
+
+    this.webhookEndpointId = endpoint.id;
+    logger.info({ endpointId: endpoint.id, url: endpointUrl }, 'Stripe webhook endpoint created');
+
+    // Wire up the route in the WebhookRouter
+    if (this.webhookRouter) {
+      this.webhookRouter.registerIntegration(this);
+      this.webhookRouter.registerRoute('stripe', 'payment_intent.succeeded', async (payload) => {
+        await this.handlePaymentSucceededPayload(payload);
+      });
+      logger.info('Stripe payment_intent.succeeded route registered in WebhookRouter');
+    }
+
+    // Subscribe to internal dispatched events as well
+    this.subscribe('payment_intent.succeeded', async (event) => {
+      await this.handlePaymentSucceededPayload(event);
+    });
+  }
+
+  /**
+   * Delete the Stripe webhook endpoint that was created via `registerWebhook()`.
+   * No-op if no endpoint has been registered.
+   */
+  async unregisterWebhook(): Promise<void> {
+    if (!this.client || !this.webhookEndpointId) {
+      return;
+    }
+
+    try {
+      await this.client.webhookEndpoints.del(this.webhookEndpointId);
+      logger.info({ endpointId: this.webhookEndpointId }, 'Stripe webhook endpoint deleted');
+    } catch (err) {
+      logger.warn(
+        { endpointId: this.webhookEndpointId, err },
+        'Failed to delete Stripe webhook endpoint',
+      );
+    }
+
+    this.webhookEndpointId = null;
+  }
+
+  /**
+   * Verify a raw Stripe webhook HTTP request and dispatch the event.
+   *
+   * Call this from your HTTP handler when the path matches the Stripe webhook
+   * URL.  The `stripeSignature` value should come from the `Stripe-Signature`
+   * request header.
+   *
+   * @param rawBody       - Raw (unparsed) request body string
+   * @param stripeSignature - Value of the `Stripe-Signature` header
+   */
+  async handleStripeWebhook(rawBody: string, stripeSignature: string): Promise<void> {
+    const event = this.verifyWebhookSignature(rawBody, stripeSignature);
+    await this.dispatchWebhookEvent(event);
   }
 
   describeCapabilities(): IntegrationCapability[] {
@@ -191,6 +321,63 @@ export class StripeAdapter implements BusinessIntegration {
       } catch (err) {
         logger.error({ eventType: event.type, err }, 'Stripe event handler error');
       }
+    }
+  }
+
+  // ── Internal webhook handlers ──────────────────────────────────
+
+  /**
+   * Core handler for `payment_intent.succeeded` payloads.
+   * Extracts payment details and calls the injected `PaymentSucceededHandler`
+   * so that external code can update DocType records and notify owners.
+   */
+  private async handlePaymentSucceededPayload(payload: Record<string, unknown>): Promise<void> {
+    // Stripe webhook payload structure:
+    //   { type, data: { object: PaymentIntent } }
+    // The WebhookRouter dispatches the full event object as payload.
+    const dataObj =
+      payload['data'] !== undefined &&
+      typeof payload['data'] === 'object' &&
+      payload['data'] !== null
+        ? (payload['data'] as Record<string, unknown>)
+        : payload;
+
+    const pi =
+      dataObj['object'] !== undefined &&
+      typeof dataObj['object'] === 'object' &&
+      dataObj['object'] !== null
+        ? (dataObj['object'] as Record<string, unknown>)
+        : dataObj;
+
+    const paymentIntentId = typeof pi['id'] === 'string' ? pi['id'] : '';
+    const paymentLinkId = typeof pi['payment_link'] === 'string' ? pi['payment_link'] : null;
+    const amount = typeof pi['amount'] === 'number' ? pi['amount'] : 0;
+    const currency = typeof pi['currency'] === 'string' ? pi['currency'] : 'usd';
+    const metadata =
+      pi['metadata'] !== null && typeof pi['metadata'] === 'object'
+        ? (pi['metadata'] as Record<string, string>)
+        : {};
+
+    logger.info(
+      { paymentIntentId, paymentLinkId, amount, currency },
+      'payment_intent.succeeded received',
+    );
+
+    if (!this.paymentSucceededHandler) {
+      logger.debug('No PaymentSucceededHandler registered — skipping DocType transition');
+      return;
+    }
+
+    try {
+      await this.paymentSucceededHandler({
+        paymentIntentId,
+        paymentLinkId,
+        amount,
+        currency,
+        metadata,
+      });
+    } catch (err) {
+      logger.error({ paymentIntentId, err }, 'PaymentSucceededHandler threw an error');
     }
   }
 
