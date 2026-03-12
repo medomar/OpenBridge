@@ -16,3 +16,4 @@ export * from './document-store.js';
 export * from './processors/index.js';
 export * from './doctype-store.js';
 export * from './naming-series.js';
+export * from './doctype-api.js';
