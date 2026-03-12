@@ -63,6 +63,40 @@ export function registerNotificationSenders(senders: {
 }
 
 // ---------------------------------------------------------------------------
+// Worker spawner registry (used by spawn_worker)
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawner function that runs an AI worker and returns its stdout.
+ *
+ * @param prompt        - The formatted prompt to send to the worker
+ * @param workspacePath - Working directory for the worker process
+ * @param skillPack     - Optional skill pack / tool profile name (e.g. 'read-only', 'code-edit')
+ * @returns The worker's stdout output
+ */
+export type WorkerSpawnerFn = (
+  prompt: string,
+  workspacePath: string,
+  skillPack?: string,
+) => Promise<string>;
+
+let workerSpawner: WorkerSpawnerFn | undefined;
+
+/**
+ * Register the worker spawner so the spawn_worker hook can launch AI workers.
+ * Call this during bridge startup (same place as registerNotificationSenders).
+ * Pass `undefined` to deregister (useful in tests).
+ */
+export function registerWorkerSpawner(spawner: WorkerSpawnerFn | undefined): void {
+  workerSpawner = spawner;
+  if (spawner) {
+    logger.debug('Worker spawner registered for spawn_worker hook');
+  } else {
+    logger.debug('Worker spawner deregistered');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Stripe adapter registry (used by create_payment_link)
 // ---------------------------------------------------------------------------
 
@@ -174,10 +208,12 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   // OB-1381: create_payment_link — calls Stripe to generate a payment URL
   create_payment_link: handleCreatePaymentLink,
 
+  // OB-1382: spawn_worker — launches an AI worker with an injected record prompt
+  spawn_worker: handleSpawnWorker,
+
   // OB-future: remaining action types
   run_workflow: handleNotImplemented('run_workflow'),
   call_integration: handleNotImplemented('call_integration'),
-  spawn_worker: handleNotImplemented('spawn_worker'),
 };
 
 /**
@@ -824,6 +860,77 @@ async function handleCreatePaymentLink(
 }
 
 /**
+ * Handler for `spawn_worker` hook action type.
+ *
+ * On any event (after timing): formats `action_config.prompt` using Mustache-style
+ * `{{field}}` substitution from the record, then spawns an AI worker via the
+ * registered WorkerSpawnerFn. Captures the worker's stdout and optionally stores it
+ * in the record field specified by `action_config.output_field`.
+ *
+ * If no worker spawner has been registered (registerWorkerSpawner() not called),
+ * the hook logs a warning and skips without throwing.
+ *
+ * action_config fields:
+ *   - `prompt`       (required) — worker prompt template with `{{field}}` placeholders
+ *   - `skill_pack`   (optional) — tool profile / skill pack name passed to the spawner
+ *                                 (e.g. 'read-only', 'code-edit', 'full-access')
+ *   - `output_field` (optional) — record field to set with the worker's stdout output
+ */
+async function handleSpawnWorker(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  _db: Database.Database,
+): Promise<void> {
+  const config = hook.action_config;
+
+  const promptTemplate = config['prompt'] as string | undefined;
+  const skillPack = config['skill_pack'] as string | undefined;
+  const outputField = config['output_field'] as string | undefined;
+
+  if (!promptTemplate) {
+    logger.warn({ hookId: hook.id }, 'spawn_worker hook missing "prompt" in action_config');
+    return;
+  }
+
+  if (!workerSpawner) {
+    logger.warn(
+      { hookId: hook.id },
+      'spawn_worker hook: no worker spawner registered — skipping (register via registerWorkerSpawner())',
+    );
+    return;
+  }
+
+  const workspacePath = registeredWorkspacePath;
+  if (!workspacePath) {
+    logger.warn(
+      { hookId: hook.id },
+      'spawn_worker hook: no workspace path registered — call registerWorkspacePath() on startup',
+    );
+    return;
+  }
+
+  // Format the prompt template with record field values
+  const formattedPrompt = formatTemplate(promptTemplate, record);
+
+  logger.debug(
+    { hookId: hook.id, skillPack, hasOutputField: Boolean(outputField) },
+    'spawn_worker: launching AI worker',
+  );
+
+  const workerOutput = await workerSpawner(formattedPrompt, workspacePath, skillPack);
+
+  if (outputField) {
+    record[outputField] = workerOutput;
+    logger.debug(
+      { hookId: hook.id, outputField },
+      'spawn_worker: worker output stored in record field',
+    );
+  }
+
+  logger.info({ hookId: hook.id, skillPack }, 'spawn_worker hook executed successfully');
+}
+
+/**
  * Returns a stub handler that logs a "not yet implemented" warning and returns
  * without throwing, so it does not block other hooks in the sequence.
  */
@@ -920,7 +1027,7 @@ export async function executeHooks(
 }
 
 // ---------------------------------------------------------------------------
-// Handler registration (used by sub-tasks OB-1377 through OB-1381)
+// Handler registration (used by sub-tasks OB-1377 through OB-1382)
 // ---------------------------------------------------------------------------
 
 /**
