@@ -24,3 +24,11 @@ export type { EncryptedCredential } from './credential-store.js';
 export { WebhookRouter } from './webhook-router.js';
 export type { WebhookHandler } from './webhook-router.js';
 export { StripeAdapter } from './adapters/stripe-adapter.js';
+export { EventBridge } from './event-bridge.js';
+export type {
+  EventSourceConfig,
+  EventSourceType,
+  EventSourceAuth,
+  BridgeEvent,
+  EventNotificationHandler,
+} from './event-bridge.js';
