@@ -1584,6 +1584,12 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/process <file>" command — extract document entities (OB-1349)
+    if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleProcessCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/approve <code>" command — owner/admin approves a pairing code (OB-1698)
     if (/^\/approve\b/i.test(message.content.trim())) {
       await this.handleApproveCommand(message, connector);
@@ -2070,6 +2076,10 @@ export class Router {
 
   private async handleDoctorCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleDoctorCommand(message, connector);
+  }
+
+  private async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleProcessCommand(message, connector);
   }
 
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
