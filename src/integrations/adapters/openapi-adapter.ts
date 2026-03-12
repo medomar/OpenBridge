@@ -11,6 +11,149 @@ import type {
 
 const logger = createLogger('openapi-adapter');
 
+// ── Input format detection ────────────────────────────────────────────────────
+
+/** Supported input formats for /connect api <input>. */
+export type InputFormat = 'openapi' | 'postman' | 'curl' | 'url' | 'unknown';
+
+/**
+ * Detect the format of a raw user-provided API input string.
+ *
+ * Rules (evaluated in order):
+ *  1. `curl` — input starts with `curl ` (trimmed) or first non-empty line does
+ *  2. `url`  — input is a single HTTP/HTTPS URL (no spaces, no newlines after trim)
+ *  3. `postman` — JSON with a top-level `info.schema` containing "postman",
+ *                 or a top-level `collection.info.schema` field
+ *  4. `openapi` — JSON/YAML with a top-level `openapi` or `swagger` field
+ *  5. `unknown` — everything else
+ *
+ * @param input Raw string from the user (cURL command, JSON, YAML, URL, etc.)
+ * @returns Detected format identifier
+ */
+export function detectInputFormat(input: string): InputFormat {
+  const trimmed = input.trim();
+  if (!trimmed) return 'unknown';
+
+  // 1. cURL detection — first non-empty line starts with "curl "
+  const firstLine = trimmed.split('\n').find((l) => l.trim().length > 0) ?? '';
+  if (/^curl\s+/i.test(firstLine.trim())) {
+    return 'curl';
+  }
+
+  // 2. URL detection — single-token HTTP/HTTPS string
+  if (/^https?:\/\/\S+$/i.test(trimmed)) {
+    return 'url';
+  }
+
+  // 3. JSON-based detection (Postman or OpenAPI)
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+
+        // Postman Collection v2.x: { info: { schema: "...postman..." }, item: [...] }
+        const info = obj['info'];
+        if (
+          info !== null &&
+          typeof info === 'object' &&
+          !Array.isArray(info) &&
+          typeof (info as Record<string, unknown>)['schema'] === 'string' &&
+          String((info as Record<string, unknown>)['schema'])
+            .toLowerCase()
+            .includes('postman')
+        ) {
+          return 'postman';
+        }
+
+        // Postman wrapped export: { collection: { info: { schema: "...postman..." } } }
+        const collection = obj['collection'];
+        if (collection !== null && typeof collection === 'object' && !Array.isArray(collection)) {
+          const colInfo = (collection as Record<string, unknown>)['info'];
+          if (
+            colInfo !== null &&
+            typeof colInfo === 'object' &&
+            !Array.isArray(colInfo) &&
+            typeof (colInfo as Record<string, unknown>)['schema'] === 'string' &&
+            String((colInfo as Record<string, unknown>)['schema'])
+              .toLowerCase()
+              .includes('postman')
+          ) {
+            return 'postman';
+          }
+        }
+
+        // OpenAPI 3.x: { openapi: "3.x.x", ... }
+        if (typeof obj['openapi'] === 'string') {
+          return 'openapi';
+        }
+
+        // Swagger 2.x: { swagger: "2.0", ... }
+        if (typeof obj['swagger'] === 'string') {
+          return 'openapi';
+        }
+      }
+    } catch {
+      // Not valid JSON — fall through to YAML check
+    }
+  }
+
+  // 4. YAML-based OpenAPI detection (openapi: or swagger: at the start of a line)
+  if (/^openapi\s*:/m.test(trimmed) || /^swagger\s*:/m.test(trimmed)) {
+    return 'openapi';
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Parse a raw API input string into an OpenAPI document.
+ *
+ * Routes based on `detectInputFormat()`:
+ *  - `openapi` — parsed directly via swagger-parser
+ *  - `url`     — fetched and parsed as OpenAPI spec
+ *  - `postman` — requires postman-parser (OB-1446, not yet implemented)
+ *  - `curl`    — requires curl-parser (OB-1447, not yet implemented)
+ *  - `unknown` — throws an error
+ *
+ * @param input Raw user input
+ * @returns Validated OpenAPI document
+ * @throws Error if format is unsupported or parsing fails
+ */
+export async function parseInputToOpenAPI(input: string): Promise<OpenAPI.Document> {
+  const format = detectInputFormat(input);
+
+  switch (format) {
+    case 'openapi': {
+      const trimmed = input.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed: unknown = JSON.parse(trimmed);
+        return await SwaggerParser.validate(parsed as OpenAPI.Document);
+      }
+      // YAML — swagger-parser accepts YAML strings via validate(string)
+      return await SwaggerParser.validate(trimmed);
+    }
+
+    case 'url': {
+      return await SwaggerParser.validate(input.trim());
+    }
+
+    case 'postman':
+      throw new Error(
+        'Postman collection input detected. postman-parser (OB-1446) is not yet implemented.',
+      );
+
+    case 'curl':
+      throw new Error('cURL input detected. curl-parser (OB-1447) is not yet implemented.');
+
+    default:
+      throw new Error(
+        'Unrecognised API input format. Provide a Swagger/OpenAPI JSON or YAML, ' +
+          'a Postman collection JSON, one or more cURL commands, or a URL to an OpenAPI spec.',
+      );
+  }
+}
+
 /** Resolved capability generated from an OpenAPI path+method. */
 interface ResolvedCapability extends IntegrationCapability {
   /** HTTP method (GET, POST, PUT, DELETE, PATCH) */
