@@ -8,6 +8,8 @@ export { createWorkflowStore } from './workflow-store.js';
 export type { WorkflowScheduler } from './scheduler.js';
 export { createWorkflowScheduler } from './scheduler.js';
 
-// TODO: Export trigger and step implementations once implemented
-// export * from './triggers/index.js';
+// Trigger implementations
+export * from './triggers/index.js';
+
+// TODO: Export step implementations once implemented
 // export * from './steps/index.js';
