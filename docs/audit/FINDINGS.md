@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 12 | **Fixed:** 1 (177 prior findings archived) | **Last Audit:** 2026-03-12
+> **Open:** 11 | **Fixed:** 2 (177 prior findings archived) | **Last Audit:** 2026-03-12
 > **History:** 177 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -206,7 +206,7 @@
 ### OB-F188 — No business document generation — OpenBridge cannot produce professional PDFs (invoices, quotes, receipts)
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/html-renderer.ts`, `src/master/skill-packs/`
 - **Root Cause / Impact:**
   The existing `document-writer` skill pack can generate DOCX files, but there is no dedicated pipeline for producing professional business PDFs (invoices with line items, QR codes, payment links, branding). The HTML renderer uses Puppeteer for screenshots but not for templated business document generation. Business users who say "generate an invoice for Mohamed" expect a branded PDF with auto-numbering, tax calculations, and a payment link — not a generic DOCX.

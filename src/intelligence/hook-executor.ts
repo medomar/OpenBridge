@@ -5,6 +5,16 @@ import type Database from 'better-sqlite3';
 import type { DocType, DocTypeHook, HookActionType } from '../types/doctype.js';
 import { createLogger } from '../core/logger.js';
 import { generateNextNumber } from './naming-series.js';
+import { generatePdf } from './pdf-generator.js';
+import { loadBranding } from './branding.js';
+import { buildInvoiceDefinition } from './templates/invoice-template.js';
+import { buildQuoteDefinition } from './templates/quote-template.js';
+import { buildReceiptDefinition } from './templates/receipt-template.js';
+import { buildReportDefinition } from './templates/report-template.js';
+import type { InvoiceData, InvoiceItem } from './templates/invoice-template.js';
+import type { QuoteData, QuoteItem } from './templates/quote-template.js';
+import type { ReceiptData, ReceiptItem } from './templates/receipt-template.js';
+import type { ReportSection } from './templates/report-template.js';
 
 const logger = createLogger('hook-executor');
 
@@ -584,7 +594,133 @@ async function handleSendNotification(
 }
 
 // ---------------------------------------------------------------------------
-// Minimal Puppeteer page type for PDF generation
+// Record field extraction helpers
+// ---------------------------------------------------------------------------
+
+/** Safely read a string value from a record, checking camelCase then snake_case. */
+function strField(
+  record: Record<string, unknown>,
+  camelKey: string,
+  snakeKey?: string,
+): string | undefined {
+  const v = record[camelKey] ?? (snakeKey ? record[snakeKey] : undefined);
+  if (v === undefined || v === null) return undefined;
+  return String(v as string | number | boolean);
+}
+
+/** Safely read a numeric value from a record, checking camelCase then snake_case. */
+function numField(
+  record: Record<string, unknown>,
+  camelKey: string,
+  snakeKey?: string,
+): number | undefined {
+  const v = record[camelKey] ?? (snakeKey ? record[snakeKey] : undefined);
+  if (v === undefined || v === null) return undefined;
+  const n = Number(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+/** Map a flat record to InvoiceData, supporting both camelCase and snake_case field names. */
+function recordToInvoiceData(record: Record<string, unknown>): InvoiceData {
+  return {
+    invoiceNumber: strField(record, 'invoiceNumber', 'invoice_number') ?? '',
+    date: strField(record, 'date') ?? new Date().toISOString().split('T')[0]!,
+    dueDate: strField(record, 'dueDate', 'due_date'),
+    customerName: strField(record, 'customerName', 'customer_name') ?? '',
+    customerEmail: strField(record, 'customerEmail', 'customer_email'),
+    customerAddress: strField(record, 'customerAddress', 'customer_address'),
+    customerPhone: strField(record, 'customerPhone', 'customer_phone'),
+    notes: strField(record, 'notes'),
+    terms: strField(record, 'terms'),
+    paymentLink: strField(record, 'paymentLink', 'payment_link'),
+    taxRate: numField(record, 'taxRate', 'tax_rate'),
+    currency: strField(record, 'currency'),
+  };
+}
+
+/** Extract InvoiceItem[] from `record.items` or `record.line_items`. */
+function recordToInvoiceItems(record: Record<string, unknown>): InvoiceItem[] {
+  const raw = record['items'] ?? record['lineItems'] ?? record['line_items'];
+  if (!Array.isArray(raw)) return [];
+  return (raw as unknown[]).map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    return {
+      description: strField(r, 'description') ?? '',
+      quantity: numField(r, 'quantity') ?? 1,
+      unitPrice: numField(r, 'unitPrice', 'unit_price') ?? 0,
+      total: numField(r, 'total'),
+    };
+  });
+}
+
+/** Map a flat record to QuoteData. */
+function recordToQuoteData(record: Record<string, unknown>): QuoteData {
+  return {
+    quoteNumber: strField(record, 'quoteNumber', 'quote_number') ?? '',
+    date: strField(record, 'date') ?? new Date().toISOString().split('T')[0]!,
+    validUntil: strField(record, 'validUntil', 'valid_until'),
+    customerName: strField(record, 'customerName', 'customer_name') ?? '',
+    customerEmail: strField(record, 'customerEmail', 'customer_email'),
+    customerAddress: strField(record, 'customerAddress', 'customer_address'),
+    customerPhone: strField(record, 'customerPhone', 'customer_phone'),
+    notes: strField(record, 'notes'),
+    terms: strField(record, 'terms'),
+    taxRate: numField(record, 'taxRate', 'tax_rate'),
+    currency: strField(record, 'currency'),
+  };
+}
+
+/** Extract QuoteItem[] from `record.items` or `record.line_items`. */
+function recordToQuoteItems(record: Record<string, unknown>): QuoteItem[] {
+  const raw = record['items'] ?? record['lineItems'] ?? record['line_items'];
+  if (!Array.isArray(raw)) return [];
+  return (raw as unknown[]).map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    return {
+      description: strField(r, 'description') ?? '',
+      quantity: numField(r, 'quantity') ?? 1,
+      unitPrice: numField(r, 'unitPrice', 'unit_price') ?? 0,
+      total: numField(r, 'total'),
+    };
+  });
+}
+
+/** Map a flat record to ReceiptData. */
+function recordToReceiptData(record: Record<string, unknown>): ReceiptData {
+  return {
+    receiptNumber: strField(record, 'receiptNumber', 'receipt_number'),
+    date: strField(record, 'date') ?? new Date().toISOString().split('T')[0]!,
+    time: strField(record, 'time'),
+    customerName: strField(record, 'customerName', 'customer_name'),
+    paymentMethod: strField(record, 'paymentMethod', 'payment_method'),
+    notes: strField(record, 'notes'),
+    currency: strField(record, 'currency'),
+  };
+}
+
+/** Extract ReceiptItem[] from `record.items`. */
+function recordToReceiptItems(record: Record<string, unknown>): ReceiptItem[] {
+  const raw = record['items'] ?? record['lineItems'] ?? record['line_items'];
+  if (!Array.isArray(raw)) return [];
+  return (raw as unknown[]).map((item) => {
+    const r = (item ?? {}) as Record<string, unknown>;
+    return {
+      description: strField(r, 'description') ?? '',
+      quantity: numField(r, 'quantity'),
+      amount: numField(r, 'amount') ?? numField(r, 'total') ?? 0,
+    };
+  });
+}
+
+/** Extract ReportSection[] from `record.sections`. */
+function recordToReportSections(record: Record<string, unknown>): ReportSection[] {
+  const raw = record['sections'];
+  if (!Array.isArray(raw)) return [];
+  return raw as ReportSection[];
+}
+
+// ---------------------------------------------------------------------------
+// Minimal Puppeteer page type for PDF generation (fallback for custom templates)
 // ---------------------------------------------------------------------------
 
 interface PuppeteerPdfPage {
@@ -666,20 +802,22 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Built-in pdfmake template names — these bypass Puppeteer entirely. */
+const PDFMAKE_TEMPLATES = new Set(['invoice', 'quote', 'receipt', 'report']);
+
 /**
  * Handler for `generate_pdf` hook action type.
  *
- * On transition events (after timing): loads the record data, renders an HTML
- * template as a PDF using Puppeteer, saves the file to `.openbridge/generated/`,
- * and updates `action_config.output_field` on the record with the absolute file path.
+ * Generates a PDF using:
+ *   - pdfmake templates (invoice, quote, receipt, report) — no Chromium needed
+ *   - Puppeteer HTML→PDF fallback for custom `.openbridge/templates/{name}.html` files
+ *
+ * Saves the file to `.openbridge/generated/` and updates `output_field` on the record.
  *
  * action_config fields:
- *   - `template`      (required) — template name; looks for `.openbridge/templates/{name}.html`,
- *                                  falls back to a generated HTML table if not found
+ *   - `template`      (required) — "invoice" | "quote" | "receipt" | "report",
+ *                                  or a custom HTML template name
  *   - `output_field`  (required) — record field to set with the generated PDF path
- *
- * When pdfmake (Phase 122) ships, replace this implementation with the pdfmake renderer
- * and keep this Puppeteer path as the fallback.
  */
 async function handleGeneratePdf(
   hook: DocTypeHook,
@@ -709,44 +847,87 @@ async function handleGeneratePdf(
     return;
   }
 
-  const outputDir = join(workspacePath, '.openbridge', 'generated');
-  await mkdir(outputDir, { recursive: true });
+  let outputPath: string;
 
-  const html = await buildPdfHtml(workspacePath, templateName, record);
+  if (PDFMAKE_TEMPLATES.has(templateName)) {
+    // ── pdfmake route for known business document templates ─────────────────
+    const branding = await loadBranding(workspacePath);
 
-  const outputFilename = `${templateName}-${randomUUID()}.pdf`;
-  const outputPath = join(outputDir, outputFilename);
+    let definition;
+    if (templateName === 'invoice') {
+      definition = buildInvoiceDefinition(
+        recordToInvoiceData(record),
+        recordToInvoiceItems(record),
+        branding,
+      );
+    } else if (templateName === 'quote') {
+      definition = buildQuoteDefinition(
+        recordToQuoteData(record),
+        recordToQuoteItems(record),
+        branding,
+      );
+    } else if (templateName === 'receipt') {
+      definition = buildReceiptDefinition(
+        recordToReceiptData(record),
+        recordToReceiptItems(record),
+        branding,
+      );
+    } else {
+      // templateName === 'report'
+      const title = strField(record, 'title') ?? 'Report';
+      definition = buildReportDefinition(title, recordToReportSections(record), branding);
+    }
 
-  // Try Puppeteer HTML→PDF
-  let puppeteer: PuppeteerModule;
-  try {
-    const mod = (await import('puppeteer')) as { default?: PuppeteerModule } & PuppeteerModule;
-    puppeteer = mod.default ?? mod;
-  } catch {
-    throw new Error(
-      'Puppeteer is not installed. Run `npm install puppeteer` to enable PDF generation.',
+    outputPath = await generatePdf(definition, workspacePath);
+
+    logger.info(
+      { hookId: hook.id, outputPath, template: templateName },
+      'generate_pdf hook: PDF written via pdfmake',
+    );
+  } else {
+    // ── Puppeteer fallback for custom HTML templates ─────────────────────────
+    const outputDir = join(workspacePath, '.openbridge', 'generated');
+    await mkdir(outputDir, { recursive: true });
+
+    const html = await buildPdfHtml(workspacePath, templateName, record);
+    const outputFilename = `${templateName}-${randomUUID()}.pdf`;
+    outputPath = join(outputDir, outputFilename);
+
+    let puppeteer: PuppeteerModule;
+    try {
+      const mod = (await import('puppeteer')) as { default?: PuppeteerModule } & PuppeteerModule;
+      puppeteer = mod.default ?? mod;
+    } catch {
+      throw new Error(
+        'Puppeteer is not installed. Run `npm install puppeteer` to enable PDF generation.',
+      );
+    }
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1240, height: 1754 }); // A4-ish at 150 dpi
+      await page.setContent(html, { waitUntil: 'load' });
+      await page.pdf({ path: outputPath, format: 'A4', printBackground: true });
+    } finally {
+      await browser.close();
+    }
+
+    const fileStat = await stat(outputPath);
+    logger.info(
+      { hookId: hook.id, outputPath, sizeBytes: fileStat.size },
+      'generate_pdf hook: PDF written via Puppeteer',
     );
   }
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
-
-  try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1240, height: 1754 }); // A4-ish at 150 dpi
-    await page.setContent(html, { waitUntil: 'load' });
-    await page.pdf({ path: outputPath, format: 'A4', printBackground: true });
-  } finally {
-    await browser.close();
-  }
-
-  const fileStat = await stat(outputPath);
-  logger.info(
-    { hookId: hook.id, outputPath, sizeBytes: fileStat.size },
-    'generate_pdf hook: PDF written',
-  );
 
   // Update the record field with the generated file path
   record[outputField] = outputPath;
