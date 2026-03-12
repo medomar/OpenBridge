@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Café Réserve — Administration Ramadan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brown: #4a2c2a;
+      --cream: #f5f0e8;
+      --gold: #c9a96e;
+      --brown-dark: #3c2321;
+      --shadow: 0 16px 40px rgba(74, 44, 42, 0.18);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      color: var(--brown);
+      background: radial-gradient(circle at top, #fff8ee 0%, var(--cream) 60%, #efe2cf 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 32px 20px 12px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-family: "Playfair Display", serif;
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      letter-spacing: 0.4px;
+    }
+
+    header p {
+      margin: 10px auto 0;
+      max-width: 640px;
+      color: rgba(74, 44, 42, 0.75);
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 20px 40px;
+      gap: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 1100px;
+      background: #fffdf8;
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      border: 1px solid rgba(201, 169, 110, 0.25);
+    }
+
+    .card-title {
+      font-family: "Playfair Display", serif;
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin: 0 0 20px 0;
+      color: var(--brown-dark);
+      border-bottom: 1px solid rgba(201, 169, 110, 0.3);
+      padding-bottom: 12px;
+    }
+
+    /* Dish form */
+    .dish-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .dish-form .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .form-group label {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: rgba(74, 44, 42, 0.8);
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="date"] {
+      padding: 10px 12px;
+      border: 1px solid rgba(201, 169, 110, 0.5);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--brown);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(201, 169, 110, 0.15);
+    }
+
+    .btn-save {
+      margin-top: 6px;
+      padding: 11px 24px;
+      background: var(--brown);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-save:hover {
+      background: var(--brown-dark);
+    }
+
+    .dish-msg {
+      display: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-top: 6px;
+    }
+
+    .dish-msg.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #a5d6a7;
+    }
+
+    .dish-msg.error {
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+    }
+
+    /* Configured dishes list */
+    .dishes-list {
+      margin-top: 20px;
+    }
+
+    .dishes-list-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--brown-dark);
+      margin: 0 0 12px 0;
+    }
+
+    .dishes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+    }
+
+    .dish-card {
+      background: rgba(201, 169, 110, 0.08);
+      border: 1px solid rgba(201, 169, 110, 0.3);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 0.88rem;
+    }
+
+    .dish-card-date {
+      font-weight: 700;
+      color: var(--brown-dark);
+      margin-bottom: 6px;
+      font-size: 0.9rem;
+    }
+
+    .dish-card-row {
+      color: rgba(74, 44, 42, 0.8);
+      margin: 2px 0;
+    }
+
+    .dish-card-row span {
+      font-weight: 600;
+      color: var(--brown);
+    }
+
+    .dishes-empty {
+      font-size: 0.9rem;
+      color: rgba(74, 44, 42, 0.6);
+    }
+
+    /* Reservations */
+    .summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      background: rgba(201, 169, 110, 0.2);
+      border: 1px solid rgba(201, 169, 110, 0.5);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-weight: 600;
+      color: var(--brown-dark);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    thead {
+      background: rgba(201, 169, 110, 0.18);
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(74, 44, 42, 0.12);
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: 600;
+    }
+
+    tbody tr:hover {
+      background: rgba(201, 169, 110, 0.08);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 24px;
+      font-size: 1rem;
+      color: rgba(74, 44, 42, 0.7);
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.9rem;
+      color: rgba(74, 44, 42, 0.7);
+    }
+
+    @media (max-width: 900px) {
+      .dish-form {
+        grid-template-columns: 1fr;
+      }
+
+      .dish-form .full-width {
+        grid-column: 1;
+      }
+
+      table,
+      thead,
+      tbody,
+      th,
+      td,
+      tr {
+        display: block;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tbody tr {
+        margin-bottom: 16px;
+        border: 1px solid rgba(74, 44, 42, 0.12);
+        border-radius: 16px;
+        padding: 12px;
+        background: #fff;
+      }
+
+      td {
+        border: none;
+        padding: 6px 0;
+      }
+
+      td::before {
+        content: attr(data-label);
+        display: block;
+        font-weight: 600;
+        color: rgba(74, 44, 42, 0.7);
+        margin-bottom: 2px;
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Café Réserve — Administration Ramadan</h1>
+    <p>Gérez les plats du jour et suivez les réservations Iftar.</p>
+  </header>
+  <main>
+    <!-- Dish Management -->
+    <section class="card">
+      <h2 class="card-title">Gestion des Plats du Jour</h2>
+      <div class="dish-form">
+        <div class="form-group">
+          <label for="dishDate">Date</label>
+          <input type="date" id="dishDate" />
+        </div>
+        <div class="form-group">
+          <label for="dishEntree">Entrée du jour</label>
+          <input type="text" id="dishEntree" placeholder="Ex : Harira" />
+        </div>
+        <div class="form-group">
+          <label for="dishPlat1">Plat 1</label>
+          <input type="text" id="dishPlat1" placeholder="Ex : Tajine d'agneau" />
+        </div>
+        <div class="form-group">
+          <label for="dishPlat2">Plat 2</label>
+          <input type="text" id="dishPlat2" placeholder="Ex : Couscous royal" />
+        </div>
+        <div class="form-group">
+          <label for="dishPlat3">Plat 3</label>
+          <input type="text" id="dishPlat3" placeholder="Ex : Pastilla au poulet" />
+        </div>
+        <div class="form-group" style="justify-content: flex-end;">
+          <label style="visibility:hidden;">Action</label>
+          <button class="btn-save" id="saveDishesBtn">Enregistrer les plats</button>
+        </div>
+        <div class="full-width">
+          <div class="dish-msg" id="dishMsg"></div>
+        </div>
+      </div>
+
+      <!-- Configured dishes list -->
+      <div class="dishes-list">
+        <p class="dishes-list-title">Plats configurés</p>
+        <div id="dishesList"><p class="dishes-empty">Aucun plat configuré.</p></div>
+      </div>
+    </section>
+
+    <!-- Reservations -->
+    <section class="card">
+      <div class="summary">
+        <strong>Réservations</strong>
+        <span id="countBadge" class="badge">0 total</span>
+      </div>
+      <div id="tableWrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nom</th>
+              <th>Téléphone</th>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Couverts</th>
+              <th>Formule</th>
+              <th>Plat choisi</th>
+              <th>Demandes spéciales</th>
+              <th>Réservé le</th>
+            </tr>
+          </thead>
+          <tbody id="reservationsBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty" style="display: none;">
+        Aucune réservation pour l'instant — partagez la page de réservation !
+      </div>
+    </section>
+  </main>
+  <footer>Powered by OpenBridge</footer>
+
+  <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    const formatDate = (value) => {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString("fr-FR");
+    };
+
+    const formatTime = (value) => {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    };
+
+    const formulaLabel = (formula) => {
+      switch (formula) {
+        case "entree_plat":  return "Entrée + Plat";
+        case "entree_only":  return "Entrée seule";
+        case "plat_only":    return "Plat seul";
+        default:             return formula || "-";
+      }
+    };
+
+    const formatPlatSelections = (platSelections) => {
+      if (!platSelections || typeof platSelections !== "object") return "-";
+      const parts = Object.entries(platSelections)
+        .filter(([, qty]) => Number.isFinite(qty) && qty > 0)
+        .map(([name, qty]) => `${name} ×${qty}`);
+      return parts.length ? parts.join(", ") : "-";
+    };
+
+    // ── Reservations ─────────────────────────────────────────────────────────
+
+    const body = document.getElementById("reservationsBody");
+    const countBadge = document.getElementById("countBadge");
+    const emptyState = document.getElementById("emptyState");
+    const tableWrapper = document.getElementById("tableWrapper");
+
+    const renderReservations = (reservations) => {
+      body.innerHTML = "";
+
+      if (!reservations.length) {
+        emptyState.style.display = "block";
+        tableWrapper.style.display = "none";
+        countBadge.textContent = "0 total";
+        return;
+      }
+
+      emptyState.style.display = "none";
+      tableWrapper.style.display = "block";
+      countBadge.textContent = `${reservations.length} total`;
+
+      reservations.forEach((reservation, index) => {
+        const row = document.createElement("tr");
+        const bookedAt = reservation.bookedAt || reservation.createdAt || "";
+        const platChoisi = reservation.formula === "entree_only"
+          ? "-"
+          : formatPlatSelections(reservation.platSelections);
+
+        row.innerHTML = `
+          <td data-label="#">${index + 1}</td>
+          <td data-label="Nom">${reservation.fullName || "-"}</td>
+          <td data-label="Téléphone">${reservation.phone || "-"}</td>
+          <td data-label="Date">${formatDate(reservation.date)}</td>
+          <td data-label="Heure">${reservation.timeSlot || "-"}</td>
+          <td data-label="Couverts">${reservation.guests ?? "-"}</td>
+          <td data-label="Formule">${formulaLabel(reservation.formula)}</td>
+          <td data-label="Plat choisi">${platChoisi}</td>
+          <td data-label="Demandes spéciales">${reservation.specialRequests || "-"}</td>
+          <td data-label="Réservé le">${formatDate(bookedAt)} ${bookedAt ? formatTime(bookedAt) : ""}</td>
+        `;
+        body.appendChild(row);
+      });
+    };
+
+    const fetchReservations = async () => {
+      try {
+        const response = await fetch("/api/reservations");
+        if (!response.ok) throw new Error("Failed to fetch");
+        const data = await response.json();
+        const reservations = Array.isArray(data.reservations) ? data.reservations : [];
+
+        reservations.sort((a, b) => {
+          const dateA = new Date(a.date || 0).getTime();
+          const dateB = new Date(b.date || 0).getTime();
+          return dateB - dateA;
+        });
+
+        renderReservations(reservations);
+      } catch {
+        renderReservations([]);
+      }
+    };
+
+    // ── Dishes ───────────────────────────────────────────────────────────────
+
+    const dishesList = document.getElementById("dishesList");
+    const dishMsg = document.getElementById("dishMsg");
+
+    const renderDishes = (dishes) => {
+      if (!dishes || !dishes.length) {
+        dishesList.innerHTML = '<p class="dishes-empty">Aucun plat configuré.</p>';
+        return;
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "dishes-grid";
+
+      dishes.forEach((d) => {
+        const card = document.createElement("div");
+        card.className = "dish-card";
+        const plats = Array.isArray(d.plats) ? d.plats : [];
+        card.innerHTML = `
+          <div class="dish-card-date">${d.date || "-"}</div>
+          <div class="dish-card-row">Entrée : <span>${d.entree || "-"}</span></div>
+          <div class="dish-card-row">Plat 1 : <span>${plats[0] || "-"}</span></div>
+          <div class="dish-card-row">Plat 2 : <span>${plats[1] || "-"}</span></div>
+          <div class="dish-card-row">Plat 3 : <span>${plats[2] || "-"}</span></div>
+        `;
+        grid.appendChild(card);
+      });
+
+      dishesList.innerHTML = "";
+      dishesList.appendChild(grid);
+    };
+
+    const fetchDishes = async () => {
+      try {
+        const response = await fetch("/api/dishes");
+        if (!response.ok) throw new Error("Failed to fetch dishes");
+        const data = await response.json();
+        // Server returns dishes as an object { "2025-03-10": { entree, plats }, ... }
+        const dishesObj = data.dishes || {};
+        const dishesArr = Array.isArray(dishesObj)
+          ? dishesObj
+          : Object.entries(dishesObj).map(([date, d]) => ({ date, entree: d.entree, plats: d.plats }));
+        renderDishes(dishesArr);
+      } catch {
+        renderDishes([]);
+      }
+    };
+
+    const showDishMsg = (text, type) => {
+      dishMsg.textContent = text;
+      dishMsg.className = `dish-msg ${type}`;
+      dishMsg.style.display = "block";
+      setTimeout(() => { dishMsg.style.display = "none"; }, 4000);
+    };
+
+    document.getElementById("saveDishesBtn").addEventListener("click", async () => {
+      const date = document.getElementById("dishDate").value;
+      const entree = document.getElementById("dishEntree").value.trim();
+      const plat1 = document.getElementById("dishPlat1").value.trim();
+      const plat2 = document.getElementById("dishPlat2").value.trim();
+      const plat3 = document.getElementById("dishPlat3").value.trim();
+
+      if (!date) {
+        showDishMsg("Veuillez sélectionner une date.", "error");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/dishes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date, entree, plats: [plat1, plat2, plat3] }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || err.message || "Erreur serveur");
+        }
+
+        showDishMsg("Plats enregistrés avec succès !", "success");
+        fetchDishes();
+      } catch (err) {
+        showDishMsg(`Erreur : ${err.message}`, "error");
+      }
+    });
+
+    // ── Default date = tomorrow ───────────────────────────────────────────────
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById("dishDate").value = tomorrow.toISOString().slice(0, 10);
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    fetchReservations();
+    fetchDishes();
+    setInterval(fetchReservations, 30000);
+  </script>
+</body>
+</html>
