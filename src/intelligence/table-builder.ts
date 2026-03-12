@@ -178,6 +178,66 @@ function validateFormulaColumns(formula: string, fieldNames: Set<string>, fieldN
   }
 }
 
+/**
+ * Generates INSERT, UPDATE, and DELETE triggers on a child table that
+ * recompute an aggregate field on the parent table.
+ *
+ * Follows the Odoo `@api.depends` cross-table cascade pattern adapted for
+ * SQLite triggers (see IMPLEMENTATION-PLAN.md Part 5).
+ *
+ * @param parentTable  — fully-qualified parent table name (e.g. `dt_invoice`)
+ * @param childTable   — fully-qualified child table name (e.g. `dt_invoice__items`)
+ * @param aggregateField — column on the parent table to update (e.g. `subtotal`)
+ * @param sourceField  — column on the child table to SUM (e.g. `amount`)
+ * @returns array of three CREATE TRIGGER statements (insert, update, delete)
+ */
+export function buildRecomputeTriggers(
+  parentTable: string,
+  childTable: string,
+  aggregateField: string,
+  sourceField: string,
+): string[] {
+  const qParent = quoteIdentifier(parentTable);
+  const qChild = quoteIdentifier(childTable);
+  const qAgg = quoteIdentifier(aggregateField);
+  const qSrc = quoteIdentifier(sourceField);
+
+  // Derive a short suffix from table names for unique trigger naming
+  const suffix = `${parentTable}__${aggregateField}`;
+
+  const qParentId = quoteIdentifier('parent_id');
+  const subquery = `(SELECT COALESCE(SUM(${qSrc}), 0) FROM ${qChild} WHERE ${qParentId} = {{ref}}.${qParentId})`;
+
+  const insertTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${suffix}_insert"
+AFTER INSERT ON ${qChild}
+BEGIN
+  UPDATE ${qParent} SET
+    ${qAgg} = ${subquery.replace('{{ref}}', 'NEW')},
+    "updated_at" = datetime('now')
+  WHERE "id" = NEW."parent_id";
+END;`;
+
+  const updateTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${suffix}_update"
+AFTER UPDATE OF ${qSrc} ON ${qChild}
+BEGIN
+  UPDATE ${qParent} SET
+    ${qAgg} = ${subquery.replace('{{ref}}', 'NEW')},
+    "updated_at" = datetime('now')
+  WHERE "id" = NEW."parent_id";
+END;`;
+
+  const deleteTrigger = `CREATE TRIGGER IF NOT EXISTS "trg_${suffix}_delete"
+AFTER DELETE ON ${qChild}
+BEGIN
+  UPDATE ${qParent} SET
+    ${qAgg} = ${subquery.replace('{{ref}}', 'OLD')},
+    "updated_at" = datetime('now')
+  WHERE "id" = OLD."parent_id";
+END;`;
+
+  return [insertTrigger, updateTrigger, deleteTrigger];
+}
+
 /** Wraps a SQLite identifier in double-quotes, escaping any embedded double-quotes. */
 function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
