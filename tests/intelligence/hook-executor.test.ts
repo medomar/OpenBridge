@@ -4,6 +4,7 @@ import { ensureDocTypeStoreSchema, createDocType } from '../../src/intelligence/
 import {
   executeHooks,
   registerHookHandler,
+  registerNotificationSenders,
   registerStripeAdapter,
 } from '../../src/intelligence/hook-executor.js';
 import type { DocType } from '../../src/types/doctype.js';
@@ -56,7 +57,158 @@ function insertHook(
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests — real handler implementations
+// ---------------------------------------------------------------------------
+
+// (1) generate_number creates correct formatted number
+describe('generate_number hook handler', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeDb();
+  });
+
+  it('generates a correctly formatted number and sets the target field', async () => {
+    insertHook(db, {
+      id: 'hook-gn',
+      event: 'before_create',
+      action_type: 'generate_number',
+      action_config: { pattern: 'INV-{YYYY}-{###}', field: 'invoice_number' },
+    });
+
+    const record: Record<string, unknown> = { name: 'Acme Corp', total: 500 };
+    await executeHooks(db, DOCTYPE, 'create', record, 'before');
+
+    expect(record['invoice_number']).toBeDefined();
+    const num = record['invoice_number'] as string;
+    // Format: INV-<4-digit year>-<3-digit counter starting at 001>
+    expect(num).toMatch(/^INV-\d{4}-\d{3}$/);
+    expect(num.endsWith('-001')).toBe(true);
+  });
+
+  it('increments the counter on successive calls', async () => {
+    insertHook(db, {
+      id: 'hook-gn-inc',
+      event: 'before_create',
+      action_type: 'generate_number',
+      action_config: { pattern: 'ORD-{YYYY}-{####}', field: 'order_number' },
+    });
+
+    const r1: Record<string, unknown> = {};
+    const r2: Record<string, unknown> = {};
+    await executeHooks(db, DOCTYPE, 'create', r1, 'before');
+    await executeHooks(db, DOCTYPE, 'create', r2, 'before');
+
+    expect((r1['order_number'] as string).endsWith('-0001')).toBe(true);
+    expect((r2['order_number'] as string).endsWith('-0002')).toBe(true);
+  });
+});
+
+// (2) update_field sets value correctly
+describe('update_field hook handler', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeDb();
+  });
+
+  it('sets a literal string value on the record field', async () => {
+    insertHook(db, {
+      id: 'hook-uf-str',
+      event: 'before_create',
+      action_type: 'update_field',
+      action_config: { field: 'status', value: 'pending' },
+    });
+
+    const record: Record<string, unknown> = {};
+    await executeHooks(db, DOCTYPE, 'create', record, 'before');
+
+    expect(record['status']).toBe('pending');
+  });
+
+  it('sets a now() timestamp on the record field', async () => {
+    const before = Date.now();
+    insertHook(db, {
+      id: 'hook-uf-now',
+      event: 'after_transition',
+      action_type: 'update_field',
+      action_config: { field: 'sent_at', value: 'now()' },
+    });
+
+    const record: Record<string, unknown> = {};
+    await executeHooks(db, DOCTYPE, 'transition', record, 'after');
+
+    expect(record['sent_at']).toBeDefined();
+    const ts = new Date(record['sent_at'] as string).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('resolves a field reference {field_name} from the record', async () => {
+    insertHook(db, {
+      id: 'hook-uf-ref',
+      event: 'before_create',
+      action_type: 'update_field',
+      action_config: { field: 'approved_by', value: '{created_by}' },
+    });
+
+    const record: Record<string, unknown> = { created_by: 'alice' };
+    await executeHooks(db, DOCTYPE, 'create', record, 'before');
+
+    expect(record['approved_by']).toBe('alice');
+  });
+});
+
+// (3) send_notification formats template with record data
+describe('send_notification hook handler', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeDb();
+    registerNotificationSenders({});
+  });
+
+  afterEach(() => {
+    registerNotificationSenders({});
+  });
+
+  it('formats the template with record field values and calls the channel sender', async () => {
+    const mockSender = vi.fn().mockResolvedValue(undefined);
+    registerNotificationSenders({ whatsapp: mockSender });
+
+    insertHook(db, {
+      id: 'hook-notif',
+      event: 'after_transition',
+      action_type: 'send_notification',
+      action_config: {
+        channel: 'whatsapp',
+        to: '+1234567890',
+        template: 'Hello {{name}}, your total is {{total}}',
+      },
+    });
+
+    const record: Record<string, unknown> = { name: 'Bob', total: 250 };
+    await executeHooks(db, DOCTYPE, 'transition', record, 'after');
+
+    expect(mockSender).toHaveBeenCalledTimes(1);
+    expect(mockSender).toHaveBeenCalledWith('+1234567890', 'Hello Bob, your total is 250', []);
+  });
+
+  it('skips silently when no sender is registered for the channel', async () => {
+    insertHook(db, {
+      id: 'hook-notif-skip',
+      event: 'after_transition',
+      action_type: 'send_notification',
+      action_config: { channel: 'whatsapp', to: '+1234567890', template: 'Hi {{name}}' },
+    });
+
+    const record: Record<string, unknown> = { name: 'Alice' };
+    await expect(executeHooks(db, DOCTYPE, 'transition', record, 'after')).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — executeHooks orchestration
 // ---------------------------------------------------------------------------
 
 describe('executeHooks', () => {
