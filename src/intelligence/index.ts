@@ -21,3 +21,4 @@ export * from './form-generator.js';
 export * from './list-generator.js';
 export * from './relation-manager.js';
 export * from './doctype-importer.js';
+export * from './doctype-exporter.js';
