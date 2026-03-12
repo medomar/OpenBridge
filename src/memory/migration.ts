@@ -430,6 +430,43 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 17,
+    description:
+      'Add processed_documents and processed_documents_fts tables for document intelligence',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='processed_documents'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE processed_documents (
+            id           TEXT PRIMARY KEY,
+            filename     TEXT NOT NULL,
+            mime_type    TEXT NOT NULL,
+            file_path    TEXT NOT NULL,
+            doc_type     TEXT NOT NULL DEFAULT 'unknown',
+            raw_text     TEXT NOT NULL DEFAULT '',
+            entities     TEXT NOT NULL DEFAULT '[]',
+            relations    TEXT NOT NULL DEFAULT '[]',
+            tables       TEXT NOT NULL DEFAULT '[]',
+            metadata     TEXT NOT NULL DEFAULT '{}',
+            processed_at TEXT NOT NULL,
+            source       TEXT
+          );
+          CREATE VIRTUAL TABLE processed_documents_fts
+            USING fts5(raw_text, filename, content='processed_documents', content_rowid='rowid');
+          CREATE INDEX idx_processed_documents_mime      ON processed_documents(mime_type);
+          CREATE INDEX idx_processed_documents_processed ON processed_documents(processed_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**
