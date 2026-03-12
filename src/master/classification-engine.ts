@@ -57,7 +57,7 @@ export const MESSAGE_MAX_TURNS_PLANNING = 25;
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
  */
-export const CLASSIFIER_VERSION = 4;
+export const CLASSIFIER_VERSION = 5;
 
 /** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
 const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
@@ -98,6 +98,10 @@ export interface ClassificationResult {
   doctypeCreation?: boolean;
   /** The extracted entity name from the doctype-creation phrase (e.g. "invoices", "customers") (OB-1384). */
   doctypeEntity?: string;
+  /** When true, the message matches integration-setup phrases ("connect Stripe", "link Google Drive", "add my API") (OB-1396). */
+  integrationSetup?: boolean;
+  /** The extracted integration name from the setup phrase (e.g. "stripe", "google-drive") (OB-1396). */
+  integrationName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +637,49 @@ export class ClassificationEngine {
           reason: `keyword match: doctype-creation (entity: ${entity})`,
           doctypeCreation: true,
           doctypeEntity: entity,
+        };
+      }
+    }
+
+    // Integration setup intent detection (OB-1396)
+    const integrationPatterns: { pattern: RegExp; nameGroup: number }[] = [
+      {
+        pattern:
+          /\bconnect\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+account|\s+api|\s+integration|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\blink\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+account|\s+api|\s+integration|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\badd\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)\s+(?:api|key|credentials?|integration)\b/i,
+        nameGroup: 1,
+      },
+      {
+        pattern: /\bintegrate\s+(?:with\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+api|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\bset\s+up\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)\s+(?:api|email|integration|webhook)\b/i,
+        nameGroup: 1,
+      },
+      { pattern: /\benable\s+(?:the\s+)?([a-z0-9][\w\s-]{1,30}?)\s+integration\b/i, nameGroup: 1 },
+    ];
+    for (const { pattern, nameGroup } of integrationPatterns) {
+      const match = pattern.exec(content);
+      if (match) {
+        const rawName = match[nameGroup]?.trim().replace(/\s+/g, '-').toLowerCase() ?? 'api';
+        return {
+          class: 'tool-use',
+          maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
+          reason: `keyword match: integration-setup (integration: ${rawName})`,
+          integrationSetup: true,
+          integrationName: rawName,
         };
       }
     }
