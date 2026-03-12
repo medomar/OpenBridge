@@ -56,7 +56,7 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   generate_number: handleGenerateNumber,
 
   // OB-1378: update_field — evaluates an expression and sets a field
-  update_field: handleNotImplemented('update_field'),
+  update_field: handleUpdateField,
 
   // OB-1379: send_notification — sends a formatted message via a channel
   send_notification: handleNotImplemented('send_notification'),
@@ -110,6 +110,110 @@ function handleGenerateNumber(
     { hookId: hook.id, field, pattern, generatedNumber: nextNumber },
     'generate_number hook executed successfully',
   );
+}
+
+/**
+ * Handler for `update_field` hook action type.
+ * Evaluates a value expression and sets the result on a field in the record.
+ *
+ * Supported expression syntax:
+ *   - `now()` → current ISO timestamp string
+ *   - `{field_name}` → reference a field from the record
+ *   - Literal values (strings, numbers, booleans)
+ *
+ * Examples:
+ *   - `{ "field": "sent_at", "value": "now()" }`
+ *   - `{ "field": "approved_by", "value": "{created_by}" }`
+ *   - `{ "field": "is_active", "value": "true" }`
+ */
+function handleUpdateField(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  _db: Database.Database,
+): void {
+  const config = hook.action_config;
+
+  // Extract field and value from config
+  const field = config['field'] as string | undefined;
+  const valueExpr = config['value'] as string | undefined;
+
+  if (!field) {
+    logger.warn({ hookId: hook.id }, 'update_field hook missing "field" in action_config');
+    return;
+  }
+
+  if (valueExpr === undefined) {
+    logger.warn({ hookId: hook.id }, 'update_field hook missing "value" in action_config');
+    return;
+  }
+
+  // Evaluate the value expression
+  const evaluatedValue = evaluateValueExpression(valueExpr, record);
+
+  // Set the field value on the record
+  record[field] = evaluatedValue;
+
+  logger.debug(
+    { hookId: hook.id, field, expression: valueExpr, evaluatedValue },
+    'update_field hook executed successfully',
+  );
+}
+
+/**
+ * Evaluate a value expression against a record.
+ *
+ * Supported syntax:
+ *   - `now()` → current ISO timestamp
+ *   - `{field_name}` → field reference from the record
+ *   - Literal values: strings, numbers, booleans (case-insensitive `true`/`false`/`null`)
+ *
+ * @param expression - The expression string to evaluate
+ * @param record - The record data to use for field references
+ * @returns The evaluated value
+ */
+function evaluateValueExpression(expression: string, record: Record<string, unknown>): unknown {
+  const trimmed = expression.trim();
+
+  // Handle `now()` function
+  if (trimmed === 'now()') {
+    return new Date().toISOString();
+  }
+
+  // Handle field references `{field_name}`
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    const fieldName = trimmed.slice(1, -1);
+    return record[fieldName] ?? null;
+  }
+
+  // Try to parse as a boolean literal
+  if (trimmed.toLowerCase() === 'true') {
+    return true;
+  }
+  if (trimmed.toLowerCase() === 'false') {
+    return false;
+  }
+
+  // Try to parse as null
+  if (trimmed.toLowerCase() === 'null') {
+    return null;
+  }
+
+  // Try to parse as a number
+  const asNumber = Number(trimmed);
+  if (!Number.isNaN(asNumber)) {
+    return asNumber;
+  }
+
+  // String literal: remove surrounding quotes if present
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  // Default: return as-is (bare string)
+  return trimmed;
 }
 
 /**
