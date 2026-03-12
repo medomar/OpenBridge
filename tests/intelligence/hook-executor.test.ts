@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ensureDocTypeStoreSchema, createDocType } from '../../src/intelligence/doctype-store.js';
-import { executeHooks, registerHookHandler } from '../../src/intelligence/hook-executor.js';
+import {
+  executeHooks,
+  registerHookHandler,
+  registerStripeAdapter,
+} from '../../src/intelligence/hook-executor.js';
 import type { DocType } from '../../src/types/doctype.js';
 
 // ---------------------------------------------------------------------------
@@ -197,5 +201,113 @@ describe('executeHooks', () => {
     await executeHooks(db, DOCTYPE, 'delete', {}, 'before');
 
     expect(firedEvent).toBe('before_delete');
+  });
+});
+
+describe('create_payment_link hook', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = makeDb();
+  });
+
+  afterEach(() => {
+    // Reset Stripe adapter between tests
+    registerStripeAdapter(undefined);
+  });
+
+  it('logs warning and skips when Stripe adapter is not registered', async () => {
+    insertHook(db, {
+      event: 'after_transition',
+      action_type: 'create_payment_link',
+      action_config: {
+        amount_field: 'total',
+        description_field: 'description',
+        output_field: 'payment_url',
+      },
+    });
+
+    const record: Record<string, unknown> = { total: 5000, description: 'Invoice #1' };
+    await expect(executeHooks(db, DOCTYPE, 'transition', record, 'after')).resolves.toBeUndefined();
+
+    // output_field should remain unset since adapter is not registered
+    expect(record['payment_url']).toBeUndefined();
+  });
+
+  it('calls Stripe adapter and stores payment URL in output_field', async () => {
+    const createPaymentLink = vi.fn().mockResolvedValue('https://buy.stripe.com/test_link');
+    registerStripeAdapter({ createPaymentLink });
+
+    insertHook(db, {
+      event: 'after_transition',
+      action_type: 'create_payment_link',
+      action_config: {
+        amount_field: 'amount',
+        description_field: 'label',
+        output_field: 'stripe_url',
+      },
+    });
+
+    const record: Record<string, unknown> = { amount: 9900, label: 'Order #42' };
+    await executeHooks(db, DOCTYPE, 'transition', record, 'after');
+
+    expect(createPaymentLink).toHaveBeenCalledWith(9900, 'Order #42');
+    expect(record['stripe_url']).toBe('https://buy.stripe.com/test_link');
+  });
+
+  it('skips and logs warning when amount_field is missing from config', async () => {
+    const createPaymentLink = vi.fn();
+    registerStripeAdapter({ createPaymentLink });
+
+    insertHook(db, {
+      event: 'after_transition',
+      action_type: 'create_payment_link',
+      action_config: { description_field: 'label', output_field: 'stripe_url' },
+    });
+
+    const record: Record<string, unknown> = { label: 'Order #42' };
+    await expect(executeHooks(db, DOCTYPE, 'transition', record, 'after')).resolves.toBeUndefined();
+    expect(createPaymentLink).not.toHaveBeenCalled();
+  });
+
+  it('skips and logs warning when amount field value is not numeric', async () => {
+    const createPaymentLink = vi.fn();
+    registerStripeAdapter({ createPaymentLink });
+
+    insertHook(db, {
+      event: 'after_transition',
+      action_type: 'create_payment_link',
+      action_config: {
+        amount_field: 'total',
+        description_field: 'label',
+        output_field: 'stripe_url',
+      },
+    });
+
+    const record: Record<string, unknown> = { total: 'not-a-number', label: 'Order #42' };
+    await expect(executeHooks(db, DOCTYPE, 'transition', record, 'after')).resolves.toBeUndefined();
+    expect(createPaymentLink).not.toHaveBeenCalled();
+  });
+
+  it('uses empty string for description when description field is missing from record', async () => {
+    const createPaymentLink = vi.fn().mockResolvedValue('https://buy.stripe.com/empty_desc');
+    registerStripeAdapter({ createPaymentLink });
+
+    insertHook(db, {
+      event: 'after_transition',
+      action_type: 'create_payment_link',
+      action_config: {
+        amount_field: 'total',
+        description_field: 'desc',
+        output_field: 'stripe_url',
+      },
+    });
+
+    // 'desc' field is absent from the record
+    const record: Record<string, unknown> = { total: 1000 };
+    await executeHooks(db, DOCTYPE, 'transition', record, 'after');
+
+    expect(createPaymentLink).toHaveBeenCalledWith(1000, '');
+    expect(record['stripe_url']).toBe('https://buy.stripe.com/empty_desc');
   });
 });

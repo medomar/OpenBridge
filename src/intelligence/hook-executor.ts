@@ -63,6 +63,41 @@ export function registerNotificationSenders(senders: {
 }
 
 // ---------------------------------------------------------------------------
+// Stripe adapter registry (used by create_payment_link)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stripe adapter interface for the create_payment_link hook.
+ * Phase 119 (Integration Hub) wires in the real Stripe adapter.
+ * Until then, the registry remains empty and the hook logs a warning and skips.
+ */
+export interface StripeAdapter {
+  /**
+   * Create a Stripe payment link.
+   * @param amount      - Amount in the currency's smallest unit (e.g. cents for USD)
+   * @param description - Human-readable description shown on the payment page
+   * @returns The payment link URL
+   */
+  createPaymentLink(amount: number, description: string): Promise<string>;
+}
+
+let stripeAdapter: StripeAdapter | undefined;
+
+/**
+ * Register the Stripe adapter so the create_payment_link hook can call it.
+ * Call this during bridge startup after Phase 119's Integration Hub is initialised.
+ * Pass `undefined` to deregister (useful in tests).
+ */
+export function registerStripeAdapter(adapter: StripeAdapter | undefined): void {
+  stripeAdapter = adapter;
+  if (adapter) {
+    logger.debug('Stripe adapter registered for create_payment_link hook');
+  } else {
+    logger.debug('Stripe adapter deregistered');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Workspace path registry (used by generate_pdf)
 // ---------------------------------------------------------------------------
 
@@ -137,7 +172,7 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   generate_pdf: handleGeneratePdf,
 
   // OB-1381: create_payment_link — calls Stripe to generate a payment URL
-  create_payment_link: handleNotImplemented('create_payment_link'),
+  create_payment_link: handleCreatePaymentLink,
 
   // OB-future: remaining action types
   run_workflow: handleNotImplemented('run_workflow'),
@@ -683,6 +718,108 @@ async function handleGeneratePdf(
   logger.debug(
     { hookId: hook.id, outputField, outputPath },
     'generate_pdf hook executed successfully',
+  );
+}
+
+/**
+ * Handler for `create_payment_link` hook action type.
+ *
+ * On transition events (after timing): reads amount and description from the
+ * record using the configured field names, calls the registered Stripe adapter's
+ * `createPaymentLink()`, and stores the returned URL in `action_config.output_field`.
+ *
+ * If the Stripe adapter has not been registered (Phase 119 not connected), the
+ * hook logs a warning and skips without throwing.
+ *
+ * action_config fields:
+ *   - `amount_field`      (required) — record field containing the payment amount
+ *                                      (numeric, currency's smallest unit, e.g. cents)
+ *   - `description_field` (required) — record field containing the payment description
+ *   - `output_field`      (required) — record field to set with the generated payment link URL
+ */
+async function handleCreatePaymentLink(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  _db: Database.Database,
+): Promise<void> {
+  const config = hook.action_config;
+  const amountField = config['amount_field'] as string | undefined;
+  const descriptionField = config['description_field'] as string | undefined;
+  const outputField = config['output_field'] as string | undefined;
+
+  if (!amountField) {
+    logger.warn(
+      { hookId: hook.id },
+      'create_payment_link hook missing "amount_field" in action_config',
+    );
+    return;
+  }
+
+  if (!descriptionField) {
+    logger.warn(
+      { hookId: hook.id },
+      'create_payment_link hook missing "description_field" in action_config',
+    );
+    return;
+  }
+
+  if (!outputField) {
+    logger.warn(
+      { hookId: hook.id },
+      'create_payment_link hook missing "output_field" in action_config',
+    );
+    return;
+  }
+
+  if (!stripeAdapter) {
+    logger.warn(
+      { hookId: hook.id },
+      'create_payment_link hook: Stripe integration not connected — skipping (register via registerStripeAdapter())',
+    );
+    return;
+  }
+
+  const amount = record[amountField];
+  const description = record[descriptionField];
+
+  if (amount === undefined || amount === null) {
+    logger.warn(
+      { hookId: hook.id, amountField },
+      'create_payment_link hook: amount field is missing from record — skipping',
+    );
+    return;
+  }
+
+  const numericAmount = Number(amount);
+  if (Number.isNaN(numericAmount)) {
+    logger.warn(
+      { hookId: hook.id, amountField, amount },
+      'create_payment_link hook: amount field value is not numeric — skipping',
+    );
+    return;
+  }
+
+  let descriptionStr: string;
+  if (description === undefined || description === null) {
+    descriptionStr = '';
+  } else if (typeof description === 'object') {
+    descriptionStr = JSON.stringify(description);
+  } else {
+    descriptionStr = String(description as string | number | boolean);
+  }
+
+  logger.debug(
+    { hookId: hook.id, amountField, descriptionField, amount: numericAmount },
+    'create_payment_link: calling Stripe adapter',
+  );
+
+  const paymentUrl = await stripeAdapter.createPaymentLink(numericAmount, descriptionStr);
+
+  record[outputField] = paymentUrl;
+
+  logger.info(
+    { hookId: hook.id, outputField, paymentUrl },
+    'create_payment_link hook executed successfully',
   );
 }
 
