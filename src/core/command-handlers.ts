@@ -22,6 +22,8 @@ import type { SkillManager } from '../master/skill-manager.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import type { IntegrationHub } from '../integrations/hub.js';
 import type { CredentialStore } from '../integrations/credential-store.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
@@ -127,6 +129,8 @@ export interface CommandHandlerDeps {
   getWorkspacePath: () => string | undefined;
   getIntegrationHub: () => IntegrationHub | undefined;
   getCredentialStore: () => CredentialStore | undefined;
+  getWorkflowStore: () => WorkflowStore | undefined;
+  getWorkflowEngine: () => WorkflowEngine | undefined;
   getConnectors: () => Map<string, Connector>;
   getProviders: () => Map<string, AIProvider>;
 
@@ -3726,6 +3730,236 @@ export class CommandHandlers {
         content: `Failed to list integrations: ${msg}`,
         replyTo: message.id,
       });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // handleWorkflowsCommand — /workflows (list/enable/disable/runs/delete)
+  // -------------------------------------------------------------------------
+
+  async handleWorkflowsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const store = this.deps.getWorkflowStore();
+    const engine = this.deps.getWorkflowEngine();
+
+    if (!store) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Workflow engine unavailable — not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const trimmed = message.content.trim();
+    // Parse subcommand: /workflows [list|enable|disable|runs|delete] [id]
+    const match = /^\/workflows(?:\s+(list|enable|disable|runs|delete)(?:\s+(\S+))?)?$/i.exec(
+      trimmed,
+    );
+
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: [
+          '*Workflow Commands*',
+          '',
+          '/workflows list — show all workflows',
+          '/workflows enable {id} — enable a workflow',
+          '/workflows disable {id} — disable a workflow',
+          '/workflows runs {id} — show run history',
+          '/workflows delete {id} — delete a workflow',
+        ].join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const sub = (match[1] ?? 'list').toLowerCase();
+    const id = match[2] ?? '';
+
+    // /workflows list (default)
+    if (sub === 'list') {
+      let workflows;
+      try {
+        workflows = store.listWorkflows();
+      } catch (err) {
+        logger.warn({ err }, '/workflows list: failed');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'Failed to list workflows.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (workflows.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            '*Workflows*\n\nNo workflows defined yet.\nAsk the AI to create one: "remind me every morning about overdue invoices"',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = ['*Workflows*', ''];
+      for (const wf of workflows) {
+        const status = wf.status === 'active' ? '✅' : '⏸';
+        const trigger = wf.trigger.type;
+        const runs = wf.run_count ?? 0;
+        lines.push(`${status} *${wf.name}* (\`${wf.id}\`)`);
+        lines.push(`   Trigger: ${trigger} | Runs: ${runs}`);
+      }
+      lines.push('');
+      lines.push('Use /workflows enable {id} or /workflows disable {id} to toggle.');
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Subcommands that require an id
+    if (!id) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Usage: /workflows ${sub} {workflow-id}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (sub === 'enable') {
+      try {
+        if (engine) {
+          await engine.enableWorkflow(id);
+        } else {
+          store.updateWorkflow(id, { status: 'active' });
+        }
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` enabled.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to enable workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    if (sub === 'disable') {
+      try {
+        if (engine) {
+          await engine.disableWorkflow(id);
+        } else {
+          store.updateWorkflow(id, { status: 'inactive' });
+        }
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` disabled.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to disable workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    if (sub === 'runs') {
+      let runs;
+      try {
+        runs = store.listRuns(id, 10);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to fetch runs: ${msg}`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (runs.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `No runs found for workflow \`${id}\`.`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = [`*Run History — \`${id}\`*`, ''];
+      for (const run of runs) {
+        const statusIcon =
+          run.status === 'completed'
+            ? '✅'
+            : run.status === 'failed'
+              ? '❌'
+              : run.status === 'running'
+                ? '⏳'
+                : '⏸';
+        const started = run.started_at ? run.started_at.slice(0, 16).replace('T', ' ') : '—';
+        const duration =
+          run.started_at && run.completed_at
+            ? formatDuration(
+                new Date(run.completed_at).getTime() - new Date(run.started_at).getTime(),
+              )
+            : '—';
+        lines.push(`${statusIcon} \`${run.id}\` — ${started} (${duration})`);
+        if (run.error) lines.push(`   Error: ${run.error.slice(0, 80)}`);
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (sub === 'delete') {
+      try {
+        store.deleteWorkflow(id);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` deleted.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to delete workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
     }
   }
 

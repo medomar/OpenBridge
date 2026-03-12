@@ -121,6 +121,7 @@ export interface WorkflowStore {
   deleteWorkflow(id: string): void;
   createRun(run: WorkflowRun): void;
   getRun(id: string): WorkflowRun | null;
+  listRuns(workflowId: string, limit?: number): WorkflowRun[];
   updateRun(id: string, updates: Partial<WorkflowRun>): void;
   createApproval(approval: WorkflowApproval): void;
   resolveApproval(id: string, response: string): void;
@@ -240,6 +241,15 @@ export function createWorkflowStore(db: Database.Database): WorkflowStore {
         | WorkflowRunRow
         | undefined;
       return row ? rowToRun(row) : null;
+    },
+
+    listRuns(workflowId: string, limit = 10): WorkflowRun[] {
+      const rows = db
+        .prepare(
+          'SELECT * FROM workflow_runs WHERE workflow_id = ? ORDER BY started_at DESC LIMIT ?',
+        )
+        .all(workflowId, limit) as WorkflowRunRow[];
+      return rows.map(rowToRun);
     },
 
     updateRun(id: string, updates: Partial<WorkflowRun>): void {
