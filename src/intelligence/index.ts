@@ -20,3 +20,4 @@ export * from './doctype-api.js';
 export * from './form-generator.js';
 export * from './list-generator.js';
 export * from './relation-manager.js';
+export * from './doctype-importer.js';
