@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 106 | **In Progress:** 0 | **Done:** 67 (1332 archived)
+> **Pending:** 105 | **In Progress:** 0 | **Done:** 68 (1332 archived)
 > **Last Updated:** 2026-03-12
 
 <details>
@@ -44,7 +44,7 @@
 | P0  | 116   | Document Intelligence Layer                      | 21    | OB-F184                | ✅      |
 | P0  | 117   | DocType Engine — Schema & Storage                | 19    | OB-F185                | Pending |
 | P0  | 118   | DocType Engine — Lifecycle & Hooks               | 16    | OB-F185                | Pending |
-| P1  | 119   | Integration Hub — Core & Credentials             | 12    | OB-F186/F189           | Pending |
+| P1  | 119   | Integration Hub — Core & Credentials             | 12    | OB-F186/F189           | ✅      |
 | P1  | 120   | Integration Hub — Adapters                       | 12    | OB-F186/F178           | Pending |
 | P1  | 121   | Workflow Engine                                  | 22    | OB-F187                | Pending |
 | P1  | 122   | Business Document Generation                     | 10    | OB-F188                | Pending |
@@ -164,7 +164,7 @@
 | OB-1397 | Add `/connect` command handler in `src/core/command-handlers.ts`. Syntax: `/connect stripe`, `/connect google-drive`, `/connect api <swagger-url>`. Start the credential collection flow — ask for API key, encrypt, store, test connection, report status.                                                                                                                                                                                                                                                                           | OB-F186 | sonnet | ✅ Done |
 | OB-1398 | Add `/integrations` command handler in `src/core/command-handlers.ts`. Lists all registered integrations with status (connected/disconnected/error), last health check, and available capabilities count.                                                                                                                                                                                                                                                                                                                             | OB-F186 | haiku  | ✅ Done |
 | OB-1399 | Unit test: credential store. File: `tests/integrations/credential-store.test.ts`. Test: (1) encrypt then decrypt returns original data, (2) different IVs produce different ciphertext, (3) wrong key fails to decrypt, (4) secrets.key file created with correct permissions, (5) credentials table migration applies cleanly.                                                                                                                                                                                                       | OB-F189 | opus   | ✅ Done |
-| OB-1400 | Unit test: integration hub. File: `tests/integrations/hub.test.ts`. Test: (1) register and retrieve integration, (2) list returns all registered, (3) health check calls integration's healthCheck, (4) shutdown calls all integrations' shutdown, (5) get non-existent integration throws.                                                                                                                                                                                                                                           | OB-F186 | sonnet | Pending |
+| OB-1400 | Unit test: integration hub. File: `tests/integrations/hub.test.ts`. Test: (1) register and retrieve integration, (2) list returns all registered, (3) health check calls integration's healthCheck, (4) shutdown calls all integrations' shutdown, (5) get non-existent integration throws.                                                                                                                                                                                                                                           | OB-F186 | sonnet | ✅ Done |
 
 ---
 
