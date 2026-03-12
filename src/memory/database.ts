@@ -397,5 +397,19 @@ function createSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_processed_documents_mime      ON processed_documents(mime_type);
     CREATE INDEX IF NOT EXISTS idx_processed_documents_processed ON processed_documents(processed_at);
+
+    -- integration_credentials: AES-256-GCM encrypted credential storage
+    CREATE TABLE IF NOT EXISTS integration_credentials (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      integration_name TEXT    NOT NULL UNIQUE,
+      encrypted        TEXT    NOT NULL,
+      iv               TEXT    NOT NULL,
+      auth_tag         TEXT    NOT NULL,
+      health_status    TEXT    NOT NULL DEFAULT 'unknown',
+      created_at       TEXT    NOT NULL,
+      updated_at       TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_integration_credentials_name ON integration_credentials(integration_name);
   `);
 }
