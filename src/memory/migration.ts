@@ -668,6 +668,36 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 21,
+    description: 'Add integration_capabilities table for role-based capability tagging',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_capabilities'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_capabilities (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL,
+            capability_name  TEXT    NOT NULL,
+            role             TEXT    NOT NULL,
+            tagged_at        TEXT    NOT NULL,
+            UNIQUE(integration_name, capability_name, role)
+          );
+          CREATE INDEX idx_integration_capabilities_name
+            ON integration_capabilities(integration_name);
+          CREATE INDEX idx_integration_capabilities_role
+            ON integration_capabilities(integration_name, role);
+        `);
+      }
+    },
+  },
 ];
 
 /**
