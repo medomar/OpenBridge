@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { DocType, DocTypeHook, HookActionType } from '../types/doctype.js';
 import { createLogger } from '../core/logger.js';
+import { generateNextNumber } from './naming-series.js';
 
 const logger = createLogger('hook-executor');
 
@@ -52,7 +53,7 @@ type HookHandler = (
  */
 const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   // OB-1377: generate_number — fills a naming-series field on create
-  generate_number: handleNotImplemented('generate_number'),
+  generate_number: handleGenerateNumber,
 
   // OB-1378: update_field — evaluates an expression and sets a field
   update_field: handleNotImplemented('update_field'),
@@ -71,6 +72,45 @@ const HOOK_HANDLERS: Partial<Record<HookActionType, HookHandler>> = {
   call_integration: handleNotImplemented('call_integration'),
   spawn_worker: handleNotImplemented('spawn_worker'),
 };
+
+/**
+ * Handler for `generate_number` hook action type.
+ * On create event (before timing): parses action_config.pattern,
+ * calls generateNextNumber() to get the next number in the sequence,
+ * and sets the result on the field specified in action_config.field.
+ */
+function handleGenerateNumber(
+  hook: DocTypeHook,
+  record: Record<string, unknown>,
+  db: Database.Database,
+): void {
+  const config = hook.action_config;
+
+  // Extract pattern and field from config
+  const pattern = config['pattern'] as string | undefined;
+  const field = config['field'] as string | undefined;
+
+  if (!pattern) {
+    logger.warn({ hookId: hook.id }, 'generate_number hook missing "pattern" in action_config');
+    return;
+  }
+
+  if (!field) {
+    logger.warn({ hookId: hook.id }, 'generate_number hook missing "field" in action_config');
+    return;
+  }
+
+  // Generate the next number
+  const nextNumber = generateNextNumber(db, pattern);
+
+  // Set the field value on the record
+  record[field] = nextNumber;
+
+  logger.debug(
+    { hookId: hook.id, field, pattern, generatedNumber: nextNumber },
+    'generate_number hook executed successfully',
+  );
+}
 
 /**
  * Returns a stub handler that logs a "not yet implemented" warning and returns
