@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 94 | **In Progress:** 0 | **Done:** 79 (1332 archived)
+> **Pending:** 93 | **In Progress:** 0 | **Done:** 80 (1332 archived)
 > **Last Updated:** 2026-03-12
 
 <details>
@@ -187,7 +187,7 @@
 | OB-1409 | Implement `src/integrations/adapters/google-calendar-adapter.ts`. Uses `googleapis` (already installed). Capabilities: `create_event`, `list_events`, `update_event`, `delete_event`, `check_availability`. Useful for booking-based businesses (car rental, appointments).                                                                                                                                                                                                     | OB-F186 | sonnet | ✅ Done |
 | OB-1410 | Unit test: Stripe adapter. File: `tests/integrations/stripe-adapter.test.ts`. Mock Stripe SDK. Test: (1) create_payment_link returns URL, (2) webhook signature verification, (3) payment_intent.succeeded triggers state transition, (4) invalid API key throws on initialize.                                                                                                                                                                                                 | OB-F186 | sonnet | ✅ Done |
 | OB-1411 | Unit test: OpenAPI adapter. File: `tests/integrations/openapi-adapter.test.ts`. Create a minimal OpenAPI spec fixture. Test: (1) capabilities generated from paths, (2) GET paths = read category, (3) POST paths = write + requiresApproval, (4) Zod schema generated from parameters, (5) query() makes correct HTTP call.                                                                                                                                                    | OB-F186 | opus   | ✅ Done |
-| OB-1412 | Integration test: Stripe payment flow. File: `tests/integrations/stripe-flow.test.ts`. Mock Stripe SDK. Test full flow: create invoice DocType record → transition to "sent" → generate payment link hook fires → Stripe webhook received → invoice transitions to "paid" → owner notified. Verify all state changes and notifications.                                                                                                                                         | OB-F186 | opus   | Pending |
+| OB-1412 | Integration test: Stripe payment flow. File: `tests/integrations/stripe-flow.test.ts`. Mock Stripe SDK. Test full flow: create invoice DocType record → transition to "sent" → generate payment link hook fires → Stripe webhook received → invoice transitions to "paid" → owner notified. Verify all state changes and notifications.                                                                                                                                         | OB-F186 | opus   | ✅ Done |
 
 ---
 
