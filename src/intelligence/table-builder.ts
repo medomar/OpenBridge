@@ -1,5 +1,15 @@
 import type { DocType, DocTypeField, FieldType } from '../types/doctype.js';
 
+/**
+ * Returns true if `formula` is a safe SQLite expression suitable for a GENERATED column.
+ * Rejects: semicolons (statement separator) and DDL/DML keywords that could indicate injection.
+ */
+export function isValidSQLiteExpression(formula: string): boolean {
+  if (formula.includes(';')) return false;
+  const BANNED = /\b(DROP|ALTER|CREATE|INSERT|UPDATE|DELETE|ATTACH|DETACH|PRAGMA)\b/i;
+  return !BANNED.test(formula);
+}
+
 /** Maps DocType field types to SQLite column type affinity */
 const FIELD_TYPE_MAP: Record<FieldType, string> = {
   text: 'TEXT',
@@ -37,12 +47,25 @@ export function buildCreateTableDDL(doctype: DocType, fields: DocTypeField[]): s
 
   for (const field of fields) {
     const sqliteType = FIELD_TYPE_MAP[field.field_type] ?? 'TEXT';
-    const notNull = field.required ? ' NOT NULL' : '';
-    const defaultClause =
-      field.default_value != null
-        ? ` DEFAULT ${sqliteLiteral(field.default_value, sqliteType)}`
-        : '';
-    columnDefs.push(`${quoteIdentifier(field.name)} ${sqliteType}${notNull}${defaultClause}`);
+    if (field.formula != null) {
+      if (!isValidSQLiteExpression(field.formula)) {
+        throw new Error(
+          `Field "${field.name}": formula contains disallowed SQL keywords or characters.`,
+        );
+      }
+      const fieldNames = new Set(fields.map((f) => f.name));
+      validateFormulaColumns(field.formula, fieldNames, field.name);
+      columnDefs.push(
+        `${quoteIdentifier(field.name)} ${sqliteType} GENERATED ALWAYS AS (${field.formula}) STORED`,
+      );
+    } else {
+      const notNull = field.required ? ' NOT NULL' : '';
+      const defaultClause =
+        field.default_value != null
+          ? ` DEFAULT ${sqliteLiteral(field.default_value, sqliteType)}`
+          : '';
+      columnDefs.push(`${quoteIdentifier(field.name)} ${sqliteType}${notNull}${defaultClause}`);
+    }
   }
 
   return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(tableName)} (\n  ${columnDefs.join(',\n  ')}\n);`;
@@ -72,17 +95,87 @@ export function buildChildTableDDL(
 
   for (const field of fields) {
     const sqliteType = FIELD_TYPE_MAP[field.field_type] ?? 'TEXT';
-    const notNull = field.required ? ' NOT NULL' : '';
-    const defaultClause =
-      field.default_value != null
-        ? ` DEFAULT ${sqliteLiteral(field.default_value, sqliteType)}`
-        : '';
-    columnDefs.push(`${quoteIdentifier(field.name)} ${sqliteType}${notNull}${defaultClause}`);
+    if (field.formula != null) {
+      if (!isValidSQLiteExpression(field.formula)) {
+        throw new Error(
+          `Field "${field.name}": formula contains disallowed SQL keywords or characters.`,
+        );
+      }
+      const fieldNames = new Set(fields.map((f) => f.name));
+      validateFormulaColumns(field.formula, fieldNames, field.name);
+      columnDefs.push(
+        `${quoteIdentifier(field.name)} ${sqliteType} GENERATED ALWAYS AS (${field.formula}) STORED`,
+      );
+    } else {
+      const notNull = field.required ? ' NOT NULL' : '';
+      const defaultClause =
+        field.default_value != null
+          ? ` DEFAULT ${sqliteLiteral(field.default_value, sqliteType)}`
+          : '';
+      columnDefs.push(`${quoteIdentifier(field.name)} ${sqliteType}${notNull}${defaultClause}`);
+    }
   }
 
   columnDefs.push('UNIQUE(parent_id, idx)');
 
   return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(childTable)} (\n  ${columnDefs.join(',\n  ')}\n);`;
+}
+
+/**
+ * Validates that every bare identifier in `formula` references a known column.
+ * Bare identifiers are word tokens that are not SQLite keywords or numeric literals.
+ * Throws if an unrecognised column name is found.
+ */
+function validateFormulaColumns(formula: string, fieldNames: Set<string>, fieldName: string): void {
+  // Known SQLite keywords / built-in function names that are safe to ignore
+  const SQLITE_KEYWORDS = new Set([
+    'abs',
+    'avg',
+    'case',
+    'cast',
+    'coalesce',
+    'count',
+    'else',
+    'end',
+    'ifnull',
+    'iif',
+    'julianday',
+    'length',
+    'lower',
+    'max',
+    'min',
+    'not',
+    'null',
+    'nullif',
+    'round',
+    'rtrim',
+    'strftime',
+    'substr',
+    'sum',
+    'then',
+    'total',
+    'trim',
+    'typeof',
+    'upper',
+    'when',
+  ]);
+
+  // Extract bare word tokens (skip quoted identifiers and string literals)
+  const strippedFormula = formula
+    .replace(/"[^"]*"/g, '') // remove double-quoted identifiers
+    .replace(/'[^']*'/g, ''); // remove single-quoted string literals
+
+  const wordTokens = strippedFormula.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) ?? [];
+
+  for (const token of wordTokens) {
+    if (SQLITE_KEYWORDS.has(token.toLowerCase())) continue;
+    if (/^\d+$/.test(token)) continue; // numeric token (shouldn't match \b[A-Za-z_] but guard anyway)
+    if (!fieldNames.has(token)) {
+      throw new Error(
+        `Field "${fieldName}": formula references unknown column "${token}". Only columns defined in the same DocType are allowed.`,
+      );
+    }
+  }
 }
 
 /** Wraps a SQLite identifier in double-quotes, escaping any embedded double-quotes. */
