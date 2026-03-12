@@ -48,6 +48,43 @@ export function buildCreateTableDDL(doctype: DocType, fields: DocTypeField[]): s
   return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(tableName)} (\n  ${columnDefs.join(',\n  ')}\n);`;
 }
 
+/**
+ * Generates a `CREATE TABLE` DDL statement for a child (table-type field) data table.
+ *
+ * Child table naming follows Frappe convention: `dt_{parent}__{child}` (double underscore).
+ * Standard columns: id (PK), parent_id (FK → parent ON DELETE CASCADE), idx (sort order)
+ * User-defined columns: one per DocTypeField, typed from FIELD_TYPE_MAP
+ * Constraint: UNIQUE(parent_id, idx) to enforce ordering within a parent record.
+ */
+export function buildChildTableDDL(
+  parentDoctype: string,
+  childName: string,
+  fields: DocTypeField[],
+): string {
+  const parentTable = `dt_${parentDoctype}`;
+  const childTable = `dt_${parentDoctype}__${childName}`;
+
+  const columnDefs: string[] = [
+    'id TEXT NOT NULL PRIMARY KEY',
+    `parent_id TEXT NOT NULL REFERENCES ${quoteIdentifier(parentTable)}(id) ON DELETE CASCADE`,
+    'idx INTEGER NOT NULL',
+  ];
+
+  for (const field of fields) {
+    const sqliteType = FIELD_TYPE_MAP[field.field_type] ?? 'TEXT';
+    const notNull = field.required ? ' NOT NULL' : '';
+    const defaultClause =
+      field.default_value != null
+        ? ` DEFAULT ${sqliteLiteral(field.default_value, sqliteType)}`
+        : '';
+    columnDefs.push(`${quoteIdentifier(field.name)} ${sqliteType}${notNull}${defaultClause}`);
+  }
+
+  columnDefs.push('UNIQUE(parent_id, idx)');
+
+  return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier(childTable)} (\n  ${columnDefs.join(',\n  ')}\n);`;
+}
+
 /** Wraps a SQLite identifier in double-quotes, escaping any embedded double-quotes. */
 function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
