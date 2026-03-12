@@ -32,3 +32,4 @@ export type {
   BridgeEvent,
   EventNotificationHandler,
 } from './event-bridge.js';
+export { generateSkillPack } from './skill-pack-generator.js';
