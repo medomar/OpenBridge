@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3';
-import type { DocType, DocTypeTransition } from '../types/doctype.js';
+import type { DocType, DocTypeHook, DocTypeTransition } from '../types/doctype.js';
+import { createLogger } from '../core/logger.js';
+
+const logger = createLogger('state-machine');
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -288,6 +291,303 @@ export function validateTransition(
 
   return { valid: true, toState: transition.to_state };
 }
+
+// ---------------------------------------------------------------------------
+// Execute transition — full Salesforce-inspired pipeline
+// ---------------------------------------------------------------------------
+
+/** Result returned by executeTransition */
+export interface ExecuteTransitionResult {
+  success: boolean;
+  fromState: string;
+  toState?: string;
+  error?: string;
+  /** The updated record after the status change */
+  record?: Record<string, unknown>;
+}
+
+/** Callback for lifecycle hook execution. Receives the hooks to fire and the current record. */
+export type HookExecutor = (
+  hooks: DocTypeHook[],
+  record: Record<string, unknown>,
+) => Promise<void> | void;
+
+/** Callback for triggering dependent workflows after a transition completes. */
+export type WorkflowTrigger = (
+  doctypeId: string,
+  recordId: string,
+  fromState: string,
+  toState: string,
+  action: string,
+) => Promise<void> | void;
+
+/** Options for executeTransition */
+export interface ExecuteTransitionOptions {
+  /** Database instance */
+  db: Database.Database;
+  /** DocType definition */
+  doctype: DocType;
+  /** The data table name for the DocType (e.g. "dt_invoice") */
+  tableName: string;
+  /** The column name that stores the current state (defaults to "status") */
+  statusField?: string;
+  /** The record ID to transition */
+  recordId: string;
+  /** The action being performed */
+  action: string;
+  /** Optional role of the user performing the action */
+  userRole?: string;
+  /** Optional hook executor — called for before/after hooks */
+  hookExecutor?: HookExecutor;
+  /** Optional workflow trigger — called after transition completes */
+  workflowTrigger?: WorkflowTrigger;
+}
+
+/**
+ * Execute a full state transition pipeline:
+ *
+ *   1. Load record from the dynamic table
+ *   2. Validate transition (role, condition checks)
+ *   3. Fire before-transition hooks
+ *   4. UPDATE status field + insert audit log entry
+ *   5. Fire after-transition hooks
+ *   6. Trigger dependent workflows
+ *
+ * Steps 1–5 are wrapped in a SQLite transaction. Step 6 (workflows) runs
+ * outside the transaction since workflows may perform async/external work.
+ */
+export async function executeTransition(
+  opts: ExecuteTransitionOptions,
+): Promise<ExecuteTransitionResult> {
+  const { db, doctype, tableName, recordId, action, userRole, hookExecutor, workflowTrigger } =
+    opts;
+  const statusField = opts.statusField ?? 'status';
+  const qTable = quoteIdent(tableName);
+  const qStatus = quoteIdent(statusField);
+
+  // Step 1: Load record
+  logger.debug({ doctypeId: doctype.id, recordId, action }, 'Step 1: Loading record');
+  const record = db.prepare(`SELECT * FROM ${qTable} WHERE "id" = ?`).get(recordId) as
+    | Record<string, unknown>
+    | undefined;
+
+  if (!record) {
+    logger.warn({ doctypeId: doctype.id, recordId }, 'Record not found');
+    return {
+      success: false,
+      fromState: '',
+      error: `Record "${recordId}" not found in table "${tableName}"`,
+    };
+  }
+
+  const rawStatus = record[statusField];
+  const fromState =
+    rawStatus == null || typeof rawStatus === 'object'
+      ? ''
+      : String(rawStatus as string | number | boolean);
+  if (!fromState) {
+    return {
+      success: false,
+      fromState: '',
+      error: `Record "${recordId}" has no value in status field "${statusField}"`,
+    };
+  }
+
+  // Step 2: Validate transition
+  logger.debug({ doctypeId: doctype.id, fromState, action }, 'Step 2: Validating transition');
+  const validation = validateTransition(db, doctype, record, fromState, action, userRole);
+  if (!validation.valid) {
+    logger.info(
+      { doctypeId: doctype.id, fromState, action, error: validation.error },
+      'Transition validation failed',
+    );
+    return { success: false, fromState, error: validation.error };
+  }
+
+  const toState = validation.toState!;
+
+  // Load hooks for before/after firing
+  const allHooks = loadHooks(db, doctype.id);
+  const beforeHooks = allHooks.filter((h) => h.event === 'before_transition' && h.enabled);
+  const afterHooks = allHooks.filter((h) => h.event === 'after_transition' && h.enabled);
+
+  // Steps 3–5 in a transaction
+  const runTransaction = db.transaction(() => {
+    // Step 3: Fire before-hooks (synchronous within transaction)
+    if (beforeHooks.length > 0) {
+      logger.debug(
+        { doctypeId: doctype.id, hookCount: beforeHooks.length },
+        'Step 3: Firing before-transition hooks',
+      );
+      if (hookExecutor) {
+        // hookExecutor may be sync or async; within transaction we call it synchronously
+        const result = hookExecutor(beforeHooks, record);
+        // If it returns a promise inside a transaction, it won't actually await —
+        // callers providing async hookExecutors should ensure before-hooks are sync
+        if (result && typeof result === 'object' && 'then' in result) {
+          logger.warn(
+            'hookExecutor returned a Promise inside transaction — before-hooks should be synchronous',
+          );
+        }
+      }
+    } else {
+      logger.debug('Step 3: No before-transition hooks to fire');
+    }
+
+    // Step 4: UPDATE status + audit log
+    logger.debug(
+      { doctypeId: doctype.id, recordId, fromState, toState },
+      'Step 4: Updating status and writing audit log',
+    );
+
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE ${qTable} SET ${qStatus} = ?, "updated_at" = ? WHERE "id" = ?`).run(
+      toState,
+      now,
+      recordId,
+    );
+
+    // Write audit log entry
+    ensureTransitionAuditTable(db);
+    db.prepare(
+      `INSERT INTO doctype_transition_audit
+        (doctype_id, record_id, from_state, to_state, action, user_role, transitioned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(doctype.id, recordId, fromState, toState, action, userRole ?? null, now);
+
+    // Step 5: Fire after-hooks (synchronous within transaction)
+    // Re-read record with updated status for after-hooks
+    const updatedRecord = db
+      .prepare(`SELECT * FROM ${qTable} WHERE "id" = ?`)
+      .get(recordId) as Record<string, unknown>;
+
+    if (afterHooks.length > 0) {
+      logger.debug(
+        { doctypeId: doctype.id, hookCount: afterHooks.length },
+        'Step 5: Firing after-transition hooks',
+      );
+      if (hookExecutor) {
+        const result = hookExecutor(afterHooks, updatedRecord);
+        if (result && typeof result === 'object' && 'then' in result) {
+          logger.warn(
+            'hookExecutor returned a Promise inside transaction — after-hooks should be synchronous',
+          );
+        }
+      }
+    } else {
+      logger.debug('Step 5: No after-transition hooks to fire');
+    }
+
+    return updatedRecord;
+  });
+
+  let updatedRecord: Record<string, unknown>;
+  try {
+    updatedRecord = runTransaction();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ err, doctypeId: doctype.id, recordId, action }, 'Transaction failed');
+    return { success: false, fromState, error: `Transaction failed: ${message}` };
+  }
+
+  // Step 6: Trigger dependent workflows (outside transaction)
+  if (workflowTrigger) {
+    logger.debug(
+      { doctypeId: doctype.id, fromState, toState, action },
+      'Step 6: Triggering dependent workflows',
+    );
+    try {
+      await workflowTrigger(doctype.id, recordId, fromState, toState, action);
+    } catch (err) {
+      // Workflow failures are non-fatal — log but don't fail the transition
+      logger.error(
+        { err, doctypeId: doctype.id, recordId, action },
+        'Workflow trigger failed (non-fatal)',
+      );
+    }
+  } else {
+    logger.debug('Step 6: No workflow trigger configured');
+  }
+
+  logger.info(
+    { doctypeId: doctype.id, recordId, fromState, toState, action },
+    'Transition executed successfully',
+  );
+
+  return { success: true, fromState, toState, record: updatedRecord };
+}
+
+// ---------------------------------------------------------------------------
+// Audit table schema
+// ---------------------------------------------------------------------------
+
+let auditTableCreated = false;
+
+function ensureTransitionAuditTable(db: Database.Database): void {
+  if (auditTableCreated) return;
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS doctype_transition_audit (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      doctype_id      TEXT NOT NULL,
+      record_id       TEXT NOT NULL,
+      from_state      TEXT NOT NULL,
+      to_state        TEXT NOT NULL,
+      action          TEXT NOT NULL,
+      user_role       TEXT,
+      transitioned_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_transition_audit_record
+      ON doctype_transition_audit(doctype_id, record_id);
+  `);
+  auditTableCreated = true;
+}
+
+/** Reset the audit table creation flag (for testing) */
+export function resetAuditTableFlag(): void {
+  auditTableCreated = false;
+}
+
+// ---------------------------------------------------------------------------
+// Hook loader
+// ---------------------------------------------------------------------------
+
+interface HookRow {
+  id: string;
+  doctype_id: string;
+  event: string;
+  action_type: string;
+  action_config: string;
+  sort_order: number;
+  enabled: number;
+}
+
+function loadHooks(db: Database.Database, doctypeId: string): DocTypeHook[] {
+  const rows = db
+    .prepare('SELECT * FROM doctype_hooks WHERE doctype_id = ? ORDER BY sort_order')
+    .all(doctypeId) as HookRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    doctype_id: row.doctype_id,
+    event: row.event,
+    action_type: row.action_type as DocTypeHook['action_type'],
+    action_config: JSON.parse(row.action_config) as Record<string, unknown>,
+    sort_order: row.sort_order,
+    enabled: row.enabled === 1,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Quote a SQLite identifier (used locally to avoid collision with table-builder's private fn) */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+// ---------------------------------------------------------------------------
+// List available actions
+// ---------------------------------------------------------------------------
 
 /**
  * List all valid actions available from `currentState` for the given record and role.
