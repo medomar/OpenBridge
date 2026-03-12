@@ -11,17 +11,16 @@
 
 import { readFile } from 'fs/promises';
 import { createLogger } from '../../core/logger.js';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (
-  buffer: Buffer,
-  options?: Record<string, unknown>,
-) => Promise<{
+import type { ProcessorResult } from '../../types/intelligence.js';
+
+/** Internal contract matching the pdf-parse v1 result shape. */
+type PdfParseResult = {
   numpages: number;
   text: string;
   info: Record<string, unknown> | null | undefined;
-}>;
+};
 
-import type { ProcessorResult } from '../../types/intelligence.js';
+type PdfParseFn = (buffer: Buffer, options?: Record<string, unknown>) => Promise<PdfParseResult>;
 
 const logger = createLogger('pdf-processor');
 
@@ -37,6 +36,13 @@ const OCR_THRESHOLD_CHARS_PER_PAGE = 50;
  */
 export async function processPdf(filePath: string): Promise<ProcessorResult> {
   const buffer = await readFile(filePath);
+
+  // Dynamic import allows test mocking via vi.doMock('pdf-parse', …)
+  const pdfParseModule = await import('pdf-parse');
+  const pdfParse =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+    ((pdfParseModule as any).default ?? pdfParseModule) as unknown as PdfParseFn;
+
   const data = await pdfParse(buffer);
 
   const metadata: Record<string, unknown> = {
