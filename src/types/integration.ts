@@ -127,7 +127,8 @@ export interface BusinessIntegration {
   shutdown(): Promise<void>;
 
   // Discovery — Master AI reads this to understand capabilities
-  describeCapabilities(): IntegrationCapability[];
+  // role: optional filter — only return capabilities tagged for this role
+  describeCapabilities(role?: string): IntegrationCapability[];
 
   // Read (no approval needed)
   query(operation: string, params: Record<string, unknown>): Promise<unknown>;
@@ -144,6 +145,17 @@ export interface BusinessIntegration {
 /** Callback invoked when an integration emits a real-time event */
 export type EventHandler = (event: Record<string, unknown>) => void | Promise<void>;
 
+// ── Role Config ───────────────────────────────────────────────────
+
+/**
+ * Maps role names to path prefix patterns for capability tagging.
+ *
+ * Example: `{ "seller": "/supplier", "driver": "/delivery" }`
+ * means endpoints starting with /supplier are tagged for the "seller" role,
+ * and endpoints starting with /delivery are tagged for the "driver" role.
+ */
+export const RoleConfigSchema = z.record(z.string().min(1));
+
 // ── Inferred Types ────────────────────────────────────────────────
 
 export type IntegrationType = z.infer<typeof IntegrationTypeSchema>;
@@ -154,3 +166,4 @@ export type HealthStatusState = z.infer<typeof HealthStatusStateSchema>;
 export type HealthStatus = z.infer<typeof HealthStatusSchema>;
 export type IntegrationCredential = z.infer<typeof IntegrationCredentialSchema>;
 export type IntegrationInfo = z.infer<typeof IntegrationInfoSchema>;
+export type RoleConfig = z.infer<typeof RoleConfigSchema>;

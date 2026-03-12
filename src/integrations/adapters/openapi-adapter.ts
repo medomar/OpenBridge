@@ -7,9 +7,11 @@ import type {
   HealthStatus,
   IntegrationCapability,
   IntegrationConfig,
+  RoleConfig,
 } from '../../types/integration.js';
 import { postmanToOpenAPI, type PostmanCollection } from '../parsers/postman-parser.js';
 import { curlsToOpenAPI, splitCurlCommands } from '../parsers/curl-parser.js';
+import type Database from 'better-sqlite3';
 
 const logger = createLogger('openapi-adapter');
 
@@ -164,6 +166,77 @@ export async function parseInputToOpenAPI(input: string): Promise<OpenAPI.Docume
   }
 }
 
+// ── Role-based capability tagging ────────────────────────────────────────────
+
+/**
+ * Tag API capabilities with roles based on path prefix matching and persist
+ * the tags in the `integration_capabilities` SQLite table.
+ *
+ * @param db          Open SQLite database with the integration_capabilities table
+ * @param integration Name of the integration (e.g. "my-api")
+ * @param capabilities Array of capabilities produced by the adapter
+ * @param roleConfig  Map of role name → path prefix, e.g. `{ seller: '/supplier', driver: '/delivery' }`
+ */
+export function tagCapabilitiesByRole(
+  db: Database.Database,
+  integration: string,
+  capabilities: IntegrationCapability[],
+  roleConfig: RoleConfig,
+): void {
+  const now = new Date().toISOString();
+  const upsert = db.prepare(`
+    INSERT OR IGNORE INTO integration_capabilities
+      (integration_name, capability_name, role, tagged_at)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  db.transaction((): void => {
+    for (const cap of capabilities) {
+      // Each capability's path is embedded in the name — but we need the raw
+      // path.  Capabilities from OpenAPIAdapter are ResolvedCapability instances
+      // that carry a `path` property.  For plain IntegrationCapability objects
+      // we fall back to matching against the capability name.
+      const pathOrName =
+        'path' in cap && typeof (cap as Record<string, unknown>)['path'] === 'string'
+          ? ((cap as Record<string, unknown>)['path'] as string)
+          : cap.name;
+
+      for (const [role, prefix] of Object.entries(roleConfig)) {
+        if (pathOrName.startsWith(prefix)) {
+          upsert.run(integration, cap.name, role, now);
+        }
+      }
+    }
+  })();
+
+  logger.info(
+    { integration, roles: Object.keys(roleConfig), capabilities: capabilities.length },
+    'Role tags applied to capabilities',
+  );
+}
+
+/**
+ * Retrieve the set of roles assigned to a specific capability.
+ *
+ * @param db          Open SQLite database
+ * @param integration Integration name
+ * @param capability  Capability name
+ * @returns Array of role strings assigned to this capability
+ */
+export function getCapabilityRoles(
+  db: Database.Database,
+  integration: string,
+  capability: string,
+): string[] {
+  const rows = db
+    .prepare(
+      `SELECT role FROM integration_capabilities
+       WHERE integration_name = ? AND capability_name = ?`,
+    )
+    .all(integration, capability) as { role: string }[];
+  return rows.map((r) => r.role);
+}
+
 /** Resolved capability generated from an OpenAPI path+method. */
 interface ResolvedCapability extends IntegrationCapability {
   /** HTTP method (GET, POST, PUT, DELETE, PATCH) */
@@ -202,9 +275,18 @@ export class OpenAPIAdapter implements BusinessIntegration {
   private baseUrl = '';
   private authHeaders: Record<string, string> = {};
   private initialized = false;
+  private db: Database.Database | null = null;
 
   constructor(name = 'openapi') {
     this.name = name;
+  }
+
+  /**
+   * Optionally wire in a SQLite database so that role tags can be stored and
+   * retrieved from the `integration_capabilities` table.
+   */
+  setDatabase(db: Database.Database): void {
+    this.db = db;
   }
 
   async initialize(config: IntegrationConfig): Promise<void> {
@@ -282,8 +364,45 @@ export class OpenAPIAdapter implements BusinessIntegration {
     logger.info({ name: this.name }, 'OpenAPI adapter shut down');
   }
 
-  describeCapabilities(): IntegrationCapability[] {
-    return this.capabilities.map(({ method: _m, path: _p, paramSchema: _s, ...cap }) => cap);
+  /**
+   * Describe the capabilities exposed by this adapter.
+   *
+   * @param role Optional role filter. When provided, only capabilities that
+   *             have been tagged for that role (via `tagCapabilitiesByRole()`)
+   *             are returned. When omitted, all capabilities are returned.
+   */
+  describeCapabilities(role?: string): IntegrationCapability[] {
+    const all = this.capabilities.map(({ method: _m, path: _p, paramSchema: _s, ...cap }) => cap);
+
+    if (!role || !this.db) {
+      return all;
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT capability_name FROM integration_capabilities
+         WHERE integration_name = ? AND role = ?`,
+      )
+      .all(this.name, role) as { capability_name: string }[];
+
+    const allowed = new Set(rows.map((r) => r.capability_name));
+    return all.filter((c) => allowed.has(c.name));
+  }
+
+  /**
+   * Tag capabilities with roles based on path prefix patterns and persist
+   * the mappings to the SQLite database.
+   *
+   * Requires a database to be wired in via `setDatabase()`.
+   *
+   * @param roleConfig Map of role name → path prefix
+   * @throws Error if no database has been wired in
+   */
+  tagCapabilitiesByRole(roleConfig: RoleConfig): void {
+    if (!this.db) {
+      throw new Error('OpenAPIAdapter: call setDatabase() before tagCapabilitiesByRole()');
+    }
+    tagCapabilitiesByRole(this.db, this.name, this.capabilities, roleConfig);
   }
 
   async query(operation: string, params: Record<string, unknown>): Promise<unknown> {
