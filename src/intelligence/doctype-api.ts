@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { DocType, DocTypeField } from '../types/doctype.js';
 import { getDocTypeByName, type FullDocType } from './doctype-store.js';
 import { createLogger } from '../core/logger.js';
+import { ensureAuditLogTable, insertAuditEntry } from './audit-log.js';
 
 const logger = createLogger('doctype-api');
 
@@ -436,9 +437,14 @@ async function handleUpdateRecord(
   try {
     const tableName = quoteIdentifier(config.doctype.table_name);
 
-    // Check record exists
-    const existing = db.prepare(`SELECT id FROM ${tableName} WHERE id = ?`).get(recordId);
-    if (!existing) {
+    // Ensure audit log table exists before any potential writes
+    ensureAuditLogTable(db);
+
+    // Check record exists and capture current values for audit
+    const existingRecord = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(recordId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!existingRecord) {
       sendJson(res, 404, { error: 'Record not found' });
       return;
     }
@@ -473,11 +479,20 @@ async function handleUpdateRecord(
       (f) => f.formula == null && f.field_type !== 'table',
     );
 
+    const changedFields: Array<{ name: string; oldValue: string | null; newValue: string | null }> =
+      [];
     for (const field of insertableFields) {
       const value: unknown = validated[field.name];
       if (value !== undefined) {
+        const oldValue = existingRecord[field.name];
+        const newValue = field.field_type === 'checkbox' ? (value ? 1 : 0) : value;
+        const oldStr = serializeValue(oldValue);
+        const newStr = serializeValue(newValue);
+        if (oldStr !== newStr) {
+          changedFields.push({ name: field.name, oldValue: oldStr, newValue: newStr });
+        }
         setClauses.push(`"${field.name.replace(/"/g, '""')}" = ?`);
-        values.push(field.field_type === 'checkbox' ? (value ? 1 : 0) : value);
+        values.push(newValue);
       }
     }
 
@@ -488,6 +503,20 @@ async function handleUpdateRecord(
     const updated = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(recordId) as
       | Record<string, unknown>
       | undefined;
+
+    // Insert audit log entries for each changed field
+    const changedBy = typeof body['updated_by'] === 'string' ? body['updated_by'] : null;
+    for (const changed of changedFields) {
+      insertAuditEntry(db, {
+        doctype: config.doctype.name,
+        record_id: recordId,
+        event: 'update',
+        old_value: changed.oldValue,
+        new_value: changed.newValue,
+        changed_by: changedBy,
+        changed_at: now,
+      });
+    }
 
     // Run lifecycle hooks for 'after_update' event
     runHooks(db, config.doctype.name, 'after_update', recordId);
@@ -611,4 +640,15 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
 /** Wraps a SQLite identifier in double-quotes, escaping any embedded double-quotes. */
 function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Serialize a primitive field value to a string for audit log storage.
+ * Returns null when the value is null or undefined.
+ */
+function serializeValue(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+  return JSON.stringify(val);
 }
