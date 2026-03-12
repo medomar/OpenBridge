@@ -76,6 +76,7 @@
     "file-type": "^21.3.1",
     "grammy": "^1.41.0",
     "highlight.js": "^11.11.1",
+    "mammoth": "^1.11.0",
     "marked": "^17.0.3",
     "nodemailer": "^8.0.1",
     "pdf-parse": "^2.4.5",
