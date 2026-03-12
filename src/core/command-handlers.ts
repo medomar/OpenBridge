@@ -24,6 +24,7 @@ import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
 import type { ProcessedDocument, ExtractedEntity } from '../types/intelligence.js';
+import type { FullDocType } from '../intelligence/doctype-store.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('command-handlers');
@@ -2929,6 +2930,390 @@ export class CommandHandlers {
   }
 
   // -------------------------------------------------------------------------
+  // handleDoctypesCommand — /doctypes (list all registered DocTypes)
+  // -------------------------------------------------------------------------
+
+  async handleDoctypesCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let doctypes: Array<{ name: string; label_plural: string; icon?: string | null }> = [];
+    try {
+      const { listDocTypes } = await import('../intelligence/doctype-store.js');
+      doctypes = listDocTypes(db);
+    } catch (err) {
+      logger.warn({ err }, '/doctypes command: failed to list doctypes');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Failed to load DocTypes — database may not be initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (doctypes.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          '*DocTypes*\n\nNo DocTypes registered yet.\nAsk the AI to create one: "I need to track invoices"',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const lines: string[] = ['*Registered DocTypes*', ''];
+    for (const dt of doctypes) {
+      const icon = dt.icon ? `${dt.icon} ` : '';
+      lines.push(`• ${icon}${dt.label_plural} (/doctype ${dt.name})`);
+    }
+    lines.push('');
+    lines.push('Use /doctype <name> to see fields and states.');
+    lines.push('Use /dt <name> list to browse records.');
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, count: doctypes.length }, '/doctypes command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDoctypeCommand — /doctype {name} (show DocType details)
+  // -------------------------------------------------------------------------
+
+  async handleDoctypeCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const match = /^\/doctype\s+(\S+)/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /doctype <name>\nExample: /doctype invoice\n\nUse /doctypes to see all.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const name = (match[1] ?? '').trim();
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let full: FullDocType | null = null;
+    try {
+      const { getDocTypeByName } = await import('../intelligence/doctype-store.js');
+      full = getDocTypeByName(db, name);
+    } catch (err) {
+      logger.warn({ err, name }, '/doctype command: failed to load doctype');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to load DocType "${name}".`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (!full) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `DocType "${name}" not found.\nUse /doctypes to see all registered DocTypes.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const dt = full.doctype;
+    const icon = dt.icon ? `${dt.icon} ` : '';
+    const lines: string[] = [`*${icon}${dt.label_singular}* (${dt.name})`, ''];
+
+    // Fields
+    if (full.fields.length > 0) {
+      lines.push('*Fields*');
+      for (const f of full.fields) {
+        const req = f.required ? ' ✱' : '';
+        const computed = f.formula ? ' (computed)' : '';
+        lines.push(`• ${f.label} [${f.field_type}]${req}${computed}`);
+      }
+      lines.push('');
+    }
+
+    // States
+    if (full.states.length > 0) {
+      lines.push('*States*');
+      const stateList = full.states.map((s) => s.label).join(' → ');
+      lines.push(stateList);
+      lines.push('');
+    }
+
+    // Transitions
+    if (full.transitions.length > 0) {
+      lines.push('*Actions*');
+      for (const t of full.transitions) {
+        lines.push(`• ${t.action_label} (${t.from_state} → ${t.to_state})`);
+      }
+      lines.push('');
+    }
+
+    lines.push(`Use /dt ${dt.name} list to browse records.`);
+    lines.push(`Use /dt ${dt.name} create to add a new record.`);
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, name }, '/doctype command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDtCommand — /dt {doctype} list|create|{id}
+  // -------------------------------------------------------------------------
+
+  async handleDtCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    // Parse: /dt <doctype> <subcommand-or-id>
+    const match = /^\/dt\s+(\S+)(?:\s+(.+))?$/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          'Usage:\n' +
+          '  /dt <doctype> list — list records\n' +
+          '  /dt <doctype> create — start creation flow\n' +
+          '  /dt <doctype> <id> — show record details\n' +
+          '\nExample: /dt invoice list',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const doctypeName = (match[1] ?? '').trim();
+    const sub = (match[2] ?? '').trim().toLowerCase();
+
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let full: FullDocType | null = null;
+    try {
+      const { getDocTypeByName } = await import('../intelligence/doctype-store.js');
+      full = getDocTypeByName(db, doctypeName);
+    } catch (err) {
+      logger.warn({ err, doctypeName }, '/dt command: failed to load doctype');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to load DocType "${doctypeName}".`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (!full) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `DocType "${doctypeName}" not found.\nUse /doctypes to see all registered DocTypes.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const dt = full.doctype;
+    const tableName = `"${dt.table_name.replace(/"/g, '""')}"`;
+
+    /** Safely convert an unknown SQLite column value to a display string. */
+    const toStr = (v: unknown, fallback = ''): string => {
+      if (v === null || v === undefined) return fallback;
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      return JSON.stringify(v);
+    };
+
+    // ── /dt <doctype> list ──────────────────────────────────────────────────
+    if (!sub || sub === 'list') {
+      try {
+        const rows = db
+          .prepare(`SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT 20`)
+          .all() as Record<string, unknown>[];
+
+        if (rows.length === 0) {
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `*${dt.label_plural}*\n\nNo records found.\nUse /dt ${dt.name} create to add one.`,
+            replyTo: message.id,
+          });
+          return;
+        }
+
+        // Pick a display column: prefer 'name', 'title', 'subject', then first text field
+        const textFields = full.fields.filter(
+          (f) => f.field_type === 'text' || f.field_type === 'email' || f.field_type === 'link',
+        );
+        const displayField =
+          textFields.find((f) => ['name', 'title', 'subject', 'label'].includes(f.name)) ??
+          textFields[0];
+
+        const lines: string[] = [`*${dt.label_plural}* (${rows.length} shown)`, ''];
+        for (const row of rows) {
+          const id = toStr(row['id']).slice(-8);
+          const label = displayField
+            ? toStr(row[displayField.name], '—').slice(0, 50)
+            : `Record ${id}`;
+          const status = 'status' in row ? ` [${toStr(row['status']).slice(0, 20)}]` : '';
+          lines.push(`• ${label}${status} — /dt ${dt.name} ${toStr(row['id'])}`);
+        }
+
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: lines.join('\n'),
+          replyTo: message.id,
+        });
+      } catch (err) {
+        logger.warn({ err, doctypeName }, '/dt list: failed to query records');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to list ${dt.label_plural} — table may not be initialized yet.`,
+          replyTo: message.id,
+        });
+      }
+
+      logger.info({ sender: message.sender, doctypeName, sub: 'list' }, '/dt list handled');
+      return;
+    }
+
+    // ── /dt <doctype> create ────────────────────────────────────────────────
+    if (sub === 'create') {
+      const requiredFields = full.fields.filter((f) => f.required && !f.formula);
+      const optionalFields = full.fields.filter((f) => !f.required && !f.formula);
+
+      const lines: string[] = [`*Create ${dt.label_singular}*`, ''];
+
+      if (requiredFields.length > 0) {
+        lines.push('*Required fields:*');
+        for (const f of requiredFields) {
+          const hint = f.options?.length
+            ? ` (${f.options.slice(0, 4).join(' | ')})`
+            : f.field_type !== 'text'
+              ? ` [${f.field_type}]`
+              : '';
+          lines.push(`• ${f.label}${hint}`);
+        }
+      }
+
+      if (optionalFields.length > 0) {
+        lines.push('');
+        lines.push('*Optional fields:*');
+        for (const f of optionalFields.slice(0, 6)) {
+          lines.push(`• ${f.label} [${f.field_type}]`);
+        }
+        if (optionalFields.length > 6) {
+          lines.push(`  … and ${optionalFields.length - 6} more`);
+        }
+      }
+
+      lines.push('');
+      lines.push(`Tell the AI: "Create a ${dt.label_singular} with <field values>"`);
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+
+      logger.info({ sender: message.sender, doctypeName, sub: 'create' }, '/dt create handled');
+      return;
+    }
+
+    // ── /dt <doctype> {id} ──────────────────────────────────────────────────
+    const recordId = (match[2] ?? '').trim();
+    try {
+      const row = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(recordId) as
+        | Record<string, unknown>
+        | undefined;
+
+      if (!row) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Record "${recordId}" not found in ${dt.label_plural}.\nUse /dt ${dt.name} list to browse records.`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = [`*${dt.label_singular} — ${recordId.slice(-8)}*`, ''];
+      for (const f of full.fields) {
+        const val = row[f.name];
+        if (val !== null && val !== undefined && val !== '') {
+          lines.push(`${f.label}: ${toStr(val).slice(0, 100)}`);
+        }
+      }
+
+      // Include any system columns not in field list
+      for (const col of ['status', 'created_at', 'updated_at', 'created_by']) {
+        if (col in row && !full.fields.some((f) => f.name === col)) {
+          lines.push(`${col}: ${toStr(row[col]).slice(0, 60)}`);
+        }
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+    } catch (err) {
+      logger.warn({ err, doctypeName, recordId }, '/dt {id}: failed to fetch record');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to fetch record — table may not be initialized yet.`,
+        replyTo: message.id,
+      });
+    }
+
+    logger.info({ sender: message.sender, doctypeName, sub: 'record' }, '/dt record handled');
+  }
+
+  // -------------------------------------------------------------------------
   // handleHelpCommand
   // -------------------------------------------------------------------------
 
@@ -2949,6 +3334,11 @@ export class CommandHandlers {
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
       '• /process <file> — process a document file (PDF, DOCX, XLSX, image, etc.) and extract key entities, amounts, and dates',
+      '• /doctypes — list all registered DocTypes (business data schemas)',
+      '• /doctype <name> — show DocType details: fields, states, and available actions',
+      '• /dt <name> list — list records for a DocType (most recent 20)',
+      '• /dt <name> create — show creation form with required and optional fields',
+      '• /dt <name> <id> — show a specific record by ID',
       '• /skills — list available skills with descriptions and usage counts',
       '• /skill-packs — list available skill packs (built-in + workspace custom)',
       '',

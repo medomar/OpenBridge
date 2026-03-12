@@ -1584,6 +1584,24 @@ export class Router {
       return;
     }
 
+    // Handle built-in "/doctypes" command — list all DocTypes (OB-1386)
+    if (/^\/doctypes$/i.test(message.content.trim())) {
+      await this.handleDoctypesCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/doctype <name>" command — show DocType details (OB-1386)
+    if (/^\/doctype\b/i.test(message.content.trim())) {
+      await this.handleDoctypeCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/dt <doctype> <sub>" command — DocType record CRUD (OB-1386)
+    if (/^\/dt\b/i.test(message.content.trim())) {
+      await this.handleDtCommand(message, connector);
+      return;
+    }
+
     // Handle built-in "/process <file>" command — extract document entities (OB-1349)
     if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleProcessCommand(message, connector);
@@ -2080,6 +2098,21 @@ export class Router {
 
   private async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleProcessCommand(message, connector);
+  }
+
+  private async handleDoctypesCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleDoctypesCommand(message, connector);
+  }
+
+  private async handleDoctypeCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleDoctypeCommand(message, connector);
+  }
+
+  private async handleDtCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleDtCommand(message, connector);
   }
 
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {
