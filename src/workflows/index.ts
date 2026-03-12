@@ -13,3 +13,4 @@ export * from './triggers/index.js';
 
 // Step implementations
 export * from './steps/query-step.js';
+export * from './steps/send-step.js';
