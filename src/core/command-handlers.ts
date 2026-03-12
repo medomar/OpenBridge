@@ -29,6 +29,9 @@ import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
 import type { ProcessedDocument, ExtractedEntity } from '../types/intelligence.js';
 import type { FullDocType } from '../intelligence/doctype-store.js';
+import type { IntegrationCapability } from '../types/integration.js';
+import type { OpenAPI, OpenAPIV3 } from 'openapi-types';
+import type Database from 'better-sqlite3';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('command-handlers');
@@ -3525,7 +3528,8 @@ export class CommandHandlers {
   async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
     const trimmed = message.content.trim();
     // Parse: /connect [<integration> [<credential>]]
-    const match = /^\/connect(?:\s+(\S+)(?:\s+(.+))?)?$/i.exec(trimmed);
+    // Use [\s\S]+ to capture multiline credentials (e.g. multi-line cURL commands)
+    const match = /^\/connect(?:\s+(\S+)(?:\s+([\s\S]+))?)?$/i.exec(trimmed);
 
     const sendHelp = async (): Promise<void> => {
       await connector.sendMessage({
@@ -3536,7 +3540,7 @@ export class CommandHandlers {
           'Usage:\n' +
           '  /connect stripe <api-key>        — Stripe payments\n' +
           '  /connect google-drive <api-key>  — Google Drive storage\n' +
-          '  /connect api <swagger-url>        — Any OpenAPI/REST service\n\n' +
+          '  /connect api <input>             — Any OpenAPI/REST service\n\n' +
           'To get started, send the command without a credential to see what is required:\n' +
           '  /connect stripe',
         replyTo: message.id,
@@ -3558,7 +3562,12 @@ export class CommandHandlers {
           '*Connect Stripe*\n\nProvide your Stripe secret API key:\n  /connect stripe <sk_live_...or sk_test_...>\n\nFind it at: https://dashboard.stripe.com/apikeys',
         'google-drive':
           '*Connect Google Drive*\n\nProvide your Google service account JSON key or OAuth2 token:\n  /connect google-drive <api-key-or-token>\n\nSee Google Cloud Console for credentials.',
-        api: '*Connect OpenAPI Service*\n\nProvide the Swagger/OpenAPI spec URL:\n  /connect api <https://api.example.com/openapi.json>',
+        api:
+          '*Connect any REST/OpenAPI Service*\n\nSend one of the following:\n' +
+          '  /connect api <https://api.example.com/openapi.json>\n    — URL to an OpenAPI/Swagger spec or Postman collection\n' +
+          '  /connect api { "info": { ... }, "item": [...] }\n    — Paste a Postman collection JSON\n' +
+          "  /connect api curl 'https://api.example.com/v1/users' -H 'Authorization: Bearer <token>'\n    — One or more cURL commands (paste multi-line cURL as a single message)\n\n" +
+          'After connecting, a skill pack will be auto-generated and capabilities listed.',
       };
 
       const msg =
@@ -3597,8 +3606,13 @@ export class CommandHandlers {
       credStore = new CS(workspacePath);
     }
 
-    const credData: Record<string, unknown> =
-      integrationName === 'api' ? { swaggerUrl: credential } : { apiKey: credential };
+    // For `api` integrations, use multi-format detection and parsing
+    if (integrationName === 'api') {
+      await this.handleConnectApiCommand(message, connector, credential, workspacePath, db);
+      return;
+    }
+
+    const credData: Record<string, unknown> = { apiKey: credential };
 
     try {
       credStore.storeCredential(db, integrationName, credData);
@@ -3651,6 +3665,178 @@ export class CommandHandlers {
     });
 
     logger.info({ sender: message.sender, integrationName }, '/connect command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleConnectApiCommand — multi-format /connect api <input>
+  // -------------------------------------------------------------------------
+
+  private async handleConnectApiCommand(
+    message: InboundMessage,
+    connector: Connector,
+    input: string,
+    workspacePath: string,
+    db: Database.Database,
+  ): Promise<void> {
+    const { detectInputFormat, parseInputToOpenAPI, OpenAPIAdapter } =
+      await import('../integrations/adapters/openapi-adapter.js');
+
+    const format = detectInputFormat(input);
+
+    if (format === 'unknown') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          "I couldn't recognise the API input format. Please send one of:\n" +
+          '• A URL to a Swagger/OpenAPI spec or Postman collection\n' +
+          '• Postman collection JSON (paste the full JSON)\n' +
+          '• One or more cURL commands starting with `curl `\n\n' +
+          'Example:\n  /connect api https://petstore.swagger.io/v2/swagger.json',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Acknowledge receipt and show progress for slow operations
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Detected format: *${format}*. Parsing API spec…`,
+      replyTo: message.id,
+    });
+
+    let spec: OpenAPI.Document;
+    try {
+      spec = await parseInputToOpenAPI(input);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn({ format, err }, '/connect api: failed to parse input');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          `Could not parse the API spec (${format}): ${errMsg}\n\n` +
+          'Please check the input and try again. For cURL, ensure the command starts with `curl `.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Derive a stable integration name from the spec title or input URL
+    const specDoc = spec as OpenAPIV3.Document;
+    const rawTitle = specDoc.info?.title ?? '';
+    const apiSlug = rawTitle
+      ? rawTitle
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40) || 'custom-api'
+      : 'custom-api';
+
+    // Serialize spec for storage and adapter initialisation
+    const specJson = JSON.stringify(spec);
+
+    // Persist credential so the adapter can be re-created on restart
+    let credStore = this.deps.getCredentialStore();
+    if (!credStore) {
+      const { CredentialStore: CS } = await import('../integrations/credential-store.js');
+      credStore = new CS(workspacePath);
+    }
+
+    try {
+      credStore.storeCredential(db, apiSlug, { specJson });
+    } catch (err) {
+      logger.warn({ apiSlug, err }, '/connect api: failed to store credential');
+      // Non-fatal — proceed without persistence
+    }
+
+    // Register + initialise the OpenAPIAdapter in the hub
+    const hub = this.deps.getIntegrationHub();
+    const adapter = new OpenAPIAdapter(apiSlug);
+
+    let capabilities: IntegrationCapability[] = [];
+    let initError: string | null = null;
+
+    if (hub) {
+      hub.register(adapter);
+      try {
+        await hub.initialize(apiSlug, {
+          name: apiSlug,
+          credentialKey: apiSlug,
+          options: { specJson },
+        });
+        capabilities = adapter.describeCapabilities();
+        logger.info({ apiSlug, capabilities: capabilities.length }, '/connect api: adapter ready');
+      } catch (err) {
+        initError = err instanceof Error ? err.message : String(err);
+        logger.warn({ apiSlug, err }, '/connect api: adapter initialization failed');
+      }
+    } else {
+      // Hub not available — still report parsed capabilities from the spec directly
+      try {
+        await adapter.initialize({ name: apiSlug, credentialKey: apiSlug, options: { specJson } });
+        capabilities = adapter.describeCapabilities();
+      } catch {
+        // Ignore — initError stays null, capabilities stays empty
+      }
+    }
+
+    // Build the response message
+    const lines: string[] = [`*${rawTitle || apiSlug}* API connected`];
+
+    if (initError) {
+      lines.push(`⚠️ Connection test failed: ${initError}`);
+    } else {
+      lines.push('✅ Spec parsed and adapter registered.');
+    }
+
+    if (capabilities.length > 0) {
+      lines.push('');
+      lines.push(`*Capabilities (${capabilities.length}):*`);
+      const shown = capabilities.slice(0, 10);
+      for (const cap of shown) {
+        lines.push(`• ${cap.name} — ${cap.description}`);
+      }
+      if (capabilities.length > 10) {
+        lines.push(`… and ${capabilities.length - 10} more`);
+      }
+    } else {
+      lines.push('No capabilities could be extracted from the spec.');
+    }
+
+    lines.push('');
+    lines.push('Generating skill pack in the background…');
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    // Async skill pack generation — do not block the response
+    import('../integrations/skill-pack-generator.js')
+      .then(async ({ generateSkillPack }) => {
+        const { AgentRunner } = await import('./agent-runner.js');
+        const runner = new AgentRunner();
+        const packPath = await generateSkillPack(spec, workspacePath, runner);
+        if (packPath) {
+          logger.info({ apiSlug, packPath }, '/connect api: skill pack generated');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `✅ Skill pack for *${rawTitle || apiSlug}* saved. The Master AI can now use this API conversationally.`,
+          });
+        } else {
+          logger.warn({ apiSlug }, '/connect api: skill pack generation returned null');
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ apiSlug, err }, '/connect api: skill pack generation failed');
+      });
+
+    logger.info({ sender: message.sender, apiSlug, format }, '/connect api command handled');
   }
 
   // -------------------------------------------------------------------------
