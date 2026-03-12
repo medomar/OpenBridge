@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 93 | **In Progress:** 0 | **Done:** 80 (1332 archived)
+> **Pending:** 92 | **In Progress:** 0 | **Done:** 81 (1332 archived)
 > **Last Updated:** 2026-03-12
 
 <details>
@@ -199,7 +199,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                          | Finding | Model  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1413 | Create `src/types/workflow.ts` — Zod schemas for `Workflow`, `WorkflowTrigger` (types: `schedule`, `webhook`, `data`, `message`, `integration`), `WorkflowStep` (types: `query`, `transform`, `condition`, `send`, `integration`, `approval`, `ai`, `generate`), `WorkflowRun`, `WorkflowApproval`, `StepResult` (n8n pattern: `{ json, files? }`). Export all.                                               | OB-F187 | sonnet | Pending |
+| OB-1413 | Create `src/types/workflow.ts` — Zod schemas for `Workflow`, `WorkflowTrigger` (types: `schedule`, `webhook`, `data`, `message`, `integration`), `WorkflowStep` (types: `query`, `transform`, `condition`, `send`, `integration`, `approval`, `ai`, `generate`), `WorkflowRun`, `WorkflowApproval`, `StepResult` (n8n pattern: `{ json, files? }`). Export all.                                               | OB-F187 | sonnet | ✅ Done |
 | OB-1414 | Create `src/workflows/` directory structure: `index.ts`, `engine.ts` (stub), `workflow-store.ts` (stub), `scheduler.ts` (stub), `triggers/` and `steps/` subdirectories. Export all from `index.ts`.                                                                                                                                                                                                          | OB-F187 | haiku  | Pending |
 | OB-1415 | Implement `src/workflows/workflow-store.ts` — SQLite storage. Tables: `workflows`, `workflow_runs`, `workflow_approvals` (schema from IMPLEMENTATION-PLAN.md Part 7). CRUD functions: `createWorkflow()`, `getWorkflow()`, `listWorkflows()`, `updateWorkflow()`, `deleteWorkflow()`, `createRun()`, `updateRun()`, `createApproval()`, `resolveApproval()`. Add migration to `src/memory/migration.ts`.      | OB-F187 | sonnet | Pending |
 | OB-1416 | Implement `src/workflows/engine.ts` — WorkflowEngine. Class with: `loadWorkflows()` (from SQLite), `executeWorkflow(id: string, triggerData?: unknown)`, `enableWorkflow(id)`, `disableWorkflow(id)`. `executeWorkflow()` runs steps sequentially, passing output of each step as input to the next (n8n data flow pattern). Track run in `workflow_runs`. Handle errors per step (log + mark run as failed). | OB-F187 | opus   | Pending |
