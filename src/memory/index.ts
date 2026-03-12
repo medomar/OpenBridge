@@ -120,6 +120,12 @@ import {
   getRecentByType as _getRecentByType,
   type Observation,
 } from './observation-store.js';
+import type { ProcessedDocument } from '../types/intelligence.js';
+import {
+  storeDocument as _storeDocument,
+  getDocument as _getDocument,
+  searchDocuments as _searchDocuments,
+} from '../intelligence/document-store.js';
 import type { DocumentSkill, SkillPack } from '../types/agent.js';
 import {
   loadAllSkillPacks as _loadAllSkillPacks,
@@ -178,6 +184,7 @@ export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 export type { QACacheEntry } from './qa-cache-store.js';
 export type { Observation } from './observation-store.js';
+export type { ProcessedDocument } from '../types/intelligence.js';
 export type { DocumentSkill, SkillPack } from '../types/agent.js';
 export type { AllSkillPacksResult } from '../master/skill-pack-loader.js';
 
@@ -1298,6 +1305,25 @@ export class MemoryManager {
       totalRetrievals: row.total_retrievals,
       chunksTracked: row.chunks_tracked,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Document intelligence (document-store.ts — OB-1345/1346)
+  // -------------------------------------------------------------------------
+
+  storeDocument(doc: ProcessedDocument): string {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _storeDocument(this.db, doc);
+  }
+
+  getDocument(documentId: string): ProcessedDocument | null {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _getDocument(this.db, documentId);
+  }
+
+  searchDocuments(query: string, limit?: number): ProcessedDocument[] {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _searchDocuments(this.db, query, limit);
   }
 }
 

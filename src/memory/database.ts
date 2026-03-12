@@ -375,5 +375,27 @@ function createSchema(db: Database.Database): void {
       requested_at TEXT NOT NULL,
       attempts     INTEGER NOT NULL DEFAULT 0
     );
+
+    -- processed_documents: document intelligence results (Phase 116)
+    CREATE TABLE IF NOT EXISTS processed_documents (
+      id           TEXT PRIMARY KEY,
+      filename     TEXT NOT NULL,
+      mime_type    TEXT NOT NULL,
+      file_path    TEXT NOT NULL,
+      doc_type     TEXT NOT NULL DEFAULT 'unknown',
+      raw_text     TEXT NOT NULL DEFAULT '',
+      entities     TEXT NOT NULL DEFAULT '[]',
+      relations    TEXT NOT NULL DEFAULT '[]',
+      tables       TEXT NOT NULL DEFAULT '[]',
+      metadata     TEXT NOT NULL DEFAULT '{}',
+      processed_at TEXT NOT NULL,
+      source       TEXT
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS processed_documents_fts
+      USING fts5(raw_text, filename, content='processed_documents', content_rowid='rowid');
+
+    CREATE INDEX IF NOT EXISTS idx_processed_documents_mime      ON processed_documents(mime_type);
+    CREATE INDEX IF NOT EXISTS idx_processed_documents_processed ON processed_documents(processed_at);
   `);
 }
