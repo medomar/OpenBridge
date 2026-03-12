@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import QRCode from 'qrcode';
 /**
  * Declarative document definition accepted by pdfmake.
  * This is a minimal local definition that mirrors the pdfmake TDocumentDefinitions
@@ -82,6 +83,23 @@ function pdfmakePkgDir(): string {
 }
 
 /**
+ * Generate a QR code as a data URL (base64 PNG).
+ *
+ * @param text The text to encode in the QR code (e.g., a payment link)
+ * @returns    A data URL that can be embedded in a PDF image element
+ */
+export async function generateQrDataUrl(text: string): Promise<string> {
+  return QRCode.toDataURL(text, {
+    width: 150,
+    margin: 1,
+    color: {
+      dark: '#000000',
+      light: '#ffffff',
+    },
+  });
+}
+
+/**
  * Generate a PDF file from a pdfmake declarative document definition.
  *
  * Writes the result to `<workspacePath>/.openbridge/generated/<uuid>.pdf`
@@ -152,11 +170,11 @@ function formatCurrency(amount: number, currency = 'USD'): string {
  * @param branding  Business branding (company name, colours)
  * @returns         pdfmake document definition ready for `generatePdf()`
  */
-export function createInvoicePdfDefinition(
+export async function createInvoicePdfDefinition(
   record: InvoiceRecord,
   items: InvoiceLineItem[],
   branding: InvoiceBranding,
-): TDocumentDefinitions {
+): Promise<TDocumentDefinitions> {
   const primaryColor = branding.primaryColor ?? '#1a73e8';
   const currency = record.currency ?? 'USD';
 
@@ -312,14 +330,37 @@ export function createInvoicePdfDefinition(
       { text: record.notes, style: 'notes' },
     );
   }
+
+  // Payment section with QR code
+  const images: Record<string, string> = {};
   if (record.paymentLink) {
+    const qrDataUrl = await generateQrDataUrl(record.paymentLink);
+    images['paymentQr'] = qrDataUrl;
+
     footerItems.push(
       { text: 'Payment', style: 'sectionHeader', color: primaryColor, marginTop: 20 },
       {
-        text: record.paymentLink,
-        link: record.paymentLink,
-        style: 'paymentLink',
-        color: primaryColor,
+        columns: [
+          {
+            image: 'paymentQr',
+            width: 100,
+            height: 100,
+          },
+          {
+            stack: [
+              { text: 'Scan to Pay', style: 'paymentLabel', color: primaryColor },
+              {
+                text: record.paymentLink,
+                link: record.paymentLink,
+                style: 'paymentLink',
+                color: primaryColor,
+              },
+            ],
+            width: '*',
+            margin: [10, 0, 0, 0],
+          },
+        ],
+        columnGap: 10,
       },
     );
   }
@@ -342,7 +383,9 @@ export function createInvoicePdfDefinition(
       totalAmount: { fontSize: 11, bold: true },
       notes: { fontSize: 9, color: '#555555', italics: true },
       paymentLink: { fontSize: 10, decoration: 'underline' },
+      paymentLabel: { fontSize: 9, bold: true, marginBottom: 2 },
     },
+    images: Object.keys(images).length > 0 ? images : undefined,
     content: ([headerContent, billToContent, itemsTable, totalsSection] as Content[]).concat(
       footerItems,
     ),

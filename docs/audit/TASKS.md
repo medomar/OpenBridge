@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 66 | **In Progress:** 0 | **Done:** 107 (1332 archived)
+> **Pending:** 65 | **In Progress:** 0 | **Done:** 108 (1332 archived)
 > **Last Updated:** 2026-03-12
 
 <details>
@@ -47,7 +47,7 @@
 | P1  | 119   | Integration Hub — Core & Credentials             | 12    | OB-F186/F189           | ✅      |
 | P1  | 120   | Integration Hub — Adapters                       | 12    | OB-F186/F178           | Pending |
 | P1  | 121   | Workflow Engine                                  | 22    | OB-F187                | Pending |
-| P1  | 122   | Business Document Generation                     | 10    | OB-F188                | Pending |
+| P1  | 122   | Business Document Generation                     | 10    | OB-F188                | ◻       |
 | P2  | 123   | Universal API Adapter (any Swagger/Postman/cURL) | 14    | OB-F190                | Pending |
 | P2  | 124   | Industry Templates                               | 10    | —                      | Pending |
 | P3  | 125   | Self-Improvement & Skill Learning                | 8     | —                      | Pending |
@@ -237,7 +237,7 @@
 | OB-1437 | Create `src/intelligence/templates/quote-template.ts`. Function `buildQuoteDefinition(quote: Record, items: Record[], branding: Branding): TDocumentDefinitions` — similar to invoice but with "QUOTE" header, validity period, acceptance signature line, no payment link. Include terms and conditions section.                                                                                                                     | OB-F188 | sonnet | ✅ Done |
 | OB-1438 | Create `src/intelligence/templates/receipt-template.ts`. Function `buildReceiptDefinition(receipt: Record, branding: Branding): TDocumentDefinitions` — compact receipt format: business name, date/time, items, total, payment method, "Thank you" message. Simpler layout than invoice.                                                                                                                                             | OB-F188 | haiku  | ✅ Done |
 | OB-1439 | Create `src/intelligence/templates/report-template.ts`. Function `buildReportDefinition(title: string, sections: ReportSection[], branding: Branding): TDocumentDefinitions` — generate report PDF with: title page, table of contents, sections with text/tables/charts (charts rendered as images via html-renderer.ts + Chart.js), page numbers.                                                                                   | OB-F188 | sonnet | ✅ Done |
-| OB-1440 | Add QR code generation to `pdf-generator.ts`. Install `qrcode` (`npm install qrcode`). Function `generateQrDataUrl(text: string): Promise<string>` — generate QR code as data URL (base64 PNG). Used in invoice template for payment links. Wire into `buildInvoiceDefinition()` to embed QR in the PDF.                                                                                                                              | OB-F188 | haiku  | Pending |
+| OB-1440 | Add QR code generation to `pdf-generator.ts`. Install `qrcode` (`npm install qrcode`). Function `generateQrDataUrl(text: string): Promise<string>` — generate QR code as data URL (base64 PNG). Used in invoice template for payment links. Wire into `buildInvoiceDefinition()` to embed QR in the PDF.                                                                                                                              | OB-F188 | haiku  | ✅ Done |
 | OB-1441 | Create `src/intelligence/branding.ts`. Function `loadBranding(workspacePath: string): Branding` — read branding config from `.openbridge/context/branding.json` (logo path, primary color, secondary color, company name, address, phone, email, tax ID). If missing, return defaults. Function `saveBranding(workspacePath: string, branding: Branding)`. Type `Branding` with all fields.                                           | OB-F188 | sonnet | Pending |
 | OB-1442 | Create `src/intelligence/templates/email-templates.ts`. Functions: `buildInvoiceEmail(invoice, branding): { subject, html }`, `buildReceiptEmail(receipt, branding)`, `buildReminderEmail(invoice, branding)`, `buildWelcomeEmail(client, branding)`. HTML templates with inline CSS (email-safe), responsive layout, action button (Pay Now, View Invoice). Use existing `email-sender.ts` for delivery.                             | OB-F188 | sonnet | Pending |
 | OB-1443 | Unit test: PDF generation. File: `tests/intelligence/pdf-generator.test.ts`. Test: (1) `generatePdf()` creates a file at the returned path, (2) invoice template includes all expected fields, (3) QR code embedded as image, (4) branding logo included when provided, (5) file size is reasonable (< 500KB for basic invoice).                                                                                                      | OB-F188 | sonnet | Pending |
