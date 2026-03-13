@@ -162,6 +162,12 @@ export interface CommandHandlerDeps {
 export class CommandHandlers {
   private deps: CommandHandlerDeps;
 
+  /**
+   * Per-user cURL accumulation buffer. Users can send multiple cURL commands as separate
+   * messages and then trigger connection with "done" or "connect". Maps sender → curl lines.
+   */
+  private readonly curlBuffers: Map<string, string[]> = new Map();
+
   constructor(deps: CommandHandlerDeps) {
     this.deps = deps;
   }
@@ -169,6 +175,56 @@ export class CommandHandlers {
   /** Update mutable dependency references (e.g. after memory init). */
   updateDeps(partial: Partial<CommandHandlerDeps>): void {
     this.deps = { ...this.deps, ...partial };
+  }
+
+  // -------------------------------------------------------------------------
+  // cURL accumulation buffer — used by router to support multi-message cURL
+  // -------------------------------------------------------------------------
+
+  /** Returns true if the sender has one or more pending cURL commands accumulated. */
+  hasPendingCurls(sender: string): boolean {
+    const buf = this.curlBuffers.get(sender);
+    return buf !== undefined && buf.length > 0;
+  }
+
+  /**
+   * Appends a cURL command to the sender's buffer.
+   * @returns The new buffer length after adding the command.
+   */
+  addCurlToBuffer(sender: string, curl: string): number {
+    const existing = this.curlBuffers.get(sender) ?? [];
+    existing.push(curl.trim());
+    this.curlBuffers.set(sender, existing);
+    return existing.length;
+  }
+
+  /** Flushes and returns all accumulated cURL commands joined by newline, then clears buffer. */
+  flushCurlBuffer(sender: string): string {
+    const buf = this.curlBuffers.get(sender) ?? [];
+    this.curlBuffers.delete(sender);
+    return buf.join('\n');
+  }
+
+  /** Clears the cURL buffer for a sender without returning content. */
+  clearCurlBuffer(sender: string): void {
+    this.curlBuffers.delete(sender);
+  }
+
+  /**
+   * handleCurlAccumulationMessage — called when a standalone "curl …" message is received.
+   * Adds the cURL to the sender's buffer and sends an acknowledgement.
+   */
+  async handleCurlAccumulationMessage(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const count = this.addCurlToBuffer(message.sender, message.content.trim());
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `cURL command ${count} saved. Send more cURL commands or say *"done"* / *"connect"* to create the API integration.`,
+      replyTo: message.id,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -3555,6 +3611,17 @@ export class CommandHandlers {
     const integrationName = match[1].toLowerCase();
     const credential = match[2]?.trim() ?? '';
 
+    // If no credential provided for `api`, check if a file was attached — use it as the spec
+    if (!credential && integrationName === 'api' && message.processedDocument) {
+      const workspacePath = this.deps.getWorkspacePath();
+      const memory = this.deps.getMemory();
+      const db = memory?.getDb();
+      if (workspacePath && db) {
+        await this.handleConnectApiCommand(message, connector, '', workspacePath, db);
+        return;
+      }
+    }
+
     // If no credential provided, show integration-specific instructions
     if (!credential) {
       const instructions: Record<string, string> = {
@@ -3567,6 +3634,7 @@ export class CommandHandlers {
           '  /connect api <https://api.example.com/openapi.json>\n    — URL to an OpenAPI/Swagger spec or Postman collection\n' +
           '  /connect api { "info": { ... }, "item": [...] }\n    — Paste a Postman collection JSON\n' +
           "  /connect api curl 'https://api.example.com/v1/users' -H 'Authorization: Bearer <token>'\n    — One or more cURL commands (paste multi-line cURL as a single message)\n\n" +
+          'You can also *send a file* (Postman JSON, Swagger YAML, PDF docs) along with /connect api.\n' +
           'After connecting, a skill pack will be auto-generated and capabilities listed.',
       };
 
@@ -3678,9 +3746,88 @@ export class CommandHandlers {
     workspacePath: string,
     db: Database.Database,
   ): Promise<void> {
-    const { detectInputFormat, parseInputToOpenAPI, OpenAPIAdapter } =
+    const { detectInputFormat, parseInputToOpenAPI } =
       await import('../integrations/adapters/openapi-adapter.js');
 
+    // ── File upload path ────────────────────────────────────────────────────
+    // When the user sends a file (Postman JSON, Swagger YAML, PDF API docs)
+    // with /connect api, use the processed document's raw text instead of
+    // the text input. This covers three cases:
+    //   1. /connect api + attached file (input is empty or irrelevant text)
+    //   2. /connect api <some text> + attached file (file takes precedence)
+    //   3. Accumulated doc detected before command routing
+    if (message.processedDocument) {
+      const doc = message.processedDocument;
+      const rawText = doc.rawText?.trim() ?? '';
+
+      if (!rawText) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            'The attached file appears to be empty or could not be read. Please try again with a Postman JSON, Swagger YAML, or PDF/text API documentation.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      // Try direct format detection on the raw text first (handles JSON/YAML specs)
+      const docFormat = detectInputFormat(rawText);
+
+      if (docFormat !== 'unknown') {
+        // Known structured format — parse directly
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Detected *${docFormat}* format in attached file. Parsing API spec…`,
+          replyTo: message.id,
+        });
+
+        let spec: OpenAPI.Document;
+        try {
+          spec = await parseInputToOpenAPI(rawText);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.warn({ docFormat, err }, '/connect api: failed to parse document input');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `Could not parse the API spec from the attached file (${docFormat}): ${errMsg}`,
+            replyTo: message.id,
+          });
+          return;
+        }
+
+        await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+        return;
+      }
+
+      // Unknown structured format — fall back to AI-powered doc extraction
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Extracting API endpoints from the attached document using AI…',
+        replyTo: message.id,
+      });
+
+      try {
+        const { docsToOpenAPI } = await import('../integrations/parsers/doc-parser.js');
+        const spec = await docsToOpenAPI(rawText);
+        await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.warn({ err }, '/connect api: AI doc extraction failed');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Could not extract API endpoints from the document: ${errMsg}\n\nPlease try a Postman collection JSON or Swagger/OpenAPI YAML/JSON file.`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    // ── Text input path ─────────────────────────────────────────────────────
     const format = detectInputFormat(input);
 
     if (format === 'unknown') {
@@ -3691,7 +3838,8 @@ export class CommandHandlers {
           "I couldn't recognise the API input format. Please send one of:\n" +
           '• A URL to a Swagger/OpenAPI spec or Postman collection\n' +
           '• Postman collection JSON (paste the full JSON)\n' +
-          '• One or more cURL commands starting with `curl `\n\n' +
+          '• One or more cURL commands starting with `curl `\n' +
+          '• Attach a file (Postman JSON, Swagger YAML, PDF API docs)\n\n' +
           'Example:\n  /connect api https://petstore.swagger.io/v2/swagger.json',
         replyTo: message.id,
       });
@@ -3723,7 +3871,22 @@ export class CommandHandlers {
       return;
     }
 
-    // Derive a stable integration name from the spec title or input URL
+    await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+  }
+
+  /**
+   * finalizeApiConnection — shared finalization for all /connect api paths.
+   * Persists the spec, registers the adapter, reports capabilities, and
+   * kicks off async skill pack generation.
+   */
+  private async finalizeApiConnection(
+    message: InboundMessage,
+    connector: Connector,
+    spec: OpenAPI.Document,
+    workspacePath: string,
+    db: Database.Database,
+  ): Promise<void> {
+    const { OpenAPIAdapter } = await import('../integrations/adapters/openapi-adapter.js');
     const specDoc = spec as OpenAPIV3.Document;
     const rawTitle = specDoc.info?.title ?? '';
     const apiSlug = rawTitle
@@ -3734,7 +3897,6 @@ export class CommandHandlers {
           .slice(0, 40) || 'custom-api'
       : 'custom-api';
 
-    // Serialize spec for storage and adapter initialisation
     const specJson = JSON.stringify(spec);
 
     // Persist credential so the adapter can be re-created on restart
@@ -3773,7 +3935,6 @@ export class CommandHandlers {
         logger.warn({ apiSlug, err }, '/connect api: adapter initialization failed');
       }
     } else {
-      // Hub not available — still report parsed capabilities from the spec directly
       try {
         await adapter.initialize({ name: apiSlug, credentialKey: apiSlug, options: { specJson } });
         capabilities = adapter.describeCapabilities();
@@ -3836,7 +3997,7 @@ export class CommandHandlers {
         logger.warn({ apiSlug, err }, '/connect api: skill pack generation failed');
       });
 
-    logger.info({ sender: message.sender, apiSlug, format }, '/connect api command handled');
+    logger.info({ sender: message.sender, apiSlug }, '/connect api command handled');
   }
 
   // -------------------------------------------------------------------------
