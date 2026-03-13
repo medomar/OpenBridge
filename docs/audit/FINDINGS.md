@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 11 | **Fixed:** 2 (177 prior findings archived) | **Last Audit:** 2026-03-12
+> **Open:** 10 | **Fixed:** 3 (177 prior findings archived) | **Last Audit:** 2026-03-12
 > **History:** 177 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -55,7 +55,7 @@
 ### OB-F181 — Master AI lacks file conversion skill pack (PDF↔text, DOCX↔PDF, format transforms)
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/skill-packs/`, `src/core/html-renderer.ts`
 - **Root Cause / Impact:**
   When a user asks "convert this PDF to text" or "turn this Markdown into a DOCX", the Master AI has no skill pack for file format conversion. The HTML renderer handles SVG→PNG, but general-purpose format conversion is not covered. Users working with business documents frequently need format transforms.
