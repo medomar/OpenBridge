@@ -1,0 +1,290 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Marketplace Seller API",
+    "description": "Sample OpenAPI spec for a marketplace seller API. Replace the server URL with your marketplace's actual API endpoint during onboarding.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.your-marketplace.com/v1",
+      "description": "Marketplace API base URL — replace with your marketplace's actual endpoint"
+    }
+  ],
+  "security": [{ "ApiKeyAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    },
+    "schemas": {
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "shipped", "delivered", "cancelled", "refunded"]
+          },
+          "buyer_name": { "type": "string" },
+          "buyer_email": { "type": "string" },
+          "shipping_address": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrderItem" }
+          },
+          "subtotal": { "type": "number" },
+          "shipping_cost": { "type": "number" },
+          "total": { "type": "number" },
+          "currency": { "type": "string" },
+          "tracking_number": { "type": "string" }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "properties": {
+          "listing_id": { "type": "string" },
+          "sku": { "type": "string" },
+          "title": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "unit_price": { "type": "number" },
+          "subtotal": { "type": "number" }
+        }
+      },
+      "Listing": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "sku": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "price": { "type": "number" },
+          "currency": { "type": "string" },
+          "stock_quantity": { "type": "integer" },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive", "out_of_stock", "suspended"]
+          },
+          "category": { "type": "string" },
+          "images": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SalesReport": {
+        "type": "object",
+        "properties": {
+          "period_start": { "type": "string", "format": "date" },
+          "period_end": { "type": "string", "format": "date" },
+          "total_orders": { "type": "integer" },
+          "total_revenue": { "type": "number" },
+          "total_units_sold": { "type": "integer" },
+          "currency": { "type": "string" },
+          "top_listings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "listing_id": { "type": "string" },
+                "title": { "type": "string" },
+                "units_sold": { "type": "integer" },
+                "revenue": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/orders": {
+      "get": {
+        "summary": "List orders",
+        "operationId": "listOrders",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          {
+            "name": "created_after",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of orders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Order" }
+                    },
+                    "total": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "per_page": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "summary": "Get order details",
+        "operationId": "getOrder",
+        "parameters": [
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order details",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Order" } }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/ship": {
+      "post": {
+        "summary": "Mark order as shipped",
+        "operationId": "shipOrder",
+        "parameters": [
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tracking_number", "carrier"],
+                "properties": {
+                  "tracking_number": { "type": "string" },
+                  "carrier": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Order marked as shipped" }
+        }
+      }
+    },
+    "/listings": {
+      "get": {
+        "summary": "List product listings",
+        "operationId": "listListings",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of product listings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "listings": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Listing" }
+                    },
+                    "total": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/{listingId}": {
+      "get": {
+        "summary": "Get listing details",
+        "operationId": "getListing",
+        "parameters": [
+          { "name": "listingId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listing details",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Listing" } }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update listing (price, stock, status)",
+        "operationId": "updateListing",
+        "parameters": [
+          { "name": "listingId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "price": { "type": "number" },
+                  "stock_quantity": { "type": "integer" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Listing updated" }
+        }
+      }
+    },
+    "/reports/sales": {
+      "get": {
+        "summary": "Get sales report for a period",
+        "operationId": "getSalesReport",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales report",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SalesReport" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
