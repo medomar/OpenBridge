@@ -387,6 +387,26 @@ const SKILL_PACK_KEYWORDS: Record<string, string[]> = {
     'update the docs',
     'add docs',
   ],
+  'web-deploy': [
+    'deploy',
+    'deployment',
+    'vercel',
+    'netlify',
+    'cloudflare',
+    'wrangler',
+    'put this live',
+    'go live',
+    'publish site',
+    'deploy to',
+    'host this',
+    'hosting',
+    'static site',
+    'deploy this',
+    'ship this',
+    'launch site',
+    'deploy the app',
+    'deploy the site',
+  ],
 };
 
 /**

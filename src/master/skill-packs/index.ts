@@ -11,6 +11,7 @@ import { slideDesignerSkillPack } from './slide-designer.js';
 import { generativeArtSkillPack } from './generative-art.js';
 import { brandAssetsSkillPack } from './brand-assets.js';
 import { cloudStorageSkillPack } from './cloud-storage.js';
+import { webDeploySkillPack } from './web-deploy.js';
 
 /**
  * All built-in skill packs shipped with OpenBridge.
@@ -29,4 +30,5 @@ export const BUILT_IN_SKILL_PACKS: SkillPack[] = [
   generativeArtSkillPack,
   brandAssetsSkillPack,
   cloudStorageSkillPack,
+  webDeploySkillPack,
 ];
