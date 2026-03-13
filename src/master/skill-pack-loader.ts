@@ -407,6 +407,25 @@ const SKILL_PACK_KEYWORDS: Record<string, string[]> = {
     'deploy the app',
     'deploy the site',
   ],
+  'spreadsheet-handler': [
+    'spreadsheet',
+    'excel',
+    'xlsx',
+    'xls',
+    'csv',
+    'read spreadsheet',
+    'read excel',
+    'modify spreadsheet',
+    'modify excel',
+    'update spreadsheet',
+    'filter spreadsheet',
+    'sort data',
+    'aggregate data',
+    'pivot table',
+    'google sheets',
+    'exceljs',
+    'sheetjs',
+  ],
 };
 
 /**
