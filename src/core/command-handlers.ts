@@ -4057,6 +4057,26 @@ export class CommandHandlers {
         return;
       }
 
+      // Load last health check times from DB if available
+      const db = this.deps.getMemory()?.getDb();
+      const lastCheckedMap = new Map<string, string>();
+      if (db) {
+        try {
+          const rows = db
+            .prepare(
+              `SELECT integration_name, MAX(checked_at) AS last_checked
+               FROM integration_health_log
+               GROUP BY integration_name`,
+            )
+            .all() as { integration_name: string; last_checked: string }[];
+          for (const row of rows) {
+            lastCheckedMap.set(row.integration_name, row.last_checked);
+          }
+        } catch {
+          // health log table may not exist yet — ignore
+        }
+      }
+
       // Build formatted list of integrations
       const lines: string[] = ['*Connected Integrations*', ''];
 
@@ -4078,6 +4098,13 @@ export class CommandHandlers {
         lines.push(`  Status: ${status}`);
         lines.push(`  Health: ${healthLabel}`);
         lines.push(`  Capabilities: ${capCount} ${capLabel}`);
+
+        const lastChecked = lastCheckedMap.get(integration.name);
+        if (lastChecked) {
+          const date = new Date(lastChecked);
+          lines.push(`  Last checked: ${date.toLocaleString()}`);
+        }
+
         lines.push('');
       }
 

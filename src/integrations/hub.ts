@@ -22,6 +22,7 @@ export class IntegrationHub {
   private integrations = new Map<string, IntegrationEntry>();
   private db: Database.Database | null = null;
   private credentialStore: CredentialStore | null = null;
+  private healthAlertHandler: ((name: string, status: HealthStatus) => void) | null = null;
 
   /**
    * Optionally wire in a SQLite DB and CredentialStore for health status persistence.
@@ -29,6 +30,14 @@ export class IntegrationHub {
   setDatabase(db: Database.Database, credentialStore: CredentialStore): void {
     this.db = db;
     this.credentialStore = credentialStore;
+  }
+
+  /**
+   * Set a callback invoked when any integration transitions to unhealthy state.
+   * Called once per healthy/unknown → unhealthy transition.
+   */
+  setHealthAlertHandler(handler: (name: string, status: HealthStatus) => void): void {
+    this.healthAlertHandler = handler;
   }
 
   /** Register an integration adapter. Must be called before initialize(). */
@@ -86,6 +95,7 @@ export class IntegrationHub {
   /**
    * Run a health check on a named integration.
    * Updates health_status in the credentials table after the check.
+   * Calls the health alert handler if the integration transitions to unhealthy.
    */
   async healthCheck(name: string): Promise<HealthStatus> {
     const entry = this.integrations.get(name);
@@ -93,11 +103,21 @@ export class IntegrationHub {
       throw new Error(`Integration not found: ${name}`);
     }
 
+    const previousStatus = entry.healthStatus;
     const result = await entry.integration.healthCheck();
     entry.healthStatus = result.status;
 
     if (this.db && this.credentialStore) {
       this.credentialStore.updateHealthStatus(this.db, name, result.status);
+    }
+
+    // Alert on transition to unhealthy
+    if (
+      result.status === 'unhealthy' &&
+      previousStatus !== 'unhealthy' &&
+      this.healthAlertHandler
+    ) {
+      this.healthAlertHandler(name, result);
     }
 
     return result;
