@@ -698,6 +698,38 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 22,
+    description: 'Add integration_health_log table for API connection health monitoring',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_health_log'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_health_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL,
+            status           TEXT    NOT NULL,
+            message          TEXT,
+            endpoint_url     TEXT,
+            http_status      INTEGER,
+            latency_ms       INTEGER,
+            checked_at       TEXT    NOT NULL
+          );
+          CREATE INDEX idx_integration_health_log_name
+            ON integration_health_log(integration_name);
+          CREATE INDEX idx_integration_health_log_checked
+            ON integration_health_log(integration_name, checked_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**

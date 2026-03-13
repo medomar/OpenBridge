@@ -5,6 +5,7 @@ import { createLogger } from '../../core/logger.js';
 import type {
   BusinessIntegration,
   HealthStatus,
+  HealthStatusState,
   IntegrationCapability,
   IntegrationConfig,
   RoleConfig,
@@ -276,6 +277,9 @@ export class OpenAPIAdapter implements BusinessIntegration {
   private authHeaders: Record<string, string> = {};
   private initialized = false;
   private db: Database.Database | null = null;
+  private healthEndpoint: string | null = null;
+  private lastHealthStatus: HealthStatusState = 'unknown';
+  private healthAlertHandler: ((integration: string, status: HealthStatus) => void) | null = null;
 
   constructor(name = 'openapi') {
     this.name = name;
@@ -283,10 +287,19 @@ export class OpenAPIAdapter implements BusinessIntegration {
 
   /**
    * Optionally wire in a SQLite database so that role tags can be stored and
-   * retrieved from the `integration_capabilities` table.
+   * retrieved from the `integration_capabilities` table, and health history
+   * is persisted to the `integration_health_log` table.
    */
   setDatabase(db: Database.Database): void {
     this.db = db;
+  }
+
+  /**
+   * Set a callback invoked when this adapter transitions to unhealthy state.
+   * Called at most once per transition (healthy/unknown → unhealthy).
+   */
+  setHealthAlertHandler(handler: (integration: string, status: HealthStatus) => void): void {
+    this.healthAlertHandler = handler;
   }
 
   async initialize(config: IntegrationConfig): Promise<void> {
@@ -329,30 +342,135 @@ export class OpenAPIAdapter implements BusinessIntegration {
     // Generate capabilities from paths
     this.capabilities = this.generateCapabilities(api);
 
+    // Detect health endpoint (explicit config > well-known spec path > first GET path)
+    this.healthEndpoint = this.detectHealthEndpoint(opts, api);
+
     this.initialized = true;
     logger.info(
-      { name: this.name, baseUrl: this.baseUrl, capabilities: this.capabilities.length },
+      {
+        name: this.name,
+        baseUrl: this.baseUrl,
+        capabilities: this.capabilities.length,
+        healthEndpoint: this.healthEndpoint,
+      },
       'OpenAPI adapter initialized',
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async healthCheck(): Promise<HealthStatus> {
     const checkedAt = new Date().toISOString();
 
     if (!this.initialized) {
-      return { status: 'unhealthy', message: 'Not initialized', checkedAt, details: {} };
+      const result: HealthStatus = {
+        status: 'unhealthy',
+        message: 'Not initialized',
+        checkedAt,
+        details: {},
+      };
+      this.storeHealthLog(result, null, null, null);
+      return result;
     }
 
-    return {
-      status: 'healthy',
-      message: `OpenAPI adapter ready (${this.capabilities.length} capabilities)`,
+    if (!this.healthEndpoint) {
+      // No probeable endpoint — report basic availability
+      const result: HealthStatus = {
+        status: 'healthy',
+        message: `OpenAPI adapter ready (${this.capabilities.length} capabilities)`,
+        checkedAt,
+        details: { baseUrl: this.baseUrl, capabilityCount: this.capabilities.length },
+      };
+      this.storeHealthLog(result, null, null, null);
+      this.lastHealthStatus = 'healthy';
+      return result;
+    }
+
+    // Probe the health endpoint
+    const start = Date.now();
+    let httpStatus: number | null = null;
+    let resultStatus: HealthStatusState = 'unhealthy';
+    let message = '';
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const response = await fetch(this.healthEndpoint, {
+          method: 'GET',
+          headers: { ...this.authHeaders },
+          signal: controller.signal,
+        });
+        httpStatus = response.status;
+        if (response.ok) {
+          resultStatus = 'healthy';
+          message = `Health check passed (HTTP ${httpStatus})`;
+        } else if (httpStatus >= 500) {
+          resultStatus = 'unhealthy';
+          message = `Health check failed (HTTP ${httpStatus})`;
+        } else {
+          resultStatus = 'degraded';
+          message = `Health check returned HTTP ${httpStatus}`;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (err) {
+      resultStatus = 'unhealthy';
+      message = `Health check failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    const latencyMs = Date.now() - start;
+    const result: HealthStatus = {
+      status: resultStatus,
+      message,
       checkedAt,
       details: {
         baseUrl: this.baseUrl,
+        healthEndpoint: this.healthEndpoint,
+        httpStatus,
+        latencyMs,
         capabilityCount: this.capabilities.length,
       },
     };
+
+    this.storeHealthLog(result, this.healthEndpoint, httpStatus, latencyMs);
+
+    // Alert on healthy/unknown → unhealthy transition
+    if (resultStatus === 'unhealthy' && this.lastHealthStatus !== 'unhealthy') {
+      this.healthAlertHandler?.(this.name, result);
+    }
+    this.lastHealthStatus = resultStatus;
+
+    return result;
+  }
+
+  /**
+   * Return the last known health check result for this adapter from the DB.
+   * Returns null if no health log entries exist or no DB is wired in.
+   */
+  getLastHealthLog(): {
+    status: string;
+    message: string | null;
+    checkedAt: string;
+    latencyMs: number | null;
+  } | null {
+    if (!this.db) return null;
+    try {
+      return this.db
+        .prepare(
+          `SELECT status, message, checked_at AS checkedAt, latency_ms AS latencyMs
+           FROM integration_health_log
+           WHERE integration_name = ?
+           ORDER BY checked_at DESC LIMIT 1`,
+        )
+        .get(this.name) as {
+        status: string;
+        message: string | null;
+        checkedAt: string;
+        latencyMs: number | null;
+      } | null;
+    } catch {
+      return null;
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -416,6 +534,74 @@ export class OpenAPIAdapter implements BusinessIntegration {
   }
 
   // ── Internal helpers ─────────────────────────────────────────────
+
+  /** Detect the health-check endpoint from spec paths or explicit config. */
+  private detectHealthEndpoint(
+    opts: Record<string, unknown>,
+    api: OpenAPI.Document,
+  ): string | null {
+    // 1. Explicit override in config options
+    const configured = opts['healthEndpoint'] as string | undefined;
+    if (configured) {
+      const path = configured.startsWith('/') ? configured : `/${configured}`;
+      return `${this.baseUrl}${path}`;
+    }
+
+    // 2. Well-known health endpoint paths in the spec
+    const v3 = api as OpenAPIV3.Document;
+    const paths = v3.paths ?? {};
+    const wellKnown = ['/health', '/healthz', '/status', '/ping', '/ready', '/liveness'];
+    for (const hp of wellKnown) {
+      if (paths[hp]?.get) return `${this.baseUrl}${hp}`;
+    }
+
+    // 3. Fall back to first GET path (avoid parameterised paths — use literal ones first)
+    let firstGet: string | null = null;
+    for (const [pathTemplate, pathItem] of Object.entries(paths)) {
+      if (!pathItem?.get) continue;
+      if (!pathTemplate.includes('{')) {
+        return `${this.baseUrl}${pathTemplate}`;
+      }
+      firstGet ??= pathTemplate;
+    }
+
+    // Last resort: use first GET path even if parameterised (replace params with "probe")
+    if (firstGet) {
+      const resolved = firstGet.replace(/\{[^}]+\}/g, 'probe');
+      return `${this.baseUrl}${resolved}`;
+    }
+
+    return null;
+  }
+
+  /** Write a health check result to the `integration_health_log` table. */
+  private storeHealthLog(
+    status: HealthStatus,
+    endpointUrl: string | null,
+    httpStatus: number | null,
+    latencyMs: number | null,
+  ): void {
+    if (!this.db) return;
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO integration_health_log
+             (integration_name, status, message, endpoint_url, http_status, latency_ms, checked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          this.name,
+          status.status,
+          status.message ?? null,
+          endpointUrl,
+          httpStatus,
+          latencyMs,
+          status.checkedAt,
+        );
+    } catch (err) {
+      logger.warn({ err }, 'Failed to store health log');
+    }
+  }
 
   private findCapability(
     operation: string,
