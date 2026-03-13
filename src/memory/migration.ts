@@ -761,6 +761,36 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 24,
+    description: 'Add versioning and effectiveness tracking columns to business_skills',
+    apply: (db): void => {
+      const cols = (
+        db.prepare(`PRAGMA table_info('business_skills')`).all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      if (!cols.includes('version')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN version          INTEGER NOT NULL DEFAULT 1`,
+        );
+      }
+      if (!cols.includes('usage_count')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN usage_count      INTEGER NOT NULL DEFAULT 0`,
+        );
+      }
+      if (!cols.includes('success_rate')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN success_rate     REAL    NOT NULL DEFAULT 0`,
+        );
+      }
+      if (!cols.includes('avg_duration_ms')) {
+        db.exec(`ALTER TABLE business_skills ADD COLUMN avg_duration_ms  REAL`);
+      }
+      if (!cols.includes('last_used')) {
+        db.exec(`ALTER TABLE business_skills ADD COLUMN last_used        TEXT`);
+      }
+    },
+  },
 ];
 
 /**

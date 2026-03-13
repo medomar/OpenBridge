@@ -35,6 +35,16 @@ export interface BusinessSkill {
   requiredDocTypes: string[];
   /** When this skill was created */
   createdAt: string;
+  /** Schema version (incremented on structural changes) */
+  version: number;
+  /** Total number of times this skill has been executed */
+  usageCount: number;
+  /** Rolling average success rate (0–1) */
+  successRate: number;
+  /** Rolling average execution duration in milliseconds (null if never run) */
+  avgDurationMs: number | null;
+  /** ISO timestamp of the last execution (null if never run) */
+  lastUsed: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +59,11 @@ interface BusinessSkillRow {
   required_integrations: string;
   required_doc_types: string;
   created_at: string;
+  version: number;
+  usage_count: number;
+  success_rate: number;
+  avg_duration_ms: number | null;
+  last_used: string | null;
 }
 
 function rowToSkill(row: BusinessSkillRow): BusinessSkill {
@@ -60,6 +75,11 @@ function rowToSkill(row: BusinessSkillRow): BusinessSkill {
     requiredIntegrations: JSON.parse(row.required_integrations) as string[],
     requiredDocTypes: JSON.parse(row.required_doc_types) as string[],
     createdAt: row.created_at,
+    version: row.version ?? 1,
+    usageCount: row.usage_count ?? 0,
+    successRate: row.success_rate ?? 0,
+    avgDurationMs: row.avg_duration_ms ?? null,
+    lastUsed: row.last_used ?? null,
   };
 }
 
@@ -102,6 +122,11 @@ export function createSkillFromTask(taskHistory: TaskStep[]): Omit<BusinessSkill
     requiredIntegrations: integrations,
     requiredDocTypes: docTypes,
     createdAt: new Date().toISOString(),
+    version: 1,
+    usageCount: 0,
+    successRate: 0,
+    avgDurationMs: null,
+    lastUsed: null,
   };
 }
 
@@ -135,8 +160,10 @@ export function storeSkill(db: Database.Database, skill: Omit<BusinessSkill, 'id
   const result = db
     .prepare(
       `INSERT INTO business_skills
-         (name, description, steps, required_integrations, required_doc_types, created_at)
-       VALUES (@name, @description, @steps, @required_integrations, @required_doc_types, @created_at)`,
+         (name, description, steps, required_integrations, required_doc_types, created_at,
+          version, usage_count, success_rate, avg_duration_ms, last_used)
+       VALUES (@name, @description, @steps, @required_integrations, @required_doc_types, @created_at,
+               @version, @usage_count, @success_rate, @avg_duration_ms, @last_used)`,
     )
     .run({
       name: skill.name,
@@ -145,6 +172,11 @@ export function storeSkill(db: Database.Database, skill: Omit<BusinessSkill, 'id
       required_integrations: JSON.stringify(skill.requiredIntegrations),
       required_doc_types: JSON.stringify(skill.requiredDocTypes),
       created_at: skill.createdAt,
+      version: skill.version ?? 1,
+      usage_count: skill.usageCount ?? 0,
+      success_rate: skill.successRate ?? 0,
+      avg_duration_ms: skill.avgDurationMs ?? null,
+      last_used: skill.lastUsed ?? null,
     });
   return Number(result.lastInsertRowid);
 }
@@ -185,4 +217,64 @@ export function listSkills(db: Database.Database, limit = 50): BusinessSkill[] {
 export function deleteSkill(db: Database.Database, id: number): boolean {
   const result = db.prepare('DELETE FROM business_skills WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+/**
+ * Record a skill execution result.
+ * Increments usage_count, updates success_rate (rolling average),
+ * updates avg_duration_ms (rolling average), and sets last_used.
+ *
+ * Returns false if the skill ID does not exist.
+ */
+export function recordSkillExecution(
+  db: Database.Database,
+  id: number,
+  success: boolean,
+  durationMs?: number,
+): boolean {
+  const row = db
+    .prepare('SELECT usage_count, success_rate, avg_duration_ms FROM business_skills WHERE id = ?')
+    .get(id) as
+    | { usage_count: number; success_rate: number; avg_duration_ms: number | null }
+    | undefined;
+
+  if (!row) return false;
+
+  const newCount = row.usage_count + 1;
+  // Rolling average: new_avg = old_avg + (new_value - old_avg) / new_count
+  const newSuccessRate = row.success_rate + ((success ? 1 : 0) - row.success_rate) / newCount;
+
+  let newAvgDuration: number | null = row.avg_duration_ms;
+  if (durationMs !== undefined) {
+    if (newAvgDuration === null) {
+      newAvgDuration = durationMs;
+    } else {
+      newAvgDuration = newAvgDuration + (durationMs - newAvgDuration) / newCount;
+    }
+  }
+
+  const result = db
+    .prepare(
+      `UPDATE business_skills
+       SET usage_count = ?, success_rate = ?, avg_duration_ms = ?, last_used = ?
+       WHERE id = ?`,
+    )
+    .run(newCount, newSuccessRate, newAvgDuration, new Date().toISOString(), id);
+
+  return result.changes > 0;
+}
+
+/**
+ * Return the most effective skills sorted by usage × success_rate (descending).
+ * Skills with zero executions are included last (score = 0).
+ */
+export function getTopSkills(db: Database.Database, limit = 10): BusinessSkill[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM business_skills
+       ORDER BY (usage_count * success_rate) DESC, created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as BusinessSkillRow[];
+  return rows.map(rowToSkill);
 }
