@@ -462,7 +462,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 
 ### SPAWN Marker Format
 
-- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`code-audit\`, \`full-access\`, or a custom profile
+- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`file-management\`, \`code-audit\`, \`full-access\`, or a custom profile
 - **JSON body fields**:
   - \`prompt\` (required): Detailed instructions for the worker
   - \`tool\` (optional): AI tool for this worker. Available: ${formatToolNames(context.discoveredTools, context.masterToolName)}. Default: \`${context.masterToolName}\`
@@ -506,6 +506,7 @@ ${mcpSpawnField}
 - **Always write a brief human-readable summary BEFORE any SPAWN markers.** Explain what you are about to do and why, so the user understands your plan even if SPAWN markers are stripped from the displayed response. Example: "I'll analyse the test suite and check for linting errors in parallel." followed by SPAWN markers.
 - Use \`read-only\` + \`${fastModel}\` for information gathering (cheapest, fastest)
 - Use \`code-edit\` + \`${balancedModel}\` for code modifications (balanced)
+- Use \`file-management\` + \`${balancedModel}\` for tasks that require moving, copying, or deleting files/directories within the workspace. Prefer over \`full-access\` for file organization tasks.
 - Use \`code-audit\` + \`${balancedModel}\` when the user asks to test, analyze, audit, or verify code. Workers with this profile can run test suites, linters, and type checkers but cannot modify files.
 - Use \`full-access\` + \`${powerfulModel}\` only for complex multi-step tasks (expensive)
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
