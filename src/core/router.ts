@@ -1643,6 +1643,23 @@ export class Router {
       return;
     }
 
+    // Accumulate standalone cURL messages for deferred /connect api (OB-1453)
+    // When a user sends cURL examples without /connect api, store them so they
+    // can be flushed when they say "done" or "connect".
+    if (/^curl\s/i.test(message.content.trim())) {
+      await this.commandHandlers.handleCurlAccumulationMessage(message, connector);
+      return;
+    }
+
+    // Flush cURL buffer when user says "done" or "connect" after accumulating (OB-1453)
+    if (
+      /^(?:done|connect)\s*$/i.test(message.content.trim()) &&
+      this.commandHandlers.hasPendingCurls(message.sender)
+    ) {
+      await this.handleCurlBufferFlush(message, connector);
+      return;
+    }
+
     // Handle built-in "/connect <integration> [<credential>]" command — credential collection (OB-1397)
     if (/^\/connect(\s.*)?$/i.test(message.content.trim())) {
       await this.handleConnectCommand(message, connector);
@@ -2161,6 +2178,24 @@ export class Router {
 
   private async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleConnectCommand(message, connector);
+  }
+
+  /**
+   * handleCurlBufferFlush — flush accumulated cURL commands and trigger /connect api (OB-1453).
+   * Called when the user says "done" or "connect" after sending standalone cURL messages.
+   */
+  private async handleCurlBufferFlush(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const joinedCurls = this.commandHandlers.flushCurlBuffer(message.sender);
+    // Synthesize a /connect api message with the accumulated cURLs as input
+    const synthetic: InboundMessage = {
+      ...message,
+      content: `/connect api ${joinedCurls}`,
+      rawContent: `/connect api ${joinedCurls}`,
+    };
+    return this.commandHandlers.handleConnectCommand(synthetic, connector);
   }
 
   private async handleIntegrationsCommand(
