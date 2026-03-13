@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 10 | **Fixed:** 3 (177 prior findings archived) | **Last Audit:** 2026-03-12
+> **Open:** 9 | **Fixed:** 4 (177 prior findings archived) | **Last Audit:** 2026-03-13
 > **History:** 177 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -12,7 +12,7 @@
 ### OB-F178 — Master AI lacks cloud storage skill pack (Google Drive, Dropbox, OneDrive, S3)
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/skill-packs/`, `src/master/skill-pack-loader.ts`, `src/master/master-system-prompt.ts`
 - **Root Cause / Impact:**
   When a user asks "upload this to Google Drive" or "save this to Dropbox", the Master AI has no skill pack teaching it how to handle cloud storage requests. It either guesses or says it can't do it. Users expect the AI to know how to use available MCP servers or CLI tools (rclone, gdrive, aws s3) for file uploads and share link generation.
