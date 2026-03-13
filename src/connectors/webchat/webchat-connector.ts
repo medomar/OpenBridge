@@ -1188,7 +1188,23 @@ export class WebChatConnector implements Connector {
           return;
         }
 
-        if (payload.type === 'message' && typeof payload.content === 'string') {
+        if (
+          payload.type === 'permission-response' &&
+          typeof (payload as Record<string, unknown>)['approved'] === 'boolean'
+        ) {
+          // Permission response from WebChat UI — route as YES/NO text message
+          const approved = (payload as Record<string, unknown>)['approved'] as boolean;
+          this.messageCounter++;
+          const message: InboundMessage = {
+            id: `webchat-${this.messageCounter.toString()}`,
+            source: 'webchat',
+            sender: socketSender,
+            rawContent: approved ? 'YES' : 'NO',
+            content: approved ? 'YES' : 'NO',
+            timestamp: new Date(),
+          };
+          this.emit('message', message);
+        } else if (payload.type === 'message' && typeof payload.content === 'string') {
           this.messageCounter++;
           const message: InboundMessage = {
             id: `webchat-${this.messageCounter.toString()}`,
@@ -1307,7 +1323,17 @@ export class WebChatConnector implements Connector {
     }
 
     let payload: string;
-    if (message.media) {
+    if (message.metadata?.['permissionRequest'] === true) {
+      // Permission request — send structured message for WebChat UI modal
+      payload = JSON.stringify({
+        type: 'permission-request',
+        toolName: message.metadata['toolName'] ?? 'Unknown',
+        detail: message.metadata['detail'] ?? '',
+        timeoutMs: message.metadata['timeoutMs'] ?? 60000,
+        permissionId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      });
+    } else if (message.media) {
       const fileId = randomUUID();
       const { data, mimeType, filename } = message.media;
       const timer = setTimeout(
