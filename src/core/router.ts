@@ -23,6 +23,7 @@ import type { WorkflowScheduler } from '../workflows/scheduler.js';
 import type { CredentialStore } from '../integrations/credential-store.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
+import type { PermissionRelay } from './permission-relay.js';
 import type { FileServer } from './file-server.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { OutputMarkerProcessor } from './output-marker-processor.js';
@@ -388,6 +389,8 @@ export class Router {
   private readonly commandHandlers: CommandHandlers;
   /** Extracted output marker processor — delegates to OutputMarkerProcessor class (OB-1284). */
   private readonly outputMarkerProcessor: OutputMarkerProcessor;
+  /** Permission relay for interactive tool approval via messaging channels (OB-1499). */
+  private permissionRelay?: PermissionRelay;
 
   constructor(
     defaultProvider: string,
@@ -484,6 +487,12 @@ export class Router {
     this.workflowEngine = engine;
     this.workflowScheduler = scheduler;
     logger.info('Router configured with workflow engine (WORKFLOW markers enabled)');
+  }
+
+  /** Set the permission relay — enables interactive tool approval via messaging channels (OB-1499) */
+  setPermissionRelay(relay: PermissionRelay): void {
+    this.permissionRelay = relay;
+    logger.info('Router configured with PermissionRelay (interactive tool approval enabled)');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */
@@ -1348,6 +1357,20 @@ export class Router {
     if (!connector) {
       logger.error({ source: message.source }, 'Source connector not found');
       return;
+    }
+
+    // Handle permission relay responses — intercept YES/NO/ALLOW/DENY replies
+    // when a permission request is pending for this user (OB-1499)
+    if (this.permissionRelay?.hasPending(message.sender)) {
+      const consumed = this.permissionRelay.handleResponse(message.sender, message.content);
+      if (consumed) {
+        logger.info(
+          { sender: message.sender, content: message.content.trim() },
+          'Permission response consumed',
+        );
+        return;
+      }
+      // Not a valid YES/NO — fall through to normal routing
     }
 
     // Handle built-in "status" command — intercept before routing to Master AI
