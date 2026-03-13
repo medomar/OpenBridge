@@ -15,3 +15,11 @@ export * from './triggers/index.js';
 export * from './steps/query-step.js';
 export * from './steps/send-step.js';
 export * from './steps/approval-step.js';
+
+// Pre-built workflows
+export {
+  buildDailyAnalysisWorkflow,
+  shouldInstallDailyAnalysis,
+  autoInstallDailyAnalysis,
+  prepareDailyAnalysisInput,
+} from './proactive-daily-analysis.js';
