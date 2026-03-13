@@ -16,6 +16,7 @@ import type { WorkflowStore } from '../workflows/workflow-store.js';
 import type { WorkflowEngine } from '../workflows/engine.js';
 import type { WorkflowScheduler } from '../workflows/scheduler.js';
 import { WorkflowSchema } from '../types/workflow.js';
+import type { IntegrationHub } from '../integrations/hub.js';
 
 const logger = createLogger('output-marker-processor');
 
@@ -105,6 +106,7 @@ export interface OutputMarkerDeps {
   getWorkflowStore: () => WorkflowStore | undefined;
   getWorkflowEngine: () => WorkflowEngine | undefined;
   getWorkflowScheduler: () => WorkflowScheduler | undefined;
+  getIntegrationHub: () => IntegrationHub | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +330,20 @@ export class OutputMarkerProcessor {
       if (channel === 'github-pages') {
         await this.handleGitHubPagesShare(resolvedPath);
         cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Handle gdrive channel — upload file to Google Drive and return shareable link
+      if (channel === 'gdrive') {
+        const shareLink = await this.handleGDriveShare(resolvedPath);
+        cleaned = cleaned.replace(fullMatch, shareLink ?? '');
+        continue;
+      }
+
+      // Handle dropbox channel — upload file to Dropbox and return shareable link
+      if (channel === 'dropbox') {
+        const shareLink = await this.handleDropboxShare(resolvedPath);
+        cleaned = cleaned.replace(fullMatch, shareLink ?? '');
         continue;
       }
 
@@ -564,6 +580,94 @@ export class OutputMarkerProcessor {
       logger.info({ emailAddress, filePath: resolvedPath }, 'SHARE:email dispatched');
     } catch (err) {
       logger.warn({ emailAddress, filePath: resolvedPath, err }, 'SHARE:email dispatch failed');
+    }
+  }
+
+  /**
+   * Handle [SHARE:gdrive]/path/to/file[/SHARE] markers.
+   * Uploads the file to Google Drive via the GoogleDriveAdapter, makes it publicly
+   * accessible, and returns the shareable web link. Returns null on failure.
+   */
+  private async handleGDriveShare(filePath: string): Promise<string | null> {
+    const hub = this.deps.getIntegrationHub();
+    if (!hub) {
+      logger.warn('SHARE:gdrive marker received but IntegrationHub is not configured — skipping');
+      return null;
+    }
+
+    let driveAdapter;
+    try {
+      driveAdapter = hub.get('google-drive');
+    } catch {
+      logger.warn(
+        'SHARE:gdrive marker received but google-drive integration is not registered — skipping',
+      );
+      return null;
+    }
+
+    try {
+      const uploadResult = (await driveAdapter.execute('upload_file', { filePath })) as {
+        fileId: string;
+        webViewLink: string | null;
+      };
+
+      // Make the file publicly accessible so anyone with the link can view it
+      const shareResult = (await driveAdapter.execute('share_file', {
+        fileId: uploadResult.fileId,
+        type: 'anyone',
+        role: 'reader',
+      })) as { webViewLink: string | null };
+
+      const link = shareResult.webViewLink ?? uploadResult.webViewLink;
+      if (link) {
+        logger.info({ filePath, link }, 'SHARE:gdrive dispatched');
+        return link;
+      }
+
+      logger.warn({ filePath }, 'SHARE:gdrive: no shareable link returned');
+      return null;
+    } catch (err) {
+      logger.warn({ filePath, err }, 'SHARE:gdrive: upload or share failed');
+      return null;
+    }
+  }
+
+  /**
+   * Handle [SHARE:dropbox]/path/to/file[/SHARE] markers.
+   * Uploads the file to Dropbox via the DropboxAdapter, creates a public shared link,
+   * and returns that link. Returns null on failure.
+   */
+  private async handleDropboxShare(filePath: string): Promise<string | null> {
+    const hub = this.deps.getIntegrationHub();
+    if (!hub) {
+      logger.warn('SHARE:dropbox marker received but IntegrationHub is not configured — skipping');
+      return null;
+    }
+
+    let dropboxAdapter;
+    try {
+      dropboxAdapter = hub.get('dropbox');
+    } catch {
+      logger.warn(
+        'SHARE:dropbox marker received but dropbox integration is not registered — skipping',
+      );
+      return null;
+    }
+
+    try {
+      const uploadResult = (await dropboxAdapter.execute('upload_file', { filePath })) as {
+        path: string;
+      };
+
+      const linkResult = (await dropboxAdapter.execute('create_shared_link', {
+        dropboxPath: uploadResult.path,
+      })) as { url: string };
+
+      logger.info({ filePath, url: linkResult.url }, 'SHARE:dropbox dispatched');
+      return linkResult.url;
+    } catch (err) {
+      logger.warn({ filePath, err }, 'SHARE:dropbox: upload or share link creation failed');
+      return null;
     }
   }
 
