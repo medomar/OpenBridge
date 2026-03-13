@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 48 | **In Progress:** 0 | **Done:** 125 (1332 archived)
+> **Pending:** 47 | **In Progress:** 0 | **Done:** 126 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -266,7 +266,7 @@
 | OB-1455 | Add API connection health monitoring. In `openapi-adapter.ts`, add `healthCheck()`: call a configured health endpoint (auto-detect from spec, or use first GET endpoint), verify response status. Store health history in `integration_health_log` table. Auto-notify owner if API goes unhealthy. Show health status in `/integrations` command output.                                                                                                                                                                      | OB-F190 | sonnet | ✅ Done |
 | OB-1456 | Unit test: Postman parser. File: `tests/integrations/postman-parser.test.ts`. Create a minimal Postman collection fixture. Test: (1) requests parsed correctly (method, URL, headers, body), (2) variables resolved when user provides values, (3) folders map to tags, (4) output is valid OpenAPI 3.0.                                                                                                                                                                                                                      | OB-F190 | sonnet | ✅ Done |
 | OB-1457 | Unit test: cURL parser. File: `tests/integrations/curl-parser.test.ts`. Test: (1) simple GET cURL parsed, (2) POST with JSON body, (3) auth headers extracted, (4) multi-line cURL with backslash, (5) multiple cURLs grouped by base path, (6) output is valid OpenAPI 3.0.                                                                                                                                                                                                                                                  | OB-F190 | sonnet | ✅ Done |
-| OB-1458 | Integration test: full API connection flow. File: `tests/integrations/universal-api-flow.test.ts`. Test: (1) user sends Postman collection → adapter created → skill pack generated → capabilities listed, (2) user sends cURL commands → same flow, (3) user queries API via natural language → correct HTTP call made. Mock HTTP calls.                                                                                                                                                                                     | OB-F190 | opus   | Pending |
+| OB-1458 | Integration test: full API connection flow. File: `tests/integrations/universal-api-flow.test.ts`. Test: (1) user sends Postman collection → adapter created → skill pack generated → capabilities listed, (2) user sends cURL commands → same flow, (3) user queries API via natural language → correct HTTP call made. Mock HTTP calls.                                                                                                                                                                                     | OB-F190 | opus   | ✅ Done |
 
 ---
 
