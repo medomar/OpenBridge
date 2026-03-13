@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 3 | **In Progress:** 0 | **Done:** 170 (1332 archived)
+> **Pending:** 2 | **In Progress:** 0 | **Done:** 171 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -354,7 +354,7 @@
 | OB-1501 | Wire `/trust` command levels to adapter selection. In `src/core/command-handlers.ts`, ensure `/trust ask` → SDK adapter (every tool call relayed), `/trust edit` → SDK adapter (auto-approve reads/edits, prompt for Bash/Write), `/trust auto` → CLI adapter (pre-approved `--allowedTools`, no prompts). Store trust level per-user in `access_control` table.                                                                                                                          | OB-F183 | sonnet | ✅ Done |
 | OB-1502 | Unit test: file-management tool profile. File: `tests/core/tool-profiles.test.ts`. Test: (1) `file-management` profile includes `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`, (2) profile maps correctly in `toolProfileToAllowedTools()`, (3) workspace-scoped path validation rejects paths outside workspace.                                                                                                                                                             | OB-F182 | sonnet | ✅ Done |
 | OB-1503 | Unit test: SDK adapter. File: `tests/core/adapters/claude-sdk.test.ts`. Mock `@anthropic-ai/claude-agent-sdk`. Test: (1) `canUseTool` auto-approves allowed tools, (2) `canUseTool` delegates to permission relay for non-allowed tools, (3) adapter produces same output format as CLI adapter, (4) error handling matches CLI adapter behavior.                                                                                                                                         | OB-F183 | sonnet | ✅ Done |
-| OB-1504 | Unit test: permission relay. File: `tests/core/permission-relay.test.ts`. Test: (1) formats user-friendly permission message, (2) returns true on YES response, (3) returns false on NO response, (4) auto-denies on timeout (mock timer), (5) handles concurrent permission requests for same user.                                                                                                                                                                                      | OB-F183 | sonnet | Pending |
+| OB-1504 | Unit test: permission relay. File: `tests/core/permission-relay.test.ts`. Test: (1) formats user-friendly permission message, (2) returns true on YES response, (3) returns false on NO response, (4) auto-denies on timeout (mock timer), (5) handles concurrent permission requests for same user.                                                                                                                                                                                      | OB-F183 | sonnet | ✅ Done |
 | OB-1505 | Integration test: full permission flow. File: `tests/integration/permission-flow.test.ts`. Test: (1) SDK adapter → canUseTool fires → permission relay sends message → mock user replies YES → tool executes, (2) same flow with NO → tool denied, (3) timeout → auto-deny, (4) /trust auto → CLI adapter used (no prompts). Mock Agent SDK and connector.                                                                                                                                | OB-F183 | opus   | Pending |
 
 ---
