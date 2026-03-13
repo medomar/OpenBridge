@@ -163,11 +163,22 @@ export class PermissionRelay {
     // Format and send the permission prompt
     const promptText = formatPermissionPrompt(toolName, input);
 
+    // Extract the most relevant detail for structured UI display
+    const command = typeof input['command'] === 'string' ? input['command'] : undefined;
+    const filePath = typeof input['file_path'] === 'string' ? input['file_path'] : undefined;
+    const detail = command ?? filePath ?? '';
+
     try {
       await connector.sendMessage({
         target: channel,
         recipient: userId,
         content: promptText,
+        metadata: {
+          permissionRequest: true,
+          toolName,
+          detail: truncate(detail, 200),
+          timeoutMs: this.timeoutMs,
+        },
       });
     } catch (err) {
       logger.error({ err, channel, userId }, 'Failed to send permission prompt — auto-denying');
