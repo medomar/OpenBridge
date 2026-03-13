@@ -262,6 +262,21 @@ export const TOOLS_CODE_EDIT = [
 /** Full access tools — unrestricted (use sparingly) */
 export const TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'] as const;
 
+/** File management tools — for moving, copying, or deleting files/directories within the workspace */
+export const TOOLS_FILE_MANAGEMENT = [
+  'Read',
+  'Glob',
+  'Grep',
+  'Write',
+  'Edit',
+  'Bash(rm:*)',
+  'Bash(mv:*)',
+  'Bash(cp:*)',
+  'Bash(mkdir:*)',
+  'Bash(chmod:*)',
+  'Bash(git:*)',
+] as const;
+
 /** Code audit tools — read files and run test/lint/typecheck commands, no file modifications */
 export const TOOLS_CODE_AUDIT = [
   'Read',
@@ -310,6 +325,8 @@ export function resolveTools(
       return [...TOOLS_READ_ONLY];
     case 'code-edit':
       return [...TOOLS_CODE_EDIT];
+    case 'file-management':
+      return [...TOOLS_FILE_MANAGEMENT];
     case 'full-access':
       return [...TOOLS_FULL];
     case 'code-audit':
