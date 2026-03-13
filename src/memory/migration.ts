@@ -730,6 +730,37 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 23,
+    description: 'Add business_skills table for learned skill patterns',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='business_skills'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE business_skills (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                  TEXT    NOT NULL,
+            description           TEXT    NOT NULL,
+            steps                 TEXT    NOT NULL DEFAULT '[]',
+            required_integrations TEXT    NOT NULL DEFAULT '[]',
+            required_doc_types    TEXT    NOT NULL DEFAULT '[]',
+            created_at            TEXT    NOT NULL
+          );
+          CREATE INDEX idx_business_skills_name
+            ON business_skills(name);
+          CREATE INDEX idx_business_skills_created
+            ON business_skills(created_at);
+        `);
+      }
+    },
+  },
 ];
 
 /**

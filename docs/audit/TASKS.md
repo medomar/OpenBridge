@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 37 | **In Progress:** 0 | **Done:** 136 (1332 archived)
+> **Pending:** 36 | **In Progress:** 0 | **Done:** 137 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -297,7 +297,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                | Finding | Model  | Status  |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1469 | Create `src/intelligence/skill-creator.ts`. Function `createSkillFromTask(taskHistory: TaskStep[]): BusinessSkill \| null` — when Master completes a multi-step task (3+ steps), analyze the step sequence, extract a reusable pattern, create a skill definition with: name, description, steps, required integrations, required DocTypes. Store in SQLite `business_skills` table. Add migration. | —       | opus   | Pending |
+| OB-1469 | Create `src/intelligence/skill-creator.ts`. Function `createSkillFromTask(taskHistory: TaskStep[]): BusinessSkill \| null` — when Master completes a multi-step task (3+ steps), analyze the step sequence, extract a reusable pattern, create a skill definition with: name, description, steps, required integrations, required DocTypes. Store in SQLite `business_skills` table. Add migration. | —       | opus   | ✅ Done |
 | OB-1470 | Add skill versioning and effectiveness tracking. In `business_skills` table, add: `version`, `usage_count`, `success_rate`, `avg_duration_ms`, `last_used`. On each skill execution: increment usage_count, update success_rate (rolling average), update last_used. Function `getTopSkills(limit: number): BusinessSkill[]` — return most effective skills sorted by usage × success_rate.         | —       | sonnet | Pending |
 | OB-1471 | Wire skill discovery into Master AI. In `prompt-context-builder.ts`, add section `## Learned Skills` listing top 10 skills with descriptions and usage stats. When Master detects a matching intent, it should prefer the learned skill over generating a new plan. Add skill matching logic to classification engine.                                                                              | —       | sonnet | Pending |
 | OB-1472 | Create proactive daily analysis workflow. Pre-built workflow: schedule (9pm daily) → query all DocTypes for today's changes → AI step ("Compare today vs yesterday: identify anomalies, trends, actionable insights. Be specific with numbers.") → send summary to owner via WhatsApp. Auto-install when at least 2 DocTypes exist and have data.                                                   | —       | opus   | Pending |
