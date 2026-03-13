@@ -853,10 +853,10 @@ export class CommandHandlers {
       }
       const levelLabel =
         current === 'auto-approve-all'
-          ? 'auto (approve everything)'
+          ? 'auto (CLI adapter — no per-tool prompts)'
           : current === 'auto-approve-up-to-edit'
-            ? 'edit (approve up to code-edit)'
-            : 'ask (always ask)';
+            ? 'edit (SDK adapter — prompt for Bash/Write only)'
+            : 'ask (SDK adapter — every tool call relayed to you)';
 
       await connector.sendMessage({
         target: channel,
@@ -897,10 +897,10 @@ export class CommandHandlers {
 
     const confirmLabel =
       newMode === 'auto-approve-all'
-        ? 'auto — all escalations will be approved automatically'
+        ? 'auto — CLI adapter, pre-approved tools, no per-tool prompts'
         : newMode === 'auto-approve-up-to-edit'
-          ? 'edit — code-edit and below auto-approved, full-access still prompts'
-          : 'ask — you will be prompted for every escalation';
+          ? 'edit — SDK adapter, auto-approve reads/edits, prompt for Bash/Write'
+          : 'ask — SDK adapter, every tool call relayed to you for approval';
 
     await connector.sendMessage({
       target: channel,

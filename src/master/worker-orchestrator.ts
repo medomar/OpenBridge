@@ -41,6 +41,7 @@ import type {
 } from '../memory/index.js';
 import type { Router } from '../core/router.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
+import { consentModeToTrustLevel } from '../core/adapter-registry.js';
 import type { AdapterRegistry } from '../core/adapter-registry.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { createLogger } from '../core/logger.js';
@@ -795,9 +796,21 @@ export class WorkerOrchestrator {
     const requestedTool = body.tool;
     const toolUsed = requestedTool ?? this.deps.masterTool.name;
 
+    // Resolve the sender's trust level from consent mode so adapter selection
+    // honours /trust settings (OB-1501).
+    const senderConsentMode =
+      memory && activeMessage
+        ? await memory
+            .getConsentMode(activeMessage.sender, activeMessage.source)
+            .catch(() => 'always-ask' as const)
+        : ('always-ask' as const);
+    const senderTrustLevel = consentModeToTrustLevel(senderConsentMode);
+
     if (requestedTool && requestedTool !== this.deps.masterTool.name) {
       const tool = this.resolveDiscoveredTool(requestedTool);
-      const toolAdapter = tool ? this.deps.adapterRegistry.get(requestedTool) : undefined;
+      const toolAdapter = tool
+        ? this.deps.adapterRegistry.getForTrustLevel(requestedTool, senderTrustLevel)
+        : undefined;
 
       if (!tool || !toolAdapter) {
         logger.warn(
@@ -806,7 +819,25 @@ export class WorkerOrchestrator {
         );
       } else {
         workerRunner = new AgentRunner(toolAdapter);
-        logger.info({ requestedTool, workerId }, 'Worker using tool-specific adapter');
+        logger.info(
+          { requestedTool, workerId, trustLevel: senderTrustLevel },
+          'Worker using tool-specific adapter',
+        );
+      }
+    } else {
+      // Default tool (master tool) — select adapter based on trust level so that
+      // /trust ask/edit routes to the SDK adapter for per-tool approval.
+      const masterToolName = this.deps.masterTool.name;
+      const trustAdapter = this.deps.adapterRegistry.getForTrustLevel(
+        masterToolName,
+        senderTrustLevel,
+      );
+      if (trustAdapter) {
+        workerRunner = new AgentRunner(trustAdapter);
+        logger.debug(
+          { masterToolName, trustLevel: senderTrustLevel },
+          'Worker using trust-level-selected adapter',
+        );
       }
     }
 
