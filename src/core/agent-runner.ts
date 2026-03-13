@@ -2,7 +2,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { createLogger } from './logger.js';
 import { DockerSandbox } from './docker-sandbox.js';
 import { sanitizeEnv } from './env-sanitizer.js';
@@ -334,6 +334,69 @@ export function resolveTools(
     default:
       return resolveProfile(profileName, customProfiles);
   }
+}
+
+/**
+ * Check whether a target path is within the given workspace root.
+ *
+ * Both paths are resolved to absolute form before comparison so that relative
+ * paths and `..` components are handled correctly.
+ *
+ * Returns `false` when the resolved target is NOT a descendant of `workspacePath`,
+ * which signals that a destructive operation (`rm`, `mv`) would escape the workspace.
+ *
+ * Exported so callers and unit tests can validate paths independently (OB-1494).
+ */
+export function isPathWithinWorkspace(targetPath: string, workspacePath: string): boolean {
+  const resolvedTarget = isAbsolute(targetPath)
+    ? resolve(targetPath)
+    : resolve(workspacePath, targetPath);
+  const resolvedWorkspace = resolve(workspacePath);
+  // Append sep so '/workspace-extra' does not falsely match '/workspace'
+  const workspaceWithSep = resolvedWorkspace.endsWith(sep)
+    ? resolvedWorkspace
+    : resolvedWorkspace + sep;
+  return resolvedTarget === resolvedWorkspace || resolvedTarget.startsWith(workspaceWithSep);
+}
+
+/**
+ * Destructive command patterns used to extract paths from worker stdout.
+ * Each entry captures the first path argument of `rm` or `mv` after optional flags.
+ */
+const DESTRUCTIVE_CMD_PATTERNS: Array<{ cmd: string; re: RegExp }> = [
+  { cmd: 'rm', re: /\brm\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g },
+  { cmd: 'mv', re: /\bmv\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g },
+];
+
+/**
+ * Scan worker stdout for destructive shell commands (`rm`, `mv`) whose target
+ * paths fall outside the configured `workspacePath`.
+ *
+ * Returns an array of violations. An empty array means no unsafe paths were detected.
+ * This is a best-effort text scan — it cannot replace a real shell parser but catches
+ * the common cases where absolute paths outside the workspace are referenced.
+ *
+ * Exported for unit testing (OB-1494).
+ */
+export function scanDestructiveCommandViolations(
+  stdout: string,
+  workspacePath: string,
+): Array<{ command: string; path: string }> {
+  const violations: Array<{ command: string; path: string }> = [];
+
+  for (const { cmd, re } of DESTRUCTIVE_CMD_PATTERNS) {
+    // Re-create with global flag to reset lastIndex on each call
+    const globalRe = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+    let match: RegExpExecArray | null;
+    while ((match = globalRe.exec(stdout)) !== null) {
+      const targetPath = match[1];
+      if (targetPath && !isPathWithinWorkspace(targetPath, workspacePath)) {
+        violations.push({ command: cmd, path: targetPath });
+      }
+    }
+  }
+
+  return violations;
 }
 
 /**
@@ -1311,6 +1374,18 @@ export class AgentRunner {
 
     const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
 
+    // Workspace safety scan for file-management profile (OB-1494).
+    // Detect rm/mv commands in worker output that targeted paths outside the workspace.
+    if (opts.profile === 'file-management') {
+      const violations = scanDestructiveCommandViolations(lastResult.stdout, opts.workspacePath);
+      for (const { command, path: violatingPath } of violations) {
+        logger.warn(
+          { command, path: violatingPath, workspacePath: opts.workspacePath },
+          `file-management worker used '${command}' on path outside workspace — potential safety violation`,
+        );
+      }
+    }
+
     const costUsd = estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8'));
 
     // Post-hoc cost cap warning for non-streaming path (OB-F101).
@@ -1527,6 +1602,17 @@ export class AgentRunner {
       }
 
       const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
+
+      // Workspace safety scan for file-management profile (OB-1494).
+      if (opts.profile === 'file-management') {
+        const violations = scanDestructiveCommandViolations(lastResult.stdout, opts.workspacePath);
+        for (const { command, path: violatingPath } of violations) {
+          logger.warn(
+            { command, path: violatingPath, workspacePath: opts.workspacePath },
+            `file-management worker used '${command}' on path outside workspace — potential safety violation`,
+          );
+        }
+      }
 
       const costUsdHandle = estimateCostUsd(
         currentModel,
