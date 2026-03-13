@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 32 | **In Progress:** 0 | **Done:** 141 (1332 archived)
+> **Pending:** 31 | **In Progress:** 0 | **Done:** 142 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -302,7 +302,7 @@
 | OB-1471 | Wire skill discovery into Master AI. In `prompt-context-builder.ts`, add section `## Learned Skills` listing top 10 skills with descriptions and usage stats. When Master detects a matching intent, it should prefer the learned skill over generating a new plan. Add skill matching logic to classification engine.                                                                              | —       | sonnet | ✅ Done |
 | OB-1472 | Create proactive daily analysis workflow. Pre-built workflow: schedule (9pm daily) → query all DocTypes for today's changes → AI step ("Compare today vs yesterday: identify anomalies, trends, actionable insights. Be specific with numbers.") → send summary to owner via WhatsApp. Auto-install when at least 2 DocTypes exist and have data.                                                   | —       | opus   | ✅ Done |
 | OB-1473 | Implement query caching for common questions. In `src/intelligence/query-cache.ts`, cache frequently asked questions and their computed answers (e.g., "how many orders this week" → cached aggregate). TTL-based expiration (default 5 minutes). Cache key = normalized question hash. Invalidate on DocType data changes.                                                                         | —       | sonnet | ✅ Done |
-| OB-1474 | Implement user preference modeling. In `src/intelligence/user-preferences.ts`, track per-sender: preferred response format (brief vs detailed), common request types, working hours, language preference. Store in SQLite `user_preferences` table. Inject into Master AI prompt as `## User Preferences for {sender}`.                                                                             | —       | sonnet | Pending |
+| OB-1474 | Implement user preference modeling. In `src/intelligence/user-preferences.ts`, track per-sender: preferred response format (brief vs detailed), common request types, working hours, language preference. Store in SQLite `user_preferences` table. Inject into Master AI prompt as `## User Preferences for {sender}`.                                                                             | —       | sonnet | ✅ Done |
 | OB-1475 | Implement client activity pattern detection. Function `detectActivityPatterns(doctype: string): ActivityPattern[]` — analyze DocType records for: repeat customers (order frequency), seasonal patterns, churn risk (no activity for 2× average interval), growth trends. Results injected into proactive daily analysis.                                                                           | —       | sonnet | Pending |
 | OB-1476 | Unit test: skill creator. File: `tests/intelligence/skill-creator.test.ts`. Test: (1) 3-step successful task → creates skill, (2) 1-step task → returns null (too simple), (3) skill versioning increments on reuse, (4) skill effectiveness tracking updates correctly.                                                                                                                            | —       | sonnet | Pending |
 
