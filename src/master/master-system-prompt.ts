@@ -90,6 +90,18 @@ export interface WorkerNextStepsEntry {
   nextSteps: string;
 }
 
+/** Minimal template metadata for system prompt injection (OB-1466). */
+export interface TemplateInfo {
+  /** Template ID (e.g. 'restaurant', 'retail'). */
+  id: string;
+  /** Human-readable template name. */
+  name: string;
+  /** Number of DocType definitions included. */
+  doctypeCount: number;
+  /** Number of workflow definitions included. */
+  workflowCount: number;
+}
+
 /**
  * Format the "## Pending Worker Next Steps" section to append to the Master system prompt.
  * Summarises what each of the 5 most recent workers said should be done next.
@@ -114,6 +126,61 @@ export function formatWorkerNextStepsSection(entries: WorkerNextStepsEntry[]): s
     lines.push(entry.nextSteps.trim());
     lines.push('');
   }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format the "## Industry Template Available" section for injection into the Master
+ * system prompt when pre-built industry templates are available and no DocTypes exist yet.
+ *
+ * Instructs the Master AI to proactively detect the user's industry and offer the
+ * matching template. Returns null when no templates are available.
+ *
+ * OB-1466
+ */
+export function formatTemplateSelectionSection(templates: TemplateInfo[]): string | null {
+  if (templates.length === 0) return null;
+
+  const lines: string[] = [
+    '## Industry Template Available',
+    '',
+    'Pre-built business templates are ready to apply. Use these when the user has no DocTypes registered yet.',
+    '',
+    '**Available templates:**',
+  ];
+
+  for (const t of templates) {
+    lines.push(
+      `- **${t.name}** (\`${t.id}\`): ${t.doctypeCount} data type${t.doctypeCount !== 1 ? 's' : ''}, ${t.workflowCount} automation${t.workflowCount !== 1 ? 's' : ''}`,
+    );
+  }
+
+  lines.push('');
+  lines.push('**When to suggest a template:**');
+  lines.push('- The user has no DocTypes registered yet (no business data structure)');
+  lines.push(
+    '- You can infer the business type from the workspace, conversation, or user description',
+  );
+  lines.push('');
+  lines.push('**How to suggest (use this exact phrasing):**');
+  lines.push(
+    '"I detected you\'re running a [industry]. I have a pre-built template with [N] data types and [M] automations. Apply it? Or tell me what you need."',
+  );
+  lines.push('');
+  lines.push('**For WhatsApp — follow with numbered choices on separate lines:**');
+  lines.push('1️⃣ Apply [Template Name] template');
+  lines.push("2️⃣ Show me what's included first");
+  lines.push("3️⃣ Skip — I'll set up manually");
+  lines.push('');
+  lines.push('**When user confirms (replies "1", "yes", or "apply"):**');
+  lines.push('Spawn a code-edit worker to apply the template using:');
+  lines.push(
+    '`loadTemplate(workspacePath, "<templateId>")` then `applyTemplate(db, template)` from `src/intelligence/template-loader.ts`.',
+  );
+  lines.push(
+    'Confirm with: "Template applied! You now have [N] data types and [M] workflows ready to use."',
+  );
 
   return lines.join('\n');
 }
