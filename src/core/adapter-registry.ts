@@ -8,6 +8,7 @@
 
 import type { CLIAdapter, CapabilityLevel } from './cli-adapter.js';
 import type { DiscoveredTool } from '../types/discovery.js';
+import type { ConsentMode } from '../memory/access-store.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { AiderAdapter } from './adapters/aider-adapter.js';
@@ -24,6 +25,20 @@ const logger = createLogger('adapter-registry');
  * - `ask`   — relay every tool call to the user for approval; uses the SDK adapter.
  */
 export type TrustLevel = 'auto' | 'edit' | 'ask';
+
+/**
+ * Map a stored ConsentMode value to the corresponding TrustLevel for adapter selection.
+ *
+ * - `auto-approve-all`        → `auto`  (CLI adapter, no per-tool prompts)
+ * - `auto-approve-up-to-edit` → `edit`  (SDK adapter, prompt only for Bash/Write)
+ * - `always-ask`              → `ask`   (SDK adapter, prompt for every tool call)
+ * - `auto-approve-read`       → `ask`   (SDK adapter, conservative fallback)
+ */
+export function consentModeToTrustLevel(mode: ConsentMode): TrustLevel {
+  if (mode === 'auto-approve-all') return 'auto';
+  if (mode === 'auto-approve-up-to-edit') return 'edit';
+  return 'ask';
+}
 
 /** Built-in adapter factories keyed by tool name */
 const BUILT_IN_ADAPTERS: Record<string, () => CLIAdapter> = {
