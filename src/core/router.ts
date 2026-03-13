@@ -411,6 +411,7 @@ export class Router {
       getWorkflowStore: () => this.workflowStore,
       getWorkflowEngine: () => this.workflowEngine,
       getWorkflowScheduler: () => this.workflowScheduler,
+      getIntegrationHub: () => this.integrationHub,
     });
 
     // Initialize command handlers with deps that reference Router's mutable state
