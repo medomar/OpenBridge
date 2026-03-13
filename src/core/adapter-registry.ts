@@ -11,13 +11,24 @@ import type { DiscoveredTool } from '../types/discovery.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import { CodexAdapter } from './adapters/codex-adapter.js';
 import { AiderAdapter } from './adapters/aider-adapter.js';
+import { ClaudeSDKAdapter } from './adapters/claude-sdk.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('adapter-registry');
 
+/**
+ * Trust level controlling which adapter is selected for Claude tools.
+ *
+ * - `auto`  — pre-approved `--allowedTools` list; uses the CLI adapter (no prompts).
+ * - `edit`  — auto-approve reads/edits, relay Bash/Write to user; uses the SDK adapter.
+ * - `ask`   — relay every tool call to the user for approval; uses the SDK adapter.
+ */
+export type TrustLevel = 'auto' | 'edit' | 'ask';
+
 /** Built-in adapter factories keyed by tool name */
 const BUILT_IN_ADAPTERS: Record<string, () => CLIAdapter> = {
   claude: () => new ClaudeAdapter(),
+  'claude-sdk': () => new ClaudeSDKAdapter(),
   codex: () => new CodexAdapter(),
   aider: () => new AiderAdapter(),
 };
@@ -47,6 +58,25 @@ export class AdapterRegistry {
   /** Get the adapter for a discovered tool */
   getForTool(tool: DiscoveredTool): CLIAdapter | undefined {
     return this.get(tool.name);
+  }
+
+  /**
+   * Get the adapter for a tool name, choosing between CLI and SDK adapters
+   * based on the user's trust level.
+   *
+   * - `auto`  → CLI adapter (pre-approved --allowedTools, no prompts).
+   * - `edit`  → SDK adapter (auto-approve reads/edits, relay Bash/Write to user).
+   * - `ask`   → SDK adapter (relay every tool call to the user for approval).
+   *
+   * Non-Claude tools are unaffected — `trustLevel` is ignored and the
+   * standard adapter for that tool name is returned.
+   */
+  getForTrustLevel(toolName: string, trustLevel: TrustLevel): CLIAdapter | undefined {
+    if (toolName === 'claude') {
+      const adapterName = trustLevel === 'auto' ? 'claude' : 'claude-sdk';
+      return this.get(adapterName);
+    }
+    return this.get(toolName);
   }
 
   /** Check if an adapter exists (registered or built-in) for a tool name */
@@ -91,10 +121,12 @@ export class AdapterRegistry {
   }
 }
 
-/** Create an AdapterRegistry pre-loaded with the Claude adapter */
+/** Create an AdapterRegistry pre-loaded with the Claude CLI and SDK adapters */
 export function createAdapterRegistry(): AdapterRegistry {
   const registry = new AdapterRegistry();
-  // Claude is always pre-registered as the default
+  // Claude CLI adapter — default for trust=auto
   registry.register('claude', new ClaudeAdapter());
+  // Claude SDK adapter — used for trust=edit or trust=ask (interactive approval)
+  registry.register('claude-sdk', new ClaudeSDKAdapter());
   return registry;
 }
