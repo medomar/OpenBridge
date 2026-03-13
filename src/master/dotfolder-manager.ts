@@ -1106,4 +1106,61 @@ export class DotFolderManager {
       // File may not exist — ignore
     }
   }
+
+  // ── Industry Templates ──────────────────────────────────────────
+
+  /**
+   * Get the path to the industry-templates directory.
+   */
+  public getIndustryTemplatesPath(): string {
+    return path.join(this.dotFolderPath, 'industry-templates');
+  }
+
+  /**
+   * List available industry templates from `.openbridge/industry-templates/`.
+   * Reads each sub-directory's manifest.json to extract metadata.
+   * Returns an empty array when the directory does not exist or no valid manifests are found.
+   *
+   * OB-1466
+   */
+  public async listAvailableTemplates(): Promise<
+    Array<{ id: string; name: string; doctypeCount: number; workflowCount: number }>
+  > {
+    const templatesDir = this.getIndustryTemplatesPath();
+    try {
+      const entries = await fs.readdir(templatesDir, { withFileTypes: true });
+      const results: Array<{
+        id: string;
+        name: string;
+        doctypeCount: number;
+        workflowCount: number;
+      }> = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(templatesDir, entry.name, 'manifest.json');
+        try {
+          const content = await fs.readFile(manifestPath, 'utf-8');
+          const data = JSON.parse(content) as {
+            id?: string;
+            name?: string;
+            doctypes?: unknown[];
+            workflows?: unknown[];
+          };
+          results.push({
+            id: typeof data.id === 'string' ? data.id : entry.name,
+            name: typeof data.name === 'string' ? data.name : entry.name,
+            doctypeCount: Array.isArray(data.doctypes) ? data.doctypes.length : 0,
+            workflowCount: Array.isArray(data.workflows) ? data.workflows.length : 0,
+          });
+        } catch {
+          // Skip directories with missing or malformed manifest.json
+        }
+      }
+
+      return results;
+    } catch {
+      return [];
+    }
+  }
 }

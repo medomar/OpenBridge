@@ -3199,12 +3199,17 @@ export class MasterManager {
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
-      const [conversationContext, learnedPatternsContext, workerNextStepsContext] =
-        await Promise.all([
-          this.buildConversationContext(message.content, sessionId),
-          this.buildLearnedPatternsContext(),
-          this.buildWorkerNextStepsContext(),
-        ]);
+      const [
+        conversationContext,
+        learnedPatternsContext,
+        workerNextStepsContext,
+        templateSelectionContext,
+      ] = await Promise.all([
+        this.buildConversationContext(message.content, sessionId),
+        this.buildLearnedPatternsContext(),
+        this.buildWorkerNextStepsContext(),
+        this.promptContextBuilder.buildTemplateSelectionContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
@@ -3497,6 +3502,7 @@ export class MasterManager {
         knowledgeContext,
         targetedReaderContext,
         analysisContext,
+        templateSelectionContext,
       };
       const spawnOpts = this.buildMasterSpawnOptions(
         promptToSend,

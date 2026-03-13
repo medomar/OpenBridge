@@ -18,6 +18,7 @@ import {
   formatWorkerNextStepsSection,
   formatPreFetchedKnowledgeSection,
   formatTargetedReaderSection,
+  formatTemplateSelectionSection,
 } from './master-system-prompt.js';
 import type { WorkerNextStepsEntry } from './master-system-prompt.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
@@ -73,6 +74,8 @@ export interface MasterContextSections {
   knowledgeContext?: string | null;
   targetedReaderContext?: string | null;
   analysisContext?: string | null;
+  /** Industry template suggestion — only injected when no DocTypes exist (OB-1466). */
+  templateSelectionContext?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +217,11 @@ export class PromptContextBuilder {
     const docTypesSection = this.buildDocTypesSection();
     if (docTypesSection) {
       assembler.addSection('Available DocTypes', docTypesSection, 75);
+    }
+
+    // Industry template suggestion — only when no DocTypes exist (OB-1466)
+    if (contextSections?.templateSelectionContext) {
+      assembler.addSection('Template Selection', contextSections.templateSelectionContext, 72);
     }
 
     // Conversation context — memory.md + session history + cross-session FTS5
@@ -362,6 +370,37 @@ export class PromptContextBuilder {
     }
 
     return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // buildTemplateSelectionContext (OB-1466)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Industry Template Available" section for injection when
+   * no DocTypes are registered but industry templates exist in the workspace.
+   * Returns null when DocTypes already exist or no templates are available.
+   */
+  async buildTemplateSelectionContext(): Promise<string | null> {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    // Only suggest templates when the user has no DocTypes yet
+    let doctypeCount: number;
+    try {
+      doctypeCount = listDocTypes(db).length;
+    } catch {
+      return null;
+    }
+    if (doctypeCount > 0) return null;
+
+    // List templates available in the workspace
+    const templates = await this.deps.dotFolder.listAvailableTemplates();
+    if (templates.length === 0) return null;
+
+    return formatTemplateSelectionSection(templates);
   }
 
   // -------------------------------------------------------------------------
