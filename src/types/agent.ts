@@ -210,6 +210,7 @@ export const ToolProfileSchema = z.object({
 export const BuiltInProfileNameSchema = z.enum([
   'read-only',
   'code-edit',
+  'file-management',
   'full-access',
   'master',
   'code-audit',
@@ -235,6 +236,24 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
     name: 'code-edit',
     description: 'For implementation tasks that modify files',
     tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npm:*)', 'Bash(npx:*)'],
+  },
+  'file-management': {
+    name: 'file-management',
+    description:
+      'For tasks that require moving, copying, or deleting files/directories within the workspace. Prefer over full-access for file organization tasks.',
+    tools: [
+      'Read',
+      'Glob',
+      'Grep',
+      'Write',
+      'Edit',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
+      'Bash(chmod:*)',
+      'Bash(git:*)',
+    ],
   },
   'full-access': {
     name: 'full-access',
@@ -277,6 +296,7 @@ export const PROFILE_RISK_MAP: Record<BuiltInProfileName, RiskLevel> = {
   'read-only': 'low',
   'code-audit': 'low',
   'code-edit': 'medium',
+  'file-management': 'medium',
   'full-access': 'high',
   master: 'critical',
 };
