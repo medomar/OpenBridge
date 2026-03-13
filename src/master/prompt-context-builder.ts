@@ -12,6 +12,7 @@ import {
 } from '../core/prompt-assembler.js';
 import { listDocTypes, getDocType } from '../intelligence/doctype-store.js';
 import { getTopSkills } from '../intelligence/skill-creator.js';
+import { buildUserPreferencesSection } from '../intelligence/user-preferences.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
 import {
@@ -79,6 +80,8 @@ export interface MasterContextSections {
   templateSelectionContext?: string | null;
   /** Learned skills section — top-10 skills with usage stats (OB-1471). */
   learnedSkillsContext?: string | null;
+  /** User preferences section — per-sender format/language/hours (OB-1474). */
+  userPreferencesContext?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +228,11 @@ export class PromptContextBuilder {
     // Learned skills — top-10 reusable skill patterns (OB-1471)
     if (contextSections?.learnedSkillsContext) {
       assembler.addSection('Learned Skills', contextSections.learnedSkillsContext, 73);
+    }
+
+    // User preferences — per-sender format/language/working-hours (OB-1474)
+    if (contextSections?.userPreferencesContext) {
+      assembler.addSection('User Preferences', contextSections.userPreferencesContext, 71);
     }
 
     // Industry template suggestion — only when no DocTypes exist (OB-1466)
@@ -430,6 +438,27 @@ export class PromptContextBuilder {
     }
 
     return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // buildUserPreferencesContext (OB-1474)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## User Preferences for {sender}" section for the given sender.
+   * Returns null when no preference data is stored or the database is unavailable.
+   */
+  buildUserPreferencesContext(sender: string): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    try {
+      return buildUserPreferencesSection(db, sender);
+    } catch {
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------
