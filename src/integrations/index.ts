@@ -33,3 +33,4 @@ export type {
   EventNotificationHandler,
 } from './event-bridge.js';
 export { generateSkillPack } from './skill-pack-generator.js';
+export { generateDefaultWorkflows } from './workflow-templates.js';
