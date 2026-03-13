@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 17 | **In Progress:** 0 | **Done:** 156 (1332 archived)
+> **Pending:** 16 | **In Progress:** 0 | **Done:** 157 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -51,7 +51,7 @@
 | P2  | 123   | Universal API Adapter (any Swagger/Postman/cURL) | 14    | OB-F190                | Pending |
 | P2  | 124   | Industry Templates                               | 10    | —                      | ✅      |
 | P3  | 125   | Self-Improvement & Skill Learning                | 8     | —                      | ✅      |
-| P1  | 126   | Skill Packs: Cloud, Deploy, Spreadsheet, Convert | 14    | OB-F178/F179/F180/F181 | Pending |
+| P1  | 126   | Skill Packs: Cloud, Deploy, Spreadsheet, Convert | 14    | OB-F178/F179/F180/F181 | ✅      |
 | P2  | 127   | Worker Permissions & Agent SDK Integration       | 15    | OB-F182/F183           | Pending |
 
 ---
@@ -329,7 +329,7 @@
 | OB-1487 | Unit test: cloud storage skill pack. File: `tests/master/skill-packs/cloud-storage.test.ts`. Test: (1) skill pack exports correct structure, (2) prompt includes MCP catalog check instructions, (3) prompt includes CLI fallback instructions, (4) SHARE marker integration works.                                                                                                                                                                                                                                                                                                                                                   | OB-F178 | sonnet | ✅ Done |
 | OB-1488 | Unit test: web deploy skill pack. File: `tests/master/skill-packs/web-deploy.test.ts`. Test: (1) skill pack exports correct structure, (2) prompt includes deploy CLI detection, (3) prompt includes auth token handling, (4) prompt includes URL return instruction.                                                                                                                                                                                                                                                                                                                                                                 | OB-F179 | sonnet | ✅ Done |
 | OB-1489 | Unit test: spreadsheet handler skill pack. File: `tests/master/skill-packs/spreadsheet-handler.test.ts`. Test: (1) skill pack exports correct structure, (2) prompt includes read/write operations, (3) prompt includes Google Sheets MCP fallback, (4) prompt covers common operations (filter, sort, aggregate).                                                                                                                                                                                                                                                                                                                    | OB-F180 | sonnet | ✅ Done |
-| OB-1490 | Unit test: file converter skill pack. File: `tests/master/skill-packs/file-converter.test.ts`. Test: (1) skill pack exports correct structure, (2) prompt includes pandoc/libreoffice/Node.js detection logic, (3) prompt includes OCR instructions, (4) prompt prioritizes tools by availability.                                                                                                                                                                                                                                                                                                                                    | OB-F181 | sonnet | Pending |
+| OB-1490 | Unit test: file converter skill pack. File: `tests/master/skill-packs/file-converter.test.ts`. Test: (1) skill pack exports correct structure, (2) prompt includes pandoc/libreoffice/Node.js detection logic, (3) prompt includes OCR instructions, (4) prompt prioritizes tools by availability.                                                                                                                                                                                                                                                                                                                                    | OB-F181 | sonnet | ✅ Done |
 
 ---
 
