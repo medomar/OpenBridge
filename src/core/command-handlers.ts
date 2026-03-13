@@ -3976,7 +3976,7 @@ export class CommandHandlers {
       replyTo: message.id,
     });
 
-    // Async skill pack generation — do not block the response
+    // Async skill pack + workflow template generation — do not block the response
     import('../integrations/skill-pack-generator.js')
       .then(async ({ generateSkillPack }) => {
         const { AgentRunner } = await import('./agent-runner.js');
@@ -3991,6 +3991,32 @@ export class CommandHandlers {
           });
         } else {
           logger.warn({ apiSlug }, '/connect api: skill pack generation returned null');
+        }
+
+        // Suggest pre-built workflows based on the API spec
+        const { generateDefaultWorkflows } = await import('../integrations/workflow-templates.js');
+        const suggestions = generateDefaultWorkflows(spec);
+        if (suggestions.length > 0) {
+          const lines: string[] = [`🔧 *Suggested workflows for ${rawTitle || apiSlug}:*`, ''];
+          const icons = ['📬', '📊', '🔔'];
+          suggestions.forEach((wf, i) => {
+            lines.push(`${icons[i] ?? '•'} *${wf.name}*`);
+            lines.push(wf.description ?? '');
+            lines.push('');
+          });
+          lines.push(
+            'Reply *approve 1*, *approve 2*, *approve 3*, or *approve all* to enable workflows.',
+          );
+          lines.push('Reply *skip* to skip workflow setup.');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: lines.join('\n'),
+          });
+          logger.info(
+            { apiSlug, count: suggestions.length },
+            '/connect api: workflow suggestions sent',
+          );
         }
       })
       .catch((err: unknown) => {
