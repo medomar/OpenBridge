@@ -28,3 +28,4 @@ export * from './hook-executor.js';
 export * from './audit-log.js';
 export * from './pdf-generator.js';
 export * from './skill-creator.js';
+export * from './query-cache.js';
