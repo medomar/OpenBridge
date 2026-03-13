@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 30 | **In Progress:** 0 | **Done:** 143 (1332 archived)
+> **Pending:** 29 | **In Progress:** 0 | **Done:** 144 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -50,7 +50,7 @@
 | P1  | 122   | Business Document Generation                     | 10    | OB-F188                | ✅      |
 | P2  | 123   | Universal API Adapter (any Swagger/Postman/cURL) | 14    | OB-F190                | Pending |
 | P2  | 124   | Industry Templates                               | 10    | —                      | ✅      |
-| P3  | 125   | Self-Improvement & Skill Learning                | 8     | —                      | Pending |
+| P3  | 125   | Self-Improvement & Skill Learning                | 8     | —                      | ✅      |
 | P1  | 126   | Skill Packs: Cloud, Deploy, Spreadsheet, Convert | 14    | OB-F178/F179/F180/F181 | Pending |
 | P2  | 127   | Worker Permissions & Agent SDK Integration       | 15    | OB-F182/F183           | Pending |
 
@@ -304,7 +304,7 @@
 | OB-1473 | Implement query caching for common questions. In `src/intelligence/query-cache.ts`, cache frequently asked questions and their computed answers (e.g., "how many orders this week" → cached aggregate). TTL-based expiration (default 5 minutes). Cache key = normalized question hash. Invalidate on DocType data changes.                                                                         | —       | sonnet | ✅ Done |
 | OB-1474 | Implement user preference modeling. In `src/intelligence/user-preferences.ts`, track per-sender: preferred response format (brief vs detailed), common request types, working hours, language preference. Store in SQLite `user_preferences` table. Inject into Master AI prompt as `## User Preferences for {sender}`.                                                                             | —       | sonnet | ✅ Done |
 | OB-1475 | Implement client activity pattern detection. Function `detectActivityPatterns(doctype: string): ActivityPattern[]` — analyze DocType records for: repeat customers (order frequency), seasonal patterns, churn risk (no activity for 2× average interval), growth trends. Results injected into proactive daily analysis.                                                                           | —       | sonnet | ✅ Done |
-| OB-1476 | Unit test: skill creator. File: `tests/intelligence/skill-creator.test.ts`. Test: (1) 3-step successful task → creates skill, (2) 1-step task → returns null (too simple), (3) skill versioning increments on reuse, (4) skill effectiveness tracking updates correctly.                                                                                                                            | —       | sonnet | Pending |
+| OB-1476 | Unit test: skill creator. File: `tests/intelligence/skill-creator.test.ts`. Test: (1) 3-step successful task → creates skill, (2) 1-step task → returns null (too simple), (3) skill versioning increments on reuse, (4) skill effectiveness tracking updates correctly.                                                                                                                            | —       | sonnet | ✅ Done |
 
 ---
 
