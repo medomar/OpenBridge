@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 38 | **In Progress:** 0 | **Done:** 135 (1332 archived)
+> **Pending:** 37 | **In Progress:** 0 | **Done:** 136 (1332 archived)
 > **Last Updated:** 2026-03-13
 
 <details>
@@ -49,7 +49,7 @@
 | P1  | 121   | Workflow Engine                                  | 22    | OB-F187                | Pending |
 | P1  | 122   | Business Document Generation                     | 10    | OB-F188                | ✅      |
 | P2  | 123   | Universal API Adapter (any Swagger/Postman/cURL) | 14    | OB-F190                | Pending |
-| P2  | 124   | Industry Templates                               | 10    | —                      | Pending |
+| P2  | 124   | Industry Templates                               | 10    | —                      | ✅      |
 | P3  | 125   | Self-Improvement & Skill Learning                | 8     | —                      | Pending |
 | P1  | 126   | Skill Packs: Cloud, Deploy, Spreadsheet, Convert | 14    | OB-F178/F179/F180/F181 | Pending |
 | P2  | 127   | Worker Permissions & Agent SDK Integration       | 15    | OB-F182/F183           | Pending |
@@ -286,7 +286,7 @@
 | OB-1465 | Create marketplace seller template. Directory: `.openbridge/industry-templates/marketplace-seller/`. DocTypes: product-listing, supplier-order (2 DocTypes). Workflows: low-stock-reorder, new-order-notification, weekly-sales-report (3 workflows). Includes `api-spec.json` (sample OpenAPI spec for marketplace API) and pre-built skill pack for seller operations. Uses Phase 123 universal API adapter — user provides their own API URL during onboarding. `integrations.json`: `{ "required": ["api"], "suggested_spec": "api-spec.json" }`. | —       | sonnet | ✅ Done |
 | OB-1466 | Add template selection UX. In Master AI system prompt, when industry is detected and no DocTypes exist yet, suggest: "I detected you're running a [industry]. I have a pre-built template with [N] data types and [M] automations. Apply it? Or tell me what you need." For WhatsApp: send interactive buttons for template choices.                                                                                                                                                                                                                  | —       | sonnet | ✅ Done |
 | OB-1467 | Unit test: template loader. File: `tests/intelligence/template-loader.test.ts`. Test: (1) load template from manifest.json, (2) apply template creates all DocTypes, (3) apply template creates all workflows, (4) duplicate application is idempotent (no duplicate tables).                                                                                                                                                                                                                                                                         | —       | sonnet | ✅ Done |
-| OB-1468 | Unit test: industry detector. File: `tests/intelligence/industry-detector.test.ts`. Mock AI worker. Test: (1) restaurant-related messages → restaurant template, (2) car-related messages → car-rental template, (3) unknown industry → null (no template forced).                                                                                                                                                                                                                                                                                    | —       | sonnet | Pending |
+| OB-1468 | Unit test: industry detector. File: `tests/intelligence/industry-detector.test.ts`. Mock AI worker. Test: (1) restaurant-related messages → restaurant template, (2) car-related messages → car-rental template, (3) unknown industry → null (no template forced).                                                                                                                                                                                                                                                                                    | —       | sonnet | ✅ Done |
 
 ---
 
