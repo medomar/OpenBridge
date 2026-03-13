@@ -1,0 +1,4 @@
+{
+  "required": ["api"],
+  "suggested_spec": "api-spec.json"
+}
