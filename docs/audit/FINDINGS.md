@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 4 (177 prior findings archived) | **Last Audit:** 2026-03-13
+> **Open:** 8 | **Fixed:** 5 (177 prior findings archived) | **Last Audit:** 2026-03-13
 > **History:** 177 findings fixed across v0.0.1–v0.0.15. All prior archived in [archive/](archive/).
 
 ---
@@ -85,7 +85,7 @@
 ### OB-F183 — Interactive tool approval relay via Agent SDK (permission prompts through messaging channels)
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`, `src/core/cli-adapter.ts`, `src/core/adapter-registry.ts`, `src/core/adapters/`, `src/core/router.ts`, `src/connectors/webchat/`
 - **Root Cause / Impact:**
   OpenBridge spawns workers as CLI subprocesses (`claude -p`) with `stdin: 'ignore'`. When Claude CLI needs user permission for a tool call (e.g., `rm -rf`, writing to a sensitive file), the interactive prompt goes nowhere — the user never sees it. This blocks all interactive tool approval workflows through messaging channels (WebChat, WhatsApp, Telegram, Discord). Users expect the same approve/deny UX they get in VS Code's terminal, but delivered through their messaging channel.
