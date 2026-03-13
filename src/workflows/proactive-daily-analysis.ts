@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { createLogger } from '../core/logger.js';
 import { listDocTypes } from '../intelligence/doctype-store.js';
+import { summariseActivityPatterns } from '../intelligence/activity-patterns.js';
 import type { Workflow } from '../types/workflow.js';
 import type { WorkflowStore } from './workflow-store.js';
 
@@ -46,6 +47,9 @@ export function buildDailyAnalysisWorkflow(ownerPhone: string, doctypeNames: str
           '',
           'Records data:',
           '{{_records_summary}}',
+          '',
+          'Client activity patterns:',
+          '{{_activity_patterns}}',
           '',
           "Today's date: {{_today}}",
           '',
@@ -228,9 +232,12 @@ export function prepareDailyAnalysisInput(
     }
   }
 
+  const activityPatterns = summariseActivityPatterns(db, doctypeNames);
+
   return {
     _doctypes: doctypeNames.join(', '),
     _records_summary: JSON.stringify(summaries, null, 2),
+    _activity_patterns: activityPatterns,
     _today: today,
   };
 }
