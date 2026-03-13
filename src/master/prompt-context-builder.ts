@@ -11,6 +11,7 @@ import {
   PRIORITY_ANALYSIS,
 } from '../core/prompt-assembler.js';
 import { listDocTypes, getDocType } from '../intelligence/doctype-store.js';
+import { getTopSkills } from '../intelligence/skill-creator.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
 import {
@@ -76,6 +77,8 @@ export interface MasterContextSections {
   analysisContext?: string | null;
   /** Industry template suggestion — only injected when no DocTypes exist (OB-1466). */
   templateSelectionContext?: string | null;
+  /** Learned skills section — top-10 skills with usage stats (OB-1471). */
+  learnedSkillsContext?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +220,11 @@ export class PromptContextBuilder {
     const docTypesSection = this.buildDocTypesSection();
     if (docTypesSection) {
       assembler.addSection('Available DocTypes', docTypesSection, 75);
+    }
+
+    // Learned skills — top-10 reusable skill patterns (OB-1471)
+    if (contextSections?.learnedSkillsContext) {
+      assembler.addSection('Learned Skills', contextSections.learnedSkillsContext, 73);
     }
 
     // Industry template suggestion — only when no DocTypes exist (OB-1466)
@@ -366,6 +374,58 @@ export class PromptContextBuilder {
         }
       }
 
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // buildLearnedSkillsContext (OB-1471)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Learned Skills" section listing the top 10 skills by effectiveness.
+   * Returns null when no skills are stored or the database is unavailable.
+   */
+  buildLearnedSkillsContext(): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let skills: ReturnType<typeof getTopSkills>;
+    try {
+      skills = getTopSkills(db, 10);
+    } catch {
+      return null;
+    }
+    if (skills.length === 0) return null;
+
+    const lines: string[] = [
+      '## Learned Skills',
+      '',
+      'You have built up reusable skill patterns from past tasks. When a user request matches a skill below, **prefer executing that learned skill** over generating a new plan from scratch.',
+      '',
+    ];
+
+    for (const skill of skills) {
+      const usageLine =
+        skill.usageCount > 0
+          ? ` | used ${skill.usageCount}× | ${Math.round(skill.successRate * 100)}% success`
+          : ' | not yet executed';
+      const durationLine =
+        skill.avgDurationMs !== null ? ` | avg ${Math.round(skill.avgDurationMs / 1000)}s` : '';
+      lines.push(`### ${skill.name}${usageLine}${durationLine}`);
+      lines.push(skill.description);
+      if (skill.steps.length > 0) {
+        lines.push(
+          `**Steps:** ${skill.steps.slice(0, 5).join(' → ')}${skill.steps.length > 5 ? ` → … (${skill.steps.length} steps total)` : ''}`,
+        );
+      }
+      if (skill.requiredDocTypes.length > 0) {
+        lines.push(`**DocTypes:** ${skill.requiredDocTypes.join(', ')}`);
+      }
       lines.push('');
     }
 

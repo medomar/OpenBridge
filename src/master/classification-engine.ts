@@ -12,6 +12,8 @@ import type { AgentRunner } from '../core/agent-runner.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
+import { getTopSkills } from '../intelligence/skill-creator.js';
+import type { BusinessSkill } from '../intelligence/skill-creator.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('classification-engine');
@@ -102,6 +104,8 @@ export interface ClassificationResult {
   integrationSetup?: boolean;
   /** The extracted integration name from the setup phrase (e.g. "stripe", "google-drive") (OB-1396). */
   integrationName?: string;
+  /** Name of a learned skill that matches this message (OB-1471). When set, Master should prefer the learned skill. */
+  matchedSkillName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -524,6 +528,16 @@ export class ClassificationEngine {
       } catch (err) {
         logger.warn({ err }, 'Failed to query classification learning — using original result');
       }
+    }
+
+    // Annotate with matched skill name if a learned skill matches (OB-1471)
+    const matchedSkill = this.findMatchingSkill(content);
+    if (matchedSkill) {
+      classificationResult = { ...classificationResult, matchedSkillName: matchedSkill.name };
+      logger.debug(
+        { skillName: matchedSkill.name, class: classificationResult.class },
+        'Matched learned skill for user message',
+      );
     }
 
     // Store result in cache
@@ -950,6 +964,61 @@ export class ClassificationEngine {
       timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
       reason: 'keyword fallback: tool-use (default)',
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill matching (OB-1471)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Check whether the user message matches a learned skill by comparing
+   * significant words against the skill name and description.
+   * Returns the best-matching skill (highest usage × success_rate score) or null.
+   * This is a lightweight synchronous check — skills are loaded from SQLite.
+   */
+  findMatchingSkill(content: string): BusinessSkill | null {
+    const memory = this.deps.memory;
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let skills: BusinessSkill[];
+    try {
+      skills = getTopSkills(db, 20);
+    } catch {
+      return null;
+    }
+    if (skills.length === 0) return null;
+
+    const lower = content.toLowerCase();
+    // Extract significant words (length > 3) from the user message
+    const messageWords = lower
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+
+    if (messageWords.length === 0) return null;
+
+    let bestSkill: BusinessSkill | null = null;
+    let bestScore = 0;
+
+    for (const skill of skills) {
+      const skillText = `${skill.name} ${skill.description}`.toLowerCase().replace(/-/g, ' ');
+      const matchCount = messageWords.filter((w) => skillText.includes(w)).length;
+      if (matchCount === 0) continue;
+
+      // Score: overlap ratio × effectiveness (usage × successRate)
+      const overlapRatio = matchCount / messageWords.length;
+      const effectiveness = skill.usageCount * skill.successRate;
+      const score = overlapRatio * (1 + effectiveness);
+
+      if (overlapRatio >= 0.3 && score > bestScore) {
+        bestScore = score;
+        bestSkill = skill;
+      }
+    }
+
+    return bestSkill;
   }
 
   // -------------------------------------------------------------------------
