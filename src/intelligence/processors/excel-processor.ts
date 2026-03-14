@@ -9,20 +9,36 @@
 import { createLogger } from '../../core/logger.js';
 import type { ExtractedTable, ProcessorResult } from '../../types/intelligence.js';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const XLSX = require('xlsx') as {
-  readFile: (path: string) => {
-    SheetNames: string[];
-    Sheets: Record<string, unknown>;
-    Props?: Record<string, unknown>;
-  };
-  utils: {
-    sheet_to_json: (
-      sheet: unknown,
-      opts: { header: 1; defval: string; raw: boolean },
-    ) => (string | number | boolean | null)[][];
-  };
-};
+// Lazy-loaded xlsx module (optional dependency)
+
+interface XLSXSheet {
+  [key: string]: unknown;
+}
+
+interface XLSXWorkbook {
+  SheetNames: string[];
+  Sheets: Record<string, XLSXSheet>;
+  Props?: Record<string, unknown>;
+}
+
+interface XLSXUtils {
+  sheet_to_json(ws: XLSXSheet, opts?: Record<string, unknown>): unknown[];
+}
+
+interface XLSXModule {
+  utils: XLSXUtils;
+  readFile(path: string, opts?: Record<string, unknown>): XLSXWorkbook;
+}
+
+let xlsxModule: XLSXModule | undefined;
+
+async function getXLSX(): Promise<XLSXModule> {
+  if (!xlsxModule) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    xlsxModule = (await import('xlsx')) as any as XLSXModule;
+  }
+  return xlsxModule;
+}
 
 const logger = createLogger('excel-processor');
 
@@ -32,8 +48,8 @@ const logger = createLogger('excel-processor');
  * @param filePath - Absolute path to the Excel file
  * @returns ProcessorResult with structured tables, rawText (tab-delimited), and metadata
  */
-// eslint-disable-next-line @typescript-eslint/require-await
 export async function processExcel(filePath: string): Promise<ProcessorResult> {
+  const XLSX = await getXLSX();
   const workbook = XLSX.readFile(filePath);
 
   const sheetNames = workbook.SheetNames;
@@ -49,7 +65,7 @@ export async function processExcel(filePath: string): Promise<ProcessorResult> {
       header: 1,
       defval: '',
       raw: false,
-    });
+    }) as (string | number | boolean | null)[][];
 
     if (aoa.length === 0) {
       logger.debug({ sheetName }, 'Sheet is empty, skipping');

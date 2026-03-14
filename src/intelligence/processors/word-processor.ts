@@ -11,11 +11,27 @@
 import { createLogger } from '../../core/logger.js';
 import type { ExtractedTable, ProcessorResult } from '../../types/intelligence.js';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const mammoth = require('mammoth') as {
-  extractRawText: (opts: { path: string }) => Promise<{ value: string; messages: unknown[] }>;
-  convertToHtml: (opts: { path: string }) => Promise<{ value: string; messages: unknown[] }>;
-};
+// Lazy-loaded mammoth module (optional dependency)
+
+interface MammothResult {
+  value: string;
+  messages: unknown[];
+}
+
+interface MammothModule {
+  extractRawText(options: { path: string }): Promise<MammothResult>;
+  convertToHtml(options: { path: string }): Promise<MammothResult>;
+}
+
+let mammothModule: MammothModule | undefined;
+
+async function getMammoth(): Promise<MammothModule> {
+  if (!mammothModule) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mammothModule = (await import('mammoth')) as any as MammothModule;
+  }
+  return mammothModule;
+}
 
 const logger = createLogger('word-processor');
 
@@ -94,6 +110,7 @@ function parseHtmlTables(html: string): ExtractedTable[] {
  * @returns ProcessorResult with rawText, extracted tables, and metadata
  */
 export async function processWord(filePath: string): Promise<ProcessorResult> {
+  const mammoth = await getMammoth();
   // Extract plain text
   const textResult = await mammoth.extractRawText({ path: filePath });
   const rawText = textResult.value;

@@ -788,21 +788,26 @@ form.addEventListener('submit', function (e) {
         });
     }),
   ).then(function (results) {
-    const fileLines = results
-      .filter(function (r) {
-        return r && r.fileId;
-      })
-      .map(function (r) {
-        return '- ' + r.filename + ' (path: ' + r.path + ')';
-      });
+    var uploadedFiles = results.filter(function (r) {
+      return r && r.fileId;
+    });
 
-    let content = text;
-    if (fileLines.length > 0) {
-      if (content) content += '\n\n';
-      content += '[Attached files]\n' + fileLines.join('\n');
+    var content = text;
+    if (uploadedFiles.length === 0 && !content) {
+      content = '[File upload failed — no files were saved]';
     }
-    if (!content) content = '[File upload failed — no files were saved]';
-    sendMessage({ type: 'message', content: content });
+    sendMessage({
+      type: 'message',
+      content: content || '',
+      files: uploadedFiles.map(function (r) {
+        return {
+          filename: r.filename,
+          path: r.path,
+          mimeType: r.mimeType,
+          size: r.size,
+        };
+      }),
+    });
   });
 });
 

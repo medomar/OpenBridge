@@ -6,25 +6,39 @@
  * Returns a single table with headers and rows.
  */
 
+import { readFileSync } from 'node:fs';
 import { createLogger } from '../../core/logger.js';
 import type { ExtractedTable, ProcessorResult } from '../../types/intelligence.js';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const XLSX = require('xlsx') as {
-  readFile: (
-    path: string,
-    opts?: Record<string, unknown>,
-  ) => {
-    SheetNames: string[];
-    Sheets: Record<string, unknown>;
-  };
-  utils: {
-    sheet_to_json: (
-      sheet: unknown,
-      opts: { header: 1; defval: string; raw: boolean },
-    ) => (string | number | boolean | null)[][];
-  };
-};
+// Lazy-loaded xlsx module (optional dependency)
+
+interface XLSXSheet {
+  [key: string]: unknown;
+}
+
+interface XLSXWorkbook {
+  SheetNames: string[];
+  Sheets: Record<string, XLSXSheet>;
+}
+
+interface XLSXUtils {
+  sheet_to_json(ws: XLSXSheet, opts?: Record<string, unknown>): unknown[];
+}
+
+interface XLSXModule {
+  utils: XLSXUtils;
+  readFile(path: string, opts?: Record<string, unknown>): XLSXWorkbook;
+}
+
+let xlsxModule: XLSXModule | undefined;
+
+async function getXLSX(): Promise<XLSXModule> {
+  if (!xlsxModule) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    xlsxModule = (await import('xlsx')) as any as XLSXModule;
+  }
+  return xlsxModule;
+}
 
 const logger = createLogger('csv-processor');
 
@@ -37,9 +51,7 @@ const logger = createLogger('csv-processor');
  */
 function detectDelimiter(filePath: string): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require('fs') as { readFileSync: (path: string, encoding: string) => string };
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = readFileSync(filePath, 'utf-8');
     const firstLine = content.split('\n')[0] ?? '';
 
     if (!firstLine) {
@@ -81,8 +93,8 @@ function detectDelimiter(filePath: string): string {
  * @param filePath - Absolute path to the CSV file
  * @returns ProcessorResult with a single table, rawText, and metadata
  */
-// eslint-disable-next-line @typescript-eslint/require-await
 export async function processCsv(filePath: string): Promise<ProcessorResult> {
+  const XLSX = await getXLSX();
   const delimiter = detectDelimiter(filePath);
 
   // Read the CSV file using xlsx with the detected delimiter
@@ -118,7 +130,7 @@ export async function processCsv(filePath: string): Promise<ProcessorResult> {
     header: 1,
     defval: '',
     raw: false,
-  });
+  }) as (string | number | boolean | null)[][];
 
   if (aoa.length === 0) {
     logger.debug({ filePath }, 'CSV file is empty');

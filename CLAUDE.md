@@ -386,7 +386,7 @@ scripts/                        Task runner utilities
 
 ## Current Version
 
-**v0.0.15** — All 177 findings resolved. 1332 tasks shipped across Phases 1–115.
+**v0.1.0** — 183 findings resolved. 1505 tasks shipped across Phases 1–127.
 
 Key additions since v0.0.5:
 
@@ -396,6 +396,7 @@ Key additions since v0.0.5:
 - v0.0.13: Structured observations, session compaction, vector search, document generation, role UX fix, doctor, pairing auth, skills directory
 - v0.0.14: Skill pack extensions, creative output (diagrams/charts/art), agent orchestration (planning gate, swarms, test protection, iteration caps)
 - v0.0.15: Deep stability audit — prompt budget, god-class refactoring (8 modules extracted), classification fixes, memory leak fixes, process safety, monorepo awareness
+- v0.1.0: Business platform — document intelligence, DocType engine, integration hub, workflow engine, business document generation, API adapter framework, industry templates, skill pack extensions, Agent SDK permission relay
 
 ## Conventions
 

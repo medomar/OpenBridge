@@ -308,34 +308,64 @@
           "sort_order": 3
         },
         {
+          "name": "min_stock_level",
+          "label": "Min Stock Level",
+          "field_type": "number",
+          "sort_order": 4
+        },
+        {
           "name": "reorder_point",
           "label": "Reorder Point",
           "field_type": "number",
-          "sort_order": 4
+          "sort_order": 5
         },
         {
           "name": "reorder_qty",
           "label": "Reorder Quantity",
           "field_type": "number",
-          "sort_order": 5
+          "sort_order": 6
         },
-        { "name": "unit_cost", "label": "Unit Cost", "field_type": "currency", "sort_order": 6 },
+        { "name": "unit_cost", "label": "Unit Cost", "field_type": "currency", "sort_order": 7 },
+        {
+          "name": "supplier_name",
+          "label": "Supplier Name",
+          "field_type": "text",
+          "sort_order": 8
+        },
         {
           "name": "supplier_id",
           "label": "Supplier",
           "field_type": "link",
-          "sort_order": 7,
+          "sort_order": 9,
           "link_doctype": "supplier"
         },
         {
           "name": "storage_location",
           "label": "Storage Location",
           "field_type": "select",
-          "sort_order": 8,
+          "sort_order": 10,
           "options": ["walk-in-cooler", "freezer", "dry-storage", "bar", "prep-station"]
         },
-        { "name": "expiry_date", "label": "Expiry Date", "field_type": "date", "sort_order": 9 },
-        { "name": "last_ordered", "label": "Last Ordered", "field_type": "date", "sort_order": 10 }
+        {
+          "name": "storage_temperature",
+          "label": "Storage Temperature",
+          "field_type": "text",
+          "sort_order": 11
+        },
+        {
+          "name": "shelf_life_days",
+          "label": "Shelf Life (Days)",
+          "field_type": "number",
+          "sort_order": 12
+        },
+        { "name": "expiry_date", "label": "Expiry Date", "field_type": "date", "sort_order": 13 },
+        { "name": "last_ordered", "label": "Last Ordered", "field_type": "date", "sort_order": 14 },
+        {
+          "name": "last_restock_date",
+          "label": "Last Restock Date",
+          "field_type": "date",
+          "sort_order": 15
+        }
       ],
       "states": [
         {
@@ -427,58 +457,49 @@
           "sort_order": 0
         },
         {
-          "name": "total_revenue",
-          "label": "Total Revenue",
-          "field_type": "currency",
+          "name": "item_name",
+          "label": "Item Name",
+          "field_type": "text",
           "required": true,
           "sort_order": 1
         },
         {
-          "name": "covers",
-          "label": "Covers (Customers)",
-          "field_type": "number",
+          "name": "category",
+          "label": "Category",
+          "field_type": "text",
           "sort_order": 2
         },
         {
-          "name": "avg_per_cover",
-          "label": "Avg Revenue / Cover",
-          "field_type": "currency",
-          "sort_order": 3,
-          "formula": "total_revenue / covers",
-          "depends_on": "total_revenue,covers"
+          "name": "quantity",
+          "label": "Quantity",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 3
         },
         {
-          "name": "food_revenue",
-          "label": "Food Revenue",
+          "name": "unit_price",
+          "label": "Unit Price",
           "field_type": "currency",
           "sort_order": 4
         },
         {
-          "name": "beverage_revenue",
-          "label": "Beverage Revenue",
+          "name": "line_total",
+          "label": "Line Total",
           "field_type": "currency",
           "sort_order": 5
         },
         {
-          "name": "top_items",
-          "label": "Top Selling Items",
-          "field_type": "longtext",
+          "name": "cashier",
+          "label": "Cashier",
+          "field_type": "text",
           "sort_order": 6
         },
         {
-          "name": "weather",
-          "label": "Weather",
-          "field_type": "select",
-          "sort_order": 7,
-          "options": ["sunny", "cloudy", "rainy", "snowy", "hot", "cold"]
-        },
-        {
-          "name": "special_event",
-          "label": "Special Event",
+          "name": "shift",
+          "label": "Shift",
           "field_type": "text",
-          "sort_order": 8
-        },
-        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 9 }
+          "sort_order": 7
+        }
       ],
       "states": [
         { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
@@ -507,6 +528,160 @@
           }
         }
       ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "import-history",
+        "label_singular": "Import History",
+        "label_plural": "Import Histories",
+        "icon": "file-import",
+        "table_name": "dt_import_history",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 0
+        },
+        {
+          "name": "filename",
+          "label": "Filename",
+          "field_type": "text",
+          "required": true,
+          "sort_order": 1
+        },
+        { "name": "file_hash", "label": "File Hash", "field_type": "text", "sort_order": 2 },
+        {
+          "name": "records_imported",
+          "label": "Records Imported",
+          "field_type": "number",
+          "sort_order": 3
+        },
+        {
+          "name": "records_skipped",
+          "label": "Records Skipped",
+          "field_type": "number",
+          "sort_order": 4
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "field_type": "select",
+          "sort_order": 5,
+          "options": ["success", "partial", "failed"]
+        },
+        {
+          "name": "imported_at",
+          "label": "Imported At",
+          "field_type": "datetime",
+          "sort_order": 6
+        }
+      ],
+      "states": [
+        { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
+        { "name": "processing", "label": "Processing", "color": "blue", "sort_order": 1 },
+        {
+          "name": "success",
+          "label": "Success",
+          "color": "green",
+          "is_terminal": true,
+          "sort_order": 2
+        },
+        {
+          "name": "failed",
+          "label": "Failed",
+          "color": "red",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "processing",
+          "action_name": "start_processing",
+          "action_label": "Start Processing"
+        },
+        {
+          "from_state": "processing",
+          "to_state": "success",
+          "action_name": "mark_success",
+          "action_label": "Mark Success"
+        },
+        {
+          "from_state": "processing",
+          "to_state": "failed",
+          "action_name": "mark_failed",
+          "action_label": "Mark Failed"
+        }
+      ],
+      "hooks": [],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "stock-movement",
+        "label_singular": "Stock Movement",
+        "label_plural": "Stock Movements",
+        "icon": "exchange-alt",
+        "table_name": "dt_stock_movements",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 0
+        },
+        {
+          "name": "item_name",
+          "label": "Item Name",
+          "field_type": "text",
+          "required": true,
+          "sort_order": 1
+        },
+        {
+          "name": "movement_type",
+          "label": "Movement Type",
+          "field_type": "select",
+          "sort_order": 2,
+          "options": ["sale", "restock", "waste", "adjustment"]
+        },
+        {
+          "name": "quantity",
+          "label": "Quantity",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 3
+        },
+        { "name": "reference", "label": "Reference", "field_type": "text", "sort_order": 4 },
+        { "name": "notes", "label": "Notes", "field_type": "text", "sort_order": 5 }
+      ],
+      "states": [
+        { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
+        {
+          "name": "confirmed",
+          "label": "Confirmed",
+          "color": "green",
+          "is_terminal": true,
+          "sort_order": 1
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "confirmed",
+          "action_name": "confirm",
+          "action_label": "Confirm Movement"
+        }
+      ],
+      "hooks": [],
       "relations": []
     },
     {

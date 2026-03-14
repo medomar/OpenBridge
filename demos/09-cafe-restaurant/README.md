@@ -94,6 +94,75 @@ The Master AI:
 | **Bilingual**          | French UI for customers, English API responses              |
 | **Mobile-ready**       | Responsive design works on phones for on-the-go bookings    |
 
+## Daily Sales Upload Workflow
+
+The cafe demo includes a daily XLS ingestion pipeline that lets you upload end-of-day sales spreadsheets and query stock/sales history.
+
+### Spreadsheet Format
+
+Create a `.xlsx` or `.xls` file with these columns (order doesn't matter — headers are fuzzy-matched):
+
+| Column       | Aliases accepted                       | Type   |
+| ------------ | -------------------------------------- | ------ |
+| `date`       | date, sale_date, transaction_date, day | Date   |
+| `item_name`  | item, product, article, name, produit  | Text   |
+| `category`   | category, cat, type, categorie         | Text   |
+| `quantity`   | quantity, qty, quantite, qte           | Number |
+| `unit_price` | unit_price, price, prix                | Number |
+| `total`      | total, amount, montant, subtotal       | Number |
+| `cashier`    | cashier, server, staff, employee       | Text   |
+
+**Example row:**
+
+| date       | item_name     | category | quantity | unit_price | total  | cashier |
+| ---------- | ------------- | -------- | -------- | ---------- | ------ | ------- |
+| 2026-03-13 | Café au lait  | beverage | 12       | 3.50       | 42.00  | Amira   |
+| 2026-03-13 | Tagine agneau | main     | 8        | 14.00      | 112.00 | Youssef |
+
+### Running the Pipeline
+
+```typescript
+import Database from 'better-sqlite3';
+import { processDailyXLS } from '../../src/intelligence/daily-import-pipeline.js';
+
+const db = new Database('./cafe.db');
+const result = await processDailyXLS('./sales-2026-03-13.xlsx', db);
+// result = { imported: 15, skipped: 0, errors: [] }
+```
+
+- **Deduplication:** rows with the same `(date, item_name)` are automatically skipped.
+- **Import history:** every file processed is recorded in `import_history` (date, filename, MD5 hash, record count).
+- **Date override:** pass a third argument `'2026-03-13'` to force all rows to a specific date (useful when the sheet has no date column).
+
+### Querying Sales & Stock
+
+```typescript
+import {
+  getSalesHistory,
+  getItemSalesHistory,
+  getStockValuation,
+} from '../../src/intelligence/stock-tracker.js';
+
+// Daily totals for a week
+const history = getSalesHistory(db, '2026-03-07', '2026-03-13');
+// [{ date: '2026-03-07', total_revenue: 840.50, total_quantity: 62, transaction_count: 18 }, ...]
+
+// Sales for a specific item
+const tagineHistory = getItemSalesHistory(db, 'Tagine agneau', '2026-03-01', '2026-03-13');
+
+// Stock valuation (requires stock_items table populated via upsertStockItem)
+const valuation = getStockValuation(db);
+// [{ item_name: 'Agneau', current_stock: 12, unit_cost: 8.50, total_value: 102.00 }, ...]
+```
+
+### Telling OpenBridge to Import a File
+
+You can also trigger the pipeline through the AI bridge:
+
+> "Import today's sales from `~/Downloads/ventes-13-mars.xlsx`"
+
+The Master AI will call the pipeline, report how many rows were imported, and flag any errors.
+
 ## Common Questions
 
 **Q: Is the data persistent?**
