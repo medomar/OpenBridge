@@ -1,7 +1,7 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-09 | **Current Version:** v0.0.15
-> **1332 tasks shipped, 177 findings fixed** across v0.0.1–v0.0.15. Clean slate for next cycle.
+> **Last Updated:** 2026-03-13 | **Current Version:** v0.1.0
+> **1505 tasks shipped, 183 findings fixed** across v0.0.1–v0.1.0. Clean slate for next cycle.
 > See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md) | [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
@@ -10,7 +10,7 @@ This document outlines what has shipped and the vision for future development. F
 
 ## Released (v0.0.1 — v0.0.15)
 
-Everything that shipped — 1332 tasks across 115+ phases.
+Everything that shipped — 1505 tasks across 127 phases.
 
 | Feature                                                                                                                         | Phase   | Version  | Status  |
 | ------------------------------------------------------------------------------------------------------------------------------- | ------- | -------- | ------- |
@@ -108,6 +108,19 @@ Everything that shipped — 1332 tasks across 115+ phases.
 | Memory leak fixes — queue recursion, rate limiter cleanup, cache eviction, connector Maps (OB-F165, F166, F169, F171, F176)     | 113     | v0.0.15  | Shipped |
 | Data safety & error visibility — JSON.parse safety, drain error handling, I/O logging (OB-F172, F173, F174, F175, F177)         | 114     | v0.0.15  | Shipped |
 | Test suite regression fixes — 29 failing tests across 12 files restored to green                                                | 115     | v0.0.15  | Shipped |
+| Document intelligence layer — PDF, Excel, DOCX, CSV, image, email processing (OB-F184)                                          | 116     | v0.1.0   | Shipped |
+| DocType engine — schema & storage, dynamic tables, naming series, REST API, forms (OB-F185)                                     | 117     | v0.1.0   | Shipped |
+| DocType engine — lifecycle & hooks, state machine, notifications, PDF generation (OB-F185)                                      | 118     | v0.1.0   | Shipped |
+| Integration hub — core framework, credential store (AES-256-GCM), webhook router (OB-F186/F189)                                 | 119     | v0.1.0   | Shipped |
+| Integration hub — adapters: Stripe, Google Drive, PostgreSQL, OpenAPI auto-adapter (OB-F186/F178)                               | 120     | v0.1.0   | Shipped |
+| Workflow engine — schedule triggers, conditions, multi-step pipelines, human approval (OB-F187)                                 | 121     | v0.1.0   | Shipped |
+| Business document generation — pdfmake, invoice/quote/receipt templates, QR codes (OB-F188)                                     | 122     | v0.1.0   | Shipped |
+| Universal API adapter — Swagger/Postman/cURL parsing, auto skill-pack generation (OB-F190)                                      | 123     | v0.1.0   | Shipped |
+| Industry templates — café/restaurant, retail, freelance, real estate (OB-F185)                                                  | 124     | v0.1.0   | Shipped |
+| Self-improvement & skill learning — prompt refinement, model selection optimization                                             | 125     | v0.1.0   | Shipped |
+| Skill packs — cloud storage, web deploy, spreadsheet handler, file converter (OB-F178/F179/F180/F181)                           | 126     | v0.1.0   | Shipped |
+| Worker permissions & Agent SDK integration — canUseTool relay, trust levels (OB-F182/F183)                                      | 127     | v0.1.0   | Shipped |
+| WebChat file upload fix — structured attachments + document processing (OB-F191)                                                | —       | v0.1.0   | Shipped |
 
 ---
 
@@ -122,7 +135,7 @@ Integration points:
 - **Config-driven** — pass config programmatically or via `config.json`
 - **Headless mode** — runs without any UI, perfect for embedding
 
-## Next (v0.0.16+)
+## Next (v0.2.0+)
 
 Clean slate — ready for new planning and implementation. See [docs/audit/FUTURE.md](docs/audit/FUTURE.md) for backlog ideas.
 
@@ -191,6 +204,22 @@ Clean slate — ready for new planning and implementation. See [docs/audit/FUTUR
                                                   ├── Phase 113: Memory Leak Fixes
                                                   ├── Phase 114: Data Safety & Error Visibility
                                                   └── Phase 115: Test Suite Regression Fixes
+                                                        │
+                                                        │  ── v0.1.0: Business Platform ──
+                                                        │
+                                                        └──► ✅ v0.1.0: 173 tasks, 6 findings (OB-F178–F191)
+                                                             ├── Phase 116: Document Intelligence Layer
+                                                             ├── Phase 117: DocType Engine — Schema & Storage
+                                                             ├── Phase 118: DocType Engine — Lifecycle & Hooks
+                                                             ├── Phase 119: Integration Hub — Core & Credentials
+                                                             ├── Phase 120: Integration Hub — Adapters
+                                                             ├── Phase 121: Workflow Engine
+                                                             ├── Phase 122: Business Document Generation
+                                                             ├── Phase 123: Universal API Adapter
+                                                             ├── Phase 124: Industry Templates
+                                                             ├── Phase 125: Self-Improvement & Skill Learning
+                                                             ├── Phase 126: Skill Packs (Cloud, Deploy, Spreadsheet, Convert)
+                                                             └── Phase 127: Worker Permissions & Agent SDK
 ```
 
 ---

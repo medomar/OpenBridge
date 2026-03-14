@@ -1,23 +1,22 @@
 # OpenBridge — Future Work
 
 > **Purpose:** Deferred items and backlog for future versions.
-> **Last Updated:** 2026-03-12 | **Current Release:** v0.0.15 (1332 tasks shipped, 177 findings fixed)
-> **Active Development:** v0.1.0–v0.1.7 Business Platform — 173 tasks across Phases 116–127 (see [TASKS.md](TASKS.md))
-> **Status:** Business platform implementation in progress.
+> **Last Updated:** 2026-03-13 | **Current Release:** v0.1.0 (1505 tasks shipped, 183 findings fixed)
+> **Status:** Clean slate. All business platform phases (116–127) shipped.
 
 ---
 
-## Now Scoped (Moved to TASKS.md)
+## Shipped (Previously Scoped)
 
-The following items from the previous backlog are now part of the active task list:
+These items from the backlog shipped in v0.1.0:
 
-| Feature                  | Scoped As                         | Phase |
+| Feature                  | Shipped As                        | Phase |
 | ------------------------ | --------------------------------- | ----- |
 | Scheduled tasks          | Workflow Engine schedule triggers | 121   |
 | Webhook connector        | Integration Hub webhook router    | 119   |
 | Secrets management       | Credential Store (AES-256-GCM)    | 119   |
 | Email template generator | Business Document Generation      | 122   |
-| Browser automation skill | Deferred (see backlog below)      | —     |
+| WebChat file reception   | WebChat attachment fix (OB-F191)  | —     |
 
 ---
 
@@ -61,7 +60,6 @@ The following items from the previous backlog are now part of the active task li
 | Logistics industry template    | Delivery routes, fleet tracking, warehouse DocTypes + workflows                                                | Phase 124 extension       | STRATEGY.md §10                     |
 | Professional services template | Law firm, consulting, accounting DocTypes (clients, cases, billable hours)                                     | Phase 124 extension       | STRATEGY.md §10                     |
 | Template marketplace           | Community-contributed industry templates with install/publish                                                  | Plugin ecosystem          | STRATEGY.md §21                     |
-| WebChat file reception         | Wire document processing into WebChat connector file uploads                                                   | Phase 116 extension       | Connector parity                    |
 | Discord file reception         | Wire document processing into Discord connector file attachments                                               | Phase 116 extension       | Connector parity                    |
 | `call_integration` hook type   | DocType lifecycle hook that calls an integration adapter action                                                | Phase 118 extension       | IMPLEMENTATION-PLAN §B, Part 4      |
 | GraphQL adapter                | Auto-discover and connect to any GraphQL API via introspection                                                 | Phase 123 extension       | STRATEGY.md §7                      |

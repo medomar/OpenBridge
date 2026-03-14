@@ -15,25 +15,39 @@ import type Database from 'better-sqlite3';
 import { getDocTypeByName } from './doctype-store.js';
 import { createLogger } from '../core/logger.js';
 
-// SheetJS — required via CJS interop (no ESM export in the xlsx package)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const XLSX = require('xlsx') as {
-  utils: {
-    book_new: () => XLSXWorkbook;
-    aoa_to_sheet: (data: (string | number | boolean | null)[][]) => XLSXSheet;
-    book_append_sheet: (wb: XLSXWorkbook, ws: XLSXSheet, name: string) => void;
-    sheet_to_csv: (ws: XLSXSheet) => string;
-  };
-  writeFile: (wb: XLSXWorkbook, path: string) => void;
-};
+// Lazy-loaded xlsx module (optional dependency)
 
-interface XLSXWorkbook {
-  SheetNames: string[];
-  Sheets: Record<string, XLSXSheet>;
+interface _XLSXSheet {
+  [key: string]: unknown;
 }
 
-interface XLSXSheet {
-  [key: string]: unknown;
+interface _XLSXWorkbook {
+  SheetNames: string[];
+  Sheets: Record<string, _XLSXSheet>;
+  Props?: Record<string, unknown>;
+}
+
+interface XLSXUtils {
+  book_new(): _XLSXWorkbook;
+  aoa_to_sheet(data: unknown[][]): _XLSXSheet;
+  book_append_sheet(wb: _XLSXWorkbook, ws: _XLSXSheet, name: string): void;
+  sheet_to_csv(ws: _XLSXSheet): string;
+}
+
+interface XLSXModule {
+  utils: XLSXUtils;
+  readFile(path: string, opts?: Record<string, unknown>): _XLSXWorkbook;
+  writeFile(wb: _XLSXWorkbook, path: string): void;
+}
+
+let xlsxModule: XLSXModule | undefined;
+
+async function getXLSX(): Promise<XLSXModule> {
+  if (!xlsxModule) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    xlsxModule = (await import('xlsx')) as any as XLSXModule;
+  }
+  return xlsxModule;
 }
 
 const logger = createLogger('doctype-exporter');
@@ -137,6 +151,7 @@ export async function exportToFile(
   format: 'csv' | 'xlsx',
   filters: Record<string, unknown> = {},
 ): Promise<string> {
+  const XLSX = await getXLSX();
   // ── 1. Load DocType metadata ───────────────────────────────────────────────
   const fullDocType = getDocTypeByName(db, doctypeName);
   if (!fullDocType) {
@@ -171,7 +186,7 @@ export async function exportToFile(
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([mainTable.headers, ...mainTable.rows]);
     XLSX.utils.book_append_sheet(wb, ws, toSheetName(doctype.label_singular || doctypeName));
-    const csv = XLSX.utils.sheet_to_csv(ws);
+    const csv: string = XLSX.utils.sheet_to_csv(ws);
 
     // writeFile supports CSV via the bookType option; however, sheet_to_csv +
     // writeFile('.csv') is simpler and consistent across SheetJS versions.
