@@ -1010,12 +1010,14 @@ export class ClassificationEngine {
       };
     }
 
-    // Default: tool-use — safer than quick-answer for unrecognized actions (OB-F178)
+    // Default: quick-answer — unrecognized messages are likely conversational (OB-1529)
+    // If the quick-answer agent needs file access, it can say so and the user re-sends.
+    // Costs 3x less than tool-use (5 turns vs 15 turns).
     return {
-      class: 'tool-use',
-      maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-      reason: 'keyword fallback: tool-use (default)',
+      class: 'quick-answer',
+      maxTurns: MESSAGE_MAX_TURNS_QUICK,
+      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+      reason: 'keyword fallback: quick-answer (default)',
     };
   }
 
