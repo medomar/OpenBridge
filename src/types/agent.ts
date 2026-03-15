@@ -209,6 +209,7 @@ export const ToolProfileSchema = z.object({
 /** Built-in profile names that ship with OpenBridge */
 export const BuiltInProfileNameSchema = z.enum([
   'read-only',
+  'data-query',
   'code-edit',
   'file-management',
   'full-access',
@@ -231,6 +232,27 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
     name: 'read-only',
     description: 'Safe for exploration and information gathering',
     tools: ['Read', 'Glob', 'Grep'],
+  },
+  'data-query': {
+    name: 'data-query',
+    description:
+      'Read-only data exploration with query tools — for analysing databases, CSV, JSON, and tabular data without modifying files',
+    tools: [
+      'Read',
+      'Glob',
+      'Grep',
+      'Bash(sqlite3:*)',
+      'Bash(python3:*)',
+      'Bash(node:*)',
+      'Bash(jq:*)',
+      'Bash(awk:*)',
+      'Bash(head:*)',
+      'Bash(tail:*)',
+      'Bash(wc:*)',
+      'Bash(sort:*)',
+      'Bash(uniq:*)',
+      'Bash(cut:*)',
+    ],
   },
   'code-edit': {
     name: 'code-edit',
@@ -294,6 +316,7 @@ export const RiskLevelSchema = z.enum(['low', 'medium', 'high', 'critical']);
 /** Maps each built-in profile to its risk level */
 export const PROFILE_RISK_MAP: Record<BuiltInProfileName, RiskLevel> = {
   'read-only': 'low',
+  'data-query': 'low',
   'code-audit': 'low',
   'code-edit': 'medium',
   'file-management': 'medium',
