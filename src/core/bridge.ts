@@ -326,6 +326,33 @@ export class Bridge {
       }
     }
 
+    // Startup sweep: mark stale 'running' agent_activity records as 'abandoned' (OB-1518)
+    // Any record still 'running' after 10 minutes is an orphan from a prior crash.
+    if (this.memory) {
+      try {
+        const db = this.memory.getDb();
+        if (db) {
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+          const now = new Date().toISOString();
+          const result = db
+            .prepare(
+              `UPDATE agent_activity
+               SET status = 'abandoned', completed_at = ?, updated_at = ?
+               WHERE status = 'running' AND started_at < ?`,
+            )
+            .run(now, now, tenMinutesAgo);
+          if (result.changes > 0) {
+            logger.warn(
+              { count: result.changes },
+              'Startup sweep: marked stale running agents as abandoned (likely orphans from a prior crash)',
+            );
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Startup activity sweep failed — continuing');
+      }
+    }
+
     // Clean up legacy .openbridge/ artifacts that were migrated to SQLite
     if (this.memory && this.workspacePath) {
       await this.cleanLegacyDotFolderArtifacts(this.workspacePath, this.memory);
