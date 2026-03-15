@@ -2,158 +2,318 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 | **Fixed:** 6 (183 prior findings archived) | **Last Audit:** 2026-03-15
-> **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
+> **Open:** 7 | **Fixed:** 2 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
 
 ## Open Findings
 
-### OB-F179 — Master AI lacks web deployment skill pack (Vercel, Netlify, Cloudflare Pages)
+### OB-F203 — Claude model context windows and prompt budgets are outdated (Opus 4.6 = 1M, Sonnet 4.6 = 1M)
 
-- **Severity:** 🟡 Medium
+- **Severity:** 🟠 High (upgraded — directly limits Master AI capability)
 - **Status:** Open
-- **Key Files:** `src/master/skill-packs/`, `src/master/master-system-prompt.ts`, `src/core/github-publisher.ts`
+- **Key Files:**
+  - `src/core/adapters/claude-adapter.ts:147-163` — `getPromptBudget()` returns identical `32_768` / `180_000` for all models
+  - `src/core/adapters/claude-sdk.ts:161-170` — **duplicate** `getPromptBudget()` with same hardcoded values
+  - `src/core/model-registry.ts:47-52` — tier mappings use short aliases (`haiku`, `sonnet`, `opus`) without context metadata
+  - `src/master/session-compactor.ts:215` — `promptSizeLimit` defaults to `32_768` regardless of model
+  - `src/core/agent-runner.ts:38` — `MAX_PROMPT_LENGTH = 32_768` constant used for all prompt truncation
+  - `src/core/cost-manager.ts:131-147` — `estimateCostUsd()` pricing predates Opus 4.6 / Sonnet 4.6 rates
 - **Root Cause / Impact:**
-  When a user asks "build a website and deploy it" or "put this live on Vercel", the Master AI has no skill pack for real server deployment. GitHub Pages publishing exists but is limited to static HTML. Users expect the AI to deploy to modern platforms (Vercel, Netlify, Cloudflare Pages) and return a live URL.
-- **Fix:** Create a `web-deploy` built-in skill pack that teaches Master AI to:
-  1. Use `npx vercel --yes`, `npx netlify deploy --prod`, or `npx wrangler pages deploy` via `full-access` workers
-  2. Detect which deploy CLIs are available on the machine (extend AI Discovery or check in worker prompt)
-  3. Return the live URL to the user in the response
-  4. Handle auth tokens via environment variables (VERCEL_TOKEN, NETLIFY_AUTH_TOKEN, etc.)
-  5. Support both static sites and framework apps (Next.js, Vite, etc.)
+  OpenBridge treats **all** Claude models identically with a **212K char total budget** (`32K user + 180K system`) based on the old 200k-token context window. Opus 4.6 and Sonnet 4.6 have **1M token context windows** (~3.4M chars) — the code wastes **80% of available context**. This is the **#1 performance bottleneck**:
+  1. **Truncated conversation history** — `MAX_PROMPT_LENGTH` at line 38 truncates prompts to 32K chars even when Opus 4.6 can accept 3.4M
+  2. **Premature session compaction** — `SessionCompactor` triggers at `32K × 0.8 = 26K` chars when it could handle 640K+
+  3. **Limited workspace maps** — large codebases are pruned before embedding into Master context
+  4. **Lost RAG context** — workspace chunks are discarded to fit the artificial budget
+  5. **Duplicate adapter** — `claude-sdk.ts:161-170` has identical hardcoded values and must be updated in sync
 
-### OB-F180 — Master AI lacks spreadsheet read/write skill pack (Excel, CSV, Google Sheets)
+  **Verified code (claude-adapter.ts:147-163):**
 
-- **Severity:** 🟡 Medium
+  ```typescript
+  getPromptBudget(model?: string) {
+    const isHaiku = model != null && /haiku/i.test(model);
+    const isSonnet = model != null && /sonnet/i.test(model);
+    const isOpus = model != null && /opus/i.test(model);
+    if (isHaiku || isSonnet || isOpus) {
+      return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 }; // ← ALL SAME
+    }
+    return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };   // ← DEFAULT SAME
+  }
+  ```
+
+  **Official specs:**
+
+  | Model                                          | Context Window            | Max Output  | Pricing (input/output per MTok) |
+  | ---------------------------------------------- | ------------------------- | ----------- | ------------------------------- |
+  | Claude Opus 4.6 (`claude-opus-4-6`)            | 1M tokens (~3.4M chars)   | 128k tokens | $5 / $25                        |
+  | Claude Sonnet 4.6 (`claude-sonnet-4-6`)        | 1M tokens (~3.4M chars)   | 64k tokens  | $3 / $15                        |
+  | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) | 200k tokens (~680k chars) | 64k tokens  | $1 / $5                         |
+
+- **Fix (7 files, exact locations):**
+  1. **`claude-adapter.ts:147-163`** — make `getPromptBudget()` model-aware:
+     - Opus 4.6 (`/opus.*4[.-]6/i` or `claude-opus-4-6`): `maxPromptChars: 128_000`, `maxSystemPromptChars: 800_000`
+     - Sonnet 4.6 (`/sonnet.*4[.-]6/i` or `claude-sonnet-4-6`): `maxPromptChars: 128_000`, `maxSystemPromptChars: 800_000`
+     - Haiku 4.5 / older / unknown: keep `32_768` / `180_000`
+  2. **`claude-sdk.ts:161-170`** — apply identical model-aware logic (duplicate code)
+  3. **`model-registry.ts:47-52`** — add `contextTokens` and `maxOutputTokens` metadata to `ModelEntry`:
+     - `opus` → `contextTokens: 1_000_000, maxOutputTokens: 128_000`
+     - `sonnet` → `contextTokens: 1_000_000, maxOutputTokens: 64_000`
+     - `haiku` → `contextTokens: 200_000, maxOutputTokens: 64_000`
+  4. **`session-compactor.ts:215`** — replace hardcoded `32_768` default with model-aware lookup; accept `modelId` in `CompactorConfig`
+  5. **`agent-runner.ts:38`** — replace `MAX_PROMPT_LENGTH = 32_768` constant with a function that accepts model name and returns appropriate limit
+  6. **`cost-manager.ts:131-147`** — update `estimateCostUsd()` to use current pricing ($5/$25 Opus, $3/$15 Sonnet, $1/$5 Haiku)
+  7. **`tests/core/adapters/prompt-budget.test.ts`** — update expectations to verify model-specific budgets
+
+### OB-F200 — Seeded system prompt exceeds size cap (49K > 45K) — silently rejected
+
+- **Severity:** 🟠 High (upgraded — Master loses evolved prompt every restart)
 - **Status:** Open
-- **Key Files:** `src/master/skill-packs/spreadsheet-builder.ts`, `src/master/skill-pack-loader.ts`
+- **Key Files:**
+  - `src/memory/prompt-store.ts:7` — `MAX_PROMPT_VERSION_LENGTH = 45_000` (the cap)
+  - `src/memory/prompt-store.ts:66-73` — `createPromptVersion()` silently returns on oversize (no throw, no error to caller)
+  - `src/master/master-manager.ts:1868-1896` — `seedSystemPrompt()` calls `createPromptVersion()`, logs "Seeded Master system prompt" even when DB silently rejected it
+  - `src/master/master-system-prompt.ts` — `generateMasterSystemPrompt()` produces ~49K+ chars output
 - **Root Cause / Impact:**
-  The existing `spreadsheet-builder` skill only generates new XLSX files. When a user asks "read this Excel file and summarize the data" or "update column B in my spreadsheet", the Master AI cannot read existing spreadsheet contents or modify cells in-place. This is a common business user request, especially for non-code workspaces.
-- **Fix:** Create a `spreadsheet-handler` built-in skill pack (or extend `spreadsheet-builder`) that teaches Master AI to:
-  1. Read existing `.xlsx`, `.xls`, `.csv` files using Node.js packages (`exceljs` or `xlsx`/SheetJS) or Python (`openpyxl`, `pandas`) via `full-access` workers
-  2. Extract cell data, sheet names, formulas, and formatting
-  3. Modify existing cells, add rows/columns, apply formulas
-  4. Write back to the same file or create a new output file
-  5. Handle Google Sheets via MCP server if configured
-  6. Support common operations: filter, sort, pivot, aggregate, chart data extraction
+  The Master system prompt generated by `generateMasterSystemPrompt()` is ~49K chars but the DB size cap in `prompt-store.ts:7` is `45_000`. The rejection flow is **silently broken**:
+  1. `seedSystemPrompt()` (master-manager.ts:1868) calls `generateMasterSystemPrompt()` → produces ~49K chars
+  2. Calls `memory.createPromptVersion('master-system', promptContent)` (line 1888)
+  3. `createPromptVersion()` (prompt-store.ts:67) checks `content.length > 45_000` → **returns early** (line 72) — no DB insert, no error thrown
+  4. Back in `seedSystemPrompt()`, the try/catch at line 1893 **never fires** because no error was thrown
+  5. Line 1892 logs `"Seeded Master system prompt"` — **a lie**, the prompt was silently discarded
+
+  **Impact**: The Master AI's **self-improvement loop is broken**. Prompt evolution output is lost every restart. The Master falls back to the default prompt, resetting all learned optimizations. The misleading success log hides this from operators.
+
+  **Verified code (prompt-store.ts:66-73):**
+
+  ```typescript
+  export function createPromptVersion(db, name, content) {
+    if (content.length > MAX_PROMPT_VERSION_LENGTH) {
+      logger.warn(
+        { name, size: content.length, max: MAX_PROMPT_VERSION_LENGTH },
+        'Prompt version rejected: content exceeds size cap',
+      );
+      return; // ← SILENT EXIT: no insert, no throw, caller never knows
+    }
+    // ... transaction proceeds only if under cap
+  }
+  ```
+
+- **Fix (4 files, exact locations):**
+  1. **`prompt-store.ts:67-72`** — change silent `return` to `throw new Error(...)` so the caller knows the save failed
+  2. **`master-manager.ts:1886-1896`** — add pre-flight size check before calling `createPromptVersion()`:
+     - If `promptContent.length > MAX_PROMPT_VERSION_LENGTH`, fall back to file storage via `dotFolder.writeSystemPrompt()` (which has no cap)
+     - Move the "Seeded" success log inside the try block after confirmed save
+  3. **`master-system-prompt.ts`** — add budget-aware prompt assembly: measure total size and progressively truncate less-critical sections (examples, verbose guidance) if exceeding cap
+  4. **`prompt-store.ts:7`** — consider raising cap from `45_000` to `55_000` if 49K is the legitimate baseline after all sections are populated
+
+### OB-F202 — WebChat "New Chat" doesn't reset Master AI session — stays in same conversation
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:**
+  - `src/connectors/webchat/webchat-connector.ts:1167` — `socketSender = 'webchat-user'` (initial per-socket sender)
+  - `src/connectors/webchat/webchat-connector.ts:1324-1327` — `new-session` handler rotates `socketSender` to new UUID
+  - `src/connectors/webchat/ui/js/app.js:1279-1283` — `startNewConversation()` clears UI + sends `{ type: 'new-session' }`
+  - `src/master/master-manager.ts:1801-1814` — `this.masterSession` created once per Bridge, never reset per sender
+  - `src/master/prompt-context-builder.ts:605-637` — `buildConversationContext()` filters by `sessionId` only, never by sender/`user_id`
+  - `src/memory/conversation-store.ts:113-130` — `getSessionHistory()` SQL: `WHERE session_id = ?` (no sender filter)
+  - `src/memory/retrieval.ts:930-950` — `searchConversations()` FTS5 search has no `user_id` filter
+- **Root Cause / Impact:**
+  The Master session is **per-Bridge, not per-sender**. When "New Chat" is clicked:
+  1. UI clears local messages and sends `{ type: 'new-session' }` (app.js:1279)
+  2. Backend rotates `socketSender` to `webchat-user-${randomUUID()}` (webchat-connector.ts:1325)
+  3. **But** the Master's `this.masterSession.sessionId` is unchanged (master-manager.ts:1801)
+  4. Next message is stored as `(session_id: master-uuid-1, user_id: webchat-user-{new-uuid})`
+  5. `getSessionHistory(master-uuid-1)` at conversation-store.ts:113 returns **ALL messages** from ALL "chats" — filters only by `session_id`, ignores `user_id`
+  6. `buildConversationContext()` at prompt-context-builder.ts:605 passes the **same sessionId** regardless of sender
+
+  **Result**: The UI shows a fresh chat but the Master AI still has full conversation history from the previous "chat". The `user_id` column **is stored in the DB** but **never used to filter** retrieval.
+
+- **Fix (recommended approach: per-sender context filtering):**
+  1. **`prompt-context-builder.ts:605`** — add `sender?: string` parameter to `buildConversationContext()`. When provided, filter conversation history by matching `user_id`
+  2. **`conversation-store.ts:113-130`** — add `getSessionHistoryForSender(sessionId, sender, limit)` that adds `AND user_id = ?` to the SQL WHERE clause
+  3. **`webchat-connector.ts:1324-1327`** — pass `socketSender` through the message pipeline so `buildConversationContext()` receives it
+  4. **`retrieval.ts:930-950`** — add optional `userId` filter to `searchConversations()` for cross-session search isolation
 
 ### OB-F182 — Workers cannot execute destructive file operations (rm, rmdir) — permission prompts unreachable
 
 - **Severity:** 🟡 Medium
 - **Status:** Open
-- **Key Files:** `src/core/agent-runner.ts`, `src/master/worker-orchestrator.ts`
+- **Key Files:**
+  - `src/core/agent-runner.ts:282-291` — `TOOLS_CODE_EDIT` lacks `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`
+  - `src/core/agent-runner.ts:297-309` — `TOOLS_FILE_MANAGEMENT` **already exists** with `rm`, `mv`, `cp`, `mkdir`, `chmod`
+  - `src/core/agent-runner.ts:360-362` — `resolveProfile('file-management')` returns `TOOLS_FILE_MANAGEMENT` (wired up)
+  - `src/core/agent-runner.ts:892,1083` — `stdio: ['ignore', 'pipe', 'pipe']` blocks interactive permission prompts
+  - `src/types/agent.ts:230-309` — `BUILT_IN_PROFILES` Zod schema mirrors `agent-runner.ts` tool lists
+  - `src/master/worker-orchestrator.ts:758-914` — worker profile assignment logic (doesn't auto-escalate to `file-management`)
 - **Root Cause / Impact:**
-  When a user asks Master AI to delete files or directories (e.g., `rm -rf` a folder), the Master spawns a worker with a tool profile (`code-edit` or `full-access`). Two problems prevent this from working:
-  1. **`code-edit` profile lacks `rm`**: The `TOOLS_CODE_EDIT` list only includes `Bash(git:*)`, `Bash(npm:*)`, `Bash(npx:*)` — no `Bash(rm:*)` or `Bash(mv:*)`. The worker's Claude CLI process is restricted and cannot run `rm`.
-  2. **`stdin: 'ignore'` blocks permission prompts**: Even with `full-access` profile (`Bash(*)`), if Claude CLI encounters a tool not pre-approved by `--allowedTools`, it prompts for interactive permission on stdin. Since workers run with `stdio: ['ignore', 'pipe', 'pipe']`, the permission prompt never reaches the messaging user.
-- **Fix:** Several options (pick one or combine):
-  1. Add `Bash(rm:*)` and `Bash(mv:*)` to `TOOLS_CODE_EDIT`
-  2. Create a `file-management` tool profile
-  3. Implement permission relay via Agent SDK `canUseTool` callback
-  4. Auto-approve within workspace for operations scoped to `workspacePath`
+  Two distinct problems:
 
-### OB-F185 — No DocType engine — OpenBridge cannot create or manage structured business data
+  **Problem 1 — `code-edit` profile gap (agent-runner.ts:282-291):**
 
-- **Severity:** 🔴 Critical
-- **Status:** Open
-- **Key Files:** `src/memory/database.ts`, `src/master/master-system-prompt.ts`, `src/master/classification-engine.ts`
-- **Root Cause / Impact:**
-  When a user says "I need to track my invoices" or "create a customer record", OpenBridge has no mechanism to create structured business entities. There is no dynamic schema system, no auto-numbering, no state machine for document lifecycle (draft → sent → paid), no computed fields, and no auto-generated REST API or web forms.
-- **Fix:** Create a DocType engine (`src/intelligence/`) inspired by Frappe DocType + Twenty CRM + Odoo. Schema & storage (Phase 117) and lifecycle & hooks (Phase 118) are implemented. Remaining: production hardening, edge cases, additional hook types.
+  ```typescript
+  export const TOOLS_CODE_EDIT = [
+    'Read',
+    'Edit',
+    'Write',
+    'Glob',
+    'Grep',
+    'Bash(git:*)',
+    'Bash(npm:*)',
+    'Bash(npx:*)', // ← No rm, mv, cp, mkdir
+  ] as const;
+  ```
 
-### OB-F186 — No integration hub — OpenBridge cannot connect to external business services (Stripe, Google Drive, databases)
+  The `file-management` profile **already exists** at line 297 with `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`, `Bash(chmod:*)`, `Bash(git:*)`. It's registered in `resolveProfile()` at line 362. **But the Master AI never selects it** — the worker-orchestrator doesn't auto-escalate from `code-edit` to `file-management` when file operations are needed.
 
-- **Severity:** 🟠 High
-- **Status:** Open
-- **Key Files:** `src/core/file-server.ts`, `src/core/email-sender.ts`, `src/master/master-system-prompt.ts`
-- **Root Cause / Impact:**
-  Business users need to connect Stripe for payments, Google Drive for file storage, their own databases, and arbitrary REST APIs. Core framework (Phase 119) is implemented. Remaining: additional adapters (Phase 120).
+  **Problem 2 — stdin isolation (agent-runner.ts:892,1083):**
+  Workers run with `stdio: ['ignore', 'pipe', 'pipe']`. Even with `full-access` (`Bash(*)`), if Claude CLI encounters a tool not pre-approved, the interactive permission prompt is lost. The worker hangs or exits.
 
-### OB-F192 — Exploration prompt truncated by 66% (97K chars → 32K limit)
+- **Fix (3 files):**
+  1. **`worker-orchestrator.ts`** — add auto-escalation logic: when the spawn marker prompt contains file operation keywords (`delete`, `remove`, `rename`, `move`, `copy`, `mkdir`), escalate profile from `code-edit` → `file-management`
+  2. **`agent-runner.ts:282-291`** — add `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)` to `TOOLS_CODE_EDIT` (practical fix — code editing commonly involves file management)
+  3. **`types/agent.ts:260`** — update `BUILT_IN_PROFILES` Zod schema to match updated `TOOLS_CODE_EDIT`
+  4. **Master system prompt** — add `file-management` profile to worker profile documentation so Master knows to select it for file ops
+
+### OB-F204 — Codex/Aider model context windows are outdated (GPT-5.2-Codex = 400K, GPT-5.3-Codex = 400K)
 
 - **Severity:** 🟡 Medium
-- **Status:** ✅ Fixed
-- **Key Files:** `src/core/agent-runner.ts`, `src/master/exploration-prompts.ts`, `src/master/exploration-coordinator.ts`
+- **Status:** Open
+- **Key Files:**
+  - `src/core/adapters/codex-adapter.ts:380-397` — `getPromptBudget()` returns `100_000` combined; comment claims "~128K token context" (outdated)
+  - `src/core/adapters/aider-adapter.ts:123-138` — `getPromptBudget()` returns `100_000` combined; comment references GPT-3.5 16K (outdated)
+  - `src/core/model-registry.ts:53-65` — Codex: all tiers pinned to `gpt-5.2-codex`; Aider: `gpt-4o-mini` / `gpt-4o` / `o1`
 - **Root Cause / Impact:**
-  On every startup with workspace changes, the exploration prompt is 97K chars but the `maxLength` limit in AgentRunner is 32K, causing 66% of content to be silently truncated. The Master's initial exploration works with only ~34% of the context it needs.
-- **Fix:** Several options:
-  1. Reduce exploration prompt size — break into smaller, focused prompts per scope instead of one monolithic prompt
-  2. Increase `maxLength` limit in AgentRunner for exploration-class prompts
-  3. Use progressive disclosure — send workspace summary first, then dive into changed areas only
+  **Codex adapter (codex-adapter.ts:388-395):**
 
-### OB-F193 — .openbridge state files not persisting between restarts (batch-state, manifest, learnings)
+  ```typescript
+  // Comment: "gpt-5.2-codex (default): estimated ~128K token context window (~512K chars)"
+  // Actual: GPT-5.2-Codex has 400K tokens (~1.6M chars)
+  const combined = 100_000; // ← Wastes 93% of available context
+  ```
+
+  **Aider adapter (aider-adapter.ts:130-136):**
+
+  ```typescript
+  // Comment: "100K chars (~25K tokens at ~4 chars/token) — safe for... GPT-3.5 has 16K"
+  // Actual: Modern models (GPT-4.1, o3, o4-mini) have 200K-1M context
+  const combined = 100_000; // ← Same conservative budget for all models
+  ```
+
+  **Model registry (model-registry.ts:53-65):**
+  - Codex: all 3 tiers map to `gpt-5.2-codex` (GPT-5.3-Codex now available, 25% faster, same price)
+  - Aider: maps to `gpt-4o-mini` / `gpt-4o` / `o1` (all outdated; current: GPT-4.1, o3, o4-mini)
+
+- **Fix (3 files):**
+  1. **`codex-adapter.ts:395`** — increase `combined` from `100_000` to `400_000` chars; update comment to "400K token context window (~1.6M chars)"
+  2. **`aider-adapter.ts:136`** — accept `model` param and return model-specific budgets; update comments to reference current models
+  3. **`model-registry.ts:53-65`** — update Codex `powerful` tier to `gpt-5.3-codex`; update Aider tiers: keep `gpt-4o-mini` (fast), `gpt-4o` → `gpt-4.1` (balanced), `o1` → `o3` (powerful)
+
+### OB-F179 — Master AI lacks web deployment skill pack (Vercel, Netlify, Cloudflare Pages)
+
+- **Severity:** 🟡 Medium
+- **Status:** ✅ Fixed (already implemented — `src/master/skill-packs/web-deploy.ts` exists + registered in `skill-pack-loader.ts` with keywords)
+- **Key Files:**
+  - `src/master/skill-pack-loader.ts` — skill pack discovery + `selectSkillPackForTask()` keyword matching
+  - `src/master/master-system-prompt.ts` — `formatSkillPacksSection()` injects pack list into Master prompt
+  - `src/core/github-publisher.ts` — existing GitHub Pages publisher (single-file only, no directory support)
+  - `src/master/skill-packs/` — **directory does not exist yet** (needs creation)
+- **Root Cause / Impact:**
+  When a user asks "deploy this to Vercel" or "put this live", the Master AI has no domain-specific guidance for web deployment. The existing `github-publisher.ts` only publishes **individual files** to a `gh-pages` branch — no Vercel, Netlify, or Cloudflare Pages support. No `src/master/skill-packs/` directory exists; skill packs are currently defined inline in `skill-pack-loader.ts` or as `DocumentSkill` types.
+- **Fix:**
+  1. Create `src/master/skill-packs/web-deploy.ts` implementing `SkillPack` interface:
+     - Profile: `full-access`
+     - Required tools: `['Bash(npx:*)', 'Bash(vercel:*)', 'Bash(netlify:*)', 'Bash(wrangler:*)']`
+     - Keywords: `deploy`, `vercel`, `netlify`, `cloudflare`, `wrangler`, `go live`, `publish site`
+     - `systemPromptExtension`: CLI detection, auth token handling, framework vs static detection, live URL return format
+  2. Register in skill pack loader's built-in packs array
+  3. Add keyword entries to `SKILL_PACK_KEYWORDS` in `skill-pack-loader.ts`
+  4. Consider integrating `github-publisher.ts` as fallback when no deploy CLI is available
+
+### OB-F180 — Master AI lacks spreadsheet read/write skill pack (Excel, CSV, Google Sheets)
+
+- **Severity:** 🟡 Medium
+- **Status:** ✅ Fixed (already implemented — `src/master/skill-packs/spreadsheet-handler.ts` exists + registered in `skill-pack-loader.ts` with keywords)
+- **Key Files:**
+  - `src/master/skill-pack-loader.ts` — skill pack loading + keyword matching
+  - `src/master/skill-packs/` — **directory does not exist yet**
+  - Existing `spreadsheet-builder` DocumentSkill (if present) — only generates new XLSX, cannot read/modify
+- **Root Cause / Impact:**
+  The Master AI cannot read existing spreadsheet contents or modify cells in-place. When users ask "read this Excel file" or "update column B", the AI lacks domain-specific instructions for spreadsheet I/O. Any existing spreadsheet skill only handles **generation** of new files, not reading or modifying existing ones.
+- **Fix:**
+  1. Create `src/master/skill-packs/spreadsheet-handler.ts` implementing `SkillPack` interface:
+     - Profile: `full-access`
+     - Required tools: `['Bash(node:*)', 'Bash(npm:*)', 'Bash(npx:*)']`
+     - Keywords: `spreadsheet`, `excel`, `xlsx`, `csv`, `read spreadsheet`, `modify`, `pivot`, `aggregate`
+     - `systemPromptExtension`: ExcelJS for .xlsx read/write, SheetJS for legacy .xls, CSV parsing, modify-in-place patterns, Google Sheets via MCP, output conventions
+  2. Register in skill pack loader's built-in packs array
+  3. Add keyword entries to `SKILL_PACK_KEYWORDS`
+
+### OB-F201 — Missing state files warn "expected on first run" on every restart (Nth run)
 
 - **Severity:** 🟢 Low
-- **Status:** ✅ Fixed
-- **Key Files:** `src/master/dotfolder-manager.ts`, `src/master/batch-manager.ts`, `src/master/seed-prompts.ts`
-- **Root Cause / Impact:**
-  On every startup, `batch-state.json`, `prompts/manifest.json`, and `learnings.json` fail to read (ENOENT) and are recreated from scratch. While the code handles this gracefully (first-run behavior), these files should persist between restarts once created.
-- **Fix:**
-  1. Verify that the write path matches the read path for each file
-  2. Check if any cleanup/eviction process is deleting these files
-  3. Ensure `mkdir -p` is called before writes to guarantee parent directories exist
-  4. Add startup diagnostic logging: "File exists: true/false" instead of failing silently
-
-### OB-F194 — workspace-map.json never created after exploration — ENOENT on every message
-
-- **Severity:** 🟠 High
-- **Status:** ✅ Fixed
-- **Key Files:** `src/master/dotfolder-manager.ts:90`, `src/master/master-manager.ts:3311`, `src/master/master-manager.ts:3328`, `src/core/knowledge-retriever.ts:667`
-- **Root Cause / Impact:**
-  Exploration completes all 5 phases successfully (structure, classification, directory dives, assembly, finalization) but `workspace-map.json` is never written to `.openbridge/`. The `readWorkspaceMap()` call in `dotfolder-manager.ts:90` throws ENOENT on **every single message** — logged as WARN each time (15+ times in a single session). This adds noise to logs and means the Master AI never has the workspace map context it needs for routing decisions.
-- **Fix:**
-  1. In `exploration-coordinator.ts` assembly phase: verify `workspace-map.json` is actually written after assembly completes
-  2. In `dotfolder-manager.ts`: check file existence before `readFile()` — return `null` silently if missing, log WARN only once per session
-  3. Add a post-exploration assertion that validates all expected output files exist
-
-### OB-F195 — Codex workers lack per-worker cost cap — single worker can cost $0.28 (28x normal)
-
-- **Severity:** 🟡 Medium
 - **Status:** Open
-- **Key Files:** `src/core/agent-runner.ts`, `src/core/cost-manager.ts`, `src/master/worker-orchestrator.ts`
+- **Key Files:**
+  - `src/master/dotfolder-manager.ts:1131-1155` — `batch-state.json` read with `batchStateWarned` instance flag
+  - `src/master/dotfolder-manager.ts:1796-1820` — `manifest.json` read with `promptManifestWarned` instance flag
+  - `src/master/dotfolder-manager.ts:1574-1598` — `learnings.json` read with `learningsWarned` instance flag
+  - `src/master/dotfolder-manager.ts:59-62` — per-instance warning flags: `learningsWarned`, `batchStateWarned`, `promptManifestWarned`
 - **Root Cause / Impact:**
-  A single Codex worker (`gpt-5.2-codex`, `read-only` profile, 10 max turns) consumed $0.28 — 28x the cost of a typical Claude worker ($0.01). The worker exhausted all 10 turns without completing (`turnsExhausted: true`). No per-worker cost cap exists, so the Master has no way to stop a runaway worker before it burns the budget. Total session cost was $0.17 but a single Codex worker nearly doubled it.
-- **Fix:**
-  1. Add a `maxCostUsd` parameter to worker spawn options (default: $0.05 for read-only, $0.10 for full-access)
-  2. In `agent-runner.ts` streaming path: monitor cumulative cost and kill the process if it exceeds the cap
-  3. Report cost-capped workers back to Master so it can retry with a cheaper model or narrower prompt
+  All three files use the same pattern:
 
-### OB-F196 — Stale "running" agent_activity records for completed Codex workers
+  ```typescript
+  if (!this.learningsWarned) {
+    this.learningsWarned = true;
+    logger.warn({ path }, 'learnings.json not found — expected on first run');
+  }
+  ```
 
-- **Severity:** 🟡 Medium
-- **Status:** ✅ Fixed
-- **Key Files:** `src/memory/activity-store.ts`, `src/master/worker-orchestrator.ts`, `src/core/agent-runner.ts`
-- **Root Cause / Impact:**
-  Two Codex workers (`worker-1773513675012-dmq8c5` and `worker-1773513675012-ziljhs`) completed successfully (exit code 0, costs logged) but their `agent_activity` records still show `status=running` with no `completed_at` timestamp. The completion callback is not updating the DB for Codex streaming workers. This corrupts worker stats, makes `/stats` and worker batch reporting inaccurate, and could cause the worker concurrency limiter to think slots are occupied when they're not.
-- **Fix:**
-  1. In `worker-orchestrator.ts`: ensure the `finally` block that calls `activityStore.update(workerId, { status: 'done' })` runs for streaming agents (Codex path) — not just the non-streaming Claude path
-  2. Add a startup sweep: on bridge start, mark any `running` agents older than 10 minutes as `abandoned`
-  3. Add a test: spawn a Codex streaming worker, wait for completion, assert `status=done` in DB
+  The `learningsWarned`, `batchStateWarned`, `promptManifestWarned` flags are **per-instance** (DotFolderManager class fields at lines 59-62). A new instance is created on each Bridge restart, resetting all flags. The files **do get written** during sessions (verified: `writeBatchState()`, `writePromptManifest()`, `writeLearnings()` all persist to `.openbridge/`), but on subsequent restarts the warning fires again because the instance flag reset.
 
-### OB-F197 — Prompt truncation at 84% — Master context destroyed for large conversation sessions
+  **Impact**: Log noise — misleading WARN messages on every restart create false concern for operators. Not a functional bug.
 
-- **Severity:** 🟠 High
-- **Status:** ✅ Fixed
-- **Key Files:** `src/core/agent-runner.ts`, `src/master/prompt-context-builder.ts`
-- **Root Cause / Impact:**
-  At `18:13:49`, a Master prompt was built at 202K chars but the `maxLength` limit is 32K, causing **84% of content to be silently truncated** (169K chars lost). This is worse than OB-F192 (66% truncation for exploration prompts) — this affects regular message processing. The Master loses conversation history, workspace context, and RAG results, leading to degraded response quality. Occurs when conversation history grows large (40+ turns before compaction kicks in).
-- **Fix:**
-  1. In `prompt-context-builder.ts`: implement budget-aware assembly — allocate token budgets per section (system prompt, memory.md, RAG results, conversation history) and trim each section to fit within budget _before_ concatenation
-  2. Trigger session compaction earlier — the 40-turn threshold is too late if prompts already exceed 200K chars
-  3. Add a prompt-size metric: log prompt size vs. limit ratio so truncation trends are visible
+- **Fix (1 file):**
+  1. **`dotfolder-manager.ts:59-62`** — delete the per-instance warning flags entirely
+  2. **`dotfolder-manager.ts:1138-1140, 1581-1583, 1803-1805`** — change `logger.warn(...)` to `logger.debug(...)` and remove the "expected on first run" text. The `fs.access()` guard already handles missing files cleanly; no need for special warning logic.
 
-### OB-F198 — Classification engine falls back to "keyword fallback: tool-use (default)" for conversational messages
+### OB-F199 — master-system.md ENOENT logged twice on startup with full stack trace
 
 - **Severity:** 🟢 Low
-- **Status:** ✅ Fixed
-- **Key Files:** `src/master/classification-engine.ts`, `src/core/agent-runner.ts`
+- **Status:** Open
+- **Key Files:**
+  - `src/master/dotfolder-manager.ts:507-514` — `readSystemPrompt()` does `fs.readFile()` directly with no `fs.access()` guard
+  - `src/master/master-manager.ts:1853` — `seedSystemPrompt()` calls `readSystemPrompt()` (first ENOENT)
+  - `src/master/master-manager.ts:1733` — `initMasterSession()` calls `readSystemPrompt()` (second ENOENT)
 - **Root Cause / Impact:**
-  Messages like _"I want to get trained to the data..."_ and _"Not yet i wanna know if..."_ are classified as `tool-use` with 15 max turns via `"keyword fallback: tool-use (default)"`. These are conversational/planning messages that should be `quick-answer` (3–5 turns). The fallback wastes turns and cost on messages that don't need file access. Also, _"normally know about the sub-companies..."_ was classified as `complex-task` via `"keyword match: batch-mode"` — likely a false positive on the word "batch" or "command" in the voice transcription.
-- **Fix:**
-  1. Add a conversational/planning intent to the classifier — messages asking about configuration, workflow, or clarification should default to `quick-answer`, not `tool-use`
-  2. Tighten keyword matching: require keyword + context (e.g., "batch" alone shouldn't trigger `batch-mode` — needs "batch process" or "run batch")
-  3. When the AI classifier returns a result, prefer it over keyword fallback even if confidence is moderate
+  Unlike `readWorkspaceMap()` (lines 92-120) and `readLearnings()` (lines 574-598) which guard with `fs.access()` before `fs.readFile()`, `readSystemPrompt()` jumps straight to `fs.readFile()`:
+
+  ```typescript
+  // dotfolder-manager.ts:507-514
+  public async readSystemPrompt(): Promise<string | null> {
+    try {
+      return await fs.readFile(this.getSystemPromptPath(), 'utf-8');
+    } catch (err) {
+      logger.warn({ err, path: ... }, 'Failed to read master-system.md');  // ← Full stack trace
+      return null;
+    }
+  }
+  ```
+
+  Called twice on startup (from `seedSystemPrompt` then `initMasterSession`), producing two WARN logs with full ENOENT stack traces. After `seedSystemPrompt()` creates the file, the second call succeeds — but the first call always fails on fresh workspaces.
+
+  **Impact**: Log noise — two scary-looking WARN entries with stack traces on every fresh workspace startup. Not a functional bug (the file is created by `seedSystemPrompt` before the second read).
+
+- **Fix (1 file):**
+  1. **`dotfolder-manager.ts:507-514`** — add `fs.access()` guard before `fs.readFile()`, matching the pattern already used by `readWorkspaceMap()` and `readLearnings()`:
+     ```typescript
+     public async readSystemPrompt(): Promise<string | null> {
+       const path = this.getSystemPromptPath();
+       try { await fs.access(path); } catch { return null; }
+       try { return await fs.readFile(path, 'utf-8'); }
+       catch (err) { logger.warn({ err, path }, 'Failed to read master-system.md'); return null; }
+     }
+     ```
 
 ---
 
@@ -176,7 +336,7 @@ Severity levels: 🔴 Critical | 🟠 High | 🟡 Medium | 🟢 Low
 
 ## Archive
 
-183 findings fixed across v0.0.1–v0.1.0:
-[V0](archive/v0/FINDINGS-v0.md) | [V2](archive/v2/FINDINGS-v2.md) | [V4](archive/v4/FINDINGS-v4.md) | [V5](archive/v5/FINDINGS-v5.md) | [V6](archive/v6/FINDINGS-v6.md) | [V7](archive/v7/FINDINGS-v7.md) | [V8](archive/v8/FINDINGS-v8.md) | [V15](archive/v15/FINDINGS-v15.md) | [V16](archive/v16/FINDINGS-v16.md) | [V17](archive/v17/FINDINGS-v17.md) | [V18](archive/v18/FINDINGS-v18.md) | [V19](archive/v19/FINDINGS-v19.md) | [V21](archive/v21/FINDINGS-v21.md) | [V24](archive/v24/FINDINGS-v24.md) | [V25](archive/v25/FINDINGS-v25.md)
+192 findings fixed across v0.0.1–v0.1.1:
+[V0](archive/v0/FINDINGS-v0.md) | [V2](archive/v2/FINDINGS-v2.md) | [V4](archive/v4/FINDINGS-v4.md) | [V5](archive/v5/FINDINGS-v5.md) | [V6](archive/v6/FINDINGS-v6.md) | [V7](archive/v7/FINDINGS-v7.md) | [V8](archive/v8/FINDINGS-v8.md) | [V15](archive/v15/FINDINGS-v15.md) | [V16](archive/v16/FINDINGS-v16.md) | [V17](archive/v17/FINDINGS-v17.md) | [V18](archive/v18/FINDINGS-v18.md) | [V19](archive/v19/FINDINGS-v19.md) | [V21](archive/v21/FINDINGS-v21.md) | [V24](archive/v24/FINDINGS-v24.md) | [V25](archive/v25/FINDINGS-v25.md) | [V26](archive/v26/FINDINGS-v26.md)
 
 ---
