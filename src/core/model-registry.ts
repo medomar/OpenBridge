@@ -78,7 +78,8 @@ const DEFAULT_MODEL_MAPS: Record<string, ModelEntry[]> = {
     // All tiers map to the same model until Codex expands ChatGPT-auth model support.
     { id: 'gpt-5.2-codex', tier: 'fast', provider: 'codex' },
     { id: 'gpt-5.2-codex', tier: 'balanced', provider: 'codex' },
-    { id: 'gpt-5.2-codex', tier: 'powerful', provider: 'codex' },
+    // gpt-5.3-codex is 25% faster at the same pricing as gpt-5.2-codex.
+    { id: 'gpt-5.3-codex', tier: 'powerful', provider: 'codex' },
   ],
   aider: [
     { id: 'gpt-4o-mini', tier: 'fast', provider: 'aider' },
