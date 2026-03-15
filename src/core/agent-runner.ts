@@ -11,6 +11,7 @@ import type { TaskManifest, ToolProfile } from '../types/agent.js';
 import type { ModelRegistry } from './model-registry.js';
 import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
+import { getClaudePromptBudget } from './adapters/claude-budget.js';
 import type { SandboxConfig, SecurityConfig } from '../types/config.js';
 import { isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
 import { checkProfileCostSpike, estimateCostUsd, getProfileCostCap } from './cost-manager.js';
@@ -35,7 +36,14 @@ export {
 
 const logger = createLogger('agent-runner');
 
-const MAX_PROMPT_LENGTH = 32_768;
+/**
+ * Returns model-aware max prompt length.
+ * Opus 4.6 / Sonnet 4.6: 128_000 chars (1M token context window).
+ * Haiku 4.5 and all others: 32_768 chars (conservative default).
+ */
+function getMaxPromptLength(model?: string): number {
+  return getClaudePromptBudget(model).maxPromptChars;
+}
 
 /** Module-level metrics collector — set once by the host (e.g. Bridge) via setAgentRunnerMetrics(). */
 let _promptMetrics: MetricsCollector | null = null;
@@ -560,7 +568,7 @@ export async function manifestToSpawnOptions(
  */
 export function truncatePrompt(
   prompt: string,
-  maxLength: number = MAX_PROMPT_LENGTH,
+  maxLength: number = getMaxPromptLength(),
   context: string = 'unknown',
 ): string {
   const warnThreshold = Math.floor(maxLength * 0.8);
@@ -612,7 +620,7 @@ export function truncatePrompt(
  */
 export function sanitizePrompt(
   prompt: string,
-  maxLength: number = MAX_PROMPT_LENGTH,
+  maxLength: number = getMaxPromptLength(),
   context: string = 'unknown',
 ): string {
   // eslint-disable-next-line no-control-regex
@@ -859,7 +867,7 @@ export function buildArgs(opts: SpawnOptions): string[] {
   // positional argument as the prompt. --allowedTools is variadic (<tools...>)
   // and would consume a trailing prompt as a tool name when no other option
   // follows it (e.g. --append-system-prompt).
-  args.push(sanitizePrompt(opts.prompt, MAX_PROMPT_LENGTH, 'worker'));
+  args.push(sanitizePrompt(opts.prompt, getMaxPromptLength(opts.model), 'worker'));
 
   if (opts.allowedTools && opts.allowedTools.length > 0) {
     for (const tool of opts.allowedTools) {
