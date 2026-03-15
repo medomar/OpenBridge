@@ -914,6 +914,18 @@ export class WorkerOrchestrator {
       profile = selectedPack.toolProfile;
     }
 
+    // OB-1548: Auto-escalate from code-edit to file-management for file operation tasks.
+    // When the worker prompt contains file management keywords and the current profile is
+    // code-edit, escalate to file-management which includes Bash(rm:*), Bash(mv:*), etc.
+    const FILE_OP_KEYWORDS = /\b(delete|remove|rm|rmdir|rename|move|mv|copy|cp|mkdir)\b/i;
+    if (profile === 'code-edit' && FILE_OP_KEYWORDS.test(body.prompt)) {
+      logger.debug(
+        { workerId, previousProfile: 'code-edit', newProfile: 'file-management' },
+        'Auto-escalating profile from code-edit to file-management for file operation task',
+      );
+      profile = 'file-management';
+    }
+
     // Adaptive model selection (OB-724): marker override -> learned best model -> heuristics
     if (!resolvedModel && memory) {
       const taskType = classifyTaskType(body.prompt);
