@@ -56,6 +56,7 @@ export class DotFolderManager {
   private readonly explorationDirsPath: string;
   private readonly promptsPath: string;
   private readonly contextPath: string;
+  private workspaceMapWarned = false;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -86,12 +87,31 @@ export class DotFolderManager {
    * Returns null if the file doesn't exist or is invalid.
    */
   public async readWorkspaceMap(): Promise<WorkspaceMap | null> {
+    const mapPath = this.getMapPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getMapPath(), 'utf-8');
+      await fs.access(mapPath);
+    } catch {
+      // File does not exist — expected on first run
+      if (!this.workspaceMapWarned) {
+        this.workspaceMapWarned = true;
+        logger.warn(
+          { path: mapPath },
+          'workspace-map.json not found — exploration may not have run yet',
+        );
+      } else {
+        logger.debug({ path: mapPath }, 'workspace-map.json not found');
+      }
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(mapPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return WorkspaceMapSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getMapPath() }, 'Failed to read workspace-map.json');
+      logger.warn({ err, path: mapPath }, 'Failed to read workspace-map.json');
       return null;
     }
   }
