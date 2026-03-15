@@ -600,7 +600,9 @@ export class ClassificationEngine {
       };
     }
 
-    // Batch Mode keywords (OB-1605)
+    // Batch Mode keywords (OB-1605, OB-1527)
+    // Require compound patterns — single words like 'batch' or 'command' alone must not trigger.
+    // Exclude 'bon de commande' (French purchase order — not a batch command).
     const batchKeywords = [
       'one by one',
       'all tasks',
@@ -610,8 +612,16 @@ export class ClassificationEngine {
       'for each',
       'iterate through',
       'all pending',
+      'batch process',
+      'batch run',
+      'run batch',
+      'batch of',
     ];
-    if (batchKeywords.some((kw) => lower.includes(kw))) {
+    const batchExclusions = ['bon de commande'];
+    if (
+      batchKeywords.some((kw) => lower.includes(kw)) &&
+      !batchExclusions.some((ex) => lower.includes(ex))
+    ) {
       const commitAfterEachKeywords = ['commit after each', 'commit each', 'commit after every'];
       const commitAfterEach = commitAfterEachKeywords.some((kw) => lower.includes(kw));
       return {
