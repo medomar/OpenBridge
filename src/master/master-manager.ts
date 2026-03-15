@@ -1109,8 +1109,9 @@ export class MasterManager {
   private async buildConversationContext(
     userMessage: string,
     sessionId?: string,
+    sender?: string,
   ): Promise<string | null> {
-    return this.promptContextBuilder.buildConversationContext(userMessage, sessionId);
+    return this.promptContextBuilder.buildConversationContext(userMessage, sessionId, sender);
   }
 
   /** Build learned patterns context. Delegated to PromptContextBuilder (OB-1282). */
@@ -3219,7 +3220,7 @@ export class MasterManager {
         workerNextStepsContext,
         templateSelectionContext,
       ] = await Promise.all([
-        this.buildConversationContext(message.content, sessionId),
+        this.buildConversationContext(message.content, sessionId, message.sender),
         this.buildLearnedPatternsContext(),
         this.buildWorkerNextStepsContext(),
         this.promptContextBuilder.buildTemplateSelectionContext(),
@@ -4030,7 +4031,7 @@ export class MasterManager {
         streamLearnedPatternsContext,
         streamWorkerNextStepsContext,
       ] = await Promise.all([
-        this.buildConversationContext(message.content, streamSessionId),
+        this.buildConversationContext(message.content, streamSessionId, message.sender),
         this.buildLearnedPatternsContext(),
         this.buildWorkerNextStepsContext(),
       ]);
