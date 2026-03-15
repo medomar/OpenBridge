@@ -73,6 +73,7 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
+import { MAX_PROMPT_VERSION_LENGTH } from '../memory/prompt-store.js';
 import { applyToolPromptPrefix, seedPromptLibrary, SEED_PROMPTS } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import type { IntegrationHub } from '../integrations/hub.js';
@@ -1885,7 +1886,20 @@ export class MasterManager {
 
     try {
       if (this.memory) {
-        await this.memory.createPromptVersion('master-system', promptContent);
+        if (promptContent.length > MAX_PROMPT_VERSION_LENGTH) {
+          logger.warn(
+            { size: promptContent.length, max: MAX_PROMPT_VERSION_LENGTH },
+            'System prompt exceeds DB size cap — falling back to file storage',
+          );
+          await this.dotFolder.writeSystemPrompt(promptContent);
+        } else {
+          try {
+            await this.memory.createPromptVersion('master-system', promptContent);
+          } catch (dbErr) {
+            logger.warn({ error: dbErr }, 'DB prompt save failed — falling back to file storage');
+            await this.dotFolder.writeSystemPrompt(promptContent);
+          }
+        }
       } else {
         await this.dotFolder.writeSystemPrompt(promptContent);
       }
