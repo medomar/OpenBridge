@@ -41,8 +41,8 @@
     "defaultRole": "owner",
     "_channelRoles_note": "Per-channel role overrides — takes precedence over defaultRole for the matching channel type. Useful when you want webchat users to have restricted access while WhatsApp remains owner-level.",
     "channelRoles": {
-      "webchat": "developer",
-      "telegram": "viewer"
+      "webchat": "owner",
+      "telegram": "admin"
     }
   },
   "security": {
