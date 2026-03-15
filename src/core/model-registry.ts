@@ -83,8 +83,8 @@ const DEFAULT_MODEL_MAPS: Record<string, ModelEntry[]> = {
   ],
   aider: [
     { id: 'gpt-4o-mini', tier: 'fast', provider: 'aider' },
-    { id: 'gpt-4o', tier: 'balanced', provider: 'aider' },
-    { id: 'o1', tier: 'powerful', provider: 'aider' },
+    { id: 'gpt-4.1', tier: 'balanced', provider: 'aider' },
+    { id: 'o3', tier: 'powerful', provider: 'aider' },
   ],
 };
 

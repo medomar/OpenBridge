@@ -35,8 +35,8 @@ describe('ModelRegistry', () => {
 
       const all = registry.getAll();
       expect(all.map((m) => m.id)).toContain('gpt-4o-mini');
-      expect(all.map((m) => m.id)).toContain('gpt-4o');
-      expect(all.map((m) => m.id)).toContain('o1');
+      expect(all.map((m) => m.id)).toContain('gpt-4.1');
+      expect(all.map((m) => m.id)).toContain('o3');
     });
 
     it('accepts custom model entries instead of defaults', () => {
@@ -117,8 +117,8 @@ describe('ModelRegistry', () => {
     it('translates foreign provider models to equivalent tier', () => {
       const registry = createModelRegistry('claude');
 
-      // gpt-4o is aider's "balanced" → claude's balanced is "sonnet"
-      expect(registry.resolveModelOrTier('gpt-4o')).toBe('sonnet');
+      // gpt-4.1 is aider's "balanced" → claude's balanced is "sonnet"
+      expect(registry.resolveModelOrTier('gpt-4.1')).toBe('sonnet');
       // gpt-5.2-codex is codex's "fast" → claude's fast is "haiku"
       expect(registry.resolveModelOrTier('gpt-5.2-codex')).toBe('haiku');
     });
