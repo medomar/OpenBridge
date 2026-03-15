@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Fixed:** 4 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 7 | **Fixed:** 5 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -122,7 +122,7 @@
 ### OB-F196 — Stale "running" agent_activity records for completed Codex workers
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/memory/activity-store.ts`, `src/master/worker-orchestrator.ts`, `src/core/agent-runner.ts`
 - **Root Cause / Impact:**
   Two Codex workers (`worker-1773513675012-dmq8c5` and `worker-1773513675012-ziljhs`) completed successfully (exit code 0, costs logged) but their `agent_activity` records still show `status=running` with no `completed_at` timestamp. The completion callback is not updating the DB for Codex streaming workers. This corrupts worker stats, makes `/stats` and worker batch reporting inaccurate, and could cause the worker concurrency limiter to think slots are occupied when they're not.

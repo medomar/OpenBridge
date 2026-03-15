@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 11 | **In Progress:** 0 | **Done:** 14 (1505 archived)
+> **Pending:** 10 | **In Progress:** 0 | **Done:** 15 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -45,7 +45,7 @@
 | --- | ----- | ---------------------------------- | ----- | ------------ | ------- |
 | P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅      |
 | P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | ✅      |
-| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | Pending |
+| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | ✅      |
 | P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | Pending |
 | P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | Pending |
 
@@ -95,7 +95,7 @@
 | OB-1517 | In `src/master/worker-orchestrator.ts`, find the worker completion handler for streaming agents (the Codex/streaming path). Ensure the `finally` block calls `this.memory.updateActivity(workerId, { status: 'done', completed_at: new Date().toISOString() })` for ALL agent types — not just the non-streaming Claude path. Read both the streaming and non-streaming completion paths and verify they converge on the same activity update. | OB-F196 | opus   | ✅ Done |
 | OB-1518 | In `src/core/bridge.ts` `start()` method, add a startup sweep after `MemoryManager.init()`: query `agent_activity` for records with `status = 'running'` and `started_at` older than 10 minutes. Update them to `status = 'abandoned'` with a log entry. This cleans up orphans from prior crashes or missed completion callbacks.                                                                                                             | OB-F196 | sonnet | ✅ Done |
 | OB-1519 | In `src/memory/activity-store.ts`, add a method `sweepStaleRunning(maxAgeMs: number): number` that updates all `running` records older than `maxAgeMs` to `abandoned` status and returns the count. Add a `completed_at` timestamp set to the sweep time.                                                                                                                                                                                      | OB-F196 | sonnet | ✅ Done |
-| OB-1520 | Add unit test: mock a streaming agent (Codex path) that completes with exit code 0, assert that `agent_activity` record transitions from `running` → `done` with a `completed_at` timestamp. Add a second test: create 3 stale `running` records older than 15 minutes, call `sweepStaleRunning(600000)`, assert all 3 are now `abandoned`. File: `tests/master/worker-activity-tracking.test.ts`.                                             | OB-F196 | sonnet | Pending |
+| OB-1520 | Add unit test: mock a streaming agent (Codex path) that completes with exit code 0, assert that `agent_activity` record transitions from `running` → `done` with a `completed_at` timestamp. Add a second test: create 3 stale `running` records older than 15 minutes, call `sweepStaleRunning(600000)`, assert all 3 are now `abandoned`. File: `tests/master/worker-activity-tracking.test.ts`.                                             | OB-F196 | sonnet | ✅ Done |
 
 ---
 
