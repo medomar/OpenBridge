@@ -123,6 +123,15 @@ describe('prompt-store.ts', () => {
       expect(result).not.toBeNull();
       expect(result!.content).toBe(exactContent);
     });
+
+    it('saves content under the size cap without throwing', () => {
+      const underCapContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH - 1_000);
+      expect(() => createPromptVersion(db, 'under-cap-prompt', underCapContent)).not.toThrow();
+
+      const result = getActivePrompt(db, 'under-cap-prompt');
+      expect(result).not.toBeNull();
+      expect(result!.content).toBe(underCapContent);
+    });
   });
 
   describe('recordPromptOutcome', () => {
