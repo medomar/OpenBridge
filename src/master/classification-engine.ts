@@ -351,9 +351,11 @@ export class ClassificationEngine {
       `Categories and turn guidance:\n` +
       `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
       `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
-      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30`;
+      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30\n\n` +
+      `Include a "confidence" field (0.0-1.0) indicating how confident you are in your classification.`;
 
     let classificationResult: ClassificationResult;
+    let aiResult: (ClassificationResult & { confidence: number }) | null = null;
 
     try {
       const result = await Promise.race([
@@ -378,6 +380,7 @@ export class ClassificationEngine {
           const cls = parsed['class'];
           const turns = parsed['maxTurns'];
           const reason = typeof parsed['reason'] === 'string' ? parsed['reason'] : '';
+          const confidence = typeof parsed['confidence'] === 'number' ? parsed['confidence'] : 0.5;
 
           if (cls === 'quick-answer' || cls === 'tool-use' || cls === 'complex-task') {
             const maxTurns =
@@ -388,97 +391,115 @@ export class ClassificationEngine {
                   : cls === 'tool-use'
                     ? MESSAGE_MAX_TURNS_TOOL_USE
                     : MESSAGE_MAX_TURNS_PLANNING;
-            logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
-            classificationResult = {
+            logger.debug({ class: cls, maxTurns, reason, confidence }, 'AI classifier result');
+            aiResult = {
               class: cls,
               maxTurns,
               timeout: turnsToTimeout(maxTurns),
-              reason,
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
+              reason: `AI classifier: ${reason}`,
+              confidence,
             };
           }
         } catch {
           const lower = raw.toLowerCase();
           if (lower.includes('quick-answer')) {
-            classificationResult = {
+            aiResult = {
               class: 'quick-answer',
               maxTurns: MESSAGE_MAX_TURNS_QUICK,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-              reason: 'text scan fallback',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           } else if (lower.includes('complex-task')) {
-            classificationResult = {
+            aiResult = {
               class: 'complex-task',
               maxTurns: MESSAGE_MAX_TURNS_PLANNING,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-              reason: 'text scan fallback',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           } else if (lower.includes('tool-use')) {
-            classificationResult = {
+            aiResult = {
               class: 'tool-use',
               maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'text scan fallback',
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           }
         }
       } else {
         const lower = raw.toLowerCase();
         if (lower.includes('quick-answer')) {
-          classificationResult = {
+          aiResult = {
             class: 'quick-answer',
             maxTurns: MESSAGE_MAX_TURNS_QUICK,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else if (lower.includes('complex-task')) {
-          classificationResult = {
+          aiResult = {
             class: 'complex-task',
             maxTurns: MESSAGE_MAX_TURNS_PLANNING,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else if (lower.includes('tool-use')) {
-          classificationResult = {
+          aiResult = {
             class: 'tool-use',
             maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else {
-          logger.warn(
-            { response: raw },
-            'AI classifier returned unexpected response, defaulting to tool-use',
-          );
-          classificationResult = {
-            class: 'tool-use',
-            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'parse failure default',
-          };
+          logger.warn({ response: raw }, 'AI classifier returned unexpected response');
         }
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      classificationResult = this.classifyTaskByKeywords(
-        content,
-        recentUserMessages,
-        lastBotResponse,
-      );
+    }
+
+    // Run keyword classifier as well for priority comparison
+    const keywordResult = this.classifyTaskByKeywords(content, recentUserMessages, lastBotResponse);
+
+    // Priority: AI classifier (confidence ≥ 0.4) > keyword match > default fallback
+    if (aiResult && aiResult.confidence >= 0.4) {
+      classificationResult = {
+        class: aiResult.class,
+        maxTurns: aiResult.maxTurns,
+        timeout: aiResult.timeout,
+        reason: aiResult.reason,
+      };
+      if (aiResult.class !== keywordResult.class) {
+        logger.info(
+          {
+            aiClass: aiResult.class,
+            aiConfidence: aiResult.confidence,
+            keywordClass: keywordResult.class,
+            keywordReason: keywordResult.reason,
+            winner: 'ai-classifier',
+          },
+          'Classification conflict: AI classifier (confidence ≥ 0.4) preferred over keyword match',
+        );
+      }
+    } else {
+      // Preserve keyword-specific flags (batchMode, doctypeCreation, etc.)
+      classificationResult = keywordResult;
+      if (aiResult) {
+        logger.debug(
+          {
+            aiClass: aiResult.class,
+            aiConfidence: aiResult.confidence,
+            keywordClass: keywordResult.class,
+            winner: 'keyword',
+          },
+          'Classification conflict: keyword match preferred over low-confidence AI classifier',
+        );
+      }
     }
 
     // Apply classification learning: if aggregate data shows this class underperforms,
