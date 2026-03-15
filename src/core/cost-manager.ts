@@ -95,6 +95,37 @@ export function resetProfileCostAverages(): void {
 }
 
 /**
+ * Check whether a worker's cumulative cost has exceeded its cap.
+ *
+ * Returns `true` when `currentCost >= maxCost`, indicating the worker should
+ * be killed. Returns `false` when under the cap.
+ */
+export function checkCostCap(currentCost: number, maxCost: number): boolean {
+  return currentCost >= maxCost;
+}
+
+/**
+ * Build a consistent cost-cap warning message for logging and result summaries.
+ *
+ * @param workerId     Identifier for the worker (e.g. "worker-abc123")
+ * @param currentCost  Cost accumulated so far in USD
+ * @param maxCost      Cap threshold in USD
+ * @param model        Model name (e.g. "claude-opus-4-6") or undefined
+ */
+export function formatCostWarning(
+  workerId: string,
+  currentCost: number,
+  maxCost: number,
+  model: string | undefined,
+): string {
+  const modelStr = model ?? 'unknown-model';
+  return (
+    `Worker ${workerId} cost-capped: $${currentCost.toFixed(4)} >= $${maxCost.toFixed(4)}` +
+    ` (model: ${modelStr}) — output may be incomplete`
+  );
+}
+
+/**
  * Estimate the cost in USD for a single agent call.
  * Uses a simple per-call heuristic scaled by output size:
  *   haiku  = $0.001 base + $0.0001 per KB of output

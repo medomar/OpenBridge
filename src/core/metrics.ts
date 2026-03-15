@@ -48,6 +48,10 @@ export interface MetricsSnapshot {
     /** Average prompt size (chars) across all runs. */
     avgChars: number;
   };
+  costCapped: {
+    /** Total number of workers killed because they exceeded their cost cap. */
+    total: number;
+  };
 }
 
 export type MetricsDataProvider = () => MetricsSnapshot;
@@ -89,6 +93,9 @@ export class MetricsCollector {
   private _errorsTotal = 0;
   private _errorsTransient = 0;
   private _errorsPermanent = 0;
+
+  // Cost-capped worker counter
+  private _costCapped = 0;
 
   // Prompt-size tracking
   private _promptRuns = 0;
@@ -140,6 +147,11 @@ export class MetricsCollector {
 
   recordDeadLettered(): void {
     this._deadLettered++;
+  }
+
+  /** Increment the cost-capped worker counter. */
+  recordCostCapped(): void {
+    this._costCapped++;
   }
 
   /**
@@ -196,6 +208,9 @@ export class MetricsCollector {
         lastTruncatedPct: this._promptLastTruncatedPct,
         maxChars: this._promptMaxChars,
         avgChars: this._promptRuns > 0 ? Math.round(this._promptTotalChars / this._promptRuns) : 0,
+      },
+      costCapped: {
+        total: this._costCapped,
       },
     };
   }
