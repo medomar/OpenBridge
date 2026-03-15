@@ -82,7 +82,9 @@ export class ClaudeAdapter implements CLIAdapter {
     // Place the prompt BEFORE --allowedTools. Commander.js parses the first
     // positional argument as the prompt. --allowedTools is variadic (<tools...>)
     // and would consume a trailing prompt as a tool name.
-    args.push(sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars));
+    args.push(
+      sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars, 'worker'),
+    );
 
     if (opts.allowedTools && opts.allowedTools.length > 0) {
       for (const tool of opts.allowedTools) {

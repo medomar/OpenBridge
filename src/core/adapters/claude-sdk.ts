@@ -108,7 +108,9 @@ export class ClaudeSDKAdapter implements CLIAdapter {
     // Return a no-op config that cannot actually spawn
     return {
       binary: '__claude_sdk__',
-      args: [sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars)],
+      args: [
+        sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars, 'worker'),
+      ],
       env: this.cleanEnv({ ...process.env }),
     };
   }
@@ -248,7 +250,7 @@ export class ClaudeSDKAdapter implements CLIAdapter {
   buildQueryOptions(opts: SDKExecuteOptions): { prompt: string; options: SDKOptions } {
     const { spawnOptions, permissionRelay, userId, channel, abortController } = opts;
     const budget = this.getPromptBudget(spawnOptions.model);
-    const prompt = sanitizePrompt(spawnOptions.prompt, budget.maxPromptChars);
+    const prompt = sanitizePrompt(spawnOptions.prompt, budget.maxPromptChars, 'worker');
 
     const sdkOptions: SDKOptions = {
       cwd: spawnOptions.workspacePath,
