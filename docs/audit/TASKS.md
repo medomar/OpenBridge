@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 10 | **In Progress:** 0 | **Done:** 18 (1530 archived)
+> **Pending:** 9 | **In Progress:** 0 | **Done:** 19 (1530 archived)
 > **Last Updated:** 2026-03-15
 
 ## Task Summary
@@ -10,7 +10,7 @@
 | 133   | Claude model budgets + context windows (OB-F203)      | 7     | ✅     |
 | 134   | Prompt size cap + silent rejection (OB-F200)          | 4     | ✅     |
 | 135   | WebChat session isolation (OB-F202)                   | 5     | ✅     |
-| 136   | Worker file operations + profile escalation (OB-F182) | 3     | ◻      |
+| 136   | Worker file operations + profile escalation (OB-F182) | 3     | ✅     |
 | 137   | Codex/Aider model updates (OB-F204)                   | 3     | ◻      |
 | 138   | Startup log noise (OB-F201, OB-F199)                  | 3     | ◻      |
 | 139   | Cross-finding integration tests                       | 3     | ◻      |
@@ -73,7 +73,7 @@
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
 | OB-1547 | In `src/core/agent-runner.ts:282-291`, add `'Bash(rm:*)'`, `'Bash(mv:*)'`, `'Bash(cp:*)'`, `'Bash(mkdir:*)'` to the `TOOLS_CODE_EDIT` array. In `src/types/agent.ts` (`BUILT_IN_PROFILES` at lines 257-261), update the `code-edit` profile's `tools` array to match. Both files must stay in sync. This is the practical immediate fix — code editing commonly involves file management within workspace.                                                                                                                                  | OB-F182 | sonnet | ✅ Done |
 | OB-1548 | In `src/master/worker-orchestrator.ts` (profile assignment logic at lines 758-914), add auto-escalation after skill pack override (after line ~915, before model selection at line ~917). Check if the spawn marker's prompt matches file operation keywords (`/\b(delete\|remove\|rm\|rmdir\|rename\|move\|mv\|copy\|cp\|mkdir)\b/i`). If matched and current profile is `code-edit`, escalate to `file-management`. Log the escalation at DEBUG level. Note: there is currently NO keyword-based escalation — this is new logic.          | OB-F182 | sonnet | ✅ Done |
-| OB-1549 | Unit tests: (1) Verify `resolveProfile('file-management')` returns array containing `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`, `Bash(chmod:*)`. (2) Verify updated `TOOLS_CODE_EDIT` now includes `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`. (3) Verify auto-escalation: mock a spawn marker with prompt "delete the build folder" + profile `code-edit` → verify profile escalated to `file-management`. (4) Verify non-destructive prompt "add a new feature" + profile `code-edit` stays as `code-edit`. | OB-F182 | sonnet | Pending |
+| OB-1549 | Unit tests: (1) Verify `resolveProfile('file-management')` returns array containing `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`, `Bash(chmod:*)`. (2) Verify updated `TOOLS_CODE_EDIT` now includes `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`. (3) Verify auto-escalation: mock a spawn marker with prompt "delete the build folder" + profile `code-edit` → verify profile escalated to `file-management`. (4) Verify non-destructive prompt "add a new feature" + profile `code-edit` stays as `code-edit`. | OB-F182 | sonnet | ✅ Done |
 
 ---
 

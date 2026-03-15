@@ -48,6 +48,12 @@ import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('worker-orchestrator');
 
+/**
+ * Regex matching file-operation keywords that trigger auto-escalation from
+ * `code-edit` to `file-management` profile (OB-1548).
+ */
+export const FILE_OP_KEYWORDS = /\b(delete|remove|rm|rmdir|rename|move|mv|copy|cp|mkdir)\b/i;
+
 // ---------------------------------------------------------------------------
 // Standalone exported interfaces + functions (moved from master-manager.ts)
 // ---------------------------------------------------------------------------
@@ -917,7 +923,6 @@ export class WorkerOrchestrator {
     // OB-1548: Auto-escalate from code-edit to file-management for file operation tasks.
     // When the worker prompt contains file management keywords and the current profile is
     // code-edit, escalate to file-management which includes Bash(rm:*), Bash(mv:*), etc.
-    const FILE_OP_KEYWORDS = /\b(delete|remove|rm|rmdir|rename|move|mv|copy|cp|mkdir)\b/i;
     if (profile === 'code-edit' && FILE_OP_KEYWORDS.test(body.prompt)) {
       logger.debug(
         { workerId, previousProfile: 'code-edit', newProfile: 'file-management' },

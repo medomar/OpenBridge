@@ -245,7 +245,8 @@ describe('Tool group constants', () => {
     expect(TOOLS_READ_ONLY).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('TOOLS_CODE_EDIT contains editing tools plus scoped Bash', () => {
+  it('TOOLS_CODE_EDIT contains editing tools plus scoped Bash including file-op tools', () => {
+    // OB-1547 added file management tools to code-edit profile
     expect(TOOLS_CODE_EDIT).toEqual([
       'Read',
       'Edit',
@@ -255,6 +256,10 @@ describe('Tool group constants', () => {
       'Bash(git:*)',
       'Bash(npm:*)',
       'Bash(npx:*)',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
     ]);
   });
 
@@ -289,10 +294,15 @@ describe('Tool group constants', () => {
       allowedTools: [...TOOLS_CODE_EDIT],
     });
     const toolFlags = args.filter((a) => a === '--allowedTools');
-    expect(toolFlags).toHaveLength(8);
+    // OB-1547 added 4 file-op tools (rm, mv, cp, mkdir) → 12 total
+    expect(toolFlags).toHaveLength(12);
     expect(args).toContain('Bash(git:*)');
     expect(args).toContain('Bash(npm:*)');
     expect(args).toContain('Bash(npx:*)');
+    expect(args).toContain('Bash(rm:*)');
+    expect(args).toContain('Bash(mv:*)');
+    expect(args).toContain('Bash(cp:*)');
+    expect(args).toContain('Bash(mkdir:*)');
     expect(args).not.toContain('--dangerously-skip-permissions');
   });
 
@@ -1457,6 +1467,38 @@ describe('resolveProfile', () => {
 
   it('returns undefined when custom profiles are empty and name is unknown', () => {
     expect(resolveProfile('nonexistent', {})).toBeUndefined();
+  });
+
+  // OB-1549: file-management profile contains all expected file-op tools
+  it('resolves "file-management" to array containing Bash(rm:*), Bash(mv:*), Bash(cp:*), Bash(mkdir:*), Bash(chmod:*)', () => {
+    const tools = resolveProfile('file-management');
+    expect(tools).toBeDefined();
+    expect(tools).toContain('Bash(rm:*)');
+    expect(tools).toContain('Bash(mv:*)');
+    expect(tools).toContain('Bash(cp:*)');
+    expect(tools).toContain('Bash(mkdir:*)');
+    expect(tools).toContain('Bash(chmod:*)');
+  });
+});
+
+// ── TOOLS_CODE_EDIT ─────────────────────────────────────────────────
+
+// OB-1549: TOOLS_CODE_EDIT must include file management tools (OB-1547)
+describe('TOOLS_CODE_EDIT', () => {
+  it('includes Bash(rm:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(rm:*)');
+  });
+
+  it('includes Bash(mv:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(mv:*)');
+  });
+
+  it('includes Bash(cp:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(cp:*)');
+  });
+
+  it('includes Bash(mkdir:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(mkdir:*)');
   });
 });
 
