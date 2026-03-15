@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 3 | **Fixed:** 6 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 2 | **Fixed:** 7 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -179,7 +179,7 @@
 ### OB-F204 — Codex/Aider model context windows are outdated (GPT-5.2-Codex = 400K, GPT-5.3-Codex = 400K)
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/adapters/codex-adapter.ts:380-397` — `getPromptBudget()` returns `100_000` combined; comment claims "~128K token context" (outdated)
   - `src/core/adapters/aider-adapter.ts:123-138` — `getPromptBudget()` returns `100_000` combined; comment references GPT-3.5 16K (outdated)
