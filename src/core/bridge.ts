@@ -27,6 +27,7 @@ import { HealthServer } from './health.js';
 import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
 import { MetricsCollector, MetricsServer } from './metrics.js';
+import { setAgentRunnerMetrics } from './agent-runner.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router, classifyMessagePriority } from './router.js';
@@ -117,6 +118,7 @@ export class Bridge {
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
     this.metrics = new MetricsCollector();
+    setAgentRunnerMetrics(this.metrics);
     this.metricsServer = new MetricsServer(config.metrics);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
     this.queue = new MessageQueue(config.queue, this.metrics);

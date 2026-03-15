@@ -14,6 +14,7 @@ import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import type { SandboxConfig, SecurityConfig } from '../types/config.js';
 import { isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
 import { checkProfileCostSpike, estimateCostUsd, getProfileCostCap } from './cost-manager.js';
+import type { MetricsCollector } from './metrics.js';
 export type { ErrorCategory } from './error-classifier.js';
 export {
   MAX_TURNS_PATTERNS,
@@ -35,6 +36,18 @@ export {
 const logger = createLogger('agent-runner');
 
 const MAX_PROMPT_LENGTH = 32_768;
+
+/** Module-level metrics collector — set once by the host (e.g. Bridge) via setAgentRunnerMetrics(). */
+let _promptMetrics: MetricsCollector | null = null;
+
+/**
+ * Wire a MetricsCollector into the agent-runner module so that
+ * `truncatePrompt` can emit prompt-size metrics without requiring
+ * the collector to be threaded through every call site.
+ */
+export function setAgentRunnerMetrics(collector: MetricsCollector | null): void {
+  _promptMetrics = collector;
+}
 
 /**
  * Default max-turns limits to prevent runaway agents.
@@ -564,6 +577,7 @@ export function truncatePrompt(
       },
       `[${context}] Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
     );
+    _promptMetrics?.recordPromptSize(prompt.length, maxLength, percentLost);
     return prompt.slice(0, maxLength);
   }
 
@@ -580,6 +594,7 @@ export function truncatePrompt(
     );
   }
 
+  _promptMetrics?.recordPromptSize(prompt.length, maxLength, 0);
   return prompt;
 }
 

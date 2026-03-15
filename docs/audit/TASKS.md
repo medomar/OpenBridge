@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 16 | **In Progress:** 0 | **Done:** 9 (1505 archived)
+> **Pending:** 15 | **In Progress:** 0 | **Done:** 10 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -79,7 +79,7 @@
 | OB-1512 | In `src/core/agent-runner.ts`, replace the single `maxLength = 32768` truncation with a graduated approach: log a WARN when any prompt exceeds 80% of the limit (26K chars), and include the caller context (exploration vs message-processing vs worker) in the log. Move the truncation to a named function `truncatePrompt(prompt, maxLength, context)` that logs what was lost.                                                                                       | OB-F197 | sonnet | ✅ Done |
 | OB-1513 | In `src/master/session-compactor.ts`, add a prompt-size-based compaction trigger alongside the existing turn-count trigger. When `prompt-context-builder.ts` reports a prompt exceeding 80% of the 32K limit, trigger early compaction regardless of turn count. Add a `promptSizeExceeded` event or callback from the builder to the compactor.                                                                                                                          | OB-F197 | sonnet | ✅ Done |
 | OB-1514 | For exploration prompts (OB-F192): in `src/master/exploration-prompts.ts`, split the monolithic exploration prompt into per-phase focused prompts. Each phase prompt should be self-contained and under 16K chars. The assembly phase should receive only the intermediate outputs (structure-scan.json, classification.json, directory dive results) — not the full workspace content. Read the current prompt sizes and measure what each phase actually needs.         | OB-F192 | opus   | ✅ Done |
-| OB-1515 | Add a prompt-size metric to `src/core/metrics.ts`: track `prompt_size_chars`, `prompt_size_limit`, `prompt_truncated_pct` per agent run. Expose via the existing metrics endpoint. This enables monitoring prompt budget health over time without parsing logs.                                                                                                                                                                                                           | OB-F197 | sonnet | Pending |
+| OB-1515 | Add a prompt-size metric to `src/core/metrics.ts`: track `prompt_size_chars`, `prompt_size_limit`, `prompt_truncated_pct` per agent run. Expose via the existing metrics endpoint. This enables monitoring prompt budget health over time without parsing logs.                                                                                                                                                                                                           | OB-F197 | sonnet | ✅ Done |
 | OB-1516 | Add unit test: build a conversation context with 50 turns of history, assert the assembled prompt is under 32K chars and all sections are present (system prompt, memory, RAG, history). Add a second test: verify that when conversation history is 200K chars, it is trimmed to the 10K budget while keeping the most recent messages. File: `tests/master/prompt-budget.test.ts`.                                                                                      | OB-F197 | sonnet | Pending |
 
 ---
