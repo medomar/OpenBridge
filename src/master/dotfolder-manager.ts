@@ -122,6 +122,7 @@ export class DotFolderManager {
    */
   public async writeWorkspaceMap(map: WorkspaceMap): Promise<void> {
     const validated = WorkspaceMapSchema.parse(map);
+    await fs.mkdir(this.dotFolderPath, { recursive: true });
     await fs.writeFile(this.getMapPath(), JSON.stringify(validated, null, 2), 'utf-8');
   }
 

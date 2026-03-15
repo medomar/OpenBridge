@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 0 (183 prior findings archived) | **Last Audit:** 2026-03-13
+> **Open:** 12 | **Fixed:** 0 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -94,6 +94,66 @@
   2. Check if any cleanup/eviction process is deleting these files
   3. Ensure `mkdir -p` is called before writes to guarantee parent directories exist
   4. Add startup diagnostic logging: "File exists: true/false" instead of failing silently
+
+### OB-F194 — workspace-map.json never created after exploration — ENOENT on every message
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/master/dotfolder-manager.ts:90`, `src/master/master-manager.ts:3311`, `src/master/master-manager.ts:3328`, `src/core/knowledge-retriever.ts:667`
+- **Root Cause / Impact:**
+  Exploration completes all 5 phases successfully (structure, classification, directory dives, assembly, finalization) but `workspace-map.json` is never written to `.openbridge/`. The `readWorkspaceMap()` call in `dotfolder-manager.ts:90` throws ENOENT on **every single message** — logged as WARN each time (15+ times in a single session). This adds noise to logs and means the Master AI never has the workspace map context it needs for routing decisions.
+- **Fix:**
+  1. In `exploration-coordinator.ts` assembly phase: verify `workspace-map.json` is actually written after assembly completes
+  2. In `dotfolder-manager.ts`: check file existence before `readFile()` — return `null` silently if missing, log WARN only once per session
+  3. Add a post-exploration assertion that validates all expected output files exist
+
+### OB-F195 — Codex workers lack per-worker cost cap — single worker can cost $0.28 (28x normal)
+
+- **Severity:** 🟡 Medium
+- **Status:** Open
+- **Key Files:** `src/core/agent-runner.ts`, `src/core/cost-manager.ts`, `src/master/worker-orchestrator.ts`
+- **Root Cause / Impact:**
+  A single Codex worker (`gpt-5.2-codex`, `read-only` profile, 10 max turns) consumed $0.28 — 28x the cost of a typical Claude worker ($0.01). The worker exhausted all 10 turns without completing (`turnsExhausted: true`). No per-worker cost cap exists, so the Master has no way to stop a runaway worker before it burns the budget. Total session cost was $0.17 but a single Codex worker nearly doubled it.
+- **Fix:**
+  1. Add a `maxCostUsd` parameter to worker spawn options (default: $0.05 for read-only, $0.10 for full-access)
+  2. In `agent-runner.ts` streaming path: monitor cumulative cost and kill the process if it exceeds the cap
+  3. Report cost-capped workers back to Master so it can retry with a cheaper model or narrower prompt
+
+### OB-F196 — Stale "running" agent_activity records for completed Codex workers
+
+- **Severity:** 🟡 Medium
+- **Status:** Open
+- **Key Files:** `src/memory/activity-store.ts`, `src/master/worker-orchestrator.ts`, `src/core/agent-runner.ts`
+- **Root Cause / Impact:**
+  Two Codex workers (`worker-1773513675012-dmq8c5` and `worker-1773513675012-ziljhs`) completed successfully (exit code 0, costs logged) but their `agent_activity` records still show `status=running` with no `completed_at` timestamp. The completion callback is not updating the DB for Codex streaming workers. This corrupts worker stats, makes `/stats` and worker batch reporting inaccurate, and could cause the worker concurrency limiter to think slots are occupied when they're not.
+- **Fix:**
+  1. In `worker-orchestrator.ts`: ensure the `finally` block that calls `activityStore.update(workerId, { status: 'done' })` runs for streaming agents (Codex path) — not just the non-streaming Claude path
+  2. Add a startup sweep: on bridge start, mark any `running` agents older than 10 minutes as `abandoned`
+  3. Add a test: spawn a Codex streaming worker, wait for completion, assert `status=done` in DB
+
+### OB-F197 — Prompt truncation at 84% — Master context destroyed for large conversation sessions
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/core/agent-runner.ts`, `src/master/prompt-context-builder.ts`
+- **Root Cause / Impact:**
+  At `18:13:49`, a Master prompt was built at 202K chars but the `maxLength` limit is 32K, causing **84% of content to be silently truncated** (169K chars lost). This is worse than OB-F192 (66% truncation for exploration prompts) — this affects regular message processing. The Master loses conversation history, workspace context, and RAG results, leading to degraded response quality. Occurs when conversation history grows large (40+ turns before compaction kicks in).
+- **Fix:**
+  1. In `prompt-context-builder.ts`: implement budget-aware assembly — allocate token budgets per section (system prompt, memory.md, RAG results, conversation history) and trim each section to fit within budget _before_ concatenation
+  2. Trigger session compaction earlier — the 40-turn threshold is too late if prompts already exceed 200K chars
+  3. Add a prompt-size metric: log prompt size vs. limit ratio so truncation trends are visible
+
+### OB-F198 — Classification engine falls back to "keyword fallback: tool-use (default)" for conversational messages
+
+- **Severity:** 🟢 Low
+- **Status:** Open
+- **Key Files:** `src/master/classification-engine.ts`, `src/core/agent-runner.ts`
+- **Root Cause / Impact:**
+  Messages like _"I want to get trained to the data..."_ and _"Not yet i wanna know if..."_ are classified as `tool-use` with 15 max turns via `"keyword fallback: tool-use (default)"`. These are conversational/planning messages that should be `quick-answer` (3–5 turns). The fallback wastes turns and cost on messages that don't need file access. Also, _"normally know about the sub-companies..."_ was classified as `complex-task` via `"keyword match: batch-mode"` — likely a false positive on the word "batch" or "command" in the voice transcription.
+- **Fix:**
+  1. Add a conversational/planning intent to the classifier — messages asking about configuration, workflow, or clarification should default to `quick-answer`, not `tool-use`
+  2. Tighten keyword matching: require keyword + context (e.g., "batch" alone shouldn't trigger `batch-mode` — needs "batch process" or "run batch")
+  3. When the AI classifier returns a result, prefer it over keyword fallback even if confidence is moderate
 
 ---
 

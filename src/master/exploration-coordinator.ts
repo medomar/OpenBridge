@@ -57,7 +57,7 @@ import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { Chunk } from '../memory/chunk-store.js';
-import { readdir } from 'node:fs/promises';
+import { readdir, access } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 
@@ -1429,8 +1429,33 @@ export class ExplorationCoordinator {
     try {
       await this.dotFolder.writeWorkspaceMap(workspaceMap);
     } catch (err) {
-      logger.warn({ err }, 'Failed to write workspace-map.json JSON fallback');
+      logger.error(
+        { err },
+        'Failed to write workspace-map.json — Master will lack workspace context',
+      );
     }
+
+    // Post-write verification: ensure workspace-map.json actually exists on disk (OB-1507).
+    const mapPath = this.dotFolder.getMapPath();
+    try {
+      await access(mapPath);
+      logger.info({ path: mapPath }, 'workspace-map.json verified on disk');
+    } catch {
+      logger.error(
+        { path: mapPath },
+        'workspace-map.json missing after write — attempting direct fallback write',
+      );
+      // Direct fallback: write the raw JSON without Zod validation to bypass any schema issues
+      try {
+        const { writeFile, mkdir } = await import('node:fs/promises');
+        await mkdir(this.dotFolder.getDotFolderPath(), { recursive: true });
+        await writeFile(mapPath, JSON.stringify(workspaceMap, null, 2), 'utf-8');
+        logger.info('workspace-map.json fallback write succeeded');
+      } catch (fallbackErr) {
+        logger.error({ err: fallbackErr }, 'workspace-map.json fallback write also failed');
+      }
+    }
+
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
     await this.writeExplorationState(state);
