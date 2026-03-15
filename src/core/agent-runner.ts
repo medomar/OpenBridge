@@ -296,6 +296,10 @@ export const TOOLS_CODE_EDIT = [
   'Bash(git:*)',
   'Bash(npm:*)',
   'Bash(npx:*)',
+  'Bash(rm:*)',
+  'Bash(mv:*)',
+  'Bash(cp:*)',
+  'Bash(mkdir:*)',
 ] as const;
 
 /** Full access tools — unrestricted (use sparingly) */

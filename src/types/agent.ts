@@ -257,7 +257,20 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
   'code-edit': {
     name: 'code-edit',
     description: 'For implementation tasks that modify files',
-    tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npm:*)', 'Bash(npx:*)'],
+    tools: [
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
+    ],
   },
   'file-management': {
     name: 'file-management',
