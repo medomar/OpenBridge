@@ -370,7 +370,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
       ? `  - \`mcpServers\` (optional): Array of MCP server names to enable for this worker (e.g., \`["canva", "gmail"]\`). Each worker only sees the servers it needs.\n`
       : '';
 
-  return `# Master AI — System Prompt
+  const prompt = `# Master AI — System Prompt
 
 You are the **Master AI** for the OpenBridge autonomous bridge. You manage the workspace at:
 \`${context.workspacePath}\`
@@ -971,6 +971,69 @@ You can improve your own capabilities:
 - Update \`workspace-map.json\` when you notice project changes
 - Review task history to learn from past successes and failures
 `;
+
+  return trimPromptToFit(prompt, 50_000);
+}
+
+/**
+ * Progressively trim a Master system prompt to fit within `maxChars`.
+ *
+ * Removal priority (least essential first):
+ *  1. Deep Mode verbose guidance (`## Deep Mode` section)
+ *  2. SPAWN example code blocks (fenced blocks inside `## How to Spawn Workers`)
+ *  3. Output marker examples (fenced blocks + examples inside `## Sharing Files & Outputs`)
+ *
+ * Each stage is attempted only if the prompt still exceeds `maxChars`.
+ */
+export function trimPromptToFit(prompt: string, maxChars: number): string {
+  if (prompt.length <= maxChars) return prompt;
+
+  // Stage 1: Remove the ## Deep Mode section entirely (up to the next ## header)
+  let trimmed = removeSectionByHeader(prompt, '## Deep Mode');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  // Stage 2: Remove fenced code blocks inside ## How to Spawn Workers
+  trimmed = removeCodeBlocksInSection(trimmed, '## How to Spawn Workers');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  // Stage 3: Remove fenced code blocks + examples inside ## Sharing Files & Outputs
+  trimmed = removeCodeBlocksInSection(trimmed, '## Sharing Files & Outputs');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  return trimmed;
+}
+
+/**
+ * Remove an entire `##` section (from its header up to — but not including — the next `##` header).
+ */
+function removeSectionByHeader(prompt: string, header: string): string {
+  const headerIndex = prompt.indexOf(header);
+  if (headerIndex === -1) return prompt;
+
+  // Find the next ## header after this section
+  const afterHeader = headerIndex + header.length;
+  const nextSectionMatch = prompt.slice(afterHeader).search(/^## /m);
+  const endIndex = nextSectionMatch === -1 ? prompt.length : afterHeader + nextSectionMatch;
+
+  return prompt.slice(0, headerIndex) + prompt.slice(endIndex);
+}
+
+/**
+ * Remove all fenced code blocks (``` ... ```) within a specific ## section.
+ */
+function removeCodeBlocksInSection(prompt: string, header: string): string {
+  const headerIndex = prompt.indexOf(header);
+  if (headerIndex === -1) return prompt;
+
+  const afterHeader = headerIndex + header.length;
+  const nextSectionMatch = prompt.slice(afterHeader).search(/^## /m);
+  const endIndex = nextSectionMatch === -1 ? prompt.length : afterHeader + nextSectionMatch;
+
+  const sectionContent = prompt.slice(headerIndex, endIndex);
+  // Remove fenced code blocks (``` ... ```)
+  const trimmedSection = sectionContent.replace(/```[\s\S]*?```\n?/g, '');
+
+  return prompt.slice(0, headerIndex) + trimmedSection + prompt.slice(endIndex);
 }
 
 /**
