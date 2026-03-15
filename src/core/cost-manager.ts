@@ -127,24 +127,33 @@ export function formatCostWarning(
 
 /**
  * Estimate the cost in USD for a single agent call.
- * Uses a simple per-call heuristic scaled by output size:
- *   haiku  = $0.001 base + $0.0001 per KB of output
- *   sonnet = $0.01  base + $0.001  per KB of output
- *   opus   = $0.05  base + $0.005  per KB of output
- * Falls back to sonnet pricing for unknown / undefined models.
+ * Uses a simple per-call heuristic scaled by output size.
+ *
+ * Pricing tiers (Anthropic pricing as of v0.1.0):
+ *   Haiku 4.5   (claude-haiku-4-5-*): $1/MTok input,  $5/MTok output
+ *     → base $0.001  + $0.00128 per KB output
+ *   Sonnet 4.6  (claude-sonnet-4-6):  $3/MTok input, $15/MTok output
+ *     → base $0.003  + $0.00384 per KB output
+ *   Opus 4.6    (claude-opus-4-6):    $5/MTok input, $25/MTok output
+ *     → base $0.005  + $0.0064  per KB output
+ *
+ * Per-KB multiplier derivation: price/MTok × (1024 bytes / 4 bytes-per-token) / 1_000_000
+ * Falls back to Sonnet 4.6 pricing for unknown / undefined models.
  */
 export function estimateCostUsd(model: string | undefined, outputBytes: number): number {
   const outputKb = outputBytes / 1024;
   const modelKey = (model ?? '').toLowerCase();
 
-  if (modelKey.includes('haiku')) {
-    return 0.001 + outputKb * 0.0001;
+  // Haiku 4.5: $1/MTok input, $5/MTok output
+  if (modelKey.includes('haiku') || /haiku.*4[.-]5/.test(modelKey)) {
+    return 0.001 + outputKb * 0.00128;
   }
-  if (modelKey.includes('opus')) {
-    return 0.05 + outputKb * 0.005;
+  // Opus 4.6: $5/MTok input, $25/MTok output
+  if (modelKey.includes('opus') || /opus.*4[.-]6/.test(modelKey)) {
+    return 0.005 + outputKb * 0.0064;
   }
-  // Default / sonnet
-  return 0.01 + outputKb * 0.001;
+  // Default / Sonnet 4.6: $3/MTok input, $15/MTok output
+  return 0.003 + outputKb * 0.00384;
 }
 
 /**
