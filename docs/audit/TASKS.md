@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 20 | **In Progress:** 0 | **Done:** 5 (1505 archived)
+> **Pending:** 19 | **In Progress:** 0 | **Done:** 6 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -41,13 +41,13 @@
 > Phases ordered by release priority: P0 = release blocker, P1 = must fix, P2 = should fix, P3 = nice to have.
 > Findings from real-world testing on elgrotte-data workspace (2026-03-15).
 
-| Pri | Phase | Title                              | Tasks | Findings     | Status  |
-| --- | ----- | ---------------------------------- | ----- | ------------ | ------- |
-| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅      |
-| P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | Pending |
-| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | Pending |
-| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | Pending |
-| P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | Pending |
+| Pri | Phase | Title                              | Tasks | Findings     | Status      |
+| --- | ----- | ---------------------------------- | ----- | ------------ | ----------- |
+| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅          |
+| P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | In Progress |
+| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | Pending     |
+| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | Pending     |
+| P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | Pending     |
 
 ---
 
@@ -75,7 +75,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Finding | Model  | Status  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
-| OB-1511 | In `src/master/prompt-context-builder.ts`, implement budget-aware prompt assembly. Define section budgets: system prompt (8K chars), memory.md (4K chars), workspace map (4K chars), RAG results (6K chars), conversation history (10K chars) — totaling 32K. Each section must be trimmed to its budget _before_ concatenation. For conversation history, keep the most recent messages when trimming. Log the actual size of each section vs its budget at DEBUG level. | OB-F197 | opus   | Pending |
+| OB-1511 | In `src/master/prompt-context-builder.ts`, implement budget-aware prompt assembly. Define section budgets: system prompt (8K chars), memory.md (4K chars), workspace map (4K chars), RAG results (6K chars), conversation history (10K chars) — totaling 32K. Each section must be trimmed to its budget _before_ concatenation. For conversation history, keep the most recent messages when trimming. Log the actual size of each section vs its budget at DEBUG level. | OB-F197 | opus   | ✅ Done |
 | OB-1512 | In `src/core/agent-runner.ts`, replace the single `maxLength = 32768` truncation with a graduated approach: log a WARN when any prompt exceeds 80% of the limit (26K chars), and include the caller context (exploration vs message-processing vs worker) in the log. Move the truncation to a named function `truncatePrompt(prompt, maxLength, context)` that logs what was lost.                                                                                       | OB-F197 | sonnet | Pending |
 | OB-1513 | In `src/master/session-compactor.ts`, add a prompt-size-based compaction trigger alongside the existing turn-count trigger. When `prompt-context-builder.ts` reports a prompt exceeding 80% of the 32K limit, trigger early compaction regardless of turn count. Add a `promptSizeExceeded` event or callback from the builder to the compactor.                                                                                                                          | OB-F197 | sonnet | Pending |
 | OB-1514 | For exploration prompts (OB-F192): in `src/master/exploration-prompts.ts`, split the monolithic exploration prompt into per-phase focused prompts. Each phase prompt should be self-contained and under 16K chars. The assembly phase should receive only the intermediate outputs (structure-scan.json, classification.json, directory dive results) — not the full workspace content. Read the current prompt sizes and measure what each phase actually needs.         | OB-F192 | opus   | Pending |
