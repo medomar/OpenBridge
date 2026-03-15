@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 5 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 3 | **Fixed:** 6 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -139,7 +139,7 @@
 ### OB-F182 — Workers cannot execute destructive file operations (rm, rmdir) — permission prompts unreachable
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/agent-runner.ts:282-291` — `TOOLS_CODE_EDIT` lacks `Bash(rm:*)`, `Bash(mv:*)`, `Bash(cp:*)`, `Bash(mkdir:*)`
   - `src/core/agent-runner.ts:297-309` — `TOOLS_FILE_MANAGEMENT` **already exists** with `rm`, `mv`, `cp`, `mkdir`, `chmod`
