@@ -665,6 +665,9 @@ export class ExplorationCoordinator {
         );
       }
 
+      // Post-exploration assertion: verify workspace-map.json exists (OB-1508)
+      await this.assertWorkspaceMapExists(state);
+
       return this.buildSummary(state);
     } catch (error) {
       logger.error({ err: error }, 'Exploration failed');
@@ -1562,6 +1565,76 @@ export class ExplorationCoordinator {
       totalAITimeMs: 0,
       subProjects: [],
     };
+  }
+
+  /**
+   * Post-exploration assertion (OB-1508): verify workspace-map.json exists on disk after
+   * all 5 phases complete. If missing, log an ERROR with the exploration summary and
+   * attempt to generate a minimal map from intermediate files (structure-scan + classification).
+   */
+  private async assertWorkspaceMapExists(state: ExplorationState): Promise<void> {
+    const mapPath = this.dotFolder.getMapPath();
+    try {
+      await access(mapPath);
+      // File exists — all good
+      return;
+    } catch {
+      // File missing after all phases completed — unexpected
+    }
+
+    const directoriesExplored = state.directoryDives.filter((d) => d.status === 'completed').length;
+    logger.error(
+      {
+        workspacePath: this.workspacePath,
+        mapPath,
+        phases: state.phases,
+        totalCalls: state.totalCalls,
+        directoriesExplored,
+      },
+      'workspace-map.json missing after exploration completed — attempting minimal map generation from intermediate files',
+    );
+
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
+
+    if (!structureScan && !classification) {
+      logger.error('Cannot generate minimal workspace map — no intermediate files available');
+      return;
+    }
+
+    const projectName = this.workspacePath.split('/').pop() ?? 'unknown';
+    const minimalMap: WorkspaceMap = {
+      workspacePath: this.workspacePath,
+      projectName,
+      projectType: classification?.projectType ?? 'unknown',
+      frameworks: classification?.frameworks ?? [],
+      structure: structureScan
+        ? Object.fromEntries(
+            structureScan.topLevelDirs.map((dir) => [
+              dir,
+              {
+                path: dir,
+                purpose: 'directory',
+                fileCount: structureScan.directoryCounts[dir] ?? 0,
+              },
+            ]),
+          )
+        : {},
+      keyFiles: [],
+      entryPoints: [],
+      commands: classification?.commands ?? {},
+      dependencies: [],
+      summary: `Minimal map generated from exploration intermediate files. Project type: ${classification?.projectType ?? 'unknown'}.`,
+      generatedAt: new Date().toISOString(),
+      schemaVersion: '1.0.0',
+    };
+
+    try {
+      await this.dotFolder.writeWorkspaceMap(minimalMap);
+      logger.info({ mapPath }, 'Minimal workspace-map.json generated from intermediate files');
+    } catch (writeErr) {
+      logger.error({ err: writeErr }, 'Failed to write minimal workspace-map.json');
+    }
   }
 
   /**
