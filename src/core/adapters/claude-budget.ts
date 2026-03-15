@@ -19,9 +19,12 @@ export function getClaudePromptBudget(model?: string): {
   maxPromptChars: number;
   maxSystemPromptChars: number;
 } {
-  const isOpus46 = model != null && (/opus.*4[.-]6/i.test(model) || model === 'claude-opus-4-6');
+  const isOpus46 =
+    model != null &&
+    (/opus.*4[.-]6/i.test(model) || model === 'claude-opus-4-6' || model === 'opus');
   const isSonnet46 =
-    model != null && (/sonnet.*4[.-]6/i.test(model) || model === 'claude-sonnet-4-6');
+    model != null &&
+    (/sonnet.*4[.-]6/i.test(model) || model === 'claude-sonnet-4-6' || model === 'sonnet');
 
   if (isOpus46 || isSonnet46) {
     return { maxPromptChars: 128_000, maxSystemPromptChars: 800_000 };
