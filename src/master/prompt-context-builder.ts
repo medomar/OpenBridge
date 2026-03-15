@@ -45,6 +45,17 @@ const logger = createLogger('prompt-context-builder');
 /** Maximum number of recent tasks to include in a context summary on restart */
 const RESTART_CONTEXT_TASK_LIMIT = 10;
 
+// ---------------------------------------------------------------------------
+// Section budget constants (OB-1511 — budget-aware prompt assembly)
+// ---------------------------------------------------------------------------
+
+/** Per-section character budgets. Total ~32K to prevent truncation in AgentRunner. */
+export const SECTION_BUDGET_SYSTEM_PROMPT = 8_000;
+export const SECTION_BUDGET_MEMORY = 4_000;
+export const SECTION_BUDGET_WORKSPACE_MAP = 4_000;
+export const SECTION_BUDGET_RAG = 6_000;
+export const SECTION_BUDGET_CONVERSATION_HISTORY = 10_000;
+
 /**
  * Format an ISO timestamp as a human-readable "X ago" string.
  * Used to show the Master how fresh its workspace knowledge is.
@@ -59,6 +70,46 @@ export function formatTimeAgo(isoTimestamp: string): string {
   if (hours > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
   if (minutes > 0) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
   return 'just now';
+}
+
+// ---------------------------------------------------------------------------
+// Helper: trim conversation history keeping most recent messages (OB-1511)
+// ---------------------------------------------------------------------------
+
+/**
+ * Trim a conversation section to fit within a character budget,
+ * keeping the header line and as many of the most recent messages as possible.
+ */
+export function trimKeepingRecentMessages(section: string, budget: number): string {
+  const lines = section.split('\n');
+  // First line is the section header (e.g. "## Recent conversation (this session):")
+  const header = lines[0] ?? '';
+  const messageLines = lines.slice(1);
+
+  // Work backwards from the most recent messages
+  const kept: string[] = [];
+  let currentSize = header.length + 1; // +1 for newline after header
+  for (let i = messageLines.length - 1; i >= 0; i--) {
+    const line = messageLines[i]!;
+    const lineSize = line.length + 1; // +1 for newline
+    if (currentSize + lineSize > budget) break;
+    kept.unshift(line);
+    currentSize += lineSize;
+  }
+
+  if (kept.length < messageLines.length) {
+    logger.debug(
+      {
+        section: 'conversation history',
+        original: messageLines.length,
+        kept: kept.length,
+        budget,
+      },
+      'Trimmed conversation history to budget, keeping most recent messages',
+    );
+  }
+
+  return header + '\n' + kept.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +217,20 @@ export class PromptContextBuilder {
     // Base system prompt — identity and rules (highest priority)
     const systemPrompt = this.deps.getSystemPrompt();
     if (systemPrompt) {
-      assembler.addSection('System Prompt', systemPrompt, PRIORITY_IDENTITY);
+      logger.debug(
+        {
+          section: 'System Prompt',
+          actual: systemPrompt.length,
+          budget: SECTION_BUDGET_SYSTEM_PROMPT,
+        },
+        'Section size vs budget',
+      );
+      assembler.addSection(
+        'System Prompt',
+        systemPrompt,
+        PRIORITY_IDENTITY,
+        SECTION_BUDGET_SYSTEM_PROMPT,
+      );
     }
 
     // Drain pending cancellation notifications (OB-884).
@@ -211,10 +275,20 @@ export class PromptContextBuilder {
         if (mapLastVerifiedAt) {
           contextText += `\n\nMap last verified: ${formatTimeAgo(mapLastVerifiedAt)}`;
         }
+        const wsContent = '## Current Workspace Knowledge\n\n' + contextText;
+        logger.debug(
+          {
+            section: 'Workspace Knowledge',
+            actual: wsContent.length,
+            budget: SECTION_BUDGET_WORKSPACE_MAP,
+          },
+          'Section size vs budget',
+        );
         assembler.addSection(
           'Workspace Knowledge',
-          '## Current Workspace Knowledge\n\n' + contextText,
+          wsContent,
           PRIORITY_WORKSPACE,
+          SECTION_BUDGET_WORKSPACE_MAP,
         );
       }
     }
@@ -242,20 +316,31 @@ export class PromptContextBuilder {
 
     // Conversation context — memory.md + session history + cross-session FTS5
     if (contextSections?.conversationContext) {
+      const convBudget = SECTION_BUDGET_MEMORY + SECTION_BUDGET_CONVERSATION_HISTORY;
+      logger.debug(
+        {
+          section: 'Conversation Context',
+          actual: contextSections.conversationContext.length,
+          budget: convBudget,
+        },
+        'Section size vs budget',
+      );
       assembler.addSection(
         'Conversation Context',
         contextSections.conversationContext,
         PRIORITY_MEMORY,
+        convBudget,
       );
     }
 
     // Pre-fetched knowledge (RAG)
     if (contextSections?.knowledgeContext) {
-      assembler.addSection(
-        'Knowledge Context',
-        formatPreFetchedKnowledgeSection(contextSections.knowledgeContext),
-        PRIORITY_RAG,
+      const ragContent = formatPreFetchedKnowledgeSection(contextSections.knowledgeContext);
+      logger.debug(
+        { section: 'Knowledge Context', actual: ragContent.length, budget: SECTION_BUDGET_RAG },
+        'Section size vs budget',
       );
+      assembler.addSection('Knowledge Context', ragContent, PRIORITY_RAG, SECTION_BUDGET_RAG);
     }
 
     // Targeted reader results
@@ -508,6 +593,11 @@ export class PromptContextBuilder {
     const sections: string[] = [];
     const memory = this.deps.getMemory();
 
+    // Budget for conversation history layers (session + cross-session)
+    const historyBudget = SECTION_BUDGET_CONVERSATION_HISTORY;
+    // Budget for memory.md layer
+    const memoryBudget = SECTION_BUDGET_MEMORY;
+
     // Layer 1: Recent conversation messages from the CURRENT session
     if (sessionId && memory) {
       try {
@@ -521,7 +611,12 @@ export class PromptContextBuilder {
             const content = e.content.length > 400 ? e.content.slice(0, 400) + '…' : e.content;
             return `${label}: ${content}`;
           });
-          sections.push('## Recent conversation (this session):\n' + lines.join('\n'));
+          let sessionSection = '## Recent conversation (this session):\n' + lines.join('\n');
+          // Trim to history budget, keeping most recent messages
+          if (sessionSection.length > historyBudget) {
+            sessionSection = trimKeepingRecentMessages(sessionSection, historyBudget);
+          }
+          sections.push(sessionSection);
         }
       } catch (err) {
         logger.warn({ err }, 'Failed to load session history for context injection');
@@ -532,14 +627,26 @@ export class PromptContextBuilder {
     try {
       const memoryContent = await this.deps.dotFolder.readMemoryFile();
       if (memoryContent && memoryContent.trim().length > 0) {
-        sections.push('## Memory:\n' + memoryContent.trim());
+        let memSection = '## Memory:\n' + memoryContent.trim();
+        if (memSection.length > memoryBudget) {
+          logger.debug(
+            { section: 'memory.md', actual: memSection.length, budget: memoryBudget },
+            'Trimming memory.md to budget',
+          );
+          memSection = memSection.slice(0, memoryBudget);
+        }
+        sections.push(memSection);
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to read memory.md for context injection');
     }
 
     // Layer 3: cross-session FTS5 search via searchConversations() (OB-1025).
-    if (memory) {
+    // Uses remaining history budget after Layer 1
+    const layer1Size = sections.length > 0 ? sections[0]!.length : 0;
+    const crossSessionBudget = Math.max(0, historyBudget - layer1Size);
+
+    if (memory && crossSessionBudget > 0) {
       try {
         const crossSession = await memory.searchConversations(userMessage, 5);
         const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
@@ -552,7 +659,11 @@ export class PromptContextBuilder {
             const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
             return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
           });
-          sections.push('## Related past conversations:\n' + lines.join('\n'));
+          let crossSection = '## Related past conversations:\n' + lines.join('\n');
+          if (crossSection.length > crossSessionBudget) {
+            crossSection = crossSection.slice(0, crossSessionBudget);
+          }
+          sections.push(crossSection);
         }
       } catch (err) {
         logger.warn(
