@@ -97,7 +97,9 @@ describe('prompt-store.ts', () => {
 
     it('rejects content exceeding the size cap and does not insert', () => {
       const oversizedContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH + 1);
-      createPromptVersion(db, 'oversized-prompt', oversizedContent);
+      expect(() => createPromptVersion(db, 'oversized-prompt', oversizedContent)).toThrow(
+        /oversized-prompt.*exceeds size cap/,
+      );
 
       const result = getActivePrompt(db, 'oversized-prompt');
       expect(result).toBeNull();
@@ -105,7 +107,7 @@ describe('prompt-store.ts', () => {
 
     it('logs a warning when content exceeds the size cap', () => {
       const oversizedContent = 'x'.repeat(MAX_PROMPT_VERSION_LENGTH + 1);
-      createPromptVersion(db, 'oversized-prompt', oversizedContent);
+      expect(() => createPromptVersion(db, 'oversized-prompt', oversizedContent)).toThrow();
 
       expect(mockWarn).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'oversized-prompt', size: oversizedContent.length }),
