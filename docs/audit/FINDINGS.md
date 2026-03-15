@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 3 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 8 | **Fixed:** 4 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -134,7 +134,7 @@
 ### OB-F197 — Prompt truncation at 84% — Master context destroyed for large conversation sessions
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`, `src/master/prompt-context-builder.ts`
 - **Root Cause / Impact:**
   At `18:13:49`, a Master prompt was built at 202K chars but the `maxLength` limit is 32K, causing **84% of content to be silently truncated** (169K chars lost). This is worse than OB-F192 (66% truncation for exploration prompts) — this affects regular message processing. The Master loses conversation history, workspace context, and RAG results, leading to degraded response quality. Occurs when conversation history grows large (40+ turns before compaction kicks in).
