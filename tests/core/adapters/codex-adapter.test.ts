@@ -377,6 +377,24 @@ describe('CodexAdapter.name', () => {
   });
 });
 
+// ── getPromptBudget ──────────────────────────────────────────────────
+
+describe('CodexAdapter.getPromptBudget', () => {
+  it('returns 400_000 for maxPromptChars', () => {
+    expect(adapter.getPromptBudget().maxPromptChars).toBe(400_000);
+  });
+
+  it('returns 400_000 for maxSystemPromptChars', () => {
+    expect(adapter.getPromptBudget().maxSystemPromptChars).toBe(400_000);
+  });
+
+  it('returns same 400_000 budget regardless of model (single combined pool)', () => {
+    expect(adapter.getPromptBudget('gpt-5.3-codex').maxPromptChars).toBe(400_000);
+    expect(adapter.getPromptBudget('gpt-5.2-codex').maxPromptChars).toBe(400_000);
+    expect(adapter.getPromptBudget('gpt-4o').maxPromptChars).toBe(400_000);
+  });
+});
+
 // ── parseCodexJsonlOutput ────────────────────────────────────────────
 
 describe('parseCodexJsonlOutput', () => {

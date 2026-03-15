@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 7 | **In Progress:** 0 | **Done:** 21 (1530 archived)
+> **Pending:** 6 | **In Progress:** 0 | **Done:** 22 (1530 archived)
 > **Last Updated:** 2026-03-15
 
 ## Task Summary
@@ -11,7 +11,7 @@
 | 134   | Prompt size cap + silent rejection (OB-F200)          | 4     | ✅     |
 | 135   | WebChat session isolation (OB-F202)                   | 5     | ✅     |
 | 136   | Worker file operations + profile escalation (OB-F182) | 3     | ✅     |
-| 137   | Codex/Aider model updates (OB-F204)                   | 3     | ◻      |
+| 137   | Codex/Aider model updates (OB-F204)                   | 3     | ✅     |
 | 138   | Startup log noise (OB-F201, OB-F199)                  | 3     | ◻      |
 | 139   | Cross-finding integration tests                       | 3     | ◻      |
 
@@ -86,7 +86,7 @@
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
 | OB-1551 | In `src/core/adapters/codex-adapter.ts:380-397`, update `getPromptBudget()`: change `combined` from `100_000` to `400_000`. Update comment from "~128K token context window (~512K chars)" to "~400K token context window (~1.6M chars) for gpt-5.2-codex / gpt-5.3-codex". In `src/core/model-registry.ts:57-59`, update Codex `powerful` tier from `gpt-5.2-codex` to `gpt-5.3-codex`. Add comment noting gpt-5.3-codex is 25% faster at same pricing.                                           | OB-F204 | sonnet | ✅ Done |
 | OB-1552 | In `src/core/adapters/aider-adapter.ts:123-138`, update `getPromptBudget(_model?)` to use the `model` parameter meaningfully (remove underscore prefix). For models containing `gpt-4.1`: `combined = 400_000`. For `o3` or `o4-mini`: `combined = 200_000`. Default: keep `100_000`. Update comments to reference current models instead of "GPT-3.5 has 16K". In `src/core/model-registry.ts:62-64`, update Aider `balanced` tier from `gpt-4o` to `gpt-4.1`, `powerful` tier from `o1` to `o3`. | OB-F204 | sonnet | ✅ Done |
-| OB-1553 | Unit tests in existing files: (1) `tests/core/adapters/codex-adapter.test.ts`: verify `getPromptBudget()` returns `400_000` for both fields. (2) `tests/core/adapters/aider-adapter.test.ts`: verify model-specific budgets — `gpt-4.1` → `400_000`, `o3` → `200_000`, default → `100_000`. (3) `tests/core/model-registry.test.ts`: verify Codex powerful tier is `gpt-5.3-codex`, Aider balanced is `gpt-4.1`, Aider powerful is `o3`. All 3 test files already exist.                           | OB-F204 | sonnet | Pending |
+| OB-1553 | Unit tests in existing files: (1) `tests/core/adapters/codex-adapter.test.ts`: verify `getPromptBudget()` returns `400_000` for both fields. (2) `tests/core/adapters/aider-adapter.test.ts`: verify model-specific budgets — `gpt-4.1` → `400_000`, `o3` → `200_000`, default → `100_000`. (3) `tests/core/model-registry.test.ts`: verify Codex powerful tier is `gpt-5.3-codex`, Aider balanced is `gpt-4.1`, Aider powerful is `o3`. All 3 test files already exist.                           | OB-F204 | sonnet | ✅ Done |
 
 ---
 

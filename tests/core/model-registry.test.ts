@@ -224,6 +224,38 @@ describe('createModelRegistry', () => {
   });
 });
 
+// ── Provider-specific tier mappings (OB-F204) ────────────────────
+
+describe('Codex tier mappings', () => {
+  it('powerful tier resolves to gpt-5.3-codex', () => {
+    const registry = createModelRegistry('codex');
+    expect(registry.resolve('powerful')?.id).toBe('gpt-5.3-codex');
+  });
+
+  it('fast and balanced tiers resolve to gpt-5.2-codex', () => {
+    const registry = createModelRegistry('codex');
+    expect(registry.resolve('fast')?.id).toBe('gpt-5.2-codex');
+    expect(registry.resolve('balanced')?.id).toBe('gpt-5.2-codex');
+  });
+});
+
+describe('Aider tier mappings', () => {
+  it('balanced tier resolves to gpt-4.1', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('balanced')?.id).toBe('gpt-4.1');
+  });
+
+  it('powerful tier resolves to o3', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('powerful')?.id).toBe('o3');
+  });
+
+  it('fast tier resolves to gpt-4o-mini', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('fast')?.id).toBe('gpt-4o-mini');
+  });
+});
+
 // ── Constants ───────────────────────────────────────────────────
 
 describe('Constants', () => {
