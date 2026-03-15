@@ -1,19 +1,25 @@
 import type { SkillPack } from '../../types/agent.js';
 
 /**
- * Data Analysis skill pack — CSV/JSON processing, statistics, visualization generation
+ * Data Analysis skill pack — CSV/JSON/SQLite processing, statistics, visualization generation
  *
  * Guides a worker agent to analyse datasets, compute statistics, and produce
  * charts, summaries, and actionable insights. Works with CSV, JSON, NDJSON,
- * and tabular data embedded in source files.
+ * SQLite databases, and tabular data embedded in source files.
  */
 export const dataAnalysisSkillPack: SkillPack = {
   name: 'data-analysis',
   description:
-    'Analyses datasets (CSV, JSON, NDJSON) — descriptive statistics, distributions, correlations, and visualization generation with chart recommendations.',
-  toolProfile: 'code-edit',
-  requiredTools: ['Bash(node:*)', 'Bash(python3:*)', 'Bash(jq:*)', 'Bash(awk:*)'],
-  tags: ['data', 'csv', 'json', 'statistics', 'visualization', 'analysis'],
+    'Analyses datasets (CSV, JSON, NDJSON, SQLite) — descriptive statistics, distributions, correlations, and visualization generation with chart recommendations.',
+  toolProfile: 'data-query',
+  requiredTools: [
+    'Bash(sqlite3:*)',
+    'Bash(node:*)',
+    'Bash(python3:*)',
+    'Bash(jq:*)',
+    'Bash(awk:*)',
+  ],
+  tags: ['data', 'csv', 'json', 'sqlite', 'database', 'statistics', 'visualization', 'analysis'],
   isUserDefined: false,
   systemPromptExtension: `## Data Analysis Mode
 
@@ -47,6 +53,12 @@ jq '.[0]' data.json
 # NDJSON: count lines and inspect first record
 wc -l data.ndjson
 head -1 data.ndjson | jq '.'
+
+# SQLite: list tables and inspect schema
+sqlite3 database.db ".tables"
+sqlite3 database.db ".schema tablename"
+sqlite3 database.db "SELECT COUNT(*) FROM tablename;"
+sqlite3 database.db "SELECT * FROM tablename LIMIT 5;"
 \`\`\`
 
 Identify:
@@ -272,7 +284,7 @@ Produce a structured analysis report with these sections:
 ### Constraints
 
 - Do not modify the source data files — read only.
-- Prefer \`python3\` for numeric precision; fall back to \`awk\`/\`jq\` for simple aggregations.
+- Prefer \`sqlite3\` for querying SQLite databases; use \`python3\` for numeric precision; fall back to \`awk\`/\`jq\` for simple aggregations.
 - When a column has > 50% missing values, exclude it from statistical analysis and note the exclusion.
 - Do not hardcode column names — inspect the schema first and adapt dynamically.
 - If the dataset is > 100 MB, sample 10 000 rows for exploratory analysis and note that sampling was applied.

@@ -1157,6 +1157,23 @@ export class WorkerOrchestrator {
       }
     }
 
+    // Auto-merge skill pack requiredTools into worker allowedTools.
+    // Skill packs declare tools they need (e.g. Bash(sqlite3:*)) that may not be
+    // included in the base profile. Without this merge, the worker would be blocked
+    // by Claude's permission system — and in --print mode with remote users
+    // (WebChat, Telegram, WhatsApp), there is no terminal to approve the prompt.
+    if (selectedPack && selectedPack.requiredTools.length > 0) {
+      const existing = spawnOpts.allowedTools ?? [];
+      const toolsToAdd = selectedPack.requiredTools.filter((t) => !existing.includes(t));
+      if (toolsToAdd.length > 0) {
+        spawnOpts.allowedTools = [...existing, ...toolsToAdd];
+        logger.info(
+          { workerId, toolsAdded: toolsToAdd, skillPack: selectedPack.name },
+          'Skill pack requiredTools merged into worker allowedTools',
+        );
+      }
+    }
+
     // Create task record for this worker execution (OB-165: task history + audit trail)
     const taskRecord: TaskRecord = {
       id: workerId,

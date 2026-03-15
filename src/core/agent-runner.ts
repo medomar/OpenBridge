@@ -247,6 +247,24 @@ export function isValidModel(model: string, registry?: ModelRegistry): boolean {
 /** Read-only tools — safe for exploration and information gathering */
 export const TOOLS_READ_ONLY = ['Read', 'Glob', 'Grep'] as const;
 
+/** Data query tools — read-only data exploration with query commands (no file modifications) */
+export const TOOLS_DATA_QUERY = [
+  'Read',
+  'Glob',
+  'Grep',
+  'Bash(sqlite3:*)',
+  'Bash(python3:*)',
+  'Bash(node:*)',
+  'Bash(jq:*)',
+  'Bash(awk:*)',
+  'Bash(head:*)',
+  'Bash(tail:*)',
+  'Bash(wc:*)',
+  'Bash(sort:*)',
+  'Bash(uniq:*)',
+  'Bash(cut:*)',
+] as const;
+
 /** Code editing tools — for implementation tasks that modify files */
 export const TOOLS_CODE_EDIT = [
   'Read',
@@ -323,6 +341,8 @@ export function resolveTools(
   switch (profileName) {
     case 'read-only':
       return [...TOOLS_READ_ONLY];
+    case 'data-query':
+      return [...TOOLS_DATA_QUERY];
     case 'code-edit':
       return [...TOOLS_CODE_EDIT];
     case 'file-management':
