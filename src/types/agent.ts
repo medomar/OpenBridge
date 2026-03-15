@@ -366,6 +366,13 @@ export const TaskManifestSchema = z.object({
   retryDelay: z.number().int().nonnegative().optional(),
   /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
   maxBudgetUsd: z.number().positive().optional(),
+  /**
+   * Per-worker cost cap in USD monitored internally by AgentRunner.
+   * When cumulative reported cost exceeds this value during streaming,
+   * the process is killed and the result is marked costCapped: true.
+   * Defaults: read-only=0.05, code-edit=0.10, full-access=0.15.
+   */
+  maxCostUsd: z.number().positive().optional(),
   /** MCP servers this worker is allowed to use (per-worker isolation) */
   mcpServers: z.array(MCPServerSchema).optional(),
 });

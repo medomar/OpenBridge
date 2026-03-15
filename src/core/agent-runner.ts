@@ -492,6 +492,7 @@ export async function manifestToSpawnOptions(
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
     maxBudgetUsd: manifest.maxBudgetUsd,
+    maxCostUsd: manifest.maxCostUsd,
     profile: manifest.profile,
   };
 
@@ -688,6 +689,14 @@ export interface SpawnOptions {
    * Example: `{ 'read-only': 0.25 }` to tighten the default $0.50 cap.
    */
   workerCostCaps?: Record<string, number>;
+  /**
+   * Per-worker cost cap in USD (OB-1521).
+   * When cumulative reported cost exceeds this value during streaming,
+   * the process is killed with SIGTERM and the result is marked costCapped: true.
+   * Takes precedence over profile-based caps from workerCostCaps/PROFILE_COST_CAPS.
+   * Defaults set by worker-orchestrator.ts: read-only=0.05, code-edit=0.10, full-access=0.15.
+   */
+  maxCostUsd?: number;
   /**
    * Maximum number of lint/test fix iterations before escalating to Master (OB-1789).
    * Each time the worker runs lint/test commands and then attempts a fix, that counts
