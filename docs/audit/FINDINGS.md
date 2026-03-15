@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 11 | **Fixed:** 1 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 10 | **Fixed:** 2 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -98,7 +98,7 @@
 ### OB-F194 — workspace-map.json never created after exploration — ENOENT on every message
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/dotfolder-manager.ts:90`, `src/master/master-manager.ts:3311`, `src/master/master-manager.ts:3328`, `src/core/knowledge-retriever.ts:667`
 - **Root Cause / Impact:**
   Exploration completes all 5 phases successfully (structure, classification, directory dives, assembly, finalization) but `workspace-map.json` is never written to `.openbridge/`. The `readWorkspaceMap()` call in `dotfolder-manager.ts:90` throws ENOENT on **every single message** — logged as WARN each time (15+ times in a single session). This adds noise to logs and means the Master AI never has the workspace map context it needs for routing decisions.
