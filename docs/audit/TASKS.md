@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 21 | **In Progress:** 0 | **Done:** 4 (1505 archived)
+> **Pending:** 20 | **In Progress:** 0 | **Done:** 5 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -43,7 +43,7 @@
 
 | Pri | Phase | Title                              | Tasks | Findings     | Status  |
 | --- | ----- | ---------------------------------- | ----- | ------------ | ------- |
-| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | Pending |
+| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅      |
 | P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | Pending |
 | P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | Pending |
 | P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | Pending |
@@ -63,7 +63,7 @@
 | OB-1507 | In `src/master/exploration-coordinator.ts`, trace the assembly phase output path. After the assembly worker completes, verify that `workspace-map.json` is written to `.openbridge/workspace-map.json`. If the worker output contains the map data but `writeWorkspaceMap()` is never called, add the missing write call. Read both `exploration-coordinator.ts` and `dotfolder-manager.ts` `writeWorkspaceMap()` to trace the gap. | OB-F194 | opus   | ✅ Done |
 | OB-1508 | Add a post-exploration assertion in `exploration-coordinator.ts`: after all 5 phases complete, check that `workspace-map.json` exists on disk. If missing, log an ERROR with the exploration summary and attempt to generate a minimal map from the `exploration/` intermediate files (structure-scan.json + classification.json).                                                                                                  | OB-F194 | sonnet | ✅ Done |
 | OB-1509 | In `src/master/dotfolder-manager.ts`, apply the same existence-check-before-read pattern to `readBatchState()`, `readPromptManifest()`, and `readLearnings()`. Use `fs.access()` guard and return defaults silently on first run. Log DEBUG instead of WARN for expected first-run ENOENT cases. Verify that the write paths match the read paths for each file.                                                                    | OB-F193 | sonnet | ✅ Done |
-| OB-1510 | Add unit test: run exploration on a mock workspace, assert that `workspace-map.json` exists after completion. Add a second test: call `readWorkspaceMap()` when the file is missing, assert it returns `null` without throwing and only logs WARN once. File: `tests/master/workspace-map-persistence.test.ts`.                                                                                                                     | OB-F194 | sonnet | Pending |
+| OB-1510 | Add unit test: run exploration on a mock workspace, assert that `workspace-map.json` exists after completion. Add a second test: call `readWorkspaceMap()` when the file is missing, assert it returns `null` without throwing and only logs WARN once. File: `tests/master/workspace-map-persistence.test.ts`.                                                                                                                     | OB-F194 | sonnet | ✅ Done |
 
 ---
 
