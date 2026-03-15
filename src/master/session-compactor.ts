@@ -95,14 +95,24 @@ export interface CompactorConfig {
   maxRetries?: number;
   /**
    * Maximum prompt character limit used for prompt-size-based compaction.
-   * Default: 32_768 (matches AgentRunner's truncation limit).
+   * Default: `800_000` for Opus 4.6 / Sonnet 4.6 (1M token context window, ~3.4M chars total).
+   *          `32_768` for Haiku 4.5 and all other/unrecognized models (conservative fallback).
+   * Explicit values override the model-aware default.
    */
   promptSizeLimit?: number;
   /**
    * Fraction of promptSizeLimit at which prompt-size compaction is triggered.
-   * Default: 0.8 (fires when assembled prompt exceeds 80% of the limit).
+   * Default: 0.8 (fires when assembled prompt exceeds 80% of the model-aware limit —
+   * e.g. 640K chars for Opus 4.6 / Sonnet 4.6, or 26K chars for Haiku 4.5 / others).
    */
   promptSizeThreshold?: number;
+  /**
+   * Optional model ID used to derive model-aware prompt size defaults.
+   * When set to `claude-opus-4-6` or `claude-sonnet-4-6` (Opus 4.6 / Sonnet 4.6),
+   * the default `promptSizeLimit` is raised to `800_000` to match their 1M token
+   * context windows. All other models keep the conservative `32_768` default.
+   */
+  modelId?: string;
 }
 
 /**
@@ -212,7 +222,17 @@ export class SessionCompactor {
     this.maxTurns = config.maxTurns;
     this.threshold = config.threshold ?? 0.8;
     this.maxRetries = config.maxRetries ?? 2;
-    this.promptSizeLimit = config.promptSizeLimit ?? 32_768;
+    // Model-aware default: Opus 4.6 / Sonnet 4.6 get 800_000 (matching their 1M token context
+    // window); all other models keep the conservative 32_768 fallback.
+    const modelId = config.modelId;
+    const isLargeContextModel =
+      modelId != null &&
+      (/opus.*4[.-]6/i.test(modelId) ||
+        modelId === 'claude-opus-4-6' ||
+        /sonnet.*4[.-]6/i.test(modelId) ||
+        modelId === 'claude-sonnet-4-6');
+    const defaultPromptSizeLimit = isLargeContextModel ? 800_000 : 32_768;
+    this.promptSizeLimit = config.promptSizeLimit ?? defaultPromptSizeLimit;
     this.promptSizeThreshold = config.promptSizeThreshold ?? 0.8;
   }
 
