@@ -162,6 +162,14 @@ export interface PromptContextBuilderDeps {
   // Store helpers delegated back to MasterManager
   readWorkspaceMapFromStore: () => Promise<WorkspaceMap | null>;
   readAllTasksFromStore: () => Promise<TaskRecord[]>;
+
+  /**
+   * Optional callback invoked after each `buildMasterSpawnOptions()` call with
+   * the assembled system prompt length in characters. Use this to wire the
+   * prompt size signal into `SessionCompactor.notifyPromptSize()` so that
+   * prompt-size-based early compaction can be triggered (OB-1513).
+   */
+  onPromptSizeReport?: (chars: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +396,11 @@ export class PromptContextBuilder {
     const assembled = assembler.assemble(budget.maxSystemPromptChars);
     if (assembled) {
       opts.systemPrompt = assembled;
+      // Notify compactor of assembled prompt size so it can trigger early
+      // compaction if the prompt approaches the truncation limit (OB-1513).
+      if (this.deps.onPromptSizeReport) {
+        this.deps.onPromptSizeReport(assembled.length);
+      }
     }
 
     return opts;

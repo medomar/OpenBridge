@@ -93,6 +93,16 @@ export interface CompactorConfig {
    * Default: 2.
    */
   maxRetries?: number;
+  /**
+   * Maximum prompt character limit used for prompt-size-based compaction.
+   * Default: 32_768 (matches AgentRunner's truncation limit).
+   */
+  promptSizeLimit?: number;
+  /**
+   * Fraction of promptSizeLimit at which prompt-size compaction is triggered.
+   * Default: 0.8 (fires when assembled prompt exceeds 80% of the limit).
+   */
+  promptSizeThreshold?: number;
 }
 
 /**
@@ -137,12 +147,23 @@ export interface TurnSnapshot {
   totalTurns: number;
   /** Whether totalTurns has reached or exceeded the compaction threshold. */
   needsCompaction: boolean;
+  /**
+   * Primary reason compaction is needed.
+   * - `'turn-count'` — turn-count threshold exceeded.
+   * - `'prompt-size'` — assembled prompt exceeded 80% of the size limit.
+   * - `undefined` — compaction not needed.
+   */
+  compactionReason?: 'turn-count' | 'prompt-size';
   /** The configured maxTurns value used for this snapshot. */
   maxTurns: number;
   /** The fraction threshold in use (e.g. 0.8). */
   threshold: number;
   /** The absolute turn count at which compaction fires (Math.floor(maxTurns × threshold)). */
   thresholdTurns: number;
+  /** Most-recently reported assembled prompt size in chars (0 if not yet reported). */
+  lastPromptChars: number;
+  /** Whether the last reported prompt size exceeded the configured size threshold. */
+  promptSizeExceeded: boolean;
   /** ISO timestamp when this snapshot was captured. */
   capturedAt: string;
 }
@@ -167,6 +188,8 @@ export class SessionCompactor {
   private readonly maxTurns: number;
   private readonly threshold: number;
   readonly maxRetries: number;
+  private readonly promptSizeLimit: number;
+  private readonly promptSizeThreshold: number;
 
   /**
    * Track the totalTurns value at which we last triggered compaction.
@@ -176,10 +199,53 @@ export class SessionCompactor {
    */
   private lastCompactedAtTurns = 0;
 
+  /**
+   * Set to true by `notifyPromptSize()` when the assembled prompt exceeds
+   * the configured prompt-size threshold. Reset after successful compaction.
+   */
+  private _promptSizeExceeded = false;
+
+  /** Most-recently reported assembled prompt size in chars. */
+  private _lastPromptChars = 0;
+
   constructor(config: CompactorConfig) {
     this.maxTurns = config.maxTurns;
     this.threshold = config.threshold ?? 0.8;
     this.maxRetries = config.maxRetries ?? 2;
+    this.promptSizeLimit = config.promptSizeLimit ?? 32_768;
+    this.promptSizeThreshold = config.promptSizeThreshold ?? 0.8;
+  }
+
+  /**
+   * Notify the compactor of the most-recently assembled prompt size.
+   *
+   * Called by `PromptContextBuilder.buildMasterSpawnOptions()` after each
+   * prompt assembly. When `chars` exceeds `promptSizeLimit × promptSizeThreshold`
+   * (default: 80% of 32 768), the internal `_promptSizeExceeded` flag is raised
+   * and the next `triggerIfNeeded()` call will fire early compaction regardless
+   * of the current turn count.
+   *
+   * @param chars - Length of the assembled system prompt in characters.
+   */
+  notifyPromptSize(chars: number): void {
+    this._lastPromptChars = chars;
+    const warnAt = Math.floor(this.promptSizeLimit * this.promptSizeThreshold);
+    const exceeded = chars >= warnAt;
+    if (exceeded && !this._promptSizeExceeded) {
+      logger.warn(
+        {
+          chars,
+          warnAt,
+          promptSizeLimit: this.promptSizeLimit,
+          promptSizeThreshold: this.promptSizeThreshold,
+        },
+        'SessionCompactor: prompt size exceeded %d%% threshold (%d/%d chars) — early compaction queued',
+        Math.round(this.promptSizeThreshold * 100),
+        chars,
+        this.promptSizeLimit,
+      );
+    }
+    this._promptSizeExceeded = exceeded;
   }
 
   /**
@@ -235,7 +301,13 @@ export class SessionCompactor {
     // This prevents compaction from re-triggering on every message once the
     // cumulative count first exceeds the threshold.
     const turnsSinceLastCompaction = totalTurns - this.lastCompactedAtTurns;
-    const needsCompaction = turnsSinceLastCompaction >= this.thresholdTurns;
+    const turnCountExceeded = turnsSinceLastCompaction >= this.thresholdTurns;
+    const needsCompaction = turnCountExceeded || this._promptSizeExceeded;
+    const compactionReason: TurnSnapshot['compactionReason'] = needsCompaction
+      ? turnCountExceeded
+        ? 'turn-count'
+        : 'prompt-size'
+      : undefined;
 
     logger.debug(
       {
@@ -246,7 +318,10 @@ export class SessionCompactor {
         turnsSinceLastCompaction,
         lastCompactedAtTurns: this.lastCompactedAtTurns,
         thresholdTurns: this.thresholdTurns,
+        promptSizeExceeded: this._promptSizeExceeded,
+        lastPromptChars: this._lastPromptChars,
         needsCompaction,
+        compactionReason,
       },
       'SessionCompactor: turn snapshot',
     );
@@ -257,9 +332,12 @@ export class SessionCompactor {
       workerSpawnCount,
       totalTurns,
       needsCompaction,
+      compactionReason,
       maxTurns: this.maxTurns,
       threshold: this.threshold,
       thresholdTurns: this.thresholdTurns,
+      lastPromptChars: this._lastPromptChars,
+      promptSizeExceeded: this._promptSizeExceeded,
       capturedAt: new Date().toISOString(),
     };
   }
@@ -316,8 +394,12 @@ export class SessionCompactor {
         thresholdTurns: snapshot.thresholdTurns,
         maxTurns: snapshot.maxTurns,
         threshold: snapshot.threshold,
+        compactionReason: snapshot.compactionReason,
+        lastPromptChars: snapshot.lastPromptChars,
+        promptSizeExceeded: snapshot.promptSizeExceeded,
       },
-      'SessionCompactor: threshold exceeded — triggering compaction',
+      'SessionCompactor: threshold exceeded — triggering compaction (reason: %s)',
+      snapshot.compactionReason ?? 'unknown',
     );
 
     if (handler) {
@@ -344,6 +426,8 @@ export class SessionCompactor {
         // Record the turn count at which compaction succeeded so we don't
         // re-trigger on every subsequent message.
         this.lastCompactedAtTurns = snapshot.totalTurns;
+        // Reset prompt-size flag — it was the trigger and has now been handled.
+        this._promptSizeExceeded = false;
         logger.info(
           { sessionId, lastCompactedAtTurns: this.lastCompactedAtTurns },
           'SessionCompactor: recorded compaction point — next compaction after %d more turns',
@@ -353,6 +437,7 @@ export class SessionCompactor {
     } else {
       // No handler but compaction was triggered — still record the point
       this.lastCompactedAtTurns = snapshot.totalTurns;
+      this._promptSizeExceeded = false;
     }
 
     return { triggered: true, snapshot };
