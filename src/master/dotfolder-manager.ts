@@ -56,10 +56,6 @@ export class DotFolderManager {
   private readonly explorationDirsPath: string;
   private readonly promptsPath: string;
   private readonly contextPath: string;
-  private workspaceMapWarned = false;
-  private batchStateWarned = false;
-  private promptManifestWarned = false;
-  private learningsWarned = false;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -96,16 +92,7 @@ export class DotFolderManager {
     try {
       await fs.access(mapPath);
     } catch {
-      // File does not exist — expected on first run
-      if (!this.workspaceMapWarned) {
-        this.workspaceMapWarned = true;
-        logger.warn(
-          { path: mapPath },
-          'workspace-map.json not found — exploration may not have run yet',
-        );
-      } else {
-        logger.debug({ path: mapPath }, 'workspace-map.json not found');
-      }
+      logger.debug({ path: mapPath }, 'workspace-map.json not found');
       return null;
     }
 
@@ -587,12 +574,7 @@ export class DotFolderManager {
     try {
       await fs.access(learningsPath);
     } catch {
-      if (!this.learningsWarned) {
-        this.learningsWarned = true;
-        logger.warn({ path: learningsPath }, 'learnings.json not found — expected on first run');
-      } else {
-        logger.debug({ path: learningsPath }, 'learnings.json not found');
-      }
+      logger.debug({ path: learningsPath }, 'learnings.json not found');
       return null;
     }
 
@@ -809,12 +791,7 @@ export class DotFolderManager {
     try {
       await fs.access(manifestPath);
     } catch {
-      if (!this.promptManifestWarned) {
-        this.promptManifestWarned = true;
-        logger.warn({ path: manifestPath }, 'manifest.json not found — expected on first run');
-      } else {
-        logger.debug({ path: manifestPath }, 'manifest.json not found');
-      }
+      logger.debug({ path: manifestPath }, 'manifest.json not found');
       return null;
     }
 
@@ -1144,12 +1121,7 @@ export class DotFolderManager {
     try {
       await fs.access(batchStatePath);
     } catch {
-      if (!this.batchStateWarned) {
-        this.batchStateWarned = true;
-        logger.warn({ path: batchStatePath }, 'batch-state.json not found — expected on first run');
-      } else {
-        logger.debug({ path: batchStatePath }, 'batch-state.json not found');
-      }
+      logger.debug({ path: batchStatePath }, 'batch-state.json not found');
       return null;
     }
 

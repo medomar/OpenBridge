@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 1 | **Fixed:** 8 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 0 | **Fixed:** 9 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -253,7 +253,7 @@
 ### OB-F201 — Missing state files warn "expected on first run" on every restart (Nth run)
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/master/dotfolder-manager.ts:1131-1155` — `batch-state.json` read with `batchStateWarned` instance flag
   - `src/master/dotfolder-manager.ts:1796-1820` — `manifest.json` read with `promptManifestWarned` instance flag
