@@ -931,11 +931,15 @@ export function searchConversations(
   db: Database.Database,
   query: string,
   limit = 10,
+  userId?: string,
 ): ConversationEntry[] {
   if (!query.trim()) return [];
 
   const sanitized = sanitizeFts5Query(query);
   if (!sanitized) return [];
+
+  const userFilter = userId ? 'AND c.user_id = ?' : '';
+  const params: (string | number)[] = userId ? [sanitized, userId, limit] : [sanitized, limit];
 
   const rows = db
     .prepare(
@@ -946,10 +950,11 @@ export function searchConversations(
          FROM conversations_fts
          WHERE conversations_fts MATCH ?
        ) fts ON c.id = fts.rowid
+       WHERE 1=1 ${userFilter}
        ORDER BY fts.bm25_rank, c.created_at DESC
        LIMIT ?`,
     )
-    .all(sanitized, limit) as ConversationRow[];
+    .all(...params) as ConversationRow[];
 
   return rows.map(rowToEntry);
 }
