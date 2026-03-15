@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 6 | **In Progress:** 0 | **Done:** 19 (1505 archived)
+> **Pending:** 5 | **In Progress:** 0 | **Done:** 20 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -46,7 +46,7 @@
 | P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅      |
 | P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | ✅      |
 | P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | ✅      |
-| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | Pending |
+| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | ✅      |
 | P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | Pending |
 
 ---
@@ -111,7 +111,7 @@
 | OB-1522 | In `src/core/agent-runner.ts` streaming path (`execStreaming()`), after each chunk that reports cost, check cumulative `costUsd` against `maxCostUsd`. If exceeded, kill the process with SIGTERM, log a WARN with the cost details, and set a `costCapped: true` flag on the result. Return the partial output collected so far.                                                                                             | OB-F195 | opus   | ✅ Done |
 | OB-1523 | In `src/core/cost-manager.ts`, add a `checkCostCap(currentCost: number, maxCost: number): boolean` method and a `formatCostWarning(workerId, currentCost, maxCost, model)` helper for consistent cost-cap logging. Track cost-capped events in the existing metrics.                                                                                                                                                          | OB-F195 | sonnet | ✅ Done |
 | OB-1524 | In `src/master/worker-orchestrator.ts`, when a worker result has `costCapped: true`, include this in the worker result summary sent back to Master. Add a note like `"[Worker cost-capped at $0.05 — output may be incomplete. Consider narrowing the prompt or using a cheaper model.]"` so Master can adapt its strategy.                                                                                                   | OB-F195 | sonnet | ✅ Done |
-| OB-1525 | Add unit test: mock a streaming agent that reports cumulative costs of $0.01, $0.03, $0.06 — assert that the process is killed after the third chunk exceeds the $0.05 cap. Assert the result has `costCapped: true` and contains partial output. Add a second test: verify that a worker with no cost cap (`maxCostUsd: undefined`) runs to completion regardless of cost. File: `tests/core/agent-runner-cost-cap.test.ts`. | OB-F195 | sonnet | Pending |
+| OB-1525 | Add unit test: mock a streaming agent that reports cumulative costs of $0.01, $0.03, $0.06 — assert that the process is killed after the third chunk exceeds the $0.05 cap. Assert the result has `costCapped: true` and contains partial output. Add a second test: verify that a worker with no cost cap (`maxCostUsd: undefined`) runs to completion regardless of cost. File: `tests/core/agent-runner-cost-cap.test.ts`. | OB-F195 | sonnet | ✅ Done |
 
 ---
 
