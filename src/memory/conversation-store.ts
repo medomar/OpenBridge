@@ -129,6 +129,31 @@ export function getSessionHistory(
   return rows.reverse().map(rowToEntry);
 }
 
+/**
+ * Return the most recent `limit` messages for a given session and sender,
+ * ordered oldest first. Used by WebChat to isolate conversation history
+ * per sender so "New Chat" sessions don't bleed across users.
+ */
+export function getSessionHistoryForSender(
+  db: Database.Database,
+  sessionId: string,
+  sender: string,
+  limit = 50,
+): ConversationEntry[] {
+  const rows = db
+    .prepare(
+      `SELECT id, session_id, role, content, channel, user_id, created_at
+       FROM conversations
+       WHERE session_id = ? AND user_id = ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(sessionId, sender, limit) as ConversationRow[];
+
+  // Return in chronological order (oldest → newest)
+  return rows.reverse().map(rowToEntry);
+}
+
 // ---------------------------------------------------------------------------
 // Session listing
 // ---------------------------------------------------------------------------
