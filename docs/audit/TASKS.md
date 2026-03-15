@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 | **In Progress:** 0 | **Done:** 24 (1505 archived)
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 25 (1505 archived)
 > **Last Updated:** 2026-03-15
 
 <details>
@@ -41,13 +41,13 @@
 > Phases ordered by release priority: P0 = release blocker, P1 = must fix, P2 = should fix, P3 = nice to have.
 > Findings from real-world testing on elgrotte-data workspace (2026-03-15).
 
-| Pri | Phase | Title                              | Tasks | Findings     | Status  |
-| --- | ----- | ---------------------------------- | ----- | ------------ | ------- |
-| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅      |
-| P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | ✅      |
-| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | ✅      |
-| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | ✅      |
-| P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | Pending |
+| Pri | Phase | Title                              | Tasks | Findings     | Status |
+| --- | ----- | ---------------------------------- | ----- | ------------ | ------ |
+| P0  | 128   | Workspace Map & State File Fixes   | 5     | OB-F194/F193 | ✅     |
+| P0  | 129   | Prompt Budget & Compaction Fixes   | 6     | OB-F197/F192 | ✅     |
+| P1  | 130   | Worker Activity Tracking Fixes     | 4     | OB-F196      | ✅     |
+| P1  | 131   | Worker Cost Cap & Codex Guardrails | 5     | OB-F195      | ✅     |
+| P2  | 132   | Classification Engine Improvements | 5     | OB-F198      | ✅     |
 
 ---
 
@@ -127,4 +127,4 @@
 | OB-1527 | In `src/master/classification-engine.ts`, tighten the `batch-mode` keyword matcher. Currently "command" or "batch" alone can trigger it — require compound patterns like "batch process", "batch run", "run batch", "bon de commande" (exact phrase), "batch of". Avoid false positives from voice transcription where "command" appears in conversational context (e.g., "bon de commande" is a French business document, not a batch command).                    | OB-F198 | sonnet | ✅ Done |
 | OB-1528 | In `src/master/classification-engine.ts`, when the AI classifier returns a classification result (even with moderate confidence ≥ 0.4), prefer it over keyword fallback. Currently keyword fallback can override the AI classifier's result. Change the priority: AI classifier (confidence ≥ 0.4) > keyword match > default fallback. Log which source won when there's a conflict.                                                                                | OB-F198 | opus   | ✅ Done |
 | OB-1529 | Change the default keyword fallback from `tool-use` (15 max turns) to `quick-answer` (5 max turns). Rationale: if neither the AI classifier nor keyword matching can determine intent, the message is likely conversational. A `quick-answer` with 5 turns is sufficient for clarification, and costs 3x less than a `tool-use` with 15 turns. If the quick-answer agent determines it needs file access, it can say so and the user can re-send with more context. | OB-F198 | sonnet | ✅ Done |
-| OB-1530 | Add unit tests for classification improvements: (1) "I want to know if I can add a worker" → `quick-answer`, (2) "normally know about the sub-companies and about the stock" → NOT `batch-mode`, (3) "run a batch process on all files" → `batch-mode` (true positive), (4) AI classifier returns `quick-answer` at confidence 0.5 but keyword matches `tool-use` → `quick-answer` wins. File: `tests/master/classification-improvements.test.ts`.                  | OB-F198 | sonnet | Pending |
+| OB-1530 | Add unit tests for classification improvements: (1) "I want to know if I can add a worker" → `quick-answer`, (2) "normally know about the sub-companies and about the stock" → NOT `batch-mode`, (3) "run a batch process on all files" → `batch-mode` (true positive), (4) AI classifier returns `quick-answer` at confidence 0.5 but keyword matches `tool-use` → `quick-answer` wins. File: `tests/master/classification-improvements.test.ts`.                  | OB-F198 | sonnet | ✅ Done |

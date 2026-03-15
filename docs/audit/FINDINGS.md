@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 5 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 6 | **Fixed:** 6 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -146,7 +146,7 @@
 ### OB-F198 — Classification engine falls back to "keyword fallback: tool-use (default)" for conversational messages
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/classification-engine.ts`, `src/core/agent-runner.ts`
 - **Root Cause / Impact:**
   Messages like _"I want to get trained to the data..."_ and _"Not yet i wanna know if..."_ are classified as `tool-use` with 15 max turns via `"keyword fallback: tool-use (default)"`. These are conversational/planning messages that should be `quick-answer` (3–5 turns). The fallback wastes turns and cost on messages that don't need file access. Also, _"normally know about the sub-companies..."_ was classified as `complex-task` via `"keyword match: batch-mode"` — likely a false positive on the word "batch" or "command" in the voice transcription.
