@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 12 | **Fixed:** 0 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 11 | **Fixed:** 1 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -85,7 +85,7 @@
 ### OB-F193 — .openbridge state files not persisting between restarts (batch-state, manifest, learnings)
 
 - **Severity:** 🟢 Low
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/dotfolder-manager.ts`, `src/master/batch-manager.ts`, `src/master/seed-prompts.ts`
 - **Root Cause / Impact:**
   On every startup, `batch-state.json`, `prompts/manifest.json`, and `learnings.json` fail to read (ENOENT) and are recreated from scratch. While the code handles this gracefully (first-run behavior), these files should persist between restarts once created.
