@@ -505,10 +505,19 @@ export class DotFolderManager {
    * Read the master system prompt from .openbridge/prompts/master-system.md
    */
   public async readSystemPrompt(): Promise<string | null> {
+    const systemPromptPath = this.getSystemPromptPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      return await fs.readFile(this.getSystemPromptPath(), 'utf-8');
+      await fs.access(systemPromptPath);
+    } catch {
+      return null;
+    }
+
+    try {
+      return await fs.readFile(systemPromptPath, 'utf-8');
     } catch (err) {
-      logger.warn({ err, path: this.getSystemPromptPath() }, 'Failed to read master-system.md');
+      logger.warn({ err, path: systemPromptPath }, 'Failed to read master-system.md');
       return null;
     }
   }
