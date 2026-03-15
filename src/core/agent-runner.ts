@@ -534,36 +534,74 @@ export async function manifestToSpawnOptions(
 }
 
 /**
- * Sanitize a user-supplied prompt before passing it to the CLI.
+ * Apply graduated size checks and hard truncation to a prompt.
  *
- * Removes null bytes and ASCII control characters (except tab, newline, and
- * carriage return). Truncates to `maxLength` (default: `MAX_PROMPT_LENGTH`)
- * to prevent resource exhaustion. spawn() is used without shell: true, so
- * shell metacharacters are already safe.
- *
- * Pass the adapter-aware budget via `maxLength` so Master prompts use the
- * correct provider limit instead of the hardcoded 32 K default.
+ * - Logs WARN when the prompt exceeds 80 % of `maxLength` so callers can
+ *   trigger early compaction or investigate prompt bloat.
+ * - Logs WARN (with a "lost" byte count) when the prompt is actually
+ *   truncated (> 100 % of `maxLength`).
+ * - `context` identifies the call site in the log so operators can tell
+ *   whether bloat is coming from exploration, message-processing, or a
+ *   worker spawn.
  */
-export function sanitizePrompt(prompt: string, maxLength: number = MAX_PROMPT_LENGTH): string {
-  // eslint-disable-next-line no-control-regex
-  const cleaned = prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+export function truncatePrompt(
+  prompt: string,
+  maxLength: number = MAX_PROMPT_LENGTH,
+  context: string = 'unknown',
+): string {
+  const warnThreshold = Math.floor(maxLength * 0.8);
 
-  if (cleaned.length > maxLength) {
-    const bytesLost = cleaned.length - maxLength;
-    const percentLost = Math.round((bytesLost / cleaned.length) * 100);
+  if (prompt.length > maxLength) {
+    const bytesLost = prompt.length - maxLength;
+    const percentLost = Math.round((bytesLost / prompt.length) * 100);
     logger.warn(
       {
-        originalChars: cleaned.length,
+        context,
+        originalChars: prompt.length,
         maxLength,
         bytesLost,
         percentLost,
       },
-      `Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
+      `[${context}] Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
     );
-    return cleaned.slice(0, maxLength);
+    return prompt.slice(0, maxLength);
   }
 
-  return cleaned;
+  if (prompt.length > warnThreshold) {
+    const pct = Math.round((prompt.length / maxLength) * 100);
+    logger.warn(
+      {
+        context,
+        promptChars: prompt.length,
+        maxLength,
+        usagePct: pct,
+      },
+      `[${context}] Prompt at ${pct}% of limit (${prompt.length}/${maxLength} chars) — consider early compaction`,
+    );
+  }
+
+  return prompt;
+}
+
+/**
+ * Sanitize a user-supplied prompt before passing it to the CLI.
+ *
+ * Removes null bytes and ASCII control characters (except tab, newline, and
+ * carriage return). Delegates size checking and truncation to `truncatePrompt`.
+ * spawn() is used without shell: true, so shell metacharacters are already safe.
+ *
+ * Pass the adapter-aware budget via `maxLength` so Master prompts use the
+ * correct provider limit instead of the hardcoded 32 K default.
+ * Pass `context` to identify the call site in truncation warnings.
+ */
+export function sanitizePrompt(
+  prompt: string,
+  maxLength: number = MAX_PROMPT_LENGTH,
+  context: string = 'unknown',
+): string {
+  // eslint-disable-next-line no-control-regex
+  const cleaned = prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  return truncatePrompt(cleaned, maxLength, context);
 }
 
 /** Options accepted by AgentRunner.spawn() */
@@ -791,7 +829,7 @@ export function buildArgs(opts: SpawnOptions): string[] {
   // positional argument as the prompt. --allowedTools is variadic (<tools...>)
   // and would consume a trailing prompt as a tool name when no other option
   // follows it (e.g. --append-system-prompt).
-  args.push(sanitizePrompt(opts.prompt));
+  args.push(sanitizePrompt(opts.prompt, MAX_PROMPT_LENGTH, 'worker'));
 
   if (opts.allowedTools && opts.allowedTools.length > 0) {
     for (const tool of opts.allowedTools) {
