@@ -57,6 +57,9 @@ export class DotFolderManager {
   private readonly promptsPath: string;
   private readonly contextPath: string;
   private workspaceMapWarned = false;
+  private batchStateWarned = false;
+  private promptManifestWarned = false;
+  private learningsWarned = false;
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -571,6 +574,19 @@ export class DotFolderManager {
   public async readLearnings(): Promise<LearningsRegistry | null> {
     const learningsPath = this.getLearningsPath();
 
+    // Check existence before reading to avoid ENOENT spam on first run
+    try {
+      await fs.access(learningsPath);
+    } catch {
+      if (!this.learningsWarned) {
+        this.learningsWarned = true;
+        logger.warn({ path: learningsPath }, 'learnings.json not found — expected on first run');
+      } else {
+        logger.debug({ path: learningsPath }, 'learnings.json not found');
+      }
+      return null;
+    }
+
     try {
       const content = await fs.readFile(learningsPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
@@ -778,12 +794,27 @@ export class DotFolderManager {
    * Returns null if the file does not exist or cannot be parsed.
    */
   public async readPromptManifest(): Promise<PromptManifest | null> {
+    const manifestPath = this.getPromptManifestPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getPromptManifestPath(), 'utf-8');
+      await fs.access(manifestPath);
+    } catch {
+      if (!this.promptManifestWarned) {
+        this.promptManifestWarned = true;
+        logger.warn({ path: manifestPath }, 'manifest.json not found — expected on first run');
+      } else {
+        logger.debug({ path: manifestPath }, 'manifest.json not found');
+      }
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(manifestPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return PromptManifestSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getPromptManifestPath() }, 'Failed to read manifest.json');
+      logger.warn({ err, path: manifestPath }, 'Failed to read manifest.json');
       return null;
     }
   }
@@ -1098,12 +1129,27 @@ export class DotFolderManager {
    * Returns null if the file does not exist or cannot be parsed.
    */
   public async readBatchState(): Promise<BatchState | null> {
+    const batchStatePath = this.getBatchStatePath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getBatchStatePath(), 'utf-8');
+      await fs.access(batchStatePath);
+    } catch {
+      if (!this.batchStateWarned) {
+        this.batchStateWarned = true;
+        logger.warn({ path: batchStatePath }, 'batch-state.json not found — expected on first run');
+      } else {
+        logger.debug({ path: batchStatePath }, 'batch-state.json not found');
+      }
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(batchStatePath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return BatchStateSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getBatchStatePath() }, 'Failed to read batch-state.json');
+      logger.warn({ err, path: batchStatePath }, 'Failed to read batch-state.json');
       return null;
     }
   }
