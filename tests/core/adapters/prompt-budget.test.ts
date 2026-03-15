@@ -29,8 +29,8 @@ describe('ClaudeAdapter.getPromptBudget', () => {
 
   it('returns model-aware values for full sonnet model ID', () => {
     const budget = adapter.getPromptBudget('claude-sonnet-4-6');
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
   it('returns model-aware values for opus', () => {
@@ -41,8 +41,8 @@ describe('ClaudeAdapter.getPromptBudget', () => {
 
   it('returns model-aware values for full opus model ID', () => {
     const budget = adapter.getPromptBudget('claude-opus-4-6');
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
   it('returns sane defaults when no model is specified', () => {
