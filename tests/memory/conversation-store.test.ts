@@ -5,6 +5,7 @@ import {
   recordMessage,
   findRelevantHistory,
   getSessionHistory,
+  getSessionHistoryForSender,
   deleteOldConversations,
   listSessions,
   searchSessions,
@@ -162,6 +163,114 @@ describe('conversation-store.ts', () => {
       }
       const history = getSessionHistory(db, 'sess-limit', 5);
       expect(history).toHaveLength(5);
+    });
+  });
+
+  describe('getSessionHistoryForSender', () => {
+    it('returns only messages matching both sessionId and sender', () => {
+      // 5 messages from sender-A
+      for (let i = 0; i < 5; i++) {
+        recordMessage(
+          db,
+          makeEntry({
+            session_id: 'shared-sess',
+            user_id: 'sender-A',
+            content: `msg-A-${i}`,
+            created_at: `2026-01-01T0${i}:00:00.000Z`,
+          }),
+        );
+      }
+      // 5 messages from sender-B in the same session
+      for (let i = 0; i < 5; i++) {
+        recordMessage(
+          db,
+          makeEntry({
+            session_id: 'shared-sess',
+            user_id: 'sender-B',
+            content: `msg-B-${i}`,
+            created_at: `2026-01-01T1${i}:00:00.000Z`,
+          }),
+        );
+      }
+
+      const historyA = getSessionHistoryForSender(db, 'shared-sess', 'sender-A');
+      expect(historyA).toHaveLength(5);
+      expect(historyA.every((e) => e.user_id === 'sender-A')).toBe(true);
+      expect(historyA.every((e) => e.content.startsWith('msg-A-'))).toBe(true);
+    });
+
+    it('does not return messages from other senders in the same session', () => {
+      recordMessage(db, makeEntry({ session_id: 'iso-sess', user_id: 'alice', content: 'hi' }));
+      recordMessage(db, makeEntry({ session_id: 'iso-sess', user_id: 'bob', content: 'hello' }));
+
+      const aliceHistory = getSessionHistoryForSender(db, 'iso-sess', 'alice');
+      expect(aliceHistory).toHaveLength(1);
+      expect(aliceHistory[0]!.content).toBe('hi');
+
+      const bobHistory = getSessionHistoryForSender(db, 'iso-sess', 'bob');
+      expect(bobHistory).toHaveLength(1);
+      expect(bobHistory[0]!.content).toBe('hello');
+    });
+
+    it('returns messages in chronological order (oldest first)', () => {
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'order-sess',
+          user_id: 'user-x',
+          content: 'first',
+          created_at: '2026-01-01T08:00:00.000Z',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'order-sess',
+          user_id: 'user-x',
+          content: 'second',
+          created_at: '2026-01-01T09:00:00.000Z',
+        }),
+      );
+      recordMessage(
+        db,
+        makeEntry({
+          session_id: 'order-sess',
+          user_id: 'user-x',
+          content: 'third',
+          created_at: '2026-01-01T10:00:00.000Z',
+        }),
+      );
+
+      const history = getSessionHistoryForSender(db, 'order-sess', 'user-x');
+      expect(history[0]!.content).toBe('first');
+      expect(history[1]!.content).toBe('second');
+      expect(history[2]!.content).toBe('third');
+    });
+
+    it('returns empty array when no messages match the sender', () => {
+      recordMessage(db, makeEntry({ session_id: 'empty-sess', user_id: 'alice', content: 'hi' }));
+      const history = getSessionHistoryForSender(db, 'empty-sess', 'unknown-sender');
+      expect(history).toHaveLength(0);
+    });
+
+    it('returns empty array when session does not exist', () => {
+      const history = getSessionHistoryForSender(db, 'nonexistent-session', 'sender-X');
+      expect(history).toHaveLength(0);
+    });
+
+    it('respects the limit parameter', () => {
+      for (let i = 0; i < 10; i++) {
+        recordMessage(
+          db,
+          makeEntry({
+            session_id: 'limit-sess',
+            user_id: 'user-lim',
+            content: `message ${i}`,
+          }),
+        );
+      }
+      const history = getSessionHistoryForSender(db, 'limit-sess', 'user-lim', 4);
+      expect(history).toHaveLength(4);
     });
   });
 
