@@ -755,8 +755,9 @@ export interface AgentResult {
    * - 'completed': agent finished within its turn budget
    * - 'partial': agent hit the max-turns limit before finishing (turnsExhausted: true)
    * - 'fix-cap-reached': agent hit the fix iteration cap (fixCapReached: true)
+   * - 'cost-capped': agent was killed because cumulative cost exceeded maxCostUsd (costCapped: true)
    */
-  status: 'completed' | 'partial' | 'fix-cap-reached';
+  status: 'completed' | 'partial' | 'fix-cap-reached' | 'cost-capped';
   /**
    * Number of lint/test fix iterations detected in worker output (OB-1789).
    * Populated when maxFixIterations is set. Undefined if fix cap tracking is disabled.
@@ -768,6 +769,11 @@ export interface AgentResult {
    * or accept the partial result.
    */
   fixCapReached?: boolean;
+  /**
+   * True when the worker was killed because cumulative cost exceeded maxCostUsd (OB-1522).
+   * The result contains partial output collected before the cap was hit.
+   */
+  costCapped?: boolean;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -1864,6 +1870,8 @@ export class AgentRunner {
         let spawnError: Error | undefined;
         let costCapExceeded = false;
         let costCapMessage = '';
+        let perWorkerCostCapped = false;
+        let perWorkerCostAtCap = 0;
 
         try {
           // Drain all chunks — accumulate stdout and report turn progress
@@ -1871,6 +1879,25 @@ export class AgentRunner {
           while (!iterResult.done) {
             const chunk = iterResult.value;
             stdout += chunk;
+
+            // Per-worker maxCostUsd check (OB-1522 / OB-F195).
+            // Kill the process and return partial output if cumulative cost exceeds the cap.
+            if (opts.maxCostUsd !== undefined) {
+              const currentCostUsd = estimateCostUsd(
+                currentModel,
+                Buffer.byteLength(stdout, 'utf8'),
+              );
+              if (currentCostUsd > opts.maxCostUsd) {
+                logger.warn(
+                  { cost: currentCostUsd, cap: opts.maxCostUsd, profile: opts.profile },
+                  `Per-worker cost cap exceeded: $${currentCostUsd.toFixed(4)} > $${opts.maxCostUsd} — killing worker`,
+                );
+                currentAbort?.();
+                perWorkerCostCapped = true;
+                perWorkerCostAtCap = currentCostUsd;
+                break;
+              }
+            }
 
             // Per-profile cost cap check (OB-F101).
             // Estimate cost from accumulated output; abort early if cap exceeded.
@@ -1923,6 +1950,41 @@ export class AgentRunner {
         } catch (error) {
           logger.error({ error, attempt }, 'Agent streaming handle error');
           spawnError = error instanceof Error ? error : new Error(String(error));
+        }
+
+        // Per-worker cost cap exceeded (OB-1522) — return partial output, no retry
+        if (perWorkerCostCapped) {
+          const durationMs = Date.now() - startTime;
+          let parsedStdout = stdout;
+          if (currentConfig.parseOutput) {
+            try {
+              parsedStdout = currentConfig.parseOutput(stdout);
+            } catch {
+              /* fall back to raw */
+            }
+          }
+          const result: AgentResult = {
+            stdout: parsedStdout,
+            stderr: `Cost capped: $${perWorkerCostAtCap.toFixed(4)} exceeded maxCostUsd $${opts.maxCostUsd}`,
+            exitCode: 1,
+            durationMs,
+            retryCount: attempt,
+            model: currentModel,
+            modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+            costUsd: perWorkerCostAtCap,
+            turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
+            maxTurns: opts.maxTurns,
+            status: 'cost-capped',
+            costCapped: true,
+          };
+          if (opts.logFile) {
+            try {
+              await writeLogFile(opts.logFile, opts, result);
+            } catch {
+              /* ignore */
+            }
+          }
+          return result;
         }
 
         // Cost cap exceeded — abort immediately without retrying
@@ -2125,23 +2187,81 @@ export class AgentRunner {
       let stdout = '';
       let streamResult: { exitCode: number; stderr: string } | undefined;
       let spawnError: Error | undefined;
+      let streamCostCapped = false;
+      let streamCostAtCap = 0;
 
       try {
-        const { chunks } = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+        const { chunks, abort: streamAbort } = execOnceStreaming(
+          currentConfig,
+          opts.workspacePath,
+          opts.timeout,
+        );
 
         // Drain all chunks — yield each one and accumulate stdout
         let iterResult = await chunks.next();
         while (!iterResult.done) {
           const chunk = iterResult.value;
           stdout += chunk;
+
+          // Per-worker maxCostUsd check (OB-1522 / OB-F195).
+          if (opts.maxCostUsd !== undefined) {
+            const currentCostUsd = estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8'));
+            if (currentCostUsd > opts.maxCostUsd) {
+              logger.warn(
+                { cost: currentCostUsd, cap: opts.maxCostUsd, profile: opts.profile },
+                `Per-worker cost cap exceeded: $${currentCostUsd.toFixed(4)} > $${opts.maxCostUsd} — killing worker`,
+              );
+              streamAbort();
+              streamCostCapped = true;
+              streamCostAtCap = currentCostUsd;
+              break;
+            }
+          }
+
           yield chunk;
           iterResult = await chunks.next();
         }
 
-        streamResult = iterResult.value;
+        if (!streamCostCapped && iterResult.done) {
+          streamResult = iterResult.value;
+        }
       } catch (error) {
         logger.error({ error, attempt }, 'Agent stream error');
         spawnError = error instanceof Error ? error : new Error(String(error));
+      }
+
+      // Per-worker cost cap hit — return partial output, no retry (OB-1522)
+      if (streamCostCapped) {
+        const durationMs = Date.now() - startTime;
+        let parsedStdout = stdout;
+        if (currentConfig.parseOutput) {
+          try {
+            parsedStdout = currentConfig.parseOutput(stdout);
+          } catch {
+            /* fall back to raw */
+          }
+        }
+        const result: AgentResult = {
+          stdout: parsedStdout,
+          stderr: `Cost capped: $${streamCostAtCap.toFixed(4)} exceeded maxCostUsd $${opts.maxCostUsd}`,
+          exitCode: 1,
+          durationMs,
+          retryCount: attempt,
+          model: currentModel,
+          modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+          costUsd: streamCostAtCap,
+          maxTurns: opts.maxTurns,
+          status: 'cost-capped',
+          costCapped: true,
+        };
+        if (opts.logFile) {
+          try {
+            await writeLogFile(opts.logFile, opts, result);
+          } catch {
+            /* ignore */
+          }
+        }
+        return result;
       }
 
       if (spawnError) {
