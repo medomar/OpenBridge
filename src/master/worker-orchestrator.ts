@@ -1241,6 +1241,11 @@ export class WorkerOrchestrator {
       }
     }
 
+    // Track whether agent_activity was updated to a terminal state (OB-1517).
+    // Used by the finally block as a safety-net for streaming agents (Codex path)
+    // whose activity could remain 'running' if an intermediate step throws.
+    let activityUpdated = false;
+
     try {
       // Build a streaming progress callback — broadcasts worker-turn-progress events
       // to all connectors as each agent turn is parsed from stdout (OB-1051).
@@ -1552,6 +1557,7 @@ export class WorkerOrchestrator {
             completed_at: taskRecord.completedAt,
             cost_usd: result.costUsd,
           });
+          activityUpdated = true;
         } catch (actErr) {
           logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (completion)');
         }
@@ -1649,6 +1655,7 @@ export class WorkerOrchestrator {
             status: 'failed',
             completed_at: taskRecord.completedAt,
           });
+          activityUpdated = true;
         } catch (actErr) {
           logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (failed)');
         }
@@ -1669,6 +1676,25 @@ export class WorkerOrchestrator {
       // Always clean up abort handle — ensures no stale handles even on pre-spawn
       // exceptions (escalation timeout, slot wait timeout, spawn error). (OB-F171)
       this.workerAbortHandles.delete(workerId);
+
+      // Safety-net: ensure agent_activity transitions out of 'running' for ALL agent
+      // types (Claude, Codex, Aider). Without this, streaming workers (especially Codex)
+      // can remain stuck as 'running' if an intermediate step throws after the process
+      // completes but before the activity update runs. (OB-1517 / OB-F196)
+      if (!activityUpdated && memory) {
+        try {
+          await memory.updateActivity(workerId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+          });
+          logger.warn(
+            { workerId },
+            'Safety-net: forced agent_activity to failed — normal completion path did not update status',
+          );
+        } catch {
+          // Best-effort — if DB is unavailable, nothing more we can do
+        }
+      }
     }
   }
 
