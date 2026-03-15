@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-redundant-type-constituents */
+/* All rules above are disabled because @anthropic-ai/claude-agent-sdk is an optional peer dependency
+   that is not always installed. Type resolution fails at lint time but works at runtime. */
+
 /**
  * Claude Agent SDK Adapter
  *
@@ -24,6 +28,7 @@ import { createLogger } from '../logger.js';
 import { sanitizeEnv } from '../env-sanitizer.js';
 import { SecurityConfigSchema } from '../../types/config.js';
 import type { SecurityConfig } from '../../types/config.js';
+import { getClaudePromptBudget } from './claude-budget.js';
 import type {
   CanUseTool,
   Options as SDKOptions,
@@ -159,14 +164,7 @@ export class ClaudeSDKAdapter implements CLIAdapter {
   }
 
   getPromptBudget(model?: string): { maxPromptChars: number; maxSystemPromptChars: number } {
-    const isHaiku = model != null && /haiku/i.test(model);
-    const isSonnet = model != null && /sonnet/i.test(model);
-    const isOpus = model != null && /opus/i.test(model);
-
-    if (isHaiku || isSonnet || isOpus) {
-      return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
-    }
-    return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
+    return getClaudePromptBudget(model);
   }
 
   /**
