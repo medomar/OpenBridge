@@ -98,15 +98,15 @@ afterEach(() => {
 describe('spawnWithStreamingHandle — per-worker cost cap', () => {
   it('kills the process and returns costCapped:true when cumulative cost exceeds maxCostUsd', async () => {
     /**
-     * With model='claude-opus-4-6' the cost formula is:
-     *   estimateCostUsd(model, bytes) = 0.05 + (bytes / 1024) * 0.005
+     * With model='claude-opus-4-6' the cost formula is (Opus 4.6 pricing):
+     *   estimateCostUsd(model, bytes) = 0.005 + (bytes / 1024) * 0.0064
      *
-     * We emit 3 chunks and cap at $0.06:
-     *   chunk1  512 B  → cumulative  512 B → cost ≈ $0.0525  (under cap)
-     *   chunk2  512 B  → cumulative 1024 B → cost ≈ $0.0550  (under cap)
-     *   chunk3 2048 B  → cumulative 3072 B → cost ≈ $0.0650  (exceeds $0.06 → cap!)
+     * We emit 3 chunks and cap at $0.02:
+     *   chunk1  512 B  → cumulative  512 B → cost ≈ $0.0082  (under cap)
+     *   chunk2  512 B  → cumulative 1024 B → cost ≈ $0.0114  (under cap)
+     *   chunk3 2048 B  → cumulative 3072 B → cost ≈ $0.0242  (exceeds $0.02 → cap!)
      */
-    const CAP = 0.06;
+    const CAP = 0.02;
     const CHUNK1 = makeChunk(512);
     const CHUNK2 = makeChunk(512);
     const CHUNK3 = makeChunk(2048);
