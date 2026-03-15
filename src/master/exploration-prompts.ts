@@ -9,9 +9,72 @@
  * Phase 2: Classification  - Determine project type, frameworks, commands
  * Phase 3: Directory Dives - Explore each significant directory in detail
  * Phase 4: Assembly        - Merge partial results into workspace-map.json
+ *
+ * All prompts are budget-constrained to PROMPT_CHAR_BUDGET (16K chars) to avoid
+ * truncation by agent-runner's MAX_PROMPT_LENGTH (32K). Data payloads are trimmed
+ * progressively: reduce indentation → trim arrays → compress JSON.
  */
 
 import type { StructureScan, WorkspaceMap } from '../types/master.js';
+import { createLogger } from '../core/logger.js';
+
+const logger = createLogger('exploration-prompts');
+
+/**
+ * Maximum character budget for any single exploration prompt.
+ * Each phase prompt must fit within this limit to avoid truncation
+ * by agent-runner's MAX_PROMPT_LENGTH (32K). Set to 16K to leave
+ * headroom for agent-runner overhead and system prompt wrapping.
+ */
+export const PROMPT_CHAR_BUDGET = 16_000;
+
+/**
+ * Trims a JSON data payload to fit within a character budget.
+ * Strategy: pretty-print → trim arrays → compact JSON.
+ */
+function trimPayload(data: Record<string, unknown>, budget: number, arrayField?: string): string {
+  let payload = JSON.stringify(data, null, 2);
+  if (payload.length <= budget) return payload;
+
+  // Step 1: trim the largest array field if specified
+  if (arrayField && Array.isArray(data[arrayField])) {
+    const arr = data[arrayField] as unknown[];
+    const maxItems = Math.max(20, Math.floor(arr.length / 2));
+    const trimmed = {
+      ...data,
+      [arrayField]: arr.slice(0, maxItems),
+      _trimmed:
+        arr.length > maxItems
+          ? `Showing ${maxItems} of ${arr.length} ${arrayField} (trimmed for prompt size)`
+          : undefined,
+    };
+    payload = JSON.stringify(trimmed, null, 2);
+    if (payload.length <= budget) return payload;
+
+    // Step 2: compress (no indentation)
+    payload = JSON.stringify(trimmed);
+    if (payload.length <= budget) return payload;
+
+    // Step 3: aggressive trim — keep only first 10 items
+    const aggressive = {
+      ...data,
+      [arrayField]: arr.slice(0, 10),
+      _trimmed: `Showing 10 of ${arr.length} ${arrayField} (aggressively trimmed)`,
+    };
+    payload = JSON.stringify(aggressive);
+    if (payload.length <= budget) return payload;
+  }
+
+  // Final fallback: compact JSON without the array field
+  if (arrayField) {
+    const withoutArr = {
+      ...data,
+      [arrayField]: `[${(data[arrayField] as unknown[]).length} items omitted]`,
+    };
+    return JSON.stringify(withoutArr);
+  }
+  return JSON.stringify(data);
+}
 
 /**
  * Pass 1: Structure Scan
@@ -101,6 +164,21 @@ export function generateClassificationPrompt(
   workspacePath: string,
   structureScan: StructureScan,
 ): string {
+  // Template overhead is ~2K chars; leave the rest for data
+  const dataBudget = PROMPT_CHAR_BUDGET - 3_000;
+  const scanPayload = trimPayload(
+    structureScan as unknown as Record<string, unknown>,
+    dataBudget,
+    'topLevelFiles',
+  );
+  const promptSize = scanPayload.length + 3_000;
+  if (promptSize > PROMPT_CHAR_BUDGET) {
+    logger.debug(
+      { promptSize, budget: PROMPT_CHAR_BUDGET },
+      'Classification prompt exceeds budget after trimming',
+    );
+  }
+
   return `# Task: Project Classification
 
 Classify the project at **${workspacePath}** based on the structure scan results below.
@@ -108,7 +186,7 @@ Classify the project at **${workspacePath}** based on the structure scan results
 ## Structure Scan Results
 
 \`\`\`json
-${JSON.stringify(structureScan, null, 2)}
+${scanPayload}
 \`\`\`
 
 ## Instructions
@@ -292,11 +370,11 @@ Return ONLY valid JSON matching this schema:
  * @returns Prompt for summary generation
  */
 /**
- * Maximum character budget for the exploration data payload.
- * Leaves room for the prompt instructions (~2KB) within the 32KB agent-runner limit.
- * If the serialized data exceeds this, key files are trimmed (most numerous source of bloat).
+ * Maximum character budget for the summary data payload.
+ * Template overhead is ~1.5K, so data budget = PROMPT_CHAR_BUDGET - 2K = 14K.
+ * Previous value (28K) exceeded the 16K per-prompt budget on its own.
  */
-const SUMMARY_DATA_BUDGET = 28_000;
+const SUMMARY_DATA_BUDGET = PROMPT_CHAR_BUDGET - 2_000;
 
 export function generateSummaryPrompt(
   workspacePath: string,
@@ -309,23 +387,17 @@ export function generateSummaryPrompt(
     commands: Record<string, string>;
   },
 ): string {
-  // Trim key files if the payload would exceed the budget.
-  // Key files are the biggest source of bloat in large projects.
-  let dataPayload = JSON.stringify(partialMap, null, 2);
-  if (dataPayload.length > SUMMARY_DATA_BUDGET) {
-    const trimmedMap = {
-      ...partialMap,
-      keyFiles: partialMap.keyFiles.slice(0, 50),
-      _note:
-        partialMap.keyFiles.length > 50
-          ? `Showing 50 of ${partialMap.keyFiles.length} key files (trimmed for prompt size)`
-          : undefined,
-    };
-    dataPayload = JSON.stringify(trimmedMap, null, 2);
-    // If still too large, compress JSON (no indentation)
-    if (dataPayload.length > SUMMARY_DATA_BUDGET) {
-      dataPayload = JSON.stringify(trimmedMap);
-    }
+  const dataPayload = trimPayload(
+    partialMap as unknown as Record<string, unknown>,
+    SUMMARY_DATA_BUDGET,
+    'keyFiles',
+  );
+  const promptSize = dataPayload.length + 2_000;
+  if (promptSize > PROMPT_CHAR_BUDGET) {
+    logger.debug(
+      { promptSize, budget: PROMPT_CHAR_BUDGET },
+      'Summary prompt exceeds budget after trimming',
+    );
   }
 
   // IMPORTANT: Output format instructions come FIRST so they survive
@@ -486,24 +558,74 @@ export function generateIncrementalExplorationPrompt(
   deletedFiles: string[],
   changesSummary: string,
 ): string {
+  // Template + instructions are ~2.5K chars. Split remaining budget between
+  // file lists (~2K), change summary (~1K), and workspace map (rest).
+  const templateOverhead = 3_000;
+  const fileListBudget = 2_000;
+  const summaryBudget = 1_000;
+  const mapBudget = PROMPT_CHAR_BUDGET - templateOverhead - fileListBudget - summaryBudget;
+
+  // Trim file lists if too many
+  const maxFiles = 100;
+  const trimmedChanged =
+    changedFiles.length > maxFiles
+      ? [...changedFiles.slice(0, maxFiles), `... and ${changedFiles.length - maxFiles} more files`]
+      : changedFiles;
+  const trimmedDeleted =
+    deletedFiles.length > maxFiles
+      ? [...deletedFiles.slice(0, maxFiles), `... and ${deletedFiles.length - maxFiles} more files`]
+      : deletedFiles;
+
+  // Trim change summary
+  const trimmedSummary =
+    changesSummary.length > summaryBudget
+      ? changesSummary.slice(0, summaryBudget - 20) + '\n... (truncated)'
+      : changesSummary;
+
+  // Build a slim map with only the fields needed for incremental update:
+  // structure, keyFiles (trimmed), frameworks, commands, summary, projectType
+  const slimMap: Record<string, unknown> = {
+    projectType: currentMap.projectType,
+    projectName: currentMap.projectName,
+    frameworks: currentMap.frameworks,
+    commands: currentMap.commands,
+    structure: currentMap.structure,
+    keyFiles: currentMap.keyFiles,
+    summary: currentMap.summary,
+  };
+  const mapPayload = trimPayload(slimMap, mapBudget, 'keyFiles');
+
+  const promptSize =
+    templateOverhead +
+    trimmedChanged.join('\n').length +
+    trimmedDeleted.join('\n').length +
+    trimmedSummary.length +
+    mapPayload.length;
+  if (promptSize > PROMPT_CHAR_BUDGET) {
+    logger.debug(
+      { promptSize, budget: PROMPT_CHAR_BUDGET },
+      'Incremental exploration prompt exceeds budget after trimming',
+    );
+  }
+
   return `# Task: Incremental Workspace Map Update
 
 The workspace at **${workspacePath}** has changed since the last exploration.
 
 ## What Changed
 
-${changesSummary}
+${trimmedSummary}
 
 ### Modified/Added Files (${changedFiles.length}):
-${changedFiles.length > 0 ? changedFiles.map((f) => `- ${f}`).join('\n') : '(none)'}
+${trimmedChanged.length > 0 ? trimmedChanged.map((f) => `- ${f}`).join('\n') : '(none)'}
 
 ### Deleted Files (${deletedFiles.length}):
-${deletedFiles.length > 0 ? deletedFiles.map((f) => `- ${f}`).join('\n') : '(none)'}
+${trimmedDeleted.length > 0 ? trimmedDeleted.map((f) => `- ${f}`).join('\n') : '(none)'}
 
 ## Current Workspace Map
 
 \`\`\`json
-${JSON.stringify(currentMap, null, 2)}
+${mapPayload}
 \`\`\`
 
 ## Instructions
