@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 | **Fixed:** 3 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 5 | **Fixed:** 4 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -68,7 +68,7 @@
 ### OB-F200 — Seeded system prompt exceeds size cap (49K > 45K) — silently rejected
 
 - **Severity:** 🟠 High (upgraded — Master loses evolved prompt every restart)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/memory/prompt-store.ts:7` — `MAX_PROMPT_VERSION_LENGTH = 45_000` (the cap)
   - `src/memory/prompt-store.ts:66-73` — `createPromptVersion()` silently returns on oversize (no throw, no error to caller)
