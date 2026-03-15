@@ -253,7 +253,7 @@
 ### OB-F201 — Missing state files warn "expected on first run" on every restart (Nth run)
 
 - **Severity:** 🟢 Low
-- **Status:** ✅ Fixed
+- **Status:** ✅ Fixed (OB-1555, OB-1556)
 - **Key Files:**
   - `src/master/dotfolder-manager.ts:1131-1155` — `batch-state.json` read with `batchStateWarned` instance flag
   - `src/master/dotfolder-manager.ts:1796-1820` — `manifest.json` read with `promptManifestWarned` instance flag
@@ -280,7 +280,7 @@
 ### OB-F199 — master-system.md ENOENT logged twice on startup with full stack trace
 
 - **Severity:** 🟢 Low
-- **Status:** ✅ Fixed
+- **Status:** ✅ Fixed (OB-1554, OB-1556)
 - **Key Files:**
   - `src/master/dotfolder-manager.ts:507-514` — `readSystemPrompt()` does `fs.readFile()` directly with no `fs.access()` guard
   - `src/master/master-manager.ts:1853` — `seedSystemPrompt()` calls `readSystemPrompt()` (first ENOENT)
