@@ -59,7 +59,7 @@ export const MESSAGE_MAX_TURNS_PLANNING = 25;
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
  */
-export const CLASSIFIER_VERSION = 5;
+export const CLASSIFIER_VERSION = 6;
 
 /** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
 const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
@@ -954,6 +954,28 @@ export class ClassificationEngine {
         maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
         timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
         reason: 'length heuristic: long message with question/multi-sentence → tool-use',
+      };
+    }
+
+    // Conversational intent patterns (OB-1526)
+    // Messages that are clearly asking questions or expressing intent without requiring
+    // file access or code changes. Checked before the default so they map to quick-answer
+    // instead of falling through to tool-use.
+    const conversationalPatterns = [
+      'how can i',
+      'can you explain',
+      'i want to know',
+      'what about',
+      'is it possible',
+      "let's configure",
+      'not yet',
+    ];
+    if (conversationalPatterns.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'quick-answer',
+        maxTurns: MESSAGE_MAX_TURNS_QUICK,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+        reason: 'keyword match: conversational intent → quick-answer',
       };
     }
 
