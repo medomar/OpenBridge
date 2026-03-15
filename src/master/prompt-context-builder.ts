@@ -602,7 +602,11 @@ export class PromptContextBuilder {
    *   2. memory.md — Master's curated brain (always small, always relevant).
    *   3. Cross-session FTS5 — BM25-ranked hits from past sessions.
    */
-  async buildConversationContext(userMessage: string, sessionId?: string): Promise<string | null> {
+  async buildConversationContext(
+    userMessage: string,
+    sessionId?: string,
+    sender?: string,
+  ): Promise<string | null> {
     const sections: string[] = [];
     const memory = this.deps.getMemory();
 
@@ -614,7 +618,9 @@ export class PromptContextBuilder {
     // Layer 1: Recent conversation messages from the CURRENT session
     if (sessionId && memory) {
       try {
-        const sessionMessages = await memory.getSessionHistory(sessionId, 20);
+        const sessionMessages = sender
+          ? await memory.getSessionHistoryForSender(sessionId, sender, 20)
+          : await memory.getSessionHistory(sessionId, 20);
         const relevant = sessionMessages
           .filter((e) => e.role === 'user' || e.role === 'master')
           .slice(-10);
@@ -661,7 +667,7 @@ export class PromptContextBuilder {
 
     if (memory && crossSessionBudget > 0) {
       try {
-        const crossSession = await memory.searchConversations(userMessage, 5);
+        const crossSession = await memory.searchConversations(userMessage, 5, sender);
         const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
         if (relevant.length > 0) {
           const lines = relevant.map((e) => {

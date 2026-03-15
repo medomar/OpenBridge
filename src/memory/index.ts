@@ -36,6 +36,7 @@ import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
   getSessionHistory as _getSessionHistory,
+  getSessionHistoryForSender as _getSessionHistoryForSender,
   getRecentMessages as _getRecentMessages,
   listSessions as _listSessions,
   searchSessions as _searchSessions,
@@ -331,6 +332,16 @@ export class MemoryManager {
     return Promise.resolve(_getSessionHistory(this.db, sessionId, limit));
   }
 
+  /** Return the most recent messages for a given session and sender (OB-1544). */
+  getSessionHistoryForSender(
+    sessionId: string,
+    sender: string,
+    limit?: number,
+  ): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSessionHistoryForSender(this.db, sessionId, sender, limit));
+  }
+
   /** Return the most recent messages across all sessions (user + master roles), chronologically (OB-1116). */
   getRecentMessages(limit?: number): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
@@ -350,9 +361,13 @@ export class MemoryManager {
   }
 
   /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
-  searchConversations(query: string, limit?: number): Promise<ConversationEntry[]> {
+  searchConversations(
+    query: string,
+    limit?: number,
+    userId?: string,
+  ): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    return Promise.resolve(_searchConversations(this.db, query, limit));
+    return Promise.resolve(_searchConversations(this.db, query, limit, userId));
   }
 
   // -------------------------------------------------------------------------
