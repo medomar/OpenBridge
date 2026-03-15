@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 | **In Progress:** 0 | **Done:** 27 (1530 archived)
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 28 (1530 archived)
 > **Last Updated:** 2026-03-15
 
 ## Task Summary
@@ -13,7 +13,7 @@
 | 136   | Worker file operations + profile escalation (OB-F182) | 3     | ✅     |
 | 137   | Codex/Aider model updates (OB-F204)                   | 3     | ✅     |
 | 138   | Startup log noise (OB-F201, OB-F199)                  | 3     | ✅     |
-| 139   | Cross-finding integration tests                       | 3     | ◻      |
+| 139   | Cross-finding integration tests                       | 3     | ✅     |
 
 ---
 
@@ -113,7 +113,7 @@
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ------ | ------- |
 | OB-1557 | Integration test: model-aware prompt pipeline. Create `tests/integration/model-budgets.test.ts`. (1) Initialize `ClaudeAdapter` with model `claude-opus-4-6`, get prompt budget, verify `128_000 / 800_000`. (2) Pass budget to `SessionCompactor` config, verify compaction threshold is ~640K (800K × 0.8) not 26K (32K × 0.8). (3) Verify `getMaxPromptLength('claude-opus-4-6')` returns 128K. (4) Verify `CodexAdapter().getPromptBudget()` → `400_000`. (5) Verify `AiderAdapter().getPromptBudget('o3')` → `200_000`.                                                                           | OB-F203 | sonnet | ✅ Done |
 | OB-1558 | Integration test: prompt size cap + WebChat isolation. Create `tests/integration/prompt-session.test.ts`. (1) Generate Master system prompt with realistic config (6 tools, 4 MCP servers, 3 skill packs) — verify it fits within 55K or is trimmed by `trimPromptToFit()`. Call `createPromptVersion()` — verify no throw. Call with 60K content — verify it throws. (2) Insert 5 messages with sender-A and 5 with sender-B into same sessionId. Call `getSessionHistoryForSender(sessionId, senderA)` — verify only 5 returned. Call `buildConversationContext()` with sender-A — verify isolation. | OB-F200 | sonnet | ✅ Done |
-| OB-1559 | Integration test: profile escalation + startup log noise. Create `tests/integration/profiles-startup.test.ts`. (1) Mock a spawn marker with prompt "delete the old build folder" + profile `code-edit`. Pass through profile resolution. Verify escalated to `file-management` with `Bash(rm:*)` in resolved tools. Verify "add a new feature" stays as `code-edit`. (2) Initialize `DotFolderManager` with empty temp dir. Call all 4 read methods. Verify zero WARN logs, all return `null`.                                                                                                         | OB-F182 | sonnet | Pending |
+| OB-1559 | Integration test: profile escalation + startup log noise. Create `tests/integration/profiles-startup.test.ts`. (1) Mock a spawn marker with prompt "delete the old build folder" + profile `code-edit`. Pass through profile resolution. Verify escalated to `file-management` with `Bash(rm:*)` in resolved tools. Verify "add a new feature" stays as `code-edit`. (2) Initialize `DotFolderManager` with empty temp dir. Call all 4 read methods. Verify zero WARN logs, all return `null`.                                                                                                         | OB-F182 | sonnet | ✅ Done |
 
 ---
 
