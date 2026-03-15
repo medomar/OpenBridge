@@ -462,6 +462,42 @@ describe('retrieval.ts', () => {
       const results = searchConversations(db, '"*(){}[]');
       expect(results).toHaveLength(0);
     });
+
+    // userId filter tests (OB-1546 — WebChat session isolation)
+
+    it('filters results to matching userId when userId is provided', () => {
+      insertConversation(
+        db,
+        makeMsg({ content: 'deploy authentication service', user_id: 'alice' }),
+      );
+      insertConversation(db, makeMsg({ content: 'deploy authentication service', user_id: 'bob' }));
+
+      const results = searchConversations(db, 'authentication', 10, 'alice');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every((r) => r.user_id === 'alice')).toBe(true);
+      expect(results.some((r) => r.user_id === 'bob')).toBe(false);
+    });
+
+    it('returns all matching results when userId is not provided', () => {
+      insertConversation(
+        db,
+        makeMsg({ content: 'deploy authentication service', user_id: 'alice' }),
+      );
+      insertConversation(db, makeMsg({ content: 'deploy authentication service', user_id: 'bob' }));
+
+      const results = searchConversations(db, 'authentication');
+      expect(results.length).toBe(2);
+    });
+
+    it('returns empty array when userId does not match any conversation', () => {
+      insertConversation(
+        db,
+        makeMsg({ content: 'deploy authentication service', user_id: 'alice' }),
+      );
+
+      const results = searchConversations(db, 'authentication', 10, 'nobody');
+      expect(results).toHaveLength(0);
+    });
   });
 
   // -------------------------------------------------------------------------
