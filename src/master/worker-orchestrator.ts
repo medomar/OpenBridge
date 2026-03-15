@@ -146,6 +146,21 @@ export function predictToolRequirements(
 }
 
 /**
+ * Default per-worker cost caps in USD by tool profile (OB-1521).
+ * Applied when no explicit maxCostUsd is provided in the SPAWN marker.
+ * These are tighter than the session-level PROFILE_COST_CAPS — designed to
+ * catch runaway individual workers (e.g. a Codex worker that burned $0.28).
+ */
+const PROFILE_DEFAULT_COST_CAPS: Record<string, number> = {
+  'read-only': 0.05,
+  'data-query': 0.05,
+  'code-audit': 0.05,
+  'code-edit': 0.1,
+  'file-management': 0.1,
+  'full-access': 0.15,
+};
+
+/**
  * Detect tool-access failures in a worker result (OB-1592).
  *
  * Scans both stdout and stderr for the error patterns the Claude CLI emits
@@ -1109,6 +1124,10 @@ export class WorkerOrchestrator {
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     // manifestToSpawnOptions is async: when manifest.mcpServers is set, it writes a
     // per-worker temp MCP config file and returns a cleanup callback to delete it.
+    // OB-1521: Apply per-worker cost cap — marker override takes precedence over profile default.
+    const resolvedMaxCostUsd: number | undefined =
+      body.maxCostUsd ?? PROFILE_DEFAULT_COST_CAPS[profile];
+
     const { spawnOptions: spawnOpts, cleanup: mcpCleanup } = await manifestToSpawnOptions(
       {
         prompt: workerPrompt,
@@ -1119,6 +1138,7 @@ export class WorkerOrchestrator {
         timeout: body.timeout,
         retries: body.retries,
         maxBudgetUsd: body.maxBudgetUsd,
+        maxCostUsd: resolvedMaxCostUsd,
       },
       customProfiles,
     );
