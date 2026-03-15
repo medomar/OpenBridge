@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 10 | **Fixed:** 2 (183 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 9 | **Fixed:** 3 (183 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 183 findings fixed across v0.0.1–v0.1.0. All prior archived in [archive/](archive/).
 
 ---
@@ -73,7 +73,7 @@
 ### OB-F192 — Exploration prompt truncated by 66% (97K chars → 32K limit)
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`, `src/master/exploration-prompts.ts`, `src/master/exploration-coordinator.ts`
 - **Root Cause / Impact:**
   On every startup with workspace changes, the exploration prompt is 97K chars but the `maxLength` limit in AgentRunner is 32K, causing 66% of content to be silently truncated. The Master's initial exploration works with only ~34% of the context it needs.
