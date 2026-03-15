@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 | **Fixed:** 4 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 4 | **Fixed:** 5 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -110,7 +110,7 @@
 ### OB-F202 — WebChat "New Chat" doesn't reset Master AI session — stays in same conversation
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/connectors/webchat/webchat-connector.ts:1167` — `socketSender = 'webchat-user'` (initial per-socket sender)
   - `src/connectors/webchat/webchat-connector.ts:1324-1327` — `new-session` handler rotates `socketSender` to new UUID
