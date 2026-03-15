@@ -1,13 +1,13 @@
 # OpenBridge — Task List
 
-> **Pending:** 22 | **In Progress:** 0 | **Done:** 6 (1530 archived)
+> **Pending:** 21 | **In Progress:** 0 | **Done:** 7 (1530 archived)
 > **Last Updated:** 2026-03-15
 
 ## Task Summary
 
 | Phase | Focus                                                 | Tasks | Status |
 | ----- | ----------------------------------------------------- | ----- | ------ |
-| 133   | Claude model budgets + context windows (OB-F203)      | 7     | ◻      |
+| 133   | Claude model budgets + context windows (OB-F203)      | 7     | ✅     |
 | 134   | Prompt size cap + silent rejection (OB-F200)          | 4     | ◻      |
 | 135   | WebChat session isolation (OB-F202)                   | 5     | ◻      |
 | 136   | Worker file operations + profile escalation (OB-F182) | 3     | ◻      |
@@ -30,7 +30,7 @@
 | OB-1534 | In `src/master/session-compactor.ts:215`, replace the hardcoded `promptSizeLimit ?? 32_768` default. Add optional `modelId?: string` to `CompactorConfig` (interface at lines 83-106). When `modelId` matches Opus 4.6 or Sonnet 4.6, default `promptSizeLimit` to `800_000`. Otherwise keep `32_768`. Update the `CompactorConfig` interface JSDoc. Also update `promptSizeThreshold` comment to reference model-aware limits.                                                                          | OB-F203 | sonnet | ✅ Done |
 | OB-1535 | In `src/core/agent-runner.ts:38`, replace the constant `MAX_PROMPT_LENGTH = 32_768` with a function `getMaxPromptLength(model?: string): number` that returns `128_000` for Opus 4.6 / Sonnet 4.6 and `32_768` for others. Update all 3 call sites: line ~563 (`truncatePrompt` default param), line ~615 (`sanitizePrompt` default param), line ~862 (direct usage where `opts.model` is available). Import the shared budget helper from OB-1532 if available, or duplicate the regex detection.       | OB-F203 | opus   | ✅ Done |
 | OB-1536 | In `src/core/cost-manager.ts:136-148`, update `estimateCostUsd(model, outputBytes)` to use current Anthropic pricing. Opus 4.6: $5/MTok input, $25/MTok output. Sonnet 4.6: $3/MTok input, $15/MTok output. Haiku 4.5: $1/MTok input, $5/MTok output. The function estimates from `outputBytes` — update the per-KB multipliers to reflect the new rates. Add model ID regex matching for `opus-4-6`, `sonnet-4-6`, `haiku-4-5` in addition to the existing `includes('haiku')` etc.                     | OB-F203 | sonnet | ✅ Done |
-| OB-1537 | Update `tests/core/adapters/prompt-budget.test.ts` to verify model-specific budgets. Add test cases: `claude-opus-4-6` → `128_000 / 800_000`, `claude-sonnet-4-6` → `128_000 / 800_000`, `claude-haiku-4-5-20251001` → `32_768 / 180_000`, `opus` (short alias) → `128_000 / 800_000`, `sonnet` → `128_000 / 800_000`, `haiku` → `32_768 / 180_000`, `unknown-model` → `32_768 / 180_000`. Add a new `ClaudeSDKAdapter` test suite (currently missing from this file — only ClaudeAdapter is tested).    | OB-F203 | sonnet | Pending |
+| OB-1537 | Update `tests/core/adapters/prompt-budget.test.ts` to verify model-specific budgets. Add test cases: `claude-opus-4-6` → `128_000 / 800_000`, `claude-sonnet-4-6` → `128_000 / 800_000`, `claude-haiku-4-5-20251001` → `32_768 / 180_000`, `opus` (short alias) → `128_000 / 800_000`, `sonnet` → `128_000 / 800_000`, `haiku` → `32_768 / 180_000`, `unknown-model` → `32_768 / 180_000`. Add a new `ClaudeSDKAdapter` test suite (currently missing from this file — only ClaudeAdapter is tested).    | OB-F203 | sonnet | ✅ Done |
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 2 (192 prior findings archived) | **Last Audit:** 2026-03-15
+> **Open:** 6 | **Fixed:** 3 (192 prior findings archived) | **Last Audit:** 2026-03-15
 > **History:** 192 findings fixed across v0.0.1–v0.1.1. All prior archived in [archive/](archive/).
 
 ---
@@ -12,7 +12,7 @@
 ### OB-F203 — Claude model context windows and prompt budgets are outdated (Opus 4.6 = 1M, Sonnet 4.6 = 1M)
 
 - **Severity:** 🟠 High (upgraded — directly limits Master AI capability)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/adapters/claude-adapter.ts:147-163` — `getPromptBudget()` returns identical `32_768` / `180_000` for all models
   - `src/core/adapters/claude-sdk.ts:161-170` — **duplicate** `getPromptBudget()` with same hardcoded values
