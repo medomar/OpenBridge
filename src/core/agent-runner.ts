@@ -41,7 +41,7 @@ const logger = createLogger('agent-runner');
  * Opus 4.6 / Sonnet 4.6: 128_000 chars (1M token context window).
  * Haiku 4.5 and all others: 32_768 chars (conservative default).
  */
-function getMaxPromptLength(model?: string): number {
+export function getMaxPromptLength(model?: string): number {
   return getClaudePromptBudget(model).maxPromptChars;
 }
 

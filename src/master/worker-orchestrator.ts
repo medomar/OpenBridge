@@ -7,6 +7,7 @@ import {
   classifyError,
   resolveProfile,
   manifestToSpawnOptions,
+  getMaxPromptLength,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { classifyTaskType } from './classification-engine.js';
@@ -1145,6 +1146,19 @@ export class WorkerOrchestrator {
         );
         workerPrompt = `${TEST_PROTECTION_INSTRUCTION}\n\n${workerPrompt}`;
       }
+    }
+
+    // OB-1562: Pre-spawn prompt size validation — catch oversized prompts before they reach
+    // the adapter's sanitizePrompt(). This logs the workerId at the decision point, enabling
+    // smarter handling (e.g. prompt splitting) in the future.
+    const maxChars = getMaxPromptLength(resolvedModel);
+    if (workerPrompt.length > maxChars) {
+      const originalLen = workerPrompt.length;
+      workerPrompt = workerPrompt.slice(0, maxChars);
+      logger.warn(
+        { workerId, originalLen, maxChars, truncated: originalLen - maxChars },
+        'Pre-budgeted worker prompt to fit model limit',
+      );
     }
 
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
