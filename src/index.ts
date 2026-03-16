@@ -283,6 +283,14 @@ async function startV2Flow(
   // Step 3: Create Master AI and wire into bridge BEFORE starting
   logger.info({ workspacePath: resolvedWorkspacePath }, 'Launching Master AI...');
 
+  // Log trust level at startup (OB-F215)
+  const trustLevel = v2Config.security?.trustLevel ?? 'standard';
+  if (trustLevel === 'trusted') {
+    logger.warn('Running in TRUSTED mode — all agents have full access within workspace');
+  } else if (trustLevel === 'sandbox') {
+    logger.info('Running in SANDBOX mode — agents are read-only');
+  }
+
   // Resolve CLI adapter based on the discovered master tool
   const adapterRegistry = createAdapterRegistry();
   const cliAdapter = adapterRegistry.getForTool(selectedMaster);
