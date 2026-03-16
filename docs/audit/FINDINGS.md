@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 | **Fixed:** 7 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 4 | **Fixed:** 8 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -208,7 +208,7 @@
 ### OB-F212 — Workspace boundary enforcement incomplete for Bash commands (file operations guarded, Bash unrestricted)
 
 - **Severity:** 🟠 High (privacy/security gap — critical when trusted mode grants Bash access)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/workspace-manager.ts:312-375` — `isFileVisible()` with symlink escape guards, path traversal detection, include/exclude patterns
   - `src/core/agent-runner.ts:395-405` — `isPathWithinWorkspace()` validates destructive operations (rm, mv) stay in bounds
