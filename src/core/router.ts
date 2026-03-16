@@ -702,6 +702,24 @@ export class Router {
     markers: ParsedSpawnMarker[],
     message: InboundMessage,
   ): Promise<boolean> {
+    const trustLevel = this.securityConfig?.trustLevel ?? 'standard';
+
+    if (trustLevel === 'trusted') {
+      logger.debug({ sender }, 'Trusted mode — auto-approving worker spawn');
+      return false;
+    }
+
+    if (trustLevel === 'sandbox') {
+      const denyMsg: OutboundMessage = {
+        target: message.source,
+        recipient: sender,
+        content:
+          '⛔ Sandbox mode — high-risk operations are not available. Change trustLevel in config.json to enable.',
+      };
+      await connector.sendMessage(denyMsg);
+      return true;
+    }
+
     if (!this.securityConfig?.confirmHighRisk) return false;
 
     // Check per-user consent preference — skip confirmation when the user has opted out
