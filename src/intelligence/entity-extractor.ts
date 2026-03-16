@@ -251,8 +251,9 @@ export async function extractEntities(
       workspacePath: '.',
       allowedTools: ['Read', 'Glob', 'Grep'],
       maxTurns: 3,
-      timeout: 60_000,
-      retries: 1,
+      // Sonnet-class models need 90-130s for image analysis (OB-F206)
+      timeout: 180_000,
+      retries: 0,
     });
 
     if (result.exitCode !== 0 || result.stdout.trim().length === 0) {
