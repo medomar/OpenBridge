@@ -572,6 +572,8 @@ export class MasterManager {
   private isSelfImproving = false;
   /** Consecutive idle cycles without a user message — drives exponential backoff */
   private consecutiveIdleCycles = 0;
+  /** Consecutive no-op self-improvement cycles — suppresses cycles after 2 no-ops (OB-F210) */
+  private consecutiveNoOpCycles = 0;
   /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
   private completedTaskCount = 0;
   /** Cached workspace map summary — delegated to ExplorationManager (OB-1280). */
@@ -3070,6 +3072,7 @@ export class MasterManager {
   private resetIdleTimer(): void {
     this.lastMessageTimestamp = Date.now();
     this.consecutiveIdleCycles = 0;
+    this.consecutiveNoOpCycles = 0;
   }
 
   /** Drain pending messages. Delegated to ExplorationManager (OB-1280). */
@@ -4559,6 +4562,14 @@ export class MasterManager {
     if (idleTime >= currentThreshold) {
       this.consecutiveIdleCycles++;
 
+      // Suppress self-improvement after 2 consecutive no-ops (OB-F210)
+      if (this.consecutiveNoOpCycles >= 2) {
+        logger.debug(
+          'Self-improvement paused: 2 consecutive no-op cycles — waiting for next user message',
+        );
+        return;
+      }
+
       logger.info(
         {
           idleTimeMs: idleTime,
@@ -4572,9 +4583,15 @@ export class MasterManager {
       );
 
       try {
-        await this.runSelfImprovementCycle();
+        const workDone = await this.runSelfImprovementCycle();
+        if (workDone) {
+          this.consecutiveNoOpCycles = 0;
+        } else {
+          this.consecutiveNoOpCycles++;
+        }
       } catch (error) {
         logger.error({ err: error }, 'Self-improvement cycle failed');
+        this.consecutiveNoOpCycles++;
       }
 
       // Reset last message timestamp to prevent immediate re-trigger
@@ -4589,16 +4606,18 @@ export class MasterManager {
    * 2. Create new custom profiles for recurring task patterns
    * 3. Update workspace-map.json if project has changed
    */
-  private async runSelfImprovementCycle(): Promise<void> {
+  private async runSelfImprovementCycle(): Promise<boolean> {
     if (this.isSelfImproving) {
       logger.warn('Self-improvement cycle already running');
-      return;
+      return false;
     }
 
     this.isSelfImproving = true;
     const startedAt = new Date().toISOString();
 
     logger.info('Starting self-improvement cycle');
+
+    let workDone = false;
 
     try {
       if (this.memory) {
@@ -4618,7 +4637,7 @@ export class MasterManager {
       }
 
       // Task 0: Detect degraded prompts (rewrites that made things worse) and rollback
-      await this.rollbackDegradedPrompts();
+      const rollbackCount = await this.rollbackDegradedPrompts();
 
       // Task 1: Identify and rewrite low-performing prompts via dot-folder manifest
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
@@ -4634,10 +4653,14 @@ export class MasterManager {
       }
 
       // Task 2: Analyze learnings for recurring task patterns and create custom profiles
-      await this.createProfilesFromLearnings();
+      const profileCreated = await this.createProfilesFromLearnings();
 
       // Task 3: Check if workspace has changed and update map if needed
-      await this.updateWorkspaceMapIfChanged();
+      const workspaceChanged = await this.updateWorkspaceMapIfChanged();
+
+      // Determine if any productive work was done (OB-F210)
+      workDone =
+        rollbackCount > 0 || lowPerformingPrompts.length > 0 || profileCreated || workspaceChanged;
 
       if (this.memory) {
         await this.memory.logExploration({
@@ -4645,7 +4668,11 @@ export class MasterManager {
           level: 'info',
           message: 'Self-improvement cycle completed',
           data: {
+            rollbackCount,
             lowPerformingPrompts: lowPerformingPrompts.length,
+            profileCreated,
+            workspaceChanged,
+            workDone,
             durationMs: new Date().getTime() - new Date(startedAt).getTime(),
           },
         });
@@ -4655,13 +4682,17 @@ export class MasterManager {
           level: 'info',
           message: 'Self-improvement cycle completed',
           data: {
+            rollbackCount,
             lowPerformingPrompts: lowPerformingPrompts.length,
+            profileCreated,
+            workspaceChanged,
+            workDone,
             durationMs: new Date().getTime() - new Date(startedAt).getTime(),
           },
         });
       }
 
-      logger.info('Self-improvement cycle completed successfully');
+      logger.info({ workDone }, 'Self-improvement cycle completed');
     } catch (error) {
       logger.error({ err: error }, 'Self-improvement cycle encountered an error');
 
@@ -4683,6 +4714,8 @@ export class MasterManager {
     } finally {
       this.isSelfImproving = false;
     }
+
+    return workDone;
   }
 
   /**
@@ -4792,11 +4825,13 @@ ${currentContent}
    * - Its current successRate < previousSuccessRate
    * - It has been used 5+ times since the rewrite (enough signal)
    */
-  private async rollbackDegradedPrompts(): Promise<void> {
+  private async rollbackDegradedPrompts(): Promise<number> {
     const manifest = this.memory
       ? await this.memory.getPromptManifest()
       : await this.dotFolder.readPromptManifest();
-    if (!manifest) return;
+    if (!manifest) return 0;
+
+    let rollbackCount = 0;
 
     for (const prompt of Object.values(manifest.prompts)) {
       if (
@@ -4844,19 +4879,23 @@ ${currentContent}
           }
 
           logger.info({ promptId: prompt.id }, 'Successfully rolled back degraded prompt');
+          rollbackCount++;
         } catch (error) {
           logger.error({ err: error, promptId: prompt.id }, 'Failed to rollback degraded prompt');
         }
       }
     }
+
+    return rollbackCount;
   }
 
   /**
    * Analyze learnings to identify recurring task patterns and create custom profiles.
    * For example: if "test-runner" tasks consistently succeed with specific tools,
    * create a "test-runner" profile.
+   * Returns true if at least one profile was created.
    */
-  private async createProfilesFromLearnings(): Promise<void> {
+  private async createProfilesFromLearnings(): Promise<boolean> {
     // Build a list of { taskType, successCount, failureCount, successRate } from either memory or JSON.
     type TaskTypeStat = {
       taskType: string;
@@ -4876,12 +4915,12 @@ ${currentContent}
           successRate: r.successRate,
         }));
       } catch {
-        return;
+        return false;
       }
     } else {
       const learnings = await this.dotFolder.readLearnings();
       if (!learnings || learnings.entries.length < 10) {
-        return;
+        return false;
       }
       logger.info(
         { learningCount: learnings.entries.length },
@@ -4906,8 +4945,10 @@ ${currentContent}
 
     const totalEntries = taskTypeStats.reduce((s, r) => s + r.successCount + r.failureCount, 0);
     if (totalEntries < 10) {
-      return;
+      return false;
     }
+
+    let profileCreated = false;
 
     // Look for task types with >5 total executions and >70% success rate
     for (const stat of taskTypeStats) {
@@ -4950,21 +4991,25 @@ ${currentContent}
           }
         }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
+        profileCreated = true;
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
       }
     }
+
+    return profileCreated;
   }
 
   /**
    * Check if the workspace has changed significantly and update workspace-map.json if needed.
    * Detects changes by checking for new files, modified package.json, new directories, etc.
+   * Returns true if workspace changed and was updated.
    */
-  private async updateWorkspaceMapIfChanged(): Promise<void> {
+  private async updateWorkspaceMapIfChanged(): Promise<boolean> {
     const map = await this.readWorkspaceMapFromStore();
     if (!map) {
       // No map to update
-      return;
+      return false;
     }
 
     logger.info('Checking if workspace has changed significantly');
@@ -4994,9 +5039,13 @@ ${currentContent}
           'package.json has changed since last map generation, triggering re-exploration',
         );
         await this.reExplore();
+        return true;
       }
+
+      return false;
     } catch (error) {
       logger.error({ err: error }, 'Failed to check workspace changes (non-blocking)');
+      return false;
     }
   }
 
