@@ -413,3 +413,144 @@ describe('PermissionRelay', () => {
     expect(result).toBe(false);
   });
 });
+
+// ── Tests: PermissionRelay trust level guards (OB-1602) ───────────────────────
+
+describe('PermissionRelay trust level guards (OB-1602)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // ── Trusted mode ──────────────────────────────────────────────────────────
+
+  it('trusted mode — auto-approves any tool without contacting the user', async () => {
+    const { relay, connector } = makeRelay();
+    relay.setTrustLevel('trusted');
+
+    const result = await relay.relayPermission({
+      toolName: 'Bash',
+      input: { command: 'rm -rf dist/' },
+      userId: 'user-trusted',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+    // No message sent — approval is immediate
+    expect(connector.sentMessages).toHaveLength(0);
+    // No pending entry registered
+    expect(relay.hasPending('user-trusted')).toBe(false);
+  });
+
+  it('trusted mode — auto-approves Write tool without user interaction', async () => {
+    const { relay, connector } = makeRelay();
+    relay.setTrustLevel('trusted');
+
+    const result = await relay.relayPermission({
+      toolName: 'Write',
+      input: { file_path: '/workspace/out.txt', content: 'data' },
+      userId: 'user-trusted-write',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+    expect(connector.sentMessages).toHaveLength(0);
+  });
+
+  // ── Sandbox mode ──────────────────────────────────────────────────────────
+
+  it('sandbox mode — denies Write tool immediately without contacting the user', async () => {
+    const { relay, connector } = makeRelay();
+    relay.setTrustLevel('sandbox');
+
+    const result = await relay.relayPermission({
+      toolName: 'Write',
+      input: { file_path: '/workspace/out.txt', content: 'data' },
+      userId: 'user-sandbox-write',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(false);
+    expect(connector.sentMessages).toHaveLength(0);
+    expect(relay.hasPending('user-sandbox-write')).toBe(false);
+  });
+
+  it('sandbox mode — denies Bash tool immediately', async () => {
+    const { relay } = makeRelay();
+    relay.setTrustLevel('sandbox');
+
+    const result = await relay.relayPermission({
+      toolName: 'Bash',
+      input: { command: 'npm install' },
+      userId: 'user-sandbox-bash',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('sandbox mode — approves Read tool (read-only tools are allowed)', async () => {
+    const { relay, connector } = makeRelay();
+    relay.setTrustLevel('sandbox');
+
+    const result = await relay.relayPermission({
+      toolName: 'Read',
+      input: { file_path: '/workspace/src/index.ts' },
+      userId: 'user-sandbox-read',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+    // Auto-approved — no user prompt sent
+    expect(connector.sentMessages).toHaveLength(0);
+  });
+
+  it('sandbox mode — approves Glob tool (read-only tools are allowed)', async () => {
+    const { relay } = makeRelay();
+    relay.setTrustLevel('sandbox');
+
+    const result = await relay.relayPermission({
+      toolName: 'Glob',
+      input: { pattern: '**/*.ts' },
+      userId: 'user-sandbox-glob',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('sandbox mode — approves Grep tool (read-only tools are allowed)', async () => {
+    const { relay } = makeRelay();
+    relay.setTrustLevel('sandbox');
+
+    const result = await relay.relayPermission({
+      toolName: 'Grep',
+      input: { pattern: 'TODO', path: '/workspace/src' },
+      userId: 'user-sandbox-grep',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+  });
+
+  // ── Trust level via constructor config ────────────────────────────────────
+
+  it('trusted mode via constructor config — auto-approves without user interaction', async () => {
+    const connector = createMockConnector();
+    const connectors = new Map<string, Connector>([['mock', connector]]);
+    const relay = new PermissionRelay(() => connectors, { timeoutMs: 200, trustLevel: 'trusted' });
+
+    const result = await relay.relayPermission({
+      toolName: 'Edit',
+      input: { file_path: '/workspace/src/auth.ts' },
+      userId: 'user-ctor-trusted',
+      channel: 'mock',
+    });
+
+    expect(result).toBe(true);
+    expect(connector.sentMessages).toHaveLength(0);
+  });
+});
