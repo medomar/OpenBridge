@@ -303,6 +303,14 @@ export const SandboxConfigSchema = z.object({
 
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 
+/**
+ * Workspace-scoped trust level. Controls AI autonomy posture.
+ * - sandbox:  Read-only agents, no tool escalation, no Bash — safe for demos/onboarding.
+ * - standard: Current behavior — profile-based tools, confirmHighRisk: true, escalation prompts.
+ * - trusted:  Full access within workspace, confirmHighRisk: false, auto-approve escalations.
+ */
+export type WorkspaceTrustLevel = 'sandbox' | 'standard' | 'trusted';
+
 /** Schema for security configuration — env var sanitization for workers */
 export const SecurityConfigSchema = z.object({
   /** Glob patterns for env vars to strip from worker environments (denylist mode) */
@@ -315,6 +323,18 @@ export const SecurityConfigSchema = z.object({
    * Default: true (require confirmation for high-risk operations).
    */
   confirmHighRisk: z.boolean().default(true),
+  /**
+   * Controls AI autonomy level.
+   * - sandbox:  Read-only agents, no tool escalation, no Bash — safe for demos/onboarding.
+   * - standard: Profile-based tools with confirmation gates (default).
+   * - trusted:  Full access within workspace, confirmHighRisk derived as false.
+   */
+  trustLevel: z
+    .enum(['sandbox', 'standard', 'trusted'])
+    .default('standard')
+    .describe(
+      'Controls AI autonomy level. sandbox=read-only agents, standard=profile-based with confirmation gates, trusted=full access within workspace.',
+    ),
   /** Sandbox configuration for worker process isolation */
   sandbox: SandboxConfigSchema.default({}),
   /**
@@ -329,6 +349,18 @@ export const SecurityConfigSchema = z.object({
 });
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
+
+/**
+ * Returns the effective `confirmHighRisk` value taking trust level into account.
+ * - trusted  → false (no confirmation gates)
+ * - sandbox  → true  (always confirm high-risk)
+ * - standard → security.confirmHighRisk (preserves explicit user setting)
+ */
+export function getEffectiveConfirmHighRisk(security: SecurityConfig): boolean {
+  if (security.trustLevel === 'trusted') return false;
+  if (security.trustLevel === 'sandbox') return true;
+  return security.confirmHighRisk;
+}
 
 /** Schema for email (SMTP) configuration */
 export const EmailConfigSchema = z.object({
