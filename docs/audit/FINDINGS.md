@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Fixed:** 4 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 7 | **Fixed:** 5 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -124,7 +124,7 @@
 ### OB-F209 — "Trust all" natural language not recognized as /trust command
 
 - **Severity:** 🟡 Medium (bad UX — user must know exact command syntax)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/router.ts:1610-1614` — `/trust` command detection: regex `/^\/trust(\s+.*)?$/i`
   - `src/core/command-handlers.ts` — `handleTrustCommand()` implementation
