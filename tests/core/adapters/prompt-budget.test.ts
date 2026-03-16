@@ -9,6 +9,8 @@ import { ClaudeSDKAdapter } from '../../../src/core/adapters/claude-sdk.js';
 import { CodexAdapter } from '../../../src/core/adapters/codex-adapter.js';
 import { AiderAdapter } from '../../../src/core/adapters/aider-adapter.js';
 import type { CLIAdapter } from '../../../src/core/cli-adapter.js';
+import { getClaudePromptBudget } from '../../../src/core/adapters/claude-budget.js';
+import { getMaxPromptLength } from '../../../src/core/agent-runner.js';
 
 // ── ClaudeAdapter.getPromptBudget ────────────────────────────────────────────
 
@@ -203,6 +205,48 @@ describe('AiderAdapter.getPromptBudget', () => {
     const budgetGpt = adapter.getPromptBudget('gpt-4o');
     expect(budgetDefault).toEqual(budgetClaude);
     expect(budgetDefault).toEqual(budgetGpt);
+  });
+});
+
+// ── getClaudePromptBudget (shared helper, OB-1561/OB-1564) ────────────────────
+
+describe('getClaudePromptBudget', () => {
+  it('returns 128K for undefined model (Sonnet-class default, not 32K)', () => {
+    const budget = getClaudePromptBudget(undefined);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
+  });
+
+  it('returns 32K for haiku (explicitly Haiku model)', () => {
+    const budget = getClaudePromptBudget('haiku');
+    expect(budget.maxPromptChars).toBe(32_768);
+    expect(budget.maxSystemPromptChars).toBe(180_000);
+  });
+
+  it('returns 128K for empty string (empty = Sonnet-class default)', () => {
+    const budget = getClaudePromptBudget('');
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
+  });
+});
+
+// ── getMaxPromptLength (OB-1564) ──────────────────────────────────────────────
+
+describe('getMaxPromptLength', () => {
+  it('returns 128K for undefined model (Sonnet-class default after OB-1561 fix)', () => {
+    expect(getMaxPromptLength(undefined)).toBe(128_000);
+  });
+
+  it('returns 32K for haiku', () => {
+    expect(getMaxPromptLength('haiku')).toBe(32_768);
+  });
+
+  it('returns 128K for sonnet', () => {
+    expect(getMaxPromptLength('sonnet')).toBe(128_000);
+  });
+
+  it('returns 128K for opus', () => {
+    expect(getMaxPromptLength('opus')).toBe(128_000);
   });
 });
 
