@@ -3675,6 +3675,7 @@ export class MasterManager {
               }
             },
             message.attachments,
+            taskClass,
           );
 
           // (5) Emit synthesizing event — Master is combining worker results
@@ -4253,6 +4254,7 @@ export class MasterManager {
               spawnResult.markers,
               workerCallback,
               message.attachments,
+              streamTaskClass,
             );
             let progressIter = await progressGen.next();
             while (!progressIter.done) {
@@ -4267,6 +4269,7 @@ export class MasterManager {
               spawnResult.markers,
               workerCallback,
               message.attachments,
+              streamTaskClass,
             );
           }
 
@@ -5181,6 +5184,7 @@ ${currentContent}
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5266,6 +5270,17 @@ ${currentContent}
     const stats = this.workerRegistry.getAggregatedStats();
     logger.info(stats, 'Worker batch stats');
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (this.memory && taskClass) {
+      this.memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: stats.totalTurnsUsed ?? 0,
+          workerCount: stats.totalWorkers,
+          durationMs: stats.avgDurationMs * stats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
+
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       settled,
@@ -5307,6 +5322,7 @@ ${currentContent}
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5379,6 +5395,18 @@ ${currentContent}
     yield `\n\n_[All subtasks complete: ${completedCount}/${totalWorkers} successful]_\n`;
 
     await this.persistWorkerRegistry();
+
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (this.memory && taskClass) {
+      const progressStats = this.workerRegistry.getAggregatedStats();
+      this.memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: progressStats.totalTurnsUsed ?? 0,
+          workerCount: progressStats.totalWorkers,
+          durationMs: progressStats.avgDurationMs * progressStats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
 
     // Format all results and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(

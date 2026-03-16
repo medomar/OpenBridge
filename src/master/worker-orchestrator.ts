@@ -394,6 +394,7 @@ export class WorkerOrchestrator {
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.deps.readProfilesFromStore();
@@ -479,6 +480,18 @@ export class WorkerOrchestrator {
     const stats = this.deps.workerRegistry.getAggregatedStats();
     logger.info(stats, 'Worker batch stats');
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    const memory = this.deps.getMemory();
+    if (memory && taskClass) {
+      memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: stats.totalTurnsUsed ?? 0,
+          workerCount: stats.totalWorkers,
+          durationMs: stats.avgDurationMs * stats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
+
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       settled,
@@ -488,7 +501,6 @@ export class WorkerOrchestrator {
     );
 
     // Persist extracted observations (fire-and-forget — don't block the response)
-    const memory = this.deps.getMemory();
     if (observations.length > 0 && memory) {
       Promise.all(observations.map((obs) => memory.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
@@ -521,6 +533,7 @@ export class WorkerOrchestrator {
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.deps.readProfilesFromStore();
@@ -594,6 +607,21 @@ export class WorkerOrchestrator {
 
     await this.deps.persistWorkerRegistry();
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (taskClass) {
+      const progressStats = this.deps.workerRegistry.getAggregatedStats();
+      const progressMemory = this.deps.getMemory();
+      if (progressMemory) {
+        progressMemory
+          .recordTaskEfficiency(taskClass, {
+            turnsUsed: progressStats.totalTurnsUsed ?? 0,
+            workerCount: progressStats.totalWorkers,
+            durationMs: progressStats.avgDurationMs * progressStats.totalWorkers,
+          })
+          .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+      }
+    }
+
     // Format all results and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       finalSettled,
@@ -603,9 +631,9 @@ export class WorkerOrchestrator {
     );
 
     // Persist extracted observations (fire-and-forget — don't block the response)
-    const memory = this.deps.getMemory();
-    if (observations.length > 0 && memory) {
-      Promise.all(observations.map((obs) => memory.insertObservation(obs))).catch((err) =>
+    const memoryForObs = this.deps.getMemory();
+    if (observations.length > 0 && memoryForObs) {
+      Promise.all(observations.map((obs) => memoryForObs.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
       );
     }

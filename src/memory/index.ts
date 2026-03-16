@@ -22,7 +22,14 @@ import {
   searchConversations as _searchConversations,
   type SearchOptions,
 } from './retrieval.js';
-import type { TaskRecord, LearnedParams, ModelStats, LearningsSummary } from './task-store.js';
+import type {
+  TaskRecord,
+  LearnedParams,
+  ModelStats,
+  LearningsSummary,
+  TaskEfficiencyMetrics,
+  TaskEfficiencyRecord,
+} from './task-store.js';
 import {
   recordTask as _recordTask,
   getTasksByType as _getTasksByType,
@@ -31,6 +38,8 @@ import {
   recordLearning as _recordLearning,
   getModelStatsForTask as _getModelStatsForTask,
   getHighSuccessLearnings as _getHighSuccessLearnings,
+  recordTaskEfficiency as _recordTaskEfficiency,
+  getTaskEfficiency as _getTaskEfficiency,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
@@ -461,6 +470,21 @@ export class MemoryManager {
         bestModel: r.best_model ?? 'unknown',
       })),
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Task Efficiency (task-store.ts — OB-1572)
+  // -------------------------------------------------------------------------
+
+  recordTaskEfficiency(taskClass: string, metrics: TaskEfficiencyMetrics): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordTaskEfficiency(this.db, taskClass, metrics);
+    return Promise.resolve();
+  }
+
+  getTaskEfficiency(taskClass: string): Promise<TaskEfficiencyRecord | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getTaskEfficiency(this.db, taskClass));
   }
 
   // -------------------------------------------------------------------------

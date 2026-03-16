@@ -791,6 +791,31 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 25,
+    description: 'Add task_efficiency table for classification escalation tracking (OB-1572)',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='task_efficiency'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE task_efficiency (
+            task_class   TEXT PRIMARY KEY,
+            avg_turns    REAL    NOT NULL DEFAULT 0,
+            avg_workers  REAL    NOT NULL DEFAULT 0,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            updated_at   TEXT    NOT NULL
+          )
+        `);
+      }
+    },
+  },
 ];
 
 /**
