@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 8 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 3 | **Fixed:** 9 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -238,7 +238,7 @@
 ### OB-F213 — Cost caps need trust-level-aware scaling
 
 - **Severity:** 🟡 Medium (functional blocker when trusted mode is enabled)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/cost-manager.ts:17-22` — `PROFILE_COST_CAPS`: read-only $0.50, code-edit $1.00, code-audit $1.00, full-access $2.00
   - `src/core/cost-manager.ts:29-38` — `getProfileCostCap()` supports per-profile overrides from config
