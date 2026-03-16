@@ -14,7 +14,11 @@
  */
 
 import type { Connector } from '../types/connector.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
 import { createLogger } from './logger.js';
+
+/** Read-only tools that sandbox mode allows. */
+const SANDBOX_ALLOWED_TOOLS = new Set(['Read', 'Glob', 'Grep']);
 
 const logger = createLogger('permission-relay');
 
@@ -61,6 +65,8 @@ export interface PendingPermission {
 export interface PermissionRelayConfig {
   /** Timeout in milliseconds before auto-denying (default: 60000) */
   timeoutMs?: number;
+  /** Workspace trust level — controls auto-approve/deny behavior (OB-1602) */
+  trustLevel?: WorkspaceTrustLevel;
 }
 
 /**
@@ -130,10 +136,17 @@ export class PermissionRelay {
   private readonly pending = new Map<string, PendingPermission>();
   private readonly timeoutMs: number;
   private readonly connectors: () => Map<string, Connector>;
+  private trustLevel: WorkspaceTrustLevel;
 
   constructor(getConnectors: () => Map<string, Connector>, config?: PermissionRelayConfig) {
     this.connectors = getConnectors;
     this.timeoutMs = config?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.trustLevel = config?.trustLevel ?? 'standard';
+  }
+
+  /** Update the trust level at runtime (e.g. after config reload). */
+  setTrustLevel(level: WorkspaceTrustLevel): void {
+    this.trustLevel = level;
   }
 
   /**
@@ -143,6 +156,21 @@ export class PermissionRelay {
    */
   async relayPermission(params: PermissionRelayParams): Promise<boolean> {
     const { toolName, input, userId, channel } = params;
+
+    // Trust level gates (OB-1602)
+    if (this.trustLevel === 'trusted') {
+      logger.debug({ toolName, userId }, 'Trusted mode — auto-granting tool permission');
+      return true;
+    }
+
+    if (this.trustLevel === 'sandbox') {
+      if (SANDBOX_ALLOWED_TOOLS.has(toolName)) {
+        logger.debug({ toolName, userId }, 'Sandbox mode — auto-approving read tool');
+        return true;
+      }
+      logger.info({ toolName, userId }, 'Sandbox mode — denied tool: %s', toolName);
+      return false;
+    }
 
     // If there's already a pending permission for this user, auto-deny the new one
     // to prevent confusion from overlapping prompts
