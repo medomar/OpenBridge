@@ -3333,9 +3333,28 @@ export class MasterManager {
           },
           'RAG query completed',
         );
-        if (knowledgeResult.confidence < 0.3) {
+        // RAG retry with classifier description (OB-1569): when the raw user message
+        // (e.g. Arabizi/Darija) returns zero chunks, retry with the AI classifier's English
+        // description, which has already translated the user's intent.
+        let effectiveKnowledgeResult = knowledgeResult;
+        if (knowledgeResult.chunks.length === 0 && classification.ragQuery) {
+          const retryResult = await this.knowledgeRetriever.query(classification.ragQuery);
+          logger.info(
+            {
+              originalQueryLen: message.content.length,
+              retryQueryLen: classification.ragQuery.length,
+              retryChunkCount: retryResult.chunks.length,
+              retryConfidence: retryResult.confidence,
+            },
+            'RAG retry with classifier description',
+          );
+          if (retryResult.chunks.length > 0) {
+            effectiveKnowledgeResult = retryResult;
+          }
+        }
+        if (effectiveKnowledgeResult.confidence < 0.3) {
           logger.debug(
-            { confidence: knowledgeResult.confidence },
+            { confidence: effectiveKnowledgeResult.confidence },
             'Low confidence, worker may be needed',
           );
           // Targeted reader: suggest files from workspace map and spawn a focused
@@ -3360,8 +3379,9 @@ export class MasterManager {
             }
           }
         }
-        if (knowledgeResult.confidence >= 0.3) {
-          knowledgeContext = this.knowledgeRetriever.formatKnowledgeContext(knowledgeResult);
+        if (effectiveKnowledgeResult.confidence >= 0.3) {
+          knowledgeContext =
+            this.knowledgeRetriever.formatKnowledgeContext(effectiveKnowledgeResult);
         }
       }
 
