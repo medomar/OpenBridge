@@ -1,24 +1,24 @@
 # OpenBridge — Task List
 
-> **Pending:** 1 | **In Progress:** 0 | **Done:** 47 (1558 archived)
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 48 (1558 archived)
 > **Last Updated:** 2026-03-16
 
 ## Task Summary
 
-| Phase | Focus                                                        | Tasks | Status     |
-| ----- | ------------------------------------------------------------ | ----- | ---------- |
-| 140   | Worker prompt budget (OB-F205)                               | 5     | ✅ Done    |
-| 141   | Worker timeout model-aware (OB-F206)                         | 3     | ✅ Done    |
-| 142   | Arabizi RAG fallback (OB-F207)                               | 4     | ✅ Done    |
-| 143   | Classification escalation fix (OB-F208)                      | 3     | ✅ Done    |
-| 144   | Natural language trust command (OB-F209)                     | 2     | ✅ Done    |
-| 145   | Self-improvement no-op suppression (OB-F210)                 | 3     | ✅ Done    |
-| 146   | Trust level config schema + profile resolution (OB-F211)     | 7     | ✅ Done    |
-| 147   | Workspace boundary hardening for Bash (OB-F212)              | 5     | ✅ Done    |
-| 148   | Trust-level-aware cost caps (OB-F213)                        | 3     | ✅ Done    |
-| 149   | CLI wizard trust level + startup warnings (OB-F214, OB-F215) | 4     | ✅ Done    |
-| 150   | Confirmation gates trust-level integration (OB-F216)         | 6     | ✅ Done    |
-| 151   | Trust level E2E integration tests                            | 3     | ⬜ Pending |
+| Phase | Focus                                                        | Tasks | Status  |
+| ----- | ------------------------------------------------------------ | ----- | ------- |
+| 140   | Worker prompt budget (OB-F205)                               | 5     | ✅ Done |
+| 141   | Worker timeout model-aware (OB-F206)                         | 3     | ✅ Done |
+| 142   | Arabizi RAG fallback (OB-F207)                               | 4     | ✅ Done |
+| 143   | Classification escalation fix (OB-F208)                      | 3     | ✅ Done |
+| 144   | Natural language trust command (OB-F209)                     | 2     | ✅ Done |
+| 145   | Self-improvement no-op suppression (OB-F210)                 | 3     | ✅ Done |
+| 146   | Trust level config schema + profile resolution (OB-F211)     | 7     | ✅ Done |
+| 147   | Workspace boundary hardening for Bash (OB-F212)              | 5     | ✅ Done |
+| 148   | Trust-level-aware cost caps (OB-F213)                        | 3     | ✅ Done |
+| 149   | CLI wizard trust level + startup warnings (OB-F214, OB-F215) | 4     | ✅ Done |
+| 150   | Confirmation gates trust-level integration (OB-F216)         | 6     | ✅ Done |
+| 151   | Trust level E2E integration tests                            | 3     | ✅ Done |
 
 ---
 
@@ -194,11 +194,11 @@
 > **Findings:** OB-F211–F216 (all)
 > **Dependencies:** Phases 146–150 (all trust level implementation must be complete).
 
-| #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Finding     | Model  | Status     |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------ | ---------- |
-| OB-1605 | Create `tests/integration/trust-level.test.ts`. Test the **trusted mode full path**: (1) Parse config with `security: { trustLevel: 'trusted' }`. (2) Verify `getEffectiveConfirmHighRisk()` returns `false`. (3) Verify `resolveProfile('read-only', 'trusted')` returns `TOOLS_FULL`. (4) Verify `getMasterTools('trusted')` includes `Bash`. (5) Verify `getProfileCostCap('full-access', undefined, 'trusted')` returns `6.0`. (6) Mock a high-risk SPAWN marker — verify `requestSpawnConfirmation()` auto-approves without user prompt. (7) Verify worker prompt contains workspace boundary instruction. This is a single test file that exercises all trust-level-aware functions together to catch integration issues (e.g., trust level not threaded through correctly).  | OB-F211–216 | opus   | ✅ Done    |
-| OB-1606 | In the same test file, test the **sandbox mode full path**: (1) Parse config with `security: { trustLevel: 'sandbox' }`. (2) Verify `getEffectiveConfirmHighRisk()` returns `true`. (3) Verify `resolveProfile('full-access', 'sandbox')` returns `TOOLS_READ_ONLY`. (4) Verify `getMasterTools('sandbox')` is `['Read', 'Glob', 'Grep']` (no Write/Edit). (5) Verify `getProfileCostCap('read-only', undefined, 'sandbox')` returns `0.25`. (6) Mock a SPAWN marker — verify `requestSpawnConfirmation()` blocks with denial message. (7) Mock `/allow bash` command — verify denied. (8) Verify worker prompt does NOT contain workspace boundary instruction (sandbox workers can't run Bash anyway).                                                                            | OB-F211–216 | opus   | ✅ Done    |
-| OB-1607 | In the same test file, test **backward compatibility**: (1) Parse config with NO `security.trustLevel` field (legacy configs). Verify `trustLevel` defaults to `'standard'`. (2) Verify `resolveProfile('code-edit')` still returns `TOOLS_CODE_EDIT` (no trust level param = standard). (3) Verify `getProfileCostCap('full-access')` returns `2.0` (no multiplier). (4) Verify `confirmHighRisk` explicit value is respected when trust level is `standard`: config `{ trustLevel: 'standard', confirmHighRisk: false }` → `getEffectiveConfirmHighRisk()` returns `false`. (5) Verify existing `workerCostCaps` overrides still win over trust-level multipliers. (6) Verify `resolveProfile('code-edit', undefined)` returns same as `resolveProfile('code-edit', 'standard')`. | OB-F211–216 | sonnet | ⬜ Pending |
+| #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Finding     | Model  | Status  |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------ | ------- |
+| OB-1605 | Create `tests/integration/trust-level.test.ts`. Test the **trusted mode full path**: (1) Parse config with `security: { trustLevel: 'trusted' }`. (2) Verify `getEffectiveConfirmHighRisk()` returns `false`. (3) Verify `resolveProfile('read-only', 'trusted')` returns `TOOLS_FULL`. (4) Verify `getMasterTools('trusted')` includes `Bash`. (5) Verify `getProfileCostCap('full-access', undefined, 'trusted')` returns `6.0`. (6) Mock a high-risk SPAWN marker — verify `requestSpawnConfirmation()` auto-approves without user prompt. (7) Verify worker prompt contains workspace boundary instruction. This is a single test file that exercises all trust-level-aware functions together to catch integration issues (e.g., trust level not threaded through correctly).  | OB-F211–216 | opus   | ✅ Done |
+| OB-1606 | In the same test file, test the **sandbox mode full path**: (1) Parse config with `security: { trustLevel: 'sandbox' }`. (2) Verify `getEffectiveConfirmHighRisk()` returns `true`. (3) Verify `resolveProfile('full-access', 'sandbox')` returns `TOOLS_READ_ONLY`. (4) Verify `getMasterTools('sandbox')` is `['Read', 'Glob', 'Grep']` (no Write/Edit). (5) Verify `getProfileCostCap('read-only', undefined, 'sandbox')` returns `0.25`. (6) Mock a SPAWN marker — verify `requestSpawnConfirmation()` blocks with denial message. (7) Mock `/allow bash` command — verify denied. (8) Verify worker prompt does NOT contain workspace boundary instruction (sandbox workers can't run Bash anyway).                                                                            | OB-F211–216 | opus   | ✅ Done |
+| OB-1607 | In the same test file, test **backward compatibility**: (1) Parse config with NO `security.trustLevel` field (legacy configs). Verify `trustLevel` defaults to `'standard'`. (2) Verify `resolveProfile('code-edit')` still returns `TOOLS_CODE_EDIT` (no trust level param = standard). (3) Verify `getProfileCostCap('full-access')` returns `2.0` (no multiplier). (4) Verify `confirmHighRisk` explicit value is respected when trust level is `standard`: config `{ trustLevel: 'standard', confirmHighRisk: false }` → `getEffectiveConfirmHighRisk()` returns `false`. (5) Verify existing `workerCostCaps` overrides still win over trust-level multipliers. (6) Verify `resolveProfile('code-edit', undefined)` returns same as `resolveProfile('code-edit', 'standard')`. | OB-F211–216 | sonnet | ✅ Done |
 
 ---
 

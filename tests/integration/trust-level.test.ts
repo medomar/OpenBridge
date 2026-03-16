@@ -1,5 +1,5 @@
 /**
- * Integration tests for trust-level full paths (OB-1605, OB-1606).
+ * Integration tests for trust-level full paths (OB-1605, OB-1606, OB-1607).
  *
  * Exercises all trust-level-aware functions together to catch integration
  * issues (e.g. trust level not threaded through correctly).
@@ -22,12 +22,25 @@
  *  6. requestSpawnConfirmation() blocks with denial
  *  7. /allow command denied
  *  8. Worker prompt does NOT contain workspace boundary instruction
+ *
+ * OB-1607 — Backward compatibility (legacy configs without trustLevel):
+ *  1. No trustLevel field defaults to 'standard'
+ *  2. resolveProfile('code-edit') returns TOOLS_CODE_EDIT
+ *  3. getProfileCostCap('full-access') returns 2.0 (no multiplier)
+ *  4. confirmHighRisk explicit false is respected at standard trust level
+ *  5. workerCostCaps overrides win over trust-level multipliers
+ *  6. resolveProfile('code-edit', undefined) === resolveProfile('code-edit', _, 'standard')
  */
 
 import { describe, it, expect } from 'vitest';
 import { SecurityConfigSchema, getEffectiveConfirmHighRisk } from '../../src/types/config.js';
 import type { WorkspaceTrustLevel } from '../../src/types/config.js';
-import { resolveProfile, TOOLS_FULL, TOOLS_READ_ONLY } from '../../src/core/agent-runner.js';
+import {
+  resolveProfile,
+  TOOLS_FULL,
+  TOOLS_READ_ONLY,
+  TOOLS_CODE_EDIT,
+} from '../../src/core/agent-runner.js';
 import { getMasterTools } from '../../src/master/master-manager.js';
 import { getProfileCostCap } from '../../src/core/cost-manager.js';
 
@@ -299,6 +312,127 @@ describe('trust level integration — sandbox mode full path', () => {
 
     // No boundary instruction for sandbox
     const prompt = applyBoundaryInstruction('task', '/workspace', 'sandbox');
+    expect(prompt).toBe('task');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Backward compatibility — legacy configs without trustLevel (OB-1607)
+// ---------------------------------------------------------------------------
+
+describe('trust level integration — backward compatibility', () => {
+  // Step 1: No trustLevel field defaults to 'standard'
+  it('config with no trustLevel field defaults to standard', () => {
+    const parsed = SecurityConfigSchema.parse({});
+    expect(parsed.trustLevel).toBe('standard');
+    // confirmHighRisk defaults to true in standard mode
+    expect(parsed.confirmHighRisk).toBe(true);
+  });
+
+  it('config with explicit trustLevel standard parses correctly', () => {
+    const parsed = SecurityConfigSchema.parse({ trustLevel: 'standard' });
+    expect(parsed.trustLevel).toBe('standard');
+  });
+
+  // Step 2: resolveProfile('code-edit') returns TOOLS_CODE_EDIT with no trust level
+  it('resolveProfile(code-edit) returns TOOLS_CODE_EDIT when no trustLevel passed', () => {
+    const tools = resolveProfile('code-edit');
+    expect(tools).toEqual([...TOOLS_CODE_EDIT]);
+    expect(tools).toContain('Read');
+    expect(tools).toContain('Edit');
+    expect(tools).toContain('Write');
+    expect(tools).toContain('Bash(git:*)');
+    expect(tools).not.toContain('Bash(*)');
+  });
+
+  // Step 3: getProfileCostCap('full-access') returns 2.0 (no multiplier, 1× baseline)
+  it('getProfileCostCap(full-access) returns 2.0 with no trustLevel', () => {
+    const cap = getProfileCostCap('full-access');
+    expect(cap).toBe(2.0);
+  });
+
+  it('getProfileCostCap returns base caps for all profiles with no trustLevel', () => {
+    expect(getProfileCostCap('read-only')).toBe(0.5);
+    expect(getProfileCostCap('code-edit')).toBe(1.0);
+    expect(getProfileCostCap('code-audit')).toBe(1.0);
+    expect(getProfileCostCap('full-access')).toBe(2.0);
+  });
+
+  // Step 4: confirmHighRisk explicit false is respected at standard trust level
+  it('explicit confirmHighRisk: false is respected when trustLevel is standard', () => {
+    const security = SecurityConfigSchema.parse({
+      trustLevel: 'standard',
+      confirmHighRisk: false,
+    });
+    // standard mode defers to the explicit user setting
+    expect(getEffectiveConfirmHighRisk(security)).toBe(false);
+  });
+
+  it('confirmHighRisk defaults to true for standard trust level', () => {
+    const security = SecurityConfigSchema.parse({ trustLevel: 'standard' });
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+  });
+
+  // Step 5: workerCostCaps overrides win over trust-level multipliers
+  it('workerCostCaps overrides win over trust-level multipliers', () => {
+    const overrides: Record<string, number> = { 'full-access': 0.75 };
+    // Even in trusted mode (which would multiply 2.0 × 3 = 6.0), override wins
+    const capTrusted = getProfileCostCap('full-access', overrides, 'trusted');
+    expect(capTrusted).toBe(0.75);
+
+    // Even in sandbox mode (which would multiply 2.0 × 0.5 = 1.0), override wins
+    const capSandbox = getProfileCostCap('full-access', overrides, 'sandbox');
+    expect(capSandbox).toBe(0.75);
+
+    // Standard mode with override
+    const capStandard = getProfileCostCap('full-access', overrides, 'standard');
+    expect(capStandard).toBe(0.75);
+  });
+
+  it('workerCostCaps override applies only to the matching profile', () => {
+    const overrides: Record<string, number> = { 'code-edit': 0.25 };
+    // code-edit uses override
+    expect(getProfileCostCap('code-edit', overrides, 'trusted')).toBe(0.25);
+    // full-access is NOT overridden — trusted multiplier applies (2.0 × 3 = 6.0)
+    expect(getProfileCostCap('full-access', overrides, 'trusted')).toBe(6.0);
+  });
+
+  // Step 6: resolveProfile('code-edit', undefined) === resolveProfile('code-edit', _, 'standard')
+  it('resolveProfile with undefined trustLevel returns same as explicit standard', () => {
+    const withUndefined = resolveProfile('code-edit', undefined);
+    const withStandard = resolveProfile('code-edit', undefined, 'standard');
+    expect(withUndefined).toEqual(withStandard);
+    expect(withUndefined).toEqual([...TOOLS_CODE_EDIT]);
+  });
+
+  it('resolveProfile standard does not override profiles (unlike trusted/sandbox)', () => {
+    const readOnly = resolveProfile('read-only', undefined, 'standard');
+    const fullAccess = resolveProfile('full-access', undefined, 'standard');
+    // Each profile keeps its own tool set in standard mode
+    expect(readOnly).toEqual([...TOOLS_READ_ONLY]);
+    expect(fullAccess).toEqual([...TOOLS_FULL]);
+    expect(readOnly).not.toEqual(fullAccess);
+  });
+
+  // End-to-end: all gates align for backward-compatible standard mode
+  it('all trust-level gates are backward-compatible for standard mode', () => {
+    const security = SecurityConfigSchema.parse({});
+    expect(security.trustLevel).toBe('standard');
+
+    // confirmHighRisk defaults to true
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+
+    // Profiles resolve to their own tool sets (no override)
+    expect(resolveProfile('code-edit', undefined, 'standard')).toEqual([...TOOLS_CODE_EDIT]);
+    expect(resolveProfile('read-only', undefined, 'standard')).toEqual([...TOOLS_READ_ONLY]);
+    expect(resolveProfile('full-access', undefined, 'standard')).toEqual([...TOOLS_FULL]);
+
+    // Cost caps use 1× multiplier (no change from base)
+    expect(getProfileCostCap('full-access', undefined, 'standard')).toBe(2.0);
+    expect(getProfileCostCap('read-only', undefined, 'standard')).toBe(0.5);
+
+    // No boundary instruction for standard mode
+    const prompt = applyBoundaryInstruction('task', '/workspace', 'standard');
     expect(prompt).toBe('task');
   });
 });
