@@ -1524,7 +1524,11 @@ export class AgentRunner {
 
     // Post-hoc cost cap warning for non-streaming path (OB-F101).
     // Cannot abort after completion — log warning so callers can diagnose spikes.
-    const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+    const costCap = getProfileCostCap(
+      opts.profile,
+      opts.workerCostCaps,
+      opts.securityConfig?.trustLevel,
+    );
     if (costCap !== undefined && costUsd > costCap) {
       logger.warn(
         { cost: costUsd, cap: costCap, profile: opts.profile },
@@ -1765,7 +1769,11 @@ export class AgentRunner {
       );
 
       // Post-hoc cost cap warning for non-streaming path (OB-F101).
-      const costCapHandle = getProfileCostCap(opts.profile, opts.workerCostCaps);
+      const costCapHandle = getProfileCostCap(
+        opts.profile,
+        opts.workerCostCaps,
+        opts.securityConfig?.trustLevel,
+      );
       if (costCapHandle !== undefined && costUsdHandle > costCapHandle) {
         logger.warn(
           { cost: costUsdHandle, cap: costCapHandle, profile: opts.profile },
@@ -1958,7 +1966,11 @@ export class AgentRunner {
 
             // Per-profile cost cap check (OB-F101).
             // Estimate cost from accumulated output; abort early if cap exceeded.
-            const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+            const costCap = getProfileCostCap(
+              opts.profile,
+              opts.workerCostCaps,
+              opts.securityConfig?.trustLevel,
+            );
             if (costCap !== undefined) {
               const currentCostUsd = estimateCostUsd(
                 currentModel,
