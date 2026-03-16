@@ -432,6 +432,7 @@ export class Router {
       getWorkflowEngine: () => this.workflowEngine,
       getConnectors: () => this.connectors,
       getProviders: () => this.providers,
+      getSecurityConfig: () => this.securityConfig,
       getPendingStopConfirmations: () => this.pendingStopConfirmations,
       getSessionGrantedTools: () => this.sessionGrantedTools,
       getDetectedSecrets: () => this.detectedSecrets,

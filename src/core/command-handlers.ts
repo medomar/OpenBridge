@@ -24,6 +24,7 @@ import type { IntegrationHub } from '../integrations/hub.js';
 import type { CredentialStore } from '../integrations/credential-store.js';
 import type { WorkflowStore } from '../workflows/workflow-store.js';
 import type { WorkflowEngine } from '../workflows/engine.js';
+import type { SecurityConfig } from '../types/config.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
@@ -136,6 +137,7 @@ export interface CommandHandlerDeps {
   getWorkflowEngine: () => WorkflowEngine | undefined;
   getConnectors: () => Map<string, Connector>;
   getProviders: () => Map<string, AIProvider>;
+  getSecurityConfig: () => SecurityConfig | undefined;
 
   // Pending confirmations/escalations
   getPendingStopConfirmations: () => Map<string, PendingConfirmation>;
@@ -487,6 +489,26 @@ export class CommandHandlers {
    * stores the grant in the appropriate backing store (session Map or DB) per scope (OB-1588).
    */
   async handleAllowCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trustLevel = this.deps.getSecurityConfig()?.trustLevel ?? 'standard';
+    if (trustLevel === 'sandbox') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: '⛔ Sandbox mode — tool escalation is disabled.',
+        replyTo: message.id,
+      });
+      return;
+    }
+    if (trustLevel === 'trusted') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'ℹ️ Trusted mode — all tools are already available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
     // Parse: /allow all — grant all pending escalations at once (OB-1632)
     const trimmed = message.content.trim();
     const rest = trimmed.slice('/allow'.length).trim();
@@ -607,6 +629,26 @@ export class CommandHandlers {
    * --session / --permanent modifiers are supported for bulk grants.
    */
   async handleAllowAllCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trustLevel = this.deps.getSecurityConfig()?.trustLevel ?? 'standard';
+    if (trustLevel === 'sandbox') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: '⛔ Sandbox mode — tool escalation is disabled.',
+        replyTo: message.id,
+      });
+      return;
+    }
+    if (trustLevel === 'trusted') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'ℹ️ Trusted mode — all tools are already available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
     const entries = this.deps.takeAllPendingEscalations(message.sender);
     if (entries.length === 0) {
       await connector.sendMessage({
