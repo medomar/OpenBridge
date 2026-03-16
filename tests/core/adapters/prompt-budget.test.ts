@@ -51,22 +51,22 @@ describe('ClaudeAdapter.getPromptBudget', () => {
     expect(budget.maxSystemPromptChars).toBe(180_000);
   });
 
-  it('returns conservative budget for unknown-model', () => {
+  it('returns Sonnet-class budget for unknown-model (OB-1561)', () => {
     const budget = adapter.getPromptBudget('unknown-model');
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
-  it('returns sane defaults when no model is specified', () => {
+  it('returns Sonnet-class budget when no model is specified (OB-1561)', () => {
     const budget = adapter.getPromptBudget();
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
-  it('returns sane defaults for an unrecognized model', () => {
+  it('returns Sonnet-class budget for an unrecognized model (OB-1561)', () => {
     const budget = adapter.getPromptBudget('unknown-future-model-99');
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
   it('opus and sonnet have a larger systemPrompt budget than haiku', () => {
@@ -117,16 +117,16 @@ describe('ClaudeSDKAdapter.getPromptBudget', () => {
     expect(budget.maxSystemPromptChars).toBe(180_000);
   });
 
-  it('returns conservative budget for unknown-model', () => {
+  it('returns Sonnet-class budget for unknown-model (OB-1561)', () => {
     const budget = adapter.getPromptBudget('unknown-model');
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
-  it('returns sane defaults when no model is specified', () => {
+  it('returns Sonnet-class budget when no model is specified (OB-1561)', () => {
     const budget = adapter.getPromptBudget();
-    expect(budget.maxPromptChars).toBe(32_768);
-    expect(budget.maxSystemPromptChars).toBe(180_000);
+    expect(budget.maxPromptChars).toBe(128_000);
+    expect(budget.maxSystemPromptChars).toBe(800_000);
   });
 
   it('returns identical budgets to ClaudeAdapter for all model IDs (shared helper)', () => {
@@ -172,9 +172,8 @@ describe('CodexAdapter.getPromptBudget', () => {
     expect(budgetDefault).toEqual(budgetO3);
   });
 
-  it('returns a larger combined budget than the Claude default prompt-only budget', () => {
-    // Codex's context window allows a much larger combined prompt budget
-    // than Claude's conservative 32K-char prompt limit.
+  it('returns a larger combined budget than the Claude Sonnet-class default (OB-1561)', () => {
+    // Codex's combined budget (400K) is larger than Claude's Sonnet-class default (128K).
     const codexBudget = adapter.getPromptBudget();
     const claudeBudget = new ClaudeAdapter().getPromptBudget();
     expect(codexBudget.maxPromptChars).toBeGreaterThan(claudeBudget.maxPromptChars);
