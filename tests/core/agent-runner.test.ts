@@ -3115,6 +3115,54 @@ describe('getProfileCostCap()', () => {
   });
 });
 
+describe('getProfileCostCap with trustLevel', () => {
+  it('applies trusted mode multiplier (3×) to base cost caps', () => {
+    // full-access base cap: $2.00 × 3 = $6.00
+    expect(getProfileCostCap('full-access', undefined, 'trusted')).toBe(6.0);
+    // code-edit base cap: $1.00 × 3 = $3.00
+    expect(getProfileCostCap('code-edit', undefined, 'trusted')).toBe(3.0);
+    // read-only base cap: $0.50 × 3 = $1.50
+    expect(getProfileCostCap('read-only', undefined, 'trusted')).toBe(1.5);
+  });
+
+  it('applies sandbox mode multiplier (0.5×) to base cost caps', () => {
+    // read-only base cap: $0.50 × 0.5 = $0.25
+    expect(getProfileCostCap('read-only', undefined, 'sandbox')).toBe(0.25);
+    // code-edit base cap: $1.00 × 0.5 = $0.50
+    expect(getProfileCostCap('code-edit', undefined, 'sandbox')).toBe(0.5);
+    // full-access base cap: $2.00 × 0.5 = $1.00
+    expect(getProfileCostCap('full-access', undefined, 'sandbox')).toBe(1.0);
+  });
+
+  it('applies standard mode multiplier (1×) — no scaling', () => {
+    // Costs remain unchanged
+    expect(getProfileCostCap('full-access', undefined, 'standard')).toBe(2.0);
+    expect(getProfileCostCap('code-edit', undefined, 'standard')).toBe(1.0);
+    expect(getProfileCostCap('read-only', undefined, 'standard')).toBe(0.5);
+  });
+
+  it('respects user overrides even when trust level is applied', () => {
+    const overrides = { 'code-edit': 0.75 };
+    // User override ($0.75) takes priority over scaled value ($1.00 × 3 = $3.00)
+    expect(getProfileCostCap('code-edit', overrides, 'trusted')).toBe(0.75);
+    // Other profiles still get scaled
+    expect(getProfileCostCap('full-access', overrides, 'trusted')).toBe(6.0);
+  });
+
+  it('maintains backward compatibility when trustLevel is omitted', () => {
+    // Without trustLevel param, defaults to 'standard' multiplier (1×)
+    expect(getProfileCostCap('full-access')).toBe(2.0);
+    expect(getProfileCostCap('read-only')).toBe(0.5);
+    expect(getProfileCostCap('code-edit')).toBe(1.0);
+  });
+
+  it('returns undefined for unknown profiles regardless of trust level', () => {
+    expect(getProfileCostCap('unknown-profile', undefined, 'trusted')).toBeUndefined();
+    expect(getProfileCostCap('unknown-profile', undefined, 'sandbox')).toBeUndefined();
+    expect(getProfileCostCap(undefined, undefined, 'trusted')).toBeUndefined();
+  });
+});
+
 describe('checkProfileCostSpike() — average tracking and 10x warning', () => {
   beforeEach(() => {
     resetProfileCostAverages();
