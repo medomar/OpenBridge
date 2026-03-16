@@ -501,6 +501,10 @@ ${mcpSpawnField}
 [SPAWN:code-audit]{"prompt":"Run the test suite and report failures. Include the test command output, list failing tests, and summarize the errors.","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
+### Worker Prompt Size
+
+Keep SPAWN prompt bodies concise — under 25K chars for haiku workers, under 100K for sonnet/opus workers. Include ONLY the task instruction and essential context. Do NOT paste entire file contents into SPAWN prompts — workers can read files themselves using Read/Glob/Grep tools. If a task needs data from multiple files, list the file paths and let the worker read them.
+
 ### Guidelines
 
 - **Always write a brief human-readable summary BEFORE any SPAWN markers.** Explain what you are about to do and why, so the user understands your plan even if SPAWN markers are stripped from the displayed response. Example: "I'll analyse the test suite and check for linting errors in parallel." followed by SPAWN markers.
