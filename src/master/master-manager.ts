@@ -1895,6 +1895,7 @@ export class MasterManager {
       availableSkills: BUILT_IN_SKILLS,
       availableSkillPacks: this.activeSkillPacks,
       connectedIntegrations: this.buildConnectedIntegrations(),
+      trustLevel: this.trustLevel,
     });
 
     try {
