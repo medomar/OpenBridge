@@ -3137,4 +3137,160 @@ describe('Router', () => {
       expect(connector.sentMessages).toHaveLength(2);
     });
   });
+
+  describe('natural language trust command — OB-F209', () => {
+    function createTrustMsg(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'trust-1',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    function createMockMemory(): Partial<MemoryManager> {
+      return {
+        getConsentMode: vi.fn().mockResolvedValue('always-ask'),
+        setConsentMode: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('should convert "trust all" to /trust auto command', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as unknown as MemoryManager);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('trust all'));
+
+      // Should send trust level confirmation message
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+
+    it('should convert "Trust Everything" (case-insensitive) to /trust auto', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as never);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('Trust Everything'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+
+    it('should convert "approve all" to /trust auto', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as never);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('approve all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+
+    it('should convert "auto approve" to /trust auto', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as never);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('auto approve'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+
+    it('should convert "auto-approve all" to /trust auto', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as never);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('auto-approve all'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+
+    it('should NOT convert "I trust you with this task" (partial match, not anchored)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'AI response' });
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('I trust you with this task'));
+
+      // Should be routed to provider as normal message (not converted to /trust)
+      expect(provider.processedMessages).toHaveLength(1);
+      expect(provider.processedMessages[0]?.content).toBe('I trust you with this task');
+    });
+
+    it('should NOT convert "approve all the PRs" (not exact phrase)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.setResponse({ content: 'AI response' });
+      router.addConnector(connector);
+      router.addProvider(provider);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('approve all the PRs'));
+
+      // Should be routed to provider as normal message (not converted to /trust)
+      expect(provider.processedMessages).toHaveLength(1);
+      expect(provider.processedMessages[0]?.content).toBe('approve all the PRs');
+    });
+
+    it('should preserve existing "/trust auto" command behavior', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setMemory(createMockMemory() as never);
+      await connector.initialize();
+
+      await router.route(createTrustMsg('/trust auto'));
+
+      // Should send trust level confirmation message
+      expect(connector.sentMessages).toHaveLength(1);
+      const reply = connector.sentMessages[0]?.content ?? '';
+      expect(reply).toContain('auto');
+    });
+  });
 });
