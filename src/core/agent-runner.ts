@@ -12,7 +12,7 @@ import type { ModelRegistry } from './model-registry.js';
 import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import { getClaudePromptBudget } from './adapters/claude-budget.js';
-import type { SandboxConfig, SecurityConfig } from '../types/config.js';
+import type { SandboxConfig, SecurityConfig, WorkspaceTrustLevel } from '../types/config.js';
 import { isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
 import { checkProfileCostSpike, estimateCostUsd, getProfileCostCap } from './cost-manager.js';
 import type { MetricsCollector } from './metrics.js';
@@ -347,7 +347,10 @@ export const TOOLS_CODE_AUDIT = [
 export function resolveProfile(
   profileName: string,
   customProfiles?: Record<string, ToolProfile>,
+  trustLevel?: WorkspaceTrustLevel,
 ): string[] | undefined {
+  if (trustLevel === 'trusted') return [...TOOLS_FULL];
+  if (trustLevel === 'sandbox') return [...TOOLS_READ_ONLY];
   if (customProfiles) {
     const custom = customProfiles[profileName];
     if (custom) return custom.tools;
@@ -365,6 +368,7 @@ export function resolveProfile(
 export function resolveTools(
   profileName: string,
   customProfiles?: Record<string, ToolProfile>,
+  trustLevel?: WorkspaceTrustLevel,
 ): string[] | undefined {
   switch (profileName) {
     case 'read-only':
@@ -380,7 +384,7 @@ export function resolveTools(
     case 'code-audit':
       return [...TOOLS_CODE_AUDIT];
     default:
-      return resolveProfile(profileName, customProfiles);
+      return resolveProfile(profileName, customProfiles, trustLevel);
   }
 }
 
