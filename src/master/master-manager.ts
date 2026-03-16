@@ -96,7 +96,7 @@ import {
   AgentsRegistrySchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { MCPServer, DeepConfig } from '../types/config.js';
+import type { MCPServer, DeepConfig, WorkspaceTrustLevel } from '../types/config.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createModelRegistry } from '../core/model-registry.js';
 import type { ModelRegistry } from '../core/model-registry.js';
@@ -313,12 +313,16 @@ export function detectToolAccessFailure(result: {
 }
 
 /**
- * Tools available to the Master AI session.
- * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
- * Master can read, write, and edit files (for .openbridge/ management)
- * but NOT execute arbitrary commands — it delegates to workers for that.
+ * Returns tools available to the Master AI session based on trust level.
+ * - trusted:  full-access tools including Bash(*) — Master can execute commands directly.
+ * - sandbox:  read-only tools (Read, Glob, Grep) — Master cannot modify files.
+ * - standard: master profile (Read, Glob, Grep, Write, Edit) — delegates execution to workers.
  */
-const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
+function getMasterTools(trustLevel: WorkspaceTrustLevel): string[] {
+  if (trustLevel === 'trusted') return [...BUILT_IN_PROFILES['full-access'].tools];
+  if (trustLevel === 'sandbox') return ['Read', 'Glob', 'Grep'];
+  return [...BUILT_IN_PROFILES.master.tools];
+}
 
 /**
  * Default max turns for the Master session per interaction.
@@ -361,7 +365,7 @@ function sessionRecordToMasterSession(record: SessionRecord): MasterSession {
     messageCount: record.message_count ?? 0,
     allowedTools: record.allowed_tools
       ? (JSON.parse(record.allowed_tools) as string[])
-      : [...MASTER_TOOLS],
+      : getMasterTools('standard'),
     maxTurns: MASTER_MAX_TURNS,
   };
 }
@@ -471,6 +475,8 @@ export interface MasterManagerOptions {
    * Set to 0 to disable the cap.
    */
   workerMaxFixIterations?: number;
+  /** Workspace trust level — controls Master AI tool access (OB-1583) */
+  trustLevel?: WorkspaceTrustLevel;
 }
 
 /**
@@ -628,6 +634,8 @@ export class MasterManager {
   private readonly planningGate = new PlanningGate();
   /** Max lint/test fix iterations for workers before escalating to Master (OB-1791). */
   private readonly workerMaxFixIterations: number;
+  /** Workspace trust level — controls Master/worker tool access (OB-1583) */
+  private readonly trustLevel: WorkspaceTrustLevel;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -650,6 +658,7 @@ export class MasterManager {
     this.workspaceExclude = options.workspaceExclude ?? [];
     this.workspaceInclude = options.workspaceInclude ?? [];
     this.workerMaxFixIterations = options.workerMaxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
+    this.trustLevel = options.trustLevel ?? 'standard';
 
     // Instantiate DeepModeManager — multi-phase session state machine (OB-1403)
     this.deepMode = new DeepModeManager({ workspacePath: this.workspacePath });
@@ -1807,7 +1816,7 @@ export class MasterManager {
       createdAt: now,
       lastUsedAt: now,
       messageCount: 0,
-      allowedTools: [...MASTER_TOOLS],
+      allowedTools: getMasterTools(this.trustLevel),
       maxTurns: MASTER_MAX_TURNS,
     };
 
@@ -2090,7 +2099,7 @@ export class MasterManager {
       createdAt: now,
       lastUsedAt: now,
       messageCount: 0,
-      allowedTools: [...MASTER_TOOLS],
+      allowedTools: getMasterTools(this.trustLevel),
       maxTurns: MASTER_MAX_TURNS,
     };
     this.sessionInitialized = false;

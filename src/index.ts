@@ -299,6 +299,7 @@ async function startV2Flow(
     workspaceExclude: v2Config.workspace?.exclude,
     workspaceInclude: v2Config.workspace?.include,
     workerMaxFixIterations: v2Config.worker?.maxFixIterations,
+    trustLevel: v2Config.security?.trustLevel,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
