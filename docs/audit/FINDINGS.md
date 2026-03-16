@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 5 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 6 | **Fixed:** 6 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -150,7 +150,7 @@
 ### OB-F210 — Self-improvement cycles are no-ops after first cycle (11 consecutive empty cycles)
 
 - **Severity:** 🟢 Low (log noise, minor CPU waste)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/master/master-manager.ts:126-131` — idle thresholds: 5min initial, 2h max, 1min check interval
   - `src/master/master-manager.ts:4466-4482` — `startIdleDetection()` — periodic check setup

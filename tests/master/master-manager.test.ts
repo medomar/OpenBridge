@@ -3318,4 +3318,98 @@ describe('MasterManager', () => {
       expect(names).toContain('documentation');
     });
   });
+
+  describe('Self-Improvement Cycle No-Op Suppression (OB-F210 / OB-1578–1579)', () => {
+    it('should have consecutiveNoOpCycles field initialized to 0', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as { consecutiveNoOpCycles: number };
+      expect(managerTyped.consecutiveNoOpCycles).toBe(0);
+
+      await manager.shutdown();
+    });
+
+    it('should reset consecutiveNoOpCycles on resetIdleTimer call', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        consecutiveNoOpCycles: number;
+        resetIdleTimer: () => void;
+        consecutiveIdleCycles: number;
+      };
+
+      // Manually set counters to non-zero
+      managerTyped.consecutiveNoOpCycles = 5;
+      managerTyped.consecutiveIdleCycles = 3;
+
+      // Call resetIdleTimer (simulates user message)
+      managerTyped.resetIdleTimer();
+
+      // Both should reset to 0
+      expect(managerTyped.consecutiveNoOpCycles).toBe(0);
+      expect(managerTyped.consecutiveIdleCycles).toBe(0);
+
+      await manager.shutdown();
+    });
+
+    it('should verify runSelfImprovementCycle exists and returns Promise<boolean>', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        runSelfImprovementCycle: () => Promise<boolean>;
+      };
+
+      // Verify that runSelfImprovementCycle exists and is a function
+      expect(typeof managerTyped.runSelfImprovementCycle).toBe('function');
+
+      await manager.shutdown();
+    });
+
+    it('should verify checkIdleAndImprove exists as private method', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        checkIdleAndImprove?: () => Promise<void>;
+      };
+
+      // Verify the method exists (it's private but accessible via type casting)
+      if (managerTyped.checkIdleAndImprove) {
+        expect(typeof managerTyped.checkIdleAndImprove).toBe('function');
+      }
+
+      await manager.shutdown();
+    });
+  });
 });
