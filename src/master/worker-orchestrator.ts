@@ -44,6 +44,7 @@ import type { Router } from '../core/router.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
 import { consentModeToTrustLevel } from '../core/adapter-registry.js';
 import type { AdapterRegistry } from '../core/adapter-registry.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { createLogger } from '../core/logger.js';
 
@@ -246,6 +247,7 @@ export interface WorkerOrchestratorDeps {
   modelRegistry: ModelRegistry;
   workerRetryDelayMs: number;
   workerMaxFixIterations: number;
+  trustLevel?: WorkspaceTrustLevel;
 
   // Mutable references
   getMemory: () => MemoryManager | null;
@@ -808,7 +810,7 @@ export class WorkerOrchestrator {
     const expandedSessionGrants = new Set<string>();
     for (const grant of senderSessionGrants) {
       if (BuiltInProfileNameSchema.safeParse(grant).success) {
-        const profileTools = resolveProfile(grant) ?? [];
+        const profileTools = resolveProfile(grant, undefined, this.deps.trustLevel) ?? [];
         profileTools.forEach((t) => expandedSessionGrants.add(t));
       } else {
         expandedSessionGrants.add(grant);
@@ -1070,8 +1072,9 @@ export class WorkerOrchestrator {
       const origMessage = activeMessage;
       const connector = router.getConnector(origMessage.source);
       if (connector) {
-        const suggestedTools = resolveProfile(toolPrediction.suggestedProfile) ?? [];
-        const currentTools = resolveProfile(profile) ?? [];
+        const suggestedTools =
+          resolveProfile(toolPrediction.suggestedProfile, undefined, this.deps.trustLevel) ?? [];
+        const currentTools = resolveProfile(profile, undefined, this.deps.trustLevel) ?? [];
         const additionalTools = suggestedTools.filter((t) => !currentTools.includes(t));
 
         // OB-1596/OB-1600: If session or permanent grants already cover all additional
