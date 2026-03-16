@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
-import { V2ConfigSchema, ENV_DENY_PATTERNS } from '../types/config.js';
+import { V2ConfigSchema, ENV_DENY_PATTERNS, getEffectiveSandboxMode } from '../types/config.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { warnAboutExposedSecrets } from './env-sanitizer.js';
 import { TunnelManager } from './tunnel-manager.js';
@@ -292,6 +292,18 @@ export class Bridge {
     // Scan workspace root for sensitive files — non-fatal, logs warnings and builds session exclude list
     if (this.workspacePath) {
       await this.runSecretScan(this.workspacePath);
+    }
+
+    // Resolve effective sandbox mode — auto-detects Docker/bubblewrap for trusted mode (OB-1589)
+    if (this.securityConfig) {
+      const effectiveMode = getEffectiveSandboxMode(this.securityConfig);
+      if (effectiveMode !== this.securityConfig.sandbox.mode) {
+        logger.info(
+          { from: this.securityConfig.sandbox.mode, to: effectiveMode },
+          'Sandbox mode resolved',
+        );
+        this.securityConfig.sandbox.mode = effectiveMode;
+      }
     }
 
     // Docker startup health check + periodic recheck (OB-1557)

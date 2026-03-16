@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { execSync } from 'node:child_process';
 
 /** Schema for a connector configuration */
 export const ConnectorConfigSchema = z.object({
@@ -360,6 +361,48 @@ export function getEffectiveConfirmHighRisk(security: SecurityConfig): boolean {
   if (security.trustLevel === 'trusted') return false;
   if (security.trustLevel === 'sandbox') return true;
   return security.confirmHighRisk;
+}
+
+/**
+ * Returns the effective sandbox mode, auto-detecting Docker/bubblewrap for trusted mode.
+ * - If sandbox.mode is explicitly set (not 'none'), returns it (explicit user choice wins).
+ * - If trustLevel is 'trusted', auto-detects Docker (all platforms) or bubblewrap (Linux).
+ * - Otherwise returns 'none' with a warning for trusted mode.
+ */
+export function getEffectiveSandboxMode(
+  security: SecurityConfig,
+): 'none' | 'docker' | 'bubblewrap' {
+  // Explicit user choice always wins
+  if (security.sandbox.mode !== 'none') {
+    return security.sandbox.mode;
+  }
+
+  // Only auto-detect for trusted mode
+  if (security.trustLevel !== 'trusted') {
+    return 'none';
+  }
+
+  // Check Docker availability
+  try {
+    execSync('which docker', { stdio: 'ignore' });
+    return 'docker';
+  } catch {
+    // Docker not available
+  }
+
+  // On Linux, check for bubblewrap
+  if (process.platform === 'linux') {
+    try {
+      execSync('which bwrap', { stdio: 'ignore' });
+      return 'bubblewrap';
+    } catch {
+      // bubblewrap not available
+    }
+  }
+
+  // No sandbox available — prompt-only boundary enforcement
+  console.warn('Trusted mode without sandbox — workspace boundary enforced via prompt only');
+  return 'none';
 }
 
 /** Schema for email (SMTP) configuration */
