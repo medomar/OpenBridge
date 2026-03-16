@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 3 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 8 | **Fixed:** 4 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -98,7 +98,7 @@
 ### OB-F208 — Classification over-escalation: tool-use always escalated to complex-task (100% success feedback loop)
 
 - **Severity:** 🟡 Medium (wastes compute/cost, not functionally broken)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/master/classification-engine.ts:505-550` — learning-based escalation logic
   - `src/master/classification-engine.ts:522` — success rate threshold: `learned.success_rate > 0.5`

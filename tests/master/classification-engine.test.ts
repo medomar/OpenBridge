@@ -174,3 +174,137 @@ describe('ClassificationEngine — keyword fallback has no ragQuery (OB-1571)', 
     expect((result as Awaited<typeof result>).ragQuery).toBeUndefined();
   });
 });
+
+// ── Suite: escalation suppression via efficiency data (OB-1574, OB-F208) ─────
+
+/**
+ * Helper: build deps with a mock memory that drives the escalation path.
+ * - getLearnedParams('classification') → { model: 'complex-task', success_rate: 0.9, ... }
+ *   (satisfies learnedRank > currentRank, success_rate > 0.5, currentRank > 0)
+ * - getTaskEfficiency('complex-task') → caller-supplied value
+ */
+function makeDepsWithMemory(
+  efficiencyData: { avg_turns: number; avg_workers: number; sample_count: number } | null,
+): ClassificationEngineDeps {
+  const mockMemory = {
+    getLearnedParams: vi.fn().mockResolvedValue({
+      model: 'complex-task',
+      success_rate: 0.9,
+      avg_turns: 10,
+      total_tasks: 20,
+    }),
+    getTaskEfficiency: vi.fn().mockResolvedValue(
+      efficiencyData
+        ? {
+            task_class: 'complex-task',
+            avg_turns: efficiencyData.avg_turns,
+            avg_workers: efficiencyData.avg_workers,
+            sample_count: efficiencyData.sample_count,
+            updated_at: new Date().toISOString(),
+          }
+        : null,
+    ),
+    getDb: vi.fn().mockReturnValue(null),
+    getSessionHistory: vi.fn().mockResolvedValue([]),
+    getSystemConfig: vi.fn().mockResolvedValue(null),
+    setSystemConfig: vi.fn().mockResolvedValue(undefined),
+    recordLearning: vi.fn().mockResolvedValue(undefined),
+  };
+
+  return makeDeps({
+    memory: mockMemory as unknown as ClassificationEngineDeps['memory'],
+  });
+}
+
+describe('ClassificationEngine — efficiency-based escalation suppression (OB-1574, OB-F208)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('suppresses escalation when avg_turns < 5, avg_workers <= 1, sample_count >= 5', async () => {
+    const engine = new ClassificationEngine(
+      makeDepsWithMemory({ avg_turns: 3, avg_workers: 1, sample_count: 5 }),
+    );
+
+    // AI classifies as tool-use (rank 1) with high confidence
+    mockSpawn.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        class: 'tool-use',
+        maxTurns: 10,
+        reason: 'Generate a report from the data',
+        confidence: 0.85,
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const result = await engine.classifyTask('generate a report', 'sess-suppress');
+
+    // Escalation should be suppressed — result stays tool-use
+    expect(result.class).toBe('tool-use');
+  });
+
+  it('proceeds with escalation when avg_turns >= 5 (high usage indicates escalated class is necessary)', async () => {
+    const engine = new ClassificationEngine(
+      makeDepsWithMemory({ avg_turns: 12, avg_workers: 3, sample_count: 5 }),
+    );
+
+    mockSpawn.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        class: 'tool-use',
+        maxTurns: 10,
+        reason: 'Generate a report from the data',
+        confidence: 0.85,
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const result = await engine.classifyTask('generate a report', 'sess-proceed-turns');
+
+    // avg_turns >= 5 → suppression condition NOT met → escalation proceeds
+    expect(result.class).toBe('complex-task');
+  });
+
+  it('proceeds with escalation when sample_count < 5 (not enough data to suppress)', async () => {
+    const engine = new ClassificationEngine(
+      makeDepsWithMemory({ avg_turns: 3, avg_workers: 1, sample_count: 2 }),
+    );
+
+    mockSpawn.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        class: 'tool-use',
+        maxTurns: 10,
+        reason: 'Generate a report from the data',
+        confidence: 0.85,
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const result = await engine.classifyTask('generate a report', 'sess-proceed-samples');
+
+    // sample_count < 5 → not enough data → escalation proceeds
+    expect(result.class).toBe('complex-task');
+  });
+
+  it('proceeds with escalation when efficiency data is null (no efficiency records yet)', async () => {
+    const engine = new ClassificationEngine(makeDepsWithMemory(null));
+
+    mockSpawn.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        class: 'tool-use',
+        maxTurns: 10,
+        reason: 'Generate a report from the data',
+        confidence: 0.85,
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const result = await engine.classifyTask('generate a report', 'sess-null-efficiency');
+
+    // No efficiency data → cannot suppress → escalation proceeds
+    expect(result.class).toBe('complex-task');
+  });
+});
