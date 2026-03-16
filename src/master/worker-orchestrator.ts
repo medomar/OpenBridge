@@ -674,6 +674,12 @@ export class WorkerOrchestrator {
     grantedTools: string[],
     attachments?: InboundMessage['attachments'],
   ): Promise<void> {
+    // Defense-in-depth: block respawning in sandbox mode (OB-1603, OB-F216)
+    if (this.deps.trustLevel === 'sandbox') {
+      logger.warn('respawnWorkerAfterGrant called in sandbox mode — ignoring');
+      return;
+    }
+
     const newWorkerId = `${originalWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
