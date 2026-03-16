@@ -36,6 +36,9 @@ export {
 
 const logger = createLogger('agent-runner');
 
+/** Seconds of execution budget allocated per agent turn for timeout derivation. */
+const SECS_PER_TURN = 30;
+
 /**
  * Returns model-aware max prompt length.
  * Opus 4.6 / Sonnet 4.6: 128_000 chars (1M token context window).
@@ -1290,7 +1293,6 @@ export class AgentRunner {
     // Compute exec timeout: use explicit timeout when provided, otherwise derive
     // from maxTurns (30 seconds per turn) so long-running workers are eventually
     // force-killed by the exec call.  Fall back to 5 minutes if neither is set.
-    const SECS_PER_TURN = 30;
     const effectiveTimeout = timeout ?? (maxTurns ? maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     logger.debug(
@@ -1357,6 +1359,10 @@ export class AgentRunner {
     let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
+    // Derive a bounded timeout when SPAWN markers omit one — prevents workers
+    // from running unbounded (only caught by the 10-30min watchdog otherwise).
+    const effectiveTimeout =
+      opts.timeout ?? (opts.maxTurns ? opts.maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     logger.debug(
       {
@@ -1399,7 +1405,7 @@ export class AgentRunner {
             const { promise: execPromise } = execOnce(
               currentConfig,
               opts.workspacePath,
-              opts.timeout,
+              effectiveTimeout,
             );
             lastResult = await execPromise;
           } else {
@@ -1417,7 +1423,7 @@ export class AgentRunner {
           const { promise: execPromise } = execOnce(
             currentConfig,
             opts.workspacePath,
-            opts.timeout,
+            effectiveTimeout,
           );
           lastResult = await execPromise;
         }
@@ -1600,6 +1606,10 @@ export class AgentRunner {
     let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
+    // Derive a bounded timeout when SPAWN markers omit one — prevents workers
+    // from running unbounded (only caught by the 10-30min watchdog otherwise).
+    const effectiveTimeout =
+      opts.timeout ?? (opts.maxTurns ? opts.maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     // Mutable reference to the kill function of the currently-running process.
     // Updated on each retry so abort() always terminates the live child.
@@ -1611,7 +1621,7 @@ export class AgentRunner {
 
     // Launch the first execution immediately — this lets us capture its PID
     // synchronously before the async retry loop begins.
-    const firstHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+    const firstHandle = execOnce(currentConfig, opts.workspacePath, effectiveTimeout);
     currentKill = firstHandle.kill;
     const initialPid = firstHandle.pid;
 
@@ -1645,7 +1655,7 @@ export class AgentRunner {
             'Retrying agent after non-zero exit',
           );
           await sleep(retryDelay);
-          currentHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+          currentHandle = execOnce(currentConfig, opts.workspacePath, effectiveTimeout);
           currentKill = currentHandle.kill;
         }
 
