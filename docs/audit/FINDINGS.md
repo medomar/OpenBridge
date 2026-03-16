@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 10 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 1 | **Fixed:** 11 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -285,7 +285,7 @@
 ### OB-F215 — No startup warning for elevated trust levels
 
 - **Severity:** 🟡 Medium (user may not realize agents have full access)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/index.ts:34+` — entry point startup logs
   - `src/core/bridge.ts:84` — `SecurityConfig` field available on bridge instance

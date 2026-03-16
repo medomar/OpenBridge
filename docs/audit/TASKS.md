@@ -1,24 +1,24 @@
 # OpenBridge — Task List
 
-> **Pending:** 11 | **In Progress:** 0 | **Done:** 37 (1558 archived)
+> **Pending:** 10 | **In Progress:** 0 | **Done:** 38 (1558 archived)
 > **Last Updated:** 2026-03-16
 
 ## Task Summary
 
-| Phase | Focus                                                        | Tasks | Status     |
-| ----- | ------------------------------------------------------------ | ----- | ---------- |
-| 140   | Worker prompt budget (OB-F205)                               | 5     | ✅ Done    |
-| 141   | Worker timeout model-aware (OB-F206)                         | 3     | ✅ Done    |
-| 142   | Arabizi RAG fallback (OB-F207)                               | 4     | ✅ Done    |
-| 143   | Classification escalation fix (OB-F208)                      | 3     | ✅ Done    |
-| 144   | Natural language trust command (OB-F209)                     | 2     | ✅ Done    |
-| 145   | Self-improvement no-op suppression (OB-F210)                 | 3     | ✅ Done    |
-| 146   | Trust level config schema + profile resolution (OB-F211)     | 7     | ✅ Done    |
-| 147   | Workspace boundary hardening for Bash (OB-F212)              | 5     | ✅ Done    |
-| 148   | Trust-level-aware cost caps (OB-F213)                        | 3     | ✅ Done    |
-| 149   | CLI wizard trust level + startup warnings (OB-F214, OB-F215) | 4     | ⬜ Pending |
-| 150   | Confirmation gates trust-level integration (OB-F216)         | 6     | ⬜ Pending |
-| 151   | Trust level E2E integration tests                            | 3     | ⬜ Pending |
+| Phase | Focus                                                        | Tasks | Status         |
+| ----- | ------------------------------------------------------------ | ----- | -------------- |
+| 140   | Worker prompt budget (OB-F205)                               | 5     | ✅ Done        |
+| 141   | Worker timeout model-aware (OB-F206)                         | 3     | ✅ Done        |
+| 142   | Arabizi RAG fallback (OB-F207)                               | 4     | ✅ Done        |
+| 143   | Classification escalation fix (OB-F208)                      | 3     | ✅ Done        |
+| 144   | Natural language trust command (OB-F209)                     | 2     | ✅ Done        |
+| 145   | Self-improvement no-op suppression (OB-F210)                 | 3     | ✅ Done        |
+| 146   | Trust level config schema + profile resolution (OB-F211)     | 7     | ✅ Done        |
+| 147   | Workspace boundary hardening for Bash (OB-F212)              | 5     | ✅ Done        |
+| 148   | Trust-level-aware cost caps (OB-F213)                        | 3     | ✅ Done        |
+| 149   | CLI wizard trust level + startup warnings (OB-F214, OB-F215) | 4     | 🟨 In Progress |
+| 150   | Confirmation gates trust-level integration (OB-F216)         | 6     | ⬜ Pending     |
+| 151   | Trust level E2E integration tests                            | 3     | ⬜ Pending     |
 
 ---
 
@@ -166,7 +166,7 @@
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ---------- |
 | OB-1595 | In `src/cli/init.ts`, add a `promptTrustLevel()` function (modeled after `promptDefaultRole()` at lines 387-413). Present three choices using the existing readline prompt pattern: `"Trust level:\n  1. sandbox  — Read-only agents, safe for demos and evaluation\n  2. standard — AI asks before risky actions (recommended)\n  3. trusted  — Full AI autonomy within workspace, no permission prompts\n"`. Default to `2` (standard) if user presses Enter. Map input: `1` → `'sandbox'`, `2` → `'standard'`, `3` → `'trusted'`. Return the string value. Call this function in the wizard flow after the default role step (after line 634). Store the result in a variable `trustLevel`. When building the config object (around line 679 where config generation happens), add `trustLevel` inside the `security` block: `security: { ..., trustLevel }`. Only include the field if it's not `'standard'` (to keep generated configs clean for default users). | OB-F214 | sonnet | ✅ Done    |
 | OB-1596 | In `config.example.json`, add `"trustLevel": "standard"` inside the `"security"` object (lines 48-73). The security block currently only has `envDenyPatterns` (lines 49-71) and `envAllowPatterns` (line 72) — it does NOT have `confirmHighRisk` in the example (it defaults via schema). Add after `envAllowPatterns` (line 72), before the closing `}` of security (line 73): `"_trustLevelDoc": "Options: sandbox (read-only agents) \| standard (default, confirmation gates) \| trusted (full AI autonomy within workspace)", "trustLevel": "standard"`. This keeps the example showing the default while documenting the options.                                                                                                                                                                                                                                                                                                                             | OB-F214 | haiku  | ✅ Done    |
-| OB-1597 | In `src/index.ts`, add trust level startup logging. After the config is loaded and validated (search for where `config` is first available — likely after `loadConfig()` or `parseConfig()` call), add: `const trustLevel = config.security?.trustLevel ?? 'standard'; if (trustLevel === 'trusted') { logger.warn('Running in TRUSTED mode — all agents have full access within workspace'); } else if (trustLevel === 'sandbox') { logger.info('Running in SANDBOX mode — agents are read-only'); }`. For `standard`, log nothing (it's the default). Use Pino's `warn` for trusted (stands out in production logs) and `info` for sandbox. Place this near other startup info logs (like the workspace path log).                                                                                                                                                                                                                                                  | OB-F215 | haiku  | ⬜ Pending |
+| OB-1597 | In `src/index.ts`, add trust level startup logging. After the config is loaded and validated (search for where `config` is first available — likely after `loadConfig()` or `parseConfig()` call), add: `const trustLevel = config.security?.trustLevel ?? 'standard'; if (trustLevel === 'trusted') { logger.warn('Running in TRUSTED mode — all agents have full access within workspace'); } else if (trustLevel === 'sandbox') { logger.info('Running in SANDBOX mode — agents are read-only'); }`. For `standard`, log nothing (it's the default). Use Pino's `warn` for trusted (stands out in production logs) and `info` for sandbox. Place this near other startup info logs (like the workspace path log).                                                                                                                                                                                                                                                  | OB-F215 | haiku  | ✅ Done    |
 | OB-1598 | Unit tests: (1) In `tests/cli/init.test.ts`, mock readline to input `'3'` for the trust level prompt — verify generated config contains `security: { trustLevel: 'trusted' }`. Mock input `'1'` — verify `sandbox`. Mock Enter (empty) — verify `standard` is used and `trustLevel` is omitted from config (clean default). (2) For startup warnings: in `tests/index.test.ts` or `tests/core/bridge.test.ts` (whichever tests startup), mock config with `security: { trustLevel: 'trusted' }` — verify `logger.warn` is called with string containing `'TRUSTED'`. Mock `sandbox` — verify `logger.info` with `'SANDBOX'`. Mock `standard` or missing — verify no trust-level-specific log.                                                                                                                                                                                                                                                                         | OB-F214 | sonnet | ⬜ Pending |
 
 ---
