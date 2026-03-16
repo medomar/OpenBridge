@@ -19,7 +19,7 @@ export type { ExplorationManagerDeps } from './exploration-manager.js';
 import { WorkerOrchestrator } from './worker-orchestrator.js';
 // Re-export for backward compatibility (OB-1281)
 export type { WorkerOrchestratorDeps } from './worker-orchestrator.js';
-import { PromptContextBuilder } from './prompt-context-builder.js';
+import { PromptContextBuilder, SECTION_BUDGET_RAG } from './prompt-context-builder.js';
 // Re-export for backward compatibility (OB-1282)
 export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-context-builder.js';
 // predictToolRequirements, detectToolAccessFailure, ToolAccessFailure, ToolPrediction
@@ -3377,6 +3377,21 @@ export class MasterManager {
             } else {
               logger.debug('No target files identified, falling back to Master handling');
             }
+          }
+          // Workspace-map summary fallback (OB-1570): when RAG returns low confidence
+          // and targeted reader also fails, inject a workspace overview so workers
+          // get basic project context even when FTS5 fails completely.
+          if (!knowledgeContext && !targetedReaderContext && workspaceMap) {
+            knowledgeContext = `## Workspace Overview (fallback)\n\n${JSON.stringify(workspaceMap.projectType ?? 'unknown')} project with ${Object.keys(workspaceMap.structure ?? {}).length} directories.\nKey files: ${(
+              workspaceMap.keyFiles ?? []
+            )
+              .slice(0, 10)
+              .map((f) => f.path)
+              .join(', ')}`;
+            if (knowledgeContext.length > SECTION_BUDGET_RAG) {
+              knowledgeContext = knowledgeContext.slice(0, SECTION_BUDGET_RAG);
+            }
+            logger.info('Workspace-map summary fallback injected (OB-1570)');
           }
         }
         if (effectiveKnowledgeResult.confidence >= 0.3) {
