@@ -796,7 +796,17 @@ export class WorkerOrchestrator {
   ): Promise<AgentResult> {
     const { body } = marker;
     // profile may be overridden by skill pack selection (OB-1753)
-    let profile = marker.profile;
+    // OB-1600: In trusted mode, force full-access from the start so the /allow
+    // escalation flow is never triggered — workers already have maximum tools.
+    const workerProfile =
+      this.deps.trustLevel === 'trusted' ? 'full-access' : (marker.profile ?? 'read-only');
+    let profile = workerProfile;
+    if (this.deps.trustLevel === 'trusted' && marker.profile !== 'full-access') {
+      logger.debug(
+        { workerId, originalProfile: marker.profile, effectiveProfile: 'full-access' },
+        'Trusted mode — worker profile forced to full-access',
+      );
+    }
 
     // OB-1596: Compute session-level tool grants for this sender.
     // If the user approved tools earlier this session via /allow, auto-apply them
