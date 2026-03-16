@@ -3293,4 +3293,154 @@ describe('Router', () => {
       expect(reply).toContain('auto');
     });
   });
+
+  // ── requestSpawnConfirmation trust level gates (OB-1599) ─────────────────
+
+  describe('requestSpawnConfirmation trustLevel (OB-1599)', () => {
+    function createSpawnMarkerForTrust(profile: string, prompt: string): ParsedSpawnMarker {
+      return {
+        profile,
+        body: { prompt },
+        rawMatch: `[SPAWN:${profile}]{"prompt":"${prompt}"}[/SPAWN]`,
+      };
+    }
+
+    it('trusted mode — auto-approves spawn without sending a user prompt', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'trusted' });
+      await connector.initialize();
+
+      const marker = createSpawnMarkerForTrust('full-access', 'Edit all configuration files');
+      const message = createMessage();
+
+      const needsConfirmation = await router.requestSpawnConfirmation(
+        message.sender,
+        connector,
+        [marker],
+        message,
+      );
+
+      // Trusted mode: no confirmation needed, no message sent to user
+      expect(needsConfirmation).toBe(false);
+      expect(connector.sentMessages).toHaveLength(0);
+    });
+
+    it('sandbox mode — blocks spawn and sends denial message to user', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'sandbox' });
+      await connector.initialize();
+
+      const marker = createSpawnMarkerForTrust('full-access', 'Edit all configuration files');
+      const message = createMessage();
+
+      const needsConfirmation = await router.requestSpawnConfirmation(
+        message.sender,
+        connector,
+        [marker],
+        message,
+      );
+
+      // Sandbox mode: spawn is blocked, denial message sent
+      expect(needsConfirmation).toBe(true);
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('⛔');
+      expect(connector.sentMessages[0]?.content).toContain('Sandbox mode');
+    });
+
+    it('standard mode with confirmHighRisk — prompts for high-risk spawn (regression)', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      router.addConnector(connector);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'standard' });
+      await connector.initialize();
+
+      const marker = createSpawnMarkerForTrust('full-access', 'Edit all configuration files');
+      const message = createMessage();
+
+      const needsConfirmation = await router.requestSpawnConfirmation(
+        message.sender,
+        connector,
+        [marker],
+        message,
+      );
+
+      // Standard mode: confirmation prompt sent as before
+      expect(needsConfirmation).toBe(true);
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Confirmation required');
+
+      // Clean up pending timeout to avoid leaking fake timers
+      router.takePendingSpawnConfirmation(message.sender);
+    });
+  });
+
+  // ── /allow command trust level guards (OB-1601) ──────────────────────────
+
+  describe('/allow command trust level guards (OB-1601)', () => {
+    function createAllowMsgTrust(content: string, sender = '+1234567890'): InboundMessage {
+      return {
+        id: 'allow-trust-1',
+        source: 'mock',
+        sender,
+        rawContent: content,
+        content,
+        timestamp: new Date(),
+      };
+    }
+
+    it('sandbox mode — /allow returns denial response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'sandbox' });
+      await connector.initialize();
+
+      await router.route(createAllowMsgTrust('/allow Bash'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('⛔');
+      expect(connector.sentMessages[0]?.content).toContain('Sandbox mode');
+    });
+
+    it('trusted mode — /allow returns informational response', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'trusted' });
+      await connector.initialize();
+
+      await router.route(createAllowMsgTrust('/allow Bash'));
+
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toContain('Trusted mode');
+      expect(connector.sentMessages[0]?.content).toContain('all tools are already available');
+    });
+
+    it('standard mode — /allow proceeds with existing behavior when no pending escalation', async () => {
+      const router = new Router('mock');
+      const connector = new MockConnector();
+      const provider = new MockProvider();
+      provider.streamMessage = undefined;
+      router.addConnector(connector);
+      router.addProvider(provider);
+      router.setSecurityConfig({ confirmHighRisk: true, trustLevel: 'standard' });
+      await connector.initialize();
+
+      await router.route(createAllowMsgTrust('/allow Bash'));
+
+      // Standard mode with no pending escalation: existing "no pending" response
+      expect(connector.sentMessages).toHaveLength(1);
+      expect(connector.sentMessages[0]?.content).toBe('No pending tool escalation.');
+    });
+  });
 });

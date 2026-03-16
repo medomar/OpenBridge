@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 1 | **Fixed:** 11 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 0 | **Fixed:** 12 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -309,7 +309,7 @@
 ### OB-F216 — Confirmation gates and escalation prompts not trust-level-aware
 
 - **Severity:** 🟡 Medium (UX friction — trusted mode users get interrupted, sandbox mode users can escalate)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/types/config.ts:312-317` — `confirmHighRisk: z.boolean().default(true)` in SecurityConfigSchema
   - `src/core/router.ts:362-370` — `pendingEscalations` map for tracking escalation requests
