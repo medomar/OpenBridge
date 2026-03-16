@@ -106,6 +106,10 @@ export interface ClassificationResult {
   integrationName?: string;
   /** Name of a learned skill that matches this message (OB-1471). When set, Master should prefer the learned skill. */
   matchedSkillName?: string;
+  /** English description of the task intent from the AI classifier (OB-F207). Used as a RAG retry query
+   *  when the raw user message (e.g. Arabizi/Darija) returns zero FTS5 results. Only set for successful
+   *  AI classifications — NOT for keyword-fallback paths. */
+  ragQuery?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +402,7 @@ export class ClassificationEngine {
               timeout: turnsToTimeout(maxTurns),
               reason: `AI classifier: ${reason}`,
               confidence,
+              ragQuery: reason.length > 10 ? reason : undefined,
             };
           }
         } catch {
@@ -473,6 +478,7 @@ export class ClassificationEngine {
         maxTurns: aiResult.maxTurns,
         timeout: aiResult.timeout,
         reason: aiResult.reason,
+        ragQuery: aiResult.ragQuery,
       };
       if (aiResult.class !== keywordResult.class) {
         logger.info(
