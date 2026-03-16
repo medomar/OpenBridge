@@ -70,7 +70,7 @@
       "POSTGRES_*"
     ],
     "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"],
-    "_trustLevelOptions": "sandbox = read-only agents for demos | standard = AI asks before risky actions (default) | trusted = full AI autonomy within workspace",
+    "_trustLevelDoc": "Options: sandbox (read-only agents) | standard (default, confirmation gates) | trusted (full AI autonomy within workspace)",
     "trustLevel": "standard"
   },
   "audit": {
