@@ -381,4 +381,45 @@ describe('processImage', () => {
       await expect(processImage('/tmp/noaccess.png')).rejects.toThrow('EACCES');
     });
   });
+
+  // ── AI vision worker spawn options (OB-1567) ──────────────────────────
+
+  describe('AI vision worker spawn options', () => {
+    beforeEach(async () => {
+      const mod = await loadSut();
+      processImage = mod.processImage;
+    });
+
+    it('passes timeout: 180_000 and retries: 0 to AgentRunner.spawn()', async () => {
+      await processImage('/tmp/test.png');
+
+      // Verify spawn was called with correct options
+      expect(mockAgentRunnerSpawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timeout: 180_000,
+          retries: 0,
+        }),
+      );
+    });
+
+    it('spawn options include maxTurns: 3', async () => {
+      await processImage('/tmp/test.png');
+
+      expect(mockAgentRunnerSpawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxTurns: 3,
+        }),
+      );
+    });
+
+    it('spawn options include read-only allowedTools', async () => {
+      await processImage('/tmp/test.png');
+
+      expect(mockAgentRunnerSpawn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          allowedTools: ['Read', 'Glob', 'Grep'],
+        }),
+      );
+    });
+  });
 });

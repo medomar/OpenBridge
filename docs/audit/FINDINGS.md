@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 11 | **Fixed:** 1 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 10 | **Fixed:** 2 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -42,7 +42,7 @@
 ### OB-F206 — Worker timeout too low for balanced/powerful model workers (60s vs 90–130s actual)
 
 - **Severity:** 🟠 High (tasks killed mid-execution, wasted compute)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/core/agent-runner.ts:890` — `SIGTERM_GRACE_PERIOD_MS = 5000`
   - `src/core/agent-runner.ts:922-952` — manual timeout handler (SIGTERM → 5s grace → SIGKILL)

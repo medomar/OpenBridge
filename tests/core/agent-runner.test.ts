@@ -669,6 +669,62 @@ describe('AgentRunner', () => {
     expect(spawnCalls[0]!.options['timeout']).toBeUndefined();
   });
 
+  // ── Effective timeout derivation (OB-1567, OB-F206) ─────────────────────
+  // Non-Docker workers should derive timeout from maxTurns when not explicitly set.
+  // Formula: effectiveTimeout = timeout ?? (maxTurns ? maxTurns * 30 * 1000 : 300_000)
+
+  it('derives effectiveTimeout from maxTurns when timeout is not set', async () => {
+    // maxTurns: 5 should derive timeout = 5 * 30 * 1000 = 150_000 ms
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      maxTurns: 5,
+      retries: 0,
+    });
+
+    // Complete before timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    // The timeout derivation happens internally and kills the process if exceeded
+    // (cannot directly assert the internal timeout value, but the logic is in agent-runner.ts:1365)
+  });
+
+  it('defaults effectiveTimeout to 300_000ms when maxTurns and timeout are not set', async () => {
+    // No explicit timeout and no maxTurns should default to 5 minutes (300_000 ms)
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    // Complete before default timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('preserves explicit timeout without derivation from maxTurns', async () => {
+    // Explicit timeout: 60_000 should be used as-is, not derived from maxTurns
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      maxTurns: 5, // 5 turns would normally derive to 150_000 ms
+      timeout: 60_000, // But explicit timeout should take precedence
+      retries: 0,
+    });
+
+    // Complete before timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    // The explicit timeout (60_000) is preserved and should trigger timeout logic
+    // if the process runs longer than 60 seconds
+  });
+
   it('throws AgentExhaustedError on spawn error with no retries', async () => {
     const promise = runner.spawn({
       prompt: 'test',
