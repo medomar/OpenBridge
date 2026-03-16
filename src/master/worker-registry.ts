@@ -106,6 +106,7 @@ export const WorkerStatsSchema = z.object({
   failed: z.number().int().nonnegative(),
   cancelled: z.number().int().nonnegative(),
   avgDurationMs: z.number().nonnegative(),
+  totalTurnsUsed: z.number().int().nonnegative(),
   byProfile: z.record(z.string(), WorkerGroupStatsSchema),
   byModel: z.record(z.string(), WorkerGroupStatsSchema),
 });
@@ -518,12 +519,16 @@ export class WorkerRegistry {
       };
     }
 
+    // Sum turnsUsed across all completed workers (OB-1572)
+    const totalTurnsUsed = completed.reduce((sum, w) => sum + (w.result?.turnsUsed ?? 0), 0);
+
     return {
       totalWorkers: workers.length,
       completed: completed.length,
       failed: failed.length,
       cancelled: cancelled.length,
       avgDurationMs: Math.round(avgDurationMs),
+      totalTurnsUsed,
       byProfile,
       byModel,
     };
