@@ -33,6 +33,18 @@ const OPENBRIDGE_VERSION = _pkg.version;
 
 const logger = createLogger('main');
 
+/** Emit trust-level startup warnings. Exported for unit testing. */
+export function logTrustLevelAtStartup(
+  log: { warn: (msg: string) => void; info: (msg: string) => void },
+  trustLevel: string,
+): void {
+  if (trustLevel === 'trusted') {
+    log.warn('Running in TRUSTED mode — all agents have full access within workspace');
+  } else if (trustLevel === 'sandbox') {
+    log.info('Running in SANDBOX mode — agents are read-only');
+  }
+}
+
 // Module-level flag prevents double-shutdown when SIGINT and SIGTERM arrive together
 let shutdownInProgress = false;
 
@@ -285,11 +297,7 @@ async function startV2Flow(
 
   // Log trust level at startup (OB-F215)
   const trustLevel = v2Config.security?.trustLevel ?? 'standard';
-  if (trustLevel === 'trusted') {
-    logger.warn('Running in TRUSTED mode — all agents have full access within workspace');
-  } else if (trustLevel === 'sandbox') {
-    logger.info('Running in SANDBOX mode — agents are read-only');
-  }
+  logTrustLevelAtStartup(logger, trustLevel);
 
   // Resolve CLI adapter based on the discovered master tool
   const adapterRegistry = createAdapterRegistry();
