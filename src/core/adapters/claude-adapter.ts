@@ -93,14 +93,20 @@ export class ClaudeAdapter implements CLIAdapter {
       }
     }
 
+    // NOTE: Workspace boundary is enforced via spawn({ cwd: workspacePath }) in agent-runner.ts,
+    // not via CLI flags. Claude CLI does not support --cwd.
+
     return {
       binary: 'claude',
       args,
-      env: this.cleanEnv({ ...process.env }),
+      env: this.cleanEnv({ ...process.env }, opts.securityConfig?.trustLevel),
     };
   }
 
-  cleanEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  cleanEnv(
+    env: Record<string, string | undefined>,
+    trustLevel?: string,
+  ): Record<string, string | undefined> {
     const cleaned = { ...env };
     for (const key of Object.keys(cleaned)) {
       if (
@@ -111,6 +117,12 @@ export class ClaudeAdapter implements CLIAdapter {
         delete cleaned[key];
       }
     }
+
+    // In trusted mode, remove HOME to prevent agents from reading ~/.ssh, ~/.bashrc, etc.
+    if (trustLevel === 'trusted') {
+      delete cleaned['HOME'];
+    }
+
     return sanitizeEnv(cleaned, this.securityConfig);
   }
 
