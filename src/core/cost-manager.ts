@@ -6,8 +6,19 @@
  */
 
 import { createLogger } from './logger.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
 
 const logger = createLogger('cost-manager');
+
+/**
+ * Cost multipliers per trust level. Trusted mode allows higher spending;
+ * sandbox mode constrains it; standard mode is the baseline (1×).
+ */
+const TRUST_COST_MULTIPLIER: Record<WorkspaceTrustLevel, number> = {
+  sandbox: 0.5,
+  standard: 1,
+  trusted: 3,
+};
 
 /**
  * Default per-profile cost caps in USD.
@@ -23,18 +34,23 @@ export const PROFILE_COST_CAPS: Record<string, number> = {
 
 /**
  * Get the cost cap in USD for a given tool profile.
- * Returns the cap from `overrides` first, then `PROFILE_COST_CAPS`.
+ * Scales the base cap by `trustLevel` multiplier (sandbox: 0.5×, standard: 1×, trusted: 3×).
+ * User-configured `overrides` always win over the scaled value.
  * Returns `undefined` if the profile is unknown or no cap is configured.
  */
 export function getProfileCostCap(
   profile: string | undefined,
   overrides?: Record<string, number>,
+  trustLevel?: WorkspaceTrustLevel,
 ): number | undefined {
   if (!profile) return undefined;
+  const baseCap = PROFILE_COST_CAPS[profile];
+  if (baseCap === undefined) return undefined;
+  const scaledCap = baseCap * TRUST_COST_MULTIPLIER[trustLevel ?? 'standard'];
   if (overrides && Object.prototype.hasOwnProperty.call(overrides, profile)) {
     return overrides[profile];
   }
-  return PROFILE_COST_CAPS[profile];
+  return scaledCap;
 }
 
 /**
