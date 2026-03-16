@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 3 | **Fixed:** 9 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 2 | **Fixed:** 10 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -261,7 +261,7 @@
 ### OB-F214 — CLI wizard does not ask trust level (no guided setup for new config option)
 
 - **Severity:** 🟡 Medium (UX gap — users won't discover the feature)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/cli/init.ts` — CLI config generator with 13 steps (workspace, connector, whitelist, default role, MCP, visibility, etc.)
   - `src/cli/init.ts:387-413` — `promptDefaultRole()` already asks for role (owner/developer/viewer) — trust level is a related but distinct concept
