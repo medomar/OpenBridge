@@ -44,7 +44,7 @@ import type { Router } from '../core/router.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
 import { consentModeToTrustLevel } from '../core/adapter-registry.js';
 import type { AdapterRegistry } from '../core/adapter-registry.js';
-import type { WorkspaceTrustLevel } from '../types/config.js';
+import { SecurityConfigSchema, type WorkspaceTrustLevel } from '../types/config.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { createLogger } from '../core/logger.js';
 
@@ -1227,6 +1227,11 @@ export class WorkerOrchestrator {
     // OB-1791: Apply configurable fix iteration cap to workers.
     // Sourced from config.worker.maxFixIterations (default: 3).
     spawnOpts.maxFixIterations = this.deps.workerMaxFixIterations;
+
+    // OB-1593: Thread trustLevel into securityConfig so agent-runner cost caps scale correctly.
+    spawnOpts.securityConfig = SecurityConfigSchema.parse({
+      trustLevel: this.deps.trustLevel ?? 'standard',
+    });
 
     // OB-1596: Auto-merge session-granted tools into this worker's allowedTools.
     // Tools previously approved by the user this session (via /allow) are applied
