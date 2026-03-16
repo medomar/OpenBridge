@@ -842,6 +842,16 @@ export class WorkerOrchestrator {
       workerPrompt = `## Referenced Files\n\nThe following files were attached to the user's message and are available for analysis:\n\n${fileLines}\n\n---\n\n${body.prompt}`;
     }
 
+    // OB-1588: Inject workspace boundary instruction when trustLevel is 'trusted'.
+    // This must be prepended to the entire prompt (including referenced files) so the
+    // boundary constraint is the first thing the worker sees. Only inject for trusted
+    // mode — standard and sandbox modes rarely get Bash access, so this is primarily
+    // a defense-in-depth for unrestricted bash workers in trusted mode.
+    if (this.deps.trustLevel === 'trusted') {
+      const boundaryInstruction = `WORKSPACE BOUNDARY: You are operating inside ${this.deps.workspacePath}. All file reads, writes, and Bash commands must target files within this directory. Do not access files outside this workspace (no ~/.ssh, no ~/.env, no /etc). If you need system information, use safe commands like 'node --version' or 'which <tool>'.\n\n`;
+      workerPrompt = boundaryInstruction + workerPrompt;
+    }
+
     // Resolve per-worker tool and adapter
     let workerRunner = this.deps.agentRunner;
     let resolvedModel = body.model;
