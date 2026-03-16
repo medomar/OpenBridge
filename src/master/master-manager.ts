@@ -318,7 +318,7 @@ export function detectToolAccessFailure(result: {
  * - sandbox:  read-only tools (Read, Glob, Grep) — Master cannot modify files.
  * - standard: master profile (Read, Glob, Grep, Write, Edit) — delegates execution to workers.
  */
-function getMasterTools(trustLevel: WorkspaceTrustLevel): string[] {
+export function getMasterTools(trustLevel: WorkspaceTrustLevel): string[] {
   if (trustLevel === 'trusted') return [...BUILT_IN_PROFILES['full-access'].tools];
   if (trustLevel === 'sandbox') return ['Read', 'Glob', 'Grep'];
   return [...BUILT_IN_PROFILES.master.tools];
