@@ -955,6 +955,15 @@ export class WorkerOrchestrator {
       resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
     }
 
+    // Default Claude workers to Sonnet tier (OB-1560, OB-F205): when no model is specified
+    // (SPAWN markers often omit model), undefined flows through to getClaudePromptBudget()
+    // which returns 32K Haiku tier instead of 128K Sonnet. Sonnet is the correct default.
+    // Codex/Aider workers keep undefined — they have their own budget logic.
+    if (!resolvedModel && this.deps.masterTool.name === 'claude') {
+      resolvedModel = 'sonnet';
+      logger.debug({ workerId }, 'Worker model defaulted to sonnet (no explicit model)');
+    }
+
     // Avoid high-failure-rate models (OB-907): if the resolved model has >50% failure rate
     // for this task type (with >=3 data points), prefer a better-performing alternative.
     if (resolvedModel && memory) {
