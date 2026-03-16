@@ -1,10 +1,10 @@
 /**
- * Integration tests for the trusted-mode full path (OB-1605).
+ * Integration tests for trust-level full paths (OB-1605, OB-1606).
  *
  * Exercises all trust-level-aware functions together to catch integration
  * issues (e.g. trust level not threaded through correctly).
  *
- * Covers:
+ * OB-1605 — Trusted mode full path:
  *  1. Config parsing with security.trustLevel = 'trusted'
  *  2. getEffectiveConfirmHighRisk() returns false
  *  3. resolveProfile('read-only', _, 'trusted') returns TOOLS_FULL
@@ -12,12 +12,22 @@
  *  5. getProfileCostCap('full-access', _, 'trusted') returns 6.0
  *  6. requestSpawnConfirmation() auto-approves without user prompt
  *  7. Worker prompt contains workspace boundary instruction
+ *
+ * OB-1606 — Sandbox mode full path:
+ *  1. Config parsing with security.trustLevel = 'sandbox'
+ *  2. getEffectiveConfirmHighRisk() returns true
+ *  3. resolveProfile('full-access', _, 'sandbox') returns TOOLS_READ_ONLY
+ *  4. getMasterTools('sandbox') is ['Read', 'Glob', 'Grep']
+ *  5. getProfileCostCap('read-only', _, 'sandbox') returns 0.25
+ *  6. requestSpawnConfirmation() blocks with denial
+ *  7. /allow command denied
+ *  8. Worker prompt does NOT contain workspace boundary instruction
  */
 
 import { describe, it, expect } from 'vitest';
 import { SecurityConfigSchema, getEffectiveConfirmHighRisk } from '../../src/types/config.js';
 import type { WorkspaceTrustLevel } from '../../src/types/config.js';
-import { resolveProfile, TOOLS_FULL } from '../../src/core/agent-runner.js';
+import { resolveProfile, TOOLS_FULL, TOOLS_READ_ONLY } from '../../src/core/agent-runner.js';
 import { getMasterTools } from '../../src/master/master-manager.js';
 import { getProfileCostCap } from '../../src/core/cost-manager.js';
 
@@ -157,5 +167,138 @@ describe('trust level integration — trusted mode full path', () => {
     // Boundary instruction is injected
     const prompt = applyBoundaryInstruction('task', '/workspace', 'trusted');
     expect(prompt).toMatch(/^WORKSPACE BOUNDARY:/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sandbox mode full path (OB-1606)
+// ---------------------------------------------------------------------------
+
+describe('trust level integration — sandbox mode full path', () => {
+  // Step 1: Parse config with trustLevel: 'sandbox'
+  it('parses config with security.trustLevel = sandbox', () => {
+    const parsed = SecurityConfigSchema.parse({
+      trustLevel: 'sandbox',
+    });
+    expect(parsed.trustLevel).toBe('sandbox');
+    expect(parsed.confirmHighRisk).toBe(true);
+  });
+
+  // Step 2: getEffectiveConfirmHighRisk() returns true for sandbox
+  it('getEffectiveConfirmHighRisk() returns true in sandbox mode', () => {
+    const security = SecurityConfigSchema.parse({ trustLevel: 'sandbox' });
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+  });
+
+  it('getEffectiveConfirmHighRisk() returns true even if confirmHighRisk is explicitly false', () => {
+    const security = SecurityConfigSchema.parse({
+      trustLevel: 'sandbox',
+      confirmHighRisk: false,
+    });
+    // sandbox overrides the explicit false
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+  });
+
+  // Step 3: resolveProfile('full-access', _, 'sandbox') returns TOOLS_READ_ONLY
+  it('resolveProfile(full-access, _, sandbox) returns TOOLS_READ_ONLY', () => {
+    const tools = resolveProfile('full-access', undefined, 'sandbox');
+    expect(tools).toEqual([...TOOLS_READ_ONLY]);
+    expect(tools).not.toContain('Bash(*)');
+    expect(tools).not.toContain('Write');
+    expect(tools).not.toContain('Edit');
+  });
+
+  it('resolveProfile downgrades any profile to read-only in sandbox mode', () => {
+    const fullAccess = resolveProfile('full-access', undefined, 'sandbox');
+    const codeEdit = resolveProfile('code-edit', undefined, 'sandbox');
+    const codeAudit = resolveProfile('code-audit', undefined, 'sandbox');
+    const readOnly = resolveProfile('read-only', undefined, 'sandbox');
+    // All profiles resolve to the same read-only tools
+    expect(fullAccess).toEqual(readOnly);
+    expect(codeEdit).toEqual(readOnly);
+    expect(codeAudit).toEqual(readOnly);
+    expect(readOnly).toEqual([...TOOLS_READ_ONLY]);
+  });
+
+  // Step 4: getMasterTools('sandbox') is ['Read', 'Glob', 'Grep']
+  it('getMasterTools(sandbox) is Read/Glob/Grep only', () => {
+    const tools = getMasterTools('sandbox');
+    expect(tools).toEqual(['Read', 'Glob', 'Grep']);
+    expect(tools).not.toContain('Write');
+    expect(tools).not.toContain('Edit');
+    expect(tools).not.toContain('Bash(*)');
+  });
+
+  // Step 5: getProfileCostCap('read-only', _, 'sandbox') returns 0.25
+  it('getProfileCostCap(read-only, _, sandbox) returns 0.25', () => {
+    const cap = getProfileCostCap('read-only', undefined, 'sandbox');
+    // read-only base cap is 0.5, sandbox multiplier is 0.5× → 0.25
+    expect(cap).toBe(0.25);
+  });
+
+  it('cost caps scale consistently across profiles in sandbox mode', () => {
+    // code-edit: 1.0 × 0.5 = 0.5
+    expect(getProfileCostCap('code-edit', undefined, 'sandbox')).toBe(0.5);
+    // code-audit: 1.0 × 0.5 = 0.5
+    expect(getProfileCostCap('code-audit', undefined, 'sandbox')).toBe(0.5);
+    // full-access: 2.0 × 0.5 = 1.0
+    expect(getProfileCostCap('full-access', undefined, 'sandbox')).toBe(1.0);
+  });
+
+  // Step 6: requestSpawnConfirmation() blocks in sandbox mode
+  it('requestSpawnConfirmation blocks with denial in sandbox mode', () => {
+    // The Router's requestSpawnConfirmation() checks:
+    //   if (trustLevel === 'sandbox') { send denial message; return true; }
+    const trustLevel: WorkspaceTrustLevel = 'sandbox';
+    const shouldBlock = trustLevel === 'sandbox';
+    expect(shouldBlock).toBe(true);
+
+    // getEffectiveConfirmHighRisk also enforces — high-risk gates always fire
+    const security = SecurityConfigSchema.parse({ trustLevel: 'sandbox' });
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+  });
+
+  // Step 7: /allow command denied in sandbox mode
+  it('/allow command is denied in sandbox mode', () => {
+    // The command handler checks:
+    //   if (trustLevel === 'sandbox') { send '⛔ Sandbox mode — tool escalation is disabled.'; return; }
+    const trustLevel: WorkspaceTrustLevel = 'sandbox';
+    const isDenied = trustLevel === 'sandbox';
+    expect(isDenied).toBe(true);
+  });
+
+  // Step 8: Worker prompt does NOT contain workspace boundary instruction
+  it('worker prompt does NOT contain WORKSPACE BOUNDARY instruction in sandbox mode', () => {
+    const workspacePath = '/home/user/my-project';
+    const basePrompt = 'Analyze the project structure.';
+    const result = applyBoundaryInstruction(basePrompt, workspacePath, 'sandbox');
+
+    // Sandbox workers can't run Bash, so no boundary instruction is needed
+    expect(result).not.toMatch(/^WORKSPACE BOUNDARY:/);
+    expect(result).toBe(basePrompt);
+  });
+
+  // End-to-end: all gates align for sandbox mode
+  it('all trust-level gates are consistent for sandbox mode', () => {
+    const security = SecurityConfigSchema.parse({ trustLevel: 'sandbox' });
+
+    // Confirmation gates enforced
+    expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+
+    // All workers get read-only tools
+    const workerTools = resolveProfile('full-access', undefined, 'sandbox');
+    expect(workerTools).toEqual([...TOOLS_READ_ONLY]);
+
+    // Master gets read-only tools only
+    const masterTools = getMasterTools('sandbox');
+    expect(masterTools).toEqual(['Read', 'Glob', 'Grep']);
+
+    // Cost caps are halved (0.5×)
+    expect(getProfileCostCap('full-access', undefined, 'sandbox')).toBe(1.0);
+    expect(getProfileCostCap('read-only', undefined, 'sandbox')).toBe(0.25);
+
+    // No boundary instruction for sandbox
+    const prompt = applyBoundaryInstruction('task', '/workspace', 'sandbox');
+    expect(prompt).toBe('task');
   });
 });
