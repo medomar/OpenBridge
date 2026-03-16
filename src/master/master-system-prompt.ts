@@ -19,6 +19,7 @@ import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MCPServer } from '../types/config.js';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
 import type { IntegrationCapability } from '../types/integration.js';
 
 /** A single initialized integration to expose to the Master AI. */
@@ -60,6 +61,8 @@ export interface MasterSystemPromptContext {
   availableSkillPacks?: SkillPack[];
   /** Initialized integrations to list in the ## Connected Integrations section. Only connected integrations are included. */
   connectedIntegrations?: ConnectedIntegrationEntry[];
+  /** Trust level controlling Master tool access and behavior descriptions. */
+  trustLevel?: WorkspaceTrustLevel;
 }
 
 /**
@@ -385,9 +388,13 @@ You are a long-lived, self-governing AI agent. You:
 
 ## Your Tools (master profile)
 
-You run with the \`master\` tool profile: **Read, Glob, Grep, Write, Edit**
-You do NOT have direct Bash access — you delegate execution to workers.
-This keeps you safe and forces all command execution through bounded, short-lived workers.
+${
+  context.trustLevel === 'trusted'
+    ? 'You run with **full-access** tools including Bash. You can execute commands directly without spawning workers for simple tasks.'
+    : context.trustLevel === 'sandbox'
+      ? 'You run in **sandbox** mode with read-only tools (Read, Glob, Grep). You cannot modify files or run commands — delegate all changes to the user.'
+      : 'You run with the `master` tool profile: **Read, Glob, Grep, Write, Edit**\nYou do NOT have direct Bash access — you delegate execution to workers.\nThis keeps you safe and forces all command execution through bounded, short-lived workers.'
+}
 
 ## Available Worker Profiles
 
