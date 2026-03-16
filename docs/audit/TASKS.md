@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 33 | **In Progress:** 0 | **Done:** 15 (1558 archived)
+> **Pending:** 32 | **In Progress:** 0 | **Done:** 16 (1558 archived)
 > **Last Updated:** 2026-03-16
 
 ## Task Summary
@@ -11,7 +11,7 @@
 | 141   | Worker timeout model-aware (OB-F206)                         | 3     | ✅ Done    |
 | 142   | Arabizi RAG fallback (OB-F207)                               | 4     | ✅ Done    |
 | 143   | Classification escalation fix (OB-F208)                      | 3     | ✅ Done    |
-| 144   | Natural language trust command (OB-F209)                     | 2     | ⬜ Pending |
+| 144   | Natural language trust command (OB-F209)                     | 2     | ◻ 1/2      |
 | 145   | Self-improvement no-op suppression (OB-F210)                 | 3     | ⬜ Pending |
 | 146   | Trust level config schema + profile resolution (OB-F211)     | 7     | ⬜ Pending |
 | 147   | Workspace boundary hardening for Bash (OB-F212)              | 5     | ⬜ Pending |
@@ -89,7 +89,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Finding | Model | Status     |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- | ---------- |
-| OB-1575 | In `src/core/router.ts`, add a natural-language trust intent detector **immediately before** the existing `/trust` regex check at line 1610. Check the trimmed content: `if (/^(trust\s+(all\|everything\|auto\|it)\|auto[- ]?approve(\s+all)?\|approve\s+(all\|everything))$/i.test(message.content.trim()))`. If matched, rewrite the message content to `/trust auto` and fall through to the existing `/trust` handler: `message = { ...message, content: '/trust auto' };`. Log at INFO: `"Natural language trust intent detected — routing to /trust auto"`. The regex is anchored (`^...$`) to prevent false positives on messages like "I trust you'll fix this" or "approve all the changes in the PR". Only exact phrases match. Place this check at approximately line 1608 (before line 1610). | OB-F209 | haiku | ⬜ Pending |
+| OB-1575 | In `src/core/router.ts`, add a natural-language trust intent detector **immediately before** the existing `/trust` regex check at line 1610. Check the trimmed content: `if (/^(trust\s+(all\|everything\|auto\|it)\|auto[- ]?approve(\s+all)?\|approve\s+(all\|everything))$/i.test(message.content.trim()))`. If matched, rewrite the message content to `/trust auto` and fall through to the existing `/trust` handler: `message = { ...message, content: '/trust auto' };`. Log at INFO: `"Natural language trust intent detected — routing to /trust auto"`. The regex is anchored (`^...$`) to prevent false positives on messages like "I trust you'll fix this" or "approve all the changes in the PR". Only exact phrases match. Place this check at approximately line 1608 (before line 1610). | OB-F209 | haiku | ✅ Done    |
 | OB-1576 | Unit tests in `tests/core/router.test.ts` (existing file): (1) Verify `"trust all"` routes to trust command handler and sets consent mode to `auto-approve-all`. (2) Verify `"Trust Everything"` (case-insensitive) routes to trust handler. (3) Verify `"approve all"` routes to trust handler. (4) Verify `"auto approve"` routes to trust handler. (5) Verify `"I trust you with this task"` does NOT route to trust handler (partial match, not anchored). (6) Verify `"approve all the PRs"` does NOT match (not exact phrase). (7) Verify `"/trust auto"` still works (existing behavior preserved).                                                                                                                                                                                                 | OB-F209 | haiku | ⬜ Pending |
 
 ---

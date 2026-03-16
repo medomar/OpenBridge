@@ -1607,6 +1607,17 @@ export class Router {
       return;
     }
 
+    // Detect natural-language trust intent and convert to /trust command (OB-1575)
+    const trimmedContent = message.content.trim();
+    if (
+      /^(trust\s+(all|everything|auto|it)|auto[- ]?approve(\s+all)?|approve\s+(all|everything))$/i.test(
+        trimmedContent,
+      )
+    ) {
+      logger.info('Natural language trust intent detected — routing to /trust auto');
+      message = { ...message, content: '/trust auto' };
+    }
+
     // Handle built-in "/trust" command — change consent mode (auto/edit/ask)
     if (/^\/trust(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleTrustCommand(message, connector);
