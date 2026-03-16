@@ -36,6 +36,7 @@ interface Answers {
   whitelist?: string[];
   prefix?: string;
   defaultRole?: string;
+  trustLevel?: string;
   mcpServers?: McpServerEntry[];
   mcpConfigPath?: string;
   connectorOptions?: Record<string, unknown>;
@@ -263,6 +264,10 @@ export function buildConfig(answers: Answers): Record<string, unknown> {
     };
   }
 
+  if (answers.trustLevel !== undefined && answers.trustLevel !== 'standard') {
+    config['security'] = { trustLevel: answers.trustLevel };
+  }
+
   return config;
 }
 
@@ -406,6 +411,34 @@ export async function promptDefaultRole(
     } else if (normalized === '3' || normalized === 'viewer') {
       printSuccess('Default role: viewer');
       return 'viewer';
+    } else {
+      write('  Error: enter 1, 2, or 3.\n');
+    }
+  }
+}
+
+export async function promptTrustLevel(
+  rl: ReadlineInterface,
+  write: (text: string) => void,
+): Promise<string> {
+  write('\n  Trust Level — Controls how much autonomy AI agents have within the workspace\n\n');
+  write('    1. sandbox  — Read-only agents, safe for demos and evaluation\n');
+  write('    2. standard — AI asks before risky actions (recommended)\n');
+  write('    3. trusted  — Full AI autonomy within workspace, no permission prompts\n\n');
+
+  for (;;) {
+    const choice = await ask(rl, '  Trust level (1/2/3) [default: 2 — standard]: ');
+    const normalized = choice.trim().toLowerCase();
+
+    if (normalized === '' || normalized === '2' || normalized === 'standard') {
+      printSuccess('Trust level: standard');
+      return 'standard';
+    } else if (normalized === '1' || normalized === 'sandbox') {
+      printSuccess('Trust level: sandbox');
+      return 'sandbox';
+    } else if (normalized === '3' || normalized === 'trusted') {
+      printSuccess('Trust level: trusted');
+      return 'trusted';
     } else {
       write('  Error: enter 1, 2, or 3.\n');
     }
@@ -634,6 +667,9 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
     printStep(8, TOTAL_STEPS, 'Default Role');
     const defaultRole = await promptDefaultRole(rl, write);
 
+    // After default role: trust level
+    const trustLevel = await promptTrustLevel(rl, write);
+
     // Step 9: MCP setup
     printStep(9, TOTAL_STEPS, 'MCP Setup');
     write('\n');
@@ -684,6 +720,7 @@ export async function runInit(options: InitOptions = {}): Promise<void> {
       whitelist: connector === 'whatsapp' ? whitelist : undefined,
       prefix: connector === 'whatsapp' ? prefix : undefined,
       defaultRole,
+      trustLevel,
       mcpServers,
       mcpConfigPath,
       connectorOptions,
