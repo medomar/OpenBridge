@@ -739,6 +739,7 @@ export class MasterManager {
       modelRegistry: this.modelRegistry,
       workerRetryDelayMs: this.workerRetryDelayMs,
       workerMaxFixIterations: this.workerMaxFixIterations,
+      trustLevel: this.trustLevel,
       getMemory: () => this.memory,
       getRouter: () => this.router,
       getMasterSession: () => this.masterSession,
