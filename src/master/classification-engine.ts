@@ -529,27 +529,47 @@ export class ClassificationEngine {
             currentRank > 0
           ) {
             const escalatedClass = learned.model as ClassificationResult['class'];
-            const escalatedMaxTurns =
-              escalatedClass === 'quick-answer'
-                ? MESSAGE_MAX_TURNS_QUICK
-                : escalatedClass === 'tool-use'
-                  ? MESSAGE_MAX_TURNS_TOOL_USE
-                  : MESSAGE_MAX_TURNS_PLANNING;
-            logger.info(
-              {
-                original: classificationResult.class,
-                escalated: escalatedClass,
-                successRate: learned.success_rate,
-                totalTasks: learned.total_tasks,
-              },
-              'Classification escalated based on learning data',
-            );
-            classificationResult = {
-              class: escalatedClass,
-              maxTurns: escalatedMaxTurns,
-              timeout: turnsToTimeout(escalatedMaxTurns),
-              reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
-            };
+            // OB-1573: Suppress escalation if efficiency data shows the escalated class
+            // uses few turns/workers — the original class is already sufficient.
+            const efficiency = await this.deps.memory.getTaskEfficiency(escalatedClass);
+            if (
+              efficiency &&
+              efficiency.sample_count >= 5 &&
+              efficiency.avg_turns < 5 &&
+              efficiency.avg_workers <= 1
+            ) {
+              logger.info(
+                {
+                  escalatedClass,
+                  avgTurns: efficiency.avg_turns,
+                  avgWorkers: efficiency.avg_workers,
+                  sampleCount: efficiency.sample_count,
+                },
+                `Escalation suppressed: ${escalatedClass} tasks average ${efficiency.avg_turns.toFixed(1)} turns and ${efficiency.avg_workers.toFixed(1)} workers — original class sufficient`,
+              );
+            } else {
+              const escalatedMaxTurns =
+                escalatedClass === 'quick-answer'
+                  ? MESSAGE_MAX_TURNS_QUICK
+                  : escalatedClass === 'tool-use'
+                    ? MESSAGE_MAX_TURNS_TOOL_USE
+                    : MESSAGE_MAX_TURNS_PLANNING;
+              logger.info(
+                {
+                  original: classificationResult.class,
+                  escalated: escalatedClass,
+                  successRate: learned.success_rate,
+                  totalTasks: learned.total_tasks,
+                },
+                'Classification escalated based on learning data',
+              );
+              classificationResult = {
+                class: escalatedClass,
+                maxTurns: escalatedMaxTurns,
+                timeout: turnsToTimeout(escalatedMaxTurns),
+                reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
+              };
+            }
           }
         }
       } catch (err) {
