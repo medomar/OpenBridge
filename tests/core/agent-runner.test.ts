@@ -26,6 +26,7 @@ import {
   checkProfileCostSpike,
   getProfileCostAverages,
   resetProfileCostAverages,
+  scanDestructiveCommandViolations,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import { BUILT_IN_PROFILES } from '../../src/types/agent.js';
@@ -3258,5 +3259,41 @@ describe('turnsExhausted sets result status to partial', () => {
     expect(result.status).toBe('partial');
     expect(result.turnsExhausted).toBe(true);
     expect(result.maxTurns).toBe(5);
+  });
+});
+
+// ── Boundary command detection (OB-1591) ────────────────────────────────────
+
+describe('scanDestructiveCommandViolations() — boundary (cat) commands', () => {
+  const workspace = '/home/user/my-project';
+
+  it('detects cat targeting /etc/passwd as a boundary violation', () => {
+    const violations = scanDestructiveCommandViolations('cat /etc/passwd', workspace);
+    expect(violations.length).toBe(1);
+    expect(violations[0].command).toBe('cat');
+    expect(violations[0].path).toBe('/etc/passwd');
+    expect(violations[0].severity).toBe('boundary');
+  });
+
+  it('does not flag cat targeting a relative path inside the workspace', () => {
+    // "cat src/index.ts" resolves to workspace/src/index.ts — within boundary
+    const violations = scanDestructiveCommandViolations('cat src/index.ts', workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag cat targeting an absolute path inside the workspace', () => {
+    const violations = scanDestructiveCommandViolations(`cat ${workspace}/src/index.ts`, workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag node --version (no file path argument)', () => {
+    // node --version has no path argument that the patterns match
+    const violations = scanDestructiveCommandViolations('node --version', workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag which git (system info commands have no dangerous path)', () => {
+    const violations = scanDestructiveCommandViolations('which git', workspace);
+    expect(violations).toEqual([]);
   });
 });
