@@ -1525,6 +1525,28 @@ describe('resolveProfile', () => {
     expect(resolveProfile('nonexistent', {})).toBeUndefined();
   });
 
+  // OB-1586: trustLevel overrides profile resolution
+  it('trusted trustLevel returns TOOLS_FULL for any profile', () => {
+    const result = resolveProfile('read-only', undefined, 'trusted');
+    expect(result).toEqual([...TOOLS_FULL]);
+  });
+
+  it('sandbox trustLevel returns TOOLS_READ_ONLY for any profile', () => {
+    const result = resolveProfile('full-access', undefined, 'sandbox');
+    expect(result).toEqual([...TOOLS_READ_ONLY]);
+  });
+
+  it('standard trustLevel returns profile tools unchanged', () => {
+    const result = resolveProfile('code-edit', undefined, 'standard');
+    expect(result).toEqual([...TOOLS_CODE_EDIT]);
+  });
+
+  it('backward compatible: no trustLevel param returns profile tools', () => {
+    const withoutTrustLevel = resolveProfile('code-edit');
+    const withStandard = resolveProfile('code-edit', undefined, 'standard');
+    expect(withoutTrustLevel).toEqual(withStandard);
+  });
+
   // OB-1549: file-management profile contains all expected file-op tools
   it('resolves "file-management" to array containing Bash(rm:*), Bash(mv:*), Bash(cp:*), Bash(mkdir:*), Bash(chmod:*)', () => {
     const tools = resolveProfile('file-management');

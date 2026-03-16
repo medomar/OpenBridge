@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 | **Fixed:** 6 (201 prior findings archived) | **Last Audit:** 2026-03-16
+> **Open:** 5 | **Fixed:** 7 (201 prior findings archived) | **Last Audit:** 2026-03-16
 > **History:** 201 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -176,7 +176,7 @@
 ### OB-F211 — No workspace-scoped trust level system (all agents restricted by default, no opt-in full access)
 
 - **Severity:** 🟠 High (blocks product vision — Cursor-for-business needs configurable autonomy)
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:**
   - `src/types/config.ts:306-331` — `SecurityConfigSchema` has `confirmHighRisk` (line 317) but no unified trust level
   - `src/types/config.ts:183-197` — `V2MasterSchema` has `workerCostCaps` and `workerWatchdogMinutes` but no trust level
