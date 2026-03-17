@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 9 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 6 | **Fixed:** 10 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -105,7 +105,7 @@
 ### OB-F223 — Workers can delete .openbridge/ internal state files (memory.md destroyed)
 
 - **Severity:** 🔴 Critical
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/types/agent.ts:269,285`, `src/master/worker-orchestrator.ts:410,875-883`, `src/types/config.ts:223-238`
 - **Root Cause / Impact:**
   Workers spawned with `code-edit` or `file-management` profiles receive `Bash(rm:*)` access and operate inside the full `workspacePath` — which includes `.openbridge/`. No file-level boundary prevents workers from deleting or modifying `.openbridge/context/memory.md`, `.openbridge/workspace-map.json`, or any other internal state file. Observed in production: memory.md was written successfully at 06:05:10 (36 lines) but was gone (ENOENT) by 06:12:01 — ~7 minutes later — after a worker was spawned with `tool-use` profile to "deploy the POS web app". The worker likely ran cleanup commands (`rm`, `mv`) that swept `.openbridge/context/`. The trusted-mode workspace boundary instruction (worker-orchestrator.ts:875-883) only prevents access to files **outside** the workspace — it does not protect `.openbridge/` internal files. The Master system prompt tells the Master not to modify `.openbridge/` files, but **this guidance is never passed to workers**. `.openbridge/` is also not in `DEFAULT_EXCLUDE_PATTERNS` (config.ts:223-238).
