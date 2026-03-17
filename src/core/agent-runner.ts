@@ -937,6 +937,7 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
   let stderr = '';
   let timedOut = false;
   let killed = false;
+  let authAborted = false;
   let timeoutTimer: NodeJS.Timeout | undefined;
   let gracePeriodTimer: NodeJS.Timeout | undefined;
 
@@ -986,7 +987,25 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
       });
 
       child.stderr!.on('data', (data: Buffer) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+
+        // Early detection for interactive OAuth/authentication URLs
+        const OAUTH_PATTERNS = [
+          /https:\/\/.*authorize\?/i,
+          /https:\/\/.*login\?/i,
+          /https:\/\/.*oauth/i,
+          /Waiting for authorization/i,
+          /Open the following URL/i,
+        ];
+
+        if (OAUTH_PATTERNS.some((p) => p.test(chunk))) {
+          if (!authAborted && !killed) {
+            logger.warn({ pid: child.pid }, 'Worker attempting interactive auth — aborting early');
+            authAborted = true;
+            child.kill('SIGTERM');
+          }
+        }
       });
 
       child.on('close', (code, signal) => {
@@ -1017,6 +1036,14 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
             stderr:
               stderr +
               `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
+            exitCode,
+          });
+        } else if (authAborted && signal === 'SIGTERM') {
+          // Process was terminated due to detected interactive auth attempt
+          const exitCode = 143;
+          resolve({
+            stdout: parsedStdout,
+            stderr: stderr + '\nAuth-required: worker attempted interactive authentication',
             exitCode,
           });
         } else {

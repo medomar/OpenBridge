@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 | **Fixed:** 10 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 5 | **Fixed:** 11 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -133,12 +133,13 @@
 ### OB-F226 — Workers attempt interactive CLI auth (Netlify OAuth) blocking until timeout
 
 - **Severity:** 🟠 High
-- **Status:** Open
-- **Key Files:** `src/master/master-system-prompt.ts:462-530`, `src/core/agent-runner.ts`
+- **Status:** ✅ Fixed
+- **Key Files:** `src/master/master-system-prompt.ts:462-530`, `src/core/agent-runner.ts:940,988-1003,1012-1026`
 - **Root Cause / Impact:**
   The Master system prompt's worker guidelines (master-system-prompt.ts:462-530) contain no warning about interactive CLI tools that require browser-based OAuth or terminal prompts (e.g., `netlify deploy`, `heroku login`, `vercel login`, `gh auth login`). Workers run in a headless environment with `stdio: ['ignore', 'pipe', 'pipe']` — they cannot open browsers or respond to interactive prompts. When the Master spawns a worker to "deploy a public link", the worker runs `netlify deploy`, which attempts OAuth via `https://app.netlify.com/authorize?response_type=ticket&ticket=...`. The process blocks indefinitely waiting for the user to click "Authorize" in a browser that never opens. The worker hangs until the 170s timeout kills it (exit code 143/SIGTERM). The user gets no response (see OB-F225). The Master then retries with the same approach, wasting another 170s. Observed in production: 2 consecutive timeout DLQs from the same Netlify OAuth attempt.
   The agent-runner's timeout mechanism (agent-runner.ts SIGTERM → 5s grace → SIGKILL) correctly kills the hung process, but only after the full timeout elapses. There is no early detection of interactive/OAuth blocking.
 - **Fix:** (1) Add a "Headless Environment" section to the Master system prompt's worker guidelines: "Workers run headless — do NOT use CLI tools that require browser authentication (netlify, heroku, vercel, firebase). Use pre-authenticated tokens or API-based deployment instead. For static sites, prefer SHARE:github-pages which requires no auth." (2) Add the `auth` error category to worker failure re-delegation (master-system-prompt.ts:576-580) with guidance: "If a worker fails because it attempted interactive authentication, do not retry — suggest an alternative deployment method." (3) Consider adding output pattern detection in agent-runner.ts to detect OAuth URLs in stderr/stdout and abort early with an `auth-required` error code.
+- **Implementation:** OB-1653 (add Headless Environment section), OB-1654 (add auth-required category), OB-1655 (add early OAuth detection in agent-runner). All tasks complete and merged.
 
 ### OB-F227 — Classifier maxTurns=1 causes frequent turn exhaustion and misclassification
 

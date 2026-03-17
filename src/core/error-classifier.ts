@@ -53,6 +53,8 @@ const AUTH_PATTERNS = [
   'forbidden',
   '401',
   '403',
+  'auth-required',
+  'interactive authentication',
 ];
 
 /**
