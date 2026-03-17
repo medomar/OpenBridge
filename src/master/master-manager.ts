@@ -4026,6 +4026,21 @@ export class MasterManager {
         }
       }
 
+      // Drain any messages that were queued while this message was being processed (OB-F229)
+      if (this.processingPendingMessages.length > 0 && this.router !== null) {
+        const queued = [...this.processingPendingMessages];
+        this.processingPendingMessages = [];
+        logger.info({ count: queued.length }, 'Draining queued messages after processing');
+        for (const queuedMsg of queued) {
+          try {
+            this.state = 'ready';
+            await this.router.route(queuedMsg);
+          } catch (err) {
+            logger.error({ err, messageId: queuedMsg.id }, 'Failed to process queued message');
+          }
+        }
+      }
+
       return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
