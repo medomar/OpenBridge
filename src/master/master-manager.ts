@@ -43,7 +43,7 @@ import {
   resolveProfile,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
-import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import { manifestToSpawnOptions, AgentExhaustedError } from '../core/agent-runner.js';
 import { getRecommendedModel, avoidHighFailureModel } from '../core/model-selector.js';
 // PromptAssembler and PRIORITY_* constants moved to prompt-context-builder.ts (OB-1282)
 import type { CLIAdapter } from '../core/cli-adapter.js';
@@ -4183,6 +4183,21 @@ export class MasterManager {
 
       // Ensure complete event is always emitted so status bars are cleaned up
       await progress?.({ type: 'complete' });
+
+      // Partial response on timeout — ensures user always gets feedback (OB-1663).
+      // Exit code 143 = SIGTERM (timeout). Instead of propagating to the DLQ silently,
+      // return a user-friendly message so the user knows what happened.
+      if (error instanceof AgentExhaustedError && error.lastExitCode === 143) {
+        const seconds = Math.round(error.durationMs / 1000);
+        const timeoutMsg =
+          `Your request is taking longer than expected. The task timed out after ${seconds} seconds. ` +
+          `Please try a simpler request or break it into smaller steps.`;
+        logger.warn(
+          { taskId, sender: message.sender, durationMs: error.durationMs, exitCode: 143 },
+          'Master session timed out — returning user feedback instead of propagating to DLQ (OB-1663)',
+        );
+        return timeoutMsg;
+      }
 
       throw error;
     }
