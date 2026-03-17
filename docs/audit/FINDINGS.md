@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 7 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 8 | **Fixed:** 8 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -143,7 +143,7 @@
 ### OB-F227 — Classifier maxTurns=1 causes frequent turn exhaustion and misclassification
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/classification-engine.ts:364-375`
 - **Root Cause / Impact:**
   The AI classifier in classification-engine.ts (line 369) hardcodes `maxTurns: 1` with `retries: 0` for the haiku classification agent. The classifier prompt is complex — it must parse the user message, classify into categories, suggest turn budgets, provide reasoning, and estimate confidence — all as structured JSON. With only 1 turn allowed, the haiku model frequently exhausts turns before completing its JSON output (`turnsExhausted: true, status: "partial"`). Observed 4 times in a single session (06:06:29, 06:12:16, 06:15:48, and at least one more). When the classifier returns incomplete JSON, `raw.match(/\{[\s\S]*\}/)` (line 379) fails to extract valid JSON, and the system falls back to keyword heuristics with confidence=0.3 (lines 408-443). This causes misclassification: "improve our pos ui" (clearly a code-edit task) was classified as `quick-answer` via keyword fallback, which gave it only maxTurns=3 and a 120s timeout — far too little for a UI improvement task. The worker then timed out and went to DLQ silently (see OB-F225).
