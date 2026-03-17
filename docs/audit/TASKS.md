@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 4 | **In Progress:** 0 | **Done:** 58 (1606 archived)
+> **Pending:** 3 | **In Progress:** 0 | **Done:** 59 (1606 archived)
 > **Last Updated:** 2026-03-17
 
 ## Task Summary
@@ -22,7 +22,7 @@
 | 164   | Headless worker safety (OB-F226)                    | 3     | ✅     |
 | 165   | Message queueing during processing (OB-F229)        | 5     | ✅     |
 | 166   | Quick-answer timeout regression (OB-F217)           | 4     | ✅     |
-| 167   | First-run log noise cleanup                         | 2     | ◻      |
+| 167   | First-run log noise cleanup                         | 2     | 🟨 1/2 |
 | 168   | Integration tests for real-world fixes              | 2     | ◻      |
 
 ---
@@ -255,7 +255,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Finding | Model | Status    |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- | --------- |
-| OB-1665 | In `src/master/dotfolder-manager.ts`, ensure `readMemoryFile()` (line 963) uses DEBUG level for ENOENT errors, not WARN. The startup code already regenerates memory.md from SQLite (OB-1617 log message), so the ENOENT is expected and already handled. Check all `readX()` methods in dotfolder-manager.ts and verify OB-1647's changes cover: `readClassification`, `readClassifications`, `readWorkers`, `readProfiles`, `readMasterSession`, `readExplorationState`, `readMemoryFile`. If any were missed, apply the same ENOENT→DEBUG downgrade pattern. | —       | haiku | ⬚ Pending |
+| OB-1665 | In `src/master/dotfolder-manager.ts`, ensure `readMemoryFile()` (line 963) uses DEBUG level for ENOENT errors, not WARN. The startup code already regenerates memory.md from SQLite (OB-1617 log message), so the ENOENT is expected and already handled. Check all `readX()` methods in dotfolder-manager.ts and verify OB-1647's changes cover: `readClassification`, `readClassifications`, `readWorkers`, `readProfiles`, `readMasterSession`, `readExplorationState`, `readMemoryFile`. If any were missed, apply the same ENOENT→DEBUG downgrade pattern. | —       | haiku | ✅ Done   |
 | OB-1666 | In `src/core/docker-sandbox.ts`, verify OB-F215 fix is working. The logs still show `WARN (docker-sandbox): Docker not available` on every 5-minute check. If the fix from Phase 153 only applies to the health monitor but not to other code paths (e.g., `bridge.ts` sandbox resolution at line 588, or `master-manager.ts` Docker checks during classification), find and fix those remaining WARN-on-every-check paths. The rule: Docker unavailable should WARN once on startup, then DEBUG on subsequent checks.                                          | —       | haiku | ⬚ Pending |
 
 ---
