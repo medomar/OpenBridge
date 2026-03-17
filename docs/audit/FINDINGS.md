@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 | **Fixed:** 11 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 4 | **Fixed:** 12 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -163,7 +163,7 @@
 ### OB-F229 — "Master not ready" drops messages instead of queueing them
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts`, `src/core/router.ts`
 - **Root Cause / Impact:**
   When the Master is in `currentState: "processing"` (handling an existing message), incoming messages are rejected with "Cannot process message: Master not ready" and a 61-character canned response. Unlike the exploration phase (where messages are queued with "I'm still exploring..." and drained after exploration completes), the "processing" state has **no queue mechanism** — messages are permanently lost. Observed in production: two image messages (telegram-1563, telegram-1564) arrived while the Master was processing a complex task (telegram-1565). Both images were rejected immediately. The user had sent these images as context for their text request — the images contained menu/product data that the text message referenced. By dropping them, the Master processed the text request without the critical image context, producing an incomplete result.
