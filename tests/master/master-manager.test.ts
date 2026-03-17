@@ -6,7 +6,11 @@ import type { InboundMessage } from '../../src/types/message.js';
 import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
-import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
+import {
+  AgentExhaustedError,
+  type AgentResult,
+  type SpawnOptions,
+} from '../../src/core/agent-runner.js';
 import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import type { SkillPack } from '../../src/types/agent.js';
 import { turnsToTimeout } from '../../src/master/classification-engine.js';
@@ -731,6 +735,32 @@ describe('MasterManager', () => {
         // Error expected
       }
 
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('sends partial response on Master session timeout', async () => {
+      // Create an AgentExhaustedError with exit code 143 (SIGTERM — timeout killed process)
+      const timeoutErr = Object.assign(new AgentExhaustedError('Process killed'), {
+        lastExitCode: 143,
+        durationMs: 120_000,
+      });
+      mockSpawn.mockRejectedValueOnce(timeoutErr);
+
+      const message: InboundMessage = {
+        id: 'msg-timeout',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai do something complex',
+        content: 'do something complex',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // Should return user-friendly timeout message instead of throwing (OB-1663)
+      expect(response).toContain('timed out after 120 seconds');
+      expect(response).toContain('Please try a simpler request');
+      // State must be reset to ready so subsequent messages can be processed
       expect(masterManager.getState()).toBe('ready');
     });
   });
