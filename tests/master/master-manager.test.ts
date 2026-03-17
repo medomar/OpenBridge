@@ -3469,4 +3469,235 @@ describe('MasterManager', () => {
       expect(toolUseTimeout).toBeGreaterThan(DEFAULT_MESSAGE_TIMEOUT);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OB-1628: Channel + role context injection verification
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('OB-1628: Channel + role context header injection (OB-F221)', () => {
+    it('should inject [Context: channel=telegram] header for telegram messages', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response from telegram',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'telegram',
+        sender: '+1234567890',
+        rawContent: '/ai what is Node.js?',
+        content: 'what is Node.js?',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/^\[Context: channel=telegram/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should inject [Context: channel=console] header for console messages', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response from console',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-2',
+        source: 'console',
+        sender: 'user@localhost',
+        rawContent: '/ai what is Node.js?',
+        content: 'what is Node.js?',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/^\[Context: channel=console/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should include context header for whatsapp channel', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response for whatsapp',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-3',
+        source: 'whatsapp',
+        sender: '+447700900000',
+        rawContent: '/ai what is the weather',
+        content: 'what is the weather',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      // Verify context header is present for whatsapp
+      expect(call?.prompt).toMatch(/^\[Context: channel=whatsapp/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should default to role=owner when no access entry exists', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-4',
+        source: 'telegram',
+        sender: '+999999999999',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      // Don't set any access entry — should default to owner
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/role=owner/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should use custom role from access entry when available', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      // Set a viewer role for this user
+      await memory.setAccess({
+        user_id: '+1234567890',
+        channel: 'telegram',
+        role: 'viewer',
+        daily_cost_used: 0,
+      });
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-5',
+        source: 'telegram',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/role=viewer/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+  });
 });
