@@ -3130,6 +3130,91 @@ export class MasterManager {
   }
 
   /**
+   * Merge rapid-fire image+text messages from the same sender within a 10-second window.
+   *
+   * When a user sends one or more images followed immediately by a text message,
+   * the image context (OCR text from processedDocument) is prepended to the text
+   * message's content so the Master sees both together. The image-only messages
+   * are consumed and removed from the queue. (OB-1658)
+   */
+  private mergeRapidFireImageMessages(messages: InboundMessage[]): InboundMessage[] {
+    const RAPID_FIRE_WINDOW_MS = 10_000;
+
+    // Track pending image-only messages per sender
+    const pendingImages = new Map<string, InboundMessage[]>();
+    const result: InboundMessage[] = [];
+
+    for (const msg of messages) {
+      const hasImageAttachments = msg.attachments?.some((a) => a.type === 'image') ?? false;
+      const hasTextContent = msg.content.trim().length > 0;
+
+      if (hasImageAttachments && !hasTextContent) {
+        // Pure image message — hold it for potential merge with a following text message
+        const existing = pendingImages.get(msg.sender) ?? [];
+        existing.push(msg);
+        pendingImages.set(msg.sender, existing);
+      } else if (hasTextContent) {
+        // Text message — check for pending images from the same sender within the window
+        const imgMsgs = pendingImages.get(msg.sender) ?? [];
+        const recentImages = imgMsgs.filter(
+          (imgMsg) => msg.timestamp.getTime() - imgMsg.timestamp.getTime() <= RAPID_FIRE_WINDOW_MS,
+        );
+
+        if (recentImages.length > 0) {
+          // Build the OCR context prefix from processedDocument.rawText
+          const ocrParts: string[] = [];
+          for (const imgMsg of recentImages) {
+            const rawText = imgMsg.processedDocument?.rawText?.trim();
+            if (rawText) {
+              ocrParts.push(rawText);
+            }
+          }
+          const ocrText = ocrParts.length > 0 ? `\n${ocrParts.join('\n')}` : '';
+          const mergedContent = `[User also sent ${recentImages.length} image(s) — see .openbridge/media/ for processed content]${ocrText}\n${msg.content}`;
+          result.push({ ...msg, content: mergedContent });
+
+          logger.info(
+            { sender: msg.sender, imageCount: recentImages.length },
+            'Merged rapid-fire image+text messages during drain (OB-1658)',
+          );
+
+          // Keep stale images (outside the window) — they were not consumed
+          const staleImages = imgMsgs.filter(
+            (imgMsg) => msg.timestamp.getTime() - imgMsg.timestamp.getTime() > RAPID_FIRE_WINDOW_MS,
+          );
+          if (staleImages.length > 0) {
+            pendingImages.set(msg.sender, staleImages);
+          } else {
+            pendingImages.delete(msg.sender);
+          }
+        } else {
+          // No recent images to merge — flush any stale pending images first
+          if (imgMsgs.length > 0) {
+            result.push(...imgMsgs);
+            pendingImages.delete(msg.sender);
+          }
+          result.push(msg);
+        }
+      } else {
+        // Mixed or other message type — flush pending images for sender then pass through
+        const imgMsgs = pendingImages.get(msg.sender) ?? [];
+        if (imgMsgs.length > 0) {
+          result.push(...imgMsgs);
+          pendingImages.delete(msg.sender);
+        }
+        result.push(msg);
+      }
+    }
+
+    // Flush any remaining pending images that were never followed by a text message
+    for (const [, imgMsgs] of pendingImages) {
+      result.push(...imgMsgs);
+    }
+
+    return result;
+  }
+
+  /**
    * Process a message from a user.
    * Uses the persistent Master session for conversation continuity.
    * All messages go through the same Master session regardless of sender.
@@ -4031,7 +4116,9 @@ export class MasterManager {
         const queued = [...this.processingPendingMessages];
         this.processingPendingMessages = [];
         logger.info({ count: queued.length }, 'Draining queued messages after processing');
-        for (const queuedMsg of queued) {
+        // Merge rapid-fire image+text messages from the same sender before routing (OB-1658)
+        const mergedQueue = this.mergeRapidFireImageMessages(queued);
+        for (const queuedMsg of mergedQueue) {
           try {
             this.state = 'ready';
             await this.router.route(queuedMsg);
