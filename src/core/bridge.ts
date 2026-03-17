@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
 import { V2ConfigSchema, ENV_DENY_PATTERNS, getEffectiveSandboxMode } from '../types/config.js';
@@ -167,6 +168,72 @@ export class Bridge {
   /** Returns the tunnel public URL if a tunnel is active, or null if not running */
   getTunnelUrl(): string | null {
     return this.tunnelPublicUrl;
+  }
+
+  /**
+   * Ensure a tunnel is running and return its public URL.
+   * Called on-demand by the output-marker-processor for remote channel file delivery.
+   *
+   * Logic:
+   * 1. If tunnelManager already has a public URL, return it immediately.
+   * 2. If tunnelManager exists but hasn't started, start it on the file server port.
+   * 3. If no tunnel tool is configured, attempt to auto-detect `cloudflared` via `which`.
+   *    If found, create a TunnelManager, start it, store the public URL, and notify Master.
+   * 4. If no tunnel tool is available, return null.
+   */
+  async ensureTunnel(): Promise<string | null> {
+    // 1. Already active — return immediately
+    if (this.tunnelManager?.isActive()) {
+      return this.tunnelPublicUrl;
+    }
+
+    const fileServerPort = this.getFileServerPort();
+    if (fileServerPort === null) {
+      return null;
+    }
+
+    // 2. TunnelManager exists but not yet started — start it
+    if (this.tunnelManager) {
+      this.registerTunnelShutdownHandlers();
+      try {
+        this.tunnelPublicUrl = await this.tunnelManager.start(fileServerPort);
+        logger.info(
+          { url: this.tunnelPublicUrl },
+          'Auto-tunnel started for remote channel file delivery',
+        );
+        this.master?.setTunnelUrl(this.tunnelPublicUrl);
+        return this.tunnelPublicUrl;
+      } catch (error) {
+        logger.warn({ err: error }, 'ensureTunnel: existing TunnelManager failed to start');
+        return null;
+      }
+    }
+
+    // 3. No tunnel configured — attempt to auto-detect cloudflared
+    try {
+      const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+      execSync(`${whichCmd} cloudflared`, { stdio: 'pipe' });
+    } catch {
+      // cloudflared not found
+      return null;
+    }
+
+    // cloudflared is available — create and start a new TunnelManager
+    this.tunnelManager = new TunnelManager('cloudflared');
+    this.registerTunnelShutdownHandlers();
+    try {
+      this.tunnelPublicUrl = await this.tunnelManager.start(fileServerPort);
+      logger.info(
+        { url: this.tunnelPublicUrl },
+        'Auto-tunnel started for remote channel file delivery',
+      );
+      this.master?.setTunnelUrl(this.tunnelPublicUrl);
+      return this.tunnelPublicUrl;
+    } catch (error) {
+      logger.warn({ err: error }, 'ensureTunnel: auto-detected cloudflared failed to start');
+      this.tunnelManager = null;
+      return null;
+    }
   }
 
   /** Returns WebChat access URL (with token) and the raw token if a webchat connector is active */
