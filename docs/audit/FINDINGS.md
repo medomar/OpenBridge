@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 2 | **Fixed:** 7 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 9 | **Fixed:** 7 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -101,6 +101,73 @@
   Combined with OB-F221 (Master doesn't know the channel), the Master has no way to know it shouldn't use APP:start for remote users.
 - **Fix:** (1) When `publicUrl` is null and the response is going to a remote channel, the output-marker-processor should either auto-start a tunnel or fall back to generating the page as a file and using SHARE:telegram/whatsapp to send it as an attachment. (2) Alternatively, inject channel awareness (OB-F221) so the Master avoids APP:start for remote users and uses SHARE:github-pages instead.
 - **Implementation:** OB-1633 (auto-tunnel integration for APP:start), OB-1634 (Master system prompt documentation update). Phase 159 complete.
+
+### OB-F223 — Workers can delete .openbridge/ internal state files (memory.md destroyed)
+
+- **Severity:** 🔴 Critical
+- **Status:** Open
+- **Key Files:** `src/types/agent.ts:269,285`, `src/master/worker-orchestrator.ts:410,875-883`, `src/types/config.ts:223-238`
+- **Root Cause / Impact:**
+  Workers spawned with `code-edit` or `file-management` profiles receive `Bash(rm:*)` access and operate inside the full `workspacePath` — which includes `.openbridge/`. No file-level boundary prevents workers from deleting or modifying `.openbridge/context/memory.md`, `.openbridge/workspace-map.json`, or any other internal state file. Observed in production: memory.md was written successfully at 06:05:10 (36 lines) but was gone (ENOENT) by 06:12:01 — ~7 minutes later — after a worker was spawned with `tool-use` profile to "deploy the POS web app". The worker likely ran cleanup commands (`rm`, `mv`) that swept `.openbridge/context/`. The trusted-mode workspace boundary instruction (worker-orchestrator.ts:875-883) only prevents access to files **outside** the workspace — it does not protect `.openbridge/` internal files. The Master system prompt tells the Master not to modify `.openbridge/` files, but **this guidance is never passed to workers**. `.openbridge/` is also not in `DEFAULT_EXCLUDE_PATTERNS` (config.ts:223-238).
+  Once memory.md is deleted, all subsequent messages lose cross-session context — the Master operates without workspace knowledge, leading to degraded responses for the rest of the session.
+- **Fix:** (1) Add `.openbridge/context/` and `.openbridge/workspace-map.json` to the worker boundary instruction so workers are explicitly told not to modify internal state files. (2) Add `.openbridge/` to `DEFAULT_EXCLUDE_PATTERNS` so it's hidden from worker file discovery. (3) Consider stripping `Bash(rm:*)` from `code-edit` profile and restricting it to `file-management` and `full-access` only. (4) As defense-in-depth, back up memory.md to SQLite after writing so it can be restored if deleted.
+
+### OB-F224 — Legacy cleanup deletes exploration/ directory needed by active exploration
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/core/bridge.ts:1099-1106`, `src/master/dotfolder-manager.ts:64,315-324`, `src/master/exploration-coordinator.ts:248-254,923`, `src/master/exploration-manager.ts:1105`
+- **Root Cause / Impact:**
+  `cleanLegacyDotFolderArtifacts()` in bridge.ts (line 1099-1106) unconditionally deletes the `.openbridge/exploration/` directory on every startup with `fs.rm(recursive: true, force: true)`. The comment says "exploration state is now in system_config" — but the code still actively uses this directory: Phase 2 writes `classification.json` to `.openbridge/exploration/` (exploration-coordinator.ts:923), and `writeExplorationSummaryToMemory()` reads it post-exploration (exploration-manager.ts:1105) via `dotFolder.readClassification()` (dotfolder-manager.ts:315-324). The cleanup runs during `bridge.start()` (bridge.ts:437), before `masterManager.start()` begins exploration. When exploration runs fresh (not resuming), the directory is re-created — but on resume from a failed exploration, the previously completed Phase 2 data is lost. Additionally, `readClassification()` only reads from the JSON file, not from SQLite, so even if the coordinator wrote to SQLite, the memory-seeding path can't access it. Same issue affects `classifications.json` (dotfolder-manager.ts:757) and `workers.json` (dotfolder-manager.ts:535) — WARN-level logs on every first run for files that are expected to not exist yet.
+- **Fix:** (1) Don't delete `exploration/` if exploration state shows incomplete (check `exploration-state.json` before deleting). (2) Make `readClassification()` in dotfolder-manager.ts check SQLite first, falling back to JSON file. (3) Downgrade WARN to DEBUG for expected first-run ENOENT on `classifications.json`, `workers.json`, and `classification.json`.
+
+### OB-F225 — DLQ messages produce no error response to user (silent failure)
+
+- **Severity:** 🔴 Critical
+- **Status:** Open
+- **Key Files:** `src/core/queue.ts:250-268`, `src/core/bridge.ts:530-555`
+- **Root Cause / Impact:**
+  When a message exhausts all retries and is moved to the dead letter queue (queue.ts:250-268), no error response is sent back to the user via the connector. The DLQ path only logs `'Message permanently failed — moved to dead letter queue'` and pushes to `this.dlq[]`. The bridge's `queue.onMessage()` handler (bridge.ts:530-555) does not wrap `router.route()` in a try-catch that would send a fallback error message to the user. The queue catches the error internally (queue.ts:197-200) and moves to DLQ, but the connector is never called. Observed in production: telegram-1547, telegram-1550, telegram-1557, telegram-1560 all went to DLQ silently — the user sent 4 follow-up messages saying "I didn't get response" because they received no feedback at all. DLQ size grew to 4 in a single session. This is the worst possible UX — the user has no idea their message failed.
+- **Fix:** (1) Add an `onDeadLetter` callback to `MessageQueue` that the bridge wires up during initialization. When a message is moved to DLQ, invoke the callback with the original message and connector reference. (2) In the callback, send a user-friendly error: "Sorry, I wasn't able to complete your request. Please try again or simplify your request." (3) As defense-in-depth, add a catch block in bridge.ts around `router.route()` that sends an error response if the route throws unexpectedly.
+
+### OB-F226 — Workers attempt interactive CLI auth (Netlify OAuth) blocking until timeout
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/master/master-system-prompt.ts:462-530`, `src/core/agent-runner.ts`
+- **Root Cause / Impact:**
+  The Master system prompt's worker guidelines (master-system-prompt.ts:462-530) contain no warning about interactive CLI tools that require browser-based OAuth or terminal prompts (e.g., `netlify deploy`, `heroku login`, `vercel login`, `gh auth login`). Workers run in a headless environment with `stdio: ['ignore', 'pipe', 'pipe']` — they cannot open browsers or respond to interactive prompts. When the Master spawns a worker to "deploy a public link", the worker runs `netlify deploy`, which attempts OAuth via `https://app.netlify.com/authorize?response_type=ticket&ticket=...`. The process blocks indefinitely waiting for the user to click "Authorize" in a browser that never opens. The worker hangs until the 170s timeout kills it (exit code 143/SIGTERM). The user gets no response (see OB-F225). The Master then retries with the same approach, wasting another 170s. Observed in production: 2 consecutive timeout DLQs from the same Netlify OAuth attempt.
+  The agent-runner's timeout mechanism (agent-runner.ts SIGTERM → 5s grace → SIGKILL) correctly kills the hung process, but only after the full timeout elapses. There is no early detection of interactive/OAuth blocking.
+- **Fix:** (1) Add a "Headless Environment" section to the Master system prompt's worker guidelines: "Workers run headless — do NOT use CLI tools that require browser authentication (netlify, heroku, vercel, firebase). Use pre-authenticated tokens or API-based deployment instead. For static sites, prefer SHARE:github-pages which requires no auth." (2) Add the `auth` error category to worker failure re-delegation (master-system-prompt.ts:576-580) with guidance: "If a worker fails because it attempted interactive authentication, do not retry — suggest an alternative deployment method." (3) Consider adding output pattern detection in agent-runner.ts to detect OAuth URLs in stderr/stdout and abort early with an `auth-required` error code.
+
+### OB-F227 — Classifier maxTurns=1 causes frequent turn exhaustion and misclassification
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/master/classification-engine.ts:364-375`
+- **Root Cause / Impact:**
+  The AI classifier in classification-engine.ts (line 369) hardcodes `maxTurns: 1` with `retries: 0` for the haiku classification agent. The classifier prompt is complex — it must parse the user message, classify into categories, suggest turn budgets, provide reasoning, and estimate confidence — all as structured JSON. With only 1 turn allowed, the haiku model frequently exhausts turns before completing its JSON output (`turnsExhausted: true, status: "partial"`). Observed 4 times in a single session (06:06:29, 06:12:16, 06:15:48, and at least one more). When the classifier returns incomplete JSON, `raw.match(/\{[\s\S]*\}/)` (line 379) fails to extract valid JSON, and the system falls back to keyword heuristics with confidence=0.3 (lines 408-443). This causes misclassification: "improve our pos ui" (clearly a code-edit task) was classified as `quick-answer` via keyword fallback, which gave it only maxTurns=3 and a 120s timeout — far too little for a UI improvement task. The worker then timed out and went to DLQ silently (see OB-F225).
+  The chain: classifier exhaustion → keyword fallback → wrong class → wrong turn budget → wrong timeout → timeout → DLQ → silent failure. This compounds with OB-F225 to create the worst user experience.
+- **Fix:** (1) Increase `maxTurns` from 1 to 2 in classification-engine.ts:369. The haiku model is fast (~$0.0015/call) so the cost increase is negligible. (2) Alternatively, use `--print` mode (no tool use) for classification since it only needs text output, not tool calls — this avoids the turns concept entirely. (3) Add a fallback: if the first classification attempt returns `status: "partial"`, retry once with maxTurns=2 before falling back to keyword heuristics.
+
+### OB-F228 — Exploration worker prompts exceed 128K limit (10-25% content truncated)
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/core/agent-runner.ts`, `src/master/exploration-coordinator.ts`, `src/master/exploration-prompts.ts`
+- **Root Cause / Impact:**
+  During workspace exploration Phase 1 (Structure Scan), the agent-runner logs two truncation warnings in a single exploration run: `14735 chars lost (10% of content, limit 128000)` and `43615 chars lost (25% of content, limit 128000)`. The exploration prompt combined with workspace structure data exceeds the 128K prompt limit for the default model (Sonnet). The prompt assembler truncates the excess silently — the worker receives 75-90% of its intended context. This means exploration workers may produce incomplete or inaccurate structure scans, missing files or directories that were in the truncated portion. For large workspaces (1000+ files like elgrotte-data), the structure listing alone can exceed 128K when combined with the exploration system prompt and directory metadata. The exploration uses `model: "default"` (Sonnet) which has a 128K prompt budget — but the workspace content is not budget-aware.
+- **Fix:** (1) Make exploration prompts budget-aware: measure the workspace structure size before assembling the prompt and truncate the file listing (not the instructions) if it exceeds budget. (2) For large workspaces, split Phase 1 into sub-batches (similar to how Phase 3 splits directories). (3) Consider using the structure-scan prompt's built-in `limit` parameter to cap the number of files listed per directory. (4) Log at WARN level which specific content was truncated so the exploration can compensate in later phases.
+
+### OB-F229 — "Master not ready" drops messages instead of queueing them
+
+- **Severity:** 🟠 High
+- **Status:** Open
+- **Key Files:** `src/master/master-manager.ts`, `src/core/router.ts`
+- **Root Cause / Impact:**
+  When the Master is in `currentState: "processing"` (handling an existing message), incoming messages are rejected with "Cannot process message: Master not ready" and a 61-character canned response. Unlike the exploration phase (where messages are queued with "I'm still exploring..." and drained after exploration completes), the "processing" state has **no queue mechanism** — messages are permanently lost. Observed in production: two image messages (telegram-1563, telegram-1564) arrived while the Master was processing a complex task (telegram-1565). Both images were rejected immediately. The user had sent these images as context for their text request — the images contained menu/product data that the text message referenced. By dropping them, the Master processed the text request without the critical image context, producing an incomplete result.
+  This is especially harmful for Telegram/WhatsApp where users commonly send multiple messages in rapid succession (images + text, or multi-part messages). The "processing" state can last 30-180+ seconds for complex tasks, during which ALL incoming messages are dropped.
+- **Fix:** (1) Add a per-user message queue for messages that arrive during `processing` state, similar to the exploration pending queue. Drain them after the current message completes. (2) Alternatively, concatenate rapid-fire messages from the same user (within a short window, e.g., 5s) into a single compound message before processing. (3) At minimum, change the canned response to inform the user their message was not processed: "I'm currently working on your previous request. Please resend this message when I respond." (4) For image messages specifically, store them in `.openbridge/media/` (which already happens via image-processor) and associate them with the next text message from the same user.
 
 ---
 
