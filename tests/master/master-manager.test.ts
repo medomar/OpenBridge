@@ -3700,4 +3700,208 @@ describe('MasterManager', () => {
       await memory.close();
     });
   });
+
+  describe('Processing Queue (OB-F229)', () => {
+    let manager: MasterManager;
+
+    /** Build a minimal mock Router with all methods called during processMessage */
+    function makeMockRouter(mockRoute: ReturnType<typeof vi.fn>): Router {
+      return {
+        route: mockRoute,
+        sendProgress: vi.fn().mockResolvedValue(undefined),
+        sendDirect: vi.fn().mockResolvedValue(undefined),
+        broadcastProgress: vi.fn().mockResolvedValue(undefined),
+        getSessionGrants: vi.fn().mockReturnValue([]),
+        getConnector: vi.fn().mockReturnValue(null),
+        requestToolEscalation: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Router;
+    }
+
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      manager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await manager.start();
+    });
+
+    afterEach(async () => {
+      await manager.shutdown();
+    });
+
+    it('queues messages during processing state instead of dropping them', async () => {
+      // Use a deferred promise so the first spawn stays in-flight (state = 'processing')
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'First response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      // Second message will be routed by the drain mechanism
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const msg1: InboundMessage = {
+        id: 'msg-q1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+      const msg2: InboundMessage = {
+        id: 'msg-q2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'follow-up',
+        content: 'follow-up',
+        timestamp: new Date(),
+      };
+
+      // Start first message processing without awaiting — sets state = 'processing'
+      const firstProcessing = manager.processMessage(msg1);
+
+      // Yield one microtask tick so processMessage sets state = 'processing'
+      await Promise.resolve();
+
+      // Queue the second message while the first is still being processed
+      const queueResponse = await manager.processMessage(msg2);
+
+      // The queued message should return acknowledgment, not a rejection
+      expect(queueResponse).toContain('queued');
+
+      // Now resolve the first spawn so processMessage can complete and drain the queue
+      resolveFirst(undefined);
+      await firstProcessing;
+
+      // After draining, the router should have been called with the queued message
+      expect(mockRoute).toHaveBeenCalledWith(msg2);
+    });
+
+    it('sends acknowledgment to user when message is queued', async () => {
+      // Keep first spawn in-flight
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'Response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const msg1: InboundMessage = {
+        id: 'msg-ack1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first',
+        content: 'first',
+        timestamp: new Date(),
+      };
+      const msg2: InboundMessage = {
+        id: 'msg-ack2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'second',
+        content: 'second',
+        timestamp: new Date(),
+      };
+
+      const firstProcessing = manager.processMessage(msg1);
+      await Promise.resolve();
+
+      const ackResponse = await manager.processMessage(msg2);
+
+      // User must see a queued acknowledgment, not a "not ready" rejection
+      expect(ackResponse).toBe(
+        "I'm working on your previous request. Your message has been queued and will be processed next.",
+      );
+
+      // Clean up
+      resolveFirst(undefined);
+      await firstProcessing;
+    });
+
+    it('caps queue at 5 messages per user', async () => {
+      // Keep first spawn in-flight
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'Response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const firstMsg: InboundMessage = {
+        id: 'msg-cap0',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first',
+        content: 'first',
+        timestamp: new Date(),
+      };
+
+      const firstProcessing = manager.processMessage(firstMsg);
+      await Promise.resolve();
+
+      // Queue 5 messages — all should be accepted
+      for (let i = 1; i <= 5; i++) {
+        const response = await manager.processMessage({
+          id: `msg-cap${i}`,
+          source: 'test',
+          sender: '+1234567890',
+          rawContent: `message ${i}`,
+          content: `message ${i}`,
+          timestamp: new Date(),
+        });
+        expect(response).toContain('queued');
+      }
+
+      // 6th message should be rejected
+      const overflowResponse = await manager.processMessage({
+        id: 'msg-cap6',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'overflow',
+        content: 'overflow',
+        timestamp: new Date(),
+      });
+      expect(overflowResponse).toBe(
+        'Too many queued messages. Please wait for the current request to complete.',
+      );
+
+      // Clean up
+      resolveFirst(undefined);
+      await firstProcessing;
+    });
+  });
 });
