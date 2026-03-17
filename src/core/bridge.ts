@@ -554,6 +554,36 @@ export class Bridge {
       }
     });
 
+    // Send an error response to the user when their message is permanently failed (DLQ).
+    this.queue.onDeadLetter(async (message, _error) => {
+      try {
+        const connector = this.router.getConnector(message.source);
+        if (!connector) {
+          logger.warn(
+            { source: message.source },
+            'onDeadLetter: connector not found — cannot send error response',
+          );
+          return;
+        }
+        const msg: OutboundMessage = {
+          target: message.source,
+          recipient: message.sender,
+          content:
+            "Sorry, I wasn't able to complete your request. Please try again or simplify your request.",
+        };
+        await connector.sendMessage(msg);
+        logger.info(
+          { source: message.source, sender: message.sender },
+          'Sent error response for DLQ message',
+        );
+      } catch (err) {
+        logger.warn(
+          { err, source: message.source, sender: message.sender },
+          'onDeadLetter: failed to send error response',
+        );
+      }
+    });
+
     // Notify users when their message must wait behind an in-flight message.
     // Includes queue position and estimated wait based on recent processing times.
     this.queue.onQueued((message, position, estimatedWaitMs) => {
