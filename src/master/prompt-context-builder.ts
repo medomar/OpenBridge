@@ -224,22 +224,21 @@ export class PromptContextBuilder {
     const assembler = new PromptAssembler();
 
     // Base system prompt — identity and rules (highest priority)
+    // Budget is model-aware: 60% of adapter's system prompt budget, capped at 200K (OB-F216).
+    // The remaining 40% is reserved for injected sections (conversation context, RAG, learnings).
+    const systemPromptBudget = Math.min(budget.maxSystemPromptChars * 0.6, 200_000);
     const systemPrompt = this.deps.getSystemPrompt();
     if (systemPrompt) {
       logger.debug(
         {
           section: 'System Prompt',
           actual: systemPrompt.length,
-          budget: SECTION_BUDGET_SYSTEM_PROMPT,
+          budget: systemPromptBudget,
+          maxSystemPromptChars: budget.maxSystemPromptChars,
         },
         'Section size vs budget',
       );
-      assembler.addSection(
-        'System Prompt',
-        systemPrompt,
-        PRIORITY_IDENTITY,
-        SECTION_BUDGET_SYSTEM_PROMPT,
-      );
+      assembler.addSection('System Prompt', systemPrompt, PRIORITY_IDENTITY, systemPromptBudget);
     }
 
     // Drain pending cancellation notifications (OB-884).
