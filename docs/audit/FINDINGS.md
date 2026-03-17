@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 5 | **Fixed:** 4 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 4 | **Fixed:** 5 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -59,11 +59,12 @@
 ### OB-F219 — Codex cost estimation underprices workers, causing late cap enforcement
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/cost-manager.ts:159-173`, `src/master/worker-orchestrator.ts:162-169`
 - **Root Cause / Impact:**
   Cost caps ARE enforced during streaming (agent-runner.ts lines 1948-1965 check on every chunk). However, `estimateCostUsd()` in cost-manager.ts has no Codex/OpenAI pricing — Codex models (gpt-5.2, gpt-5.3) fall through to the Sonnet 4.6 default ($0.003 + outputKb × $0.00384), underestimating actual Codex costs by 2–3x. A read-only Codex worker (gpt-5.2) reported $0.123 — the cap ($0.05) triggered but only after the real cost had already exceeded it because the estimate was too low. The Codex adapter also drops `--max-budget-usd` (not supported by Codex CLI), so there's no server-side safety net.
 - **Fix:** (1) Add Codex/OpenAI pricing tiers to `estimateCostUsd()` so cap triggers at the correct threshold. (2) Increase read-only cost cap for Codex workers to $0.10 to reflect higher per-token costs. (3) Consider adapter-specific cost multipliers in `PROFILE_DEFAULT_COST_CAPS`.
+- **Implementation:** OB-1622 (add Codex pricing), OB-1623 (scale cost cap 2.5x for Codex workers), OB-1624 (unit tests). All tasks complete and merged.
 
 ### OB-F220 — Remote channel users can't access generated files/apps (owner blocked)
 
