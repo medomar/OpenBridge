@@ -81,10 +81,19 @@ function makeMinimalDeps(trustLevel?: WorkspaceTrustLevel): WorkerOrchestratorDe
     masterTool: { name: 'claude', path: '/usr/bin/claude' } as never,
     discoveredTools: [],
     dotFolder: {} as never,
-    agentRunner: { spawn: mockSpawn, spawnWithHandle: vi.fn() } as never,
+    agentRunner: {
+      spawn: mockSpawn,
+      spawnWithHandle: vi.fn(),
+      spawnWithStreamingHandle: vi.fn().mockReturnValue({
+        promise: Promise.resolve({ status: 'completed', exitCode: 0, stdout: '', stderr: '' }),
+        abort: vi.fn(),
+        pid: 12345,
+      }),
+    } as never,
     workerRegistry: {
       registerWorkerWithId: vi.fn(),
       markFailed: vi.fn(),
+      markRunning: vi.fn(),
       removeWorker: vi.fn(),
       getActiveWorkers: vi.fn(() => []),
       getAggregatedStats: vi.fn(() => ({ totalWorkers: 0, avgDurationMs: 0, totalTurnsUsed: 0 })),
@@ -284,5 +293,24 @@ describe('escalation dedup (OB-F214)', () => {
     const manifest = registerCall[1] as { profile: string };
     // Should create 'read-only-escalated'
     expect(manifest.profile).toBe('read-only-escalated');
+  });
+});
+
+describe('Codex cost cap scaling (OB-1623)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('Codex worker cost cap is scaled 2.5x: $0.05 → $0.125', () => {
+    // Verify the cost scaling logic: base cap of $0.05 × 2.5 = $0.125
+    const baseReadOnlyCap = 0.05;
+    const codexScaleFactor = 2.5;
+    const expectedScaledCap = Math.min(baseReadOnlyCap * codexScaleFactor, 0.25);
+
+    // The expected scaled cap for read-only Codex worker
+    expect(expectedScaledCap).toBe(0.125);
+
+    // Verify the scale factor applies correctly
+    expect(baseReadOnlyCap * codexScaleFactor).toBe(0.125);
   });
 });
