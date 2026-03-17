@@ -1294,6 +1294,8 @@ function formatAppServerSection(
     '- **APP:start** — starts the app at the given path. The marker is replaced in your response with the app URL (public URL when a tunnel is active, localhost URL otherwise).',
     '- **APP:stop** — stops a running app by its ID. Use `/apps` to list running apps and their IDs.',
     '',
+    '**Important:** APP:start returns a localhost URL by default. If the user is on a remote channel (telegram/whatsapp) and no tunnel is configured, the system will automatically attempt to start a tunnel or fall back to sending the HTML file as an attachment. You can help by using SHARE:github-pages for static HTML reports (guaranteed public URL) and reserving APP:start for interactive apps that need a server.',
+    '',
     '### How to Create an App',
     '',
     '1. **Spawn a worker** to create the app files in `.openbridge/generated/apps/{name}/`',

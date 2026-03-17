@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 3 | **Fixed:** 6 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 2 | **Fixed:** 7 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -94,12 +94,13 @@
 ### OB-F222 — APP:start returns localhost URLs to remote channel users with no tunnel fallback
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/output-marker-processor.ts:689-730`, `src/core/app-server.ts:22-30`
 - **Root Cause / Impact:**
   When the Master uses `[APP:start]/path/to/app[/APP]`, the output-marker-processor replaces the marker with the app's URL. Without a tunnel configured, this URL is `http://localhost:31xx` — which is useless to a Telegram/WhatsApp user on their phone. The `AppInstance` has a `publicUrl` field (set when `tunnelFactory` is provided), but when no tunnel factory exists, `publicUrl` is null and the localhost URL is returned anyway. The user sees a broken localhost link in their Telegram chat.
   Combined with OB-F221 (Master doesn't know the channel), the Master has no way to know it shouldn't use APP:start for remote users.
 - **Fix:** (1) When `publicUrl` is null and the response is going to a remote channel, the output-marker-processor should either auto-start a tunnel or fall back to generating the page as a file and using SHARE:telegram/whatsapp to send it as an attachment. (2) Alternatively, inject channel awareness (OB-F221) so the Master avoids APP:start for remote users and uses SHARE:github-pages instead.
+- **Implementation:** OB-1633 (auto-tunnel integration for APP:start), OB-1634 (Master system prompt documentation update). Phase 159 complete.
 
 ---
 
