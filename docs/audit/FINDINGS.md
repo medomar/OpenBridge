@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Fixed:** 8 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 7 | **Fixed:** 9 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -115,7 +115,7 @@
 ### OB-F224 — Legacy cleanup deletes exploration/ directory needed by active exploration
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed (OB-1644, OB-1645, OB-1646, OB-1647)
 - **Key Files:** `src/core/bridge.ts:1099-1106`, `src/master/dotfolder-manager.ts:64,315-324`, `src/master/exploration-coordinator.ts:248-254,923`, `src/master/exploration-manager.ts:1105`
 - **Root Cause / Impact:**
   `cleanLegacyDotFolderArtifacts()` in bridge.ts (line 1099-1106) unconditionally deletes the `.openbridge/exploration/` directory on every startup with `fs.rm(recursive: true, force: true)`. The comment says "exploration state is now in system_config" — but the code still actively uses this directory: Phase 2 writes `classification.json` to `.openbridge/exploration/` (exploration-coordinator.ts:923), and `writeExplorationSummaryToMemory()` reads it post-exploration (exploration-manager.ts:1105) via `dotFolder.readClassification()` (dotfolder-manager.ts:315-324). The cleanup runs during `bridge.start()` (bridge.ts:437), before `masterManager.start()` begins exploration. When exploration runs fresh (not resuming), the directory is re-created — but on resume from a failed exploration, the previously completed Phase 2 data is lost. Additionally, `readClassification()` only reads from the JSON file, not from SQLite, so even if the coordinator wrote to SQLite, the memory-seeding path can't access it. Same issue affects `classifications.json` (dotfolder-manager.ts:757) and `workers.json` (dotfolder-manager.ts:535) — WARN-level logs on every first run for files that are expected to not exist yet.
