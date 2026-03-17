@@ -13,7 +13,7 @@ import { Bridge } from '../../src/core/bridge.js';
 import { MockProvider } from '../helpers/mock-provider.js';
 import type { AppConfig } from '../../src/types/config.js';
 import type { Connector, ConnectorEvents } from '../../src/types/connector.js';
-import type { OutboundMessage, ProgressEvent } from '../../src/types/message.js';
+import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../src/types/message.js';
 import type { DeadLetterItem } from '../../src/core/queue.js';
 
 // ---------------------------------------------------------------------------
@@ -109,11 +109,11 @@ function buildBridge(configOverride?: Partial<AppConfig>): TestContext {
 
 /** Access internal Bridge fields for assertion purposes. */
 function internalBridge(bridge: Bridge): {
-  queue: { deadLetters: ReadonlyArray<DeadLetterItem> };
+  queue: { deadLetters: ReadonlyArray<DeadLetterItem>; drain(): Promise<void> };
   auditLogger: { logError: (messageId: string, error: string) => Promise<void> };
 } {
   return bridge as unknown as {
-    queue: { deadLetters: ReadonlyArray<DeadLetterItem> };
+    queue: { deadLetters: ReadonlyArray<DeadLetterItem>; drain(): Promise<void> };
     auditLogger: { logError: (messageId: string, error: string) => Promise<void> };
   };
 }
@@ -237,5 +237,109 @@ describe('DLQ error response flow (OB-1667)', () => {
 
     // Reached here without unhandled rejection — the DLQ callback is exception-safe.
     expect(true).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Processing queue flow (OB-1668)
+// ---------------------------------------------------------------------------
+
+describe('Processing queue flow (OB-1668)', () => {
+  let ctx: TestContext;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ctx = buildBridge();
+  });
+
+  afterEach(async () => {
+    try {
+      await ctx.bridge.stop();
+    } catch {
+      // ignore — bridge may not have started
+    }
+  });
+
+  it('queues messages 2 and 3 while message 1 is processing, then drains all three in order', async () => {
+    // Gate that blocks message 1's processing until we release it
+    let releaseMsg1!: () => void;
+    const msg1Gate = new Promise<void>((resolve) => {
+      releaseMsg1 = resolve;
+    });
+
+    const processOrder: string[] = [];
+
+    ctx.provider.processMessage = vi
+      .fn()
+      .mockImplementationOnce(async (msg: InboundMessage) => {
+        processOrder.push(msg.id);
+        await msg1Gate; // block until released
+        return { content: `Response to ${msg.id}` };
+      })
+      .mockImplementation(async (msg: InboundMessage) => {
+        processOrder.push(msg.id);
+        return { content: `Response to ${msg.id}` };
+      });
+
+    await ctx.bridge.start();
+
+    // (1) Send message 1 — starts processing immediately, blocked by msg1Gate
+    ctx.connector.simulateMessage({
+      id: 'msg-q-1',
+      source: 'telegram',
+      sender: '+1234567890',
+      rawContent: '/ai task one',
+      content: 'task one',
+      timestamp: new Date(),
+    });
+
+    // Allow the async routing chain to reach provider.processMessage
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Message 1 is now in-flight (blocked at msg1Gate)
+    expect(processOrder).toHaveLength(1);
+    expect(processOrder[0]).toBe('msg-q-1');
+
+    // (2) Send messages 2 and 3 while message 1 is still processing — they must be queued
+    ctx.connector.simulateMessage({
+      id: 'msg-q-2',
+      source: 'telegram',
+      sender: '+1234567890',
+      rawContent: '/ai task two',
+      content: 'task two',
+      timestamp: new Date(),
+    });
+    ctx.connector.simulateMessage({
+      id: 'msg-q-3',
+      source: 'telegram',
+      sender: '+1234567890',
+      rawContent: '/ai task three',
+      content: 'task three',
+      timestamp: new Date(),
+    });
+
+    // Provider must NOT have been called for msgs 2 or 3 yet (they are queued, not dropped)
+    expect(processOrder).toHaveLength(1);
+
+    // Register drain resolver before releasing so the resolver is in place
+    const drainPromise = internalBridge(ctx.bridge).queue.drain();
+
+    // (3) Release message 1 — messages 2 and 3 drain sequentially after it completes
+    releaseMsg1();
+    await drainPromise;
+
+    // All three processed in FIFO arrival order
+    expect(processOrder).toEqual(['msg-q-1', 'msg-q-2', 'msg-q-3']);
+
+    // (4) All three messages received responses via the connector
+    const responseMsgs = ctx.connector.sentMessages.filter((m) =>
+      m.content.startsWith('Response to'),
+    );
+    expect(responseMsgs).toHaveLength(3);
+    expect(responseMsgs.map((m) => m.content)).toEqual([
+      'Response to msg-q-1',
+      'Response to msg-q-2',
+      'Response to msg-q-3',
+    ]);
   });
 });
