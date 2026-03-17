@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 7 | **Fixed:** 2 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 6 | **Fixed:** 3 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -32,7 +32,7 @@
 ### OB-F216 — System prompt truncated from 49K to 8K (84% loss)
 
 - **Severity:** 🔴 Critical
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/prompt-context-builder.ts:53`, `src/master/prompt-context-builder.ts:236-241`
 - **Root Cause / Impact:**
   `SECTION_BUDGET_SYSTEM_PROMPT` is hardcoded to `8_000` characters. The Master's system prompt (~49K) is brutally truncated to 8K, losing 84% of its context — including output routing rules, SHARE marker instructions, APP server docs, and workflow automation docs. This directly causes downstream issues (e.g., OB-F220: Master doesn't know how to deliver files to remote users because those instructions are truncated away).

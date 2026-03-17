@@ -335,4 +335,78 @@ describe('PromptAssembler', () => {
       expect(mockWarn).not.toHaveBeenCalled();
     });
   });
+
+  // ── large section budget — OB-F216 regression ─────────────────
+
+  describe('large section budget — OB-F216 regression', () => {
+    it('120K PRIORITY_IDENTITY section survives total budget assembly of 200K', () => {
+      // The system prompt fix (OB-F216) raised the per-section cap to 120K+.
+      // A 120K IDENTITY section must survive intact in a 200K total budget.
+      const identityContent = 'I'.repeat(120_000);
+      assembler.addSection('System Prompt', identityContent, PRIORITY_IDENTITY);
+
+      const result = assembler.assemble(200_000);
+
+      expect(result).toBe(identityContent);
+      expect(result.length).toBe(120_000);
+      expect(mockWarn).not.toHaveBeenCalled();
+    });
+
+    it('120K PRIORITY_IDENTITY section present when lower-priority sections also added', () => {
+      const identityContent = 'I'.repeat(120_000);
+      const memoryContent = 'M'.repeat(4_000);
+      const analysisContent = 'A'.repeat(5_000);
+
+      assembler.addSection('System Prompt', identityContent, PRIORITY_IDENTITY);
+      assembler.addSection('Memory', memoryContent, PRIORITY_MEMORY);
+      assembler.addSection('Analysis', analysisContent, PRIORITY_ANALYSIS);
+
+      // 120K + 4K + 5K = 129K — fits within 200K budget
+      const result = assembler.assemble(200_000);
+
+      expect(result).toContain(identityContent);
+      expect(result).toContain(memoryContent);
+      expect(result).toContain(analysisContent);
+      expect(mockWarn).not.toHaveBeenCalled();
+    });
+
+    it('drops lower-priority sections first when total budget is exceeded by large IDENTITY section', () => {
+      // IDENTITY = 180K, WORKSPACE = 20K, ANALYSIS = 50K
+      // Budget = 200K — IDENTITY (180K) + WORKSPACE (20K) = 200K exactly; ANALYSIS dropped
+      const identityContent = 'I'.repeat(180_000);
+      const workspaceContent = 'W'.repeat(20_000);
+      const analysisContent = 'ANALYSIS_DROPPED';
+
+      assembler.addSection('System Prompt', identityContent, PRIORITY_IDENTITY);
+      assembler.addSection('Workspace', workspaceContent, PRIORITY_WORKSPACE);
+      assembler.addSection('Analysis', analysisContent, PRIORITY_ANALYSIS);
+
+      const result = assembler.assemble(200_000);
+
+      // High-priority sections included
+      expect(result).toContain(identityContent);
+      // ANALYSIS is the lowest priority — must be dropped (no budget left after IDENTITY + WORKSPACE)
+      expect(result).not.toContain('ANALYSIS_DROPPED');
+
+      // A drop warning must fire
+      const warnCalls = mockWarn.mock.calls as unknown[][];
+      const droppedWarning = warnCalls.find((args) => {
+        const obj = args[0] as Record<string, unknown>;
+        return Array.isArray(obj.dropped);
+      });
+      expect(droppedWarning).toBeDefined();
+    });
+
+    it('emits no truncation warning when 120K IDENTITY section fits within 200K budget', () => {
+      assembler.addSection('System Prompt', 'I'.repeat(120_000), PRIORITY_IDENTITY);
+      assembler.assemble(200_000);
+
+      const warnCalls = mockWarn.mock.calls as unknown[][];
+      const truncationWarning = warnCalls.find((args) => {
+        const obj = args[0] as Record<string, unknown>;
+        return Array.isArray(obj.truncated);
+      });
+      expect(truncationWarning).toBeUndefined();
+    });
+  });
 });
