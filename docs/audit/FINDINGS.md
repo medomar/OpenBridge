@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 8 | **Fixed:** 1 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 7 | **Fixed:** 2 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -22,11 +22,12 @@
 ### OB-F215 — Docker health monitor logs WARN every 5 minutes when Docker is unavailable
 
 - **Severity:** 🟡 Medium
-- **Status:** Open
-- **Key Files:** `src/core/docker-sandbox.ts:226-228`
+- **Status:** ✅ Fixed
+- **Key Files:** `src/core/docker-sandbox.ts:221-235`
 - **Root Cause / Impact:**
   `_check()` logs a WARN-level message on every 5-minute interval when Docker is unavailable, not just on state transitions. Produces 30+ identical warnings overnight, flooding logs with noise.
 - **Fix:** Only log WARN on `available→unavailable` transitions. Use `debug` level for repeated checks when state hasn't changed.
+- **Implementation:** OB-1610 implemented the fix by refactoring `_check()` to check both current and previous state (`!this.available && wasAvailable` for WARN, `!this.available && !wasAvailable` for DEBUG).
 
 ### OB-F216 — System prompt truncated from 49K to 8K (84% loss)
 
