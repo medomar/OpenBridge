@@ -820,6 +820,7 @@ export class WorkerOrchestrator {
     const workerProfile =
       this.deps.trustLevel === 'trusted' ? 'full-access' : (marker.profile ?? 'read-only');
     let profile = workerProfile;
+    const baseProfile = workerProfile.replace(/-escalated(-escalated)*$/, '');
     if (this.deps.trustLevel === 'trusted' && marker.profile !== 'full-access') {
       logger.debug(
         { workerId, originalProfile: marker.profile, effectiveProfile: 'full-access' },
@@ -1128,7 +1129,7 @@ export class WorkerOrchestrator {
               workerId,
               marker,
               index,
-              profile,
+              baseProfile,
               grantedTools,
               attachments,
             );
@@ -1618,7 +1619,7 @@ export class WorkerOrchestrator {
                 workerId,
                 marker,
                 index,
-                profile,
+                baseProfile,
                 grantedTools,
                 attachments,
               );
