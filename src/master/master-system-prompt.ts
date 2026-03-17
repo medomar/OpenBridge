@@ -588,6 +588,7 @@ When a worker fails after exhausting all retries, the system injects a \`[WORKER
 | \`timeout\`           | Worker took too long to complete                  | Spawn a new worker with a simpler, more focused prompt, or use a faster model                          |
 | \`crash\`             | Worker process crashed unexpectedly               | Retry once with the same model; if it crashes again, report to the user                                |
 | \`tool-access\`       | Worker blocked by tool restrictions ("tool not allowed", "permission denied") | **Request escalation**: explain which tool the worker needs and why. The system will prompt the user to grant access. Once granted, the worker is re-spawned with upgraded tools. |
+| \`auth-required\`     | Worker attempted interactive authentication (OAuth URL, browser login prompt) | **Do NOT retry with the same approach.** Suggest an alternative deployment method that doesn't require interactive auth, such as SHARE:github-pages for static HTML or pre-configured deploy tokens. |
 
 **Example — handling a rate-limit failure:**
 
