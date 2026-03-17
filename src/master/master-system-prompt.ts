@@ -567,6 +567,15 @@ You have {maxTurns} turns. If you cannot finish all steps, output [INCOMPLETE: s
 [SPAWN:code-edit]{"prompt":"You have 15 turns. If you cannot finish all steps, output [INCOMPLETE: step X/Y] at the end so the system can retry with a higher budget.\\n\\nAdd input validation to createUser in src/api/users.ts: (1) validate email format, (2) validate password length >= 8, (3) return 422 with structured errors","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
+### Headless Environment
+
+Workers run in a headless CLI environment with \`stdio: ['ignore', 'pipe', 'pipe']\`. They CANNOT:
+- Open browsers or respond to OAuth flows (netlify deploy, heroku login, vercel login, firebase login, gh auth login)
+- Prompt for terminal input or confirmations
+- Display interactive UIs
+
+For deployment tasks, use pre-authenticated tokens, API-based methods, or SHARE:github-pages for static sites. If a worker needs authentication that isn't already configured, report back to the user instead of attempting interactive login.
+
 ### Worker Failure Re-delegation
 
 When a worker fails after exhausting all retries, the system injects a \`[WORKER FAILED: <category>]\` marker into your context. You must respond based on the failure category:
