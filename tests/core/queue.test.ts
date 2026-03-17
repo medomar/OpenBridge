@@ -341,6 +341,47 @@ describe('MessageQueue', () => {
     expect(queue.deadLetters).toEqual([]);
   });
 
+  it('calls onDeadLetter callback when message is moved to DLQ', async () => {
+    const queue = new MessageQueue({ maxRetries: 1, retryDelayMs: 10 });
+    const handler = vi.fn().mockRejectedValue(new Error('persistent failure'));
+    const deadLetterSpy = vi.fn().mockResolvedValue(undefined);
+
+    queue.onMessage(handler);
+    queue.onDeadLetter(deadLetterSpy);
+
+    const msg = createMessage('dlq-cb-1');
+    await queue.enqueue(msg);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(deadLetterSpy).toHaveBeenCalledOnce();
+    const [calledMsg, calledError] = deadLetterSpy.mock.calls[0] as [InboundMessage, string];
+    expect(calledMsg.id).toBe('dlq-cb-1');
+    expect(calledError).toBe('persistent failure');
+  });
+
+  it('onDeadLetter callback errors do not propagate or stop the queue', async () => {
+    const queue = new MessageQueue({ maxRetries: 0, retryDelayMs: 10 });
+    const processed: string[] = [];
+
+    queue.onMessage(async (msg) => {
+      if (msg.id === 'fail-me') throw new Error('forced failure');
+      processed.push(msg.id);
+    });
+
+    // Callback throws — should be swallowed
+    queue.onDeadLetter(async () => {
+      throw new Error('callback boom');
+    });
+
+    await queue.enqueue(createMessage('fail-me'));
+    await queue.enqueue(createMessage('after-fail'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Queue should have continued and processed the second message
+    expect(processed).toContain('after-fail');
+    expect(queue.deadLetterSize).toBe(1);
+  });
+
   it('deadLetters returns a snapshot (not a live reference)', async () => {
     const queue = new MessageQueue({ maxRetries: 0, retryDelayMs: 10 });
     const handler = vi.fn().mockRejectedValue(new Error('fail'));
