@@ -2980,6 +2980,23 @@ export class MasterManager {
   }
 
   /**
+   * Build a per-message context header with channel and role information (OB-1625).
+   * Injected at the start of every prompt so the Master can make channel-aware decisions.
+   */
+  private async getMessageContextHeader(message: InboundMessage): Promise<string> {
+    let role = 'owner';
+    if (this.memory) {
+      try {
+        const entry = await this.memory.getAccess(message.sender, message.source);
+        if (entry) role = entry.role;
+      } catch {
+        /* default to owner */
+      }
+    }
+    return `[Context: channel=${message.source}, sender=${message.sender}, role=${role}]\n\n`;
+  }
+
+  /**
    * Build a planning prompt for complex tasks.
    * Instructs the Master to decompose the request into SPAWN markers
    * without executing the tasks itself — forcing delegation within 3-5 turns.
@@ -3436,6 +3453,8 @@ export class MasterManager {
           `Use the DocType system in src/intelligence/ to register it. ` +
           `Original request: ${message.content}`;
       }
+      // Prepend channel + role context header so Master can make channel-aware decisions (OB-1625)
+      promptToSend = (await this.getMessageContextHeader(message)) + promptToSend;
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
