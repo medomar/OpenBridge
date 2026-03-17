@@ -4119,10 +4119,12 @@ export class MasterManager {
       // Classify message to determine appropriate turn budget and prompt
       const streamClassification = await this.classifyTask(message.content, streamSessionId);
       const streamTaskClass = streamClassification.class;
-      const streamPromptToSend =
+      let streamPromptToSend =
         streamTaskClass === 'complex-task'
           ? this.buildPlanningPrompt(message.content)
           : message.content;
+      // Prepend channel + role context header so Master can make channel-aware decisions (OB-1627)
+      streamPromptToSend = (await this.getMessageContextHeader(message)) + streamPromptToSend;
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const streamMaxTurns =
         streamTaskClass === 'complex-task'
