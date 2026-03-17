@@ -386,7 +386,7 @@ scripts/                        Task runner utilities
 
 ## Current Version
 
-**v0.1.0** — 183 findings resolved. 1505 tasks shipped across Phases 1–127.
+**v0.1.2** — 213 findings resolved. 1606 tasks shipped across Phases 1–151.
 
 Key additions since v0.0.5:
 

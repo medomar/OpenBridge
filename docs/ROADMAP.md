@@ -1,7 +1,7 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-13 | **Current Version:** v0.1.0
-> **1505 tasks shipped, 183 findings fixed** across v0.0.1–v0.1.0. Clean slate for next cycle.
+> **Last Updated:** 2026-03-17 | **Current Version:** v0.1.2
+> **1606 tasks shipped, 213 findings fixed** across v0.0.1–v0.1.2. Clean slate for next cycle.
 > See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md) | [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
