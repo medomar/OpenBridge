@@ -70,8 +70,9 @@
       "POSTGRES_*"
     ],
     "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"],
-    "_trustLevelDoc": "Options: sandbox (read-only agents) | standard (default, confirmation gates) | trusted (full AI autonomy within workspace)",
-    "trustLevel": "standard"
+    "_trustLevel_note": "Options: sandbox (read-only agents) | standard (default, confirmation gates) | trusted (full AI autonomy within workspace)",
+    "trustLevel": "trusted",
+    "confirmHighRisk": false
   },
   "audit": {
     "enabled": true
