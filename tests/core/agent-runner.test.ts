@@ -581,12 +581,12 @@ describe('AgentRunner', () => {
       retryDelay: 500,
     });
 
-    // First attempt
-    resolveChild(lastChild(), 'out1', 143, 'killed');
+    // First attempt — non-timeout exit triggers a retry
+    resolveChild(lastChild(), 'out1', 1, 'error');
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt
-    resolveChild(lastChild(), 'out2', 143, 'killed again');
+    // Second attempt — timeout exit breaks immediately (no more retries)
+    resolveChild(lastChild(), 'out2', 143, 'killed');
 
     await expect(promise).rejects.toThrow(AgentExhaustedError);
     await expect(promise).rejects.toThrow(/Agent failed after 2 attempt/);
@@ -811,8 +811,8 @@ describe('AgentExhaustedError', () => {
     resolveChild(lastChild(), '', 1, 'error-0');
     await vi.advanceTimersByTimeAsync(100);
 
-    // Attempt 1
-    resolveChild(lastChild(), '', 143, 'error-1');
+    // Attempt 1 — non-timeout exit triggers another retry
+    resolveChild(lastChild(), '', 3, 'error-1');
     await vi.advanceTimersByTimeAsync(100);
 
     // Attempt 2
@@ -826,7 +826,7 @@ describe('AgentExhaustedError', () => {
       expect(error).toBeInstanceOf(AgentExhaustedError);
       expect(error.attempts).toHaveLength(3);
       expect(error.attempts[0]).toEqual({ attempt: 0, exitCode: 1, stderr: 'error-0' });
-      expect(error.attempts[1]).toEqual({ attempt: 1, exitCode: 143, stderr: 'error-1' });
+      expect(error.attempts[1]).toEqual({ attempt: 1, exitCode: 3, stderr: 'error-1' });
       expect(error.attempts[2]).toEqual({ attempt: 2, exitCode: 2, stderr: 'error-2' });
     }
   });
@@ -901,7 +901,8 @@ describe('AgentExhaustedError', () => {
       retryDelay: 100,
     });
 
-    resolveChild(lastChild(), '', 1, 'timeout');
+    // Non-timeout exit triggers a retry; then timeout exit breaks the loop
+    resolveChild(lastChild(), '', 1, 'non-fatal error');
     await vi.advanceTimersByTimeAsync(100);
     resolveChild(lastChild(), '', 143, 'killed');
 
@@ -913,7 +914,7 @@ describe('AgentExhaustedError', () => {
       expect(error.message).toContain('Agent failed after 2 attempt(s)');
       expect(error.message).toContain('exit 1');
       expect(error.message).toContain('exit 143');
-      expect(error.message).toContain('timeout');
+      expect(error.message).toContain('non-fatal error');
       expect(error.message).toContain('killed');
     }
   });
@@ -1300,12 +1301,12 @@ describe('AgentRunner.stream()', () => {
 
     const resultPromise = drainStream(gen);
 
-    // First attempt
-    resolveChild(lastChild(), '', 143, 'killed');
+    // First attempt — non-timeout exit triggers a retry
+    resolveChild(lastChild(), '', 1, 'error');
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt
-    resolveChild(lastChild(), '', 143, 'killed again');
+    // Second attempt — timeout exit breaks immediately (no more retries)
+    resolveChild(lastChild(), '', 143, 'killed');
 
     await expect(resultPromise).rejects.toThrow(AgentExhaustedError);
     await expect(resultPromise).rejects.toThrow(/Agent failed after 2 attempt/);

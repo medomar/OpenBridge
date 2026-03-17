@@ -13,7 +13,7 @@ import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
 import { getClaudePromptBudget } from './adapters/claude-budget.js';
 import type { SandboxConfig, SecurityConfig, WorkspaceTrustLevel } from '../types/config.js';
-import { isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
+import { classifyError, isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
 import { checkProfileCostSpike, estimateCostUsd, getProfileCostCap } from './cost-manager.js';
 import type { MetricsCollector } from './metrics.js';
 export type { ErrorCategory } from './error-classifier.js';
@@ -1476,6 +1476,15 @@ export class AgentRunner {
         stderr: lastResult.stderr,
       });
 
+      // Skip remaining retries if the worker timed out — it will time out again
+      if (classifyError(lastResult.stderr, lastResult.exitCode) === 'timeout') {
+        logger.warn(
+          { exitCode: lastResult.exitCode, attempt, model: currentModel },
+          'Timeout exit — skipping remaining retries (retrying would timeout again)',
+        );
+        break;
+      }
+
       // Check for rate-limit / model unavailability — fall back to next model
       if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
         const nextModel = getNextFallbackModel(currentModel);
@@ -1720,6 +1729,15 @@ export class AgentRunner {
           exitCode: lastResult.exitCode,
           stderr: lastResult.stderr,
         });
+
+        // Skip remaining retries if the worker timed out — it will time out again
+        if (classifyError(lastResult.stderr, lastResult.exitCode) === 'timeout') {
+          logger.warn(
+            { exitCode: lastResult.exitCode, attempt, model: currentModel },
+            'Timeout exit — skipping remaining retries (retrying would timeout again)',
+          );
+          break;
+        }
 
         // Rate-limit / model unavailability — fall back to next model
         if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
@@ -2188,6 +2206,15 @@ export class AgentRunner {
           stderr: streamResult!.stderr,
         });
 
+        // Skip remaining retries if the worker timed out — it will time out again
+        if (classifyError(streamResult!.stderr, streamResult!.exitCode) === 'timeout') {
+          logger.warn(
+            { exitCode: streamResult!.exitCode, attempt, model: currentModel },
+            'Timeout exit — skipping remaining retries (retrying would timeout again)',
+          );
+          break;
+        }
+
         // Rate-limit / model unavailability — fall back to next model
         if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
           const nextModel = getNextFallbackModel(currentModel);
@@ -2424,6 +2451,15 @@ export class AgentRunner {
         exitCode: streamResult!.exitCode,
         stderr: streamResult!.stderr,
       });
+
+      // Skip remaining retries if the worker timed out — it will time out again
+      if (classifyError(streamResult!.stderr, streamResult!.exitCode) === 'timeout') {
+        logger.warn(
+          { exitCode: streamResult!.exitCode, attempt, model: currentModel },
+          'Timeout exit — skipping remaining retries (retrying would timeout again)',
+        );
+        break;
+      }
 
       // Check for rate-limit / model unavailability — fall back to next model
       if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
