@@ -1129,11 +1129,31 @@ export class Bridge {
       // File doesn't exist — no-op
     }
 
-    // 2. exploration/ directory — exploration state is now in system_config
+    // 2. exploration/ directory — only delete when exploration is completed or missing.
+    //    Active exploration writes incremental state here; deleting mid-run corrupts it.
     try {
       await fs.access(path.join(dotFolderPath, 'exploration'));
-      await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
-      logger.info('Removed legacy .openbridge/exploration/ directory');
+      const statePath = path.join(dotFolderPath, 'exploration', 'exploration-state.json');
+      let safeToDelete = false;
+      try {
+        const stateRaw = await fs.readFile(statePath, 'utf-8');
+        const state = JSON.parse(stateRaw) as { status?: string };
+        if (state.status === 'completed') {
+          safeToDelete = true;
+        } else {
+          logger.debug(
+            { status: state.status },
+            'Skipping exploration/ cleanup — exploration still in progress',
+          );
+        }
+      } catch {
+        // exploration-state.json missing — safe to delete the directory
+        safeToDelete = true;
+      }
+      if (safeToDelete) {
+        await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
+        logger.info('Removed legacy .openbridge/exploration/ directory');
+      }
     } catch {
       // Directory doesn't exist — no-op
     }
