@@ -50,7 +50,8 @@ const RESTART_CONTEXT_TASK_LIMIT = 10;
 // ---------------------------------------------------------------------------
 
 /** Per-section character budgets. Total ~32K to prevent truncation in AgentRunner. */
-export const SECTION_BUDGET_SYSTEM_PROMPT = 8_000;
+// System prompt section budget — generous cap to avoid truncating output routing, SHARE, and APP docs (OB-F216)
+export const SECTION_BUDGET_SYSTEM_PROMPT = 120_000;
 export const SECTION_BUDGET_MEMORY = 4_000;
 export const SECTION_BUDGET_WORKSPACE_MAP = 4_000;
 export const SECTION_BUDGET_RAG = 6_000;
