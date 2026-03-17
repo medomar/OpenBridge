@@ -171,7 +171,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return WorkspaceAnalysisMarkerSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: markerPath }, 'Failed to read analysis-marker.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: markerPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: markerPath }, 'Failed to read analysis-marker.json');
+      }
       return null;
     }
   }
@@ -197,7 +201,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return AgentsRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: agentsPath }, 'Failed to read agents.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: agentsPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: agentsPath }, 'Failed to read agents.json');
+      }
       return null;
     }
   }
@@ -263,7 +271,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ExplorationStateSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: statePath }, 'Failed to read exploration-state.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: statePath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: statePath }, 'Failed to read exploration-state.json');
+      }
       return null;
     }
   }
@@ -291,7 +303,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return StructureScanSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: scanPath }, 'Failed to read structure-scan.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: scanPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: scanPath }, 'Failed to read structure-scan.json');
+      }
       return null;
     }
   }
@@ -319,7 +335,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ClassificationSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: classificationPath }, 'Failed to read classification.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: classificationPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: classificationPath }, 'Failed to read classification.json');
+      }
       return null;
     }
   }
@@ -347,7 +367,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return DirectoryDiveResultSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: divePath }, 'Failed to read directory dive result');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: divePath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: divePath }, 'Failed to read directory dive result');
+      }
       return null;
     }
   }
@@ -382,7 +406,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ProfilesRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: profilesPath }, 'Failed to read profiles.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: profilesPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: profilesPath }, 'Failed to read profiles.json');
+      }
       return null;
     }
   }
@@ -460,7 +488,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return MasterSessionSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: sessionPath }, 'Failed to read master-session.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: sessionPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: sessionPath }, 'Failed to read master-session.json');
+      }
       return null;
     }
   }
@@ -536,7 +568,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return WorkersRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: workersPath }, 'Failed to read workers.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: workersPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: workersPath }, 'Failed to read workers.json');
+      }
       return null;
     }
   }
@@ -757,7 +793,11 @@ export class DotFolderManager {
       const content = await fs.readFile(classificationsPath, 'utf-8');
       return ClassificationCacheSchema.parse(JSON.parse(content));
     } catch (err) {
-      logger.warn({ err, path: classificationsPath }, 'Failed to read classifications.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: classificationsPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: classificationsPath }, 'Failed to read classifications.json');
+      }
       return null;
     }
   }
@@ -962,7 +1002,11 @@ export class DotFolderManager {
     try {
       return await fs.readFile(this.getMemoryFilePath(), 'utf-8');
     } catch (err) {
-      logger.warn({ err, path: this.getMemoryFilePath() }, 'Failed to read memory.md');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: this.getMemoryFilePath() }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: this.getMemoryFilePath() }, 'Failed to read memory.md');
+      }
       return null;
     }
   }
