@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 | **In Progress:** 0 | **Done:** 60 (1606 archived)
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 61 (1606 archived)
 > **Last Updated:** 2026-03-17
 
 ## Task Summary
@@ -267,7 +267,7 @@
 
 | #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Finding | Model  | Status    |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | --------- |
-| OB-1667 | Integration test: In `tests/integration/message-lifecycle.test.ts` (new file), test the full DLQ→error response flow. Create a Bridge with a mock Telegram connector, enqueue a message, make the Master's `processMessage()` throw repeatedly until DLQ. Verify: (1) the user receives the error response via the connector, (2) the DLQ contains the failed message, (3) audit log records the error event. Also test that the error response itself doesn't throw. | —       | sonnet | ⬚ Pending |
+| OB-1667 | Integration test: In `tests/integration/message-lifecycle.test.ts` (new file), test the full DLQ→error response flow. Create a Bridge with a mock Telegram connector, enqueue a message, make the Master's `processMessage()` throw repeatedly until DLQ. Verify: (1) the user receives the error response via the connector, (2) the DLQ contains the failed message, (3) audit log records the error event. Also test that the error response itself doesn't throw. | —       | sonnet | ✅ Done   |
 | OB-1668 | Integration test: In `tests/integration/message-lifecycle.test.ts`, test the processing queue flow. Create a Bridge with Master, send a message that triggers long processing (mock 5s delay). While processing, send 2 more messages. Verify: (1) first message is processed normally, (2) messages 2 and 3 are queued (not dropped), (3) after message 1 completes, messages 2 and 3 are drained in order, (4) all 3 messages get responses via the connector.      | —       | sonnet | ⬚ Pending |
 
 ---
