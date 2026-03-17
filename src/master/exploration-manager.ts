@@ -1102,7 +1102,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
     try {
       const map = await this.deps.readWorkspaceMapFromStore();
-      const classification: Classification | null = await this.deps.dotFolder.readClassification();
+      let classification: Classification | null = null;
+      const memory = this.deps.getMemory();
+      if (memory) {
+        const raw = await memory.getClassification();
+        if (raw) {
+          try {
+            classification = JSON.parse(raw) as Classification;
+          } catch {
+            // malformed JSON — fall back to dotfolder below
+          }
+        }
+      }
+      if (!classification) {
+        classification = await this.deps.dotFolder.readClassification();
+      }
 
       if (!map && !classification) {
         logger.warn('writeExplorationSummaryToMemory: no exploration data — skipping');
