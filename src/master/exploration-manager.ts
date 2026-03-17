@@ -1195,6 +1195,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       const content = lines.join('\n');
       await this.deps.dotFolder.writeMemoryFile(content);
+      const mem = this.deps.getMemory();
+      if (mem) {
+        try {
+          await mem.setSystemConfig('memory_md_backup', content);
+        } catch (e) {
+          logger.debug({ err: e }, 'Failed to backup memory.md to SQLite');
+        }
+      }
       logger.info(
         { memoryPath, lineCount: lines.length },
         'Exploration summary written to memory.md',

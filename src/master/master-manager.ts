@@ -1432,12 +1432,32 @@ export class MasterManager {
       try {
         const isStale = await this.dotFolder.isMemoryStale();
         if (isStale) {
-          const recentMessages = await this.memory.getRecentMessages(20);
-          await this.dotFolder.writeMemoryFallback(recentMessages);
-          logger.info(
-            { messageCount: recentMessages.length },
-            'Regenerated stale memory.md from SQLite on startup (OB-1617)',
-          );
+          // OB-1651: Try SQLite backup first before falling back to conversation regeneration.
+          const backup = await this.memory.getSystemConfig('memory_md_backup');
+          if (backup) {
+            try {
+              await this.dotFolder.writeMemoryFile(backup);
+              logger.info('Restored memory.md from SQLite backup');
+            } catch (e) {
+              logger.warn(
+                { err: e },
+                'SQLite backup restore failed — falling back to regeneration',
+              );
+              const recentMessages = await this.memory.getRecentMessages(20);
+              await this.dotFolder.writeMemoryFallback(recentMessages);
+              logger.info(
+                { messageCount: recentMessages.length },
+                'Regenerated stale memory.md from SQLite on startup (OB-1617)',
+              );
+            }
+          } else {
+            const recentMessages = await this.memory.getRecentMessages(20);
+            await this.dotFolder.writeMemoryFallback(recentMessages);
+            logger.info(
+              { messageCount: recentMessages.length },
+              'Regenerated stale memory.md from SQLite on startup (OB-1617)',
+            );
+          }
         }
       } catch (err) {
         logger.warn({ err }, 'Failed to check/regenerate stale memory.md on startup');
