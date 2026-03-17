@@ -488,6 +488,9 @@ export class Bridge {
     // Wire IntegrationHub into Router and MasterManager
     this.router.setIntegrationHub(this.integrationHub);
 
+    // Wire auto-tunnel into Router for on-demand remote channel APP delivery (OB-1633)
+    this.router.setEnsureTunnel(() => this.ensureTunnel());
+
     if (this.master) {
       this.master.setIntegrationHub(this.integrationHub);
     }
