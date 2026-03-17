@@ -32,7 +32,11 @@ export const PROMPT_CHAR_BUDGET = 16_000;
  * Trims a JSON data payload to fit within a character budget.
  * Strategy: pretty-print → trim arrays → compact JSON.
  */
-function trimPayload(data: Record<string, unknown>, budget: number, arrayField?: string): string {
+export function trimPayload(
+  data: Record<string, unknown>,
+  budget: number,
+  arrayField?: string,
+): string {
   let payload = JSON.stringify(data, null, 2);
   if (payload.length <= budget) return payload;
 

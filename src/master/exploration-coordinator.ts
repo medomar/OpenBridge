@@ -31,6 +31,8 @@ import {
   generateDirectoryDivePrompt,
   generateSubProjectDivePrompt,
   generateSummaryPrompt,
+  trimPayload,
+  PROMPT_CHAR_BUDGET,
 } from './exploration-prompts.js';
 import { parseAIResult } from './result-parser.js';
 import {
@@ -817,7 +819,9 @@ export class ExplorationCoordinator {
     await this.writeExplorationState(state);
 
     const phase1RowId = await this.insertPhaseRow('structure');
-    const prompt = generateStructureScanPrompt(this.workspacePath);
+    const prompt =
+      generateStructureScanPrompt(this.workspacePath) +
+      '\n\nIMPORTANT: Keep your file listing concise. For directories with >50 files, list only the first 50 and note the total count. Focus on file types and structure, not individual files. Your output must stay under 100K characters to avoid truncation.';
     const startTime = Date.now();
 
     const result = await this.agentRunner.spawn({
@@ -838,8 +842,20 @@ export class ExplorationCoordinator {
       throw new Error(`Structure scan failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
+    // Trim agent response if it exceeds PROMPT_CHAR_BUDGET to avoid downstream
+    // prompt truncation when the structure scan is embedded in later phases (OB-F228).
+    let phase1Stdout = result.stdout;
+    if (phase1Stdout.length > PROMPT_CHAR_BUDGET) {
+      try {
+        const raw = JSON.parse(phase1Stdout) as Record<string, unknown>;
+        phase1Stdout = trimPayload(raw, PROMPT_CHAR_BUDGET, 'topLevelFiles');
+      } catch {
+        // keep original stdout if JSON parse fails; parseAIResult handles extraction
+      }
+    }
+
     const parsed = parseAIResult<StructureScan>(
-      result.stdout,
+      phase1Stdout,
       'structure scan',
       StructureScanAISchema,
     );
