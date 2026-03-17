@@ -177,3 +177,112 @@ describe('respawnWorkerAfterGrant sandbox guard (OB-1603)', () => {
     expect(deps.workerRegistry.registerWorkerWithId).toHaveBeenCalled();
   });
 });
+
+describe('escalation dedup (OB-F214)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('single escalated profile — strips suffix and re-appends, avoiding double suffix', async () => {
+    const deps = makeMinimalDeps('standard');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    // When original profile is already 'code-edit-escalated', grant individual tools
+    // (not a profile). The method should strip the suffix and re-append once,
+    // resulting in custom profile 'code-edit-escalated'.
+    await orchestrator.respawnWorkerAfterGrant(
+      'worker-1',
+      makeMarker(),
+      0,
+      'code-edit-escalated', // already escalated
+      ['Bash(npm:test)'], // individual tool grant
+    );
+
+    // Check that a custom profile was created with the correct name
+    // The custom profile will be passed to spawnWorker as part of the marker
+    const registerMock = deps.workerRegistry.registerWorkerWithId as unknown as {
+      mock: { calls: unknown[][] };
+    };
+    const registerCall = registerMock.mock.calls[0];
+    expect(registerCall).toBeDefined();
+    const manifest = registerCall[1] as { profile: string };
+    // The profile should be 'code-edit-escalated', not 'code-edit-escalated-escalated'
+    expect(manifest.profile).toBe('code-edit-escalated');
+  });
+
+  it('multiple escalated suffixes — strips all and re-appends once', async () => {
+    const deps = makeMinimalDeps('standard');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    // Original profile has multiple escalated suffixes (2 in this case, below the guard threshold of 3)
+    await orchestrator.respawnWorkerAfterGrant(
+      'worker-2',
+      makeMarker(),
+      0,
+      'code-edit-escalated-escalated', // 2 escalated suffixes
+      ['Bash(npm:test)'], // individual tool grant
+    );
+
+    const registerMock = deps.workerRegistry.registerWorkerWithId as unknown as {
+      mock: { calls: unknown[][] };
+    };
+    const registerCall = registerMock.mock.calls[0];
+    expect(registerCall).toBeDefined();
+    const manifest = registerCall[1] as { profile: string };
+    // Should be stripped to base 'code-edit', then re-appended once: 'code-edit-escalated'
+    expect(manifest.profile).toBe('code-edit-escalated');
+  });
+
+  it('escalation depth >= 3 — returns without spawning', async () => {
+    const deps = makeMinimalDeps('standard');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    // Profile with 3+ escalated suffixes triggers the depth guard
+    await orchestrator.respawnWorkerAfterGrant(
+      'worker-3',
+      makeMarker(),
+      0,
+      'code-edit-escalated-escalated-escalated', // 3 -escalated suffixes = depth 3
+      ['Bash(npm:test)'],
+    );
+
+    // The guard should have returned early without registering or spawning
+    expect(deps.workerRegistry.registerWorkerWithId).not.toHaveBeenCalled();
+    expect(deps.agentRunner.spawn).not.toHaveBeenCalled();
+
+    // A warning should have been logged about max depth
+    const depthWarnCalled = mockWarn.mock.calls.some((args) => {
+      const arg = args[0] as unknown;
+      return (
+        typeof arg === 'object' &&
+        arg !== null &&
+        'escalationDepth' in arg &&
+        (arg as Record<string, unknown>).escalationDepth === 3
+      );
+    });
+    expect(depthWarnCalled).toBe(true);
+  });
+
+  it('normal profile without escalation — appends escalated suffix', async () => {
+    const deps = makeMinimalDeps('standard');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    // Normal base profile with no escalation suffix
+    await orchestrator.respawnWorkerAfterGrant(
+      'worker-4',
+      makeMarker(),
+      0,
+      'read-only', // base profile, no escalation
+      ['Bash(npm:test)'], // individual tool grant
+    );
+
+    const registerMock = deps.workerRegistry.registerWorkerWithId as unknown as {
+      mock: { calls: unknown[][] };
+    };
+    const registerCall = registerMock.mock.calls[0];
+    expect(registerCall).toBeDefined();
+    const manifest = registerCall[1] as { profile: string };
+    // Should create 'read-only-escalated'
+    expect(manifest.profile).toBe('read-only-escalated');
+  });
+});

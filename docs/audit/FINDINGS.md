@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 9 | **Fixed:** 0 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 8 | **Fixed:** 1 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -12,11 +12,12 @@
 ### OB-F214 — Escalation loop appends "-escalated" indefinitely to profile names
 
 - **Severity:** 🔴 Critical
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/worker-orchestrator.ts:702`
 - **Root Cause / Impact:**
   `respawnWorkerAfterGrant()` appends `-escalated` to `originalProfile` without checking if the suffix already exists. Each re-grant compounds the name: `code-edit-escalated-escalated-escalated-...` (100+ repetitions observed in production). Causes failed workers and corrupted batch stats.
 - **Fix:** Strip any existing `-escalated` suffix before appending, or use a counter (`code-edit-escalated-1`, `code-edit-escalated-2`).
+- **Implementation:** OB-1607 (strip logic), OB-1608 (call site defense-in-depth), OB-1609 (unit tests). All tasks complete and merged.
 
 ### OB-F215 — Docker health monitor logs WARN every 5 minutes when Docker is unavailable
 
