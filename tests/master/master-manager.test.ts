@@ -10,6 +10,7 @@ import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
 import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import type { SkillPack } from '../../src/types/agent.js';
 import { turnsToTimeout } from '../../src/master/classification-engine.js';
+import type { ProcessedDocument } from '../../src/types/intelligence.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -3902,6 +3903,119 @@ describe('MasterManager', () => {
       // Clean up
       resolveFirst(undefined);
       await firstProcessing;
+    });
+
+    it('merges rapid-fire image+text messages from same sender', async () => {
+      // Keep first spawn in-flight so state = 'processing' while we queue messages
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'First response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const now = new Date();
+
+      // First message kicks off processing (holds state = 'processing')
+      const firstMsg: InboundMessage = {
+        id: 'msg-rfi0',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first request',
+        content: 'first request',
+        timestamp: new Date(now.getTime() - 15_000),
+      };
+
+      // Two pure image messages (no text content) — will be queued during processing
+      const imgMsg1: InboundMessage = {
+        id: 'msg-rfi-img1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '',
+        content: '',
+        timestamp: new Date(now.getTime() - 5_000),
+        attachments: [{ type: 'image', filePath: '/tmp/img1.jpg', mimeType: 'image/jpeg' }],
+        processedDocument: {
+          id: 'doc-rfi-1',
+          filename: 'img1.jpg',
+          mimeType: 'image/jpeg',
+          filePath: '/tmp/img1.jpg',
+          rawText: 'OCR text from image 1',
+          docType: 'image',
+          tables: [],
+          images: [],
+          entities: [],
+          relations: [],
+          metadata: {},
+          processedAt: new Date(now.getTime() - 5_000).toISOString(),
+        } as ProcessedDocument,
+      };
+
+      const imgMsg2: InboundMessage = {
+        id: 'msg-rfi-img2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '',
+        content: '',
+        timestamp: new Date(now.getTime() - 4_000),
+        attachments: [{ type: 'image', filePath: '/tmp/img2.jpg', mimeType: 'image/jpeg' }],
+        processedDocument: {
+          id: 'doc-rfi-2',
+          filename: 'img2.jpg',
+          mimeType: 'image/jpeg',
+          filePath: '/tmp/img2.jpg',
+          rawText: 'OCR text from image 2',
+          docType: 'image',
+          tables: [],
+          images: [],
+          entities: [],
+          relations: [],
+          metadata: {},
+          processedAt: new Date(now.getTime() - 4_000).toISOString(),
+        } as ProcessedDocument,
+      };
+
+      // Text message from same sender within 10s window of both images
+      const textMsg: InboundMessage = {
+        id: 'msg-rfi-text',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'describe these images',
+        content: 'describe these images',
+        timestamp: now,
+      };
+
+      // Start first message processing (sets state = 'processing' synchronously)
+      const firstProcessing = manager.processMessage(firstMsg);
+      await Promise.resolve();
+
+      // Queue two image messages and one text message during processing
+      await manager.processMessage(imgMsg1);
+      await manager.processMessage(imgMsg2);
+      await manager.processMessage(textMsg);
+
+      // Resolve first spawn to trigger drain + merge
+      resolveFirst(undefined);
+      await firstProcessing;
+
+      // Drain should merge the 2 image messages into the text message — route called once
+      expect(mockRoute).toHaveBeenCalledTimes(1);
+      const routedMsg = mockRoute.mock.calls[0][0] as InboundMessage;
+      expect(routedMsg.id).toBe('msg-rfi-text');
+      expect(routedMsg.content).toContain('[User also sent 2 image(s)');
+      expect(routedMsg.content).toContain('OCR text from image 1');
+      expect(routedMsg.content).toContain('OCR text from image 2');
+      expect(routedMsg.content).toContain('describe these images');
     });
   });
 });
