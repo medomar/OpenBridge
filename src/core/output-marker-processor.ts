@@ -45,6 +45,9 @@ export const APP_UPDATE_MARKER_RE = /\[APP:update:([^\]]+)\]([^[]*)\[\/APP\]/g;
 /** Pattern matching [WORKFLOW:create]{...json...}[/WORKFLOW] markers in AI output */
 export const WORKFLOW_CREATE_MARKER_RE = /\[WORKFLOW:create\]([\s\S]*?)\[\/WORKFLOW\]/g;
 
+/** Channels that are remote (phone/desktop app) and cannot access localhost URLs */
+export const REMOTE_CHANNELS = new Set(['telegram', 'whatsapp', 'discord']);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -728,9 +731,19 @@ export class OutputMarkerProcessor {
 
         try {
           const instance = await appServer.startApp(appPath);
-          const url = instance.publicUrl ?? instance.url;
-          cleaned = cleaned.replace(fullMatch, `App started at ${url}`);
-          logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+          let replacement: string;
+          if (_source && REMOTE_CHANNELS.has(_source) && !instance.publicUrl) {
+            logger.info(
+              { appPath, source: _source },
+              'APP:start on remote channel without tunnel — falling back to SHARE attachment',
+            );
+            replacement = `[SHARE:${_source}]{"path":"${appPath}/index.html"}[/SHARE]`;
+          } else {
+            const url = instance.publicUrl ?? instance.url;
+            replacement = `App started at ${url}`;
+            logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+          }
+          cleaned = cleaned.replace(fullMatch, replacement);
         } catch (err) {
           logger.warn({ appPath, err }, 'APP:start marker: failed to start app');
           cleaned = cleaned.replace(fullMatch, `Failed to start app at ${appPath}`);
