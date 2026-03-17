@@ -366,7 +366,7 @@ export class ClassificationEngine {
           prompt,
           workspacePath: this.deps.workspacePath,
           model: this.deps.modelRegistry.resolveModelOrTier('fast'),
-          maxTurns: 1,
+          maxTurns: 2,
           retries: 0,
         }),
         new Promise<never>((_, reject) =>
@@ -375,6 +375,11 @@ export class ClassificationEngine {
       ]);
 
       const raw = result.stdout.trim();
+
+      // Log when classifier exhausts turns — indicates maxTurns may still be insufficient
+      if (result.turnsExhausted) {
+        logger.debug('Classifier returned turnsExhausted: true — maxTurns=2 may be insufficient');
+      }
 
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
