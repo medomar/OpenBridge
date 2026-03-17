@@ -10,6 +10,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   ClassificationEngine,
   type ClassificationEngineDeps,
+  CLI_STARTUP_BUDGET_MS,
+  MESSAGE_MAX_TURNS_QUICK,
+  turnsToTimeout,
 } from '../../src/master/classification-engine.js';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -306,5 +309,32 @@ describe('ClassificationEngine — efficiency-based escalation suppression (OB-1
 
     // No efficiency data → cannot suppress → escalation proceeds
     expect(result.class).toBe('complex-task');
+  });
+});
+
+// ── Suite: OB-1618 timeout constant updates ────────────────────────────────
+
+describe('ClassificationEngine — timeout computation with updated constants (OB-1618)', () => {
+  it('verifies CLI_STARTUP_BUDGET_MS is 30_000', () => {
+    // OB-1616 reduced CLI startup budget from 60s to 30s
+    expect(CLI_STARTUP_BUDGET_MS).toBe(30_000);
+  });
+
+  it('verifies MESSAGE_MAX_TURNS_QUICK is 3', () => {
+    // OB-1616 reduced quick-answer turn budget from 5 to 3
+    expect(MESSAGE_MAX_TURNS_QUICK).toBe(3);
+  });
+
+  it('verifies turnsToTimeout(3) returns 120_000 with updated constants', () => {
+    // OB-1616 changed CLI_STARTUP_BUDGET_MS to 30_000
+    // Quick-answer timeout: 30_000 + 3 × 30_000 = 120_000ms
+    expect(turnsToTimeout(3)).toBe(120_000);
+  });
+
+  it('verifies turnsToTimeout formula is correct for other task types', () => {
+    // Tool-use: 30_000 + 15 × 30_000 = 480_000ms
+    expect(turnsToTimeout(15)).toBe(480_000);
+    // Complex-task: 30_000 + 25 × 30_000 = 780_000ms
+    expect(turnsToTimeout(25)).toBe(780_000);
   });
 });
