@@ -3581,7 +3581,35 @@ export class MasterManager {
         taskClass === 'complex-task'
           ? turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING)
           : classification.timeout;
-      // Clamp to message timeout boundary so no classification can exceed it (OB-F217)
+      // ── Timeout chain documentation (OB-F217) ────────────────────────────────
+      // (1) classification.timeout is produced by turnsToTimeout() in classification-engine.ts:
+      //       turnsToTimeout(n) = CLI_STARTUP_BUDGET_MS + n × PER_TURN_BUDGET_MS
+      //                         = 30_000             + n × 30_000
+      //     Examples per task class (Phase 155 values):
+      //       quick-answer  (n=3)  → 30s + 90s  = 120s
+      //       tool-use      (n=15) → 30s + 450s = 480s
+      //       complex-task  (n=25) → 30s + 750s = 780s
+      //
+      // (2) timeoutToUse overrides to the planning-turns budget for complex-task (see above),
+      //     so timeoutToUse == turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING) = 780s for complex.
+      //
+      // (3) safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000)
+      //     clamps to 170s max (DEFAULT_MESSAGE_TIMEOUT = 180_000 at line 121).
+      //     Effect: quick-answer stays at 120s (< 170s ceiling),
+      //             tool-use and complex-task are hard-clamped to 170s.
+      //
+      // (4) safeTimeout is forwarded to buildMasterSpawnOptions() → agentRunner.spawn().
+      //     The Master session process runs for at most safeTimeout ms total —
+      //     this budget INCLUDES context loading, worker spawning, and worker execution.
+      //
+      // (5) Why quick-answer still times out despite the 120s budget:
+      //     The Master's --session-id (resume) call loads ~30-40s of conversation context,
+      //     then spawns a worker (~10s startup), then waits for the worker to execute
+      //     (~60-80s for real tasks). Total ≈ 100-130s, which exceeds the 120s budget
+      //     under load. The 170s clamp is NOT the bottleneck for quick-answer tasks —
+      //     the issue is that 120s is genuinely too tight for a full Master + worker cycle.
+      //     See OB-1662 for the fix (raise DEFAULT_MESSAGE_TIMEOUT to 300s).
+      // ─────────────────────────────────────────────────────────────────────────
       const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000);
       if (safeTimeout < timeoutToUse) {
         logger.warn(
