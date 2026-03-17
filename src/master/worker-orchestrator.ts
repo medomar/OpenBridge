@@ -680,6 +680,16 @@ export class WorkerOrchestrator {
       return;
     }
 
+    // Guard against infinite escalation loops (OB-F214): cap at depth 3.
+    const escalationDepth = (originalProfile.match(/-escalated/g) ?? []).length;
+    if (escalationDepth >= 3) {
+      logger.warn(
+        { workerId: originalWorkerId, profile: originalProfile, escalationDepth },
+        'Max escalation depth reached — not respawning',
+      );
+      return;
+    }
+
     const newWorkerId = `${originalWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
@@ -699,11 +709,14 @@ export class WorkerOrchestrator {
       // Individual tool grant — merge with the original profile's tool list.
       const baseTools = resolveProfile(originalProfile) ?? [];
       const mergedTools = [...new Set([...baseTools, ...grantedTools])];
-      const upgradedProfileName = `${originalProfile}-escalated`;
+      // Strip any existing `-escalated` suffix chain so profile names stay `{base}-escalated`
+      // regardless of how many re-grants occur (OB-F214).
+      const baseProfile = originalProfile.replace(/-escalated(-escalated)*$/, '');
+      const upgradedProfileName = `${baseProfile}-escalated`;
       customProfiles = {
         [upgradedProfileName]: {
           name: upgradedProfileName,
-          description: `${originalProfile} + escalated access (${grantedTools.join(', ')})`,
+          description: `${baseProfile} + escalated access (${grantedTools.join(', ')})`,
           tools: mergedTools,
         },
       };
