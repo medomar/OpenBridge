@@ -3444,6 +3444,14 @@ export class MasterManager {
         taskClass === 'complex-task'
           ? turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING)
           : classification.timeout;
+      // Clamp to message timeout boundary so no classification can exceed it (OB-F217)
+      const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000);
+      if (safeTimeout < timeoutToUse) {
+        logger.warn(
+          { originalTimeout: timeoutToUse, safeTimeout },
+          'Timeout clamped to message timeout boundary',
+        );
+      }
 
       if (taskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation');
@@ -3570,7 +3578,7 @@ export class MasterManager {
       };
       const spawnOpts = this.buildMasterSpawnOptions(
         promptToSend,
-        timeoutToUse,
+        safeTimeout,
         maxTurnsToUse,
         masterContext,
       );
@@ -3590,7 +3598,7 @@ export class MasterManager {
         // Retry with the same prompt and context sections (OB-1246: budget-aware assembly)
         const retryOpts = this.buildMasterSpawnOptions(
           promptToSend,
-          timeoutToUse,
+          safeTimeout,
           maxTurnsToUse,
           masterContext,
         );
