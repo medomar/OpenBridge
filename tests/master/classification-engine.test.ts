@@ -312,6 +312,60 @@ describe('ClassificationEngine — efficiency-based escalation suppression (OB-1
   });
 });
 
+// ── Suite: OB-1643 maxTurns=2 and keyword fallback on partial result ─────────
+
+describe('ClassificationEngine — maxTurns=2 classifier and partial-result fallback (OB-1643)', () => {
+  let engine: ClassificationEngine;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    engine = new ClassificationEngine(makeDeps());
+  });
+
+  it('classifier with maxTurns=2 completes without exhaustion', async () => {
+    // Spawn returns a valid JSON classification on the first call (turnsExhausted: false)
+    mockSpawn.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        class: 'tool-use',
+        maxTurns: 10,
+        reason: 'User wants to generate a new configuration file',
+        confidence: 0.88,
+      }),
+      stderr: '',
+      exitCode: 0,
+      turnsExhausted: false,
+    });
+
+    const result = await engine.classifyTask('create a new config.json file', 'session-ob1643-a');
+
+    expect(result.class).toBe('tool-use');
+    // Spawn was called with maxTurns: 2 (OB-1641 fix)
+    expect(mockSpawn).toHaveBeenCalledWith(expect.objectContaining({ maxTurns: 2 }));
+    // AI classifier's reason is surfaced as ragQuery (reason > 10 chars)
+    expect(result.ragQuery).toBe('User wants to generate a new configuration file');
+  });
+
+  it('falls back to keyword heuristics when classifier returns partial result', async () => {
+    // Spawn returns truncated JSON that cannot be parsed — JSON.parse throws
+    // The text scan fallback finds no class keyword in the truncated string,
+    // so aiResult remains null and keyword heuristics take over.
+    mockSpawn.mockResolvedValueOnce({
+      stdout: '{"class": "tool-use", "maxTurns":', // truncated — JSON.parse fails, no valid keyword found
+      stderr: '',
+      exitCode: 0,
+      turnsExhausted: false,
+    });
+
+    // "explain" triggers quick-answer keyword heuristic
+    const result = await engine.classifyTask('explain how the router works', 'session-ob1643-b');
+
+    // Keyword fallback used — ragQuery must be absent (only set for successful AI classifications)
+    expect(result.ragQuery).toBeUndefined();
+    // Reason comes from keyword heuristic path, not AI classifier
+    expect(result.reason).toContain('keyword');
+  });
+});
+
 // ── Suite: OB-1618 timeout constant updates ────────────────────────────────
 
 describe('ClassificationEngine — timeout computation with updated constants (OB-1618)', () => {
