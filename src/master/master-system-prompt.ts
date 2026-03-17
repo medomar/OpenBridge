@@ -1257,7 +1257,7 @@ function formatFileServerSection(port?: number, tunnelUrl?: string): string {
     `- **Direct URL:** \`${localhostUrl}/shared/<filename>\` — link the user directly to the generated file`,
     `- **Shareable link:** Created automatically when you use a SHARE marker — includes a UUID and 24-hour expiry`,
     '',
-    `**Note:** These URLs are only accessible on localhost. Files are not reachable from the internet or other devices unless a tunnel is configured.`,
+    `**Note:** When responding to remote channel users (telegram, whatsapp), do NOT include localhost URLs in your response — they cannot access them. Use SHARE:telegram or SHARE:whatsapp to send files as native attachments instead. For HTML reports, use SHARE:github-pages to create a public URL. Localhost URLs are fine for console and webchat users.`,
     '',
     `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${localhostUrl}/shared/<filename>\` in your response.`,
     '',
