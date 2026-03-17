@@ -872,6 +872,11 @@ export class WorkerOrchestrator {
       workerPrompt = `## Referenced Files\n\nThe following files were attached to the user's message and are available for analysis:\n\n${fileLines}\n\n---\n\n${body.prompt}`;
     }
 
+    // OB-1649: Always inject .openbridge/ protection regardless of trust level.
+    const dotfolderProtection =
+      'PROTECTED DIRECTORY: The .openbridge/ directory contains internal state files (memory.md, workspace-map.json, exploration data, prompts). Do NOT delete, move, or overwrite any files inside .openbridge/. You may READ files from .openbridge/ if needed for context, but never modify them.\n\n';
+    workerPrompt = dotfolderProtection + workerPrompt;
+
     // OB-1588: Inject workspace boundary instruction when trustLevel is 'trusted'.
     // This must be prepended to the entire prompt (including referenced files) so the
     // boundary constraint is the first thing the worker sees. Only inject for trusted
