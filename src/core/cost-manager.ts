@@ -168,6 +168,10 @@ export function estimateCostUsd(model: string | undefined, outputBytes: number):
   if (modelKey.includes('opus') || /opus.*4[.-]6/.test(modelKey)) {
     return 0.005 + outputKb * 0.0064;
   }
+  // Codex / OpenAI models (gpt-5.x): ~2.5x Claude Sonnet pricing
+  if (modelKey.includes('codex') || modelKey.includes('gpt-5') || modelKey.includes('gpt-4o')) {
+    return 0.008 + outputKb * 0.0096;
+  }
   // Default / Sonnet 4.6: $3/MTok input, $15/MTok output
   return 0.003 + outputKb * 0.00384;
 }
