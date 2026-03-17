@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 5 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 3 | **Fixed:** 6 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -81,7 +81,7 @@
 ### OB-F221 — Master AI does not know the user's channel or role per message
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/master-manager.ts:3180-3440`, `src/master/prompt-context-builder.ts`
 - **Root Cause / Impact:**
   `message.source` (e.g., "telegram", "whatsapp", "console") and the user's role (e.g., "owner") are available in the code path but are **never injected into the Master's per-message prompt**. The Master receives only `message.content` (or a planning wrapper around it). Without knowing the channel, the Master cannot:
