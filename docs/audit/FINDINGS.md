@@ -153,7 +153,7 @@
 ### OB-F228 — Exploration worker prompts exceed 128K limit (10-25% content truncated)
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`, `src/master/exploration-coordinator.ts`, `src/master/exploration-prompts.ts`
 - **Root Cause / Impact:**
   During workspace exploration Phase 1 (Structure Scan), the agent-runner logs two truncation warnings in a single exploration run: `14735 chars lost (10% of content, limit 128000)` and `43615 chars lost (25% of content, limit 128000)`. The exploration prompt combined with workspace structure data exceeds the 128K prompt limit for the default model (Sonnet). The prompt assembler truncates the excess silently — the worker receives 75-90% of its intended context. This means exploration workers may produce incomplete or inaccurate structure scans, missing files or directories that were in the truncated portion. For large workspaces (1000+ files like elgrotte-data), the structure listing alone can exceed 128K when combined with the exploration system prompt and directory metadata. The exploration uses `model: "default"` (Sonnet) which has a 128K prompt budget — but the workspace content is not budget-aware.
