@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 6 | **Fixed:** 3 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 5 | **Fixed:** 4 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -50,7 +50,7 @@
 ### OB-F218 — Streaming worker timeout retries waste 20 minutes
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/core/agent-runner.ts`, `src/master/worker-orchestrator.ts`
 - **Root Cause / Impact:**
   A read-only sonnet streaming worker timed out at 300s and was retried 4 times (total ~20 minutes wasted). Timeout errors (exit code 143 from SIGTERM) are retried identically — if the task timed out once, it will time out again on every retry. The queue module already skips retries for timeout errors on non-streaming workers, but this logic doesn't apply to streaming workers.

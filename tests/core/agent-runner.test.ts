@@ -3092,6 +3092,218 @@ describe('AgentRunner.spawnWithHandle()', () => {
   });
 });
 
+// ── Streaming timeout retry skip (OB-F218, OB-1621) ──────────────────────────
+// Timeout exits (code 143/137) should not be retried because the task will
+// time out again on every retry. Rate-limit errors should still trigger retries.
+
+describe('spawnWithHandle — timeout retry skip (OB-F218)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips retries when timeout exit code 143 (SIGTERM) occurs', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 1000,
+    });
+
+    // First attempt — timeout exit code 143 (SIGTERM)
+    resolveChild(lastChild(), '', 143, 'timeout');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('skips retries when timeout exit code 137 (SIGKILL) occurs', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 500,
+    });
+
+    // First attempt — timeout exit code 137 (SIGKILL)
+    resolveChild(lastChild(), '', 137, 'killed');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('continues retrying on non-timeout exit code 1 (normal error)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — non-timeout error (exit code 1)
+    resolveChild(lastChild(), '', 1, 'generic error');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — succeeds
+    resolveChild(lastChild(), 'success', 0);
+
+    const result = await handle.promise;
+
+    // Should have succeeded after retrying
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('success');
+    expect(result.retryCount).toBe(1);
+    // Verify 2 spawn calls were made (1 initial + 1 retry)
+    expect(spawnCalls).toHaveLength(2);
+  });
+
+  it('skips retries when timeout keyword is in stderr (even without exit code 143/137)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — exit code 1 with "timeout" in stderr
+    // This should classify as timeout and skip retries despite exit code not being 143/137
+    resolveChild(lastChild(), '', 1, 'worker timeout after 30 seconds');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+});
+
+describe('spawnWithStreamingHandle — timeout retry skip (OB-F218)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips retries when timeout exit code 143 (SIGTERM) occurs in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 1000,
+    });
+
+    const child = lastChild();
+
+    // Emit one chunk of output
+    child.stdout.emit('data', Buffer.from('chunk1'));
+
+    // Emit timeout exit code 143 (SIGTERM)
+    child.emit('close', 143, 'SIGTERM');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('skips retries when timeout exit code 137 (SIGKILL) occurs in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 500,
+    });
+
+    const child = lastChild();
+
+    // Emit some output
+    child.stdout.emit('data', Buffer.from('data'));
+
+    // Emit timeout exit code 137 (SIGKILL)
+    child.emit('close', 137, 'SIGKILL');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('continues retrying on non-timeout exit code 1 in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — emit output then fail with code 1
+    let child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt1'));
+    child.emit('close', 1, null);
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — emit output and succeed
+    child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt2'));
+    child.emit('close', 0, null);
+
+    const result = await handle.promise;
+
+    // Should succeed with output from second attempt
+    expect(result.exitCode).toBe(0);
+    expect(spawnCalls).toHaveLength(2);
+  });
+
+  it('triggers model fallback on rate-limit error in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'sonnet-4-6', // First model in fallback chain
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — emit output then fail with rate-limit error
+    let child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt1'));
+    child.stderr.emit('data', Buffer.from('rate limit exceeded'));
+    child.emit('close', 1, null);
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — different model should be tried
+    child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt2'));
+    child.emit('close', 0, null);
+
+    const result = await handle.promise;
+
+    // Should succeed after model fallback
+    expect(result.exitCode).toBe(0);
+    expect(spawnCalls).toHaveLength(2);
+  });
+});
+
 // ── Cost controls (OB-F101, OB-1673) ─────────────────────────────────
 
 describe('getProfileCostCap()', () => {
