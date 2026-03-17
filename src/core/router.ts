@@ -391,6 +391,8 @@ export class Router {
   private readonly outputMarkerProcessor: OutputMarkerProcessor;
   /** Permission relay for interactive tool approval via messaging channels (OB-1499). */
   private permissionRelay?: PermissionRelay;
+  /** On-demand tunnel starter — wired in by Bridge.start() for remote channel APP delivery (OB-1633). */
+  private ensureTunnelFn?: () => Promise<string | null>;
 
   constructor(
     defaultProvider: string,
@@ -415,6 +417,7 @@ export class Router {
       getWorkflowEngine: () => this.workflowEngine,
       getWorkflowScheduler: () => this.workflowScheduler,
       getIntegrationHub: () => this.integrationHub,
+      ensureTunnel: () => (this.ensureTunnelFn ? this.ensureTunnelFn() : Promise.resolve(null)),
     });
 
     // Initialize command handlers with deps that reference Router's mutable state
@@ -543,6 +546,12 @@ export class Router {
   setAppServer(appServer: AppServer): void {
     this.appServer = appServer;
     logger.info('Router configured with AppServer (APP markers enabled)');
+  }
+
+  /** Set the auto-tunnel function — enables on-demand tunnel for remote channel APP delivery (OB-1633) */
+  setEnsureTunnel(fn: () => Promise<string | null>): void {
+    this.ensureTunnelFn = fn;
+    logger.info('Router configured with ensureTunnel (remote channel APP:start tunnel enabled)');
   }
 
   /** Set the InteractionRelay — routes app messages to Master as app-interaction InboundMessages */

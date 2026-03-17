@@ -110,6 +110,8 @@ export interface OutputMarkerDeps {
   getWorkflowEngine: () => WorkflowEngine | undefined;
   getWorkflowScheduler: () => WorkflowScheduler | undefined;
   getIntegrationHub: () => IntegrationHub | undefined;
+  /** On-demand tunnel starter — used for remote channel APP:start delivery (OB-1633) */
+  ensureTunnel?: () => Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -733,11 +735,22 @@ export class OutputMarkerProcessor {
           const instance = await appServer.startApp(appPath);
           let replacement: string;
           if (_source && REMOTE_CHANNELS.has(_source) && !instance.publicUrl) {
-            logger.info(
-              { appPath, source: _source },
-              'APP:start on remote channel without tunnel — falling back to SHARE attachment',
-            );
-            replacement = `[SHARE:${_source}]{"path":"${appPath}/index.html"}[/SHARE]`;
+            // Attempt auto-tunnel before falling back to SHARE attachment (OB-1633)
+            const tunnelUrl = this.deps.ensureTunnel ? await this.deps.ensureTunnel() : null;
+            if (tunnelUrl) {
+              const appUrl = `${tunnelUrl.replace(/\/$/, '')}/${appPath.replace(/^\//, '')}`;
+              replacement = `App started at ${appUrl}`;
+              logger.info(
+                { appPath, appUrl, source: _source },
+                'APP:start on remote channel — using auto-tunnel URL',
+              );
+            } else {
+              logger.info(
+                { appPath, source: _source },
+                'APP:start on remote channel without tunnel — falling back to SHARE attachment',
+              );
+              replacement = `[SHARE:${_source}]{"path":"${appPath}/index.html"}[/SHARE]`;
+            }
           } else {
             const url = instance.publicUrl ?? instance.url;
             replacement = `App started at ${url}`;
