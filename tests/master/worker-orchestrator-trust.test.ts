@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { manifestToSpawnOptions } from '../../src/core/agent-runner.js';
 
 // ── Capture logger.warn before module hoisting ────────────────────────────────
 
@@ -34,7 +35,9 @@ vi.mock('../../src/core/router.js', () => ({
 
 // planning-gate may require additional native modules.
 vi.mock('../../src/master/planning-gate.js', () => ({
-  performReasoningCheckpoint: vi.fn().mockResolvedValue({ approved: true }),
+  performReasoningCheckpoint: vi
+    .fn()
+    .mockReturnValue({ riskLevel: 'low', risks: [], approved: true }),
 }));
 
 // skill-pack-loader pulls in complex logic; stub it out.
@@ -312,5 +315,89 @@ describe('Codex cost cap scaling (OB-1623)', () => {
 
     // Verify the scale factor applies correctly
     expect(baseReadOnlyCap * codexScaleFactor).toBe(0.125);
+  });
+});
+
+describe('.openbridge/ protection injection (OB-1649)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Extended deps with adapterRegistry and complete workerRegistry for spawnWorker().
+  function makeFullDeps(trustLevel?: WorkspaceTrustLevel): WorkerOrchestratorDeps {
+    return {
+      workspacePath: '/tmp/workspace',
+      masterTool: { name: 'claude', path: '/usr/bin/claude' } as never,
+      discoveredTools: [],
+      dotFolder: {} as never,
+      agentRunner: {
+        spawn: vi.fn(),
+        spawnWithHandle: vi.fn(),
+        spawnWithStreamingHandle: vi.fn().mockReturnValue({
+          promise: Promise.resolve({ status: 'completed', exitCode: 0, stdout: '', stderr: '' }),
+          abort: vi.fn(),
+          pid: 12345,
+        }),
+      } as never,
+      workerRegistry: {
+        registerWorkerWithId: vi.fn(),
+        markFailed: vi.fn(),
+        markRunning: vi.fn(),
+        markCompleted: vi.fn(),
+        removeWorker: vi.fn(),
+        getActiveWorkers: vi.fn(() => []),
+        getAggregatedStats: vi.fn(() => ({ totalWorkers: 0, avgDurationMs: 0, totalTurnsUsed: 0 })),
+        getWorker: vi.fn().mockReturnValue(undefined),
+      } as never,
+      adapterRegistry: {
+        getForTrustLevel: vi.fn().mockReturnValue(null),
+      } as never,
+      modelRegistry: {} as never,
+      workerRetryDelayMs: 1000,
+      workerMaxFixIterations: 3,
+      trustLevel,
+      getMemory: () => null,
+      getRouter: () => null,
+      getMasterSession: () => null,
+      getActiveMessage: () => null,
+      getState: () => ({ phase: 'idle' }) as never,
+      setState: vi.fn(),
+      getActiveSkillPacks: () => [],
+      getKnowledgeRetriever: () => null,
+      getBatchManager: () => null,
+      getBatchTimers: () => new Set(),
+      getDelegationCoordinator: () => null,
+      readProfilesFromStore: vi.fn().mockResolvedValue(null),
+      persistWorkerRegistry: vi.fn().mockResolvedValue(undefined),
+      recordWorkerLearning: vi.fn().mockResolvedValue(undefined),
+      recordPromptEffectiveness: vi.fn().mockResolvedValue(undefined),
+      recordConversationMessage: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('standard trust level — worker prompt includes .openbridge/ protection', async () => {
+    const deps = makeFullDeps('standard');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    await orchestrator.spawnWorker('worker-ob1652-std', makeMarker(), 0);
+
+    const mockedFn = vi.mocked(manifestToSpawnOptions);
+    expect(mockedFn).toHaveBeenCalled();
+    const [manifest] = mockedFn.mock.calls[0] as [{ prompt: string }];
+    expect(manifest.prompt).toContain('.openbridge/');
+    expect(manifest.prompt).toContain('Do NOT delete');
+  });
+
+  it('trusted trust level — worker prompt includes .openbridge/ protection', async () => {
+    const deps = makeFullDeps('trusted');
+    const orchestrator = new WorkerOrchestrator(deps);
+
+    await orchestrator.spawnWorker('worker-ob1652-trusted', makeMarker(), 0);
+
+    const mockedFn = vi.mocked(manifestToSpawnOptions);
+    expect(mockedFn).toHaveBeenCalled();
+    const [manifest] = mockedFn.mock.calls[0] as [{ prompt: string }];
+    expect(manifest.prompt).toContain('.openbridge/');
+    expect(manifest.prompt).toContain('Do NOT delete');
   });
 });
