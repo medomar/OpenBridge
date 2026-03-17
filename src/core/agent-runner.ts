@@ -1441,12 +1441,13 @@ export class AgentRunner {
       try {
         if (opts.sandbox?.mode === 'docker') {
           // OB-1558: Check Docker availability before attempting sandbox spawn.
-          // If the daemon is unavailable, fall back to direct spawn with a warning
-          // rather than failing silently or throwing an unrecoverable error.
+          // If the daemon is unavailable, fall back to direct spawn.
+          // Note: DockerHealthMonitor logs WARN on Docker unavailability state transitions.
+          // This DEBUG log provides per-spawn visibility without creating log noise. (OB-1666)
           const dockerSandboxCheck = new DockerSandbox();
           const dockerAvailable = await dockerSandboxCheck.isAvailable();
           if (!dockerAvailable) {
-            logger.warn(
+            logger.debug(
               { attempt, workspacePath: opts.workspacePath },
               'Docker unavailable — falling back to direct (unsandboxed) spawn',
             );

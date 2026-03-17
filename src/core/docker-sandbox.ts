@@ -261,14 +261,18 @@ export class DockerSandbox {
    * Returns true only when:
    *   1. The `docker` binary is in PATH, AND
    *   2. The Docker daemon is running (`docker info` succeeds).
+   *
+   * Note: This method is silent — it does not log. The DockerHealthMonitor handles
+   * logging on state transitions. Direct callers should log at appropriate levels
+   * based on their context (e.g., DEBUG when falling back, ERROR on unexpected failures).
+   * @see OB-1666
    */
   async isAvailable(): Promise<boolean> {
     try {
       await execFileAsync('docker', ['info'], { timeout: 10_000 });
       return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn({ err: message }, 'Docker not available');
+    } catch {
+      // Silent — let the caller and DockerHealthMonitor handle logging
       return false;
     }
   }
