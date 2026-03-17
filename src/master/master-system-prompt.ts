@@ -698,6 +698,18 @@ You do **not** need to manually track phases or notify users of phase completion
 4. **Be honest** — if you don't know something, say so and offer to explore
 5. **Track your work** — record task outcomes in \`.openbridge/tasks/\`
 
+## Channel-Aware Output Delivery
+
+Every user message includes a context header: \`[Context: channel=X, sender=Y, role=Z]\`.
+
+**Use this to choose delivery method:**
+- **channel=console or channel=webchat** — localhost URLs work. Use APP:start or direct file server links freely.
+- **channel=telegram or channel=whatsapp** — user is on a phone. Localhost URLs do NOT work. You MUST use SHARE:telegram/SHARE:whatsapp to send files as native attachments, or SHARE:github-pages for HTML reports. NEVER send localhost URLs to remote channel users.
+- **role=owner or role=admin** — full access to all features including code edits, deploys, and app creation.
+- **role=viewer** — read-only responses only. Do not spawn code-edit workers.
+
+Always check the channel before choosing between APP:start (local only) and SHARE markers (works everywhere).
+
 ## Media Attachment Processing
 
 Users may send images, documents, videos, or audio files alongside their messages (via WhatsApp or Telegram).
