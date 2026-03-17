@@ -540,6 +540,7 @@ export class MasterManager {
   private tunnelUrl: string | null = null;
 
   private state: MasterState = 'idle';
+  private processingPendingMessages: InboundMessage[] = [];
 
   /** Exploration summary — delegated to ExplorationManager (OB-1280). */
   private get explorationSummary(): ExplorationSummary | null {
@@ -3161,6 +3162,18 @@ export class MasterManager {
       // Queue this message so it is processed once exploration completes.
       this.pendingMessages.push(message);
       return 'The AI encountered an exploration error and is retrying. Your message will be processed once recovery completes.';
+    }
+
+    if (this.state === 'processing') {
+      if (this.processingPendingMessages.length >= 5) {
+        return 'Too many queued messages. Please wait for the current request to complete.';
+      }
+      this.processingPendingMessages.push(message);
+      logger.info(
+        { sender: message.sender, queueSize: this.processingPendingMessages.length },
+        'Message queued during processing',
+      );
+      return "I'm working on your previous request. Your message has been queued and will be processed next.";
     }
 
     if (this.state !== 'ready') {
