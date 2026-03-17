@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 2 | **In Progress:** 0 | **Done:** 30 (1606 archived)
+> **Pending:** 1 | **In Progress:** 0 | **Done:** 31 (1606 archived)
 > **Last Updated:** 2026-03-17
 
 ## Task Summary
@@ -144,7 +144,7 @@
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | --------- |
 | OB-1635 | Integration test: In `tests/integration/remote-delivery.test.ts` (new file), test the SHARE:telegram fallback path. Mock a Telegram connector, send a message requesting a report, verify the Master's response contains `[SHARE:telegram]` (not a localhost URL). Use the channel context header from OB-1625. Mock the file server and verify the SHARE marker is processed into a Telegram attachment delivery call. | —       | sonnet | ✅ Done   |
 | OB-1636 | Integration test: In `tests/integration/remote-delivery.test.ts`, test the APP:start→SHARE fallback. Mock APP:start marker processing with `source='telegram'` and no tunnel configured. Verify the output-marker-processor converts the APP:start marker into a SHARE:telegram marker for the app's index.html.                                                                                                        | —       | sonnet | ✅ Done   |
-| OB-1637 | Integration test: In `tests/integration/remote-delivery.test.ts`, test auto-tunnel integration. Mock `which cloudflared` returning a path. Mock `TunnelManager.start()` returning a public URL. Verify APP:start marker for a Telegram user gets replaced with the public tunnel URL (not localhost).                                                                                                                   | —       | sonnet | ⬚ Pending |
+| OB-1637 | Integration test: In `tests/integration/remote-delivery.test.ts`, test auto-tunnel integration. Mock `which cloudflared` returning a path. Mock `TunnelManager.start()` returning a public URL. Verify APP:start marker for a Telegram user gets replaced with the public tunnel URL (not localhost).                                                                                                                   | —       | sonnet | ✅ Done   |
 | OB-1638 | Integration test: In `tests/integration/prompt-budget.test.ts` (new file), verify the full prompt assembly pipeline: generate the Master system prompt via `generateMasterSystemPrompt()`, pass it through `PromptAssembler` with Sonnet budget, verify the output contains the SHARE routing table and APP server docs (not truncated). This is the regression test for OB-F216.                                       | —       | sonnet | ⬚ Pending |
 
 ---
