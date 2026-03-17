@@ -125,10 +125,17 @@ export class OutputMarkerProcessor {
     connector: Connector,
     recipient: string,
     replyTo?: string,
+    source?: string,
   ): Promise<string> {
     const afterWorkflow = await this.processWorkflowMarkers(content);
-    const afterShare = await this.processShareMarkers(afterWorkflow, connector, recipient, replyTo);
-    const afterApp = await this.processAppMarkers(afterShare);
+    const afterShare = await this.processShareMarkers(
+      afterWorkflow,
+      connector,
+      recipient,
+      replyTo,
+      source,
+    );
+    const afterApp = await this.processAppMarkers(afterShare, source);
     const afterSend = await this.processSendMarkers(afterApp);
     return this.processVoiceMarkers(afterSend, connector, recipient);
   }
@@ -271,6 +278,7 @@ export class OutputMarkerProcessor {
     connector: Connector,
     recipient: string,
     replyTo?: string,
+    _source?: string,
   ): Promise<string> {
     const workspacePath = this.deps.getWorkspacePath();
     if (!workspacePath) return content;
@@ -698,7 +706,7 @@ export class OutputMarkerProcessor {
    * APP:start and APP:stop require an AppServer. APP:update requires an InteractionRelay.
    * Markers for unconfigured components are stripped silently.
    */
-  async processAppMarkers(content: string): Promise<string> {
+  async processAppMarkers(content: string, _source?: string): Promise<string> {
     const appServer = this.deps.getAppServer();
     const relay = this.deps.getRelay();
     if (!appServer && !relay) return content;
