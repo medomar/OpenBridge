@@ -1239,6 +1239,16 @@ export class WorkerOrchestrator {
     const resolvedMaxCostUsd: number | undefined =
       body.maxCostUsd ?? PROFILE_DEFAULT_COST_CAPS[profile];
 
+    // OB-1623: Scale cost cap 2.5x for Codex workers to match OpenAI's higher per-token pricing.
+    let effectiveMaxCostUsd = resolvedMaxCostUsd;
+    if (effectiveMaxCostUsd && body.tool === 'codex') {
+      effectiveMaxCostUsd = Math.min(effectiveMaxCostUsd * 2.5, 0.25);
+      logger.debug(
+        { profile, originalCap: resolvedMaxCostUsd, scaledCap: effectiveMaxCostUsd },
+        'Codex worker cost cap scaled 2.5x',
+      );
+    }
+
     const { spawnOptions: spawnOpts, cleanup: mcpCleanup } = await manifestToSpawnOptions(
       {
         prompt: workerPrompt,
@@ -1249,7 +1259,7 @@ export class WorkerOrchestrator {
         timeout: body.timeout,
         retries: body.retries,
         maxBudgetUsd: body.maxBudgetUsd,
-        maxCostUsd: resolvedMaxCostUsd,
+        maxCostUsd: effectiveMaxCostUsd,
       },
       customProfiles,
     );
