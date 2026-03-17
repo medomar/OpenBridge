@@ -25,17 +25,16 @@ const logger = createLogger('classification-engine');
 /**
  * Per-turn wall-clock budget in milliseconds.
  * Used to compute per-class timeouts: timeout = CLI_STARTUP_BUDGET_MS + maxTurns × PER_TURN_BUDGET_MS.
- * 30s/turn gives quick-answer(5) = 60+150=210s, tool-use(15) = 60+450=510s, complex-task(25) = 60+750=810s.
+ * 30s/turn gives quick-answer(3) = 30+90=120s, tool-use(15) = 30+450=480s, complex-task(25) = 30+750=780s.
  */
 export const PER_TURN_BUDGET_MS = 30_000;
 
 /**
  * Fixed startup budget added to every timeout.
  * Covers CLI cold-start overhead (model loading, API connection, MCP init).
- * Without this, low-turn tasks (quick-answer=5 turns) can timeout before
- * the CLI even starts generating output.
+ * Claude CLI cold-start is ~10-15s; 30s provides headroom without over-provisioning (OB-F217).
  */
-export const CLI_STARTUP_BUDGET_MS = 60_000;
+export const CLI_STARTUP_BUDGET_MS = 30_000;
 
 /** Compute wall-clock timeout from a turn budget (includes CLI startup overhead). */
 export function turnsToTimeout(maxTurns: number): number {
@@ -44,12 +43,12 @@ export function turnsToTimeout(maxTurns: number): number {
 
 /**
  * Max turns for message processing — varies by task classification.
- * quick-answer: questions, lookups, explanations → 5 turns
+ * quick-answer: questions, lookups, explanations → 3 turns (turnsToTimeout(3) = 120s < 180s DEFAULT_MESSAGE_TIMEOUT)
  * text-generation: articles, strategies, long-form content → 10 turns
  * tool-use: file generation, single edits, targeted fixes → 15 turns
  * complex-task (planning): forces Master to output SPAWN markers → 25 turns
  */
-export const MESSAGE_MAX_TURNS_QUICK = 5;
+export const MESSAGE_MAX_TURNS_QUICK = 3;
 export const MESSAGE_MAX_TURNS_MENU_SELECTION = 2;
 export const MESSAGE_MAX_TURNS_TEXT_GEN = 10;
 export const MESSAGE_MAX_TURNS_TOOL_USE = 15;
