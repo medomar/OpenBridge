@@ -118,7 +118,7 @@ import { PlanningGate, shouldBypassPlanning, performReasoningCheckpoint } from '
 const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
-const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
+const DEFAULT_MESSAGE_TIMEOUT = 300_000; // 5 minutes for message processing
 const DEFAULT_WORKER_TIMEOUT = 300_000; // 5 minutes for worker tasks
 
 // turnsToTimeout imported from classification-engine.ts (OB-1279)
@@ -3593,24 +3593,19 @@ export class MasterManager {
       // (2) timeoutToUse overrides to the planning-turns budget for complex-task (see above),
       //     so timeoutToUse == turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING) = 780s for complex.
       //
-      // (3) safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000)
-      //     clamps to 170s max (DEFAULT_MESSAGE_TIMEOUT = 180_000 at line 121).
-      //     Effect: quick-answer stays at 120s (< 170s ceiling),
-      //             tool-use and complex-task are hard-clamped to 170s.
+      // (3) safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT)
+      //     clamps to 300s max (DEFAULT_MESSAGE_TIMEOUT = 300_000 at line 121).
+      //     Effect: quick-answer stays at 120s (< 300s ceiling),
+      //             tool-use is clamped to 300s (was 170s before OB-1662),
+      //             complex-task is clamped to 300s (was 170s before OB-1662).
       //
       // (4) safeTimeout is forwarded to buildMasterSpawnOptions() → agentRunner.spawn().
       //     The Master session process runs for at most safeTimeout ms total —
       //     this budget INCLUDES context loading, worker spawning, and worker execution.
-      //
-      // (5) Why quick-answer still times out despite the 120s budget:
-      //     The Master's --session-id (resume) call loads ~30-40s of conversation context,
-      //     then spawns a worker (~10s startup), then waits for the worker to execute
-      //     (~60-80s for real tasks). Total ≈ 100-130s, which exceeds the 120s budget
-      //     under load. The 170s clamp is NOT the bottleneck for quick-answer tasks —
-      //     the issue is that 120s is genuinely too tight for a full Master + worker cycle.
-      //     See OB-1662 for the fix (raise DEFAULT_MESSAGE_TIMEOUT to 300s).
+      //     The 10s headroom reduction was removed (OB-1662) because the Master session
+      //     IS the top-level process — there is no outer timeout to race against.
       // ─────────────────────────────────────────────────────────────────────────
-      const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000);
+      const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT);
       if (safeTimeout < timeoutToUse) {
         logger.warn(
           { originalTimeout: timeoutToUse, safeTimeout },
