@@ -5738,7 +5738,8 @@ ${currentContent}
     attachments?: InboundMessage['attachments'],
   ): Promise<void> {
     // Guard against infinite escalation loops (OB-F214): cap at depth 3.
-    const escalationDepth = (originalProfile.match(/-escalated/g) ?? []).length;
+    // Check worker ID (the actual accumulator), not profile (which gets cleaned).
+    const escalationDepth = (originalWorkerId.match(/-escalated/g) ?? []).length;
     if (escalationDepth >= 3) {
       logger.warn(
         { workerId: originalWorkerId, profile: originalProfile, escalationDepth },
@@ -5747,7 +5748,10 @@ ${currentContent}
       return;
     }
 
-    const newWorkerId = `${originalWorkerId}-escalated`;
+    // Strip any existing `-escalated` chain from worker ID before appending,
+    // so IDs stay `{base}-escalated` instead of growing infinitely (OB-F214).
+    const baseWorkerId = originalWorkerId.replace(/-escalated(-escalated)*$/, '');
+    const newWorkerId = `${baseWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
     const profileGrant = grantedTools.find((g) => BuiltInProfileNameSchema.safeParse(g).success);
@@ -6080,7 +6084,14 @@ ${currentContent}
     // When a mismatch is predicted, request escalation upfront — the user is asked
     // before the worker is spawned, and the actual spawn is deferred to the respawn
     // callback so no turns are wasted on a predictably blocked worker.
-    const toolPrediction = predictToolRequirements(body.prompt, profile);
+    //
+    // Skip pre-flight for already-escalated workers (OB-F214): respawnWorkerAfterGrant
+    // calls back into spawnWorker — running prediction again creates an infinite loop
+    // (escalate → respawn → predict → escalate → ...) that OOMs the process.
+    const alreadyEscalated = workerId.includes('-escalated');
+    const toolPrediction = alreadyEscalated
+      ? undefined
+      : predictToolRequirements(body.prompt, profile);
     if (toolPrediction && this.router && this.activeMessage) {
       logger.info(
         {
