@@ -14,7 +14,7 @@
  * The JSON body can override or extend the manifest with explicit values.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('spawn-parser');

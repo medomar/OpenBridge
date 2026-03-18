@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { createLogger } from '../../core/logger.js';
 import type { AgentRunner } from '../../core/agent-runner.js';
 import { DEFAULT_MAX_TURNS_TASK } from '../../core/agent-runner.js';

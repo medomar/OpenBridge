@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { createLogger } from '../../core/logger.js';
 import type { EmailConfig } from '../../core/email-sender.js';
 import { sendEmail } from '../../core/email-sender.js';

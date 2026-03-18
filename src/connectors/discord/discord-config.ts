@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const DiscordConfigSchema = z.object({
   /** Discord bot token from the Developer Portal */

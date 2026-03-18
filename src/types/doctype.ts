@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** Supported field types for DocType fields */
 export const FieldTypeEnum = z.enum([
