@@ -3773,6 +3773,27 @@ export class MasterManager {
 
       let response = result.stdout.trim() || 'No response from AI';
 
+      // Guard: Master session itself hit max-turns — provide actionable feedback (OB-F230)
+      if (result.turnsExhausted) {
+        const partial = response.length > 20 ? response : '';
+        const turnsUsedStr = result.turnsUsed ? ` (used ${result.turnsUsed} turns)` : '';
+        logger.warn(
+          { taskId, maxTurns: maxTurnsToUse, turnsUsed: result.turnsUsed },
+          'Master session hit max-turns limit — returning partial result with guidance',
+        );
+        if (partial && !hasSpawnMarkers(partial)) {
+          // Master produced some useful output before exhaustion — append guidance
+          response =
+            partial +
+            `\n\n⚠️ I ran out of processing capacity${turnsUsedStr}. ` +
+            `If this isn't complete, please send a follow-up message to continue.`;
+        } else if (!hasSpawnMarkers(response)) {
+          response =
+            `Your request needed more processing time than available${turnsUsedStr}. ` +
+            `Please try breaking it into smaller steps — for example, ask me to do the deployment separately from the code changes.`;
+        }
+      }
+
       // Check for SPAWN markers first (richer task decomposition protocol)
       if (hasSpawnMarkers(response)) {
         const spawnResult = parseSpawnMarkers(response);
@@ -4190,8 +4211,9 @@ export class MasterManager {
       if (error instanceof AgentExhaustedError && error.lastExitCode === 143) {
         const seconds = Math.round(error.durationMs / 1000);
         const timeoutMsg =
-          `Your request is taking longer than expected. The task timed out after ${seconds} seconds. ` +
-          `Please try a simpler request or break it into smaller steps.`;
+          `Your request timed out after ${seconds}s. ` +
+          `This usually happens with multi-step tasks. Try sending each step separately — ` +
+          `for example: "deploy the POS app" as one message, then "send me the link" as a follow-up.`;
         logger.warn(
           { taskId, sender: message.sender, durationMs: error.durationMs, exitCode: 143 },
           'Master session timed out — returning user feedback instead of propagating to DLQ (OB-1663)',
@@ -5715,6 +5737,16 @@ ${currentContent}
     grantedTools: string[],
     attachments?: InboundMessage['attachments'],
   ): Promise<void> {
+    // Guard against infinite escalation loops (OB-F214): cap at depth 3.
+    const escalationDepth = (originalProfile.match(/-escalated/g) ?? []).length;
+    if (escalationDepth >= 3) {
+      logger.warn(
+        { workerId: originalWorkerId, profile: originalProfile, escalationDepth },
+        'Max escalation depth reached — not respawning',
+      );
+      return;
+    }
+
     const newWorkerId = `${originalWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
@@ -5734,11 +5766,14 @@ ${currentContent}
       // Individual tool grant — merge with the original profile's tool list.
       const baseTools = resolveProfile(originalProfile) ?? [];
       const mergedTools = [...new Set([...baseTools, ...grantedTools])];
-      const upgradedProfileName = `${originalProfile}-escalated`;
+      // Strip any existing `-escalated` suffix chain so profile names stay `{base}-escalated`
+      // regardless of how many re-grants occur (OB-F214).
+      const baseProfile = originalProfile.replace(/-escalated(-escalated)*$/, '');
+      const upgradedProfileName = `${baseProfile}-escalated`;
       customProfiles = {
         [upgradedProfileName]: {
           name: upgradedProfileName,
-          description: `${originalProfile} + escalated access (${grantedTools.join(', ')})`,
+          description: `${baseProfile} + escalated access (${grantedTools.join(', ')})`,
           tools: mergedTools,
         },
       };

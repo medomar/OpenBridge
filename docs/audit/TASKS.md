@@ -1,6 +1,6 @@
 # OpenBridge — Task List
 
-> **Pending:** 0 | **In Progress:** 0 | **Done:** 62 (1606 archived)
+> **Pending:** 0 | **In Progress:** 0 | **Done:** 66 (1606 archived)
 > **Last Updated:** 2026-03-17
 
 ## Task Summary
@@ -24,6 +24,7 @@
 | 166   | Quick-answer timeout regression (OB-F217)           | 4     | ✅     |
 | 167   | First-run log noise cleanup                         | 2     | ✅     |
 | 168   | Integration tests for real-world fixes              | 2     | ✅     |
+| 169   | Classification escalation + max-turns UX (OB-F230)  | 4     | ✅     |
 
 ---
 
@@ -269,6 +270,20 @@
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
 | OB-1667 | Integration test: In `tests/integration/message-lifecycle.test.ts` (new file), test the full DLQ→error response flow. Create a Bridge with a mock Telegram connector, enqueue a message, make the Master's `processMessage()` throw repeatedly until DLQ. Verify: (1) the user receives the error response via the connector, (2) the DLQ contains the failed message, (3) audit log records the error event. Also test that the error response itself doesn't throw. | —       | sonnet | ✅ Done |
 | OB-1668 | Integration test: In `tests/integration/message-lifecycle.test.ts`, test the processing queue flow. Create a Bridge with Master, send a message that triggers long processing (mock 5s delay). While processing, send 2 more messages. Verify: (1) first message is processed normally, (2) messages 2 and 3 are queued (not dropped), (3) after message 1 completes, messages 2 and 3 are drained in order, (4) all 3 messages get responses via the connector.      | —       | sonnet | ✅ Done |
+
+---
+
+## Phase 169 — Classification Escalation + Max-Turns UX (OB-F230)
+
+> **Goal:** Fix three compounding classification bugs that caused deployment requests to timeout or return raw error messages.
+> **Findings:** OB-F230 (Critical), OB-F217 (addressed)
+
+| #       | Task                                                                                                                                                                                                                                                                                                                                                                                                                                                | Finding | Model  | Status  |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------ | ------- |
+| OB-1669 | In `src/master/classification-engine.ts:533`, remove the `currentRank > 0` guard from the learning-based escalation condition. This gate prevented quick-answer (rank 0) from being escalated by learning data even when historical success rate was 100% for complex-task. After fix, any class can be escalated when learning data supports it.                                                                                                   | OB-F230 | sonnet | ✅ Done |
+| OB-1670 | In `src/master/classification-engine.ts:479-498`, add a keyword-upgrade path: when AI classifier returns quick-answer/text-generation with confidence 0.4–0.8, but keyword classifier returns a higher-ranked class (tool-use/complex-task), prefer the keyword result. This prevents moderate-confidence AI from overriding correct keyword detection of action verbs like "deploy", "build", "fix". Log at INFO with `winner: 'keyword-upgrade'`. | OB-F230 | sonnet | ✅ Done |
+| OB-1671 | In `src/master/master-manager.ts` after the Master session spawn (line 3774), detect `result.turnsExhausted` and provide actionable user feedback: append guidance to partial output or replace empty output with a message suggesting the user break the request into smaller steps. Also improve the timeout error message (OB-1663 path) to suggest specific retry strategies.                                                                   | OB-F230 | sonnet | ✅ Done |
+| OB-1672 | Mark OB-F217 as fixed in FINDINGS.md (addressed by OB-F230 classification fixes). Add OB-F230 finding entry. Update TASKS.md phase table and counters.                                                                                                                                                                                                                                                                                              | OB-F230 | —      | ✅ Done |
 
 ---
 
